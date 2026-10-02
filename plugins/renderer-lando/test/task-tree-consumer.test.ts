@@ -12,7 +12,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, LogLevel, Logger, Queue, Schema } from "effect";
+import { Effect, Layer, Logger, Queue, Schema } from "effect";
 
 import {
   type LandoEvent,
@@ -1182,14 +1182,14 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     const { io, stdout } = ttyIo();
     const debugMessages: string[] = [];
     const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
-      if (logLevel === LogLevel.Debug) debugMessages.push(String(message));
+      if (logLevel === "Debug") debugMessages.push(String(message));
     });
     await Effect.runPromise(
       drive(io, () => Promise.reject(new Error("no native binding")), [
         treeStart(["web"]),
         taskStart("web"),
       ]).pipe(
-        Logger.withMinimumLogLevel(LogLevel.Debug),
+        Logger.withMinimumLogLevel("Debug"),
         Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
       ),
     );
@@ -1202,7 +1202,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     const second = ttyIo();
     const debugMessages: string[] = [];
     const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
-      if (logLevel === LogLevel.Debug) debugMessages.push(String(message));
+      if (logLevel === "Debug") debugMessages.push(String(message));
     });
     let attempts = 0;
     const createLiveRegion = (): Promise<FakeController> => {
@@ -1213,7 +1213,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     for (const { io } of [first, second]) {
       await Effect.runPromise(
         drive(io, createLiveRegion, [treeStart(["web"]), taskStart("web")]).pipe(
-          Logger.withMinimumLogLevel(LogLevel.Debug),
+          Logger.withMinimumLogLevel("Debug"),
           Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
         ),
       );

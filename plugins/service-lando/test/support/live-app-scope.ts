@@ -132,7 +132,7 @@ export const acquireLiveApp = (args: {
   };
   return Effect.acquireRelease(
     Effect.as(
-      Effect.zipRight(lifecycle.clearPreviousRun(args.plan, api), lifecycle.bringUp(args.plan, api)),
+      Effect.andThen(lifecycle.clearPreviousRun(args.plan, api), lifecycle.bringUp(args.plan, api)),
       app,
     ),
     () => Effect.orDie(lifecycle.bringDown(args.plan, api, { volumes: true })),
@@ -158,12 +158,12 @@ export const execUntil = (args: {
     const deadline = Date.now() + args.timeoutMs;
     let last = "<never ran>";
     while (Date.now() < deadline) {
-      const attempt = yield* Effect.either(args.app.exec(args.service, args.command));
-      if (attempt._tag === "Right") {
-        if (args.accept(attempt.right)) return attempt.right;
-        last = `exit ${attempt.right.exitCode} stdout=${JSON.stringify(attempt.right.stdout)} stderr=${JSON.stringify(attempt.right.stderr)}`;
+      const attempt = yield* Effect.result(args.app.exec(args.service, args.command));
+      if (attempt._tag === "Success") {
+        if (args.accept(attempt.success)) return attempt.success;
+        last = `exit ${attempt.success.exitCode} stdout=${JSON.stringify(attempt.success.stdout)} stderr=${JSON.stringify(attempt.success.stderr)}`;
       } else {
-        last = String(attempt.left);
+        last = String(attempt.failure);
       }
       yield* Effect.sleep(interval);
     }

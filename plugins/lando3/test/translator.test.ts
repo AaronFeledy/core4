@@ -26,7 +26,7 @@ const translate = (documents: ReadonlyArray<ReturnType<typeof document>>) => {
     currentLowerV4Fragments: [],
     writableLayerIds: ["base", "dist", "upstream", "canonical", "local", "user"],
   });
-  return Effect.runPromise(Effect.either(lando3ConfigTranslator.translate(input)));
+  return Effect.runPromise(Effect.result(lando3ConfigTranslator.translate(input)));
 };
 
 describe("lando3 document set", () => {
@@ -39,15 +39,15 @@ describe("lando3 document set", () => {
       document("package.json", '{"name":"pkg"}', "application/json"),
     ]);
     expect(result._tag).toBe("Right");
-    if (result._tag !== "Right") return;
-    expect(result.right.outputs).toEqual([
+    if (result._tag !== "Success") return;
+    expect(result.success.outputs).toEqual([
       {
         targetLayer: "canonical",
         fragment: { name: "kitchen-sink" },
         sourceIds: [ConfigTranslateSourceId.make(".lando.yml")],
       },
     ]);
-    expect(result.right.diagnostics).toEqual([]);
+    expect(result.success.diagnostics).toEqual([]);
   });
 
   test("does not fail conversion when an unrelated file is malformed", async () => {
@@ -56,8 +56,8 @@ describe("lando3 document set", () => {
       document("docker-compose.yml", "services: [\n"),
     ]);
     expect(result._tag).toBe("Right");
-    if (result._tag !== "Right") return;
-    expect(result.right.outputs[0]?.fragment).toEqual({ name: "kitchen-sink" });
+    if (result._tag !== "Success") return;
+    expect(result.success.outputs[0]?.fragment).toEqual({ name: "kitchen-sink" });
   });
 
   test("names configured custom basenames without reading them", async () => {
@@ -75,8 +75,8 @@ describe("lando3 document set", () => {
       ),
     ]);
     expect(result._tag).toBe("Right");
-    if (result._tag !== "Right") return;
-    const custom = result.right.diagnostics.filter((diagnostic) => diagnostic.kind === "needs-review");
+    if (result._tag !== "Success") return;
+    const custom = result.success.diagnostics.filter((diagnostic) => diagnostic.kind === "needs-review");
     expect(custom.map((diagnostic) => diagnostic.keyPath)).toEqual([
       ["landoFile"],
       ["preLandoFiles"],
@@ -85,7 +85,7 @@ describe("lando3 document set", () => {
     expect(custom.map((diagnostic) => diagnostic.message).join("\n")).toContain("custom.yml");
     expect(custom.map((diagnostic) => diagnostic.message).join("\n")).toContain("before.yml");
     expect(custom.map((diagnostic) => diagnostic.message).join("\n")).toContain("after.yml");
-    expect(result.right.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+    expect(result.success.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "needs-review", keyPath: ["landoFile"] },
       { kind: "needs-review", keyPath: ["preLandoFiles"] },
       { kind: "needs-review", keyPath: ["postLandoFiles"] },
@@ -96,9 +96,9 @@ describe("lando3 document set", () => {
     const secret = "canary-secret-value";
     const result = await translate([document(".lando.yml", `name: app\n${secret}: 1\n${secret}: 2\n`)]);
     expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") return;
-    expect(result.left.message).not.toContain(secret);
-    expect(result.left.message).toContain(".lando.yml");
+    if (result._tag !== "Failure") return;
+    expect(result.failure.message).not.toContain(secret);
+    expect(result.failure.message).toContain(".lando.yml");
   });
 });
 

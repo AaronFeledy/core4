@@ -50,5 +50,5 @@ export const inspectAppliedPlan = (
           ),
         ),
       ),
-      Effect.catchAll(() => Effect.succeed<AppliedPlanRead>({ status: "unreadable" })),
+      Effect.catch(() => Effect.succeed<AppliedPlanRead>({ status: "unreadable" })),
     );

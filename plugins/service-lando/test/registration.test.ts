@@ -137,7 +137,7 @@ describe("@lando/service-lando registration", () => {
     });
 
     const encoded = Schema.encodeSync(AppPlan)(appPlan);
-    expect(Schema.decodeUnknownEither(AppPlan)(encoded)._tag).toBe("Right");
+    expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Right");
     expect(appPlan.provider).toBe(ProviderId.make("lando"));
     expect(appPlan.services[ServiceName.make("web")]?.type).toBe("node:lts");
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");
@@ -698,7 +698,7 @@ describe("@lando/service-lando registration", () => {
     }
 
     const BuildStepIds = Schema.Struct({
-      buildSteps: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+      buildSteps: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String) }))),
     });
     const stepIds = (service: typeof web) =>
       Schema.decodeUnknownSync(BuildStepIds)(

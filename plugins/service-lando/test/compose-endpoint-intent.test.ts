@@ -84,7 +84,7 @@ describe("compose endpoint intent", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isSuccess(exit)) return;
-    const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
+    const failure = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
       issues: ["services.worker.endpoints"],

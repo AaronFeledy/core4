@@ -30,7 +30,7 @@ const appRoot = AbsolutePath.make("/tmp/lando-bringdown-app");
 const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
   volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "bring-down.integration.test",
   runtime: 4 as const,
 };
@@ -402,7 +402,7 @@ describe("provider-lando bringDown", () => {
       }
 
       await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           liveRequest({
             method: "POST",
             path: "/volumes/create",
@@ -433,12 +433,12 @@ describe("provider-lando bringDown", () => {
       } finally {
         for (const service of Object.values(plan.services)) {
           await Effect.runPromise(
-            Effect.either(
+            Effect.result(
               liveRequest({ method: "POST", path: `/containers/lando-${plan.slug}-${service.name}/stop` }),
             ),
           );
           await Effect.runPromise(
-            Effect.either(
+            Effect.result(
               liveRequest({
                 method: "DELETE",
                 path: `/containers/lando-${plan.slug}-${service.name}?force=true`,
@@ -447,7 +447,7 @@ describe("provider-lando bringDown", () => {
           );
         }
         await Effect.runPromise(
-          Effect.either(liveRequest({ method: "DELETE", path: `/networks/lando-${plan.slug}` })),
+          Effect.result(liveRequest({ method: "DELETE", path: `/networks/lando-${plan.slug}` })),
         );
       }
     },
@@ -507,7 +507,7 @@ describe("provider-lando bringDown", () => {
         expect(otherAfter.status).toBe(200);
       } finally {
         for (const name of [owned, other]) {
-          await Effect.runPromise(Effect.either(liveRequest({ method: "DELETE", path: `/volumes/${name}` })));
+          await Effect.runPromise(Effect.result(liveRequest({ method: "DELETE", path: `/volumes/${name}` })));
         }
       }
     },

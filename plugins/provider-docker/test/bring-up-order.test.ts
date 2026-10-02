@@ -8,7 +8,7 @@ import type { ServicePlan } from "@lando/sdk/schema";
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("bring-up-order-app");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
   source: "provider-docker/bring-up-order.test.ts",
   runtime: 4 as const,
 };
@@ -308,7 +308,7 @@ describe("provider-docker bringUp dependency order", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     else throw new TypeError("aborted Docker apply unexpectedly succeeded");
     expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
   });

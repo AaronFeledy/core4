@@ -581,7 +581,7 @@ describe("ensureManagedNft", () => {
     try {
       await mkdir(runtimeBinDir, { recursive: true });
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           ensureManagedNft({
             runtimeBinDir,
             download,
@@ -592,9 +592,9 @@ describe("ensureManagedNft", () => {
         ),
       );
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left).toBeInstanceOf(ProviderUnavailableError);
-        expect(result.left.message).toMatch(/bundled loader libraries|nft --version/u);
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(ProviderUnavailableError);
+        expect(result.failure.message).toMatch(/bundled loader libraries|nft --version/u);
       }
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -24,7 +24,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("build-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-12T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-12T00:00:00Z"),
   source: "provider-docker/build-artifact.test.ts",
   runtime: 4 as const,
 };

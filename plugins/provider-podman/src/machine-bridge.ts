@@ -5,16 +5,14 @@ import {
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AgentSocketBridgeInput, type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { PathsService, ProcessRunner } from "@lando/sdk/services";
-import { Effect, Either, Option, Schema } from "effect";
+import { Effect, Result, Option, Schema } from "effect";
 
-const MachineList = Schema.parseJson(
-  Schema.Array(
+const MachineList = Schema.fromJsonString(Schema.Array(
     Schema.Struct({
-      Name: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+      Name: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u))),
       Default: Schema.Boolean,
     }),
-  ),
-);
+  ));
 
 const bridgeFailure = (cause: unknown) =>
   new ProviderUnavailableError({
@@ -30,13 +28,10 @@ export const resolveDefaultPodmanMachine = async (
 ): Promise<string | undefined> => {
   const result = await run("podman", ["machine", "list", "--format", "json"]);
   if (result.exitCode !== 0) throw bridgeFailure(undefined);
-  const machines = Schema.decodeUnknownEither(MachineList)(result.stdout);
-  return Either.match(machines, {
-    onLeft: (cause) => {
+  const machines = Schema.decodeUnknownResult(MachineList)(result.stdout);
+  return Result.match(machines, { onFailure: (cause) => {
       throw bridgeFailure(cause);
-    },
-    onRight: (values) => values.find((machine) => machine.Default)?.Name,
-  });
+    }, onSuccess: (values) => values.find((machine) => machine.Default)?.Name });
 };
 
 export const resolvePodmanAgentBridge = (options: {

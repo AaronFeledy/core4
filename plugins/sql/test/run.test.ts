@@ -163,7 +163,7 @@ describe("executeDbCommand", () => {
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:new",
         sizeBytes: 12,
-        createdAt: DateTime.unsafeMake("2026-09-11T03:00:00Z"),
+        createdAt: DateTime.makeUnsafe("2026-09-11T03:00:00Z"),
         metadata: {
           sourceRoot: AbsolutePath.make(harness.root),
           ownerKey: "owner:sql-app",
@@ -180,7 +180,7 @@ describe("executeDbCommand", () => {
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:old",
         sizeBytes: 12,
-        createdAt: DateTime.unsafeMake("2026-09-11T01:00:00Z"),
+        createdAt: DateTime.makeUnsafe("2026-09-11T01:00:00Z"),
         metadata: {
           sourceRoot: AbsolutePath.make(harness.root),
           ownerKey: "owner:sql-app",
@@ -197,7 +197,7 @@ describe("executeDbCommand", () => {
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:recovery",
         sizeBytes: 12,
-        createdAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
+        createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
         metadata: {
           sourceRoot: AbsolutePath.make(harness.root),
           ownerKey: "owner:sql-app",

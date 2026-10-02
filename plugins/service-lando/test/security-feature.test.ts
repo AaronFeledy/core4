@@ -11,26 +11,22 @@ const DIGEST_A = "a".repeat(64);
 const DIGEST_B = "b".repeat(64);
 
 const FeatureExtension = Schema.Struct({
-  buildSteps: Schema.optional(
-    Schema.Array(
+  buildSteps: Schema.optionalKey(Schema.Array(
       Schema.Struct({
-        id: Schema.optional(Schema.String),
+        id: Schema.optionalKey(Schema.String),
         phase: Schema.String,
         command: Schema.Unknown,
-        user: Schema.optional(Schema.String),
-        buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-        caFiles: Schema.optional(
-          Schema.Array(
+        user: Schema.optionalKey(Schema.String),
+        buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+        caFiles: Schema.optionalKey(Schema.Array(
             Schema.Struct({
               path: Schema.String,
               digest: Schema.String,
               archiveName: Schema.String,
             }),
-          ),
-        ),
+          )),
       }),
-    ),
-  ),
+    )),
 });
 
 const securityFeature = (): ServiceFeatureDefinition => {

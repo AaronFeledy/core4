@@ -22,10 +22,9 @@ export const STATIC_FEATURE_PRIORITY = 600;
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const StaticWebroot = Schema.String.pipe(
-  Schema.pattern(/^\/[A-Za-z0-9._/-]*$/u, {
-    message: () =>
-      "Static webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
-  }),
+  Schema.check(Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
+    message: "Static webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
+  })),
   Schema.brand("StaticWebroot"),
 );
 
@@ -57,7 +56,7 @@ export const defaultStaticCommand = (
 };
 
 const StaticFeatureConfigSchema = Schema.Struct({
-  server: Schema.Literal(...SUPPORTED_STATIC_SERVERS),
+  server: Schema.Literals([...SUPPORTED_STATIC_SERVERS]),
   docRoot: Schema.String,
 });
 type StaticFeatureConfig = typeof StaticFeatureConfigSchema.Type;
@@ -135,7 +134,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
 
 export const staticServiceFeature: ServiceFeatureDefinition = {
   id: STATIC_FEATURE_ID,
-  schema: StaticFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: StaticFeatureConfigSchema as Schema.Codec<unknown>,
   priority: STATIC_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

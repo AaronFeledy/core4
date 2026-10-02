@@ -1,5 +1,6 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LandofileShape, ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
@@ -150,16 +151,16 @@ describe("node:lts ServiceType", () => {
   });
 
   test("ServiceConfig schema accepts the framework field", () => {
-    const result = Schema.decodeUnknownEither(ServiceConfig)(
+    const result = Schema.decodeUnknownResult(ServiceConfig)(
       { type: "node:lts", framework: "drupal" },
       {
         onExcessProperty: "error",
       },
     );
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right.framework).toBe("drupal");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.framework).toBe("drupal");
     }
   });
 
@@ -174,14 +175,14 @@ describe("node:lts ServiceType", () => {
   });
 
   test("ServiceConfig still rejects unknown excess keys via strict decoding", () => {
-    const result = Schema.decodeUnknownEither(ServiceConfig)(
+    const result = Schema.decodeUnknownResult(ServiceConfig)(
       { type: "node:lts", nonsenseKey: "value" },
       { onExcessProperty: "error" },
     );
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.some((issue) => issue.path.includes("nonsenseKey"))).toBe(true);
     }
   });

@@ -145,16 +145,16 @@ export const dnatChainForNetwork = (networkId: string, subnet: string): string =
   return `nv_${networkId.slice(0, 8)}_${match[1]?.replaceAll(".", "_")}_nm${match[2]}_dnat`;
 };
 
-const Ipv4AddressSchema = Schema.String.pipe(Schema.filter(validIpv4Address));
-const NetworkIdSchema = Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u));
-const NftChainSchema = Schema.String.pipe(Schema.pattern(/^nv_[a-f0-9]{8}_[a-zA-Z0-9_-]+_dnat$/u));
+const Ipv4AddressSchema = Schema.String.pipe(Schema.check(Schema.makeFilter(validIpv4Address)));
+const NetworkIdSchema = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u)));
+const NftChainSchema = Schema.String.pipe(Schema.check(Schema.isPattern(/^nv_[a-f0-9]{8}_[a-zA-Z0-9_-]+_dnat$/u)));
 
 const RuleReceiptSchema = Schema.Struct({
-  handle: Schema.Number.pipe(Schema.int(), Schema.greaterThan(0)),
+  handle: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
   chain: NftChainSchema,
-  hostPort: Schema.Number.pipe(Schema.int(), Schema.between(1, 65535)),
+  hostPort: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
   containerAddress: Ipv4AddressSchema,
-  containerPort: Schema.Number.pipe(Schema.int(), Schema.between(1, 65535)),
+  containerPort: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 }))),
 });
 
 export const PublishedContainerReceiptSchema = Schema.Struct({

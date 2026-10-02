@@ -140,7 +140,7 @@ describe("memcached service type — live integration: text protocol set/get", (
           );
           expect(getOutput).toBe("VALUE foo 0 3\r\nbar\r\nEND\r\n");
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

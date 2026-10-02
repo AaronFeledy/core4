@@ -109,7 +109,7 @@ const resolveAdvertisedPair = (
   const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
   return Effect.tryPromise(() => readFile(acquisitionStateFile(paths), "utf8")).pipe(
     Effect.map((text) => advertisedPairFromUnknown(JSON.parse(text))),
-    Effect.catchAll(() => Effect.succeed(LAST_FALLBACK)),
+    Effect.catch(() => Effect.succeed(LAST_FALLBACK)),
   );
 };
 

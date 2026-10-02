@@ -223,7 +223,7 @@ export const resolvePhysicalContext = (input: SqlPhysicalContextInput, target: S
               : "Leave the database stopped, inspect the service container, and retry recovery.",
           ),
         ),
-        Effect.zipRight(verifyRuntimeState(input.deps, input.serviceName, target.runtime, running)),
+        Effect.andThen(verifyRuntimeState(input.deps, input.serviceName, target.runtime, running)),
       );
     return {
       running: target.runtime.running,

@@ -5,7 +5,7 @@ export const LANDO_SSH_AGENT_FEATURE_ID = "lando.ssh-agent";
 export const LANDO_SSH_AGENT_FEATURE_PRIORITY = 1200;
 
 const LandoSshAgentFeatureConfig = Schema.Struct({
-  mode: Schema.optionalWith(Schema.Literal("sidecar", "host"), { default: () => "sidecar" as const }),
+  mode: Schema.Literals(["sidecar", "host"]).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "sidecar" as const))),
 });
 
 export const landoSshAgentFeature: ServiceFeatureDefinition = {

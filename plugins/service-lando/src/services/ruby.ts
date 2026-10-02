@@ -47,11 +47,11 @@ const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, FrameworkPreset> = {
 };
 
 const RubyFeatureConfigSchema = Schema.Struct({
-  framework: Schema.Literal(...SUPPORTED_RUBY_FRAMEWORKS),
-  version: Schema.Literal(...SUPPORTED_RUBY_VERSIONS),
+  framework: Schema.Literals([...SUPPORTED_RUBY_FRAMEWORKS]),
+  version: Schema.Literals([...SUPPORTED_RUBY_VERSIONS]),
   port: Schema.Number,
   webroot: Schema.String,
-  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type RubyFeatureConfig = typeof RubyFeatureConfigSchema.Type;
 
@@ -139,7 +139,7 @@ const applyRubyFeature = (ctx: ServiceFeatureContext): void => {
 
 export const rubyServiceFeature: ServiceFeatureDefinition = {
   id: RUBY_FEATURE_ID,
-  schema: RubyFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: RubyFeatureConfigSchema as Schema.Codec<unknown>,
   priority: RUBY_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

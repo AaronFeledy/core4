@@ -174,7 +174,7 @@ const resolveProbedPair = (
       }),
     ),
     Effect.map(pairFromPublish),
-    Effect.catchAll(() => Effect.succeed(LAST_FALLBACK)),
+    Effect.catch(() => Effect.succeed(LAST_FALLBACK)),
   );
 };
 

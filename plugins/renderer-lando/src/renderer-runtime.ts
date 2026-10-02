@@ -84,7 +84,7 @@ const makeNotificationConsumerLive = (
   triggerNotification: ((message: string, title?: string) => boolean) | undefined,
   flushNotifications: (() => Promise<void>) | undefined,
 ): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const queue = yield* events.subscribeQueue;

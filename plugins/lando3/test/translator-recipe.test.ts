@@ -116,10 +116,10 @@ test.each(["pantheon", "unknown-id", "drupal9"])(
   async (recipe) => {
     const { translator } = setup();
     const result = await Effect.runPromise(
-      Effect.either(translator.translate(documentSet([document(".lando.dist.yml", `recipe: ${recipe}\n`)]))),
+      Effect.result(translator.translate(documentSet([document(".lando.dist.yml", `recipe: ${recipe}\n`)]))),
     );
     expect(result._tag).toBe("Left");
-    if (result._tag === "Left") expect(result.left).not.toHaveProperty("outputs");
+    if (result._tag === "Failure") expect(result.failure).not.toHaveProperty("outputs");
   },
 );
 
@@ -129,7 +129,7 @@ test.each([false, true])(
     const { translator } = setup();
     const input = documentSet(redisDocuments());
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         translator.translate({
           ...input,
           mode: "single-layer",
@@ -139,8 +139,8 @@ test.each([false, true])(
       ),
     );
     expect(result._tag).toBe(writable ? "Right" : "Left");
-    if (result._tag === "Left")
-      expect(result.left.remediation).toBe(
+    if (result._tag === "Failure")
+      expect(result.failure.remediation).toBe(
         "This layer's conversion also needs edits to dist; run the full conversion instead of --file.",
       );
   },
@@ -172,31 +172,31 @@ test("a later option change still emits a complete recipe object", async () => {
 test("rejects a tagged config file instead of lowering defaults", async () => {
   const { translator } = setup();
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       translator.translate(
         documentSet([document(".lando.yml", "recipe: wordpress\nconfig: !load config.yml\n")]),
       ),
     ),
   );
   expect(result._tag).toBe("Left");
-  if (result._tag === "Left") {
-    expect(result.left.message).toBe("config is a tagged file reference and was not read.");
-    expect(result.left.remediation).toContain("Inline config");
+  if (result._tag === "Failure") {
+    expect(result.failure.message).toBe("config is a tagged file reference and was not read.");
+    expect(result.failure.remediation).toContain("Inline config");
   }
 });
 
 test("rejects a non-boolean recipe option instead of describing it as a string", async () => {
   const { translator } = setup();
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       translator.translate(
         documentSet([document(".lando.yml", 'recipe: wordpress\nconfig: {redis: "yes"}\n')]),
       ),
     ),
   );
   expect(result._tag).toBe("Left");
-  if (result._tag === "Left") {
-    expect(result.left.message).toBe(
+  if (result._tag === "Failure") {
+    expect(result.failure.message).toBe(
       "config.redis must be true or false for the Lando 4 wordpress recipe option redis.",
     );
   }
@@ -250,7 +250,7 @@ test("single-layer conversion still refuses a hoist into an already lowered laye
     document(".lando.local.yml", "config: {redis: false}\n"),
   ]);
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       translator.translate({
         ...input,
         mode: "single-layer",
@@ -261,7 +261,7 @@ test("single-layer conversion still refuses a hoist into an already lowered laye
     ),
   );
   expect(result._tag).toBe("Left");
-  if (result._tag === "Left") expect(result.left.remediation).toContain("dist");
+  if (result._tag === "Failure") expect(result.failure.remediation).toContain("dist");
 });
 
 test("reports config that has no recipe", async () => {

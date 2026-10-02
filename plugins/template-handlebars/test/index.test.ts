@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Layer } from "effect";
+import { Effect, Result, Layer } from "effect";
 
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import { TemplateCompileError, TemplateRenderError } from "@lando/sdk/template";
@@ -59,13 +59,13 @@ describe("@lando/template-handlebars plugin exports", () => {
     // Unclosed block on source line 3.
     const source = "name: app\nlist:\n  {{#each items}}\n";
     const result = await Effect.runPromise(
-      engine.compile({ id: "/app/.lando.yml", source }).pipe(Effect.either),
+      engine.compile({ id: "/app/.lando.yml", source }).pipe(Effect.result),
     );
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(TemplateCompileError);
-      expect(result.left.engineId).toBe("handlebars");
-      expect(typeof result.left.line).toBe("number");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(TemplateCompileError);
+      expect(result.failure.engineId).toBe("handlebars");
+      expect(typeof result.failure.line).toBe("number");
     }
   });
 
@@ -75,10 +75,10 @@ describe("@lando/template-handlebars plugin exports", () => {
     const compiled = await Effect.runPromise(
       engine.compile({ id: "/app/.lando.yml", source: "name: {{env.MISSING}}" }),
     );
-    const result = await Effect.runPromise(engine.render(compiled, baseContext()).pipe(Effect.either));
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(TemplateRenderError);
+    const result = await Effect.runPromise(engine.render(compiled, baseContext()).pipe(Effect.result));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(TemplateRenderError);
     }
   });
 });

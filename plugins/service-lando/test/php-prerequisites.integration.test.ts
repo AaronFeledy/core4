@@ -24,7 +24,7 @@ const serviceName = ServiceName.make("web");
 const providerId = ProviderId.make("lando");
 const appRoot = AbsolutePath.make("/tmp/php-prerequisites-smoke");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-23T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-23T00:00:00Z"),
   source: "php-prerequisites.integration.test",
   runtime: 4 as const,
 };

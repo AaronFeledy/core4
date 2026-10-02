@@ -134,7 +134,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
                 store: { app: AppId.make("sql-app"), store: storage[0]?.store ?? "" },
                 digest: "sha256:test",
                 sizeBytes: 12,
-                createdAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
+                createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
                 metadata: {
                   sourceRoot: AbsolutePath.make(root),
                   ownerKey: plan.identity?.ownerKey ?? "owner:sql-app",
@@ -222,7 +222,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     withVolumeLock: (_instanceId, body) =>
       Effect.sync(() => {
         lifecycle.push("lock");
-      }).pipe(Effect.zipRight(body)),
+      }).pipe(Effect.andThen(body)),
     initialization: (identity) =>
       Effect.succeed({
         read: Effect.sync(

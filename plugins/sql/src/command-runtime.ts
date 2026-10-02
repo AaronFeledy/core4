@@ -34,7 +34,7 @@ export const runDbCommand = (input: DbCommandInput) =>
       const authored = toSqlLandofile(landofile);
       const prePlan = sqlPlanFromLandofile(authored);
       const earlyTarget = resolveSqlTarget(prePlan, input.service);
-      if (earlyTarget._tag === "Left") return yield* Effect.fail(earlyTarget.left);
+      if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
       const capabilities = yield* registry.capabilities;
       const planned = yield* planner.plan(landofile, capabilities);
       const provider = yield* registry.select(planned);
@@ -54,7 +54,7 @@ export const runDbCommand = (input: DbCommandInput) =>
               catch: () =>
                 new SqlRecoveryUnavailableError({
                   message: `Cannot resolve snapshot source path ${path}.`,
-                  service: earlyTarget.right.name,
+                  service: earlyTarget.success.name,
                   reason: "The selected source path does not exist or is not accessible.",
                   remediation: "Pass an existing app root with --from-path.",
                 }),
@@ -146,7 +146,7 @@ export const runDbCommand = (input: DbCommandInput) =>
               ? Effect.fail(
                   new SqlRecoveryUnavailableError({
                     message: "Shared volume initialization state is unavailable.",
-                    service: earlyTarget.right.name,
+                    service: earlyTarget.success.name,
                     reason: "The data mover does not provide initialization state.",
                     remediation: "Use a data mover that supports generation-bound initialization.",
                   }),

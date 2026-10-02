@@ -73,7 +73,7 @@ export const probeBind = (host: string, port: number): Effect.Effect<BindOutcome
         try: () => listenOnce(host, port),
         catch: (error) => error,
       }),
-    ).pipe(Effect.catchAll(() => Effect.void));
+    ).pipe(Effect.catch(() => Effect.void));
     return last;
   });
 
@@ -145,6 +145,6 @@ export const probeForward = (
         },
         catch: (error) => error,
       }),
-    ).pipe(Effect.catchAll(() => Effect.void));
+    ).pipe(Effect.catch(() => Effect.void));
     return last;
   });

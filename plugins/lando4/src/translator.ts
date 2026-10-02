@@ -7,7 +7,7 @@
  * values, secrets, files, provider data, includes, `.lando.ts`, or commands:
  * expressions survive as their verbatim source text.
  */
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither, parseLandofile, validateConfigTranslateInput } from "@lando/sdk/landofile";
@@ -42,11 +42,11 @@ const YAML_MEDIA_TYPES: ReadonlySet<string> = new Set([
 type AuthoringFragmentWire = ConfigTranslateOutput["fragment"];
 
 const isLandofileLayer = Schema.is(LandofileLayer);
-const decodeFragment = Schema.decodeUnknown(LandofileAuthoringFragment);
-const decodeShape = Schema.decodeUnknown(LandofileAuthoringShape);
-const encodeFragment = Schema.encode(LandofileAuthoringFragment);
-const encodeShape = Schema.encode(LandofileAuthoringShape);
-const decodeRecord = Schema.decodeUnknown(Schema.Record({ key: Schema.String, value: Schema.Unknown }));
+const decodeFragment = Schema.decodeUnknownEffect(LandofileAuthoringFragment);
+const decodeShape = Schema.decodeUnknownEffect(LandofileAuthoringShape);
+const encodeFragment = Schema.encodeEffect(LandofileAuthoringFragment);
+const encodeShape = Schema.encodeEffect(LandofileAuthoringShape);
+const decodeRecord = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown));
 
 const translateError = (message: string, remediation?: string, cause?: unknown): ConfigTranslateError =>
   new ConfigTranslateError({
@@ -78,11 +78,11 @@ const rootDiagnostic = (
 const describe = (document: ConfigTranslateDocument): string => document.path ?? String(document.sourceId);
 
 /** Decode bounded raw bytes as UTF-8; the translator never touches the filesystem. */
-const readText = (document: ConfigTranslateDocument): Either.Either<string, string> => {
+const readText = (document: ConfigTranslateDocument): Result.Result<string, string> => {
   try {
-    return Either.right(new TextDecoder("utf-8", { fatal: true }).decode(document.bytes));
+    return Result.succeed(new TextDecoder("utf-8", { fatal: true }).decode(document.bytes));
   } catch (cause) {
-    return Either.left(`${describe(document)} is not valid UTF-8 text: ${String(cause)}`);
+    return Result.fail(`${describe(document)} is not valid UTF-8 text: ${String(cause)}`);
   }
 };
 
@@ -93,23 +93,23 @@ const readText = (document: ConfigTranslateDocument): Either.Either<string, stri
  */
 const parseDocument = (
   document: ConfigTranslateDocument,
-): Effect.Effect<Either.Either<AuthoringFragmentWire, string>, never, never> => {
+): Effect.Effect<Result.Result<AuthoringFragmentWire, string>, never, never> => {
   if (!YAML_MEDIA_TYPES.has(document.mediaType)) {
     return Effect.succeed(
-      Either.left(
+      Result.fail(
         `${describe(document)} is not canonical v4 YAML (media type ${document.mediaType}); TypeScript Landofiles and includes stay opaque and are never executed.`,
       ),
     );
   }
   const text = readText(document);
-  if (Either.isLeft(text)) return Effect.succeed(Either.left(text.left));
-  return parseLandofile({ file: describe(document), content: text.right, cwd: "." }).pipe(
+  if (Result.isFailure(text)) return Effect.succeed(Result.fail(text.failure));
+  return parseLandofile({ file: describe(document), content: text.success, cwd: "." }).pipe(
     Effect.flatMap((value) => decodeFragment(value, { onExcessProperty: "error" })),
     Effect.flatMap(encodeFragment),
     Effect.match({
-      onSuccess: (wire): Either.Either<AuthoringFragmentWire, string> => Either.right(wire),
-      onFailure: (cause): Either.Either<AuthoringFragmentWire, string> =>
-        Either.left(`${describe(document)} is not valid canonical v4 authoring data: ${cause.message}`),
+      onSuccess: (wire): Result.Result<AuthoringFragmentWire, string> => Result.succeed(wire),
+      onFailure: (cause): Result.Result<AuthoringFragmentWire, string> =>
+        Result.fail(`${describe(document)} is not valid canonical v4 authoring data: ${cause.message}`),
     }),
   );
 };
@@ -129,11 +129,11 @@ const detect = (
     let marked = false;
     for (const document of candidates) {
       const parsed = yield* parseDocument(document);
-      if (Either.isLeft(parsed)) return [];
+      if (Result.isFailure(parsed)) return [];
       // `runtime: 4` is the one marker a Lando 3 document cannot carry, so it is
       // the sole basis for `exact`. Anything else that survives strict v4
       // authoring decoding is only `likely`.
-      marked ||= typeof parsed.right === "object" && Reflect.get(parsed.right, "runtime") === 4;
+      marked ||= typeof parsed.success === "object" && Reflect.get(parsed.success, "runtime") === 4;
     }
     return [
       {
@@ -170,8 +170,8 @@ const translate = (
     const decoded: DecodedDocument[] = [];
     for (const document of selected) {
       const parsed = yield* parseDocument(document);
-      if (Either.isLeft(parsed)) {
-        diagnostics.push(rootDiagnostic(document, "unsupported", parsed.left));
+      if (Result.isFailure(parsed)) {
+        diagnostics.push(rootDiagnostic(document, "unsupported", parsed.failure));
         continue;
       }
       if (!isLandofileLayer(document.layerId)) {
@@ -184,7 +184,7 @@ const translate = (
         );
         continue;
       }
-      decoded.push({ document, layer: document.layerId, wire: parsed.right });
+      decoded.push({ document, layer: document.layerId, wire: parsed.success });
     }
 
     const claimants = new Map<string, ReadonlyArray<DecodedDocument>>();
@@ -259,10 +259,10 @@ const encode = (
       Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
     );
     const emitted = emitLandofileYamlEither(record, { sortKeys: true });
-    if (Either.isLeft(emitted)) {
-      return yield* Effect.fail(translateError(emitted.left.message, undefined, emitted.left));
+    if (Result.isFailure(emitted)) {
+      return yield* Effect.fail(translateError(emitted.failure.message, undefined, emitted.failure));
     }
-    return { text: emitted.right, diagnostics: [] };
+    return { text: emitted.success, diagnostics: [] };
   });
 
 export const lando4ConfigTranslator: ConfigTranslatorShape = {

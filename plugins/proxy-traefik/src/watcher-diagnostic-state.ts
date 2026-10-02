@@ -9,7 +9,7 @@ export const WatcherDiagnosticRecord = Schema.Struct({
   observedAt: Schema.String,
   providerId: Schema.String,
   watcherHost: Schema.String,
-  failureClass: Schema.Literal("inotify-limit", "disk", "permission", "other"),
+  failureClass: Schema.Literals(["inotify-limit", "disk", "permission", "other"]),
   detail: Schema.String,
 });
 export type WatcherDiagnosticRecord = typeof WatcherDiagnosticRecord.Type;
@@ -32,7 +32,7 @@ export const readWatcherDiagnostic = (
         catch: (error) => error,
       }),
     ),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 export const clearWatcherDiagnostic = (

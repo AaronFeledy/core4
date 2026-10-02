@@ -47,7 +47,7 @@ const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
 const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
 
 const metadata: PlanMetadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-27T00:00:00Z"),
   source: "provider-podman contract test",
   runtime: 4,
 };
@@ -760,7 +760,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
 
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
     expect(failures).toContainEqual(
       expect.objectContaining({
         _tag: "ServiceStartError",

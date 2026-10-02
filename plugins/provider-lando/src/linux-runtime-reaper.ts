@@ -41,7 +41,7 @@ export const readRuntimePid = (pidPath: string): Effect.Effect<number | undefine
       return /^\d+$/u.test(raw) ? Number(raw) : undefined;
     },
     catch: () => undefined,
-  }).pipe(Effect.catchAll((pid) => Effect.succeed(pid)));
+  }).pipe(Effect.catch((pid) => Effect.succeed(pid)));
 
 const servicePids = (deps: LinuxRuntimeReaperDeps): Effect.Effect<ReadonlyArray<number>> =>
   Effect.gen(function* () {

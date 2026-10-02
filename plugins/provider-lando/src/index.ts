@@ -1,3 +1,4 @@
+import { Semaphore } from "effect";
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
@@ -478,7 +479,7 @@ const probeRuntimeSocketStatus = (podmanApi?: PodmanApiClient): Effect.Effect<Ru
 
   return podmanApi.info.pipe(
     Effect.as({ running: true, socketReachable: true, ownedServiceProcess: false }),
-    Effect.catchAllCause(() =>
+    Effect.catchCause(() =>
       Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false }),
     ),
   );
@@ -501,7 +502,7 @@ const runtimeStatusMessage = (status: RuntimeServiceStatus): string => {
 export interface ProviderLayerOptions {
   readonly machineSshBridgeHost?: MachineSshBridgeHost;
   readonly podmanApi?: PodmanApiClient;
-  readonly processRunner?: Context.Tag.Service<typeof ProcessRunner>;
+  readonly processRunner?: Context.Service.Shape<typeof ProcessRunner>;
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform: HostPlatform;
@@ -611,7 +612,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
     options.runtimeConfigDir !== undefined &&
     options.providerPidPath !== undefined;
   const rootlessProbes = options.rootlessProbes ?? makeSystemRootlessProbes();
-  const ensureGuard = Effect.unsafeMakeSemaphore(1);
+  const ensureGuard = Semaphore.makeUnsafe(1);
   const withLaunchLock = <A, E>(body: Effect.Effect<A, E>) =>
     ensureGuard.withPermits(1)(options.runtimeLock?.(body) ?? body);
   const ensureEffectFor = (
@@ -690,7 +691,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   };
   const ensureEffect = ensureEffectFor();
   const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    ensureEffect.pipe(Effect.zipRight(effect));
+    ensureEffect.pipe(Effect.andThen(effect));
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -1121,7 +1122,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       ...(family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
         ? {
             inspectAppliedFileSync: (plan: AppPlan) =>
-              ensureEffect.pipe(Effect.zipRight(inspectAppliedFileSync(appliedPlanState, podmanApi, plan))),
+              ensureEffect.pipe(Effect.andThen(inspectAppliedFileSync(appliedPlanState, podmanApi, plan))),
           }
         : {}),
       ...(occupiedPublishPorts === undefined ? {} : { occupiedPublishPorts }),
@@ -1253,7 +1254,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           bundleVersion = result.runtimeBundleVersion;
         }),
       getStatus: rejectIntelMacHost(platform, arch).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           podmanApi === undefined
             ? Effect.succeed({ running: false, message: "Lando runtime service is not configured." })
             : runtimeServiceStatus.pipe(
@@ -1292,7 +1293,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   ctx: LANDO_CTX,
                   dialect: libpodPullDialect,
                   publish: (event) =>
-                    options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ??
+                    options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ??
                     Effect.void,
                 }).pipe(
                   Effect.map((result) => ({
@@ -1350,7 +1351,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           if (plan === undefined) return DESTROY_NO_OP;
           const physicalPlan = yield* physicalNetworkPlan(plan);
           yield* ensureEffect.pipe(
-            Effect.zipRight(
+            Effect.andThen(
               runtimeBringDown(physicalPlan, {
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ctx: LANDO_CTX,
@@ -1366,7 +1367,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         }),
       removeObservedService: (observed) =>
         ensureEffect.pipe(
-          Effect.zipRight(
+          Effect.andThen(
             removeObservedContainer(observed, {
               ...(podmanApi === undefined ? {} : { api: podmanApi }),
               ctx: LANDO_CTX,
@@ -1406,7 +1407,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
         ),
       list: (filter) =>
         ensureEffect.pipe(
-          Effect.zipRight(hydratePlansFromDisk),
+          Effect.andThen(hydratePlansFromDisk),
           Effect.flatMap(() =>
             Effect.forEach(Array.from(plans.values()), (plan) =>
               Effect.forEach(Object.values(plan.services), (service) =>

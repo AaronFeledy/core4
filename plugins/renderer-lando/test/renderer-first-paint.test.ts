@@ -105,7 +105,7 @@ const waitForConsumer = (condition: () => boolean): Effect.Effect<void, Error> =
   Effect.gen(function* () {
     for (let attempt = 0; attempt < 1_000; attempt += 1) {
       if (condition()) return;
-      yield* Effect.yieldNow();
+      yield* Effect.yieldNow;
     }
     return yield* Effect.fail(new Error("Renderer consumer did not reach the expected ordering point."));
   });

@@ -10,7 +10,7 @@ import { outputJournalFor } from "./renderer-output-journal.ts";
 const makeEventConsumerLive = (
   handle: (event: LandoEvent) => void,
 ): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const queue = yield* events.subscribeQueue;
@@ -29,7 +29,7 @@ const makeEventConsumerLive = (
     }),
   );
 
-const nowTimestamp = (): DateTime.Utc => DateTime.unsafeNow();
+const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
 const makeMessageContract = (io: RendererIO) => {
   const output = outputJournalFor(io);

@@ -24,18 +24,14 @@ const failure = (message: string) =>
     remediation:
       "Provide the canonical app root and an authenticated loopback TCP broker; run `lando doctor --provider=docker` and retry.",
   });
-const Identifier = Schema.parseJson(Schema.Struct({ Id: Schema.NonEmptyString }));
-const ExecStatus = Schema.parseJson(
-  Schema.Struct({ Running: Schema.Boolean, ExitCode: Schema.NullOr(Schema.Int) }),
-);
+const Identifier = Schema.fromJsonString(Schema.Struct({ Id: Schema.NonEmptyString }));
+const ExecStatus = Schema.fromJsonString(Schema.Struct({ Running: Schema.Boolean, ExitCode: Schema.NullOr(Schema.Int) }));
 
-const LabelRecord = Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }));
-const VolumeInspect = Schema.parseJson(Schema.Struct({ Labels: Schema.optional(LabelRecord) }));
-const ContainerInspect = Schema.parseJson(
-  Schema.Struct({
-    Config: Schema.optional(Schema.Struct({ Labels: Schema.optional(LabelRecord) })),
-  }),
-);
+const LabelRecord = Schema.NullOr(Schema.Record(Schema.String, Schema.String));
+const VolumeInspect = Schema.fromJsonString(Schema.Struct({ Labels: Schema.optionalKey(LabelRecord) }));
+const ContainerInspect = Schema.fromJsonString(Schema.Struct({
+    Config: Schema.optionalKey(Schema.Struct({ Labels: Schema.optionalKey(LabelRecord) })),
+  }));
 type RelayPresence = "absent" | "owned" | "foreign";
 
 const ownedRelayLabels = (
@@ -100,10 +96,7 @@ export const makeDockerDesktopAgentSocketBridge =
         return yield* Effect.fail(failure("Docker API requests are unavailable."));
       const request = (req: EngineHttpRequest) =>
         apiRequest(req).pipe(
-          Effect.timeoutFail({
-            duration: Duration.seconds(15),
-            onTimeout: () => failure("Docker agent relay request timed out."),
-          }),
+          Effect.timeoutOrElse({ duration: Duration.seconds(15), orElse: () => Effect.fail((() => failure("Docker agent relay request timed out."))()) }),
           Effect.mapError(() => failure("Docker agent relay API request failed.")),
         );
       const checked = (req: EngineHttpRequest) =>
@@ -203,7 +196,7 @@ export const makeDockerDesktopAgentSocketBridge =
           const response = initial.status === 404 ? yield* checked(createRequest) : initial;
           if (response.status !== 201)
             return yield* Effect.fail(failure("Could not create the Docker agent relay container."));
-          return yield* Schema.decodeUnknown(Identifier)(response.body).pipe(
+          return yield* Schema.decodeUnknownEffect(Identifier)(response.body).pipe(
             Effect.map((value) => encodeURIComponent(value.Id)),
             Effect.mapError(() => failure("Docker returned an invalid relay container identifier.")),
           );
@@ -233,7 +226,7 @@ export const makeDockerDesktopAgentSocketBridge =
             path: `/containers/${container}/exec`,
             body: { Cmd: ["test", "-S", socket], AttachStdout: false, AttachStderr: false },
           });
-          const exec = yield* Schema.decodeUnknown(Identifier)(created.body);
+          const exec = yield* Schema.decodeUnknownEffect(Identifier)(created.body);
           const execId = encodeURIComponent(exec.Id);
           yield* checked({
             method: "POST",
@@ -241,7 +234,7 @@ export const makeDockerDesktopAgentSocketBridge =
             body: { Detach: false, Tty: false },
           });
           const response = yield* checked({ method: "GET", path: `/exec/${execId}/json` });
-          const status = yield* Schema.decodeUnknown(ExecStatus)(response.body);
+          const status = yield* Schema.decodeUnknownEffect(ExecStatus)(response.body);
           if (status.Running || status.ExitCode !== 0)
             return yield* Effect.fail(failure("Agent relay socket is not ready."));
         }),

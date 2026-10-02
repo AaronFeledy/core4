@@ -1,5 +1,6 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
-import { Deferred, Duration, Effect, Fiber, TestClock, TestContext } from "effect";
+import { Deferred, Duration, Effect, Fiber } from "effect";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
@@ -158,10 +159,10 @@ describe("runSmokeReadinessProbe", () => {
 
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(run(requests, { health: ["starting", "healthy"] }));
+        const fiber = yield* Effect.forkChild(run(requests, { health: ["starting", "healthy"] }));
         yield* TestClock.adjust(Duration.millis(10));
         yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
 
     expect(

@@ -14,11 +14,11 @@ export type OpRunner = (
 ) => Effect.Effect<OpResult>;
 
 export const makeOpRunner =
-  (runner: Pick<Context.Tag.Service<typeof ProcessRunner>, "run">): OpRunner =>
+  (runner: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">): OpRunner =>
   (args, options) =>
     runner.run({ cmd: "op", args, ...options }).pipe(
       // Process output contains secrets not yet registered with the redactor.
-      Effect.mapInputContext((context: Context.Context<never>) => Context.omit(EventService)(context)),
+      Effect.updateContext((context: Context.Context<never>) => Context.omit(EventService)(context)),
       Effect.map((result): OpResult => ({ ...result, timedOut: false })),
       Effect.catchTags({
         ProcessTimeoutError: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "", timedOut: true }),

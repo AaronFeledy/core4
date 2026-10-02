@@ -103,7 +103,7 @@ test("collapse drains deferred output before later output and scope close awaits
         const exiting = live.exitFullTail();
         yield* Effect.promise(() => firstSpoolRead.promise);
         live.commitScrollback("new-after-collapse");
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         allowFirstSpoolRead.resolve();
         yield* Effect.promise(() => exiting);
 

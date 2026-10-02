@@ -122,7 +122,7 @@ const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUna
     });
 
     const pid = yield* deps.serviceRunner.launch(spec).pipe(
-      Effect.catchAll((launchError: RuntimeLaunchError) => {
+      Effect.catch((launchError: RuntimeLaunchError) => {
         const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
         const rootlessError = classifyRootlessFailure(probes.probe(), launchError.stderr);
         return Effect.fail(rootlessError ?? launchError);
@@ -132,7 +132,7 @@ const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUna
     const recordLaunch =
       deps.recordLaunch?.(pid, spec) ??
       writeLaunchState(deps.pidPath, pid, spec, deps.runtimeBundleVersion).pipe(
-        Effect.zipRight(writePidFile(deps.pidPath, pid)),
+        Effect.andThen(writePidFile(deps.pidPath, pid)),
       );
     yield* recordLaunch.pipe(
       Effect.onExit((exit) => (Exit.isFailure(exit) ? deps.serviceRunner.terminate(pid) : Effect.void)),
@@ -281,7 +281,7 @@ const ensureMachineRuntime = (
         ? machine.inspect.pipe(Effect.map((status) => status === "running"))
         : Effect.succeed(false),
     ),
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.catch(() => Effect.succeed(false)),
   );
   const completeProgress = Effect.gen(function* () {
     yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;

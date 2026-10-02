@@ -135,14 +135,14 @@ describe("varnish ServiceType", () => {
               appName: "myapp",
               metadata,
             })
-            .pipe(Effect.either),
+            .pipe(Effect.result),
         );
 
         expect(result._tag).toBe("Left");
-        if (result._tag !== "Left") throw new Error("expected missing backend to fail");
-        expect(result.left).toBeInstanceOf(ServiceTypeError);
-        expect(result.left.message).toContain("backend:");
-        expect(result.left.message).toContain("cache");
+        if (result._tag !== "Failure") throw new Error("expected missing backend to fail");
+        expect(result.failure).toBeInstanceOf(ServiceTypeError);
+        expect(result.failure.message).toContain("backend:");
+        expect(result.failure.message).toContain("cache");
       });
     });
   }

@@ -24,7 +24,7 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("inspectapp");
 const appRoot = AbsolutePath.make("/tmp/lando-inspect-app");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "inspect.integration.test",
   runtime: 4 as const,
 };

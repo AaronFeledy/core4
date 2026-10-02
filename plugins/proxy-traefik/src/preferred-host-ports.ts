@@ -111,7 +111,7 @@ const resolveClaim = (input: {
   const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
   return Effect.tryPromise(async () =>
     claimFromUnknown(JSON.parse(await readFile(acquisitionStateFile(paths), "utf8"))),
-  ).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  ).pipe(Effect.catch(() => Effect.succeed(undefined)));
 };
 
 const claimsPort = (claim: AcquisitionClaim | undefined, port: number): boolean =>

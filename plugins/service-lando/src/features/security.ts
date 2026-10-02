@@ -15,22 +15,22 @@ const TRUST_STORE_COMMAND =
 const CaDescriptor = Schema.Struct({
   path: Schema.String,
   digest: Schema.String.pipe(
-    Schema.pattern(/^[0-9a-f]{64}$/u, { message: () => "Expected a lowercase SHA-256 hex digest." }),
+    Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u, { message: "Expected a lowercase SHA-256 hex digest." })),
   ),
 });
 
 const ProxyConfig = Schema.Struct({
-  http: Schema.optional(Schema.String),
-  https: Schema.optional(Schema.String),
-  noProxy: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+  http: Schema.optionalKey(Schema.String),
+  https: Schema.optionalKey(Schema.String),
+  noProxy: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
 });
 
 const LandoSecurityFeatureConfigSchema = Schema.Struct({
-  injectCa: Schema.optionalWith(Schema.Boolean, { default: () => true }),
-  injectProxy: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  cas: Schema.optionalWith(Schema.Array(CaDescriptor), { default: () => [] }),
-  bundlePath: Schema.optional(Schema.String),
-  proxy: Schema.optional(ProxyConfig),
+  injectCa: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  injectProxy: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))),
+  cas: Schema.Array(CaDescriptor).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
+  bundlePath: Schema.optionalKey(Schema.String),
+  proxy: Schema.optionalKey(ProxyConfig),
 });
 type LandoSecurityFeatureConfig = typeof LandoSecurityFeatureConfigSchema.Type;
 
@@ -91,7 +91,7 @@ const applyProxyIntent = (ctx: ServiceFeatureContext, config: LandoSecurityFeatu
 
 export const landoSecurityFeature: ServiceFeatureDefinition = {
   id: LANDO_SECURITY_FEATURE_ID,
-  schema: LandoSecurityFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: LandoSecurityFeatureConfigSchema as Schema.Codec<unknown>,
   priority: LANDO_SECURITY_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.sync(() => {

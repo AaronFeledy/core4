@@ -103,7 +103,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
           expect(indicesResp.ok).toBe(true);
           expect(await indicesResp.text()).toBeString();
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

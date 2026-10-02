@@ -27,8 +27,8 @@ export { dbCommandRedactionTokens, dbInputFromCommand } from "./command-input.ts
 export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
   Effect.gen(function* () {
     const resolved = resolveSqlTarget(deps.plan, input.service);
-    if (resolved._tag === "Left") return yield* Effect.fail(resolved.left);
-    const target = resolved.right;
+    if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
+    const target = resolved.success;
     const service = deps.plan.services[target.name];
     if (service === undefined) {
       return yield* Effect.fail(
@@ -56,7 +56,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       env,
     });
     const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
-      deps.resume(serviceName, identity).pipe(Effect.zipRight(waitForDatabase));
+      deps.resume(serviceName, identity).pipe(Effect.andThen(waitForDatabase));
     if (input.action === "seed" && (input.file === undefined) === (input.snapshotId === undefined)) {
       return yield* Effect.fail(
         new SqlSeedSourceError({
@@ -88,7 +88,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
     if (action === "import") {
       const counted = yield* deps
         .exec(target.name, countCommand(target.family, creds), env)
-        .pipe(Effect.catchAll(() => Effect.succeed({ ok: false, stdout: "" })));
+        .pipe(Effect.catch(() => Effect.succeed({ ok: false, stdout: "" })));
       const count = counted.ok ? parseCount(counted.stdout) : undefined;
       yield* confirmOrFail(
         input,
@@ -256,7 +256,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
           retentionApplied = false;
           break;
         }
-        if (prunePolicy === undefined) return yield* Effect.dieMessage("retention policy was not resolved");
+        if (prunePolicy === undefined) return yield* Effect.die(new Error("retention policy was not resolved"));
         prunedSnapshotIds = yield* deps.pruneSnapshots(prunePolicy);
         retentionApplied = true;
         break;

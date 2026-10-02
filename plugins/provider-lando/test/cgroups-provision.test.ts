@@ -28,7 +28,7 @@ const failureOf = <E>(exit: Exit.Exit<unknown, E>): E => {
   if (!Exit.isFailure(exit)) {
     throw new Error("expected Effect failure");
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag !== "Some") {
     throw new Error("expected tagged failure");
   }

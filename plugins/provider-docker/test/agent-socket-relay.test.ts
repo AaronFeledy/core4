@@ -26,7 +26,7 @@ const plan: AppPlan = {
   fileSync: [],
   metadata: {
     source: "agent-socket-relay.test",
-    resolvedAt: DateTime.unsafeMake("2026-09-25T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-25T00:00:00Z"),
     runtime: 4,
   },
   extensions: {},
@@ -107,7 +107,7 @@ test("release removes container and volume", async () => {
   // Given
   const fake = fakeApi();
   const scope = await Effect.runPromise(Scope.make());
-  await Effect.runPromise(open(fake.api).pipe(Scope.extend(scope)));
+  await Effect.runPromise(open(fake.api).pipe(Scope.provide(scope)));
   expect(fake.requests.some((request) => request.method === "DELETE")).toBe(false);
   // When
   await Effect.runPromise(Scope.close(scope, Exit.void));
@@ -133,7 +133,7 @@ test.each([
   // Given
   const fake = fakeApi();
   // When
-  const result = await Effect.runPromise(Effect.scoped(open(fake.api, invalid)).pipe(Effect.either));
+  const result = await Effect.runPromise(Effect.scoped(open(fake.api, invalid)).pipe(Effect.result));
   // Then
   expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ProviderUnavailableError" } });
   expect(fake.requests).toEqual([]);
@@ -143,7 +143,7 @@ test("cleans up when starting the relay fails without exposing the token", async
   // Given
   const fake = fakeApi("/containers/relay-id/start");
   // When
-  const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.either));
+  const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.result));
   // Then
   expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ProviderUnavailableError" } });
   expect(JSON.stringify(result)).not.toContain("secret-token");
@@ -161,12 +161,12 @@ test("rejects missing canonical ownership context before creating resources", as
   // When
   const result = await Effect.runPromise(
     Effect.scoped(
-      Schema.decodeUnknown(AgentSocketBridgeInput)(ownerless).pipe(
+      Schema.decodeUnknownEffect(AgentSocketBridgeInput)(ownerless).pipe(
         Effect.flatMap(
           (decoded) => provider.openAgentSocketBridge?.(decoded) ?? Effect.die("Missing agent socket bridge"),
         ),
       ),
-    ).pipe(Effect.either),
+    ).pipe(Effect.result),
   );
   // Then
   expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ParseError" } });
@@ -265,16 +265,16 @@ test("a foreign unowned volume with that name is not deleted and fails with reme
   const fake = relayApi("foreign");
 
   // When
-  const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.either));
+  const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.result));
 
   // Then
   expect(result._tag).toBe("Left");
-  if (result._tag !== "Left") return;
-  expect(result.left).toMatchObject({ _tag: "ProviderUnavailableError" });
+  if (result._tag !== "Failure") return;
+  expect(result.failure).toMatchObject({ _tag: "ProviderUnavailableError" });
   expect(
-    "remediation" in result.left &&
-      typeof result.left.remediation === "string" &&
-      result.left.remediation.length > 0,
+    "remediation" in result.failure &&
+      typeof result.failure.remediation === "string" &&
+      result.failure.remediation.length > 0,
   ).toBe(true);
   expect(fake.requests.some((request) => request.method === "DELETE")).toBe(false);
 });

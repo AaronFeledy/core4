@@ -7,7 +7,7 @@ import type { CommandSpec, ExecChunk, ExecResult, ExecTarget } from "@lando/sdk/
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
 
-type Runner = Context.Tag.Service<typeof ProcessRunner>;
+type Runner = Context.Service.Shape<typeof ProcessRunner>;
 
 const containerName = (plan: AppPlan, target: ExecTarget): string =>
   serviceContainerName(plan, target.service);

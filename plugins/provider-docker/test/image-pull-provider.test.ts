@@ -22,7 +22,7 @@ import {
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("mailpit-app");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-21T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-21T00:00:00Z"),
   source: "provider-docker/image-pull.test.ts",
   runtime: 4 as const,
 };

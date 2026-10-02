@@ -46,7 +46,7 @@ const providerId = ProviderId.make("docker");
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-10T18:51:00Z"),
   source: "provider-docker.test",
   runtime: 4 as const,
 };
@@ -1299,7 +1299,7 @@ describe("provider-docker RuntimeProvider contract", () => {
               { app: appId, service: serviceName },
               { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
             )
-            .pipe(Stream.runCollect, Effect.fork);
+            .pipe(Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           controller.abort();
           return yield* Fiber.join(fiber);
@@ -1460,7 +1460,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const plan = makePlan(service);
     // When
     const result = Effect.runSync(
-      Effect.either(
+      Effect.result(
         Effect.try({
           try: () => renderCompose(plan),
           catch: (error) => error,
@@ -1784,7 +1784,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
         expect(server.authorization()).toBe(`Bearer ${token}`);
       } finally {
-        await Effect.runPromise(Effect.either(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await Effect.runPromise(Effect.result(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
         await server.close();
       }
     },
@@ -1912,7 +1912,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
+    const failures = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
     const startError = failures.find(
       (error) =>
         typeof error === "object" &&
@@ -1947,7 +1947,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -1974,7 +1974,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -2006,7 +2006,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&

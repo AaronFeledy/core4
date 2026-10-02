@@ -10,7 +10,7 @@ import { Effect, Schema } from "effect";
 const planEither = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-      Effect.either,
+      Effect.result,
       Effect.provide(AppPlannerLive),
       Effect.provide(PluginRegistryLive),
     ),
@@ -46,9 +46,9 @@ test("refuses an authored Redis command that bypasses explicit authentication", 
 
   // Then
   expect(result._tag).toBe("Left");
-  if (result._tag === "Left") {
-    expect(result.left).toBeInstanceOf(LandofileValidationError);
-    expect(result.left.message).toMatch(/authored command.*password/);
+  if (result._tag === "Failure") {
+    expect(result.failure).toBeInstanceOf(LandofileValidationError);
+    expect(result.failure.message).toMatch(/authored command.*password/);
   }
 });
 
@@ -64,9 +64,9 @@ test("refuses an authored Redis entrypoint that bypasses explicit persistence", 
 
   // Then
   expect(result._tag).toBe("Left");
-  if (result._tag === "Left") {
-    expect(result.left).toBeInstanceOf(LandofileValidationError);
-    expect(result.left.message).toMatch(/authored entrypoint.*persist/);
+  if (result._tag === "Failure") {
+    expect(result.failure).toBeInstanceOf(LandofileValidationError);
+    expect(result.failure.message).toMatch(/authored entrypoint.*persist/);
   }
 });
 
@@ -83,6 +83,6 @@ test("preserves an authored Redis command when no managed startup options are pr
 
   // Then
   expect(result._tag).toBe("Right");
-  if (result._tag === "Right")
-    expect(Object.values(result.right.services).map((service) => service.command)).toContainEqual(command);
+  if (result._tag === "Success")
+    expect(Object.values(result.success.services).map((service) => service.command)).toContainEqual(command);
 });

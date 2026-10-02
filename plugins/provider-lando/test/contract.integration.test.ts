@@ -623,7 +623,7 @@ describe("provider-lando RuntimeProvider contract", () => {
     const statusExit = await Effect.runPromiseExit(provider.getStatus);
     expect(Exit.isFailure(statusExit)).toBe(true);
     if (Exit.isFailure(statusExit)) {
-      const failure = Cause.failureOption(statusExit.cause);
+      const failure = Cause.findErrorOption(statusExit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
@@ -638,7 +638,7 @@ describe("provider-lando RuntimeProvider contract", () => {
     const setupExit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
     expect(Exit.isFailure(setupExit)).toBe(true);
     if (Exit.isFailure(setupExit)) {
-      const failure = Cause.failureOption(setupExit.cause);
+      const failure = Cause.findErrorOption(setupExit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);

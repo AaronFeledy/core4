@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Layer } from "effect";
+import { Effect, Result, Layer } from "effect";
 import Mustache from "mustache";
 
 import type { TemplateRenderContext } from "@lando/sdk/schema";
@@ -74,13 +74,13 @@ describe("@lando/template-mustache plugin exports", () => {
     // Unclosed section beginning on source line 3.
     const source = "name: app\nlist:\n  {{#items}}\n";
     const result = await Effect.runPromise(
-      engine.compile({ id: "/app/.lando.yml", source }).pipe(Effect.either),
+      engine.compile({ id: "/app/.lando.yml", source }).pipe(Effect.result),
     );
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(TemplateCompileError);
-      expect(result.left.engineId).toBe("mustache");
-      expect(typeof result.left.line).toBe("number");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(TemplateCompileError);
+      expect(result.failure.engineId).toBe("mustache");
+      expect(typeof result.failure.line).toBe("number");
     }
   });
 });

@@ -18,7 +18,7 @@ const FLUSH_TIMEOUT_MS = 300_000;
 const REMEDIATION =
   "Stop the app and retry; if the session changed outside Lando, inspect Mutagen's isolated session data before removing it.";
 
-type Runner = Pick<Context.Tag.Service<typeof ProcessRunner>, "run">;
+type Runner = Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
 
 interface Endpoint {
   readonly protocol: string;
@@ -52,8 +52,8 @@ interface OwnedSession {
 }
 
 const SessionReceipt = Schema.Struct({
-  phase: Schema.Literal("preparing", "committed", "disposing", "disposed"),
-  identifier: Schema.optional(Schema.String),
+  phase: Schema.Literals(["preparing", "committed", "disposing", "disposed"]),
+  identifier: Schema.optionalKey(Schema.String),
   name: Schema.String,
   spec: FileSyncSessionSpec,
   target: Schema.Struct({ containerId: Schema.String, path: Schema.String }),
@@ -63,13 +63,13 @@ const SessionReceipt = Schema.Struct({
 type SessionReceipt = Schema.Schema.Type<typeof SessionReceipt>;
 const AppDrain = Schema.Struct({
   app: FileSyncSessionSpec.fields.app,
-  phase: Schema.Literal("invalidated", "preparing", "drained", "disposing"),
+  phase: Schema.Literals(["invalidated", "preparing", "drained", "disposing"]),
   identifiers: Schema.Array(Schema.String),
 });
 type AppDrain = Schema.Schema.Type<typeof AppDrain>;
 const SessionLedger = Schema.Struct({
   sessions: Schema.Array(SessionReceipt),
-  appDrains: Schema.optional(Schema.Array(AppDrain)),
+  appDrains: Schema.optionalKey(Schema.Array(AppDrain)),
 });
 type SessionLedger = Schema.Schema.Type<typeof SessionLedger>;
 const EMPTY_LEDGER: SessionLedger = { sessions: [] };
@@ -381,7 +381,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
 
   const run = (args: ReadonlyArray<string>, timeoutMs = DEFAULT_TIMEOUT_MS) =>
     verifiedTransport.pipe(
-      Effect.zipRight(installed),
+      Effect.andThen(installed),
       Effect.flatMap(() => options.runner.run({ cmd: binary, args, env, timeoutMs })),
       Effect.mapError((error) =>
         error instanceof FileSyncStartError
@@ -935,7 +935,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         const committed: SessionReceipt = { ...preparing, phase: "committed", identifier };
         yield* writeLedger(bucket, current, committed, name);
         yield* flushOwned(owned).pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             inspectOwned(owned).pipe(
               Effect.matchEffect({
                 onFailure: () =>
@@ -1066,7 +1066,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
                       name: entry.name,
                       spec: entry.spec,
                       status: statusOf(observed),
-                      lastUpdatedAt: DateTime.unsafeNow(),
+                      lastUpdatedAt: DateTime.nowUnsafe(),
                       ...(observed.lastError === undefined
                         ? {}
                         : {

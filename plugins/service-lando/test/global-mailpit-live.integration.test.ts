@@ -27,7 +27,7 @@ const RECIPIENT = "recipient@example.lndo.site";
 const SENDER_IMAGE = "docker.io/library/alpine:3.21";
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-30T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-30T00:00:00Z"),
   source: "global-mailpit-live.integration.test",
   runtime: 4 as const,
 };
@@ -194,8 +194,8 @@ describe("global Mailpit capture — live integration", () => {
         await sendMailFromService(shopPlan, api);
         await waitForCapturedMessage(120_000);
       } finally {
-        await Effect.runPromise(Effect.either(bringDown(shopPlan, { api })));
-        await Effect.runPromise(Effect.either(bringDown(globalPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(globalPlan, { api })));
       }
     },
     240_000,

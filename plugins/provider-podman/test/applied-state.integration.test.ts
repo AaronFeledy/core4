@@ -21,7 +21,7 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const providerId = ProviderId.make("podman");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-29T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-29T00:00:00Z"),
   source: "provider-podman applied-state test",
   runtime: 4 as const,
 };

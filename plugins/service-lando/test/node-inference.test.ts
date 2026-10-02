@@ -149,7 +149,7 @@ describe("bare node version inference", () => {
 
   test("rejects invalid globals during bare type resolution", async () => {
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         nodeServiceType.resolve({
           name: "web",
           service: { type: "node", globals: { "../escape": "1.0.0" } },
@@ -160,8 +160,8 @@ describe("bare node version inference", () => {
       ),
     );
     expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(String(result.left)).toMatch(/Unsupported npm package "\.\.\/escape"/);
+    if (result._tag === "Failure") {
+      expect(String(result.failure)).toMatch(/Unsupported npm package "\.\.\/escape"/);
     }
   });
 });

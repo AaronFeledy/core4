@@ -31,7 +31,7 @@ const providerId = ProviderId.make("podman");
 const appId = AppId.make("overlay-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-25T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-25T00:00:00Z"),
   source: "provider-podman applied-plan sanitizer",
   runtime: 4 as const,
 };

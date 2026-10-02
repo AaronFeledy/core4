@@ -13,7 +13,7 @@ const translate = (yaml: string) => {
     decomposers: fakeDecomposers().decomposers,
     redactor: createRedactor("secrets"),
   });
-  return Effect.runPromise(Effect.either(translator.translate(documentSet([document(".lando.yml", yaml)]))));
+  return Effect.runPromise(Effect.result(translator.translate(documentSet([document(".lando.yml", yaml)]))));
 };
 const assertHosterRejection = (
   error: { readonly _tag: string; readonly cause?: unknown },
@@ -159,15 +159,15 @@ describe("Lando 3 disposition inventory", () => {
         // When translating through the production document-set boundary.
         const translated = await translate(golden.yaml);
         switch (translated._tag) {
-          case "Left":
-            assertHosterRejection(translated.left, golden);
+          case "Failure":
+            assertHosterRejection(translated.failure, golden);
             return;
-          case "Right":
+          case "Success":
             break;
           default:
             return translated satisfies never;
         }
-        const result = translated.right;
+        const result = translated.success;
         // Then assert a diagnostic at the exact authored path, or the output fragment.
         if ("kind" in golden.expect) {
           const expected = golden.expect;
@@ -204,11 +204,11 @@ describe("Lando 3 disposition inventory", () => {
         const translated = await translate(golden.yaml);
         // Then every emitted layer is free of runtime-only legacy keys.
         switch (translated._tag) {
-          case "Left":
-            assertHosterRejection(translated.left, golden);
+          case "Failure":
+            assertHosterRejection(translated.failure, golden);
             break;
-          case "Right":
-            expect(translated.right.outputs.flatMap(({ fragment }) => residuals(fragment))).toEqual([]);
+          case "Success":
+            expect(translated.success.outputs.flatMap(({ fragment }) => residuals(fragment))).toEqual([]);
             break;
           default:
             translated satisfies never;

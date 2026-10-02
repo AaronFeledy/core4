@@ -96,10 +96,10 @@ describe("provider-lando container died event provider surface", () => {
         expect(serialized).toMatch(/OOMKilled|oom/i);
       } finally {
         await Effect.runPromise(
-          Effect.either(request({ method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` })),
+          Effect.result(request({ method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` })),
         );
         await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             request({ method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }),
           ),
         );

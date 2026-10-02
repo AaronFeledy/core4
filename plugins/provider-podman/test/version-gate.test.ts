@@ -32,7 +32,7 @@ const expectServerVersionRejection = (
 ) => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isSuccess(exit)) return;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag === "None") return;
   const error = failure.value;

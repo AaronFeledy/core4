@@ -141,7 +141,7 @@ export const inspectAppliedFileSync = (
     if (api.request === undefined) return { status: "unknown" } as const;
     const response = yield* api
       .request({ method: "GET", path: "/volumes" })
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+      .pipe(Effect.catch(() => Effect.succeed(undefined)));
     if (response === undefined || response.status !== 200) return { status: "unknown" } as const;
     const evidence = syncVolumeEvidence(response.body, plan);
     if (evidence !== "none") return { status: "unknown" } as const;

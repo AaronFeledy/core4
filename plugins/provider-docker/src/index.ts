@@ -260,7 +260,7 @@ export const macosDockerCapabilities = dockerCapabilitiesForHost("darwin", "/var
 export const windowsDockerCapabilities = dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine");
 
 export const decodeProviderCapabilities = (input: unknown) =>
-  Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
+  Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
     Effect.mapError(
       (cause) =>
         new ProviderCapabilityError({
@@ -519,7 +519,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const defaultFactoryConstruction =
     options.dockerApi === undefined && options.dockerApiFactory === undefined;
   const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost).pipe(
-    Effect.catchAll((failure) =>
+    Effect.catch((failure) =>
       defaultFactoryConstruction
         ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
         : Effect.fail(failure),
@@ -621,7 +621,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           : {}),
         isAvailable: dockerApi.info.pipe(
           Effect.as(true),
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.catch(() => Effect.succeed(false)),
         ),
         appliedPlans:
           options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined

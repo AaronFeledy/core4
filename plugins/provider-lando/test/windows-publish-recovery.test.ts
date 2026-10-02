@@ -328,7 +328,7 @@ describe("Windows published-port recovery", () => {
     };
     const run = async (nftJson: string) =>
       Effect.runPromise(
-        Effect.either(
+        Effect.result(
           makeWindowsPublishedRecovery({
             stateStore,
             facts: () => Effect.succeed(facts),
@@ -342,7 +342,7 @@ describe("Windows published-port recovery", () => {
       );
     const malformed = await run("{");
     expect(malformed._tag).toBe("Left");
-    if (malformed._tag === "Left") expect(malformed.left._tag).toBe("ProviderUnavailableError");
+    if (malformed._tag === "Failure") expect(malformed.failure._tag).toBe("ProviderUnavailableError");
     const redirected = await run(
       JSON.stringify({
         nftables: [
@@ -363,7 +363,7 @@ describe("Windows published-port recovery", () => {
       }),
     );
     expect(redirected._tag).toBe("Right");
-    if (redirected._tag === "Right") expect(redirected.right).toEqual([]);
+    if (redirected._tag === "Success") expect(redirected.success).toEqual([]);
   });
   test("rejects reservation when a native foreign listener or foreign guest target overlaps", async () => {
     const stateStore = makePluginStateStore(

@@ -39,9 +39,9 @@ const currentRuntimeIsOwned = (deps: LinuxRuntimeHealthDeps): Effect.Effect<bool
 export const linuxRuntimeIsHealthy = (
   deps: LinuxRuntimeHealthDeps,
 ): Effect.Effect<boolean, ProviderUnavailableError> =>
-  Effect.either(deps.podmanApi.ping).pipe(
+  Effect.result(deps.podmanApi.ping).pipe(
     Effect.flatMap((reachable) =>
-      reachable._tag === "Left" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
+      reachable._tag === "Failure" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
     ),
   );
 
@@ -77,7 +77,7 @@ export const stopDiscoveredRuntimeProcesses = (deps: LinuxRuntimeHealthDeps): Ef
   });
 
 const bestEffortRemove = (path: string): Effect.Effect<void> =>
-  Effect.promise(() => rm(path, { force: true })).pipe(Effect.catchAll(() => Effect.void));
+  Effect.promise(() => rm(path, { force: true })).pipe(Effect.catch(() => Effect.void));
 
 export const reapLegacyStaleRuntime = (deps: LinuxRuntimeHealthDeps): Effect.Effect<void> =>
   Effect.gen(function* () {
