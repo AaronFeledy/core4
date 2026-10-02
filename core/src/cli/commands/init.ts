@@ -410,6 +410,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       ...(shouldRunPostInit
         ? [{ id: "postinit", label: `Run post-init actions (${postInitActions.length})` }]
         : []),
+      ...(options.agentSkills === true ? [{ id: "agentskills", label: "Install agent skills" }] : []),
     ],
     mode: "list",
   });
@@ -543,15 +544,24 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     );
   }
 
-  await Effect.runPromise(tree.close(`Initialized ${appName}`));
-
   if (options.agentSkills !== true) {
+    await Effect.runPromise(tree.close(`Initialized ${appName}`));
     return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
   }
 
-  const agentSkills = await Effect.runPromise(
-    installAgentSkills({ appRoot: directory }),
-    options.signal === undefined ? undefined : { signal: options.signal },
-  );
+  await Effect.runPromise(tree.startTask("agentskills"));
+  let agentSkills: AgentSkillsResult;
+  try {
+    agentSkills = await Effect.runPromise(
+      installAgentSkills({ appRoot: directory }),
+      options.signal === undefined ? undefined : { signal: options.signal },
+    );
+  } catch (cause) {
+    await Effect.runPromise(tree.failTask("agentskills", "Agent skill installation failed"));
+    await Effect.runPromise(tree.close("Initialization failed"));
+    throw cause;
+  }
+  await Effect.runPromise(tree.completeTask("agentskills", "Installed agent skills"));
+  await Effect.runPromise(tree.close(`Initialized ${appName}`));
   return { appName, directory, answers: publicAnswers, postInit, skippedScaffold, agentSkills };
 };
