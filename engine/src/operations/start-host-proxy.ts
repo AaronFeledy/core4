@@ -1,4 +1,4 @@
-import { Effect, Ref, Scope } from "effect";
+import { Effect, Ref, type Scope } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
@@ -19,6 +19,7 @@ import {
   serviceHasHostProxyFeature,
   startDetachedHostProxyWorker,
 } from "../subsystems/host-proxy/worker.ts";
+import { withRetainedSession } from "./retained-session.ts";
 import { startHostProxyTreeId } from "./start-progress.ts";
 
 const HOST_PROXY_CONTAINER_TARGET_CAPABILITY = "ProviderCapabilities.hostProxy.containerTargets";
@@ -107,6 +108,7 @@ export const startHostProxyRunLandoSession = (
     const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
     const events = yield* EventService;
     const privateFileAccess = yield* PrivateFileAccessService;
+    const acquired = yield* Ref.make<HostProxyRunLandoSession | undefined>(undefined);
     return yield* runWithTaskTree(
       makeTaskTree(events, {
         parentId: startHostProxyTreeId(String(plan.id)),
@@ -127,6 +129,7 @@ export const startHostProxyRunLandoSession = (
             privateFileAccess,
             ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
           });
+          yield* Ref.set(acquired, session);
           yield* tree.completeTask("session", "Host-proxy session ready");
           return session;
         }),
@@ -135,6 +138,14 @@ export const startHostProxyRunLandoSession = (
         failure: `${plan.name} host-proxy failed`,
         interrupt: `${plan.name} host-proxy interrupted`,
       },
+    ).pipe(
+      Effect.onError(() =>
+        Ref.get(acquired).pipe(
+          Effect.flatMap((session) =>
+            session === undefined ? Effect.void : Effect.promise(() => session.close()),
+          ),
+        ),
+      ),
     );
   });
 
@@ -154,35 +165,15 @@ export const withStartedHostProxy = <A, E, R>(
 > =>
   Effect.gen(function* () {
     const paths = yield* PathsService;
-    const keepSession = yield* Ref.make(false);
-    return yield* Effect.acquireUseRelease(
+    return yield* withRetainedSession(
       startHostProxyRunLandoSession(plan, app, capabilities, {
         ...paths.roots,
         platform: options.platform ?? paths.platform,
       }),
-      (session) => {
-        const applyPlan = session === undefined ? plan : withHostProxyRunLando(plan, session);
-        return options
-          .use(applyPlan)
-          .pipe(
-            Effect.tap(() =>
-              Ref.set(keepSession, true).pipe(
-                Effect.andThen(
-                  session === undefined || options.managed === undefined
-                    ? Effect.void
-                    : Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
-                        Effect.provideService(Scope.Scope, options.managed.scope),
-                      ),
-                ),
-              ),
-            ),
-          );
+      (session) => options.use(session === undefined ? plan : withHostProxyRunLando(plan, session)),
+      {
+        close: (session) => (session === undefined ? Effect.void : Effect.promise(() => session.close())),
+        ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
       },
-      (session) =>
-        Ref.get(keepSession).pipe(
-          Effect.flatMap((keep) =>
-            keep || session === undefined ? Effect.void : Effect.promise(() => session.close()),
-          ),
-        ),
     );
   });
