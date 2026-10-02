@@ -26,6 +26,7 @@
     "./image-build": "./src/image-build.ts",
     "./log-file-access": "./src/log-file-access.ts",
     "./log-file-helper-payloads": "./src/log-file-helper-payloads.ts",
+    "./log-source-binding": "./src/log-source-binding.ts",
     "./data-plane": "./src/data-plane.ts",
     "./capabilities": "./src/capabilities.ts",
     "./applied-state": "./src/applied-state.ts",
