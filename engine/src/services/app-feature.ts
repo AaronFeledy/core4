@@ -1,3 +1,4 @@
+import { canonicalJson } from "@lando/sdk/digest";
 import { SchemaIssue } from "effect";
 /**
  * App-scoped feature composition engine (stage 4 of the composition pipeline).
@@ -255,20 +256,8 @@ const conflictFromCause = (
 
 type WriteLedger = Map<string, unknown>;
 
-const stableMutationValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stableMutationValue);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, child]) => [key, stableMutationValue(child)]),
-    );
-  }
-  return value;
-};
-
 const sameMutationValue = (a: unknown, b: unknown): boolean =>
-  JSON.stringify(stableMutationValue(a)) === JSON.stringify(stableMutationValue(b));
+  a === undefined || b === undefined ? a === b : canonicalJson(a) === canonicalJson(b);
 
 const recordWrite = (
   ledger: WriteLedger,
