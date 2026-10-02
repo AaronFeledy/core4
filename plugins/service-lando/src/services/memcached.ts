@@ -4,6 +4,7 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
 const DEFAULT_PORT = 11211;
@@ -25,9 +26,7 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 30,
   });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
 
 export const memcachedServiceFeature: ServiceFeatureDefinition = {
