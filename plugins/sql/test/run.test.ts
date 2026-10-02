@@ -392,8 +392,9 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("serviceCmd");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command.join(" ")).not.toContain("| gzip");
-      expect(transfer.from.command.join(" ")).not.toContain("zstd");
+      const command = transfer.from.command;
+      expect(typeof command === "string" ? command : command.join(" ")).not.toContain("| gzip");
+      expect(typeof command === "string" ? command : command.join(" ")).not.toContain("zstd");
     }
     expect(new Uint8Array(await Bun.file(file).bytes()).subarray(0, 4)).toEqual(
       Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd]),
@@ -469,8 +470,9 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command.join(" "))
         .join("\n"),
     ).not.toContain("gunzip");
-    if (harness.transfers()[0]?.to._tag === "servicePath") {
-      expect(harness.transfers()[0]?.to.path).toBe("/var/opt/mssql/backup/sql-app.bak");
+    const destination = harness.transfers()[0]?.to;
+    if (destination?._tag === "servicePath") {
+      expect(String(destination.path)).toBe("/var/opt/mssql/backup/sql-app.bak");
     }
   });
 
@@ -603,8 +605,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
       expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
-      expect(transfer.to.command.join(" ")).not.toContain("gunzip");
-      expect(transfer.to.command.join(" ")).not.toContain("zstd");
+      const command = transfer.to.command;
+      expect(typeof command === "string" ? command : command.join(" ")).not.toContain("gunzip");
+      expect(typeof command === "string" ? command : command.join(" ")).not.toContain("zstd");
     }
     expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
