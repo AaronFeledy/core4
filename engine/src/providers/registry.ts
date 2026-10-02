@@ -34,6 +34,7 @@ import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import {
   type AppliedStateProvider,
+  observeProviderRuntime,
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "./applied-state-resolution.ts";
@@ -255,6 +256,7 @@ export const makeRuntimeProviderRegistry = (
         select: (plan) => (plan === undefined ? activeProvider : providerFor(plan.provider)),
         resolveAppliedPlan,
         resolveTeardownEvidence: resolveTeardown,
+        observeRuntime: appliedStateProviders.pipe(Effect.flatMap(observeProviderRuntime)),
       };
     }),
   );

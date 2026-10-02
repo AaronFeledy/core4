@@ -4,7 +4,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const ELEVENTY_RECIPE_VERSION = "0.1.0";
 export const ELEVENTY_CONTENT_DIGEST =
-  "sha256:89591241116d13890e347502e7e25c2a9ace413e695cb217728602466ec7ace1";
+  "sha256:77f94f5beec304056d5f3da170178898ad335c0029a49d2e537dd255b0979a4b";
 export const eleventyProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-eleventy",
@@ -38,6 +38,7 @@ export const eleventySnapshot: RecipeSnapshot = {
               ["type", lit("static:nginx")],
               ["primary", lit(false)],
               ["appMount", obj([["target", lit("/app")]])],
+              ["webroot", lit("/app/_site")],
               ["routes", arr(defaultRoute())],
             ]),
           ],

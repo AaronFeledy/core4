@@ -29,6 +29,7 @@ import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
+import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
 import {
   type DoctorSectionId,
@@ -306,10 +307,18 @@ const collectWithTree = <R>(
       redact,
     });
     if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
+    const missingRoots = yield* isolateDoctorSection({
+      section: "missing-app-roots",
+      effect: missingAppRootsDoctor(redact),
+      fallback: [],
+      budgetMs,
+      redact,
+    });
+    if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
     const report: DoctorReport = {
       version: CORE_VERSION,
       provider: { checks: provider.checks },
-      subsystems: { checks: [...subsystems.checks, ...accelerated.value] },
+      subsystems: { checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value] },
       globalApp,
       mcp,
       ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),

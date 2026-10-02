@@ -16,6 +16,7 @@ export const eleventyDecomposer = makeZeroOptionDecomposer({
         primary: false,
         type: "static:nginx",
         appMount: { target: "/app" },
+        webroot: "/app/_site",
         routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
       },
     },

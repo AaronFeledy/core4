@@ -157,6 +157,7 @@
     "RuntimeProviderRegistry": [
       "capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>",
       "list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>",
+      "observeRuntime?: Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>, AppResolveError | ProviderError | NoProviderInstalledError>",
       "resolveAppliedPlan?: (root: AbsolutePath) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>",
       "resolveTeardownEvidence?: (root: AbsolutePath) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>",
       "select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>"

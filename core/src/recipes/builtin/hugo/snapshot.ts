@@ -3,7 +3,7 @@ import { arr, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const HUGO_RECIPE_VERSION = "0.1.0";
-export const HUGO_CONTENT_DIGEST = "sha256:6730c7d056b4de022ad9cc17026d2649123d6be3a6f77782daa5073db316168f";
+export const HUGO_CONTENT_DIGEST = "sha256:297c9145943a2e7d49d15ea186ee704d3d95d2d269256391311d53bf3f857c81";
 export const hugoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-hugo",
@@ -37,6 +37,7 @@ export const hugoSnapshot: RecipeSnapshot = {
               ["type", lit("static:nginx")],
               ["primary", lit(false)],
               ["appMount", obj([["target", lit("/app")]])],
+              ["webroot", lit("/app/public")],
               ["routes", arr(defaultRoute())],
             ]),
           ],

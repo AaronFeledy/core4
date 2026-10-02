@@ -272,6 +272,7 @@
         "semver": "^7.8.5",
       },
       "devDependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/engine": "workspace:*",
         "@lando/provider-docker": "workspace:*",
         "@lando/provider-lando": "workspace:*",
