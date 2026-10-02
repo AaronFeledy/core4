@@ -1,6 +1,8 @@
+import { SchemaIssue } from "effect";
+import { Schema } from "effect";
 import { dirname, join } from "node:path";
 
-import { Cause, type Context, Effect, Either, Layer, ParseResult, Predicate } from "effect";
+import { Cause, type Context, Effect, Result, Layer, Predicate } from "effect";
 
 import {
   type ComposeKeyRejectedError,
@@ -90,8 +92,8 @@ const quotedStrings = (content: string): ReadonlyArray<string> =>
 const isDeferredScopeTemplate = (value: string): boolean => {
   const parsed = parseExpressionEither(value, { filePath: "<landofile>" });
   return (
-    Either.isRight(parsed) &&
-    expressionInterpolationsTouchOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)
+    Result.isSuccess(parsed) &&
+    expressionInterpolationsTouchOnlyScopes(parsed.success, LOAD_DEFERRED_EXPRESSION_SCOPES)
   );
 };
 
@@ -163,7 +165,7 @@ export const findDiscoveredLandofilePath = async (
 };
 
 const extractFailure = <E>(cause: Cause.Cause<E>): E | undefined => {
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   return failure._tag === "Some" ? failure.value : undefined;
 };
 
@@ -181,8 +183,8 @@ const ensureConsistentRoot = (appRoot: string, inputs?: LandofileRuntimeInputs) 
   });
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
+  if (Schema.isSchemaError(cause)) {
+    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
       issue.path.length === 0 || issue.message.startsWith("Landofile service")
         ? issue.message
         : issue.path.join("."),
@@ -311,7 +313,7 @@ interface LandofileLoadContext {
   readonly appRoot: string;
   readonly layer: LandofileLayer;
   readonly policy: LandofileLoadPolicy;
-  readonly logger?: Context.Tag.Service<typeof Logger> | undefined;
+  readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
 }
 
 const loadContext = (
@@ -384,18 +386,18 @@ export const loadLandofileFile = (
             absolutePath: read.absolutePath,
             appRoot: resolvedContext.appRoot,
           })
-          .pipe(Effect.catchAll(() => Effect.void)),
+          .pipe(Effect.catch(() => Effect.void)),
       );
     }
     const materialized =
-      context === undefined && Predicate.isRecord(resolved.value)
+      context === undefined && Predicate.isObject(resolved.value)
         ? yield* materializeLoadExpressions(
             resolved.value,
             filePath,
             inputs?.templates.context?.env ?? hostExpressionEnvironment(),
           )
         : resolved.value;
-    const landofile = yield* validateLandofile(filePath, materialized).pipe(Effect.catchAll(onNativeFailure));
+    const landofile = yield* validateLandofile(filePath, materialized).pipe(Effect.catch(onNativeFailure));
     return rememberLandofileAppRoot(
       rememberLandofileReferencedFiles(landofile, resolved.dependencies),
       resolvedContext.appRoot,
@@ -486,7 +488,7 @@ export const loadLandofileLayers = (
                 absolutePath: read.absolutePath,
                 appRoot: read.appRoot,
               })
-              .pipe(Effect.catchAll(() => Effect.void));
+              .pipe(Effect.catch(() => Effect.void));
     return yield* Effect.tryPromise({
       try: () => presentLandofileLayers(appRoot),
       catch: (cause) =>
@@ -507,11 +509,11 @@ export const loadLandofileLayers = (
           const canonicalResult =
             canonical === undefined
               ? undefined
-              : yield* Effect.either(
+              : yield* Effect.result(
                   loadLandofileFile(canonical.filePath, { ...runtime, layer: canonical.layer }, inputs),
                 );
           const validCanonicalFile =
-            canonicalResult !== undefined && Either.isRight(canonicalResult)
+            canonicalResult !== undefined && Result.isSuccess(canonicalResult)
               ? canonical?.filePath
               : undefined;
           return yield* Effect.forEach(layers, (layer) =>
@@ -642,7 +644,7 @@ const makeDiscoverLandofile = (
       }),
     );
   }).pipe(
-    Effect.catchAllCause((cause) => {
+    Effect.catchCause((cause) => {
       const failure = extractFailure(cause);
       if (failure !== undefined) return Effect.fail(failure);
       return Effect.fail(

@@ -64,8 +64,8 @@ const COLLISION_REMEDIATION =
 const CYCLE_REMEDIATION = "Break the tooling include cycle so no fragment transitively includes itself.";
 
 const withIncludeVars = (task: unknown, vars: Readonly<Record<string, ToolingVarLiteral>>): unknown => {
-  if (Object.keys(vars).length === 0 || !Predicate.isRecord(task)) return task;
-  const taskVars = Predicate.isRecord(task.vars) ? task.vars : {};
+  if (Object.keys(vars).length === 0 || !Predicate.isObject(task)) return task;
+  const taskVars = Predicate.isObject(task.vars) ? task.vars : {};
   return { ...task, vars: { ...vars, ...taskVars } };
 };
 
@@ -125,7 +125,7 @@ const loadFragment = (
     Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.map((parsed) => ({
       filePath,
-      tooling: Predicate.isRecord(parsed.tooling) ? parsed.tooling : {},
+      tooling: Predicate.isObject(parsed.tooling) ? parsed.tooling : {},
       nested: parsed as Pick<LandofileShape, "includes" | "toolingIncludes">,
     })),
   );

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PortablePath, type ToolingTaskShape } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 import { normalizeToolingTask, requiresProvider } from "../src/tooling-normalize.ts";
 
 describe("normalizeToolingTask", () => {
@@ -18,7 +18,7 @@ describe("normalizeToolingTask", () => {
       ],
     };
     // When
-    const result = Either.getOrThrow(normalizeToolingTask("run", task));
+    const result = Result.getOrThrow(normalizeToolingTask("run", task));
     // Then
     expect(result.steps).toEqual([
       {
@@ -49,7 +49,7 @@ describe("normalizeToolingTask", () => {
     // Given
     const task: ToolingTaskShape = { cmd: ["echo", "two words"] };
     // When
-    const result = Either.getOrThrow(normalizeToolingTask("run", task));
+    const result = Result.getOrThrow(normalizeToolingTask("run", task));
     // Then
     expect(result.steps).toEqual([{ cmd: "echo two words", argv: ["echo", "two words"], env: {} }]);
   });
@@ -60,7 +60,7 @@ describe("normalizeToolingTask", () => {
     ["appserver", { kind: "service", name: "appserver" }],
   ] as const)("parses service %s", (service, expected) => {
     // Given / When
-    const result = Either.getOrThrow(normalizeToolingTask("run", { service, flags: { web: {} } }));
+    const result = Result.getOrThrow(normalizeToolingTask("run", { service, flags: { web: {} } }));
     // Then
     expect(result.service).toEqual(expected);
   });
@@ -86,14 +86,14 @@ describe("normalizeToolingTask", () => {
     // Given / When
     const result = normalizeToolingTask("run", task, { path: "/app/.lando.yml" });
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toMatchObject({
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toMatchObject({
         _tag: "ToolingCompileError",
         tool: "run",
         source: { path: "/app/.lando.yml", task: "run" },
       });
-      expect(result.left.remediation).toBeTruthy();
+      expect(result.failure.remediation).toBeTruthy();
     }
   });
 
@@ -108,7 +108,7 @@ describe("normalizeToolingTask", () => {
       args: { b: { order: 2, default: false }, a: { order: 1, required: true } },
     };
     // When
-    const result = Either.getOrThrow(normalizeToolingTask("run", task));
+    const result = Result.getOrThrow(normalizeToolingTask("run", task));
     // Then
     expect(result).toMatchObject({
       summary: "preferred",
@@ -125,7 +125,7 @@ describe("normalizeToolingTask", () => {
 
   test("defaults input and disabled metadata", () => {
     // Given / When
-    const result = Either.getOrThrow(normalizeToolingTask("run", {}));
+    const result = Result.getOrThrow(normalizeToolingTask("run", {}));
     // Then
     expect(result).toMatchObject({ disabled: false, hasInput: false, acceptsArguments: true });
   });
@@ -140,7 +140,7 @@ describe("normalizeToolingTask", () => {
     "determines provider requirement for %j",
     (task, expected) => {
       // Given
-      const normalized = Either.getOrThrow(normalizeToolingTask("run", task));
+      const normalized = Result.getOrThrow(normalizeToolingTask("run", task));
       // When
       const result = requiresProvider(normalized);
       // Then

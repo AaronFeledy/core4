@@ -15,7 +15,7 @@ const makeResolution = () =>
     assertVersionConstraint: () => Effect.void,
   });
 
-const serviceFor = (shape: LandofileShape): Context.Tag.Service<typeof LandofileService> => ({
+const serviceFor = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> => ({
   discover: Effect.succeed(shape),
 });
 
@@ -92,21 +92,21 @@ describe("user app resolution seam", () => {
           await firstCanRestore.promise;
           return { name: "first" };
         }),
-      } satisfies Context.Tag.Service<typeof LandofileService>;
+      } satisfies Context.Service.Shape<typeof LandofileService>;
       const secondService = {
         discover: Effect.promise(async () => {
           await secondMayObserve.promise;
           secondObserved = process.cwd();
           return { name: "second" };
         }),
-      } satisfies Context.Tag.Service<typeof LandofileService>;
+      } satisfies Context.Service.Shape<typeof LandofileService>;
 
       // When
       const first = Effect.runPromise(firstResolution.loadUserLandofileAt(firstService, right));
       await firstInDiscover.promise;
       const second = Effect.runPromise(
         Effect.sync(() => secondStarted.resolve()).pipe(
-          Effect.zipRight(secondResolution.loadUserLandofileAt(secondService, right)),
+          Effect.andThen(secondResolution.loadUserLandofileAt(secondService, right)),
           Effect.timeout("1 second"),
         ),
       );

@@ -1,8 +1,9 @@
+import { SchemaIssue } from "effect";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { Effect, ParseResult, Predicate, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import {
   type ComposeKeyRejectedError,
@@ -639,7 +640,7 @@ const parseFragment = (
     ),
     Effect.flatMap((parsed) => rejectComposeKeys(fragment.authoredSource, parsed)),
     Effect.flatMap((parsed) => {
-      if (!Predicate.isRecord(parsed)) {
+      if (!Predicate.isObject(parsed)) {
         return Effect.fail(
           includeError({
             message: `Include ${fragment.sourceId} did not parse to a Landofile object.`,
@@ -662,8 +663,8 @@ const parseFragment = (
   );
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> =>
-  ParseResult.isParseError(cause)
-    ? ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
+  Schema.isSchemaError(cause)
+    ? SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
         issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
       )
     : [causeMessage(cause)];
@@ -672,15 +673,15 @@ const decodeMerged = (
   value: Record<string, unknown>,
   filePath: string,
 ): Effect.Effect<LandofileShape, LandofileParseError> => {
-  const decoded = Schema.decodeUnknownEither(LandofileShape)(value, { onExcessProperty: "error" });
-  if (decoded._tag === "Right") return Effect.succeed(decoded.right);
+  const decoded = Schema.decodeUnknownResult(LandofileShape)(value, { onExcessProperty: "error" });
+  if (decoded._tag === "Success") return Effect.succeed(decoded.success);
   return Effect.fail(
     new LandofileParseError({
-      message: `Merged Landofile is invalid: ${validationIssues(decoded.left).join(", ")}`,
+      message: `Merged Landofile is invalid: ${validationIssues(decoded.failure).join(", ")}`,
       filePath,
       line: undefined,
       column: undefined,
-      cause: decoded.left,
+      cause: decoded.failure,
     }),
   );
 };
@@ -700,9 +701,9 @@ const withResolvedTooling = (
   included: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> => {
   const inline = inlineWithoutIncludes(landofile);
-  const own = Predicate.isRecord(inline.tooling) ? inline.tooling : {};
+  const own = Predicate.isObject(inline.tooling) ? inline.tooling : {};
   const merged = mergeValues(included, own);
-  if (!Predicate.isRecord(merged) || Object.keys(merged).length === 0) return inline;
+  if (!Predicate.isObject(merged) || Object.keys(merged).length === 0) return inline;
   return { ...inline, tooling: merged };
 };
 
@@ -876,10 +877,10 @@ const lockScalar = (value: unknown): string | undefined => {
  */
 const parseLockEntriesFromText = (content: string): LockEntry[] => {
   const parsed = parseLockfileYaml(content);
-  if (!Predicate.isRecord(parsed) || !Array.isArray(parsed.includes)) return [];
+  if (!Predicate.isObject(parsed) || !Array.isArray(parsed.includes)) return [];
   const entries: LockEntry[] = [];
   for (const entry of parsed.includes) {
-    if (!Predicate.isRecord(entry)) continue;
+    if (!Predicate.isObject(entry)) continue;
     const source = lockScalar(entry.source);
     const resolved = lockScalar(entry.resolved);
     const checksum = lockScalar(entry.checksum);

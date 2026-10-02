@@ -1,5 +1,5 @@
 import { ToolingInputError } from "@lando/sdk/errors";
-import { Either } from "effect";
+import { Result } from "effect";
 import type { NormalizedToolingTask, ToolingServiceRef } from "./tooling-normalize.ts";
 
 export interface ToolingInputValues {
@@ -52,7 +52,7 @@ export const serializeToolingInput = (
     /** Tokens the caller never bound to a declared name; they always trail the declared slots. */
     readonly passthroughArgv?: readonly string[];
   },
-): Either.Either<readonly string[], ToolingInputError> => {
+): Result.Result<readonly string[], ToolingInputError> => {
   const flags = declaration.flags.flatMap((flag) => {
     const value = input.flags[flag.name];
     if (flag.boolean) return value === true ? [`--${flag.name}`] : [];
@@ -68,10 +68,10 @@ export const serializeToolingInput = (
   for (const [index, arg] of declaration.args.entries()) {
     if (index > emitted) break;
     const value = supplied[index] ?? arg.default;
-    if (value === undefined) return Either.left(omittedPositionalError(declaration, arg.name));
+    if (value === undefined) return Result.fail(omittedPositionalError(declaration, arg.name));
     positionals.push(value);
   }
-  return Either.right([
+  return Result.succeed([
     ...flags,
     ...(positionals.length === 0 ? [] : ["--", ...positionals]),
     ...(input.passthroughArgv ?? []),
@@ -81,9 +81,9 @@ export const serializeToolingInput = (
 export const parseToolingArgv = (
   task: NormalizedToolingTask,
   argv: readonly string[],
-): Either.Either<ToolingInputValues, ToolingInputError> => {
-  if (!task.hasInput) return Either.right({ flags: {}, args: {}, argv: [...argv] });
-  const fail = (message: string, field?: string) => Either.left(toolingInputError(task, message, field));
+): Result.Result<ToolingInputValues, ToolingInputError> => {
+  if (!task.hasInput) return Result.succeed({ flags: {}, args: {}, argv: [...argv] });
+  const fail = (message: string, field?: string) => Result.fail(toolingInputError(task, message, field));
   const flags = new Map<string, string | boolean>();
   const args = new Map<string, string>();
   const positionals: string[] = [];
@@ -138,7 +138,7 @@ export const parseToolingArgv = (
     const value = slots[index];
     if (value === undefined) {
       if (arg.required) return fail(`Missing required argument ${arg.name}.`, arg.name);
-      if (index < resolved) return Either.left(omittedPositionalError(task, arg.name));
+      if (index < resolved) return Result.fail(omittedPositionalError(task, arg.name));
       continue;
     }
     if (arg.choices !== undefined && !arg.choices.includes(value))
@@ -146,25 +146,25 @@ export const parseToolingArgv = (
     args.set(arg.name, value);
     canonical.push(value);
   }
-  return Either.right({ flags: Object.fromEntries(flags), args: Object.fromEntries(args), argv: canonical });
+  return Result.succeed({ flags: Object.fromEntries(flags), args: Object.fromEntries(args), argv: canonical });
 };
 
 export const resolveServiceRef = (
   ref: ToolingServiceRef | undefined,
   values: ToolingInputValues,
   task?: Pick<NormalizedToolingTask, "name" | "source">,
-): Either.Either<string | undefined, ToolingInputError> => {
-  if (ref === undefined) return Either.right(undefined);
+): Result.Result<string | undefined, ToolingInputError> => {
+  if (ref === undefined) return Result.succeed(undefined);
   switch (ref.kind) {
     case "host":
-      return Either.right(":host");
+      return Result.succeed(":host");
     case "service":
-      return Either.right(ref.name);
+      return Result.succeed(ref.name);
     case "flag": {
       const value = Object.hasOwn(values.flags, ref.flag) ? values.flags[ref.flag] : undefined;
       return typeof value === "string" && value.length > 0 && !value.startsWith(":")
-        ? Either.right(value)
-        : Either.left(
+        ? Result.succeed(value)
+        : Result.fail(
             toolingInputError(
               {
                 name: task?.name ?? ref.flag,

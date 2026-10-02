@@ -131,9 +131,9 @@ test("rejects foreign output source identities with producing translator attribu
         deletions: [],
       }),
   });
-  const result = await Effect.runPromise(Effect.either(runConfigTranslator(translator, baseInput)));
+  const result = await Effect.runPromise(Effect.result(runConfigTranslator(translator, baseInput)));
   expect(result._tag).toBe("Left");
-  if (result._tag === "Left") expect(result.left.translator).toBe("foreign");
+  if (result._tag === "Failure") expect(result.failure.translator).toBe("foreign");
 });
 
 test.each(["source", "translator", "empty"])(
@@ -151,10 +151,10 @@ test.each(["source", "translator", "empty"])(
         ]),
     });
     const result = await Effect.runPromise(
-      Effect.either(detectConfigTranslators([translator], { documents: baseInput.documents })),
+      Effect.result(detectConfigTranslators([translator], { documents: baseInput.documents })),
     );
     expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
+    if (result._tag === "Failure")
+      expect(result.failure).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
   },
 );

@@ -70,7 +70,7 @@ describe("Landofile events", () => {
     for (const step of graduatedSteps) {
       // When
       const outcome = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           rejectUnsupportedToolingFeatures("/workspace/.lando.yml", {
             events: { "pre-start": [step] },
           }),
@@ -89,7 +89,7 @@ describe("Landofile events", () => {
     for (const step of unsupportedSteps) {
       // When
       const outcome = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           rejectUnsupportedToolingFeatures("/workspace/.lando.yml", {
             events: { "pre-start": [step] },
           }),
@@ -98,14 +98,14 @@ describe("Landofile events", () => {
 
       // Then
       expect(outcome._tag).toBe("Left");
-      if (outcome._tag !== "Left") throw new Error("expected unsupported event step failure");
-      expect(outcome.left).toMatchObject({
+      if (outcome._tag !== "Failure") throw new Error("expected unsupported event step failure");
+      expect(outcome.failure).toMatchObject({
         _tag: "NotImplementedError",
         remediation: UNSUPPORTED_REMEDIATION,
       });
-      expect(outcome.left.message).toContain('Event step field "platforms"');
-      expect(outcome.left.message).toContain("/workspace/.lando.yml");
-      expect(outcome.left.message).not.toMatch(/\b(?:Alpha|Beta)\b/);
+      expect(outcome.failure.message).toContain('Event step field "platforms"');
+      expect(outcome.failure.message).toContain("/workspace/.lando.yml");
+      expect(outcome.failure.message).not.toMatch(/\b(?:Alpha|Beta)\b/);
     }
   });
 

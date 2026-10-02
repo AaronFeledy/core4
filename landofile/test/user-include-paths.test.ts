@@ -32,7 +32,7 @@ describe("user include path validation", () => {
 
         // When: the resolver follows the selected profile.
         const result = await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             resolveLandofileIncludes({
               landofile: { includes: ["user:profile.yml"] },
               appRoot,
@@ -45,7 +45,7 @@ describe("user include path validation", () => {
 
         // Then: lexical validation precedes reading or realpath canonicalization.
         expect(result._tag).toBe("Left");
-        if (result._tag === "Left") expect(result.left._tag).toBe("LandofileIncludeError");
+        if (result._tag === "Failure") expect(result.failure._tag).toBe("LandofileIncludeError");
       } finally {
         await rm(root, { recursive: true, force: true });
       }

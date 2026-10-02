@@ -1,7 +1,9 @@
+import { SchemaIssue } from "effect";
+import { Schema } from "effect";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
-import { Effect, ParseResult } from "effect";
+import { Effect } from "effect";
 
 import {
   BunShellScriptEmptyError,
@@ -128,8 +130,8 @@ const parseFrontMatterBody = (
 };
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
+  if (Schema.isSchemaError(cause)) {
+    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
       issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
     );
   }

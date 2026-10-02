@@ -167,7 +167,7 @@ describe("lintLandofile", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(LandofileFormConflictError);

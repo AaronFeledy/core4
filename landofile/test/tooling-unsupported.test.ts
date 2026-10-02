@@ -6,7 +6,7 @@ import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "../sr
 const FILE = "/workspace/.lando.yml";
 
 const run = (parsed: unknown) =>
-  Effect.runPromise(Effect.either(rejectUnsupportedToolingFeatures(FILE, parsed)));
+  Effect.runPromise(Effect.result(rejectUnsupportedToolingFeatures(FILE, parsed)));
 
 describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => {
   test("accepts task-level user with cmd", async () => {
@@ -109,10 +109,10 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
 
     // Then
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("defer");
-    expect(outcome.left).toMatchObject({
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("defer");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -133,10 +133,10 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
 
     // Then
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("task");
-    expect(outcome.left).toMatchObject({
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("task");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -157,10 +157,10 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
 
     // Then
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("bogus");
-    expect(outcome.left).toMatchObject({
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("bogus");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -183,10 +183,10 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
 
     // Then
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("type");
-    expect(outcome.left).toMatchObject({
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("type");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -207,10 +207,10 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
 
     // Then
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("deps");
-    expect(outcome.left).toMatchObject({
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("deps");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });

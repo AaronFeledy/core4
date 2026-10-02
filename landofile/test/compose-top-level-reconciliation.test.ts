@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
@@ -33,7 +33,7 @@ describe("Compose top-level classification reconciliation", () => {
     const rejectedKeys = Object.entries(composeTopLevelDispositions)
       .filter(([, entry]) => entry.disposition === "rejected")
       .map(([key]) => key);
-    const decode = Schema.decodeUnknownEither(LandofileShape);
+    const decode = Schema.decodeUnknownResult(LandofileShape);
 
     // Then
     expect(rejectedKeys.length).toBeGreaterThan(0);
@@ -42,7 +42,7 @@ describe("Compose top-level classification reconciliation", () => {
       const decoded = decode({ [key]: {} }, { onExcessProperty: "error" });
 
       // Then
-      expect(Either.isLeft(decoded), key).toBe(true);
+      expect(Result.isFailure(decoded), key).toBe(true);
     }
   });
 
@@ -66,7 +66,7 @@ describe("Compose top-level classification reconciliation", () => {
       secrets: {},
       include: [],
     };
-    const decode = Schema.decodeUnknownEither(LandofileShape);
+    const decode = Schema.decodeUnknownResult(LandofileShape);
 
     expect(COMPOSE_TOP_LEVEL_KEYS.length).toBeGreaterThan(0);
     for (const key of COMPOSE_TOP_LEVEL_KEYS) {
@@ -74,7 +74,7 @@ describe("Compose top-level classification reconciliation", () => {
       const decoded = decode({ [key]: minimalValues[key] });
 
       // Then
-      expect(Either.isRight(decoded), key).toBe(true);
+      expect(Result.isSuccess(decoded), key).toBe(true);
     }
   });
 });

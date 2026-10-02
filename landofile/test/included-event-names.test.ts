@@ -18,7 +18,7 @@ test("loads a tooling event when its task exists only in an included fragment", 
     await writeFile(join(root, "tasks.yml"), "tooling:\n  build:\n    cmd: echo build\n");
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         loadLandofileLayers(root, file, {
           ports: makeTestLandofilePorts(join(root, ".cache")),
           stateStore: makeTestLandofileStateStore(),
@@ -28,9 +28,9 @@ test("loads a tooling event when its task exists only in an included fragment", 
     );
     // Then
     expect(result).toMatchObject({ _tag: "Right" });
-    if (result._tag === "Right") {
-      expect(result.right.tooling?.build).toBeDefined();
-      expect(result.right.events?.["pre-build"]).toEqual(["echo preparing"]);
+    if (result._tag === "Success") {
+      expect(result.success.tooling?.build).toBeDefined();
+      expect(result.success.events?.["pre-build"]).toEqual(["echo preparing"]);
     }
   } finally {
     await rm(root, { recursive: true, force: true });

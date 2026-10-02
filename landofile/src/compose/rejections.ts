@@ -111,7 +111,7 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
     }
     return;
   }
-  if (!Predicate.isRecord(value)) return;
+  if (!Predicate.isObject(value)) return;
   if (node.matrixPath === "build" && ("artifact" in value || "app" in value)) return;
 
   for (const key of Object.keys(value)) {
@@ -141,7 +141,7 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
 };
 
 const walkServices = (value: unknown, matches: ComposeDispositionMatch[]): void => {
-  if (!Predicate.isRecord(value)) return;
+  if (!Predicate.isObject(value)) return;
   serviceDispositionTrie ??= compileDispositionTrie(composeServiceDispositions);
   for (const service of Object.keys(value)) {
     walkValue(value[service], serviceDispositionTrie, {
@@ -153,7 +153,7 @@ const walkServices = (value: unknown, matches: ComposeDispositionMatch[]): void 
 };
 
 export const analyzeComposeDispositions = (parsed: unknown): ReadonlyArray<ComposeDispositionMatch> => {
-  if (!Predicate.isRecord(parsed)) return [];
+  if (!Predicate.isObject(parsed)) return [];
   const matches: ComposeDispositionMatch[] = [];
   for (const key of Object.keys(parsed)) {
     const matrixPath = key.startsWith("x-") ? "x-*" : key;

@@ -1,4 +1,4 @@
-import { Effect, Either, Predicate, Schema } from "effect";
+import { Effect, Result, Predicate, Schema } from "effect";
 
 import { type LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
 import { ToolingIncludeShape } from "@lando/sdk/schema";
@@ -16,7 +16,7 @@ export const assertToolingFragment = (
   source: string,
   filePath: string,
 ): Effect.Effect<Record<string, unknown>, LandofileIncludeError | LandofileParseError> => {
-  if (!Predicate.isRecord(parsed)) {
+  if (!Predicate.isObject(parsed)) {
     return Effect.fail(
       new LandofileParseError({
         message: `Tooling include ${source} did not parse to a mapping.`,
@@ -37,7 +37,7 @@ export const assertToolingFragment = (
       }),
     );
   }
-  if (parsed.tooling !== undefined && !Predicate.isRecord(parsed.tooling)) {
+  if (parsed.tooling !== undefined && !Predicate.isObject(parsed.tooling)) {
     return Effect.fail(
       includeError({
         message: `Tooling include ${source} declares tooling: as a non-mapping value.`,
@@ -48,7 +48,7 @@ export const assertToolingFragment = (
     );
   }
   if (parsed.toolingIncludes !== undefined) {
-    if (!Predicate.isRecord(parsed.toolingIncludes)) {
+    if (!Predicate.isObject(parsed.toolingIncludes)) {
       return Effect.fail(
         includeError({
           message: `Tooling include ${source} declares toolingIncludes: as a non-mapping value.`,
@@ -59,7 +59,7 @@ export const assertToolingFragment = (
       );
     }
     for (const [name, entry] of Object.entries(parsed.toolingIncludes)) {
-      const unsupported = Predicate.isRecord(entry)
+      const unsupported = Predicate.isObject(entry)
         ? Object.keys(entry).find((key) => !TOOLING_INCLUDE_KEYS.has(key))
         : undefined;
       if (unsupported !== undefined) {
@@ -73,7 +73,7 @@ export const assertToolingFragment = (
         );
       }
       if (
-        Either.isLeft(Schema.decodeUnknownEither(ToolingIncludeShape)(entry, { onExcessProperty: "error" }))
+        Result.isFailure(Schema.decodeUnknownResult(ToolingIncludeShape)(entry, { onExcessProperty: "error" }))
       ) {
         return Effect.fail(
           includeError({
