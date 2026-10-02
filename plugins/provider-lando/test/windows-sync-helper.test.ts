@@ -25,6 +25,9 @@ const spec: WindowsSyncHelperSpec = {
   image: `example.invalid/lando-sync@sha256:${"a".repeat(64)}`,
 };
 
+const imageInspectPath = `/images/${encodeURIComponent(spec.image)}/json`;
+const platformImageId = `sha256:${"b".repeat(64)}`;
+
 type JsonRecord = Record<string, unknown>;
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -38,6 +41,8 @@ const makeFakeApi = () => {
     helperCreateResponse: "valid" as "valid" | "malformed" | "lost",
     failContainerInspectAfterDelete: false,
     failDelete: false,
+    imageId: platformImageId,
+    repoDigests: [spec.image],
   };
   const stateStore = makePluginStateStore(
     makeTestStateStore().service,
@@ -68,6 +73,9 @@ const makeFakeApi = () => {
           };
           return response(201, volume);
         }
+        if (method === "GET" && path === imageInspectPath) {
+          return response(200, { Id: controls.imageId, RepoDigests: controls.repoDigests });
+        }
         if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
           if (container !== undefined && controls.failContainerInspectAfterCreate) return response(500);
           if (container === undefined && controls.failContainerInspectAfterDelete) return response(500);
@@ -81,8 +89,10 @@ const makeFakeApi = () => {
           container = {
             Id: "helper-container-id",
             Name: `/${name}`,
+            Image: platformImageId,
+            ImageName: body.Image,
             Config: {
-              Image: body.Image,
+              Image: "example.invalid/lando-sync:latest",
               Entrypoint: clone(body.Entrypoint),
               Cmd: clone(body.Cmd),
               User: body.User,
@@ -162,7 +172,11 @@ describe("Windows named-volume sync helper", () => {
       volumeName: "demo-web-app-mount",
       path: "/sync",
     });
-    expect(fake.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
+    expect(
+      fake.calls
+        .filter((call) => call.path !== imageInspectPath)
+        .map(({ method, path }) => `${method} ${path}`),
+    ).toEqual([
       "GET /volumes/demo-web-app-mount",
       `GET /containers/${endpoint.containerName}/json`,
       "POST /volumes/create",
@@ -207,7 +221,7 @@ describe("Windows named-volume sync helper", () => {
     expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
       endpoint,
     );
-    expect(fake.calls.slice(count).map(({ method }) => method)).toEqual(["GET", "GET"]);
+    expect(fake.calls.slice(count).map(({ method }) => method)).toEqual(["GET", "GET", "GET"]);
   });
 
   test("refuses an existing foreign or unlabelled volume before container creation", async () => {
@@ -336,7 +350,12 @@ describe("Windows named-volume sync helper", () => {
     expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
       endpoint,
     );
-    expect(fake.calls.slice(count).map(({ method, path }) => `${method} ${path}`)).toEqual([
+    expect(
+      fake.calls
+        .slice(count)
+        .filter((call) => call.path !== imageInspectPath)
+        .map(({ method, path }) => `${method} ${path}`),
+    ).toEqual([
       "GET /volumes/demo-web-app-mount",
       `GET /containers/${endpoint.containerName}/json`,
       "POST /containers/helper-container-id/start",
@@ -577,6 +596,70 @@ describe("Windows named-volume sync helper", () => {
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error.message).toContain("unknown version");
     expect(fake.calls).toEqual([]);
+  });
+
+  test("accepts Podman canonicalizing Config.Image to a tag when the pinned image resolves to the container ID", async () => {
+    const fake = makeFakeApi();
+    const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    expect((fake.container?.Config as JsonRecord).Image).toBe("example.invalid/lando-sync:latest");
+    expect(fake.container?.Image).toBe(platformImageId);
+    expect(fake.calls.some((call) => call.path === imageInspectPath)).toBe(true);
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
+      endpoint,
+    );
+  });
+
+  test("uses the pinned repository digest and image ID when optional container digest fields differ", async () => {
+    const fake = makeFakeApi();
+    const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const container = fake.container;
+    if (container === undefined) throw new Error("Expected helper container");
+    container.ImageName = undefined;
+    container.ImageDigest = `sha256:${"d".repeat(64)}`;
+    fake.controls.repoDigests = [spec.image];
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
+      endpoint,
+    );
+  });
+
+  test("rejects an image ID or repository digest that contradicts the pinned ref", async () => {
+    for (const drift of ["id", "digest"] as const) {
+      const fake = makeFakeApi();
+      await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+      const container = fake.container;
+      if (container === undefined) throw new Error("Expected helper container");
+      if (drift === "id") container.Image = `sha256:${"c".repeat(64)}`;
+      if (drift === "digest") fake.controls.repoDigests = [];
+      container.State = { Running: false };
+      const count = fake.calls.length;
+      const error = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+      expect(error.message).toContain("different specification");
+      expect(fake.calls.slice(count).some((call) => call.method === "POST" || call.method === "DELETE")).toBe(
+        false,
+      );
+      expect(fake.container).toBe(container);
+    }
+  });
+
+  test("a changed pinned image preserves the existing helper and volume", async () => {
+    const fake = makeFakeApi();
+    const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const originalContainer = fake.container;
+    const originalVolume = fake.volume;
+    const count = fake.calls.length;
+    const changed = { ...spec, image: `example.invalid/lando-sync@sha256:${"c".repeat(64)}` };
+    const error = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, changed));
+    expect(error.operation).toBe("syncHelper.specification");
+    expect(error.message).toContain("specification changed");
+    expect(error.remediation).toContain("planned migration");
+    expect(fake.calls.slice(count).some((call) => call.method === "POST" || call.method === "DELETE")).toBe(
+      false,
+    );
+    expect(fake.container).toBe(originalContainer);
+    expect(fake.volume).toBe(originalVolume);
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
+      endpoint,
+    );
   });
 
   test("rejects a mutable helper image before making any API request", async () => {
