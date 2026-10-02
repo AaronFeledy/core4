@@ -56,7 +56,7 @@ Per-PR performance tests and the §13.4 merge gate enforce both budget tables.
 
 ### 2.2 TypeScript
 
-TypeScript uses `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`, `moduleResolution: "bundler"`, `module: "esnext"`, `target: "esnext"`, `lib: ["esnext"]`, `types: ["bun-types"]`, `isolatedModules`, and `skipLibCheck: false`. `exactOptionalPropertyTypes` is required for Effect Schema optional-property semantics.
+TypeScript uses `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`, `moduleResolution: "bundler"`, `module: "esnext"`, `target: "esnext"`, `lib: ["esnext"]`, `types: ["bun-types"]`, `isolatedModules`, and `skipLibCheck: false`. The TypeScript floor is `^5.9.0`, Effect 4's minimum. `exactOptionalPropertyTypes` is required for Effect Schema optional-property semantics.
 
 Public types MUST be inferred from Effect Schema wherever a schema can own the contract; parallel public `interface` or `type` declarations are forbidden. Internal types may use either. `@lando/sdk` exports schemas and their inferred types. Top-level exports SHOULD prefer one public symbol per file, barrels belong only at package boundaries, and side-effect imports are forbidden in core.
 
@@ -69,16 +69,18 @@ The shipping CLI uses one native command registry and dispatcher shared by sourc
 Every meaningful core operation returns `Effect.Effect<A, E, R>`.
 
 - Services use `Context.Service` and are consumed through `yield* ServiceTag`; the older `Context.Tag()()` pattern is forbidden in new code.
-- Services are provided by `Layer`s. Resource-bearing services MUST use `Layer.scoped`, and cancellation MUST propagate to provider operations. `Effect.uninterruptible` is allowed only for narrowly bounded critical sections.
+- Services are provided by `Layer`s. Resource-bearing services MUST use `Layer.effect`, which is scoped by construction, and cancellation MUST propagate to provider operations. `Effect.uninterruptible` is allowed only for narrowly bounded critical sections.
 - Bootstrap layers are AOT-composed for every `BootstrapLevel` (§3.2, §17.2). Core runtime `Layer.merge`/`Layer.provide` chains are forbidden outside generated composition, test helpers, and embedding-host opt-ins.
 - A service not always needed at its declared level MUST use `Layer.suspend`; always-required services MAY initialize eagerly. `Logger` and `Renderer` are lazy, with only the first-paint and level-`none` direct-write carve-outs below.
+- Fiber-local state uses `Context.Reference` values bound with `Effect.provideService`; there is no `FiberRef`.
+- Shells run effects with `Effect.runPromiseExit` (or `runPromiseExitWith`) and inspect the `Exit`, rendering its `Cause`; they never catch rejected promises.
 - Errors are `Schema.TaggedError` values. `throw` is forbidden except inside adapter `Effect.try` boundaries.
 - Trust-boundary data MUST be decoded by Effect Schema before business logic.
 - Long-running output uses `Stream`; public core APIs MUST NOT expose plain async iterators.
 - Concurrency uses Effect primitives. Manual concurrency control with `Promise.all` is forbidden. Bootstrap levels are sequential, but independent IO within a level MUST run concurrently; sequential work requires a data dependency.
 - Telemetry and update checks MUST be fire-and-forget: failure MUST NOT change exit status, delay the completion line, or keep the process alive.
 
-Top-level code reachable from `bin/lando.ts` has a roughly 50 µs synchronous-work budget and MUST perform no IO. Noncritical schemas MUST use `Schema.suspend`; service implementations MUST acquire work inside `Layer.scoped` or `Layer.suspend`; service tags and tagged-error declarations MAY remain at module scope; runtime-built global catalogs are forbidden.
+Top-level code reachable from `bin/lando.ts` has a roughly 50 µs synchronous-work budget and MUST perform no IO. Noncritical schemas MUST use `Schema.suspend`; service implementations MUST acquire work inside `Layer.effect` or `Layer.suspend`; service tags and tagged-error declarations MAY remain at module scope; runtime-built global catalogs are forbidden.
 
 Effect Schema is the single contract language for Landofiles, manifests, service configuration, tooling, routes, healthchecks, environment surfaces, errors, and events. Canonical schemas live in `@lando/sdk`, are re-exported from `@lando/core/schema`, and generate inferred TypeScript types, JSON Schema, reference documentation, and plugin validators. Public schemas and fields MUST carry useful annotations; non-schema public exports MUST carry JSDoc/TSDoc.
 
@@ -89,6 +91,8 @@ Core logging flows through Effect logging and the active `Logger`/`Renderer`; di
 ### 2.5 Schema validation: Effect Schema
 
 Effect Schema is the only schema library in core. Its Effect-native decode, tagged errors, classes, and bidirectional codecs are part of the runtime contract. `SchemaValidator` lets plugins use another library internally but does not replace core schemas (§4).
+
+Schemas that decode authored input (Landofile, global config, plugin and recipe manifests, includes, lockfiles, and the app-plan and command caches) MUST declare optional properties with `Schema.optionalKey`. `Schema.optional` emits `anyOf [X, null]` into JSON Schema while the decoder rejects `null`, so an editor would accept what Lando rejects. Output-only schemas (errors, events, command results) may use `Schema.optional`.
 
 ### 2.6 Forbidden runtime dependencies
 
@@ -108,7 +112,7 @@ Effect Schema is the only schema library in core. Its Effect-native decode, tagg
 | `slugify` | a small internal helper |
 | `object-hash` | `Bun.hash` or `crypto.subtle.digest` |
 
-Effect plus a small set of YAML/CA primitives are the only target runtime dependencies. OCLIF is development-only. `@lando/sdk` is a runtime contract package, not a type-only package.
+Effect plus a small set of YAML/CA primitives are the only target runtime dependencies. No `@effect/*` package is a runtime dependency. `effect` is pinned to one exact version through the root workspace catalog (`workspaces.catalog.effect`), and every workspace declares it as `"effect": "catalog:"`; a build test rejects any other specifier. OCLIF is development-only. `@lando/sdk` is a runtime contract package, not a type-only package.
 
 ### 2.7 Package surface
 
