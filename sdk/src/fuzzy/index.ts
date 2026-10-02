@@ -7,7 +7,7 @@
  * This subpath is the same contracts-only tier as `@lando/sdk/expressions`,
  * `@lando/sdk/probe`, and `@lando/sdk/secrets`: it constructs no
  * `LandoRuntime`, pulls no service `Layer`, and imports nothing. It is
- * **not** a `Context.Tag` service, **not** a schema export, and **not** a
+ * **not** a `Context.Service`, **not** a schema export, and **not** a
  * pluggable abstraction.
  */
 

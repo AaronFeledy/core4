@@ -7,7 +7,7 @@
  * whole-file rendering of users' existing `.hbs` / `.mustache` templates.
  *
  * This subpath is type/contract only (like `@lando/sdk/expressions`). It is NOT
- * a `Context.Tag` service and its errors deliberately live here rather than on
+ * a `Context.Service` and its errors deliberately live here rather than on
  * the frozen `@lando/sdk/errors` barrel — pre-parse Landofile rendering maps
  * them into `LandofileParseError` at the parse seam, so the frozen
  * `LandofileService.discover` error union is never widened.

@@ -10,7 +10,7 @@
  * This subpath is the same contracts-only tier as `@lando/sdk/secrets` and
  * `@lando/sdk/expressions`: it constructs no `LandoRuntime`, pulls no service
  * `Layer`, and imports only effect's `Schema`/`Schedule`/`Effect`/`Clock`/
- * `Duration` plus type-only schema imports. It is **not** a `Context.Tag`
+ * `Duration` plus type-only schema imports. It is **not** a `Context.Service`
  * service and **not** a pluggable abstraction.
  *
  * Its errors ({@link ProbeError}, {@link ProbeTimeoutError}) deliberately live

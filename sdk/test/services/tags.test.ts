@@ -116,7 +116,7 @@ type TaggedFailure<E> = [E] extends [never] ? never : E extends { readonly _tag:
 const assertTaggedFailure = <T extends true>(value: T): T => value;
 
 describe("Effect service tags", () => {
-  test("exports the service tags as Context.Tag instances", () => {
+  test("exports the service tags as Context.Service instances", () => {
     for (const { tag, key } of EXPECTED_TAGS) {
       expect(Context.isKey(tag)).toBe(true);
       expect(tag.key).toBe(key);
