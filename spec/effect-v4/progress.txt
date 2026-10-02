@@ -18,6 +18,10 @@ numbers against the baseline), Review (blockers fixed, deferrals with reasons).
 
 ## Codebase Patterns
 
+- Effect 4 `Queue.takeAll` waits for at least one item; polling buffered events and draining during shutdown must use `Queue.clear`. An empty `takeAll` inside an uninterruptible finalizer can block both scope closure and cancellation.
+- Persisted timestamps need `Schema.DateTimeUtcFromString`. `Schema.DateTimeUtc` accepts DateTime instances on both sides; after JSON serialization, decoding its ISO string fails and a quarantine-on-corrupt bucket silently returns its default.
+- Effect 4's concurrent traversal can observe an immediate failure before a sibling callback starts. Tests of already-concurrent work should coordinate that start with a `Deferred`, not assume the scheduler eagerly starts every callback.
+
 Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 `effect@4.0.0` (`dist/*.d.ts`, runtime exports, shipped `AGENTS.md`).
 
@@ -106,4 +110,25 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 ---
 ## 2026-10-02 02:42 - Babysit
 - [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-10-02 12:57 CDT - US-662 (Build, resumed; not implemented)
+- Completed shell and generated-guide failure ports. Boundaries retain combined causes instead of dropping cleanup failures. Effect 4 native promise rejection names no longer carry `FiberFailure`; library and reporter characterization checks both native rejection and complete `Exit`. Native CLI interruption keeps its human message. Historical reporter text fixtures remain parser inputs, not current-runtime expectations.
+- Fixed two runtime regressions compilation missed. Empty renderer/telemetry shutdown drains use `Queue.clear`; the previous renderer finalizer could block cancellation indefinitely. Provider bootstrap shares its commands graph through `Layer.suspend`: Effect 4 memoizes leaf acquisition but otherwise repeatedly traversed the composite graph. A retained runtime that exceeded 15 seconds (one diagnostic run took 9m20s) now constructs and releases in about 906 ms; the embedding lifecycle guide completes in about 470 ms.
+- Restored ISO-string codecs for persisted build-result timestamps, recovering five cache-reuse/scratch-skip failures. Buffered event assertions now drain nonblockingly. The concurrent failure test explicitly waits for the sibling to start, retaining its exact call-list and original-error assertions rather than relying on Effect 3's eager callback scheduling.
+- All eight generated plugin templates compile and test on Effect 4. Release manifest preparation resolves `catalog:` to concrete versions. SDK signature fixtures, compatibility notes, and API instructions describe Effect 4. The testing-runtime guide now executes three real library scenarios.
+- Restored required-field reference metadata from the encoded AST. The blanket null-artifact check incorrectly rejected 24 explicitly nullable nodes already present on the base (Compose deploy/logging/networks, provider/proxy settings, recipe literals). Its replacement checks every emitted null node against encoded-source acceptance or explicit source projection intent, with regressions for optional-undefined pollution and unmatched nullable nodes; no path exemptions. Stock wording changes are the exact regex description (`matching the RegExp`), shell/reporter characterization, and the routed-provider `CapabilityError` rejection name. Custom schema messages remain unchanged.
+- Verification: final `gate:pr` passed, including actual guide drift. SDK spot checks passed 220 tests; build-cache checks 27; native failure/reporter/shutdown 15; retained library shell 21; reference/lifetime and layer/stream/probe 92; doctor report 30; docs 90; both nightly-tier files 26. All four required guides passed with positive counts (3, 3, 2, 2). Docs check, guide lint/coverage, public transcripts, and telemetry inventory passed. Sandbox compiled build/relocation passed; a real CLI-generated plugin compiled and passed its generated test. Five live provider suites passed 46 tests, with only the existing Windows-only and opt-in destructive-prune cases skipped. No full local suite was run, as required by the loop contract.
+- Still blocking implementation: schema compatibility against `origin/main` reports **425 unknown, 0 breaking, 33 already accepted, 0 skipped**. Findings need semantic classification or fixes; no blanket exceptions were added. Binary-size and RSS regressions below also remain unexplained and owned by US-662. The full CI test gate has not run. Continue this story on the retained branch.
+- **Learnings for future iterations:**
+  - Green compilation does not prove persisted DateTime round trips, empty-queue finalization, or bounded composite-layer traversal. The characterization and actual library paths exposed all three.
+  - Tests requiring concurrently started tasks should synchronize startup with `Deferred`, preserving assertions rather than depending on scheduler order.
+  - CLI/provider execution stayed in persistent `lando4-dev` tmux using existing shared `.local/bin/bun`. Missing Node/Postgres fixture images were pulled there before rerunning live tests.
+---
+
+## 2026-10-02 12:57 CDT - US-662 post-switch measurements (Measure, effect@4.0.0)
+- After the provider-graph fix, the same sandbox benchmark and fixture produced three warm runs of 30 samples: p50 **167.4 / 177.5 / 186.5 ms**, script-reported p95 **180.0 / 199.9 / 200.6 ms** (index `floor((n-1)*p)`); cold **168.7 / 180.5 / 180.7 ms**. The p95 noise band is **20.6 ms**. All improve on the Effect 3 script-reported p95 **243.8 / 246.9 / 237.2 ms**.
+- Startup, 20 samples per run: startup p95 **13.3 / 20.0 / 14.2 ms**, first-output p95 **12.3 / 18.7 / 12.9 ms**. Startup noise band **6.6 ms**. All met the script's 50 ms budgets; retain the raw comparison with the noisier baseline rather than claiming startup improved.
+- Sanitized linux-x64 binary: **234,374,344 bytes**, versus **200,709,600** (**+16.8%**). `app:config --format=json` exited 0 in **0.54 s**, peak RSS **339,912 KB**, versus **215,844 KB** (**+57.5%**) and 0.43 s at baseline. Both exceed the 5% threshold. Module/allocation causes are not yet isolated: **US-662 retains ownership**, with no waiver or downstream deferral.
+- Discard earlier pre-fix measurements as final performance evidence. Full unit-suite wall time remains a CI measurement; no full local suite was run.
 ---
