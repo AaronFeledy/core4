@@ -7,7 +7,7 @@ static frontend.
 
 - `builder` — `node:lts` running `npx hugo server` on port 1313 for iterative
   development.
-- `web` — `static:nginx`, mounts the app root for serving the built site.
+- `web` — `static:nginx`, serves the build output directory `/app/public` as its document root.
 
 ## Generated tooling
 
@@ -18,6 +18,8 @@ static frontend.
 
 - The recipe uses `npx hugo` (Node-distributed Hugo) rather than a dedicated
   Hugo service type. A first-class `hugo` service type is deferred to Beta.
+- The recipe assumes Hugo's default `public/` output. If you set `publishDir`
+  in your Hugo config, point `webroot` on `web` at the new directory.
 - The static frontend serves files only; advanced routing/rewrites are
   deferred.
 

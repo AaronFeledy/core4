@@ -8,14 +8,20 @@ tags: [beta, docs, provider-lando, setup, windows]
 
 # Use the managed Lando runtime on Windows
 
-Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the GitHub `v4.0.0-dev.N` prerelease. Then run default `lando setup`. That installs a Lando-owned Podman machine. It does not need system Docker or Podman.
+Download unsigned `lando-windows-x64.exe` or `lando-windows-arm64.exe` from the GitHub `v4.0.0-dev.N` prerelease. Then run default `lando setup`. The managed path creates a Lando-owned Podman machine without system Docker or Podman. Windows setup is still being validated in Alpha, so it may fail.
 
 Lando talks to that machine over the named pipe `\\.\pipe\podman-lando`, not a Unix socket. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
 
 ## What setup will do
 
-Lando imports the host native CA store only into machines it created. A user-owned machine stays untouched.
+A fresh Lando-owned Windows machine uses a rootful Podman runtime inside its isolated VM. This does not elevate Lando on the Windows host or give containers Windows administrator access. Setup does not silently convert an existing machine from rootless to rootful.
+
+Lando imports the host native CA store only into machines it created. A user-owned machine stays untouched. New host CA changes reach an already running Lando machine on its next start; rerunning setup does not stop active containers just to refresh trust.
 
 Lando never auto-elevates or runs Hyper-V prep for you. If setup names Hyper-V as a prerequisite, fix it in an Administrator terminal and rerun `lando setup`. `--yes` is consent, not a provider switch.
+
+Windows may open a Security Warning while setup installs local certificate trust. Approve that prompt to continue. `--yes` cannot answer Windows security prompts.
+
+Windows OpenSSH Client is also required for `lando` commands launched inside a service. If setup reports it missing, install **OpenSSH Client** under Windows Settings > System > Optional features, then rerun `lando setup`. The per-app connection stays on Windows loopback and a private socket in the Lando-owned Podman machine; you do not need a firewall rule.
 
 The default provider stays `lando`. WSL remains an optional Linux-binary path. See [Install Lando on WSL](../install/wsl.mdx) if you want that instead.

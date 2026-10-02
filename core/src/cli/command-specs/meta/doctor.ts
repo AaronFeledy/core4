@@ -11,20 +11,17 @@ import {
 } from "../../commands/doctor-report";
 import type { RenderContext } from "../../renderer-boundary";
 
-import type { LandoCommandSpec } from "../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
-  if (typeof input !== "object" || input === null) return {};
-  const signal = (input as { readonly signal?: unknown }).signal;
-  const flags = (
-    input as {
-      flags?: { provider?: unknown; fix?: unknown; app?: unknown; deprecations?: unknown; format?: unknown };
-    }
-  ).flags;
-  const provider = typeof flags?.provider === "string" ? flags.provider : undefined;
+  const signal = extractSpecAbortSignal(input);
+  const flags = specFlagsOf(input);
+  const provider = stringFlag(flags, "provider");
   const fix = flags?.fix === true;
   const app = flags?.app === true;
   const deprecations = flags?.deprecations === true;
+  const all = flags?.all === true;
   const format =
     flags?.format === "json" || flags?.format === "yaml" || flags?.format === "text"
       ? flags.format
@@ -34,6 +31,7 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions => {
     ...(fix ? { fix: true } : {}),
     ...(app ? { app: true } : {}),
     ...(deprecations ? { deprecations: true } : {}),
+    ...(all ? { all: true } : {}),
     ...(format === undefined ? {} : { format }),
     ...(signal instanceof AbortSignal ? { signal } : {}),
   };
@@ -43,7 +41,7 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: 
   const options = inputDoctorOptions(input);
   const format = ctx?.format ?? options.format;
   if (format === "ndjson") return renderDoctorReportAsNdjson(report);
-  return renderDoctorReport(report, ctx);
+  return renderDoctorReport(report, ctx, { all: options.all });
 };
 
 const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
@@ -81,6 +79,10 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
     }),
     deprecations: Flags.boolean({
       description: "Also report deprecated surfaces used by the current app and loaded plugins.",
+      default: false,
+    }),
+    all: Flags.boolean({
+      description: "List every check, including passing ones, instead of only degraded checks.",
       default: false,
     }),
     format: Flags.string({

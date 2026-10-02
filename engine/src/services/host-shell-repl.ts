@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
-import { REDACTED, type Redactor } from "@lando/sdk/secrets";
+import { REDACTED, type Redactor, parseSecretReference } from "@lando/sdk/secrets";
 import {
   EventService,
   type LandoEvent,
@@ -18,7 +18,7 @@ import { DEFAULT_SHELL_HISTORY_LIMIT, appendShellHistory, readShellHistory } fro
 import { runHostShellLine } from "./host-shell-line.ts";
 import { makeStatefulShellRedactor } from "./host-shell-redactor.ts";
 
-const SECRET_REFERENCE = /\$\{secret:([A-Za-z0-9_.-]+)\}/g;
+const SECRET_REFERENCE = /\$\{secret:([^}\r\n]+)\}/g;
 const EXIT_LINE = /^exit(?:\s+([+-]?[0-9]+))?\s*$/;
 type HostShellReplSpec = Omit<ShellInteractiveSpec, "io"> & { readonly io: ShellReplIO };
 
@@ -49,10 +49,12 @@ const resolveSecrets = (
     if (line.replace(SECRET_REFERENCE, "").includes("${secret:")) {
       return yield* Effect.fail(shellError("Malformed secret reference.", REDACTED));
     }
-    if (matches.length === 0) return { fragments: [line], values: [] as ReadonlyArray<string> };
-    const values = yield* Effect.all(matches.map((match) => resolveSecret(match[1] ?? ""))).pipe(
-      Effect.mapError((error) => shellError(error.message, REDACTED, error)),
-    );
+    const values = yield* Effect.forEach(matches, (match) =>
+      Effect.gen(function* () {
+        const reference = yield* parseSecretReference(match[1] ?? "");
+        return yield* resolveSecret(reference.raw);
+      }),
+    ).pipe(Effect.mapError((error) => shellError(error.message, REDACTED, error)));
     const fragments: string[] = [];
     let cursor = 0;
     for (const match of matches) {
@@ -151,7 +153,18 @@ export const runHostShellRepl = (
             const exitCode = parseExit(line, lastStatus);
             if (exitCode !== undefined) return { exitCode };
             const resolution = await Effect.runPromise(
-              Effect.either(resolveSecrets(line, spec.resolveSecret)),
+              Effect.either(
+                resolveSecrets(line, (reference) =>
+                  spec.resolveSecret(reference).pipe(
+                    Effect.tap((value) =>
+                      Option.match(redactionService, {
+                        onNone: () => Effect.void,
+                        onSome: (service) => service.registerValues([value]),
+                      }),
+                    ),
+                  ),
+                ),
+              ),
             );
             if (resolution._tag === "Left") {
               io.writeStderr(`${baseRedactor.redactString(resolution.left.message)}\n`);

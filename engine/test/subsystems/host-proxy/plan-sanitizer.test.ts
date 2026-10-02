@@ -91,3 +91,113 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
   // Then
   expect(sanitized).toEqual(stripHostProxyRunLando(fixturePlan));
 });
+
+test("sanitizer strips ssh-agent overlay", async () => {
+  const { withSshAgentOverlay } = await import("../../../src/subsystems/ssh-agent/overlay.ts");
+  // Given
+  const metadata = {
+    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    source: "sanitizer-test",
+    runtime: 4,
+  } satisfies AppPlan["metadata"];
+  const service: ServicePlan = {
+    name: ServiceName.make("web"),
+    type: "lando",
+    provider: ProviderId.make("lando"),
+    primary: true,
+    environment: {},
+    mounts: [],
+    storage: [],
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [],
+    metadata,
+    extensions: { "@lando/core/ssh-agent": { mode: "host" } },
+  };
+  const plan: AppPlan = {
+    id: AppId.make("demo"),
+    name: "demo",
+    slug: "demo",
+    root: AbsolutePath.make("/app/demo"),
+    provider: ProviderId.make("lando"),
+    services: { [service.name]: service },
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+  const overlaid = withSshAgentOverlay(plan, {
+    kind: "ssh",
+    socketName: "agent.sock",
+    mount: { _tag: "volume", volume: "agent" },
+  });
+  // When
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
+    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+  );
+  // Then
+  expect(result).toEqual(plan);
+});
+
+test("sanitizer strips gpg-agent overlay", async () => {
+  const { withGpgAgentOverlay } = await import("../../../src/subsystems/gpg-agent/overlay.ts");
+  // Given
+  const metadata = {
+    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    source: "sanitizer-test",
+    runtime: 4,
+  } satisfies AppPlan["metadata"];
+  const service: ServicePlan = {
+    name: ServiceName.make("web"),
+    type: "lando",
+    provider: ProviderId.make("lando"),
+    primary: true,
+    environment: { KEEP_ME: "yes" },
+    mounts: [],
+    storage: [],
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [],
+    metadata,
+    extensions: { "@lando/core/gpg-agent": { forward: true } },
+  };
+  const plan: AppPlan = {
+    id: AppId.make("demo"),
+    name: "demo",
+    slug: "demo",
+    root: AbsolutePath.make("/app/demo"),
+    provider: ProviderId.make("lando"),
+    services: { [service.name]: service },
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+  const overlaid = withGpgAgentOverlay(
+    plan,
+    {
+      kind: "gpg",
+      socketName: "S.gpg-agent",
+      mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/gpg-socket") },
+    },
+    "/relay/gpg-keyring",
+  );
+  expect(overlaid.services[service.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
+  expect(overlaid.services[service.name]?.mounts).toHaveLength(2);
+  // When
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
+    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+  );
+  // Then
+  expect(result).toEqual(plan);
+});

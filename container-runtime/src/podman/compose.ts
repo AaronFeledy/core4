@@ -1,4 +1,11 @@
 import { join as pathJoin } from "node:path";
+import {
+  APP_LABEL,
+  PROVIDER_LABEL,
+  STORAGE_KIND_LABEL,
+  STORAGE_SCOPE_LABEL,
+  STORE_LABEL,
+} from "../labels.ts";
 
 import { Effect } from "effect";
 
@@ -7,7 +14,6 @@ import {
   type AppPlan,
   type ServicePlan,
   fileSyncVolumeName,
-  landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
   sameAppMountTarget,
@@ -20,6 +26,7 @@ import type { ProviderErrorContext } from "../engine-api.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
+import { podmanNetworkNames } from "./networks.ts";
 
 export interface EmitComposeOptions {
   readonly userDataRoot: string;
@@ -238,7 +245,7 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
 });
 
 const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDocument => {
-  const networkNames = landoNetworkNames(plan);
+  const networkNames = podmanNetworkNames(plan);
   const sharedName = landoSharedNetworkName(plan);
   const services = Object.fromEntries(
     Object.entries(plan.services).map(([name, service]) => [
@@ -275,12 +282,12 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
     ...plan.stores.map(
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
         const labels = {
-          "dev.lando.app": plan.id,
-          "dev.lando.provider": plan.provider,
-          "dev.lando.store": store.name,
-          "dev.lando.scope": store.scope,
+          [APP_LABEL]: plan.id,
+          [PROVIDER_LABEL]: plan.provider,
+          [STORE_LABEL]: store.name,
+          [STORAGE_SCOPE_LABEL]: store.scope,
           ...volumeOwnershipLabels(plan, store),
-          ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+          ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
         };
         return [
           store.name,

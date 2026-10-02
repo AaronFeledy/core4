@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
+import { publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import {
   GlobalAppError,
   GlobalDestroyConfirmationError,
@@ -89,6 +90,9 @@ interface ProviderCalls {
   readonly build: Array<AppPlan>;
   readonly destroy: Array<DestroyCall>;
   readonly inspect: Array<InspectCall>;
+  readonly routes: Array<{ readonly app: string; readonly hostnames: ReadonlyArray<string> }>;
+  readonly routerSetups: number[];
+  readonly routesRemoved: string[];
 }
 
 type HarnessLayer = Layer.Layer<
@@ -102,6 +106,7 @@ type HarnessLayer = Layer.Layer<
   | PluginRegistry
   | RouterService
   | RuntimeProviderRegistry
+  | SecretStore
 >;
 
 interface HarnessOptions {
@@ -202,7 +207,16 @@ const makeHarness = async (
       ],
     },
   });
-  const calls: ProviderCalls = { actions: [], apply: [], build: [], destroy: [], inspect: [] };
+  const calls: ProviderCalls = {
+    actions: [],
+    apply: [],
+    build: [],
+    destroy: [],
+    inspect: [],
+    routes: [],
+    routerSetups: [],
+    routesRemoved: [],
+  };
   const events: Array<LandoEvent> = [];
   const providerId = ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
@@ -237,9 +251,10 @@ const makeHarness = async (
         providerId,
         status: "running",
         state: "running",
-        endpoints: [
-          { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
-        ],
+        endpoints: publishedEndpointsFromInspect(
+          { NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } } },
+          [{ _tag: "published", protocol: "https", port: 443, name: "websecure", publication: {} }],
+        ),
       });
     },
   };
@@ -291,6 +306,27 @@ const makeHarness = async (
     Layer.succeed(RouterService, {
       ...makeTestRouterService(),
       revalidateStartup: options.revalidateStartup ?? Effect.void,
+      setup: () =>
+        Effect.sync(() => {
+          calls.routerSetups.push(1);
+        }),
+      applyRoutes: (routes, app) =>
+        Effect.sync(() => {
+          calls.routes.push({ app: String(app), hostnames: routes.map((route) => route.hostname) });
+          return {
+            app,
+            appliedRoutes: [...routes],
+            authorities: routes.map((route) => ({
+              scheme: "https" as const,
+              hostname: route.hostname,
+              port: 444,
+            })),
+          };
+        }),
+      removeRoutes: (app) =>
+        Effect.sync(() => {
+          calls.routesRemoved.push(String(app));
+        }),
     }),
     Layer.succeed(BuildOrchestrator, buildOrchestrator),
     Layer.succeed(RuntimeProviderRegistry, {
@@ -443,6 +479,28 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("starting one routed global service preserves all global routes and reports its advertised URL", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness, {
+        mail: {
+          type: "lando",
+          routes: [{ hostname: "mailpit.lndo.site", endpoint: 8080 }],
+        },
+        proxy: { type: "lando" },
+      });
+      const result = await Effect.runPromise(
+        globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
+      expect(harness.calls.routerSetups).toHaveLength(1);
+      expect(harness.calls.routes).toEqual([
+        { app: "global", hostnames: ["mail.global.lndo.site", "proxy.global.lndo.site"] },
+      ]);
+      expect(result.servicesStarted[0]?.endpoints).toContain("https://mail.global.lndo.site:444");
+    });
+  });
+
   test("start with unknown --service fails before applying a plan", async () => {
     await withHarness(async (harness) => {
       const exit = await Effect.runPromiseExit(
@@ -576,6 +634,16 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("stopping and destroying global services remove only the global route file", async () => {
+    await withHarness(async (harness) => {
+      await globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer), Effect.runPromise);
+      await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+      expect(harness.calls.routesRemoved).toEqual(["global"]);
+      await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
+      expect(harness.calls.routesRemoved).toEqual(["global", "global"]);
+    });
+  });
+
   test("stop succeeds without provider calls when the global app is not installed", async () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
@@ -600,6 +668,7 @@ describe("meta:global command effects", () => {
       expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["mail"]);
       expect(result.materialized).toBe(true);
       expect(result.services.map((service) => service.service)).toEqual(["mail"]);
+      expect(result.services.flatMap((service) => service.endpoints)).toEqual(["https://localhost:8443"]);
     });
   });
 

@@ -24,7 +24,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent } from "../../src/operations/events.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
@@ -62,6 +66,7 @@ const runWithFakes = (
     EventServiceLive,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(RuntimeProviderRegistry, {
@@ -147,6 +152,7 @@ const eventRuntime = (
     EventServiceLive,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(RuntimeProviderRegistry, {

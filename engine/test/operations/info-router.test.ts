@@ -9,7 +9,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { RouterService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  RouterService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 
 import { infoForPlan } from "../../src/operations/info.ts";
@@ -70,7 +75,7 @@ const planWithRouter = (enabled: boolean): AppPlan => ({
   extensions: {},
 });
 
-const infoOf = (plan: AppPlan) => {
+const infoOf = (plan: AppPlan, endpoints: ServiceRuntimeInfo["endpoints"] = [published]) => {
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     inspect: (target) =>
@@ -80,7 +85,7 @@ const infoOf = (plan: AppPlan) => {
         providerId,
         status: "running",
         state: "running",
-        endpoints: [published],
+        endpoints,
       }),
   };
   const proxy = {
@@ -106,6 +111,24 @@ const infoOf = (plan: AppPlan) => {
 };
 
 describe("infoForPlan", () => {
+  test("renders a Redis TCP endpoint without advertising HTTP", async () => {
+    // Given
+    const plan = planWithRouter(false);
+    const redisPlan = { ...plan, services: { [web]: { ...service, type: "redis" } } };
+    // When
+    const result = await infoOf(redisPlan, [
+      {
+        _tag: "published",
+        protocol: "tcp",
+        port: 6379,
+        publication: {},
+        materialization: { bindAddress: "127.0.0.1", hostPort: 16379 },
+      },
+    ]);
+    // Then
+    expect(result.services[0]?.endpoints).toEqual(["tcp://localhost:16379"]);
+  });
+
   test("omits routed hostnames when the plan disables the router", async () => {
     const result = await infoOf(planWithRouter(false));
     expect(result.services[0]?.endpoints).toEqual(["http://localhost:8080"]);

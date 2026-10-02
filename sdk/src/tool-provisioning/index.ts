@@ -21,13 +21,13 @@
  * from that nested tar.gz". A flat `member` (`mutagen`) is a one-stage extract.
  * An omitted `archive` means the downloaded bytes are the binary itself.
  */
-import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
 import { Effect, Schema, type Scope } from "effect";
 
+import { sha256Hex } from "../digest/index.ts";
 import { ToolExtractError, ToolInstallPathError, ToolManifestError } from "../errors/index.ts";
 import { HostPlatform, type ToolManifest, hostPlatformFamily } from "../schema/index.ts";
 import { type DownloadError, Downloader } from "../services/index.ts";
@@ -74,8 +74,6 @@ export type ToolError = ToolManifestError | ToolExtractError | ToolInstallPathEr
 /** Map a host platform + arch to the canonical `${platform}-${arch}` manifest key. */
 export const resolveHostKey = (platform: string, arch: string): string =>
   `${Schema.is(HostPlatform)(platform) ? hostPlatformFamily(platform) : platform}-${arch}`;
-
-const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const versionMarkerPath = (binDir: string, toolId: string): string => join(binDir, `.${toolId}.version`);
 

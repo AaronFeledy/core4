@@ -63,6 +63,7 @@ describe("wordpress decomposition", () => {
         services: {
           appserver: {
             type: "php:{{ recipe.php }}",
+            primary: true,
             framework: "wordpress",
             port: 80,
             dependsOn: options.redis ? ["database", "cache"] : ["database"],

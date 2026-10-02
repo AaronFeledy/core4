@@ -77,7 +77,7 @@ const moduleFor = (
   return { name: manifest.name, manifest, runtimeProviders: new Map([[providerId, contribution]]) };
 };
 
-const run = (modules: ReadonlyArray<LandoPluginModule>) => {
+const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
@@ -100,6 +100,10 @@ const run = (modules: ReadonlyArray<LandoPluginModule>) => {
   return Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
+      if (observe) {
+        if (registry.observeRuntime === undefined) return yield* Effect.die("missing observer");
+        return yield* registry.observeRuntime;
+      }
       if (registry.resolveAppliedPlan === undefined) return yield* Effect.die("missing resolver");
       const selected = yield* registry.resolveAppliedPlan(root);
       return selected === undefined
@@ -140,6 +144,43 @@ test("recovers the persisted owner when an unrelated provider cannot initialize"
   expect(result).toMatchObject({ _tag: "Right", right: { plan, providerId: "lando" } });
   expect(unrelatedInitializations).toBe(0);
 });
+
+test.each([false, true])(
+  "host snapshots retain plans while gating runtime listing on running: %s",
+  async (running) => {
+    const inspected: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      isAvailable: Effect.succeed(true),
+      getStatus: Effect.succeed({ running }),
+      list: () =>
+        Effect.sync(() => {
+          inspected.push("services");
+          return [];
+        }),
+      listVolumes: () =>
+        Effect.sync(() => {
+          inspected.push("volumes");
+          return [];
+        }),
+    };
+    const result = await run(
+      [
+        moduleFor("lando", Effect.succeed([plan]), Effect.succeed(provider)),
+        moduleFor("podman", Effect.succeed([]), Effect.fail(unavailable("podman", "select"))),
+      ],
+      true,
+    );
+    expect(result).toMatchObject({
+      _tag: "Right",
+      right: [
+        { providerId: "lando", appliedPlans: [plan], runtimeObserved: running, services: [], volumes: [] },
+        { providerId: "podman", appliedPlans: [], runtimeObserved: false, services: [], volumes: [] },
+      ],
+    });
+    expect(inspected).toEqual(running ? ["services", "volumes"] : []);
+  },
+);
 
 test("propagates owner initialization failure after recovering its plan", async () => {
   // Given

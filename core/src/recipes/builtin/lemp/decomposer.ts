@@ -46,12 +46,20 @@ export const lempDecomposer: RecipeDecomposerFactory = (ports) => ({
           recipe: provenance,
           services: {
             web: {
+              primary: false,
               type: "nginx",
-              port: 80,
-              dependsOn: ["appserver"],
+              backend: "appserver",
+              webroot: "/app",
               routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
             },
-            appserver: { type: "php:{{ recipe.php }}", framework: "none", dependsOn: ["database"] },
+            appserver: {
+              type: "php:{{ recipe.php }}",
+              primary: true,
+              framework: "none",
+              via: "fpm",
+              webroot: "/app",
+              dependsOn: ["database"],
+            },
             database: { type: "mariadb" },
           },
           tooling: {

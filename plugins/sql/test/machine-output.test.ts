@@ -27,6 +27,89 @@ const successInputs: ReadonlyArray<{ readonly command: string; readonly input: D
 ];
 
 describe("db command machine output", () => {
+  test("preserves export file paths containing the public default password", async () => {
+    const harness = makeSqlTestDeps({ password: "lando" });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        executeDbCommand(harness.deps, {
+          action: "export",
+          file: "backups/Drupal backup with spaces.sql",
+          yes: true,
+        }),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) throw new Error("expected export success");
+
+    const tokens = dbCommandRedactionTokens(exit.value);
+    expect(tokens).not.toContain("lando");
+    const encoded = await Effect.runPromise(
+      encodeCommandResult({
+        command: "db:export",
+        resultSchema: DbCommandResult,
+        outcome: { _tag: "success", value: exit.value },
+        redactor: createRedactor("secrets", { values: tokens }),
+      }),
+    );
+    expect(decodeEnvelope(encoded).result).toMatchObject({ file: exit.value.file });
+    expect(encoded).not.toContain("[redacted]");
+  });
+
+  test("redacts explicitly authored default-valued SQL passwords", async () => {
+    for (const authored of [
+      { creds: { password: "lando" } },
+      { creds: { rootPassword: "lando" } },
+      { environment: { MYSQL_PASSWORD: "lando" } },
+      { environment: { MYSQL_ROOT_PASSWORD: "lando" } },
+    ]) {
+      const harness = makeSqlTestDeps({ password: "lando" });
+      const landofile = {
+        ...harness.deps.landofile,
+        services: { database: { type: "mysql:8.0", ...authored } },
+      };
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(executeDbCommand({ ...harness.deps, landofile }, { action: "export", yes: true })),
+      );
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isFailure(exit)) throw new Error("expected export success");
+      expect(dbCommandRedactionTokens(exit.value)).toContain("lando");
+    }
+  });
+
+  test("always redacts a root password from the planned service environment", async () => {
+    const harness = makeSqlTestDeps({ password: "lando", rootPassword: "lando" });
+    const landofile = {
+      ...harness.deps.landofile,
+      services: { database: { type: "mysql:8.0" } },
+    };
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(executeDbCommand({ ...harness.deps, landofile }, { action: "export", yes: true })),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) throw new Error("expected export success");
+    expect(dbCommandRedactionTokens(exit.value)).toContain("lando");
+  });
+
+  test("continues masking configured passwords in export file paths", async () => {
+    const secret = "private-password";
+    const harness = makeSqlTestDeps({ password: secret });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(executeDbCommand(harness.deps, { action: "export", file: `${secret}.sql`, yes: true })),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) throw new Error("expected export success");
+
+    const encoded = await Effect.runPromise(
+      encodeCommandResult({
+        command: "db:export",
+        resultSchema: DbCommandResult,
+        outcome: { _tag: "success", value: exit.value },
+        redactor: createRedactor("secrets", { values: dbCommandRedactionTokens(exit.value) }),
+      }),
+    );
+    expect(encoded).not.toContain(secret);
+    expect(decodeEnvelope(encoded).result).toMatchObject({ file: expect.stringContaining("[redacted]") });
+  });
   test("encodes every command result through the spec redactionTokens hook", async () => {
     const secret = "s3cret-pass";
 
@@ -73,19 +156,19 @@ describe("db command machine output", () => {
         redactor: identityRedactor,
       }),
     );
+    const harness = makeSqlTestDeps({ password: "test-password" });
+    const denied = await Effect.runPromiseExit(
+      Effect.scoped(executeDbCommand(harness.deps, { action: "reset", yes: false })),
+    );
+    expect(Exit.isFailure(denied)).toBe(true);
+    if (!Exit.isFailure(denied) || denied.cause._tag !== "Fail")
+      throw new Error("expected tagged reset confirmation failure");
+    expect(denied.cause.error).toBeInstanceOf(SqlConfirmRequiredError);
     const confirm = await Effect.runPromise(
       encodeCommandResult({
         command: "db:reset",
         resultSchema: DbCommandResult,
-        outcome: {
-          _tag: "failure",
-          error: new SqlConfirmRequiredError({
-            message: "Reset will destroy data in database.",
-            service: "database",
-            steps: [{ id: "reset", label: "reset database", target: "database", destructive: true }],
-            remediation: "Re-run with --yes after reviewing the listed steps.",
-          }),
-        },
+        outcome: { _tag: "failure", error: denied.cause.error },
         redactor: identityRedactor,
       }),
     );
@@ -95,7 +178,34 @@ describe("db command machine output", () => {
     expect(ambiguousEnvelope.ok).toBe(false);
     expect(confirmEnvelope.ok).toBe(false);
     expect(ambiguousEnvelope.error?._tag).toBe("SqlServiceAmbiguousError");
-    expect(confirmEnvelope.error?._tag).toBe("SqlConfirmRequiredError");
+    expect(confirmEnvelope.error).toMatchObject({
+      _tag: "SqlConfirmRequiredError",
+      service: "database",
+      steps: [expect.objectContaining({ id: "reset", target: "database", destructive: true })],
+    });
+  });
+
+  test("redacts structured confirmation steps in the machine error", async () => {
+    const secret = "private-target";
+    const encoded = await Effect.runPromise(
+      encodeCommandResult({
+        command: "db:reset",
+        resultSchema: DbCommandResult,
+        outcome: {
+          _tag: "failure",
+          error: new SqlConfirmRequiredError({
+            message: "Reset requires confirmation.",
+            service: "database",
+            steps: [{ id: "reset", label: "reset database", target: secret, destructive: true }],
+            remediation: "Review the listed steps before using --yes.",
+          }),
+        },
+        redactor: createRedactor("secrets", { values: [secret] }),
+      }),
+    );
+    const envelope = decodeEnvelope(encoded);
+    expect(encoded).not.toContain(secret);
+    expect(envelope.error?.steps?.[0]?.target).toBe("[redacted]");
   });
 
   test("preserves snapshot recovery metadata in machine output", async () => {

@@ -34,6 +34,7 @@ export const sandboxUninstallOptions = (
     join(roots.socketProxyUnitDir, "lando-proxy-https.service"),
   ],
   socketProxyPolkitPath: roots.socketProxyPolkitPath,
+  listDiscoveredApps: async () => [],
   ...extra,
 });
 

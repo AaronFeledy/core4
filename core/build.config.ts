@@ -33,6 +33,7 @@ export interface BundledPluginEntry {
     readonly certificateAuthorities?: ReadonlyArray<string>;
     readonly routerServices?: ReadonlyArray<string>;
     readonly sshServices?: ReadonlyArray<string>;
+    readonly secretStores?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
     readonly templateEngines?: ReadonlyArray<string>;
     readonly subscribers?: ReadonlyArray<{
@@ -103,6 +104,11 @@ export const buildConfig: BuildConfig = {
       name: "@lando/ssh-agent",
       path: "plugins/ssh-agent",
       contributes: { sshServices: ["sidecar"], globalServices: ["ssh-agent"] },
+    },
+    {
+      name: "@lando/secret-store-1password",
+      path: "plugins/secret-store-1password",
+      contributes: { secretStores: ["1password"] },
     },
     {
       name: "@lando/template-handlebars",

@@ -14,7 +14,7 @@ name: static-demo
 services:
   web:
     type: static
-    root: dist
+    webroot: /app/dist
 tooling:
   curl:
     service: web
@@ -55,8 +55,7 @@ Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use 
 
 ## Serve a subdirectory
 
-Setting `root: dist` (as the fixture above does) serves the build output
-directory and sets `LANDO_WEBROOT=/app/dist` inside the container.
+Set `webroot` to the full container path, just as you do for nginx, Apache, and PHP services. The fixture uses `webroot: /app/dist` to serve the build output directory and set `LANDO_WEBROOT=/app/dist` inside the container. Without `webroot`, static serves `/app`.
 
 ## Serve with Caddy
 

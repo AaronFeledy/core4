@@ -223,12 +223,12 @@ describe("meta:plugin:add command", () => {
     }
   });
 
-  test("removes a newly unpacked npm plugin and new trust when registry recording cannot write", async () => {
+  test("removes a newly unpacked npm plugin and new trust when registry cannot be read", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
-    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    await mkdir(join(pluginsRoot, "registry.json"), { recursive: true });
     const trustStore = new Set<string>();
 
     const exit = await Effect.runPromiseExit(
@@ -246,12 +246,12 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
-  test("keeps pre-existing trust when registry recording cannot write", async () => {
+  test("keeps pre-existing trust when registry cannot be read", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
-    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    await mkdir(join(pluginsRoot, "registry.json"), { recursive: true });
     const trustStore = new Set<string>(["@lando/plugin-php"]);
 
     const exit = await Effect.runPromiseExit(
@@ -497,7 +497,7 @@ describe("meta:plugin:add command", () => {
     );
   });
 
-  test("removes authoring-root-derived session trust when registry recording cannot write", async () => {
+  test("keeps an untrusted postinstall plugin uninstalled when registry cannot be read", async () => {
     const bytes = await makeNpmTarball({
       "package.json": JSON.stringify({
         name: "@lando/plugin-postinstall",
@@ -513,7 +513,7 @@ describe("meta:plugin:add command", () => {
       "index.js": "export {};\n",
       "postinstall.js": "throw new Error('must not run during gated install');\n",
     });
-    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    await mkdir(join(pluginsRoot, "registry.json"), { recursive: true });
     const persistentStore = makePluginTrustStore(join(userDataRoot, "plugin-trust.yml"));
     await Effect.runPromise(persistentStore.trustAuthoringRoot(pluginsRoot));
     const trustStore = new Set<string>();

@@ -28,6 +28,8 @@ import type {
   PublicationUnsupportedError,
   RouteInputError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   StateStoreError,
   ToolingExecError,
   TunnelProviderUnavailableError,
@@ -129,6 +131,8 @@ type LegacyEnsureGlobalServicesError =
   | ProviderError
   | ProviderUnavailableError
   | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
@@ -220,6 +224,8 @@ describe("Engine plan-carrying error channels", () => {
         | GlobalServiceMissingError
         | PluginManifestError
         | SecretNotFoundError
+        | SecretStoreUnavailableError
+        | SecretReferenceInvalidError
         | ToolingExecError
       >
     >(true);

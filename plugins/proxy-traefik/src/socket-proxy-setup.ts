@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, absurd } from "effect";
 
 import type { InteractionService, PrivilegeService, ProcessRunner } from "@lando/sdk/services";
 
@@ -24,10 +24,6 @@ const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDeci
   notices: [],
   fingerprint: defaultAcquisitionFingerprint(),
 });
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
-};
 
 const consentToInstall = (
   socketProxy: SocketProxyDependencies,
@@ -82,7 +78,7 @@ export const resolveNeedsHelper = (
       case "proxyd-missing":
         return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
       default:
-        return assertNever(installed);
+        return absurd<never>(installed);
     }
     const started = yield* startSockets({
       processRunner: socketProxy.processRunner,

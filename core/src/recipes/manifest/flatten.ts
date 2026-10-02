@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import {
   RecipeExtendsError,
@@ -105,9 +105,6 @@ const extendsError = (kind: "cycle" | "depth", chain: ReadonlyArray<string>): Re
     }
   }
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
 
 const extendsRefOf = (parsed: Record<string, unknown>): string | undefined => {
   const value = parsed.extends;
@@ -291,7 +288,7 @@ const flattenRaw = (
   ctx: FlattenRecipeContext,
 ): Effect.Effect<Record<string, unknown>, FlattenError> =>
   Effect.gen(function* () {
-    if (!isRecord(parsed)) return {};
+    if (!Predicate.isRecord(parsed)) return {};
     const ref = extendsRefOf(parsed);
     if (ref === undefined) return stripExtendsAndDrop(parsed);
 
@@ -317,7 +314,7 @@ export const flattenRecipe = (
   parsed: unknown,
   ctx?: Partial<FlattenRecipeContext>,
 ): Effect.Effect<Record<string, unknown>, FlattenError> => {
-  if (!isRecord(parsed)) return Effect.succeed({});
+  if (!Predicate.isRecord(parsed)) return Effect.succeed({});
   return flattenRaw(source, parsed, {
     hops: ctx?.hops ?? 0,
     chain: ctx?.chain ?? [identityOf(source)],

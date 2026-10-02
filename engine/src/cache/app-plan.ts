@@ -5,7 +5,7 @@ import { deserialize, serialize } from "node:v8";
 
 import { Effect, Schema } from "effect";
 
-import { CacheError } from "@lando/sdk/errors";
+import { CacheError, isErrnoCode } from "@lando/sdk/errors";
 import {
   AppPlan,
   type LandofileShape,
@@ -26,6 +26,7 @@ import {
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
+import { sha256Hex } from "@lando/sdk/digest";
 import { routerEnabled } from "../config/router-config.ts";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
@@ -84,16 +85,11 @@ const stable = (value: unknown): unknown => {
 
 const stableStringify = (value: unknown): string => JSON.stringify(stable(value));
 
-const sha256Hex = (payload: Uint8Array | string): string => sha256(payload).toString("hex");
-
-const isEnoent = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT";
-
 const readOptionalHash = (path: string): Promise<string | null> =>
   readFile(path).then(
     (content) => sha256Hex(content),
     (cause) => {
-      if (isEnoent(cause)) return null;
+      if (isErrnoCode(cause, "ENOENT")) return null;
       throw cause;
     },
   );
@@ -109,7 +105,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
         .map((checksum) => checksum.toLowerCase())
         .sort(),
     (cause) => {
-      if (isEnoent(cause)) return [];
+      if (isErrnoCode(cause, "ENOENT")) return [];
       throw cause;
     },
   );
@@ -258,7 +254,7 @@ export const readCachedAppPlan = (input: {
         }),
     }).pipe(
       Effect.catchIf(
-        (error) => isEnoent(error.cause),
+        (error) => isErrnoCode(error.cause, "ENOENT"),
         () => Effect.succeed(null),
       ),
     );

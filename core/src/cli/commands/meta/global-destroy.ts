@@ -1,11 +1,13 @@
 import { Effect, Schema } from "effect";
 
-import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
+import { GlobalDestroyConfirmationError, type ProxyError } from "@lando/sdk/errors";
+
 import {
   type AppPlanner,
   type FileSystem,
   type GlobalAppService,
   type ProviderError,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -31,9 +33,14 @@ export const GlobalDestroyResultSchema = Schema.Struct({
   volumesRemoved: Schema.Boolean,
 });
 
-type GlobalDestroyError = LoadGlobalPlanError | GlobalDestroyConfirmationError | ProviderError;
+type GlobalDestroyError = LoadGlobalPlanError | GlobalDestroyConfirmationError | ProviderError | ProxyError;
 
-type GlobalDestroyServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalDestroyServices =
+  | AppPlanner
+  | FileSystem
+  | GlobalAppService
+  | RuntimeProviderRegistry
+  | RouterService;
 
 const confirmationError = (): GlobalDestroyConfirmationError =>
   new GlobalDestroyConfirmationError({
@@ -68,6 +75,8 @@ export const globalDestroy = (
       .map((service) => String(service.name));
 
     yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes, removeState: true });
+    const router = yield* RouterService;
+    yield* router.removeRoutes(loaded.plan.id);
 
     return { app: loaded.plan.name, materialized: true, servicesDestroyed, volumesRemoved: volumes };
   });

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 
-import { SecretNotFoundError } from "@lando/sdk/errors";
-import { createSecretRedactor } from "@lando/sdk/secrets";
+import { SecretNotFoundError, SecretStoreUnavailableError } from "@lando/sdk/errors";
+import { createSecretRedactor, parseSecretReference } from "@lando/sdk/secrets";
 import type { SecretStoreShape } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -16,6 +16,8 @@ const makeInMemoryStore = (id: string, secrets: Record<string, string>): SecretS
   return {
     id,
     get: (secret) => {
+      const reference = parseSecretReference(secret);
+      if (Either.isLeft(reference)) return Effect.fail(reference.left);
       const value = map.get(secret);
       return value === undefined
         ? Effect.fail(new SecretNotFoundError({ message: `missing ${secret}`, secret }))
@@ -33,6 +35,7 @@ describe("SecretStore contract", () => {
       store: makeInMemoryStore("in-memory", { TOKEN: "s3cr3t", DB: "p@ss" }),
       known: { key: "TOKEN", value: "s3cr3t" },
       unknown: "ABSENT",
+      invalidReference: "op://Vault//field",
     };
     const exit = await Effect.runPromiseExit(runSecretStoreContractSuite(harness));
     if (exit._tag === "Failure") {
@@ -47,6 +50,7 @@ describe("SecretStore contract", () => {
       store: makeInMemoryStore("in-memory", { TOKEN: "s3cr3t" }),
       known: { key: "TOKEN", value: "s3cr3t" },
       unknown: "ABSENT",
+      invalidReference: "op://Vault//field",
       redactor: (values) => {
         const inner = createSecretRedactor(values);
         return { redactString: (text) => inner.redact(text) };
@@ -84,6 +88,7 @@ describe("SecretStore contract", () => {
         store: makeInMemoryStore("mem", { s3cr3t: "other" }),
         known: { key: "s3cr3t", value: "other" },
         unknown: "ABSENT",
+        invalidReference: "op://Vault//field",
       }),
     );
     if (exit._tag === "Failure") {
@@ -98,6 +103,7 @@ describe("SecretStore contract", () => {
         store: makeInMemoryStore("wrong", { TOKEN: "actual" }),
         known: { key: "TOKEN", value: "expected" },
         unknown: "ABSENT",
+        invalidReference: "op://Vault//field",
       }),
     );
     expect(exit._tag).toBe("Failure");
@@ -109,5 +115,126 @@ describe("SecretStore contract", () => {
 
   test("ContractFailure is exported", () => {
     expect(ContractFailure).toBeDefined();
+  });
+
+  test("secret store contract suite rejects a store that resolves an invalid reference", async () => {
+    // Given
+    const store = makeInMemoryStore("permissive", { TOKEN: "value" });
+    const harness = {
+      store: {
+        ...store,
+        get: (reference: string) =>
+          reference === "op://A//B" ? Effect.succeed("value") : store.get(reference),
+      },
+      known: { key: "TOKEN", value: "value" },
+      unknown: "ABSENT",
+      invalidReference: "op://A//B",
+    };
+    // When
+    const result = await Effect.runPromise(Effect.either(runSecretStoreContractSuite(harness)));
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(ContractFailure);
+  });
+
+  test.each(["get", "has"] as const)(
+    "rejects an unavailable store that hides failure in %s",
+    async (method) => {
+      // Given
+      const failure = new SecretStoreUnavailableError({
+        message: "Locked",
+        storeId: "locked",
+        reason: "locked",
+        remediation: "Unlock the store.",
+      });
+      const unavailable = {
+        id: "locked",
+        get: () => Effect.fail(failure),
+        has: () => Effect.fail(failure),
+        list: Effect.succeed([]),
+      };
+      const store =
+        method === "get"
+          ? { ...unavailable, get: () => Effect.succeed("value") }
+          : { ...unavailable, has: () => Effect.succeed(false) };
+      // When
+      const result = await Effect.runPromise(
+        Effect.either(
+          runSecretStoreContractSuite({
+            store: makeInMemoryStore("mem", { TOKEN: "value" }),
+            known: { key: "TOKEN", value: "value" },
+            unknown: "ABSENT",
+            invalidReference: "op://A//B",
+            unavailableStore: { store, reason: "locked" },
+          }),
+        ),
+      );
+      // Then
+      expect(Either.isLeft(result)).toBe(true);
+    },
+  );
+
+  test.each(["locked", "unauthenticated", "denied", "timeout", "cli-missing"] as const)(
+    "accepts an unavailable store preserving %s",
+    async (reason) => {
+      // Given
+      const failure = new SecretStoreUnavailableError({
+        message: "Unavailable",
+        storeId: "backend",
+        reason,
+        remediation: "Restore the backend.",
+      });
+      const store: SecretStoreShape = {
+        id: "backend",
+        get: () => Effect.fail(failure),
+        has: () => Effect.fail(failure),
+        list: Effect.succeed([]),
+      };
+      // When
+      const result = await Effect.runPromise(
+        Effect.either(
+          runSecretStoreContractSuite({
+            store: makeInMemoryStore("mem", { TOKEN: "value" }),
+            known: { key: "TOKEN", value: "value" },
+            unknown: "ABSENT",
+            invalidReference: "op://A//B",
+            unavailableStore: { store, reason },
+            backendFailureStore: store,
+          }),
+        ),
+      );
+      // Then
+      expect(Either.isRight(result)).toBe(true);
+    },
+  );
+
+  test("rejects an unavailable store reporting the wrong reason", async () => {
+    // Given
+    const failure = new SecretStoreUnavailableError({
+      message: "Denied",
+      storeId: "backend",
+      reason: "denied",
+      remediation: "Request access.",
+    });
+    const store: SecretStoreShape = {
+      id: "backend",
+      get: () => Effect.fail(failure),
+      has: () => Effect.fail(failure),
+      list: Effect.succeed([]),
+    };
+    // When
+    const result = await Effect.runPromise(
+      Effect.either(
+        runSecretStoreContractSuite({
+          store: makeInMemoryStore("mem", { TOKEN: "value" }),
+          known: { key: "TOKEN", value: "value" },
+          unknown: "ABSENT",
+          invalidReference: "op://A//B",
+          unavailableStore: { store, reason: "locked" },
+        }),
+      ),
+    );
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
   });
 });

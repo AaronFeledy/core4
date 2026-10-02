@@ -47,7 +47,7 @@ describe("renderer.setup fixture", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, rawEvents);
     const lines = io.stdoutLines();
-    expect(lines[0]).toBe("▼ Setting up Lando runtime (4 services)");
+    expect(lines[0]).toBe("▼ Setting up Lando runtime (4 steps)");
     expect(lines[1]).toContain("[bundle] start: Verify runtime bundle");
     expect(lines[2]).toContain("[bundle] ✓ complete: Verify runtime bundle");
     expect(lines[3]).toContain("[podman] start: Detect Podman");

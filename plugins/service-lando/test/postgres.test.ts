@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 
 import {
   POSTGRES_CONFIG_TARGET,
@@ -120,6 +120,8 @@ describe("postgres ServiceType", () => {
     const resolution = await resolvePostgres({ type: "postgres" });
 
     expect(resolution.tooling?.psql).toEqual({
+      description: "Open the PostgreSQL client for this service.",
+      dir: PortablePath.make("/"),
       service: "db",
       cmd: ["psql", "-U", "lando", "-d", "myapp"],
       env: { PGPASSWORD: DEFAULT_PASSWORD },

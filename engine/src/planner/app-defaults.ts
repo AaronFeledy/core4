@@ -1,6 +1,7 @@
 import { isAbsolute, relative } from "node:path";
 
 import type { GlobalConfig, ServiceConfig } from "@lando/sdk/schema";
+import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 
 type AppDefaultPaths = {
   readonly globalAppRoot: string;
@@ -12,12 +13,17 @@ export type UserAppDefaults = Pick<GlobalConfig, "appEnv" | "appLabels">;
 export const cacheInput = (
   routerEnabled: boolean,
   scanner: GlobalConfig["scanner"],
-  defaults: UserAppDefaults,
+  defaults: UserAppDefaults & {
+    readonly sshAgentMode: SshAgentIntent["mode"];
+    readonly gpgAgentForward?: boolean;
+  },
 ) => ({
   routerEnabled,
   scanner: scanner ?? null,
   appEnv: defaults.appEnv ?? null,
   appLabels: defaults.appLabels ?? null,
+  sshAgentMode: defaults.sshAgentMode,
+  gpgAgentForward: defaults.gpgAgentForward ?? false,
 });
 
 const isPathWithin = (root: string, candidate: string): boolean => {

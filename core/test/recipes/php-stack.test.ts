@@ -52,6 +52,7 @@ describe("php-stack helper", () => {
     });
     const yaml = lines.join("\n");
     expect(yaml).toContain("type: php:8.3");
+    expect(yaml).toContain("    primary: true");
     expect(yaml).not.toContain("via:");
     expect(yaml).toContain("allowOverride: true");
     expect(yaml).toContain("port: 80");
@@ -69,10 +70,12 @@ describe("php-stack helper", () => {
     });
     const yaml = lines.join("\n");
     expect(yaml).toContain("via: fpm");
+    expect(yaml).toContain("    primary: true");
     expect(yaml).not.toContain("allowOverride:");
     expect(yaml).not.toContain("port: 80");
     const edge = renderNginxEdgeLines("/app/web", "test-app").join("\n");
     expect(edge).toContain("backend: appserver");
+    expect(edge).not.toContain("primary: true");
     expect(edge).toContain("webroot: /app/web");
   });
 

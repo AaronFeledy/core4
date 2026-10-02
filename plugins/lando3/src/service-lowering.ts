@@ -1,4 +1,4 @@
-import { isLegacyTagged } from "@lando/sdk/landofile";
+import { isLegacyTagged, mergeLandofiles } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic, ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
 import { lowerBuildHooks } from "./build-hooks.ts";
 import { CATALOG, resolveCatalogType } from "./catalog.ts";
@@ -30,7 +30,6 @@ import {
   rewrittenServiceKey,
   unsupportedServiceKey,
 } from "./service-diagnostics.ts";
-import { mergeLandofiles } from "./v4-merge.ts";
 
 export interface LoweredServicePrefix {
   readonly targetLayer: LandofileLayer;

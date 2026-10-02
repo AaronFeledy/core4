@@ -14,6 +14,25 @@ const fileExists = async (path: string): Promise<boolean> =>
   );
 
 describe("writeFileAtomicViaRename", () => {
+  test("writes mode-only private files without an ACL adapter on Windows", async () => {
+    // Given a Windows host without a private-file-access adapter
+    const dir = await mkdtemp(join(tmpdir(), "lando-cache-atomic-"));
+    const target = join(dir, "record.json");
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    try {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+
+      // When an install record is replaced
+      await writeFileAtomicViaRename(target, "updated", { mode: 0o600 });
+
+      // Then the mode-only write publishes the new record
+      expect(await readFile(target, "utf8")).toBe("updated");
+    } finally {
+      if (platform !== undefined) Object.defineProperty(process, "platform", platform);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("rejects a successful ACL swap before writing secrets", async () => {
     // Given an ACL hook that replaces the opened inode
     const dir = await mkdtemp(join(tmpdir(), "lando-cache-atomic-"));

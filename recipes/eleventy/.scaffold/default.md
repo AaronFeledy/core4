@@ -11,7 +11,7 @@ lando info
 
 The scaffold writes `.lando.yml` and no templates. Eleventy has no recipe options, so `--yes` accepts the app name from `--name`.
 
-Open the `builder` URL from `lando info`. It points at the Eleventy `--serve` process, which rebuilds and reloads as you work.
+Open the `builder` URL from `lando info`. It points at the Eleventy `--serve` process, which rebuilds and reloads as you work. The app hostname URL (`web`) serves `_site/` through nginx once a build has written it.
 
 For install, build, browse, and cleanup steps, see [Run the Eleventy recipe](/guides/recipes/eleventy-workflow/).
 

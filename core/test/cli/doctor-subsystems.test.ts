@@ -6,11 +6,12 @@ import { Effect, Layer, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { StreamFrame } from "@lando/sdk/schema";
-import { PathsService, RouterService } from "@lando/sdk/services";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { HostProxyService, PathsService, RouterService } from "@lando/sdk/services";
+import { makeTestHostProxyService, makeTestRouterService } from "@lando/sdk/test";
 
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
+import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import {
   DefaultSubsystemDoctorLayer,
@@ -24,8 +25,13 @@ const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.n
 
 const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy"] as const;
 
+const dnsLayer = (addresses: ReadonlyArray<string>) =>
+  Layer.succeed(HostDnsResolver, { lookup: () => Effect.succeed(addresses) });
+
 const runDefault = (): Promise<SubsystemDoctorResult> =>
-  Effect.runPromise(subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
+  Effect.runPromise(
+    subsystemDoctor().pipe(Effect.provide(dnsLayer([])), Effect.provide(DefaultSubsystemDoctorLayer)),
+  );
 
 const decodeFrames = (ndjson: string) =>
   ndjson
@@ -91,12 +97,16 @@ describe("meta:doctor subsystem checks", () => {
         expect(solution?.command).toBe("lando doctor --fix");
       } else {
         expect(solution?.kind).toBe("manual");
-        expect(solution?.command).toBeDefined();
+        if (check.name !== "host-proxy") expect(solution?.command).toBeDefined();
       }
     }
     const manual = failing.filter((check) => check.recovery === "manual");
     expect(manual.length).toBeGreaterThanOrEqual(1);
-    expect(manual.every((check) => check.solutions[0]?.command === "lando setup")).toBe(true);
+    expect(
+      manual
+        .filter((check) => check.name !== "host-proxy")
+        .every((check) => check.solutions[0]?.command === "lando setup"),
+    ).toBe(true);
   });
 
   test("host-proxy check surfaces structured DNS status context", async () => {
@@ -111,19 +121,92 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.context.loopback).toBe("127.0.0.1");
   });
 
-  test("warns when host-proxy is skipped because start still needs a worker", async () => {
-    // Given / When
-    const result = await runDefault();
+  test("passes intentionally disabled host DNS when the hostname resolves to loopback", async () => {
+    const result = await Effect.runPromise(
+      subsystemDoctor().pipe(
+        Effect.provide(dnsLayer(["127.0.0.1"])),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    expect(hostProxy).toMatchObject({
+      status: "pass",
+      severity: "info",
+      context: {
+        active: "false",
+        mode: "none",
+        mechanism: "skipped",
+        dnsHostname: "lando-doctor-probe.lndo.site",
+        dnsResolved: "true",
+      },
+      solutions: [],
+    });
+  });
 
-    // Then
+  test("warns with manual DNS remediation when the disabled integration cannot resolve hostnames", async () => {
+    const result = await runDefault();
     const hostProxy = result.checks.find((check) => check.name === "host-proxy");
     expect(hostProxy?.status).toBe("warn");
-    expect(hostProxy?.severity).toBe("warn");
-    expect(hostProxy?.context.mechanism).toBe("skipped");
-    expect(hostProxy?.solutions[0]?.kind).toBe("manual");
-    expect(hostProxy?.solutions[0]?.description).toContain("lando start");
-    expect(hostProxy?.solutions[0]?.description).toContain("HostProxyTransportUnavailableError");
+    expect(hostProxy?.context.dnsResolved).toBe("false");
+    expect(hostProxy?.solutions[0]?.description).toContain("Configure a local DNS rule");
+    expect(hostProxy?.solutions[0]?.command).toBeUndefined();
+  });
+
+  test("warns when host DNS resolves away from the configured loopback", async () => {
+    const result = await Effect.runPromise(
+      subsystemDoctor().pipe(
+        Effect.provide(dnsLayer(["192.0.2.1"])),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    expect(hostProxy?.status).toBe("warn");
+    expect(hostProxy?.context.dnsAddresses).toBe("192.0.2.1");
+  });
+
+  test("warns when an active DNS integration no longer resolves the expected hostname", async () => {
+    const service = makeTestHostProxyService();
+    await Effect.runPromise(service.setup({ mode: "auto" }));
+    const layer = Layer.mergeAll(Layer.succeed(HostProxyService, service), dnsLayer([]));
+    const result = await Effect.runPromise(
+      subsystemDoctor().pipe(Effect.provide(layer), Effect.provide(DefaultSubsystemDoctorLayer)),
+    );
+    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    expect(hostProxy?.status).toBe("warn");
+    expect(hostProxy?.context.active).toBe("true");
+    expect(hostProxy?.context.dnsResolved).toBe("false");
     expect(hostProxy?.solutions[0]?.command).toBe("lando setup");
+  });
+
+  test("reports lookup failures as unresolved without leaking resolver errors", async () => {
+    const result = await Effect.runPromise(
+      subsystemDoctor().pipe(
+        Effect.provide(
+          Layer.succeed(HostDnsResolver, {
+            lookup: () => Effect.fail(new Error("sensitive resolver detail")),
+          }),
+        ),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    expect(hostProxy?.status).toBe("warn");
+    expect(hostProxy?.context.dnsResolved).toBe("false");
+    expect(JSON.stringify(hostProxy)).not.toContain("sensitive resolver detail");
+  });
+
+  test("bounds a stalled host DNS lookup and reports it as unresolved", async () => {
+    const started = performance.now();
+    const result = await Effect.runPromise(
+      subsystemDoctor().pipe(
+        Effect.provide(Layer.succeed(HostDnsResolver, { lookup: () => Effect.never })),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    expect(hostProxy?.status).toBe("warn");
+    expect(hostProxy?.context.dnsResolved).toBe("false");
+    expect(performance.now() - started).toBeLessThan(3000);
   });
 
   test("runs with only the six subsystem layers", async () => {
@@ -327,8 +410,35 @@ describe("meta:doctor subsystem checks", () => {
       // Then
       expect(proxy?.context.acquisitionMode).toBe("occupied-hop");
       expect(proxy?.status).toBe("warn");
-      expect(proxy?.solutions[0]?.description).toContain("port in use");
+      expect(proxy?.context.httpPort).toBe("8080");
+      expect(proxy?.context.httpsPort).toBe("8443");
+      expect(proxy?.solutions[0]?.description).toContain("8080");
+      expect(proxy?.solutions[0]?.description).toContain("8443");
+      expect(proxy?.solutions[0]?.description).toContain("lando info");
+      expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
       expect(proxy?.solutions[0]?.description).not.toContain("38080");
+    } finally {
+      acquisition.cleanup();
+    }
+  });
+
+  test("uses restart advice when occupied-hop router is stopped", async () => {
+    const acquisition = writeAcquisitionState("occupied-hop");
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const layer = Layer.mergeAll(
+      DefaultSubsystemDoctorLayer,
+      Layer.succeed(RouterService, proxyService),
+      acquisition.layer,
+      FileSystemLive,
+    );
+    try {
+      const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
+      const proxy = result.checks.find((check) => check.name === "router");
+      expect(proxy?.status).toBe("warn");
+      expect(proxy?.context.ready).toBe("false");
+      expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
+      expect(proxy?.solutions[0]?.description).toContain("any occupied preferred ports");
+      expect(proxy?.solutions[0]?.description).toContain("Lando last selected HTTP");
     } finally {
       acquisition.cleanup();
     }

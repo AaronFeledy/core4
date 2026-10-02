@@ -166,6 +166,14 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       error: { _tag: "NotImplementedError" },
     });
 
+    const initialized = await runCommand(
+      [relocatedBinary, "init", "--recipe", "drupal-cms", "--name", "compiled-init", "--yes"],
+      { cwd: appRoot, env },
+    );
+    expect(initialized.exitCode, initialized.stderr + initialized.stdout).toBe(0);
+    expect(initialized.stdout).toContain("Created compiled-init");
+    expect(await Bun.file(resolve(appRoot, "compiled-init/.lando.yml")).exists()).toBe(true);
+
     let ptyOutput = "";
     const prompt = Bun.spawn({
       cmd: [relocatedBinary, "init"],
@@ -188,9 +196,23 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       expect(ptyOutput).toContain("╭");
     } finally {
       prompt.kill("SIGINT");
-      await prompt.exited;
+      expect(await prompt.exited).toBe(130);
       prompt.terminal?.close();
-      await rm(relocatedRoot, { recursive: true, force: true });
+
+      const terminated = Bun.spawn({
+        cmd: [relocatedBinary, "init"],
+        cwd: appRoot,
+        env,
+        terminal: { cols: 100, rows: 30, data: () => undefined },
+      });
+      try {
+        await Bun.sleep(100);
+        terminated.kill("SIGTERM");
+        expect(await terminated.exited).toBe(143);
+      } finally {
+        terminated.terminal?.close();
+        await rm(relocatedRoot, { recursive: true, force: true });
+      }
     }
   }, 120_000);
 });

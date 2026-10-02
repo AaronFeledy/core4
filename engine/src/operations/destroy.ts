@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, resolve as resolvePath } from "node:path";
 
 import { DateTime, Effect, Option, Schema } from "effect";
 
@@ -7,17 +7,27 @@ import type {
   DestroyAppResult,
   DestroyAppError as SdkDestroyAppError,
 } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
+import {
+  AppResolveError,
+  type ComposeKeyRejectedError,
+  type FileIoError,
+  type FileNotFoundError,
+  type FilePermissionError,
+  FileSyncStopError,
+  type LandofileLoadExpressionError,
+} from "@lando/sdk/errors";
 import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
   FileSyncEngine,
+  FileSystem,
   LandofileService,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -31,17 +41,22 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { shellArg } from "../services/shell-quote.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
-import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
+import { readDiscardableStart, retainedStartDisposal } from "./accelerated-start-discard.ts";
+import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
+  missingRootAppliedTarget,
   resolveTeardownResolution,
+  teardownResolutionAt,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
-import { terminateFileSyncSessions } from "./file-sync.ts";
+import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -64,7 +79,7 @@ type DestroyAppServices =
   | RuntimeProviderRegistry;
 type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
@@ -85,11 +100,30 @@ const unchangedResult = (app: string): DestroyAppResult => ({
   volumesRemoved: false,
 });
 
+const removeStrayAppContainers = (provider: RuntimeProviderShape, plan: AppPlan) =>
+  Effect.gen(function* () {
+    if (plan.id === "global") return;
+    // Listing is best effort; provider.destroy below reports runtime failures.
+    const observed = yield* provider
+      .list({ app: plan.id, includeUnplanned: true })
+      .pipe(Effect.catchAll(() => Effect.succeed([])));
+    for (const service of observed) {
+      if (
+        service.containerId !== undefined &&
+        service.app === plan.id &&
+        service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
+        !Object.hasOwn(plan.services, service.service)
+      )
+        yield* provider.removeObservedService(service);
+    }
+  });
+
 const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   Effect.gen(function* () {
+    const retained = yield* retainedStartDisposal(target.app, target.plan);
     const resolvedOptions = options ?? {};
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;
@@ -100,7 +134,87 @@ const destroyAppForTargetUncoordinated = (
     const provider = yield* registry.select(plan);
     const ref = target.app;
     const volumes = resolvedOptions.volumes ?? false;
+    const appliedFileSync =
+      retained !== undefined
+        ? { status: "ordinary" as const }
+        : provider.inspectAppliedFileSync === undefined
+          ? {
+              status:
+                plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
+                  ? ("unknown" as const)
+                  : ("ordinary" as const),
+            }
+          : yield* provider.inspectAppliedFileSync(plan);
+    if (appliedFileSync.status === "unknown") {
+      return yield* Effect.fail(
+        new FileSyncStopError({
+          engineId: plan.fileSync[0]?.engineId ?? "unavailable",
+          sessionRef: String(plan.id),
+          message:
+            "Previous file sync state could not be verified; destroying may lose unsynchronized changes.",
+          remediation: "Inspect and repair the file sync session and provider state, then retry destroy.",
+        }),
+      );
+    }
 
+    const selectedFileSync = yield* Effect.serviceOption(FileSyncEngine);
+    if (
+      appliedFileSync.status === "accelerated" &&
+      Option.isSome(selectedFileSync) &&
+      selectedFileSync.value.appLifecycle !== undefined
+    ) {
+      return yield* Effect.fail(
+        new FileSyncStopError({
+          engineId: selectedFileSync.value.id,
+          sessionRef: String(plan.id),
+          message: "Durable file sync disposal requires verified provider cleanup.",
+          remediation:
+            "Keep the app stopped and preserve its sync sessions and volumes until provider cleanup can verify ownership.",
+        }),
+      );
+    }
+
+    const fileSyncApplicable =
+      appliedFileSync.status === "accelerated" &&
+      (yield* Option.match(selectedFileSync, {
+        onNone: () => Effect.succeed(false),
+        onSome: (engine) => engine.isAvailable,
+      }));
+    const sessions =
+      fileSyncApplicable && Option.isSome(selectedFileSync)
+        ? yield* selectedFileSync.value.listSessions({ app: ref })
+        : [];
+    if (
+      appliedFileSync.status === "accelerated" &&
+      (appliedFileSync.engineId !==
+        (Option.isSome(selectedFileSync) ? selectedFileSync.value.id : undefined) ||
+        !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))
+    ) {
+      return yield* Effect.fail(
+        new FileSyncStopError({
+          engineId: appliedFileSync.engineId,
+          sessionRef: String(sessions[0]?.ref ?? plan.id),
+          message:
+            "An accelerated mount has no matching file sync session; destroying its volume could lose changes.",
+          remediation: "Repair or resume the file sync session, then retry destroy.",
+        }),
+      );
+    }
+    const quiesceForFileSync = provider.quiesceForFileSync;
+    if (sessions.length > 0 && quiesceForFileSync === undefined) {
+      return yield* Effect.fail(
+        new FileSyncStopError({
+          engineId: appliedFileSync.status === "accelerated" ? appliedFileSync.engineId : "unavailable",
+          sessionRef: String(sessions[0]?.ref ?? plan.id),
+          message: "This provider cannot stop app writes before flushing file sync.",
+          remediation: "Use a provider with file sync quiescence support, then retry destroy.",
+        }),
+      );
+    }
+
+    // End the retained attempt's sessions before hooks can write through them.
+    if (retained !== undefined) yield* retained.terminate;
+    yield* runAppInitEvents(plan);
     const preDestroy = PreDestroyEvent.make({
       _tag: "pre-destroy",
       app: ref,
@@ -108,12 +222,6 @@ const destroyAppForTargetUncoordinated = (
     });
     yield* events.publish(preDestroy);
     yield* runAppEvent(plan, "pre-destroy", preDestroy);
-
-    const fileSync = yield* Effect.serviceOption(FileSyncEngine);
-    const fileSyncApplicable = yield* Option.match(fileSync, {
-      onNone: () => Effect.succeed(false),
-      onSome: (engine) => engine.isAvailable,
-    });
 
     yield* withDestroyProgress({
       events,
@@ -126,11 +234,15 @@ const destroyAppForTargetUncoordinated = (
       work: (tree) =>
         Effect.gen(function* () {
           if (fileSyncApplicable) yield* tree.startTask("file-sync");
-          yield* terminateFileSyncSessions(ref);
+          if (sessions.length > 0 && quiesceForFileSync !== undefined) {
+            yield* quiesceForFileSync({ app: plan.id, plan });
+            yield* terminateFileSyncSessions(ref, sessions);
+          }
           if (fileSyncApplicable) yield* tree.completeTask("file-sync");
 
           yield* tree.startTask("provider");
           const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
+            Effect.zipRight(removeStrayAppContainers(provider, plan)),
             Effect.zipRight(
               provider.destroy(
                 { app: plan.id, plan },
@@ -143,6 +255,8 @@ const destroyAppForTargetUncoordinated = (
                 },
               ),
             ),
+            Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
+            Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
             Effect.ensuring(
               Effect.gen(function* () {
                 yield* tree.startTask("host-proxy");
@@ -175,6 +289,7 @@ const destroyAppForTargetUncoordinated = (
         }),
     });
 
+    if (retained !== undefined) yield* retained.clear;
     const postDestroy = PostDestroyEvent.make({
       _tag: "post-destroy",
       app: ref,
@@ -209,7 +324,9 @@ const destroyAppWithResolvedTarget = (
       if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
         const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
         if (appliedPlan === undefined) {
-          return unchangedResult(validatedTarget.plan.name);
+          const { pending } = yield* readDiscardableStart(validatedTarget.app);
+          if (pending === null || pending.phase === "completed")
+            return unchangedResult(validatedTarget.plan.name);
         }
       }
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
@@ -226,8 +343,11 @@ const destroyAppWithResolvedTarget = (
 export const destroyAppForTarget = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
+  afterSuccess?: Effect.Effect<void>,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
-  destroyAppWithResolvedTarget(options, target, true, target.landofile !== undefined);
+  destroyAppWithResolvedTarget(options, target, true, target.landofile !== undefined).pipe(
+    Effect.tap(() => afterSuccess ?? Effect.void),
+  );
 
 const destroyOrphans = (
   options: DestroyAppOptions,
@@ -263,9 +383,7 @@ const destroyDesiredOrUnchanged = (
     Effect.flatMap((desired) =>
       desired === undefined
         ? Effect.succeed(unchangedResult(basename(resolution.root)))
-        : runAppInitEvents(desired.plan).pipe(
-            Effect.zipRight(destroyAppWithResolvedTarget(options, desired, false, true)),
-          ),
+        : destroyAppWithResolvedTarget(options, desired, false, true),
     ),
   );
 
@@ -291,3 +409,80 @@ export const destroyApp = (
             result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
         ),
       );
+
+export const destroyAppAtRoot = (
+  root: string,
+  options: DestroyAppOptions = {},
+): Effect.Effect<
+  DestroyAppResult,
+  DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
+  DestroyAppServices | FileSystem
+> =>
+  Effect.gen(function* () {
+    // Owners are recorded by the exact path the app had. Try that first, then the path the
+    // current filesystem resolves it to (e.g. /tmp -> /private/tmp); a parent that was moved and
+    // replaced by a symlink must not redirect the lookup away from what was recorded.
+    const requested = AbsolutePath.make(resolvePath(root));
+    const canonical = AbsolutePath.make(
+      yield* canonicalMissingAppRoot(root).pipe(
+        Effect.mapError(
+          (error) =>
+            new AppResolveError({
+              reason: "missing-root",
+              detail: "unresolvable-root",
+              message: `The app folder path ${requested} cannot be resolved.`,
+              remediation:
+                typeof error.cause === "object" &&
+                error.cause !== null &&
+                "code" in error.cause &&
+                error.cause.code === "ENOENT"
+                  ? `Part of ${requested} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando destroy --root ${shellArg(requested)}.`
+                  : `Check that you can read every folder in ${requested}, then rerun.`,
+              cause: error,
+            }),
+        ),
+      ),
+    );
+    const candidates = requested === canonical ? [requested] : [requested, canonical];
+    const fs = yield* FileSystem;
+    for (const candidate of candidates) {
+      if (yield* fs.exists(candidate)) {
+        return yield* Effect.fail(
+          new AppResolveError({
+            reason: "mismatch",
+            detail: "root-exists",
+            message: `The app folder ${candidate} still exists.`,
+            remediation: `Run lando destroy from inside ${candidate}. --root is only for app folders that no longer exist.`,
+          }),
+        );
+      }
+    }
+    const resolveAt = (recorded: AbsolutePath) =>
+      teardownResolutionAt(recorded, false, (plan) => missingRootAppliedTarget(plan, recorded));
+    let recordedRoot = requested;
+    let resolution = yield* resolveAt(requested);
+    if (resolution.kind === "absent" && canonical !== requested) {
+      recordedRoot = canonical;
+      resolution = yield* resolveAt(canonical);
+    }
+    switch (resolution.kind) {
+      case "applied": {
+        const result = yield* destroyAppWithResolvedTarget(options, resolution.target, false, false);
+        const remaining = yield* resolveAt(recordedRoot);
+        if (remaining.kind === "orphans") {
+          const removed = yield* destroyOrphans(options, remaining);
+          return {
+            ...result,
+            outcome: "destroyed" as const,
+            servicesDestroyed: [...new Set([...result.servicesDestroyed, ...removed.servicesDestroyed])],
+            volumesRemoved: result.volumesRemoved || removed.volumesRemoved,
+          };
+        }
+        return { ...result, outcome: "destroyed" as const };
+      }
+      case "orphans":
+        return yield* destroyOrphans(options, resolution);
+      case "absent":
+        return unchangedResult(basename(root));
+    }
+  });

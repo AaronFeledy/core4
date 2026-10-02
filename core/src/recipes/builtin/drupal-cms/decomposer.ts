@@ -3,8 +3,10 @@ import { optionValueMatchesDescriptor } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { DRUSH_TOOLING_COMMAND } from "../drush-command";
 import { recipeOptionRemediation } from "../option-remediation.ts";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "./commands.ts";
+import { DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config";
 import {
   DRUPAL_CMS_MYSQL_INSTALL_COMMAND,
   DRUPAL_CMS_PGSQL_INSTALL_COMMAND,
@@ -60,11 +62,19 @@ export const drupalCmsDecomposer = ((ports) => ({
             ? {
                 appserver: {
                   type: "php:{{ recipe.php }}",
+                  primary: true,
                   framework: "drupal",
                   via: "fpm",
                   webroot: "{{ recipe.webroot }}",
                   composer: "{{ recipe.composer }}",
                   dependsOn: ["database"],
+                  mounts: [
+                    {
+                      source: `./${DRUPAL_CMS_PHP_INI_PATH}`,
+                      target: DRUPAL_CMS_PHP_INI_TARGET,
+                      readOnly: true,
+                    },
+                  ],
                 },
                 edge: {
                   type: "nginx",
@@ -77,12 +87,20 @@ export const drupalCmsDecomposer = ((ports) => ({
             : {
                 appserver: {
                   type: "php:{{ recipe.php }}",
+                  primary: true,
                   framework: "drupal",
                   webroot: "{{ recipe.webroot }}",
                   composer: "{{ recipe.composer }}",
                   allowOverride: true,
                   port: 80,
                   dependsOn: ["database"],
+                  mounts: [
+                    {
+                      source: `./${DRUPAL_CMS_PHP_INI_PATH}`,
+                      target: DRUPAL_CMS_PHP_INI_TARGET,
+                      readOnly: true,
+                    },
+                  ],
                   routes: primaryRoutes,
                 },
                 database,
@@ -91,7 +109,7 @@ export const drupalCmsDecomposer = ((ports) => ({
             drush: {
               service: "appserver",
               description: "Run Drush inside the appserver service.",
-              cmds: ["vendor/bin/drush"],
+              cmds: [DRUSH_TOOLING_COMMAND],
             },
             composer: {
               service: "appserver",

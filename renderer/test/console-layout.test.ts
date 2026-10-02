@@ -6,10 +6,13 @@ import {
   boxSeparator,
   boxTop,
   displayWidth,
+  fieldLabelWidth,
   hyperlink,
+  resolveSummaryWidth,
   stripAnsi,
   toneChip,
   truncateToWidth,
+  wrapFieldToWidth,
   wrapToWidth,
 } from "@lando/renderer/console-layout";
 
@@ -30,8 +33,35 @@ describe("displayWidth", () => {
     expect(displayWidth("１２３")).toBe(6);
   });
 
+  test("counts emoji presentation characters as two columns", () => {
+    expect(displayWidth("✅")).toBe(2);
+    expect(displayWidth("❌")).toBe(2);
+    expect(displayWidth("✅ ready")).toBe(8);
+  });
+
+  test("counts a text-presentation symbol plus VS16 as one two-column glyph", () => {
+    // U+26A0 WARNING SIGN + U+FE0F VARIATION SELECTOR-16
+    expect(displayWidth("\u26a0\ufe0f")).toBe(2);
+  });
+
+  test("counts text-presentation check marks as one column", () => {
+    expect(displayWidth("✔")).toBe(1);
+    expect(displayWidth("✓")).toBe(1);
+  });
+
+  test("counts a multi-code-point emoji cluster as one two-column glyph", () => {
+    expect(displayWidth("🇺🇸")).toBe(2); // regional indicator pair
+    expect(displayWidth("👍🏽")).toBe(2); // skin-tone modifier
+    expect(displayWidth("👨‍👩‍👧")).toBe(2); // ZWJ family sequence
+  });
+
+  test("counts CJK ideographs as two columns each", () => {
+    expect(displayWidth("中文")).toBe(4);
+  });
+
   test("ignores ANSI escape sequences", () => {
     expect(displayWidth(`${ESC}[32mok${ESC}[0m`)).toBe(2);
+    expect(displayWidth(`${ESC}[32m中文${ESC}[0m`)).toBe(4);
   });
 
   test("treats combining marks and variation selectors as zero width", () => {
@@ -57,6 +87,21 @@ describe("truncateToWidth", () => {
     expect(displayWidth(out)).toBeLessThanOrEqual(5);
     expect(out.endsWith("…")).toBe(true);
   });
+
+  test("never splits a flag or ZWJ sequence when the cut lands inside the cluster", () => {
+    // Given clusters of several code points; when only part of one fits the budget,
+    // then the whole cluster is dropped rather than cut into stray code points.
+    expect(truncateToWidth("🇺🇸🇫🇷", 3)).toBe("🇺🇸…");
+    expect(truncateToWidth("ab👨‍👩‍👧cd", 5)).toBe("ab👨‍👩‍👧…");
+    expect(truncateToWidth("ab👨‍👩‍👧cd", 4)).toBe("ab…");
+    expect(truncateToWidth("ab👍🏽cd", 5)).toBe("ab👍🏽…");
+    expect(truncateToWidth("e\u0301e\u0301e\u0301", 2)).toBe("e\u0301…");
+  });
+});
+
+test("truncateToWidth reads line breaks on single-line surfaces as spaces", () => {
+  expect(truncateToWidth("APP\nINFO", 20)).toBe("APP INFO");
+  expect(truncateToWidth("one\r\ntwo three", 8)).toBe("one two…");
 });
 
 describe("wrapToWidth", () => {
@@ -74,6 +119,101 @@ describe("wrapToWidth", () => {
     const rows = wrapToWidth("/very/long/unbreakable/path/segment", 10);
     for (const row of rows) expect(displayWidth(row)).toBeLessThanOrEqual(10);
   });
+
+  test("starts a new row at every embedded line break and drops blank rows", () => {
+    expect(wrapToWidth("one\ntwo", 40)).toEqual(["one", "two"]);
+    expect(wrapToWidth("a\r\nb\rc", 40)).toEqual(["a", "b", "c"]);
+    expect(wrapToWidth("a\n\n  \nb", 40)).toEqual(["a", "b"]);
+    expect(wrapToWidth("\n", 40)).toEqual([""]);
+    expect(wrapToWidth("alpha beta\ngamma", 6)).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  test("hard-breaks between grapheme clusters, never inside a flag or ZWJ sequence", () => {
+    const family = "👨‍👩‍👧";
+    const rows = wrapToWidth(`${family}🇺🇸👍🏽${family}🇫🇷`, 3);
+    expect(rows).toEqual([family, "🇺🇸", "👍🏽", family, "🇫🇷"]);
+    for (const row of rows) expect(displayWidth(row)).toBe(2);
+    expect(wrapToWidth("x🇺🇸y", 2)).toEqual(["x", "🇺🇸", "y"]);
+  });
+});
+
+test("wrapFieldToWidth moves a fitting path or URL below its separator", () => {
+  const path = "/home/u/.local/share/lando/providers/provider-lando";
+  const url = "http://appserver.myapp.internal:8080";
+  expect(wrapFieldToWidth("target", path, 6, 54)).toEqual(["target :", path]);
+  expect(wrapFieldToWidth("internal", url, 8, 44)).toEqual(["internal :", url]);
+  expect(displayWidth(path)).toBeLessThanOrEqual(54);
+  expect(displayWidth(url)).toBeLessThanOrEqual(44);
+});
+
+test("wrapFieldToWidth preserves spaces in a wrapped Windows path", () => {
+  const value = "C:\\Program Files\\Lando\\logs\\my app server.log";
+  const lines = wrapFieldToWidth("logFile", value, 7, 18);
+  const prefixWidth = lines[0]?.indexOf(" : ") ?? -1;
+  expect(prefixWidth).toBe(7);
+  const valueStart = prefixWidth + 3;
+  const reconstructed = [
+    lines[0]?.slice(valueStart) ?? "",
+    ...lines.slice(1).map((line) => line.slice(valueStart)),
+  ].join("");
+  expect(reconstructed).toBe(value);
+  expect(lines.length).toBeGreaterThan(1);
+  expect(lines.every((line) => displayWidth(line) <= 18)).toBe(true);
+});
+
+test("wrapFieldToWidth prefers spaces for log details and endpoint lists at 80 columns", () => {
+  const logDetails = "probe: GET http://127.0.0.1:8000/health returned 302; strategy: redirect after startup";
+  const endpoints = "http://127.0.0.1:49152/windows-cms http://127.0.0.1:49153/windows-cms";
+  for (const value of [logDetails, endpoints]) {
+    const lines = wrapFieldToWidth("logDetails", value, 12, 74);
+    const valueStart = 15;
+    const chunks = [
+      lines[0]?.slice(valueStart) ?? "",
+      ...lines.slice(1).map((line) => line.slice(valueStart)),
+    ];
+    expect(chunks.join("")).toBe(value);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(" "))).toBe(true);
+    expect(lines.every((line) => displayWidth(line) <= 74)).toBe(true);
+  }
+});
+
+test("wrapFieldToWidth stacks a label wider than the label column over its full-width value", () => {
+  // Given an 18-column field whose shared label column is 4 wide, when a label is wider than
+  // that column, then it stays whole on its own `label :` line and the value wraps beneath it.
+  expect(
+    wrapFieldToWidth("rootPassword", "C:\\Program Files\\Lando\\logs\\my app server.log", 4, 18),
+  ).toEqual(["rootPassword :", "C:\\Program ", "Files\\Lando\\logs\\m", "y app server.log"]);
+  expect(wrapFieldToWidth("detail", "line one\nline two", 0, 12)).toEqual([
+    "detail :",
+    "line one",
+    "line two",
+  ]);
+});
+
+test("wrapFieldToWidth splits a stacked label only when it cannot fit beside its separator", () => {
+  expect(wrapFieldToWidth("very-long-diagnostic-field-name", "y", 4, 18)).toEqual([
+    "very-long-diagno",
+    "stic-field-name :",
+    "y",
+  ]);
+  expect(wrapFieldToWidth("sixteen-columns!", "y", 4, 18)).toEqual(["sixteen-columns! :", "y"]);
+});
+
+test("fieldLabelWidth keeps eight value columns and leaves wider labels to stack", () => {
+  expect(fieldLabelWidth(["host", "rootPassword"], 74)).toBe(12);
+  // 18 columns leave a 7-column cap: rootPassword stacks, host still aligns.
+  expect(fieldLabelWidth(["host", "rootPassword"], 18)).toBe(4);
+  expect(fieldLabelWidth(["host"], 8)).toBe(0);
+  expect(fieldLabelWidth([], 40)).toBe(0);
+});
+
+test("resolveSummaryWidth reads unknown column counts as the default width", () => {
+  expect(resolveSummaryWidth(120)).toBe(120);
+  expect(resolveSummaryWidth(7)).toBe(10);
+  for (const columns of [undefined, 0, -20, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    expect(resolveSummaryWidth(columns)).toBe(80);
+  }
 });
 
 describe("box helpers", () => {

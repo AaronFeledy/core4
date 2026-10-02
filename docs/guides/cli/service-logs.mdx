@@ -25,13 +25,13 @@ services:
         label: myapp error log
 ```
 
-A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and timestamp behavior. The implicit container stdout/stderr source is always available. Use `--source console` when you want only engine logs.
+A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and timestamp behavior. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream.
 
 Lando-built images can redirect daemon log files through stdout/stderr. Bring-your-own images and logs that cannot redirect are followed by the active runtime provider. You do not run `tail -F` yourself.
 
 ## Filter and follow
 
-Restrict output to one declared source id, or to `console`:
+Select one declared source id, or select the combined stdout/stderr stream with `console`:
 
 ```sh
 lando logs --service appserver --source myapp-error
@@ -58,6 +58,8 @@ lando logs --service appserver --since 15m
 ## When a source is missing
 
 A provider that cannot stream service logs fails before planning with a tagged capability error and a fix. Follow sources from container files need the `serviceLogSources` capability. Redirect sources still work without it because they flow through the console stream.
+
+Selecting a redirected source selects that console stream. Other stdout and stderr from the same container can appear with it because the runtime cannot separate the original file after redirection. Use a `follow` source when you need file-specific output and the provider supports it.
 
 A required follow source fails up front when the provider cannot follow service files. A non-required unavailable follow source is marked unavailable and skipped. An undeclared `--source` fails and lists the known source ids, including `console`.
 

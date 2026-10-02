@@ -40,6 +40,20 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test("advertises agentSocket bind-directory on linux and guest-bridge on darwin and win32", () => {
+    // Given: native and managed-machine host platforms.
+    const platforms = ["linux", "darwin", "win32", "wsl"] as const;
+    // When: their platform capabilities are built.
+    const sockets = platforms.map((platform) => mvpProviderCapabilities(platform).agentSocket);
+    // Then: WSL stays native and machine hosts require a guest bridge.
+    expect(sockets).toEqual([
+      { delivery: "bind-directory" },
+      { delivery: "guest-bridge" },
+      { delivery: "guest-bridge" },
+      { delivery: "bind-directory" },
+    ]);
+  });
+
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const linux = mvpProviderCapabilities("linux");
     const macos = mvpProviderCapabilities("darwin");
@@ -65,6 +79,19 @@ describe("provider-lando capabilities", () => {
     expect(windows.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
+  test("reports the rootful Windows default and the mode of an existing machine", async () => {
+    expect(mvpProviderCapabilities("win32").rootless).toBe(false);
+    expect(mvpProviderCapabilities("linux").rootless).toBe(true);
+    expect(mvpProviderCapabilities("darwin").rootless).toBe(true);
+
+    const rootlessWindows = await Effect.runPromise(
+      introspectProviderCapabilities(
+        { info: Effect.succeed({ host: { security: { rootless: true } } }), ping: Effect.void },
+        "win32",
+      ),
+    );
+    expect(rootlessWindows.rootless).toBe(true);
+  });
   test("keeps WSL identity while using Linux-family capabilities", async () => {
     // Given: a provider constructed with WSL identity.
     // When: the runtime provider is resolved.

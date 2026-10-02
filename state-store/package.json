@@ -23,6 +23,8 @@
     "./codec": "./src/codec.ts",
     "./lock": "./src/lock.ts",
     "./paths": "./src/paths.ts",
+    "./plugin": "./src/plugin.ts",
+    "./testing": "./src/testing.ts",
     "./private-file-access": "./src/private-file-access.ts",
     "./service": "./src/service.ts",
     "./volume-initialization": "./src/volume-initialization.ts"

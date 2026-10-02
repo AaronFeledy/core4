@@ -10,3 +10,27 @@ export class SecretNotFoundError extends Schema.TaggedError<SecretNotFoundError>
   secret: Schema.String,
   remediation: Schema.optional(Schema.String),
 }) {}
+
+export class SecretStoreUnavailableError extends Schema.TaggedError<SecretStoreUnavailableError>()(
+  "SecretStoreUnavailableError",
+  {
+    message: Schema.String,
+    storeId: Schema.String,
+    reason: Schema.Literal("locked", "unauthenticated", "denied", "timeout", "cli-missing"),
+    remediation: Schema.String,
+  },
+) {}
+
+export class SecretReferenceInvalidError extends Schema.TaggedError<SecretReferenceInvalidError>()(
+  "SecretReferenceInvalidError",
+  {
+    message: Schema.String,
+    reference: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export type SecretStoreError =
+  | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError;

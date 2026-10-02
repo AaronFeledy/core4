@@ -19,6 +19,7 @@ export interface CompiledCommandInput {
   readonly rendererMode?: RendererMode;
   readonly resultFormat?: ResultFormat;
   readonly signal?: AbortSignal;
+  readonly hostIo?: "cli";
 }
 
 const assertNever = (value: never): never => value;

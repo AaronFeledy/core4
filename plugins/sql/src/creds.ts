@@ -1,4 +1,9 @@
+import { databaseEnvCreds } from "@lando/sdk/database-creds";
+
 import type { SqlFamily } from "./families.ts";
+
+/** Public fallback credential used by the bundled SQL recipes. */
+export const DEFAULT_SQL_PASSWORD = "lando";
 
 export type SqlCreds = {
   readonly user: string;
@@ -15,75 +20,15 @@ export type ResolveSqlCredsInput = {
   readonly planEnvironment: Readonly<Record<string, string>>;
 };
 
-type EnvCreds = {
-  readonly user: string | undefined;
-  readonly password: string | undefined;
-  readonly database: string | undefined;
-  readonly rootPassword: string | undefined;
-};
-
-const assertNever = (value: never): never => {
-  throw new Error(`unexpected SQL family: ${String(value)}`);
-};
-
-const firstEnv = (
-  environment: Readonly<Record<string, string>>,
-  keys: ReadonlyArray<string>,
-): string | undefined => {
-  for (const key of keys) {
-    const value = environment[key];
-    if (value !== undefined) return value;
-  }
-  return undefined;
-};
-
-const envCreds = (family: SqlFamily, environment: Readonly<Record<string, string>>): EnvCreds => {
-  switch (family) {
-    case "mysql":
-      return {
-        user: firstEnv(environment, ["MYSQL_USER"]),
-        password: firstEnv(environment, ["MYSQL_PASSWORD"]),
-        database: firstEnv(environment, ["MYSQL_DATABASE"]),
-        rootPassword: firstEnv(environment, ["MYSQL_ROOT_PASSWORD"]),
-      };
-    case "mariadb":
-      return {
-        user: firstEnv(environment, ["MYSQL_USER", "MARIADB_USER"]),
-        password: firstEnv(environment, ["MYSQL_PASSWORD", "MARIADB_PASSWORD"]),
-        database: firstEnv(environment, ["MYSQL_DATABASE", "MARIADB_DATABASE"]),
-        rootPassword: firstEnv(environment, ["MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD"]),
-      };
-    case "postgres":
-      return {
-        user: firstEnv(environment, ["POSTGRES_USER"]),
-        password: firstEnv(environment, ["POSTGRES_PASSWORD"]),
-        database: firstEnv(environment, ["POSTGRES_DB"]),
-        rootPassword: undefined,
-      };
-    case "mongodb":
-      return {
-        user: firstEnv(environment, ["MONGO_INITDB_ROOT_USERNAME"]),
-        password: firstEnv(environment, ["MONGO_INITDB_ROOT_PASSWORD"]),
-        database: firstEnv(environment, ["MONGO_INITDB_DATABASE"]),
-        rootPassword: undefined,
-      };
-    case "mssql": {
-      const saPassword = firstEnv(environment, ["SA_PASSWORD", "MSSQL_SA_PASSWORD"]);
-      return { user: undefined, password: saPassword, database: undefined, rootPassword: saPassword };
-    }
-    default:
-      return assertNever(family);
-  }
-};
-
 export const resolveSqlCreds = (input: ResolveSqlCredsInput): SqlCreds => {
   const authored = input.landofileService?.creds;
-  const fromEnv = envCreds(input.family, input.planEnvironment);
+  const fromEnv = databaseEnvCreds(input.family, input.planEnvironment);
+  const password = input.family === "mssql" ? (fromEnv.password ?? fromEnv.rootPassword) : fromEnv.password;
   const defaultUser = input.family === "mssql" ? "sa" : "lando";
   const rootPassword = authored?.rootPassword ?? fromEnv.rootPassword;
   return {
     user: authored?.user ?? fromEnv.user ?? defaultUser,
-    password: authored?.password ?? fromEnv.password ?? "lando",
+    password: authored?.password ?? password ?? DEFAULT_SQL_PASSWORD,
     database: authored?.database ?? fromEnv.database ?? input.appName,
     ...(rootPassword === undefined ? {} : { rootPassword }),
   };
@@ -110,6 +55,6 @@ export const credsEnv = (family: SqlFamily, creds: SqlCreds): Record<string, str
       };
     }
     default:
-      return assertNever(family);
+      throw new Error(`unexpected SQL family: ${String(family satisfies never)}`);
   }
 };

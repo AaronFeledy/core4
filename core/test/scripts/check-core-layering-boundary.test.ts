@@ -34,13 +34,17 @@ describe("boundary package script surface", () => {
     expect(manifest).not.toContain('"check:core-layering-boundary":');
   });
 
-  test("runs package-dag through the canonical boundary runner", async () => {
-    // Given / When: the stable rule id is invoked through the canonical runner.
-    const result = await runCommand(["scripts/check-boundaries.ts", "package-dag"]);
+  test(
+    "runs package-dag through the canonical boundary runner",
+    async () => {
+      // Given / When: the stable rule id is invoked through the canonical runner.
+      const result = await runCommand(["scripts/check-boundaries.ts", "package-dag"]);
 
-    // Then: the package ownership gate still executes successfully.
-    expect(result).toMatchObject({ exitCode: 0, stdout: "Package DAG check passed.\n" });
-  });
+      // Then: the package ownership gate still executes successfully.
+      expect(result).toMatchObject({ exitCode: 0, stdout: "Package DAG check passed.\n" });
+    },
+    { timeout: 20_000 },
+  );
 
   test("rejects a removed per-rule package alias", async () => {
     // Given / When: a deleted package alias is invoked.

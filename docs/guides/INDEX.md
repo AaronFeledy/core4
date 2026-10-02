@@ -68,7 +68,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-03 | US-099 | exclude patterns (volume-shadow + Mutagen ignores) | `docs/guides/setup/file-sync-excludes.mdx` | Shipped |
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | PRD-04 | US-102 | CertificateAuthority via @lando/ca-mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
-| PRD-04 | US-103 | SshService sidecar (default) | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
+| PRD-04 | US-103 | SshService sidecar (default) plus host-agent forwarding opt-in | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
 | PRD-04 | US-104 | HealthcheckService (tcp/http/cmd probes) | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
 | PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
 | PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
@@ -246,6 +246,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
 | — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
+| - | - | FastAPI recipe day-to-day workflow | `docs/guides/recipes/fastapi-workflow.mdx` | Shipped |
 | — | — | MEAN recipe day-to-day workflow | `docs/guides/recipes/mean-workflow.mdx` | Shipped |
 | — | — | Symfony recipe day-to-day workflow | `docs/guides/recipes/symfony-workflow.mdx` | Shipped |
 | — | — | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |
@@ -254,6 +255,11 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Node API recipe day-to-day workflow | `docs/guides/recipes/node-api-workflow.mdx` | Shipped |
 | — | — | Eleventy recipe day-to-day workflow | `docs/guides/recipes/eleventy-workflow.mdx` | Shipped |
 | — | — | Hugo recipe day-to-day workflow | `docs/guides/recipes/hugo-workflow.mdx` | Shipped |
+| — | — | Jekyll recipe day-to-day workflow | `docs/guides/recipes/jekyll-workflow.mdx` | Shipped |
+| — | — | Backdrop recipe day-to-day workflow | `docs/guides/recipes/backdrop-workflow.mdx` | Shipped |
+| — | — | WordPress recipe day-to-day workflow | `docs/guides/recipes/wordpress-workflow.mdx` | Shipped |
+| — | — | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
+| — | — | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
@@ -275,3 +281,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | — | — | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
+| — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
+| — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
+| n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |

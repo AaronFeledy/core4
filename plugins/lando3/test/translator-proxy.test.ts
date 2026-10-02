@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { validateConfigTranslateResult } from "@lando/sdk/landofile";
+import { isPlainRecord, mergeLandofiles, validateConfigTranslateResult } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment, LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Either, Schema } from "effect";
 import { defaultLando3Ports, makeLando3ConfigTranslator } from "../src/translator.ts";
-import { isPlainRecord, mergeLandofiles } from "../src/v4-merge.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 const translateFiles = async (files: ReadonlyArray<readonly [string, string]>) => {

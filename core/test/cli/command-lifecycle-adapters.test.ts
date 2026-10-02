@@ -73,6 +73,25 @@ describe("CLI lifecycle adapters", () => {
     });
   });
 
+  test("dynamic tooling consumes only Lando's leading separator", async () => {
+    const runCompiledCommand = spyOn(compiledRuntime, "runCompiledCommand").mockResolvedValue();
+    try {
+      await runDynamicTooling(["drush", "--", "status", "--format=json", "--", "literal argument"]);
+      expect(getActiveCommandInvocation()).toMatchObject({
+        commandId: "app:drush",
+        argv: ["status", "--format=json", "--", "literal argument"],
+      });
+
+      await runDynamicTooling(["drush", "status", "--", "--format=json"]);
+      expect(getActiveCommandInvocation()).toMatchObject({
+        commandId: "app:drush",
+        argv: ["status", "--", "--format=json"],
+      });
+    } finally {
+      runCompiledCommand.mockRestore();
+    }
+  });
+
   test("compiled alias input retains the canonical command identity", () => {
     // Given
     const commandId = resolveBuiltInCommand("start")?.spec.id ?? "cli:unknown";

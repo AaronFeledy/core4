@@ -1,30 +1,30 @@
 {
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.5",
+  "runtimeVersion": "0.1.6",
   "bundles": {
     "linux-x64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.5/lando-runtime-linux-x64.tar.gz",
-      "sha256": "8d5c96cc414b0c920dc94756e046a55c44c246e990883ed803d1e161964b1b00",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.6/lando-runtime-linux-x64.tar.gz",
+      "sha256": "374bfea06147315ba423e90f61c472d356e10a31634e1c2398c8a7cb5fd34a24",
       "filename": "lando-runtime-linux-x64.tar.gz",
-      "sizeBytes": 47211443
+      "sizeBytes": 46979489
     },
     "linux-arm64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.5/lando-runtime-linux-arm64.tar.gz",
-      "sha256": "baaa691f1def8782ff7a15879e3c093a032260ba6736be712d90d3a52f68c54e",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.6/lando-runtime-linux-arm64.tar.gz",
+      "sha256": "67bd5655590ab60deb016051941a6469210275ce93df225ff5c82b6591d502ea",
       "filename": "lando-runtime-linux-arm64.tar.gz",
-      "sizeBytes": 43287594
+      "sizeBytes": 43172206
     },
     "darwin-arm64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.5/lando-runtime-darwin-arm64.tar.gz",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.6/lando-runtime-darwin-arm64.tar.gz",
       "sha256": "d02e43ef84de776a2b2b3cb0e45acd2f075d3860027001288edf8ef1534b18ad",
       "filename": "lando-runtime-darwin-arm64.tar.gz",
       "sizeBytes": 30608459
     },
     "win32-x64": {
-      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.5/lando-runtime-win32-x64.zip",
-      "sha256": "49b5b442d317fbe575434cdee4883d14c1e9a9d4118fb6ec4cc2c239336f426f",
+      "url": "https://github.com/AaronFeledy/core4/releases/download/runtime-v0.1.6/lando-runtime-win32-x64.zip",
+      "sha256": "46d2de868a66edb05f90c2faffafa3f52fd42bd58122e8ba7cd559afef00e353",
       "filename": "lando-runtime-win32-x64.zip",
-      "sizeBytes": 29598057
+      "sizeBytes": 31142323
     }
   }
 }

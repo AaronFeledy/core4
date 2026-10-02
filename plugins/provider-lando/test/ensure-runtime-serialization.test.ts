@@ -156,10 +156,11 @@ describe("ensureRuntime launch serialization", () => {
   });
 
   for (const platform of ["darwin", "win32"] as const) {
-    test(`${platform} machine ensures use the launch lock`, async () => {
+    test(`${platform} healthy machine ensures skip the launch lock`, async () => {
       const lock = Effect.unsafeMakeSemaphore(1);
       let active = 0;
       let maximumActive = 0;
+      let lockCalls = 0;
       const machineRunner = {
         inspect: Effect.acquireUseRelease(
           Effect.sync(() => {
@@ -193,12 +194,16 @@ describe("ensureRuntime launch serialization", () => {
         configDir: "/runtime/config",
         socketPath: "/runtime/run/podman.sock",
         pidPath: "/runtime/run/podman.pid",
-        withLaunchLock: <A, E>(body: Effect.Effect<A, E>) => lock.withPermits(1)(body),
+        withLaunchLock: <A, E>(body: Effect.Effect<A, E>) => {
+          lockCalls += 1;
+          return lock.withPermits(1)(body);
+        },
       };
 
       await Effect.runPromise(Effect.all([ensureRuntime(deps), ensureRuntime(deps)], { concurrency: 2 }));
 
-      expect(maximumActive).toBe(1);
+      expect(lockCalls).toBe(0);
+      expect(maximumActive).toBe(2);
     });
   }
 });

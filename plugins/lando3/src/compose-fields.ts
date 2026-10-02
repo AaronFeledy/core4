@@ -1,5 +1,6 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-dispositions.ts";
+import { splitComposeCommand } from "./compose-command.ts";
+import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
 import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
@@ -8,6 +9,7 @@ import {
   needsReviewServiceKey,
   rejectedComposeKey,
   rewrittenServiceKey,
+  unsupportedServiceKey,
 } from "./service-diagnostics.ts";
 
 export interface ComposeFieldOptions {
@@ -109,7 +111,39 @@ export const lowerComposeFields = (
     }
 
     let output = input;
-    if (key === "environment") {
+    if ((key === "command" || key === "entrypoint") && typeof input === "string") {
+      const split = splitComposeCommand(input);
+      if (split === undefined) {
+        diagnostics.push(
+          unsupportedServiceKey({
+            ctx,
+            relative,
+            message: `Compose ${key} has malformed shell-word syntax and cannot be converted.`,
+            remediation:
+              "Balance quotes and escapes, or supply an explicit argument list before translating.",
+          }),
+        );
+        blocked = true;
+        continue;
+      }
+      output = split.argv;
+      diagnostics.push(
+        split.truncated
+          ? needsReviewServiceKey({
+              ctx,
+              relative,
+              message: `Compose ${key} stops at an unquoted shell operator, so only the arguments before it were kept; the rest never ran.`,
+              remediation:
+                "To run the whole script, replace the argument list with an explicit shell, such as [sh, -c, <script>].",
+            })
+          : rewrittenServiceKey({
+              ctx,
+              relative,
+              message: `Split scalar Compose ${key} into arguments to preserve execution without a shell.`,
+              remediation: "Keep the argument list; a Lando 4 string command runs as a shell script.",
+            }),
+      );
+    } else if (key === "environment") {
       output = withoutHostIpVariable(stringMap(input, relative), ctx, relative, diagnostics);
     } else if (key === "labels") {
       output = stringMap(input, relative);

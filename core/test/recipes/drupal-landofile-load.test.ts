@@ -10,6 +10,10 @@ import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 
+import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
+import { drupalCmsDecomposer } from "../../src/recipes/builtin/drupal-cms/decomposer.ts";
+import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
+import { drupalCmsDefaults, drupalCmsProducer } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
 import { drupalDecomposer } from "../../src/recipes/builtin/drupal/decomposer.ts";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 import { drupalDefaults, drupalProducer } from "../../src/recipes/builtin/drupal/snapshot.ts";
@@ -20,11 +24,16 @@ const loadTranslator = (): Effect.Effect<ConfigTranslatorShape> => {
   return Effect.promise(async () => loader());
 };
 
-const encodedDrupalLandofile = (options: Readonly<Record<string, unknown>>): Effect.Effect<string> =>
+const encodedDrupalLandofile = (
+  options: Readonly<Record<string, unknown>>,
+  cms = false,
+): Effect.Effect<string> =>
   Effect.gen(function* () {
-    const decomposer = drupalDecomposer({ redactor: createStandaloneRedactor("secrets") });
+    const decomposer = cms
+      ? drupalCmsDecomposer({ redactor: createStandaloneRedactor("secrets") })
+      : drupalDecomposer({ redactor: createStandaloneRedactor("secrets") });
     const decomposed = yield* decomposer.decompose({
-      producer: drupalProducer,
+      producer: cms ? drupalCmsProducer : drupalProducer,
       options,
       secrets: {},
     } as RecipeDecomposeInput);
@@ -38,10 +47,14 @@ const encodedDrupalLandofile = (options: Readonly<Record<string, unknown>>): Eff
 const withEncodedApp = async <A>(
   options: Readonly<Record<string, unknown>>,
   run: (appRoot: string) => Promise<A>,
+  cms = false,
 ): Promise<A> => {
   const appRoot = await mkdtemp(join(tmpdir(), "lando-drupal-load-"));
   try {
-    await writeFile(join(appRoot, ".lando.yml"), await Effect.runPromise(encodedDrupalLandofile(options)));
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      await Effect.runPromise(encodedDrupalLandofile(options, cms)),
+    );
     return await run(appRoot);
   } finally {
     await rm(appRoot, { recursive: true, force: true });
@@ -77,5 +90,26 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand("10"));
       expect(services.appserver?.type).toBe("php:8.4");
     });
+  });
+});
+
+describe("the decomposed Drupal CMS Landofile on the native load path", () => {
+  test("loads the scaffold command, PHP mount, and database configuration", async () => {
+    await withEncodedApp(
+      { ...drupalCmsDefaults },
+      async (appRoot) => {
+        const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
+        const tooling = landofile.tooling as Record<string, Record<string, unknown>>;
+        const services = landofile.services as Record<string, Record<string, unknown>>;
+        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe(DRUPAL_CMS_SCAFFOLD_COMMAND);
+        expect(services.appserver?.type).toBe(`php:${drupalCmsDefaults.php}`);
+        expect(services.appserver?.webroot).toBe(drupalCmsDefaults.webroot);
+        expect(services.database?.type).toBe(drupalCmsDefaults.database);
+        expect(services.appserver?.mounts).toEqual([
+          { source: "./.lando/php/drupal-cms.ini", target: DRUPAL_CMS_PHP_INI_TARGET, readOnly: true },
+        ]);
+      },
+      true,
+    );
   });
 });

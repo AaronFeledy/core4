@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -129,6 +129,7 @@ const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Lay
 };
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
 
@@ -698,6 +699,7 @@ describe("BuildOrchestratorLive", () => {
       buildArtifact: () => Effect.succeed({ providerId: secretProviderId, ref: "ok" }),
     };
     const envRedactionLayer = Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (_profile, options) =>
         Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
     } satisfies Context.Tag.Service<typeof RedactionService>);
@@ -744,6 +746,7 @@ describe("BuildOrchestratorLive", () => {
       buildArtifact: () => Effect.succeed({ providerId, ref: "ok" }),
     };
     const lazyRedactionLayer = Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: () =>
         Effect.sync(() => {
           profileReads += 1;

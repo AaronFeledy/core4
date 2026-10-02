@@ -23,8 +23,8 @@ type AcquisitionMode = (typeof ACQUISITION_MODES)[number];
 const LAST_FALLBACK_HTTP = 38080;
 const LAST_FALLBACK_HTTPS = 38443;
 
-const OCCUPIED_HOP_REMEDIATION =
-  "port in use by another program; Lando is serving on high ports instead of 80/443.";
+const occupiedHopRemediation = ({ httpPort, httpsPort }: AcquisitionSnapshot, running: boolean): string =>
+  `A preferred router port is in use by another program. Lando ${running ? "is serving on" : "last selected"} HTTP :${httpPort} and HTTPS :${httpsPort}. Run lando info in the app to see its URL. To use the preferred ports, free any occupied preferred ports, then run lando global:restart.`;
 
 interface AcquisitionSnapshot {
   readonly mode: AcquisitionMode;
@@ -87,8 +87,8 @@ const specForMode = (snapshot: AcquisitionSnapshot | undefined): SubsystemSpec =
       return {
         ...PROXY_SPEC,
         recovery: "manual",
-        manualRemediation: OCCUPIED_HOP_REMEDIATION,
-        manualCommand: "lando doctor",
+        manualRemediation: occupiedHopRemediation(snapshot, false),
+        manualCommand: "lando global:restart",
       };
     case "direct":
     case "socket-helper":
@@ -100,11 +100,14 @@ const specForMode = (snapshot: AcquisitionSnapshot | undefined): SubsystemSpec =
   }
 };
 
-const occupiedHopCheck = (context: Record<string, string>): DoctorSubsystemCheck => {
+const occupiedHopCheck = (
+  context: Record<string, string>,
+  snapshot: AcquisitionSnapshot,
+): DoctorSubsystemCheck => {
   const solution: DoctorSolution = {
     kind: "manual",
-    description: OCCUPIED_HOP_REMEDIATION,
-    command: "lando doctor",
+    description: occupiedHopRemediation(snapshot, true),
+    command: "lando global:restart",
   };
   return {
     name: PROXY_SPEC.name,
@@ -132,8 +135,11 @@ export const buildProxyCheck = (
       ready: String(running),
       ...(state === undefined ? {} : { state }),
       ...(acquisitionMode === undefined ? {} : { acquisitionMode }),
+      ...(snapshot?.mode === "occupied-hop"
+        ? { httpPort: String(snapshot.httpPort), httpsPort: String(snapshot.httpsPort) }
+        : {}),
     };
-    if (running && acquisitionMode === "occupied-hop") return occupiedHopCheck(context);
+    if (running && snapshot?.mode === "occupied-hop") return occupiedHopCheck(context, snapshot);
     const needsHelper = acquisitionMode === "needs-helper";
     if (running && !needsHelper) return passCheck(PROXY_SPEC, context);
     return yield* buildDegradedCheck(

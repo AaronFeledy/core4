@@ -24,12 +24,12 @@ import { loadLandofileFile } from "@lando/engine/services/landofile-live";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 import {
   type ComposeDispositionMatch,
   analyzeComposeDispositions,
 } from "@lando/landofile/compose/rejections";
 import { parseLandofile } from "@lando/landofile/parser";
+import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 import {

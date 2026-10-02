@@ -73,6 +73,7 @@ describe("lando base composition", () => {
       "lando.healthcheck",
       "lando.certs",
       "lando.security",
+      "lando.ssh-agent",
       "lando.host-proxy",
       "lando.user",
     ]);
@@ -125,6 +126,7 @@ describe("lando base composition", () => {
         "lando.healthcheck",
         "lando.certs",
         "lando.security",
+        "lando.ssh-agent",
         "lando.host-proxy",
         "lando.user",
       ],

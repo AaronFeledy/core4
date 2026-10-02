@@ -114,7 +114,7 @@ describe("LiveRegionController", () => {
     controller.commitScrollback("retired output\n");
 
     expect(fixture.calls).toEqual([]);
-    expect(written(fixture)).toBe("retired output\n");
+    expect(written(fixture)).toBe("retired output\r\n");
     expect(written(fixture)).not.toMatch(new RegExp(`${ESC}\\[[0-9;]*[AJ]`));
 
     fixture.writes.length = 0;

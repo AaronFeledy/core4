@@ -4,7 +4,6 @@ import { Clock, Duration, Effect, Option } from "effect";
 
 import { readWorkerRecordStateAt } from "@lando/engine/subsystems/host-proxy/worker-state-file";
 import { sanitizeAppName } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { PathsService } from "@lando/sdk/services";
 import type {
   DoctorCheck,
@@ -24,6 +23,7 @@ import {
   type HostProxyDoctorProvider,
   diagnoseHostProxyWorker,
 } from "./doctor-host-proxy-worker";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const DEFAULT_LIMITS: HostProxyDoctorLimits = {
   maxWorkers: 32,
@@ -53,10 +53,7 @@ export const hostProxyTransportDoctorChecks = (
   Effect.gen(function* () {
     const fileSystem = yield* HostProxyDoctorFileSystem;
     const paths = yield* PathsService;
-    const redactionService = yield* Effect.serviceOption(RedactionService);
-    const redactor = Option.isSome(redactionService)
-      ? yield* redactionService.value.forProfile("secrets", { sourceEnv: options.sourceEnv })
-      : createStandaloneRedactor("secrets", { sourceEnv: options.sourceEnv });
+    const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: options.sourceEnv });
     const freshness = currentHostProxyAllowlistFreshness();
     const checks: DoctorCheck[] = [];
     const allowlistCheck = buildHostProxyAllowlistDoctorCheck(freshness, options);

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Effect, Schema } from "effect";
+import { VOLUME_INSTANCE_LABEL, VOLUME_OWNER_LABEL } from "./labels.ts";
 
 import { VolumeOperationError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppId, type PortablePath, VolumeIdentity } from "@lando/sdk/schema";
@@ -116,8 +117,8 @@ export const resolveNativeVolumeIdentity = (
   witnessTarget?: WitnessTarget,
 ): Effect.Effect<NativeVolumeIdentityResolution, VolumeOperationError> =>
   Effect.gen(function* () {
-    const generation = volume.Labels?.["dev.lando.volume-instance"];
-    const ownerRoot = volume.Labels?.["dev.lando.volume-owner"];
+    const generation = volume.Labels?.[VOLUME_INSTANCE_LABEL];
+    const ownerRoot = volume.Labels?.[VOLUME_OWNER_LABEL];
     if (generation !== undefined && ownerRoot !== undefined) {
       const key = yield* volumeCoordinationKey(provider, volume.Name);
       return {

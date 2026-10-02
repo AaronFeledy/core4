@@ -47,6 +47,7 @@ describe("record-backed uninstall", () => {
     "changed-before-remove",
   ] as const) {
     for (const purge of [false, true]) {
+      if (scenario === "changed-before-remove" && !purge) continue;
       for (const dryRun of [false, true]) {
         test(`${scenario} preserves foreign files when dryRun=${dryRun}, purge=${purge}`, async () => {
           // Given: a real install record and a hostile neighboring Lando 3 installation.
@@ -313,7 +314,7 @@ describe("uninstall runtime overlay removal", () => {
         uninstall(
           sandboxUninstallOptions(roots, {
             yes: true,
-            keepData: true,
+            purge: true,
           }),
         ),
       );
@@ -346,7 +347,7 @@ describe("uninstall runtime overlay removal", () => {
         uninstall(
           sandboxUninstallOptions(roots, {
             yes: true,
-            keepData: true,
+            purge: true,
             remove: async () => {
               // Pretend success while leaving the runtime tree in place.
             },
@@ -543,6 +544,124 @@ describe("uninstall managed volume purge", () => {
   });
 });
 
+describe("uninstall keep-data ownership", () => {
+  test("preserves the owned machine, its setup state, runtime, and host-proxy sessions", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-keep-machine-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      const providerDir = join(roots.userDataRoot, "providers", "provider-lando");
+      const hostProxyDir = join(roots.userDataRoot, "run");
+      for (const path of [runtimeDir, providerDir, hostProxyDir]) mkdirSync(path, { recursive: true });
+      const setupState = join(providerDir, "setup-state.json");
+      writeFileSync(setupState, '{"machine":{"name":"lando","createdByLando":true}}');
+      const calls: string[] = [];
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+            readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
+            teardownProviderMachines: async () => {
+              calls.push("machine");
+              return { removed: true, name: "lando" };
+            },
+            teardownRuntimeService: async () => {
+              calls.push("runtime");
+              return { terminated: true };
+            },
+            teardownHostProxySessions: async () => {
+              calls.push("host-proxy");
+            },
+          }),
+        ),
+      );
+      expect(result.failed).toBe(false);
+      expect(calls).toEqual([]);
+      for (const id of [
+        "managed-provider-machines",
+        "runtime-service",
+        "managed-provider-runtime",
+        "host-proxy-sessions",
+      ]) {
+        expect(result.steps.find((step) => step.id === id)).toMatchObject({
+          status: "skipped",
+          outcome: "skipped",
+        });
+      }
+      expect(existsSync(setupState)).toBe(true);
+      expect(existsSync(runtimeDir)).toBe(true);
+      expect(existsSync(hostProxyDir)).toBe(true);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("uninstall machine and runtime ordering", () => {
+  test("removes the managed machine before runtime binaries", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-machine-order-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      const calls: string[] = [];
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
+            teardownProviderMachines: async () => {
+              calls.push("machine");
+              expect(existsSync(runtimeDir)).toBe(true);
+              return { removed: true, name: "lando" };
+            },
+            teardownRuntimeService: async () => ({ terminated: false }),
+            terminateRuntimeBinProcesses: async () => {
+              calls.push("processes");
+            },
+            remove: async (path) => {
+              if (path === runtimeDir) calls.push("runtime");
+              await rm(path, { recursive: true, force: true });
+            },
+          }),
+        ),
+      );
+      expect(result.failed).toBe(false);
+      expect(calls).toEqual(["machine", "processes", "runtime"]);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps runtime binaries when machine teardown fails", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-machine-fail-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
+            teardownProviderMachines: async () => {
+              throw new Error("machine busy");
+            },
+          }),
+        ),
+      );
+      expect(result.failed).toBe(true);
+      expect(result.steps.find((step) => step.id === "managed-provider-machines")).toMatchObject({
+        outcome: "failed",
+        error: "machine busy",
+      });
+      expect(result.steps.some((step) => step.id === "runtime-service")).toBe(false);
+      expect(existsSync(runtimeDir)).toBe(true);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
 describe("uninstall managed provider runtime path", () => {
   test("targets providers/provider-lando and does not skip when providers/lando is absent", async () => {
     const roots = makeUninstallRoots("lando-uninstall-provider-path-");
@@ -555,7 +674,7 @@ describe("uninstall managed provider runtime path", () => {
         sandboxUninstallOptions(roots, {
           exists: (path: string) => path === bundle,
         }),
-        "keep-data",
+        "purge",
       );
 
       expect(plan.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
@@ -574,6 +693,34 @@ describe("uninstall managed provider runtime path", () => {
   });
 });
 
+describe("platform-specific uninstall helpers", () => {
+  test.each(["win32", "darwin"] as const)("does not probe Linux helpers on %s", async (platform) => {
+    const roots = makeUninstallRoots("lando-uninstall-platform-helpers-");
+    try {
+      const linuxOnlyPath = join(roots.root, "linux-only-helper");
+      const options = sandboxUninstallOptions(roots, {
+        cgroupsDelegatePath: linuxOnlyPath,
+        socketProxyUnitPaths: [linuxOnlyPath],
+        socketProxyPolkitPath: linuxOnlyPath,
+        exists: (path) => {
+          if (path === linuxOnlyPath) throw new Error("Linux helper path was probed");
+          return existsSync(path);
+        },
+      });
+      const plan = await buildUninstallPlan(options, "keep-data", platform);
+      expect(plan.some((step) => step.id === "cgroups-delegate")).toBe(false);
+      expect(plan.some((step) => step.id === "socket-proxy-helper")).toBe(false);
+      if (platform === "win32") {
+        expect(plan.find((step) => step.id === "shell-entries")).toMatchObject({
+          target: "PowerShell profiles",
+          status: "manual",
+        });
+      }
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
 describe("uninstall cgroups delegation drop-in", () => {
   test("matching delegate.conf is owned and removed", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-match-");

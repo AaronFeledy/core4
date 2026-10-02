@@ -8,7 +8,7 @@ tags: [beta, docs, provider-podman, setup, windows, podman-desktop]
 
 # Use Podman Desktop on Windows
 
-Alpha binaries are Linux x64 today. This page documents the Windows Podman provider path so the facts are here when that host is supported.
+Download the unsigned Windows binary from the GitHub `v4.0.0-dev.N` prerelease and put it on PATH. Use `lando setup --provider=podman` when you already have a working Podman Desktop machine; the default `lando setup` uses Lando's managed runtime.
 
 The default Podman Desktop machine named pipe on Windows is `npipe://./pipe/podman-machine-default`. Override the machine name, for example to target a rootful machine, without editing config:
 

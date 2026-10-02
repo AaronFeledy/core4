@@ -139,6 +139,32 @@ describe("compileEffectiveTooling", () => {
     }
   });
 
+  test("service tooling can override a global dir while custom tasks inherit it", () => {
+    // Given / When
+    const tooling = compileEffectiveTooling({
+      landofile: {
+        toolingDefaults: { dir: PortablePath.make("/app") },
+        tooling: { custom: { service: "database", cmd: ["pwd"] } },
+      },
+      services: [
+        {
+          name: "database",
+          tooling: {
+            mariadb: {
+              service: "database",
+              dir: PortablePath.make("/"),
+              cmd: ["mariadb"],
+            },
+          },
+        },
+      ],
+    });
+
+    // Then
+    expect(tooling.mariadb?.dir).toBe(PortablePath.make("/"));
+    expect(tooling.custom?.dir).toBe(PortablePath.make("/app"));
+  });
+
   test("defaults fill only after service contribution merge", () => {
     // Given / When
     const tooling = compileEffectiveTooling({

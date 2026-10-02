@@ -10,16 +10,10 @@ import {
 } from "../../../commands/app-includes-verify";
 import { isEnvelopeResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 
 const usesEnvelopeFormat = (input: unknown): boolean =>
-  typeof input === "object" &&
-  input !== null &&
-  "flags" in input &&
-  typeof input.flags === "object" &&
-  input.flags !== null &&
-  "format" in input.flags &&
-  typeof input.flags.format === "string" &&
-  isEnvelopeResultFormat(input.flags.format);
+  isEnvelopeResultFormat(stringFlag(specFlagsOf(input), "format") ?? "");
 
 export const appIncludesVerifySpec: LandoCommandSpec<
   IncludeVerifyReport,

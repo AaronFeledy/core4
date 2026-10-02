@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AbsolutePath } from "./primitives.ts";
+import { AbsolutePath, AppId } from "./primitives.ts";
 
 /**
  * Host-proxy wire protocol request/response schemas.
@@ -81,3 +81,14 @@ export const HostProxyResponse = Schema.Union(
   }),
 );
 export type HostProxyResponse = typeof HostProxyResponse.Type;
+
+/** A host loopback worker that a provider can expose through a private guest socket. */
+export const HostProxyBridgeInput = Schema.Struct({
+  appId: AppId,
+  sessionId: Schema.String,
+  loopbackUrl: Schema.String,
+});
+export type HostProxyBridgeInput = typeof HostProxyBridgeInput.Type;
+
+export const HostProxyBridgeResult = Schema.Struct({ socketPath: AbsolutePath });
+export type HostProxyBridgeResult = typeof HostProxyBridgeResult.Type;

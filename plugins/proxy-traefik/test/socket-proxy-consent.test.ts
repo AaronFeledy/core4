@@ -19,6 +19,7 @@ const harness = (isInteractive: boolean) => {
     processRunner: {
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       stream: () => Stream.empty,
+      streamWithExit: () => Stream.empty,
     },
     privilege: {
       elevate: (command) =>

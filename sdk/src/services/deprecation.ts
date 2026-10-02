@@ -15,7 +15,7 @@ export type DeprecatedCallable<
   readonly deprecation: DeprecationNotice;
 };
 
-const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
+const nowUtc = () => DateTime.unsafeNow();
 
 export function markDeprecated<
   Args extends ReadonlyArray<unknown>,

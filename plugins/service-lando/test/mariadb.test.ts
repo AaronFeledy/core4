@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 
 import {
   MARIADB_CONFIG_TARGET,
@@ -179,6 +179,8 @@ describe("mariadb ServiceType", () => {
 
     // Then
     expect(resolution.tooling?.mariadb).toEqual({
+      description: "Open the MariaDB client for this service.",
+      dir: PortablePath.make("/"),
       service: "db",
       cmd: ["mariadb", "-h", "127.0.0.1", "-u", authoredCreds.user, authoredCreds.database],
       env: { MYSQL_PWD: authoredCreds.password },
