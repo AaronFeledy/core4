@@ -144,10 +144,10 @@ const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): P
 
 const pinnedHelper = providerImages.images.dataHelper;
 
-const verifyingPullArtifact: Context.Tag.Service<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
+const verifyingPullArtifact: Context.Service.Shape<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
   Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
 
-const providerLayer = (overrides: Partial<Context.Tag.Service<typeof RuntimeProvider>> = {}) =>
+const providerLayer = (overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {}) =>
   Layer.mergeAll(
     StateStoreLive,
     Layer.succeed(PathsService, makeLandoPaths()),
@@ -185,7 +185,7 @@ const captureEvents = () => {
             event.eventName === name && (filter?.(event as EventFor<Name>) ?? true),
         ),
       ),
-  } satisfies Context.Tag.Service<typeof EventService>);
+  } satisfies Context.Service.Shape<typeof EventService>);
   return { layer: serviceLayer, events: () => [...captured] };
 };
 
@@ -196,7 +196,7 @@ const redactionLayer = Layer.succeed(RedactionService, {
       redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
       redactValue: (input: unknown) => input,
     }),
-} satisfies Context.Tag.Service<typeof RedactionService>);
+} satisfies Context.Service.Shape<typeof RedactionService>);
 
 const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
   const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-mover-"));
@@ -748,7 +748,7 @@ describe("DataMoverLive", () => {
             Layer.succeed(RuntimeProvider, {
               ...TestRuntimeProvider,
               pullArtifact: verifyingPullArtifact,
-              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
             }),
             captureEvents().layer,
             redactionLayer,
@@ -2026,7 +2026,7 @@ describe("DataMoverLive", () => {
                     const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
                     yield* Effect.addFinalizer(() =>
                       (TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void).pipe(
-                        Effect.catchAll(() => Effect.void),
+                        Effect.catch(() => Effect.void),
                       ),
                     );
                     return ref;
@@ -2108,7 +2108,7 @@ describe("DataMoverLive", () => {
         StateStore,
       );
       let removeNativeCalls = 0;
-      const failingStateStore: Context.Tag.Service<typeof StateStore> = {
+      const failingStateStore: Context.Service.Shape<typeof StateStore> = {
         ...testStore,
         open: (spec) =>
           testStore.open(spec).pipe(
@@ -2320,7 +2320,7 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
         counters.runStream += 1;
         return TestRuntimeProvider.runStream(spec);
       },
-    } satisfies Context.Tag.Service<typeof RuntimeProvider>);
+    } satisfies Context.Service.Shape<typeof RuntimeProvider>);
 
   const runWithScratchDir = <A, E>(
     scratchDir: string,
@@ -2552,7 +2552,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
   const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: true });
   const volumeCapsWithoutPull = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: false });
 
-  const importToVolume = (dataMover: Context.Tag.Service<typeof DataMover>, source: string) =>
+  const importToVolume = (dataMover: Context.Service.Shape<typeof DataMover>, source: string) =>
     dataMover.transfer({
       from: { _tag: "hostPath", path: absolute(source) },
       to: { _tag: "volume", app, store: "data" },

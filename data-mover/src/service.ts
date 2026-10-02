@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -74,7 +75,7 @@ type SnapshotIndex = ReadonlyArray<SnapshotInfo>;
 
 interface SnapshotPersistence {
   readonly paths: LandoPaths;
-  readonly stateStore: Context.Tag.Service<typeof StateStore>;
+  readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }
 
 const noopEvents: DataMoverEvents = {
@@ -84,7 +85,7 @@ const noopEvents: DataMoverEvents = {
 
 const helperTarget = Schema.decodeUnknownSync(PortablePath)("/data");
 const helperPayload = Schema.decodeUnknownSync(PortablePath)("/data/payload");
-const timestamp = () => DateTime.unsafeNow();
+const timestamp = () => DateTime.nowUnsafe();
 const snapshotIndexSchema = Schema.Array(SnapshotInfoSchema);
 
 const absolutePath = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
@@ -126,7 +127,7 @@ const openSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
     try: () => mkdir(snapshotAppDir(persistence, app), { recursive: true }),
     catch: (cause) => stateFailure("open", cause),
   }).pipe(
-    Effect.zipRight(
+    Effect.andThen(
       persistence.stateStore.open({
         root: { path: absolutePath(snapshotAppDir(persistence, app)) },
         key: "index.bin",
@@ -149,7 +150,7 @@ const snapshotApps = (
   return Effect.tryPromise({
     try: () => readdir(persistence.paths.snapshotsDir),
     catch: (cause) => cause,
-  }).pipe(Effect.catchAll(() => Effect.succeed([])));
+  }).pipe(Effect.catch(() => Effect.succeed([])));
 };
 
 const readSnapshotIndex = (persistence: SnapshotPersistence, app: string) =>
@@ -219,7 +220,7 @@ const findSnapshotInfo = (
   });
 
 const writeSnapshotSidecar = (persistence: SnapshotPersistence, info: SnapshotInfo) =>
-  Schema.encodeUnknown(SnapshotInfoSchema)(info).pipe(
+  Schema.encodeUnknownEffect(SnapshotInfoSchema)(info).pipe(
     Effect.mapError((cause) => stateFailure("encode-sidecar", cause)),
     Effect.flatMap((encoded) =>
       Effect.tryPromise({
@@ -267,7 +268,7 @@ const removeSnapshotArtifacts = (persistence: SnapshotPersistence, info: Snapsho
   );
 
 const rollbackSnapshotPersistence = (
-  provider: Context.Tag.Service<typeof RuntimeProvider>,
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
   persistence: SnapshotPersistence,
   info: SnapshotInfo | undefined,
   native: VolumeSnapshotRef | undefined,
@@ -318,18 +319,18 @@ const serviceFromEndpoint = (endpoint: DataEndpoint) =>
   endpoint._tag === "servicePath" || endpoint._tag === "serviceCmd" ? endpoint.service : undefined;
 
 const makeEvents = (
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
-  redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>,
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
+  redaction: Option.Option<Context.Service.Shape<typeof RedactionService>>,
 ): Effect.Effect<DataMoverEvents> => {
   const publish: DataMoverEvents["publish"] = Option.isSome(eventService)
-    ? (event) => eventService.value.publish(event).pipe(Effect.catchAllCause(() => Effect.void))
+    ? (event) => eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
     : () => Effect.void;
 
   if (Option.isNone(redaction)) return Effect.succeed({ ...noopEvents, publish });
 
   return redaction.value.forProfile("secrets").pipe(
     Effect.map((redactor) => ({ redactText: redactor.redactString, publish })),
-    Effect.catchAll(() => Effect.succeed({ ...noopEvents, publish })),
+    Effect.catch(() => Effect.succeed({ ...noopEvents, publish })),
   );
 };
 
@@ -356,7 +357,7 @@ const providerFailure = (operation: string, cause: unknown): DataTransferError =
 const dataHelperImage = providerImages.images.dataHelper;
 
 const resolveDataHelperImage = (
-  provider: Context.Tag.Service<typeof RuntimeProvider>,
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
 ): Effect.Effect<string, DataTransferError> => {
   const pinnedRef = `${dataHelperImage.image}@${dataHelperImage.digest}`;
   if (!provider.capabilities.artifactPull) return Effect.succeed(pinnedRef);
@@ -808,8 +809,8 @@ const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransfe
     onError: (cause) => hostReadError(path, cause),
     releaseLockOnEnd: true,
   }).pipe(
-    Stream.catchAllCause((cause) =>
-      Option.match(Cause.dieOption(cause), {
+    Stream.catchCause((cause) =>
+      Option.match(Result.getSuccess(Cause.findDefect(cause)), {
         onNone: () => Stream.failCause(cause),
         onSome: (died) => Stream.fail(hostReadError(path, died)),
       }),
@@ -828,7 +829,7 @@ const byteStreamFromArchive = (
   });
 
 const streamFromEndpoint = (
-  provider: Context.Tag.Service<typeof RuntimeProvider>,
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
   endpoint: DataEndpoint,
 ): Stream.Stream<
   Uint8Array,
@@ -940,7 +941,7 @@ const streamFromEndpoint = (
 };
 
 const writeStreamToEndpoint = (
-  provider: Context.Tag.Service<typeof RuntimeProvider>,
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
   spec: DataTransferSpec,
   body: Stream.Stream<
     Uint8Array,
@@ -1157,10 +1158,10 @@ const writeStreamToEndpoint = (
 };
 
 const failureDetail = (cause: Cause.Cause<unknown>): string => {
-  const failure = Option.getOrUndefined(Cause.failureOption(cause));
+  const failure = Option.getOrUndefined(Cause.findErrorOption(cause));
   if (typeof failure === "object" && failure !== null && "_tag" in failure)
     return String((failure as { _tag: string })._tag);
-  if (Cause.isInterrupted(cause)) return "interrupted";
+  if (Cause.hasInterrupts(cause)) return "interrupted";
   return "error";
 };
 
@@ -1178,10 +1179,10 @@ const matchesSnapshotSource = (volume: VolumeInfo | undefined, metadata: Snapsho
 };
 
 export const makeDataMoverService = (
-  provider: Context.Tag.Service<typeof RuntimeProvider>,
+  provider: Context.Service.Shape<typeof RuntimeProvider>,
   events: DataMoverEvents,
   persistence: SnapshotPersistence,
-): Context.Tag.Service<typeof DataMover> => ({
+): Context.Service.Shape<typeof DataMover> => ({
   volumeInitialization: (identity) => sharedVolumeInitialization(persistence.stateStore, identity),
   transfer: (spec) => {
     const startedAt = Date.now();
@@ -1242,7 +1243,7 @@ export const makeDataMoverService = (
     });
 
     return events.publish(pre).pipe(
-      Effect.zipRight(run),
+      Effect.andThen(run),
       Effect.tap((result) =>
         events.publish(
           PostDataTransferEvent.make({
@@ -1258,7 +1259,7 @@ export const makeDataMoverService = (
           }),
         ),
       ),
-      Effect.tapErrorCause((cause) =>
+      Effect.tapCause((cause) =>
         events.publish(
           PostDataTransferEvent.make({
             eventName: "post-data-transfer",
@@ -1414,10 +1415,10 @@ export const makeDataMoverService = (
         rollbackInfo === undefined && rollbackNative === undefined
           ? Effect.void
           : rollbackSnapshotPersistence(provider, persistence, rollbackInfo, rollbackNative).pipe(
-              Effect.catchAll(() => Effect.void),
+              Effect.catch(() => Effect.void),
             ),
       ),
-      Effect.tapErrorCause((cause) =>
+      Effect.tapCause((cause) =>
         events.publish(
           PostVolumeSnapshotEvent.make({
             eventName: "post-volume-snapshot",
@@ -1557,7 +1558,7 @@ export const makeDataMoverService = (
               (current ?? []).filter((entry) => snapshotIndexEntryKey(entry) !== key),
             );
           }),
-          Effect.zipRight(removeSnapshotArtifacts(persistence, info)),
+          Effect.andThen(removeSnapshotArtifacts(persistence, info)),
           Effect.flatMap(() => {
             const removeNative = provider.removeVolumeSnapshot;
             if (info.native === undefined || removeNative === undefined) {

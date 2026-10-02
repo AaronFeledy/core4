@@ -71,7 +71,7 @@ describe("byteStreamFromHost missing files", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected failure");
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       const value = error._tag === "Some" ? error.value : undefined;
       expect(value).toBeInstanceOf(DataTransferError);
       if (value instanceof DataTransferError) {
