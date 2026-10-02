@@ -45,6 +45,10 @@ import {
   getContainerDiedEvents as runtimeGetContainerDiedEvents,
 } from "@lando/container-runtime/podman/container-events";
 import {
+  discoverLabeledContainers,
+  mergeDiscoveredContainers,
+} from "@lando/container-runtime/podman/discover";
+import {
   type ExecOptions,
   exec as runtimeExec,
   execStream as runtimeExecStream,
@@ -1421,6 +1425,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ),
           ),
           Effect.map((snapshots) => snapshots.flat()),
+          Effect.flatMap((snapshots) =>
+            filter.includeUnplanned === true
+              ? discoverLabeledContainers(podmanApi, LANDO_CTX).pipe(
+                  Effect.map((discovered) =>
+                    mergeDiscoveredContainers(snapshots, discovered, filter.includeScratch === true),
+                  ),
+                )
+              : Effect.succeed(snapshots),
+          ),
           Effect.map((snapshots) =>
             filter.app === undefined
               ? snapshots

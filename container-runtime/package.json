@@ -52,6 +52,7 @@
     "./podman/compose-knobs": "./src/podman/compose-knobs.ts",
     "./podman/volume-prune": "./src/podman/volume-prune.ts",
     "./podman/inspect": "./src/podman/inspect.ts",
+    "./podman/discover": "./src/podman/discover.ts",
     "./podman/exec": "./src/podman/exec.ts",
     "./podman/logs": "./src/podman/logs.ts",
     "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
