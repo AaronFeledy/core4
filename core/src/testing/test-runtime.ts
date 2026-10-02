@@ -2,7 +2,20 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
-import { Cause, Clock, type Context, DateTime, type Duration, Effect, Layer, Option, PubSub, Schema, Stream } from "effect";
+import {
+  Cause,
+  Clock,
+  type Context,
+  DateTime,
+  type Duration,
+  Effect,
+  Layer,
+  Option,
+  PubSub,
+  Queue,
+  Schema,
+  Stream,
+} from "effect";
 
 import {
   CacheError,
@@ -66,7 +79,7 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
 /**
  * Re-export of Effect's deterministic test clock utilities for callers using this test runtime.
  */
-export { TestClock, TestContext } from "effect";
+export { TestClock } from "effect/testing";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive, type PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -437,6 +450,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
 
   const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
+  const eventQueues = new Set<Queue.Queue<LandoEvent>>();
   const eventHistoryRedactor = createRedactor("secrets");
   const matchesEventName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
   const waitForEventMatch = <A>(
@@ -447,7 +461,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     Effect.scoped(
       Effect.gen(function* () {
         const queue = yield* PubSub.subscribe(eventPubSub);
-        const awaited = Stream.fromQueue(queue).pipe(
+        const awaited = Stream.fromSubscription(queue).pipe(
           Stream.filter(predicate),
           Stream.runHead,
           Effect.flatMap(
@@ -461,12 +475,18 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         return yield* timeout === undefined
           ? awaited
           : awaited.pipe(
-              Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.fail((() =>
-                  new EventError({
-                    message: `Timed out waiting for event: ${label}`,
-                    event: label,
-                    reason: "timeout",
-                  }))()) }),
+              Effect.timeoutOrElse({
+                duration: timeout,
+                orElse: () =>
+                  Effect.fail(
+                    (() =>
+                      new EventError({
+                        message: `Timed out waiting for event: ${label}`,
+                        event: label,
+                        reason: "timeout",
+                      }))(),
+                  ),
+              }),
             );
       }),
     );
@@ -474,22 +494,31 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     publish: (event) =>
       Effect.sync(() => {
         calls.events.push(event);
+        for (const queue of eventQueues) Queue.offerUnsafe(queue, event);
       }).pipe(
         Effect.andThen(PubSub.publish(eventPubSub, event)),
         Effect.asVoid,
-        Effect.catchCauseFilter((cause) =>
-          Cause.hasDies(cause)
-            ? Option.some(
-                Effect.fail(eventError(event._tag, `Failed to publish event: ${event._tag}`, cause)),
-              )
-            : Option.none(),
+        Effect.catchCauseIf(Cause.hasDies, (cause) =>
+          Effect.fail(eventError(event._tag, `Failed to publish event: ${event._tag}`, cause)),
         ),
       ),
     subscribe: <Name extends string>(name: Name) =>
       Stream.fromPubSub(eventPubSub).pipe(
         Stream.filter((event): event is EventFor<Name> => matchesEventName(name, event)),
       ),
-    subscribeQueue: PubSub.subscribe(eventPubSub),
+    subscribeQueue: Effect.acquireRelease(
+      Queue.unbounded<LandoEvent>().pipe(
+        Effect.tap((queue) =>
+          Effect.sync(() => {
+            eventQueues.add(queue);
+          }),
+        ),
+      ),
+      (queue) =>
+        Effect.sync(() => {
+          eventQueues.delete(queue);
+        }).pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid),
+    ),
     waitFor: (name, options) =>
       waitForEventMatch<EventFor<typeof name>>(
         name,

@@ -19,7 +19,7 @@ describe("Landofile flow collections", () => {
     // When
     const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected a parse failure, not fragmented scalar values");
     expect(result.failure).toMatchObject({ _tag: "LandofileParseError", filePath: file, line: 1, column });
     expect(result.failure.remediation).toMatch(/block/i);

@@ -10,7 +10,7 @@ describe("PluginTrustState", () => {
       trustedAuthoringRoots: ["/opt/lando/a", "/opt/lando/b"],
     });
 
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("rejects duplicate or unsorted trust entries", () => {
@@ -23,7 +23,7 @@ describe("PluginTrustState", () => {
       trustedAuthoringRoots: ["/opt/lando/b", "/opt/lando/a"],
     });
 
-    expect(duplicate._tag).toBe("Left");
-    expect(unsorted._tag).toBe("Left");
+    expect(duplicate._tag).toBe("Failure");
+    expect(unsorted._tag).toBe("Failure");
   });
 });

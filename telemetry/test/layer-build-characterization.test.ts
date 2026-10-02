@@ -5,7 +5,7 @@ import { makeTelemetryLayer } from "../src/service.ts";
 
 test("enabled telemetry builds once per graph, twice with nested provide, and freshly in a new run", async () => {
   // Given: enabled telemetry constructs a real scoped queue and dispatcher, with no external sinks.
-  const instances: Context.Tag.Service<typeof Telemetry>[] = [];
+  const instances: Context.Service.Shape<typeof Telemetry>[] = [];
   const layer = makeTelemetryLayer(true).pipe(
     Layer.tap((context) => Effect.sync(() => instances.push(Context.get(context, Telemetry)))),
   );

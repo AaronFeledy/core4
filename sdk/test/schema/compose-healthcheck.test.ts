@@ -1,6 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 import * as AST from "effect/SchemaAST";
 
 import { HealthcheckField } from "../../src/schema/compose-healthcheck.ts";
@@ -277,9 +276,9 @@ describe("public healthcheck contracts", () => {
       retries: 3,
       startPeriodSeconds: 2,
     } as const;
-    const names = AST.getPropertySignatures(HealthcheckInput.ast)
-      .map(({ name }) => String(name))
-      .toSorted();
+    expect(AST.isObjects(HealthcheckInput.ast)).toBe(true);
+    if (!AST.isObjects(HealthcheckInput.ast)) return;
+    const names = HealthcheckInput.ast.propertySignatures.map(({ name }) => String(name)).toSorted();
 
     expect(Schema.decodeUnknownSync(HealthcheckInput)(value)).toEqual(value);
     expect(names).toEqual(
@@ -297,7 +296,9 @@ describe("public healthcheck contracts", () => {
   });
 
   test("ServiceConfig stays a Struct and encodes a healthcheck-bearing value lawfully", () => {
-    const propertyNames = AST.getPropertySignatures(ServiceConfig.ast).map(({ name }) => String(name));
+    expect(AST.isObjects(ServiceConfig.ast)).toBe(true);
+    if (!AST.isObjects(ServiceConfig.ast)) return;
+    const propertyNames = ServiceConfig.ast.propertySignatures.map(({ name }) => String(name));
     const decoded = Schema.decodeUnknownSync(ServiceConfig)({
       healthcheck: { test: ["NONE"], start_interval: "5s" },
     });

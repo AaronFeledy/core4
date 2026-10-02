@@ -17,7 +17,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts task-level disabled with cmd", async () => {
@@ -28,7 +28,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts object cmds steps with cmd and supported overrides", async () => {
@@ -45,7 +45,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts full flag metadata keys", async () => {
@@ -70,7 +70,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts full arg metadata keys including order", async () => {
@@ -89,7 +89,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 });
 
@@ -108,7 +108,7 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
     expect(outcome.failure._tag).toBe("NotImplementedError");
     expect(outcome.failure.message).toContain("defer");
@@ -132,7 +132,7 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
     expect(outcome.failure._tag).toBe("NotImplementedError");
     expect(outcome.failure.message).toContain("task");
@@ -156,7 +156,7 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
     expect(outcome.failure._tag).toBe("NotImplementedError");
     expect(outcome.failure.message).toContain("bogus");
@@ -182,7 +182,7 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
     expect(outcome.failure._tag).toBe("NotImplementedError");
     expect(outcome.failure.message).toContain("type");
@@ -206,7 +206,7 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
     expect(outcome.failure._tag).toBe("NotImplementedError");
     expect(outcome.failure.message).toContain("deps");

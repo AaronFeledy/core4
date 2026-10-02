@@ -151,7 +151,7 @@ describe("Landofile serializer hardening — non-emittable values", () => {
 
   test("the Either form returns Left for a non-emittable input", () => {
     const result = emitLandofileYamlEither({ d: new Date(0) });
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure).toBeInstanceOf(LandofileEmitError);
     }
@@ -232,7 +232,7 @@ describe("Landofile serializer hardening — sortKeys option", () => {
 
   test("emitLandofileYamlEither accepts the sortKeys option", () => {
     const result = emitLandofileYamlEither({ b: 1, a: 2 }, { sortKeys: true });
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     if (result._tag === "Success") {
       expect(result.success).toBe("a: 2\nb: 1\n");
     }

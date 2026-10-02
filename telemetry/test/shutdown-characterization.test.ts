@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { Telemetry } from "@lando/sdk/services";
 import { type TelemetryRecord, TelemetrySinks, makeTelemetryLayer } from "@lando/telemetry/service";
-import { Clock, Deferred, Effect, Fiber, Layer, TestClock, TestContext } from "effect";
+import { Clock, Deferred, Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 test("shutdown drains queued records before interrupting the in-flight sink", async () => {
   // Given: one blocked dispatch leaves the subsequent records queued.
@@ -17,7 +18,7 @@ test("shutdown drains queued records before interrupting the in-flight sink", as
             record: (event, data) =>
               event === "blocked"
                 ? Deferred.succeed(started, undefined).pipe(
-                    Effect.zipRight(Effect.never),
+                    Effect.andThen(Effect.never),
                     Effect.ensuring(
                       Effect.sync(() => {
                         interrupted += 1;
@@ -64,7 +65,7 @@ test("shutdown of a hanging queued sink completes at its virtual flush budget", 
             Effect.sync(() => {
               calls.push(event);
             }).pipe(
-              Effect.zipRight(Effect.never),
+              Effect.andThen(Effect.never),
               Effect.ensuring(
                 Effect.sync(() => {
                   finalized += 1;
@@ -85,10 +86,10 @@ test("shutdown of a hanging queued sink completes at its virtual flush budget", 
           yield* telemetry.record("queued", {});
         }).pipe(Effect.provide(layer));
         return (yield* Clock.currentTimeMillis) - start;
-      }).pipe(Effect.fork);
+      }).pipe(Effect.forkChild);
       yield* TestClock.adjust(1000);
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestContext.TestContext)),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   expect(elapsed).toBe(250);

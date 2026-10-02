@@ -88,7 +88,7 @@ describe("Mailpit selected PHP senders", () => {
       ),
     );
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ServiceTypeError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ServiceTypeError" } });
   });
   test("deduplicates mailFrom by first occurrence without sorting authored order", async () => {
     // Given
@@ -141,7 +141,7 @@ describe("Mailpit selected PHP senders", () => {
     async (...targets) => {
       // Given / When / Then
       const result = await Effect.runPromise(Effect.result(planEffect(targets)));
-      expect(result).toMatchObject({ _tag: "Left", left: { _tag: "LandofileValidationError" } });
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileValidationError" } });
     },
   );
 
@@ -180,7 +180,7 @@ describe("Mailpit selected PHP senders", () => {
       Effect.result(planEffect(undefined, true, { image: "my-registry.example/php:8.3", home: false })),
     );
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "LandofileValidationError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileValidationError" } });
     if (result._tag !== "Failure") return;
     expect(result.failure.message).toContain("first");
     expect(result.failure.message).toContain("my-registry.example/php:8.3");

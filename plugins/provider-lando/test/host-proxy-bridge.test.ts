@@ -102,7 +102,7 @@ describe("managed Windows host-proxy guest bridge", () => {
         ),
       ),
     );
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ProviderUnavailableError");
     expect(fixture.closes).toBe(1);
     expect(fixture.calls.some((call) => call.args.at(-1)?.includes("rmdir --"))).toBe(true);

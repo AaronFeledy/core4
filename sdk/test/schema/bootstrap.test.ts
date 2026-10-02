@@ -1,7 +1,6 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
 
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 
 import { BOOTSTRAP_RANK, BootstrapLevel } from "@lando/sdk/schema";
 
@@ -43,17 +42,19 @@ describe("BootstrapLevel", () => {
     }
   });
 
-  test("rejects unknown literals with a structured ParseError", () => {
+  test("rejects unknown literals with a structured SchemaError", () => {
     const result = Schema.decodeUnknownResult(BootstrapLevel)("not-a-level");
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
-      expect(result.failure._tag).toBe("ParseError");
+      expect(result.failure._tag).toBe("SchemaError");
+      expect(result.failure.issue._tag).toBe("AnyOf");
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.length).toBeGreaterThan(0);
       for (const issue of issues) {
-        expect(issue._tag).toBe("Type");
-        expect(issue.message).toContain("not-a-level");
+        expect(issue.message).toBe(
+          `Expected ${EXPECTED_LITERALS.map((level) => JSON.stringify(level)).join(" | ")}`,
+        );
       }
     }
   });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { JSONSchema, Schema } from "effect";
+import { JsonSchema, Schema } from "effect";
 
 import { GlobalConfig, LandofileShape, ProxyConfig } from "@lando/sdk/schema";
 
@@ -24,12 +24,12 @@ test.each([
   // When
   const result = decode(input);
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
 });
 
 test("omits invocation consent from the published proxy configuration schema", () => {
   // Given / When
-  const schema = JSONSchema.make(ProxyConfig);
+  const schema = JsonSchema.toDocumentDraft07(Schema.toJsonSchemaDocument(ProxyConfig)).schema;
   // Then
   expect(schema).toHaveProperty("properties.defaultDomain");
   expect(schema).not.toHaveProperty("properties.autoApprove");

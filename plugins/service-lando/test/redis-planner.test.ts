@@ -45,7 +45,7 @@ test("refuses an authored Redis command that bypasses explicit authentication", 
   const result = await planEither(landofile);
 
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") {
     expect(result.failure).toBeInstanceOf(LandofileValidationError);
     expect(result.failure.message).toMatch(/authored command.*password/);
@@ -63,7 +63,7 @@ test("refuses an authored Redis entrypoint that bypasses explicit persistence", 
   const result = await planEither(landofile);
 
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") {
     expect(result.failure).toBeInstanceOf(LandofileValidationError);
     expect(result.failure.message).toMatch(/authored entrypoint.*persist/);
@@ -82,7 +82,7 @@ test("preserves an authored Redis command when no managed startup options are pr
   const result = await planEither(landofile);
 
   // Then
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   if (result._tag === "Success")
     expect(Object.values(result.success.services).map((service) => service.command)).toContainEqual(command);
 });

@@ -2519,7 +2519,7 @@ describe("AppPlannerLive", () => {
       const appPlan = await plan(landofileFixture);
 
       const encoded = Schema.encodeSync(AppPlan)(appPlan);
-      expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Right");
+      expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Success");
       expect(appPlan.provider).toBe(ProviderId.make("lando"));
       expect(Object.keys(appPlan.services).sort()).toEqual(["db", "web"]);
 

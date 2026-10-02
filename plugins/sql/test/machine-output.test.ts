@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DateTime, Effect, Exit, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema } from "effect";
 
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
 import { SqlConfirmRequiredError, SqlServiceAmbiguousError } from "@lando/sdk/errors";
@@ -161,14 +161,15 @@ describe("db command machine output", () => {
       Effect.scoped(executeDbCommand(harness.deps, { action: "reset", yes: false })),
     );
     expect(Exit.isFailure(denied)).toBe(true);
-    if (!Exit.isFailure(denied) || denied.cause._tag !== "Fail")
-      throw new Error("expected tagged reset confirmation failure");
-    expect(denied.cause.error).toBeInstanceOf(SqlConfirmRequiredError);
+    if (!Exit.isFailure(denied)) throw new Error("expected tagged reset confirmation failure");
+    const deniedError = Option.getOrUndefined(Cause.findErrorOption(denied.cause));
+    expect(deniedError).toBeInstanceOf(SqlConfirmRequiredError);
+    if (deniedError === undefined) throw new Error("expected tagged reset confirmation failure");
     const confirm = await Effect.runPromise(
       encodeCommandResult({
         command: "db:reset",
         resultSchema: DbCommandResult,
-        outcome: { _tag: "failure", error: denied.cause.error },
+        outcome: { _tag: "failure", error: deniedError },
         redactor: identityRedactor,
       }),
     );

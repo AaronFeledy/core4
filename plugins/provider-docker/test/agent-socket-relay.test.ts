@@ -135,7 +135,7 @@ test.each([
   // When
   const result = await Effect.runPromise(Effect.scoped(open(fake.api, invalid)).pipe(Effect.result));
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ProviderUnavailableError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderUnavailableError" } });
   expect(fake.requests).toEqual([]);
 });
 
@@ -145,7 +145,7 @@ test("cleans up when starting the relay fails without exposing the token", async
   // When
   const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.result));
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ProviderUnavailableError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderUnavailableError" } });
   expect(JSON.stringify(result)).not.toContain("secret-token");
   expect(
     fake.requests.filter((request) => request.method === "DELETE").map((request) => request.path),
@@ -169,7 +169,7 @@ test("rejects missing canonical ownership context before creating resources", as
     ).pipe(Effect.result),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ParseError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "SchemaError" } });
   expect(fake.requests).toEqual([]);
 });
 
@@ -268,7 +268,7 @@ test("a foreign unowned volume with that name is not deleted and fails with reme
   const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.result));
 
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
   expect(result.failure).toMatchObject({ _tag: "ProviderUnavailableError" });
   expect(

@@ -13,7 +13,13 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const service = (name: string, options: Pick<ServicePlan, "dependsOn" | "healthcheck">): ServicePlan => ({
+const service = (
+  name: string,
+  options: {
+    readonly dependsOn: ServicePlan["dependsOn"];
+    readonly healthcheck?: ServicePlan["healthcheck"];
+  },
+): ServicePlan => ({
   name: ServiceName.make(name),
   type: "test",
   provider: providerId,
@@ -158,7 +164,7 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const name = "lando-bring-up-order-app-web";
     const fake = makeFakeApi(0, [name]);
-    const plan = planWith([service("web", { dependsOn: [], healthcheck: undefined })]);
+    const plan = planWith([service("web", { dependsOn: [] })]);
 
     // When
     await apply(plan, fake.api, undefined, true);
@@ -175,7 +181,7 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const name = "lando-bring-up-order-app-web";
     const fake = makeFakeApi(0, [name]);
-    const plan = planWith([service("web", { dependsOn: [], healthcheck: undefined })]);
+    const plan = planWith([service("web", { dependsOn: [] })]);
 
     // When
     await apply(plan, fake.api, undefined, false);
@@ -190,7 +196,6 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const web = service("web", {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
-      healthcheck: undefined,
     });
     const plan = planWith([web, healthyDb]);
     const fake = makeFakeApi(0);
@@ -211,7 +216,6 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const web = service("web", {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
-      healthcheck: undefined,
     });
     const plan = planWith([web, healthyDb]);
     const fake = makeFakeApi(1);
@@ -231,7 +235,6 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const cache = service("cache", {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: false }],
-      healthcheck: undefined,
     });
     const plan = planWith([cache, healthyDb]);
     const fake = makeFakeApi(1);
@@ -250,7 +253,6 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const web = service("web", {
       dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
-      healthcheck: undefined,
     });
     const plan = planWith([web, healthyDb]);
     const db = "lando-bring-up-order-app-db";
@@ -266,10 +268,9 @@ describe("provider-docker bringUp dependency order", () => {
 
   test("cleans only a failed optional dependency and preserves an unrelated started service", async () => {
     // Given
-    const api = service("api", { dependsOn: [], healthcheck: undefined });
+    const api = service("api", { dependsOn: [] });
     const web = service("web", {
       dependsOn: [{ service: healthyDb.name, condition: "service_started", required: false }],
-      healthcheck: undefined,
     });
     const plan = planWith([api, healthyDb, web]);
     const apiName = "lando-bring-up-order-app-api";
@@ -293,7 +294,6 @@ describe("provider-docker bringUp dependency order", () => {
     // Given
     const cache = service("cache", {
       dependsOn: [{ service: healthyDb.name, condition: "service_started", required: false }],
-      healthcheck: undefined,
     });
     const plan = planWith([cache, healthyDb]);
     const fake = makeFakeApi(0);

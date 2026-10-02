@@ -65,7 +65,7 @@ const service = (
   type: "node",
   provider: providerId,
   primary: true,
-  artifact,
+  ...(artifact === undefined ? {} : { artifact }),
   environment: {},
   mounts: [],
   storage: [],

@@ -26,7 +26,31 @@ import {
  * duplicate the SDK schema. Its field transforms accept canonical output,
  * making re-decoding idempotent while rejecting values core could not produce.
  */
-const PodmanComposeKnobs = Schema.Struct(Struct.pick(ServiceConfig.fields, ["restart", "cap_add", "cap_drop", "privileged", "devices", "ulimits", "sysctls", "tmpfs", "shm_size", "dns", "dns_search", "dns_opt", "extra_hosts", "init", "stop_signal", "stop_grace_period", "security_opt", "group_add", "read_only", "platform", "logging"]));
+const PodmanComposeKnobs = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
+    "restart",
+    "cap_add",
+    "cap_drop",
+    "privileged",
+    "devices",
+    "ulimits",
+    "sysctls",
+    "tmpfs",
+    "shm_size",
+    "dns",
+    "dns_search",
+    "dns_opt",
+    "extra_hosts",
+    "init",
+    "stop_signal",
+    "stop_grace_period",
+    "security_opt",
+    "group_add",
+    "read_only",
+    "platform",
+    "logging",
+  ]),
+);
 type PodmanComposeKnobValues = typeof PodmanComposeKnobs.Type;
 type PodmanKnobKey = keyof PodmanComposeKnobValues;
 
@@ -200,7 +224,7 @@ const serviceKnobValues = (
   if (Result.isSuccess(decoded)) return decoded.success;
 
   const issues = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues;
-  const knobs = Array.from(new Set(issues.map((issue) => String(issue.path[0] ?? "compose"))));
+  const knobs = Array.from(new Set(issues.map((issue) => String(issue.path?.[0] ?? "compose"))));
   const names = knobs.map((knob) => `\`${knob}\``).join(", ");
   return fail(`Compose runtime knob${knobs.length === 1 ? "" : "s"} ${names} could not be realized.`, {
     knobs,

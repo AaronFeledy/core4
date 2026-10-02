@@ -46,7 +46,7 @@ describe("shell redaction fiber-local tokens", () => {
       withShellRedactionTokens(
         ["left-fiber-secret"],
         Effect.gen(function* () {
-          const child = yield* Effect.fork(failShell);
+          const child = yield* Effect.forkChild(failShell);
           return yield* Fiber.join(child);
         }),
       ).pipe(Effect.provide(layer)),
@@ -66,15 +66,15 @@ describe("shell redaction fiber-local tokens", () => {
             withShellRedactionTokens(
               ["left-fiber-secret"],
               Deferred.succeed(left, undefined).pipe(
-                Effect.zipRight(Deferred.await(right)),
-                Effect.zipRight(failShell),
+                Effect.andThen(Deferred.await(right)),
+                Effect.andThen(failShell),
               ),
             ),
             withShellRedactionTokens(
               ["right-fiber-secret"],
               Deferred.succeed(right, undefined).pipe(
-                Effect.zipRight(Deferred.await(left)),
-                Effect.zipRight(failShell),
+                Effect.andThen(Deferred.await(left)),
+                Effect.andThen(failShell),
               ),
             ),
           ],

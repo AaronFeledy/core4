@@ -114,7 +114,7 @@ test.each([
   const result = await Effect.runPromise(
     Effect.result(lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets") }, folded)),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Failure")
     expect(result.failure.cause).toMatchObject({
       _tag: "Lando3UnsupportedRecipeError",

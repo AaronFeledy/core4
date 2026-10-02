@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Stream } from "effect";
+import { Cause, Effect, Stream } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import { type AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
@@ -36,11 +36,13 @@ const expectContractFailure = async (engine: typeof TestFileSyncEngine, assertio
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  expect(result.cause.error).toBeInstanceOf(ContractFailure);
-  expect(result.cause.error._tag).toBe("ContractFailure");
-  expect(result.cause.error.assertion).toBe(assertion);
+  expect(result.cause.reasons).toHaveLength(1);
+  const reason = result.cause.reasons[0]!;
+  expect(Cause.isFailReason(reason)).toBe(true);
+  if (!Cause.isFailReason(reason)) return;
+  expect(reason.error).toBeInstanceOf(ContractFailure);
+  expect(reason.error._tag).toBe("ContractFailure");
+  expect(reason.error.assertion).toBe(assertion);
 };
 
 describe("FileSyncEngine contract", () => {
@@ -72,9 +74,7 @@ describe("FileSyncEngine contract", () => {
     expect(Effect.isEffect(TestFileSyncEngine.flushSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.terminateSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.listSessions({}))).toBe(true);
-    expect(Stream.TypeId in Object(TestFileSyncEngine.streamEvents(FileSyncSessionRef.make("x")))).toBe(
-      true,
-    );
+    expect(Stream.TypeId in Object(TestFileSyncEngine.streamEvents(FileSyncSessionRef.make("x")))).toBe(true);
   });
 
   test("TestFileSyncEngine reports correct status round-trip (start -> running, pause -> paused, resume -> running, terminate -> removed)", async () => {
@@ -186,9 +186,12 @@ describe("FileSyncEngine contract", () => {
     const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(FileSyncStartError);
-    expect(exit.cause.error._tag).toBe("FileSyncStartError");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(FileSyncStartError);
+    expect(reason.error._tag).toBe("FileSyncStartError");
   });
 
   test("error semantics: outside-root source surfaces FileSyncStartError", async () => {
@@ -198,9 +201,12 @@ describe("FileSyncEngine contract", () => {
     const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(FileSyncStartError);
-    expect(exit.cause.error._tag).toBe("FileSyncStartError");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(FileSyncStartError);
+    expect(reason.error._tag).toBe("FileSyncStartError");
   });
 
   test("error semantics: streamEvents emits a FileSyncDriftError for the test conflict ref", async () => {
@@ -211,8 +217,11 @@ describe("FileSyncEngine contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(FileSyncDriftError);
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(FileSyncDriftError);
   });
 
   test("error semantics: terminateSession on the failure sentinel ref surfaces FileSyncStopError", async () => {
@@ -223,8 +232,11 @@ describe("FileSyncEngine contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(FileSyncStopError);
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(FileSyncStopError);
   });
 
   test("fails with ContractFailure when engine identity is empty", async () => {
@@ -304,9 +316,12 @@ describe("runFileSyncEngineContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("matrix declares every canonical host platform");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("matrix declares every canonical host platform");
   });
 
   test("requires a skipReason for unsupported cells", async () => {
@@ -332,9 +347,12 @@ describe("runFileSyncEngineContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("unsupported matrix cell declares a skip reason");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("unsupported matrix cell declares a skip reason");
   });
 
   test("fails when a supported cell's contract fails", async () => {
@@ -358,8 +376,11 @@ describe("runFileSyncEngineContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("engine exposes a non-empty displayName");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0]!;
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("engine exposes a non-empty displayName");
   });
 });

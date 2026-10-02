@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DateTime, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit, Option } from "effect";
 
 import {
   SqlCommandFailedError,
@@ -148,7 +148,7 @@ describe("executeDbCommand", () => {
     // Then: the typed recovery failure prevents an unconstrained snapshot query.
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
       SqlRecoveryUnavailableError,
     );
     expect(harness.snapshotFilters()).toEqual([]);
@@ -397,7 +397,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlServiceAmbiguousError);
     if (error instanceof SqlServiceAmbiguousError) {
       expect(error.available).toEqual(["analytics", "database"]);
@@ -412,7 +412,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlDumpNotFoundError);
     if (error instanceof SqlDumpNotFoundError) {
       expect(error.path).toBe(join(harness.root, "_backups/missing.sql.gz"));
@@ -436,7 +436,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlDumpNotFoundError);
     if (error instanceof SqlDumpNotFoundError) expect(error.message).toContain("not readable");
     // Neither the count probe nor the overwrite confirmation ran.
@@ -452,7 +452,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlConfirmRequiredError);
     if (error instanceof SqlConfirmRequiredError) {
       expect(error.service).toBe("database");
@@ -529,7 +529,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlConfirmRequiredError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlConfirmRequiredError);
     expect(harness.transfers()).toEqual([]);
   });
 
@@ -570,7 +570,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlRecoveryOperationError);
     if (error instanceof SqlRecoveryOperationError) {
       expect(error.cause).toBeInstanceOf(SqlCommandFailedError);
@@ -594,7 +594,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlCommandFailedError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlCommandFailedError);
     expect(harness.transfers()).toEqual([]);
   });
 
@@ -690,7 +690,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(VolumeNotFoundError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(VolumeNotFoundError);
     expect(harness.lifecycle()).toEqual([]);
   });
 
@@ -711,7 +711,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlRecoveryOperationError);
     if (error instanceof SqlRecoveryOperationError) {
       expect(error.cause).toBeInstanceOf(FakeRestoreError);
@@ -739,7 +739,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
       SqlRecoveryUnavailableError,
     );
     expect(harness.lifecycle()).toEqual(["lock"]);
@@ -785,7 +785,7 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlSeedStateError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlSeedStateError);
     expect(harness.transfers()).toHaveLength(0);
   });
 
@@ -796,6 +796,6 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlSeedSourceError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlSeedSourceError);
   });
 });

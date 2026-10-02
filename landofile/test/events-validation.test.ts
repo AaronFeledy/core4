@@ -78,7 +78,7 @@ describe("Landofile events", () => {
       );
 
       // Then
-      expect(outcome._tag).toBe("Right");
+      expect(outcome._tag).toBe("Success");
     }
   });
 
@@ -97,7 +97,7 @@ describe("Landofile events", () => {
       );
 
       // Then
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag !== "Failure") throw new Error("expected unsupported event step failure");
       expect(outcome.failure).toMatchObject({
         _tag: "NotImplementedError",

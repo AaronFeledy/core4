@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 
 import type { PluginManifest } from "@lando/sdk/schema";
 import { ContractFailure, TestPluginManifest, runPluginContract } from "@lando/sdk/test";
@@ -13,11 +13,13 @@ const expectPluginContractFailure = async (
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  expect(result.cause.error).toBeInstanceOf(ContractFailure);
-  expect(result.cause.error._tag).toBe("ContractFailure");
-  expect(result.cause.error.assertion).toBe(assertion);
+  expect(result.cause.reasons).toHaveLength(1);
+  const reason = result.cause.reasons[0]!;
+  expect(Cause.isFailReason(reason)).toBe(true);
+  if (!Cause.isFailReason(reason)) return;
+  expect(reason.error).toBeInstanceOf(ContractFailure);
+  expect(reason.error._tag).toBe("ContractFailure");
+  expect(reason.error.assertion).toBe(assertion);
 };
 
 describe("runPluginContract", () => {
@@ -99,19 +101,21 @@ const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0"';
 const runCoreContract = (manifest: unknown) =>
   runPluginContract({ manifest, layers: { logger: Layer.empty } });
 
-const expectCoreContractFailure = async (manifest: unknown, reason: string): Promise<void> => {
+const expectCoreContractFailure = async (manifest: unknown, expectedReason: string): Promise<void> => {
   const result = await Effect.runPromiseExit(runCoreContract(manifest));
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  const error = result.cause.error;
+  expect(result.cause.reasons).toHaveLength(1);
+  const failReason = result.cause.reasons[0]!;
+  expect(Cause.isFailReason(failReason)).toBe(true);
+  if (!Cause.isFailReason(failReason)) return;
+  const error = failReason.error;
   expect(error).toBeInstanceOf(ContractFailure);
   expect(error._tag).toBe("ContractFailure");
   expect(error.assertion).toBe(CORE_COMPATIBILITY_ASSERTION);
   const details = error.details as { reason?: string; remediation?: string } | undefined;
-  expect(details?.reason).toBe(reason);
+  expect(details?.reason).toBe(expectedReason);
   expect(details?.remediation).toBe('Set requires["@lando/core"] to "^4.0.0".');
 };
 

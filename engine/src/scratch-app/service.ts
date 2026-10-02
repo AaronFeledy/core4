@@ -76,7 +76,9 @@ export interface ScratchInitAppPortShape {
   readonly initApp: (input: ScratchInitAppInput) => Promise<unknown>;
 }
 
-export class ScratchInitAppPort extends Context.Service<ScratchInitAppPort, ScratchInitAppPortShape>()("@lando/engine/ScratchInitAppPort") {}
+export class ScratchInitAppPort extends Context.Service<ScratchInitAppPort, ScratchInitAppPortShape>()(
+  "@lando/engine/ScratchInitAppPort",
+) {}
 
 const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
   "RecipeManifestNotFoundError",
@@ -306,9 +308,10 @@ const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
     serviceNames: Object.keys(plan.services),
     sharedCrossAppNetwork: true,
   });
+  const sharedNetworkMembership = plan.networking?.sharedNetworkMembership ?? built.sharedNetworkMembership;
   const networking: NetworkingPlan = {
     perAppBridge: plan.networking?.perAppBridge ?? built.perAppBridge,
-    sharedNetworkMembership: plan.networking?.sharedNetworkMembership ?? built.sharedNetworkMembership,
+    ...(sharedNetworkMembership === undefined ? {} : { sharedNetworkMembership }),
   };
   return {
     ...plan,

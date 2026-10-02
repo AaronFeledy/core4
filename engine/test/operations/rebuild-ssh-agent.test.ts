@@ -155,7 +155,7 @@ test.each(["sidecar", "host"] as const)(
         });
         expect(applied).toEqual([]);
       } else {
-        expect(result._tag).toBe("Right");
+        expect(result._tag).toBe("Success");
         expect(applied).toHaveLength(1);
         expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
         expect(applied[0]?.services[web.name]?.mounts).toEqual([]);

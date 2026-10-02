@@ -118,7 +118,7 @@ test.each(["pantheon", "unknown-id", "drupal9"])(
     const result = await Effect.runPromise(
       Effect.result(translator.translate(documentSet([document(".lando.dist.yml", `recipe: ${recipe}\n`)]))),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).not.toHaveProperty("outputs");
   },
 );
@@ -138,7 +138,7 @@ test.each([false, true])(
         }),
       ),
     );
-    expect(result._tag).toBe(writable ? "Right" : "Left");
+    expect(result._tag).toBe(writable ? "Success" : "Failure");
     if (result._tag === "Failure")
       expect(result.failure.remediation).toBe(
         "This layer's conversion also needs edits to dist; run the full conversion instead of --file.",
@@ -178,7 +178,7 @@ test("rejects a tagged config file instead of lowering defaults", async () => {
       ),
     ),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") {
     expect(result.failure.message).toBe("config is a tagged file reference and was not read.");
     expect(result.failure.remediation).toContain("Inline config");
@@ -194,7 +194,7 @@ test("rejects a non-boolean recipe option instead of describing it as a string",
       ),
     ),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") {
     expect(result.failure.message).toBe(
       "config.redis must be true or false for the Lando 4 wordpress recipe option redis.",
@@ -260,7 +260,7 @@ test("single-layer conversion still refuses a hoist into an already lowered laye
       }),
     ),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") expect(result.failure.remediation).toContain("dist");
 });
 

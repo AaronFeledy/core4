@@ -37,11 +37,16 @@ export type {
 
 export type AppIncludesVerifyFormat = "text" | "json";
 
-const IncludeVerifyNullableStringSchema = Schema.Union([Schema.String, Schema.Literal(null)]);
+const IncludeVerifyNullableStringSchema = Schema.Union([Schema.String, Schema.Null]);
 
 const IncludeVerifyEntrySchema = Schema.Struct({
   source: Schema.String,
-  status: Schema.Union([Schema.Literal("ok"), Schema.Literal("mismatch"), Schema.Literal("missing"), Schema.Literal("stale")]),
+  status: Schema.Union([
+    Schema.Literal("ok"),
+    Schema.Literal("mismatch"),
+    Schema.Literal("missing"),
+    Schema.Literal("stale"),
+  ]),
   expected: IncludeVerifyNullableStringSchema,
   actual: IncludeVerifyNullableStringSchema,
 });

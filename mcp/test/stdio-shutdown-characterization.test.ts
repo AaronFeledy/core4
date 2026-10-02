@@ -89,8 +89,8 @@ describe("stdio transport shutdown", () => {
                   Effect.sync(() => {
                     executed.push("app:exec");
                   }).pipe(
-                    Effect.zipRight(Deferred.succeed(started, undefined)),
-                    Effect.zipRight(Effect.never),
+                    Effect.andThen(Deferred.succeed(started, undefined)),
+                    Effect.andThen(Effect.never),
                     Effect.ensuring(
                       Effect.sync(() => {
                         finalized.push("app:exec");
@@ -101,7 +101,7 @@ describe("stdio transport shutdown", () => {
             },
           ],
           defaultAllowlist: ["app:exec"],
-          runtimeLayer: Layer.scopedDiscard(
+          runtimeLayer: Layer.effectDiscard(
             Effect.addFinalizer(() =>
               Effect.sync(() => {
                 runtimeReleased += 1;

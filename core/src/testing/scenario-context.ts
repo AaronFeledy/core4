@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Cause, Chunk, Console, Context, Effect, Exit, Layer, Schema, type Scope, Stream } from "effect";
+import { type Cause, Console, Context, Effect, Exit, Layer, Schema, type Scope, Stream } from "effect";
 
 import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
@@ -328,7 +328,7 @@ const readBytes = (path: string): Effect.Effect<Uint8Array, FileSystemError, Fil
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem;
     const chunks = yield* Stream.runCollect(fileSystem.read(path));
-    const arrays = Chunk.toReadonlyArray(chunks);
+    const arrays = chunks;
     const total = arrays.reduce((size, chunk) => size + chunk.byteLength, 0);
     const bytes = new Uint8Array(total);
     let offset = 0;

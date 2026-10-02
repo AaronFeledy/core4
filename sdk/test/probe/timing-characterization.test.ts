@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type RetryPolicy, runProbe, toSchedule } from "@lando/sdk/probe";
-import { Clock, Duration, Effect, Fiber, TestClock, TestContext } from "effect";
+import { Clock, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 const profiles = [
   { name: "default", policy: {}, times: [0] },
@@ -53,10 +54,10 @@ const profiles = [
 const underClock = <A, E>(effect: Effect.Effect<A, E>) =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const fiber = yield* Effect.fork(effect);
+      const fiber = yield* Effect.forkChild(effect);
       yield* TestClock.adjust(10_000);
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestContext.TestContext)),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
 describe("probe timing characterization", () => {

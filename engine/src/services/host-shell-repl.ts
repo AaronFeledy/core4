@@ -51,7 +51,7 @@ const resolveSecrets = (
     }
     const values = yield* Effect.forEach(matches, (match) =>
       Effect.gen(function* () {
-        const reference = yield* parseSecretReference(match[1] ?? "");
+        const reference = yield* Effect.fromResult(parseSecretReference(match[1] ?? ""));
         return yield* resolveSecret(reference.raw);
       }),
     ).pipe(Effect.mapError((error) => shellError(error.message, REDACTED, error)));

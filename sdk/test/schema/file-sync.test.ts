@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Result, JSONSchema, Schema } from "effect";
+import { JsonSchema, Result, Schema } from "effect";
 
 import {
   type AppRef,
@@ -80,7 +80,7 @@ describe("FileSyncEngineCapabilities", () => {
   });
 
   test("produces stable JSON Schema output for the snapshot gate", () => {
-    const jsonSchema = JSONSchema.make(FileSyncEngineCapabilities);
+    const jsonSchema = JsonSchema.toDocumentDraft07(Schema.toJsonSchemaDocument(FileSyncEngineCapabilities));
     expect(jsonSchema).toBeDefined();
     const fromRegistry = getJsonSchema("FileSyncEngineCapabilities");
     expect(fromRegistry).toBeDefined();

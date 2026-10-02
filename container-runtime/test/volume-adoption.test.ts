@@ -73,7 +73,7 @@ test("refuses a token changed between publication and re-read", async () => {
   };
   expect(
     (await Effect.runPromise(Effect.result(adoptMountedVolume(input, { ...target, ownerRoot }))))._tag,
-  ).toBe("Left");
+  ).toBe("Failure");
 });
 
 test("refuses foreign ownership returned by a helper", async () => {
@@ -85,7 +85,7 @@ test("refuses foreign ownership returned by a helper", async () => {
         ),
       )
     )._tag,
-  ).toBe("Left");
+  ).toBe("Failure");
 });
 
 test("rejects unsupported drivers before starting a witness helper", async () => {
@@ -99,6 +99,6 @@ test("rejects unsupported drivers before starting a witness helper", async () =>
   };
   expect(
     (await Effect.runPromise(Effect.result(adoptMountedVolume(input, { ...target, ownerRoot }))))._tag,
-  ).toBe("Left");
+  ).toBe("Failure");
   expect(called).toBe(false);
 });

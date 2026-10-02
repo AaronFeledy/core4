@@ -50,7 +50,7 @@ describe("writeFileAtomicViaRename", () => {
         ),
       );
       // Then the cache failure leaves the original empty and unpublished
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") expect(result.failure._tag).toBe("CacheError");
       expect(await readFile(original, "utf8")).toBe("");
       expect(await fileExists(target)).toBe(false);

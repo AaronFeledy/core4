@@ -90,13 +90,13 @@ export interface UpdateOptions {
 
 export interface UpdateResult {
   readonly coreReplacementPending?: boolean;
-  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type | undefined;
+  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type;
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
-  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow> | undefined;
-  readonly hasFailures?: boolean | undefined;
-  readonly coreBlocked?: boolean | undefined;
-  readonly coreUpdateAvailable?: boolean | undefined;
+  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow>;
+  readonly hasFailures?: boolean;
+  readonly coreBlocked?: boolean;
+  readonly coreUpdateAvailable?: boolean;
 }
 
 export interface PluginUpdateRunInput {

@@ -124,7 +124,7 @@ describe("runPostStartScan", () => {
     const result = await Effect.runPromise(
       Effect.result(runPostStartScan({ scanner: failingScanner(), plan, events })),
     );
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     expect(events.published).toHaveLength(1);
     expect(warnBody(events.published[0])).toContain("scan blew up");
   });
@@ -136,7 +136,7 @@ describe("runPostStartScan", () => {
       publish: () => Effect.die(new Error("bus down")),
     };
     const result = await Effect.runPromise(Effect.result(runPostStartScan({ scanner, plan, events })));
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("propagates scan interruption so a cancelled start can stop", async () => {

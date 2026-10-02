@@ -157,7 +157,7 @@ const translate = (
         ),
       );
     }
-    yield* validateConfigTranslateInput(input);
+    yield* Effect.fromResult(validateConfigTranslateInput(input));
     const writable = new Set<string>(input.writableLayerIds);
     const selectedIds = new Set<string>(input.selectedSourceIds);
     // Non-selected documents in single-layer mode are validation context, not

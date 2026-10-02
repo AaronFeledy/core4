@@ -37,17 +37,18 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres", "-c", "port=55434"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  appMount:
-    name === "node"
-      ? {
+  ...(name === "node"
+    ? {
+        appMount: {
           source: appRoot,
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: [],
           includes: [],
           realization: "passthrough",
-        }
-      : undefined,
+        },
+      }
+    : {}),
   mounts: [],
   storage: [],
   endpoints:

@@ -128,7 +128,7 @@ describe("MySQL volume identity recovery before lifecycle coordination", () => {
     );
 
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderUnavailableError);
     expect(applied).toBe(false);
   });

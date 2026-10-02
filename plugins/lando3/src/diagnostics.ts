@@ -1,15 +1,8 @@
 import { compareKeyPaths } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type { LegacyOccurrence } from "./contract.ts";
+import { spanOf } from "./service-diagnostics.ts";
 import { formatPath } from "./source.ts";
-
-const spanOf = (occurrence: LegacyOccurrence): ConfigTranslateDiagnostic["span"] =>
-  occurrence.span === undefined
-    ? undefined
-    : {
-        start: { line: occurrence.span.start.line, column: occurrence.span.start.column },
-        end: { line: occurrence.span.end.line, column: occurrence.span.end.column },
-      };
 
 export const droppedConfigKey = (args: {
   readonly recipeId: string;
@@ -19,7 +12,7 @@ export const droppedConfigKey = (args: {
   kind: "dropped",
   sourceId: args.occurrence.sourceId,
   keyPath: ["config", args.legacyKey],
-  span: spanOf(args.occurrence),
+  ...spanOf(args.occurrence),
   message: `${formatPath(["config", args.legacyKey])} has no option on the Lando 4 ${args.recipeId} recipe.`,
   remediation: "Set the equivalent value by hand in the generated Landofile after conversion.",
 });
@@ -54,7 +47,7 @@ export const invalidOptionValue = (
   kind: "unsupported",
   sourceId: args.occurrence.sourceId,
   keyPath: ["config", args.legacyKey],
-  span: spanOf(args.occurrence),
+  ...spanOf(args.occurrence),
   message: invalidOptionMessage(args),
   remediation: `Choose a supported value for ${args.option}, or run the app with Lando 3.`,
 });
@@ -74,7 +67,7 @@ export const unsupportedRecipe = (args: {
     kind: "unsupported",
     sourceId: args.occurrence.sourceId,
     keyPath: ["recipe"],
-    span: spanOf(args.occurrence),
+    ...spanOf(args.occurrence),
     message: messages[args.reason],
     remediation:
       "Run the app with Lando 3 or replace the recipe with explicit v4 services before conversion.",
@@ -88,7 +81,7 @@ export const generatedRecipe = (args: {
   kind: "generated",
   sourceId: args.occurrence.sourceId,
   keyPath: ["recipe"],
-  span: spanOf(args.occurrence),
+  ...spanOf(args.occurrence),
   message: `Lando 4 recipe ${args.recipeId} generated this layer from the Lando 3 recipe and config.`,
   remediation: "Review the generated services before starting the app.",
 });
@@ -104,7 +97,7 @@ export const relocationDiagnostic = (args: {
   kind: "needs-review",
   sourceId: args.occurrence.sourceId,
   keyPath: args.unitLabel.split("."),
-  span: spanOf(args.occurrence),
+  ...spanOf(args.occurrence),
   message: `${args.unitLabel} moved to the ${args.hoistedTo} layer because Lando 4 layers cannot remove it later (sources: ${args.sourceIds.join(", ")}).${
     args.changedPrefixes.length === 0
       ? ""

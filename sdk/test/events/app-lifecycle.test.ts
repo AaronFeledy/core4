@@ -56,7 +56,7 @@ describe("app lifecycle event payload schemas", () => {
         ...basePayload,
       });
 
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
       if (result._tag === "Success") {
         expect(String(result.success.eventName)).toBe(eventName);
         expect(String(result.success.appRef.id)).toBe("myapp");
@@ -74,7 +74,7 @@ describe("app lifecycle event payload schemas", () => {
         serviceName: "web",
       });
 
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
       if (result._tag === "Success") {
         expect(String(result.success.eventName)).toBe(eventName);
         expect(String(result.success.serviceName)).toBe("web");
@@ -94,7 +94,7 @@ describe("app lifecycle event payload schemas", () => {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.length).toBeGreaterThan(0);
-      expect(issues.some((issue) => issue.path.includes("eventName"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("eventName"))).toBe(true);
     }
   });
 
@@ -109,7 +109,7 @@ describe("app lifecycle event payload schemas", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("serviceName"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("serviceName"))).toBe(true);
     }
   });
 

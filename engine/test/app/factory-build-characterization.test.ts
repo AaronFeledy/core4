@@ -69,7 +69,7 @@ test("the real handle factory constructs at counts 1, 2, 3 behind a test-only la
     networks: [],
     stores: [],
     fileSync: [],
-    metadata: { resolvedAt: DateTime.unsafeMake(0), source: "test", runtime: 4 },
+    metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
     extensions: {},
   };
   const instances: App[] = [];

@@ -69,7 +69,7 @@ describe("build provider fiber-local selection", () => {
     const results = await Effect.runPromise(
       withBuildProvider(
         Effect.gen(function* () {
-          const child = yield* Effect.fork(buildRef);
+          const child = yield* Effect.forkChild(buildRef);
           const nested = yield* withBuildProvider(buildRef, provider("nested"));
           return [yield* Fiber.join(child), nested, yield* buildRef];
         }),
@@ -97,15 +97,15 @@ describe("build provider fiber-local selection", () => {
           [
             withBuildProvider(
               Deferred.succeed(leftReady, undefined).pipe(
-                Effect.zipRight(Deferred.await(rightReady)),
-                Effect.zipRight(buildRef),
+                Effect.andThen(Deferred.await(rightReady)),
+                Effect.andThen(buildRef),
               ),
               provider("left"),
             ),
             withBuildProvider(
               Deferred.succeed(rightReady, undefined).pipe(
-                Effect.zipRight(Deferred.await(leftReady)),
-                Effect.zipRight(buildRef),
+                Effect.andThen(Deferred.await(leftReady)),
+                Effect.andThen(buildRef),
               ),
               provider("right"),
             ),

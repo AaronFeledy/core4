@@ -15,7 +15,7 @@ import {
   RuntimeProviderRegistry,
   type SshService,
 } from "@lando/sdk/services";
-import { Effect, Result, Option } from "effect";
+import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
@@ -24,7 +24,7 @@ type Details = typeof SshAgentPostureDetails.Type;
 
 export interface SshAgentDoctorOptions {
   readonly globalConfig?: Pick<GlobalConfig, "sshAgent" | "gpgAgent"> | undefined;
-  readonly gpgRunner?: Pick<ProcessRunner["Type"], "run">;
+  readonly gpgRunner?: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
   readonly platform?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly discovery?: Partial<Pick<HostAgentDiscoveryOptions, "home" | "exists" | "runGpgconf">>;
@@ -33,7 +33,10 @@ export interface SshAgentDoctorOptions {
 }
 
 export const sshAgentPostureCheck = (
-  input: SshAgentDoctorOptions & { readonly sshService: SshService["Type"]; readonly fix?: boolean },
+  input: SshAgentDoctorOptions & {
+    readonly sshService: Context.Service.Shape<typeof SshService>;
+    readonly fix?: boolean;
+  },
 ): Effect.Effect<DoctorSubsystemCheck> =>
   Effect.gen(function* () {
     const config = yield* Effect.serviceOption(ConfigService);

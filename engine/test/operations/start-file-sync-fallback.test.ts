@@ -376,7 +376,7 @@ describe("file-sync start engine identity", () => {
 
   test("nonempty session plan fails with a tagged error when no engine is selected", async () => {
     const result = await Effect.runPromise(Effect.result(startFileSyncSessions(acceleratedPlan, events)));
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected file-sync start to fail");
     expect(result.failure).toBeInstanceOf(FileSyncStartError);
     expect(result.failure).toMatchObject({
@@ -400,7 +400,7 @@ describe("file-sync start engine identity", () => {
         ),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected file-sync start to fail");
     expect(result.failure).toBeInstanceOf(FileSyncStartError);
     expect(result.failure).toMatchObject({
@@ -446,7 +446,7 @@ describe("file-sync session reconciliation", () => {
         startFileSyncSessions(singleSessionPlan, events).pipe(Effect.provideService(FileSyncEngine, engine)),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure).toBeInstanceOf(FileSyncStartError);
       expect(result.failure.message).toContain("Multiple file-sync sessions");
@@ -484,7 +484,7 @@ describe("file-sync session reconciliation", () => {
           ),
         ),
       );
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure._tag).toBe("FileSyncDriftError");
         expect(result.failure.remediation).toContain("untouched");
@@ -525,7 +525,7 @@ describe("file-sync session reconciliation", () => {
         startFileSyncSessions(singleSessionPlan, events).pipe(Effect.provideService(FileSyncEngine, engine)),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
     expect(calls).toEqual(["resume", "pause"]);
   });
@@ -545,7 +545,7 @@ describe("file-sync session reconciliation", () => {
         startFileSyncSessions(singleSessionPlan, events).pipe(Effect.provideService(FileSyncEngine, engine)),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure._tag).toBe("FileSyncStartError");
     expect(calls).toEqual([]);
   });
@@ -570,7 +570,7 @@ describe("file-sync session reconciliation", () => {
         startFileSyncSessions(singleSessionPlan, events).pipe(Effect.provideService(FileSyncEngine, engine)),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
     expect(calls).toEqual(["create", "flush", "terminate"]);
   });
@@ -697,7 +697,7 @@ describe("file-sync session reconciliation", () => {
         ),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
     expect(calls).toEqual(["flush reused", "terminate created"]);
   });
@@ -952,7 +952,7 @@ describe("file-sync session reconciliation", () => {
         ),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBe(failure);
     expect(calls).toEqual(["resume", "flush", "pause"]);
   });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 
 import {
   type DockerApiClient,
@@ -176,10 +176,11 @@ describe("provider-docker logs", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ProviderUnavailableError);
-      expect(exit.cause.error.message).not.toContain("does not implement");
-      expect(exit.cause.error.message).toContain("Container for app");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ProviderUnavailableError);
+      expect(error?.message).not.toContain("does not implement");
+      expect(error?.message).toContain("Container for app");
     }
   });
 });

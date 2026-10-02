@@ -7,7 +7,7 @@ import { StreamFrameSink, type StreamFrameSinkFrame, followLogsForPlan } from ".
 
 const providerId = ProviderId.make("test");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-21T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-21T00:00:00Z"),
   source: "follow-characterization",
   runtime: 4 as const,
 };

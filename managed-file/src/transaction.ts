@@ -147,7 +147,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
                   privateFileAccess: options.privateFileAccess,
                 }),
               );
-              entries.push({ ...plan.entry, stage: created });
+              entries.push({ ...plan.entry, ...(created === undefined ? {} : { stage: created }) });
               yield* checkpoint("stage-created", index);
             } else entries.push(plan.entry);
           }

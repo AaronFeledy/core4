@@ -62,13 +62,9 @@ export const makeStdioWriter = (
     const queuedBytes = yield* Ref.make(0);
 
     const failQueued = (error: McpTransportError): Effect.Effect<void> =>
-      Queue.takeAll(queue).pipe(
+      Queue.clear(queue).pipe(
         Effect.flatMap((messages) =>
-          Effect.forEach(
-            messages,
-            (message) => Deferred.fail(message.completed, error),
-            { discard: true },
-          ),
+          Effect.forEach(messages, (message) => Deferred.fail(message.completed, error), { discard: true }),
         ),
       );
 
@@ -86,7 +82,10 @@ export const makeStdioWriter = (
       Queue.take(queue).pipe(
         Effect.flatMap((message) =>
           Effect.raceFirst(
-            Effect.timeoutOrElse(options.writeLine(message.line), { duration: OUTBOUND_WRITE_DEADLINE, orElse: () => Effect.fail((writeDeadlineFailure)()) }).pipe(
+            Effect.timeoutOrElse(options.writeLine(message.line), {
+              duration: OUTBOUND_WRITE_DEADLINE,
+              orElse: () => Effect.fail(writeDeadlineFailure()),
+            }).pipe(
               Effect.mapError((cause) =>
                 cause instanceof McpTransportError
                   ? cause

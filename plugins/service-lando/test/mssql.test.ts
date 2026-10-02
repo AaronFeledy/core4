@@ -322,7 +322,7 @@ describe("mssql ServiceType", () => {
         .pipe(Effect.result),
     );
 
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     if (result._tag !== "Success") throw new Error("expected provider-free resolution to succeed");
     expect(result.success.tooling?.sqlcmd?.cmd).toEqual([SQLCMD, "-S", "localhost", "-U", "sa", "-C"]);
   });
@@ -342,7 +342,7 @@ describe("mssql ServiceType", () => {
         .pipe(Effect.result),
     );
 
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("expected arm64 without emulation to fail");
     expect(result.failure).toBeInstanceOf(ServiceTypeError);
     expect(result.failure.message).toContain(ARCH_REMEDIATION);

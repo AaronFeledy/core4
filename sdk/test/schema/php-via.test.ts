@@ -4,17 +4,17 @@ import { Schema } from "effect";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 
-const strictDecode = (schema: Schema.Codec<unknown, unknown>, input: unknown) =>
+const strictDecode = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown) =>
   Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);
 
 describe("PHP via serving-mode schema", () => {
   test("Given PHP via fpm, when decoding PhpServiceConfig, then it succeeds", () => {
     const result = strictDecode(PhpServiceConfig, { type: "php:8.3", via: "fpm" });
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given ServiceConfig via cli, when strictly decoding, then it succeeds", () => {
     const result = strictDecode(ServiceConfig, { type: "php:8.3", via: "cli" });
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 });

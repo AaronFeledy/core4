@@ -153,7 +153,7 @@ describe("artifact build step user switching", () => {
         ),
       );
       // Then
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure._tag).toBe("ProviderInternalError");
         expect(result.failure.operation).toBe("buildArtifact");
@@ -173,7 +173,7 @@ describe("artifact build step user switching", () => {
         Effect.result(runBuild({ artifact, user, steps: [scaffold], request: capture.request })),
       );
       // Then
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure._tag).toBe("ProviderInternalError");
         expect(result.failure.operation).toBe("buildArtifact");

@@ -163,6 +163,7 @@ export type AppRuntimeServices =
   | EventCommandExecutor;
 type RuntimeLayer =
   | Layer.Layer<never>
+  | Layer.Layer<never, LandoRuntimeBootstrapError>
   | Layer.Layer<NoneRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>

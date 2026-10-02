@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Option } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -68,9 +68,10 @@ describe("bounded MCP JSON", () => {
 
     // Then
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpTransportError);
-      expect(exit.cause.error.message).toContain("8 MiB");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(McpTransportError);
+      expect(error.message).toContain("8 MiB");
     }
     expect(trailingGetterCalls).toBe(0);
   });
@@ -106,9 +107,10 @@ describe("bounded MCP JSON", () => {
 
     // Then
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpTransportError);
-      expect(exit.cause.error.message).toContain("8 MiB");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(McpTransportError);
+      expect(error.message).toContain("8 MiB");
     }
   });
 

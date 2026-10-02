@@ -83,6 +83,6 @@ describe("MySQL managed versions", () => {
       unsupported: true,
     });
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });

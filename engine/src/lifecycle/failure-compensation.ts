@@ -11,7 +11,7 @@ export const runAllAndMergeFailures = <E, R>(
     }
     const first = causes[0];
     if (first === undefined) return;
-    yield* Effect.failCause(causes.slice(1).reduce(Cause.combine, first));
+    yield* Effect.failCause(causes.slice(1).reduce((previous, next) => Cause.combine(previous, next), first));
   });
 
 export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(

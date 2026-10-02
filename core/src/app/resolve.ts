@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { Effect, ExecutionStrategy, Scope } from "effect";
+import { Effect, Scope } from "effect";
 
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
@@ -259,7 +259,7 @@ export const resolveApp = (
   selector?: AppSelector,
 ): Effect.Effect<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> =>
   Effect.gen(function* () {
-    const normalized = yield* normalizeAppSelector(selector);
+    const normalized = yield* Effect.fromResult(normalizeAppSelector(selector));
     const target = yield* resolveTarget(normalized);
     return yield* buildAppHandle(target);
   });

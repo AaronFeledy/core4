@@ -303,7 +303,8 @@ describe("dependency schedule", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(schedule);
         yield* Deferred.await(started);
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
 

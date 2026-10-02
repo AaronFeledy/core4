@@ -1,6 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { ParseResult } from "effect";
+import { SchemaIssue } from "effect";
 
 import { parseComposeByteSize } from "../../src/schema/compose-byte-size.ts";
 
@@ -77,7 +76,7 @@ describe("parseComposeByteSize", () => {
   });
 
   for (const literal of rejectedByteSizes) {
-    test(`Given ${JSON.stringify(literal)}, When parsed, Then throws ParseResult.Type with Landofile service prefix`, () => {
+    test(`Given ${JSON.stringify(literal)}, When parsed, Then throws InvalidValue with Landofile service prefix`, () => {
       // Given
       let failure: unknown;
 
@@ -92,7 +91,7 @@ describe("parseComposeByteSize", () => {
       // Then
       expect(failure).toBeInstanceOf(SchemaIssue.InvalidValue);
       if (!(failure instanceof SchemaIssue.InvalidValue)) return;
-      const message = failure.message;
+      const message = SchemaIssue.makeFormatterDefault()(failure);
       expect(message).toBeDefined();
       if (message === undefined) return;
       expect(message.startsWith("Landofile service ")).toBe(true);

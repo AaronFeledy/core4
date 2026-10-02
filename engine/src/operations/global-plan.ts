@@ -46,7 +46,7 @@ export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (Schema.isSchemaError(cause)) {
     return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
+      (issue.path ?? []).length === 0 ? issue.message : (issue.path ?? []).join("."),
     );
   }
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];

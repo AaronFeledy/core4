@@ -100,7 +100,7 @@ describe("AppRef", () => {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.length).toBeGreaterThan(0);
-      expect(issues.some((issue) => issue.path.includes("kind"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("kind"))).toBe(true);
     }
   });
 
@@ -110,7 +110,7 @@ describe("AppRef", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("root"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("root"))).toBe(true);
     }
   });
 });
@@ -145,7 +145,7 @@ describe("ServicePlan", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("metadata"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("metadata"))).toBe(true);
     }
   });
 
@@ -203,7 +203,7 @@ describe("AppPlan", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("id"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("id"))).toBe(true);
     }
   });
 
@@ -216,9 +216,11 @@ describe("AppPlan", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("services") && issue.path.includes("primary"))).toBe(
-        true,
-      );
+      expect(
+        issues.some(
+          (issue) => (issue.path ?? []).includes("services") && (issue.path ?? []).includes("primary"),
+        ),
+      ).toBe(true);
     }
   });
 });

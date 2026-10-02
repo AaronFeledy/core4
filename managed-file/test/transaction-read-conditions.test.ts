@@ -18,8 +18,8 @@ test("rejects stale readonly sources before producing artifacts", async () => {
   const result = await scoped(Effect.result(transactions.run(request)));
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { reason: "conflict", phase: "prepare", path: "source" },
+    _tag: "Failure",
+    failure: { reason: "conflict", phase: "prepare", path: "source" },
   });
   expect(await readdir(appRoot)).toEqual(["source"]);
 });
@@ -60,7 +60,7 @@ test("rejects a present source when absence was required", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "conflict" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "conflict" } });
 });
 
 test("rejects symlinked readonly sources", async () => {
@@ -79,6 +79,6 @@ test("rejects symlinked readonly sources", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "path" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "path" } });
   expect(await Bun.file(join(appRoot, "target")).exists()).toBe(false);
 });

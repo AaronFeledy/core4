@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
-import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { FileSystemLive } from "@lando/engine/services/file-system";
@@ -1102,10 +1102,13 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
-      expect(exit.cause.error._tag).toBe("ServiceCopyError");
-      expect(exit.cause.error.providerId).toBe("docker");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ServiceCopyError);
+      if (error instanceof ServiceCopyError) {
+        expect(error._tag).toBe("ServiceCopyError");
+        expect(error.providerId).toBe("docker");
+      }
     }
   });
 
@@ -1469,8 +1472,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "ProviderInternalError", providerId: "docker" },
+      _tag: "Failure",
+      failure: { _tag: "ProviderInternalError", providerId: "docker" },
     });
   });
 
@@ -1947,7 +1950,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -1974,7 +1979,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -2006,7 +2013,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&

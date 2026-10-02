@@ -242,8 +242,8 @@ const buildEntry = (
   lastWrittenChecksum,
   sourceHash,
   state,
-  base: mf.base,
-  backup,
+  ...(mf.base === undefined ? {} : { base: mf.base }),
+  ...(backup === undefined ? {} : { backup }),
   createdAt: existing?.createdAt ?? nowIso(),
   updatedAt: nowIso(),
 });
@@ -484,7 +484,7 @@ const decideOne = (
     const disk = pendingDisk?.has(abs)
       ? (pendingDisk.get(abs) ?? null)
       : yield* backend.readMaybe(abs, operation);
-    const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path: mf.path, base: mf.base }));
+    const entry = entries.find((candidate) => sameLedgerTarget(candidate, mf));
     const decision =
       mf.mode === "file"
         ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
@@ -627,7 +627,7 @@ export const makeManagedFileService = (
               id: mf.id,
               path: decision.relPath as PortablePath,
               action: decision.action,
-              backup,
+              ...(backup === undefined ? {} : { backup }),
             });
           }
           for (const { mf, decision } of prepared) {
@@ -712,7 +712,7 @@ export const makeManagedFileService = (
     const adopt = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
       backend.mutateLedger("adopt", (entries) =>
         Effect.gen(function* () {
-          const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path, base: undefined }));
+          const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path }));
           const base = yield* backend.resolveBase(entry?.base, "adopt");
           const abs = yield* backend.resolveTarget(base, path, "adopt");
           const disk = yield* backend.readMaybe(abs, "adopt");
@@ -732,7 +732,7 @@ export const makeManagedFileService = (
 
     const release = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
       backend.mutateLedger("release", (entries) => {
-        const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path, base: undefined }));
+        const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path }));
         return Effect.succeed([
           undefined,
           entry ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }) : entries,

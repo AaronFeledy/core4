@@ -134,7 +134,7 @@ export const FileSyncSessionInfo = Schema.Struct({
   /** Full applied spec, used to verify session reuse before mounting synced bytes. */
   spec: FileSyncSessionSpec,
   status: FileSyncSessionStatus,
-  lastUpdatedAt: Schema.DateTimeUtc,
+  lastUpdatedAt: Schema.DateTimeUtcFromString,
   /** Optional structured detail (drift count, last error message, etc.). */
   detail: Schema.optionalKey(Schema.String),
 });

@@ -7,7 +7,7 @@ import { TestMcpCommandExecutor } from "./executor.ts";
 
 test("MCP builds once per graph, twice with nested provide, and freshly in a new run", async () => {
   // Given: the real MCP layer with the package's executor seam and an empty command catalog.
-  const instances: Context.Tag.Service<typeof McpService>[] = [];
+  const instances: Context.Service.Shape<typeof McpService>[] = [];
   const layer = McpServiceLive.pipe(
     Layer.provide(
       Layer.mergeAll(

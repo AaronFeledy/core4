@@ -32,7 +32,7 @@ describe("open-url events", () => {
   for (const [tag, decode] of openUrlEvents) {
     test(`${tag} round-trips through its schema`, () => {
       const decoded = decode({ _tag: tag, ...basePayload });
-      expect(decoded._tag).toBe("Right");
+      expect(decoded._tag).toBe("Success");
       if (decoded._tag === "Success") {
         expect(String(decoded.success._tag)).toBe(tag);
         expect(decoded.success.url).toBe("https://web.myapp.lndo.site");

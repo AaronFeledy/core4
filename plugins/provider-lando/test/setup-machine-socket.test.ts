@@ -107,7 +107,7 @@ describe("Windows managed machine API socket activation", () => {
     const result = await Effect.runPromise(
       Effect.result(runner.hostPortOwners?.([38080]) ?? Effect.succeed(new Map())),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure._tag).toBe("ProviderUnavailableError");
   });
   test("reads only candidate TCP listeners in the owned running WSL machine", async () => {

@@ -95,7 +95,7 @@ export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
  */
 export const PlanMetadata = Schema.Struct({
   /** Resolution timestamp (UTC). */
-  resolvedAt: Schema.DateTimeUtc,
+  resolvedAt: Schema.DateTimeUtcFromString,
   /** Source Landofile path (or virtual id for recipe-rendered apps). */
   source: Schema.String,
   /** Lando runtime/format major version this plan was rendered for. */

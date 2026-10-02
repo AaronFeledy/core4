@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { SqlDumpNotFoundError } from "@lando/sdk/errors";
 
@@ -26,7 +26,7 @@ describe("ensureReadableDump", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlDumpNotFoundError);
     if (!(error instanceof SqlDumpNotFoundError)) return;
     expect(error.path).toBe(path);
@@ -69,7 +69,7 @@ describe("ensureReadableDump", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlDumpNotFoundError);
     if (!(error instanceof SqlDumpNotFoundError)) return;
     expect(error.path).toBe(path);
@@ -83,7 +83,7 @@ describe("ensureReadableDump", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(SqlDumpNotFoundError);
     if (!(error instanceof SqlDumpNotFoundError)) return;
     expect(error.path).toBe(path);

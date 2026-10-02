@@ -77,7 +77,7 @@ describe("core network trust", () => {
     try {
       const result = await Effect.runPromise(Effect.result(loadCaPems([missingPath])));
 
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag !== "Failure") throw new Error("expected CA PEM loading to fail");
       expect(result.failure._tag).toBe("CaPemLoadError");
       expect(result.failure.path).toBe(missingPath);

@@ -2,7 +2,7 @@ import { discoverHostGpgAgent } from "@lando/engine/subsystems/gpg-agent/discove
 import { resolveGpgAgentIntent } from "@lando/engine/subsystems/gpg-agent/intent";
 import type { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
-import { Effect, Result, Option } from "effect";
+import { type Context, Effect, Option, Result } from "effect";
 
 export const GPG_AGENT_SECURITY =
   "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
@@ -17,7 +17,7 @@ export interface GpgAgentPostureDetail {
 export const gpgAgentPostureDetail = (input: {
   readonly landofile: Pick<LandofileShape, "gpgAgent">;
   readonly globalGpg?: GlobalConfig["gpgAgent"];
-  readonly runner?: Pick<ProcessRunner["Type"], "run">;
+  readonly runner?: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
   readonly exists?: (path: string) => Promise<boolean>;
 }): Effect.Effect<GpgAgentPostureDetail | undefined> =>
   Effect.gen(function* () {

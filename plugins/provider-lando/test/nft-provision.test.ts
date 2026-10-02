@@ -591,7 +591,7 @@ describe("ensureManagedNft", () => {
           }),
         ),
       );
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure).toBeInstanceOf(ProviderUnavailableError);
         expect(result.failure.message).toMatch(/bundled loader libraries|nft --version/u);

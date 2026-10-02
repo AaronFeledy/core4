@@ -15,7 +15,7 @@ import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 
-const strictDecode = (schema: Schema.Codec<unknown, unknown>, input: unknown) =>
+const strictDecode = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown) =>
   Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);
 
 describe("catalog service config schemas", () => {
@@ -34,7 +34,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(RabbitMQServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -54,7 +54,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(TomcatServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -73,7 +73,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(VarnishServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -82,7 +82,7 @@ describe("catalog service config schemas", () => {
     const result = strictDecode(VarnishServiceConfig, { type: "varnish", image: "varnish:7" });
 
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
   });
 
   test.each(["dotnet", "dotnet:8.0", "dotnet:9.0"] as const)(
@@ -100,7 +100,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(DotnetServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -120,7 +120,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(MssqlServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -139,7 +139,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(MysqlServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -159,7 +159,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(PhpMyAdminServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -172,7 +172,7 @@ describe("catalog service config schemas", () => {
     });
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given phpMyAdmin with complete creds, when decoding, then it succeeds", () => {
@@ -189,7 +189,7 @@ describe("catalog service config schemas", () => {
     const result = strictDecode(PhpMyAdminServiceConfig, input);
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test.each([
@@ -206,7 +206,7 @@ describe("catalog service config schemas", () => {
     const result = strictDecode(schema, input);
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test.each([
@@ -226,7 +226,7 @@ describe("catalog service config schemas", () => {
     const result = strictDecode(schema, input);
 
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
   });
 
   test.each([
@@ -248,7 +248,7 @@ describe("catalog service config schemas", () => {
       const result = strictDecode(schema, input);
 
       // Then
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
     },
   );
 
@@ -270,7 +270,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceCreds, input);
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given ServiceCreds without rootPassword, when decoding, then it succeeds", () => {
@@ -278,7 +278,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceCreds, { user: "lando", password: "secret", database: "app" });
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given ServiceCreds missing a required field, when decoding, then it fails", () => {
@@ -286,7 +286,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceCreds, { user: "lando", password: "secret" });
 
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
   });
 
   test("Given ServiceConfig creds and hosts, when strictly decoding, then it succeeds", () => {
@@ -301,7 +301,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceConfig, input);
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given ServiceConfig hosts as a string, when strictly decoding, then it succeeds", () => {
@@ -309,7 +309,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceConfig, { hosts: "database" });
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test.each(["php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5", "php:8.6"] as const)(
@@ -327,7 +327,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
       const result = strictDecode(PhpServiceConfig, input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 
@@ -336,7 +336,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(PhpServiceConfig, { type: "php:9.0" });
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test.each(["php", "php:", "php:8.3:cli"] as const)(
@@ -346,7 +346,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
       const result = strictDecode(PhpServiceConfig, { type });
 
       // Then
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
     },
   );
 
@@ -355,7 +355,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(PhpServiceConfig, { type: "php:8.5", composer: false });
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given ServiceConfig composer, when strictly decoding, then it succeeds", () => {
@@ -363,7 +363,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceConfig, { type: "php:8.5", composer: "2" });
 
     // Then
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
   });
 
   test("Given ServiceConfig with an unknown key, when strictly decoding, then it fails", () => {
@@ -371,6 +371,6 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     const result = strictDecode(ServiceConfig, { notAServiceField: true });
 
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
   });
 });

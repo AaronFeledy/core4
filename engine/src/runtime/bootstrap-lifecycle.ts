@@ -121,7 +121,7 @@ export const superviseBootstrapLayer = <A, E, R>(
   Layer.unwrap(
     Effect.gen(function* () {
       const runtimeScope = yield* Scope.make();
-      const runtimeExit = yield* Layer.buildWithScope(Layer.extendScope(layer), runtimeScope).pipe(
+      const runtimeExit = yield* Layer.buildWithScope(layer, runtimeScope).pipe(
         Effect.provideService(Scope.Scope, runtimeScope),
         Effect.exit,
       );

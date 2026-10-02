@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Cause, Effect, Exit, Fiber, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -158,7 +158,7 @@ const respondToRunLando = (
       response.destroy();
       return;
     }
-    const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const failure = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     const payload = isKnownFailure(failure)
       ? errorResponse(failure)
       : {

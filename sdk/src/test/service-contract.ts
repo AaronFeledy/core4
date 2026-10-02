@@ -121,7 +121,7 @@ export const runServiceCompositionContract = (
       ...(input.providerId === undefined ? {} : { provider: input.providerId }),
       primary: false,
       metadata: {
-        resolvedAt: DateTime.makeUnsafe("2026-05-10T18:51:00Z"),
+        resolvedAt: DateTime.formatIso(DateTime.makeUnsafe("2026-05-10T18:51:00Z")),
         source: "@lando/sdk/test/service-composition-contract",
         runtime: 4,
       },

@@ -6,7 +6,7 @@
  * changes how lines render.
  *
  * This file builds the Effect `Logger` that `LoggerLive` installs via
- * `Logger.replace`. Diagnostic lines are a side channel, not command UX.
+ * `Logger.layer`. Diagnostic lines are a side channel, not command UX.
  */
 import { Logger as EffectLogger } from "effect";
 
@@ -22,10 +22,10 @@ export type StderrLoggerOptions = {
 
 /**
  * Build an Effect `Logger.Logger<unknown, unknown>` from a Lando logger
- * mode. The returned logger is wired into the runtime via `Logger.replace`.
+ * mode. The returned logger is wired into the runtime via `Logger.layer`.
  */
 export const makeEffectLogger = (mode: LoggerMode = "pretty"): EffectLogger.Logger<unknown, void> =>
-  mode === "silent" ? EffectLogger.none : EffectLogger.prettyLoggerDefault;
+  mode === "silent" ? EffectLogger.make(() => {}) : EffectLogger.consolePretty();
 
 /**
  * Diagnostic Effect logger that writes to stderr through a renderer-owned
@@ -34,9 +34,9 @@ export const makeEffectLogger = (mode: LoggerMode = "pretty"): EffectLogger.Logg
  */
 export const makeStderrEffectLogger = (options: StderrLoggerOptions): EffectLogger.Logger<unknown, void> => {
   if (!options.structured && options.stderrIsTTY) {
-    return EffectLogger.prettyLogger({ stderr: true });
+    return EffectLogger.consolePretty();
   }
   return EffectLogger.make((opts) => {
-    options.writeLine(EffectLogger.jsonLogger.log(opts));
+    options.writeLine(EffectLogger.formatJson.log(opts));
   });
 };

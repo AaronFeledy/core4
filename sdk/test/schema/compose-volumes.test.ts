@@ -25,7 +25,7 @@ const rejectedLongCases: ReadonlyArray<
   ["bind.selinux", ["bind", "selinux"], { ...bindLongInput, bind: { selinux: "Z" } }],
   ["volume.nocopy", ["volume", "nocopy"], { ...volumeLongInput, volume: { nocopy: true } }],
   ["volume.labels", ["volume", "labels"], { ...volumeLongInput, volume: { labels: { tier: "data" } } }],
-  ["image.subpath", ["image", "subpath"], { ...volumeLongInput, image: { subpath: "assets" } }],
+  ["image.subpath", ["image"], { ...volumeLongInput, image: { subpath: "assets" } }],
 ];
 
 const incompatibleLongCases: ReadonlyArray<readonly [label: string, input: unknown]> = [
@@ -199,9 +199,9 @@ describe("ComposeVolumesField", () => {
     ["tmpfs/createHostPath", { type: "tmpfs", target: "/x", readOnly: false, createHostPath: false }],
   ] as const)("rejects canonical %s during decode and encode", (_label, input) => {
     // Given / When / Then
-    expect(Schema.decodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Left");
-    expect(decodeVolumesEither([input])._tag).toBe("Left");
-    expect(Schema.encodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Left");
+    expect(Schema.decodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Failure");
+    expect(decodeVolumesEither([input])._tag).toBe("Failure");
+    expect(Schema.encodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Failure");
   });
 
   test.each(rejectedShortCases)("S31 rejects short mode %s", (token, matrixKey) => {

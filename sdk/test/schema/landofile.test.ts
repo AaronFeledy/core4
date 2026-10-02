@@ -1,7 +1,6 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
 
-import { Result, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 import * as AST from "effect/SchemaAST";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
@@ -197,12 +196,12 @@ describe("LandofileShape — schema gate", () => {
   test("IncludeEntry kind carries a property-level description", () => {
     // Given
     const struct = AST.isUnion(IncludeEntry.ast)
-      ? IncludeEntry.ast.types.find((member) => AST.isTypeLiteral(member))
+      ? IncludeEntry.ast.types.find((member) => AST.isObjects(member))
       : undefined;
     const kind = struct?.propertySignatures.find(({ name }) => name === "kind");
 
     // When
-    const description = kind?.annotations[AST.DescriptionAnnotationId];
+    const description = kind?.type.annotations?.description;
 
     // Then
     expect(typeof description).toBe("string");
@@ -270,9 +269,9 @@ describe("LandofileShape — schema gate", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      const rejectionRow = issues.find((row) => row.path.includes("template"));
+      const rejectionRow = issues.find((row) => (row.path ?? []).includes("template"));
       expect(rejectionRow).toBeDefined();
-      expect(rejectionRow?._tag).toBe("Unexpected");
+      expect(rejectionRow?.message).toBe("Expected no excess property");
     }
   });
 
@@ -351,7 +350,7 @@ describe("LandofileShape — schema gate", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((row) => row.path.join(".") === "remotes.pantheon.source")).toBe(true);
+      expect(issues.some((row) => (row.path ?? []).join(".") === "remotes.pantheon.source")).toBe(true);
     }
   });
 
@@ -367,7 +366,7 @@ describe("LandofileShape — schema gate", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((row) => row.path.join(".") === "sync.database.service")).toBe(true);
+      expect(issues.some((row) => (row.path ?? []).join(".") === "sync.database.service")).toBe(true);
     }
   });
 });
@@ -460,7 +459,7 @@ describe("LandofileShape (MVP)", () => {
       expect(Result.isFailure(result)).toBe(true);
       if (Result.isFailure(result)) {
         const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-        expect(issues.some((row) => row.path.join(".") === propertyPath)).toBe(true);
+        expect(issues.some((row) => (row.path ?? []).join(".") === propertyPath)).toBe(true);
       }
     }
   });
@@ -515,9 +514,9 @@ describe("LandofileShape (MVP)", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      const rejectionRow = issues.find((row) => row.path.includes("unsupported"));
+      const rejectionRow = issues.find((row) => (row.path ?? []).includes("unsupported"));
       expect(rejectionRow).toBeDefined();
-      expect(rejectionRow?._tag).toBe("Unexpected");
+      expect(rejectionRow?.message).toBe("Expected no excess property");
     }
   });
 
@@ -539,7 +538,9 @@ describe("LandofileShape (MVP)", () => {
     if (!Result.isFailure(result)) return;
 
     const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-    const rejectedKeys = issues.filter((row) => row._tag === "Unexpected").map((row) => row.path.join("."));
+    const rejectedKeys = issues
+      .filter((row) => row.message === "Expected no excess property")
+      .map((row) => (row.path ?? []).join("."));
     expect(rejectedKeys.length).toBeGreaterThan(0);
 
     const err = new LandofileValidationError({
@@ -774,7 +775,7 @@ describe("LandofileShape — tooling: supported schema", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((row) => row.path.join(".") === "toolingDefaults.method")).toBe(true);
+      expect(issues.some((row) => (row.path ?? []).join(".") === "toolingDefaults.method")).toBe(true);
     }
   });
 

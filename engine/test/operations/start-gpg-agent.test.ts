@@ -412,7 +412,7 @@ for (const prepareExit of [0, 1]) {
       );
       // Then
       if (prepareExit === 0) {
-        expect(result._tag).toBe("Right");
+        expect(result._tag).toBe("Success");
         expect(calls).toEqual(["apply", "gpg-prepare", "build-app", "routes", "post-start"]);
         expect(closed).toBe(0);
       } else {

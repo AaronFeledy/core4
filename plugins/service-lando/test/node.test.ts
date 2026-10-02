@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 import { LandofileShape, ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -183,7 +183,7 @@ describe("node:lts ServiceType", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("nonsenseKey"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("nonsenseKey"))).toBe(true);
     }
   });
 

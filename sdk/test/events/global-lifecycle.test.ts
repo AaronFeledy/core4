@@ -181,7 +181,7 @@ describe("global lifecycle event payload schemas", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("scope"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("scope"))).toBe(true);
     }
   });
 

@@ -13,20 +13,20 @@ const identity = {
 
 test("creation facts require generation and canonical owner", () => {
   expect(Schema.is(VolumeCreationFact)(identity)).toBe(true);
-  expect(Schema.decodeUnknownResult(VolumeCreationFact)({ nativeName: "data" })._tag).toBe("Left");
+  expect(Schema.decodeUnknownResult(VolumeCreationFact)({ nativeName: "data" })._tag).toBe("Failure");
 });
 
 test("initialization outcomes require the claiming operation", () => {
   expect(
     Schema.decodeUnknownResult(VolumeInitializationRecord)({ identity, state: { _tag: "fresh" } })._tag,
-  ).toBe("Right");
+  ).toBe("Success");
   expect(
     Schema.decodeUnknownResult(VolumeInitializationRecord)({ identity, state: { _tag: "seeded" } })._tag,
-  ).toBe("Left");
+  ).toBe("Failure");
   expect(
     Schema.decodeUnknownResult(VolumeInitializationRecord)({
       identity,
       state: { _tag: "failed", operationId: "op" },
     })._tag,
-  ).toBe("Right");
+  ).toBe("Success");
 });

@@ -163,7 +163,7 @@ for (const artifact of ["stage", "backup"] as const) {
     const outcome = await scoped(Effect.result(context.transactions.recover(context.appRoot)));
 
     // Then it blocks before publishing the staged bytes
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag === "Failure") expect(outcome.failure.reason).toBe("blocked");
     expect(await readFile(join(context.appRoot, "config"), "utf8")).toBe("old");
   });
@@ -198,6 +198,6 @@ test("refuses to trust a transaction journal whose ACL is not owner-only", async
   const outcome = await scoped(Effect.result(context.transactions.pending(context.appRoot)));
 
   // Then inspection fails closed before decoding the journal bytes
-  expect(outcome._tag).toBe("Left");
+  expect(outcome._tag).toBe("Failure");
   if (outcome._tag === "Failure") expect(outcome.failure.reason).toBe("journal");
 });

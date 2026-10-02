@@ -24,8 +24,8 @@ describe("bootstrap lifecycle event schemas", () => {
 
         // Then: its schema owns the exact tag without a legacy level property.
         if (!Schema.isSchema(candidate)) return;
-        expect(AST.isTypeLiteral(candidate.ast)).toBe(true);
-        if (!AST.isTypeLiteral(candidate.ast)) return;
+        expect(AST.isObjects(candidate.ast)).toBe(true);
+        if (!AST.isObjects(candidate.ast)) return;
         const properties = candidate.ast.propertySignatures;
         const tag = properties.find((property) => property.name === "_tag")?.type;
         expect(tag !== undefined && AST.isLiteral(tag) ? tag.literal : undefined).toBe(

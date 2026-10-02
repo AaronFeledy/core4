@@ -392,7 +392,7 @@ const makeRemoteSource = (input: {
     test: (_cfg, env) =>
       Effect.sync(() => {
         input.records.probes.push(env === undefined ? { remote: input.id } : { remote: input.id, env });
-        return { ok: true, env, message: "ready" };
+        return { ok: true, ...(env === undefined ? {} : { env }), message: "ready" };
       }),
   };
 };

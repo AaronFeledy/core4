@@ -135,8 +135,11 @@ const commandInputHasDynamicExpression = (
   tool: string,
 ): Effect.Effect<boolean, ToolingCompileError> => {
   if (Array.isArray(value)) {
-    return Effect.reduce(value, false, (found, entry) =>
-      commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
+    return Effect.reduce(
+      value,
+      () => false,
+      (found, entry) =>
+        commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
     );
   }
   if (typeof value !== "string") return Effect.succeed(false);
@@ -163,8 +166,11 @@ const commandLeafHasDynamicInput = (
     ...Object.values(leaf.args),
     ...leaf.raw,
   ];
-  return Effect.reduce(values, false, (found, value) =>
-    commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
+  return Effect.reduce(
+    values,
+    () => false,
+    (found, value) =>
+      commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
   );
 };
 

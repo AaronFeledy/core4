@@ -275,7 +275,12 @@ export const enforceNoDowngrade = (
         }),
       );
 
-const UpdateFailureCategorySchema = Schema.Literals(["signature_failure", "launch_probe_failure", "permission_failure", "network_failure"]);
+const UpdateFailureCategorySchema = Schema.Literals([
+  "signature_failure",
+  "launch_probe_failure",
+  "permission_failure",
+  "network_failure",
+]);
 type UpdateFailureCategory = typeof UpdateFailureCategorySchema.Type;
 
 interface UpdateManifestStateEntry {
@@ -289,15 +294,20 @@ interface UpdateManifestStateEntry {
     | undefined;
 }
 
-const UpdateManifestStateSchema = Schema.partial(
-  Schema.Record(UpdateChannelSchema, Schema.Struct({
+const UpdateManifestStateSchema = Schema.Record(
+  UpdateChannelSchema,
+  Schema.optionalKey(
+    Schema.Struct({
       latest: Schema.String,
-      lastFailure: Schema.optionalKey(Schema.Struct({
+      lastFailure: Schema.optionalKey(
+        Schema.Struct({
           category: UpdateFailureCategorySchema,
           targetVersion: Schema.String,
           platform: Schema.String,
-        })),
-    })),
+        }),
+      ),
+    }),
+  ),
 );
 type DecodedUpdateManifestState = typeof UpdateManifestStateSchema.Type;
 type UpdateManifestState = Partial<Record<UpdateChannel, UpdateManifestStateEntry>>;

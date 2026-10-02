@@ -44,7 +44,7 @@ describe("user include path validation", () => {
         );
 
         // Then: lexical validation precedes reading or realpath canonicalization.
-        expect(result._tag).toBe("Left");
+        expect(result._tag).toBe("Failure");
         if (result._tag === "Failure") expect(result.failure._tag).toBe("LandofileIncludeError");
       } finally {
         await rm(root, { recursive: true, force: true });

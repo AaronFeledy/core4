@@ -602,7 +602,7 @@ describe("provider-lando cross-process state", () => {
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
       const failed = await runOnce(Effect.result(providerA.destroy({ app: plan.id }, { volumes: true })));
-      expect(failed._tag).toBe("Left");
+      expect(failed._tag).toBe("Failure");
       expect(fake.existing.size).toBe(0);
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);

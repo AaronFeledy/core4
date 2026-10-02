@@ -40,8 +40,8 @@ test.each(["prepared", "committing"] as const)(
     );
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { phase: "commit", reason: "conflict", path: "source" },
+      _tag: "Failure",
+      failure: { phase: "commit", reason: "conflict", path: "source" },
     });
     expect(await Bun.file(join(appRoot, "target")).text()).toBe("before");
     expect(await stat(join(appRoot, "target"))).toMatchObject({ ino: before.ino, mtimeMs: before.mtimeMs });
@@ -74,8 +74,8 @@ test("rejects a readonly source removed between explicit prepare and commit", as
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { phase: "commit", reason: "conflict", path: "source" },
+    _tag: "Failure",
+    failure: { phase: "commit", reason: "conflict", path: "source" },
   });
   expect(await Bun.file(join(appRoot, "target")).exists()).toBe(false);
 });

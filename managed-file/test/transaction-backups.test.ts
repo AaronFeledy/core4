@@ -31,7 +31,7 @@ for (const checkpoint of ["prepared", "after-mutation"] as const) {
         ),
       );
       // Then the failing entry is untouched and recovery metadata remains private
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       expect(await readFile(join(appRoot, "a"), "utf8")).toBe(checkpoint === "prepared" ? "old-a" : "new-a");
       expect(await readFile(join(appRoot, "b"), "utf8")).toBe("old-b");
       const journal = await scoped(transactions.readJournal(appRoot));

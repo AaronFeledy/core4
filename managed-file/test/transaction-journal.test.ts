@@ -38,7 +38,7 @@ for (const variant of ["root", "corrupt", "version"] as const) {
       ),
     );
     // Then no target artifacts exist and the error contains no journal data
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(JSON.stringify(result)).not.toContain(marker);
     expect(await readdir(appRoot)).toEqual([]);
     expect(await readFile(prepared.journalPath, "utf8")).toBe(bytes);
@@ -54,7 +54,7 @@ test("rejects commit after the preparing scope has released its lock", async () 
   // When that abandoned handle is committed without a lease
   const result = await scoped(Effect.result(transactions.commit(prepared)));
   // Then no target is published and recovery artifacts remain
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   await expect(lstat(join(appRoot, "a"))).rejects.toMatchObject({ code: "ENOENT" });
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("prepared");
 });
@@ -80,7 +80,7 @@ test("globally revalidates later modes before mutating the first target", async 
     ),
   );
   // Then the first target is untouched and the journal never advances
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   await expect(lstat(join(appRoot, "a"))).rejects.toMatchObject({ code: "ENOENT" });
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("prepared");
 });
@@ -91,7 +91,7 @@ test("rejects journal fields outside the metadata contract", () => {
   // When the persistence boundary parses the journal
   const decoded = Schema.decodeUnknownResult(Journal, { onExcessProperty: "error" })(input);
   // Then raw content is outside the journal contract
-  expect(decoded._tag).toBe("Left");
+  expect(decoded._tag).toBe("Failure");
 });
 
 test("retains durable stages even if the prepared journal disappears externally", async () => {
@@ -123,7 +123,7 @@ test("refuses to skip the committing journal transition", async () => {
   // When the persistence layer is asked to jump directly to committed
   const result = await scoped(Effect.result(store.write({ ...journal, state: "committed" })));
   // Then it refuses the invalid transition and preserves the prepared plan
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect((await scoped(store.read))?.state).toBe("prepared");
 });
 
@@ -137,6 +137,6 @@ test("refuses journal removal before committed", async () => {
   // When cleanup is attempted prematurely
   const result = await scoped(Effect.result(store.removeCommitted));
   // Then the recovery plan is preserved
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect((await scoped(store.read))?.state).toBe("prepared");
 });

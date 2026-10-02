@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, LogSourceId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
@@ -32,11 +32,13 @@ const expectCompositionFailure = async (
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  expect(result.cause.error).toBeInstanceOf(ContractFailure);
-  expect(result.cause.error._tag).toBe("ContractFailure");
-  expect(result.cause.error.assertion).toBe(assertion);
+  expect(result.cause.reasons).toHaveLength(1);
+  const reason = result.cause.reasons[0]!;
+  expect(Cause.isFailReason(reason)).toBe(true);
+  if (!Cause.isFailReason(reason)) return;
+  expect(reason.error).toBeInstanceOf(ContractFailure);
+  expect(reason.error._tag).toBe("ContractFailure");
+  expect(reason.error.assertion).toBe(assertion);
 };
 
 describe("runServiceCompositionContract", () => {

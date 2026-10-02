@@ -45,9 +45,9 @@ export const decodeInstallRecord = (
   file: string,
 ): Effect.Effect<InstallRecord, InstallRecordError> =>
   Effect.gen(function* () {
-    const value: unknown = yield* Schema.decodeUnknownEffect(Schema.fromJsonString)(json).pipe(
-      Effect.mapError(() => recordError("invalid-json", file, "Install record is not valid JSON.")),
-    );
+    const value: unknown = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(
+      json,
+    ).pipe(Effect.mapError(() => recordError("invalid-json", file, "Install record is not valid JSON.")));
     if (typeof value === "object" && value !== null && "version" in value && value.version !== 1) {
       return yield* recordError("unsupported-version", file, "Only install record version 1 is supported.");
     }
@@ -135,7 +135,10 @@ export const verifyInstallRecordOwnership = (
       return { owned: false, reason: "not-regular-file" };
     }
     const hash = yield* fs.read(destination).pipe(
-      Stream.runFold(new Bun.CryptoHasher("sha256"), (hasher, chunk) => hasher.update(chunk)),
+      Stream.runFold(
+        () => new Bun.CryptoHasher("sha256"),
+        (hasher, chunk) => hasher.update(chunk),
+      ),
       Effect.mapError(() => recordError("io", destination, "Cannot read installed executable.")),
     );
     return installRecordOwnsDestination(

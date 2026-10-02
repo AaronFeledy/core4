@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import { Deferred, Effect, Either, Fiber } from "effect";
+import { Deferred, Effect, Fiber, Result } from "effect";
 
 const withDirectories = async <A>(
   run: (roots: { readonly outer: string; readonly inner: string }) => Promise<A>,
@@ -66,13 +66,13 @@ describe("resolved cwd fiber-local ownership", () => {
               outer,
               Effect.gen(function* () {
                 const child = yield* Deferred.succeed(started, undefined).pipe(
-                  Effect.zipRight(
-                    withResolvedCwd(inner, Deferred.succeed(entered, undefined).pipe(Effect.zipRight(cwd))),
+                  Effect.andThen(
+                    withResolvedCwd(inner, Deferred.succeed(entered, undefined).pipe(Effect.andThen(cwd))),
                   ),
                   Effect.forkScoped,
                 );
                 yield* Deferred.await(started);
-                yield* Effect.yieldNow();
+                yield* Effect.yieldNow;
                 return { child, waiting: yield* Deferred.poll(entered), parentCwd: yield* cwd };
               }),
             );
@@ -101,7 +101,7 @@ describe("resolved cwd fiber-local ownership", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const failure = yield* withResolvedCwd(outer, withResolvedCwd(inner, Effect.fail("failed"))).pipe(
-            Effect.either,
+            Effect.result,
           );
           const afterFailure = yield* cwd;
           const next = yield* withResolvedCwd(inner, cwd);
@@ -110,7 +110,7 @@ describe("resolved cwd fiber-local ownership", () => {
       );
       // Then
       expect(result).toEqual({
-        failure: Either.left("failed"),
+        failure: Result.fail("failed"),
         afterFailure: original,
         next: inner,
         restored: original,

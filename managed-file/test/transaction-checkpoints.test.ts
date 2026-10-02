@@ -32,7 +32,7 @@ for (const point of [
       ),
     );
     // Then the full plan survives with the corresponding partial disk state
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     const journal = await scoped(transactions.readJournal(appRoot));
     expect(journal?.state).toBe(point === "after-mutation" ? "committing" : point);
     expect(journal?.entries).toHaveLength(2);
@@ -41,7 +41,7 @@ for (const point of [
     );
     expect(await readFile(join(appRoot, "b"), "utf8")).toBe(point === "committed" ? "new-b" : "old-b");
     const retry = await scoped(Effect.result(transactions.prepare({ appRoot, operations: [] })));
-    expect(retry._tag).toBe("Left");
+    expect(retry._tag).toBe("Failure");
   });
 }
 
@@ -109,7 +109,7 @@ test("rechecks each target after the global before-state check", async () => {
     ),
   );
   // Then the concurrent edit survives and the journal stays committing
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(await readFile(join(appRoot, "b"), "utf8")).toBe("concurrent");
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("committing");
 });
@@ -135,7 +135,7 @@ test("holds one canonical-root lock and releases it on interruption", async () =
   const contention = await scoped(Effect.result(transactions.prepare({ appRoot: alias, operations: [] })));
   await Effect.runPromise(Fiber.interrupt(fiber));
   // Then contention was lock-bounded and interruption released that exact lock
-  expect(contention._tag).toBe("Left");
+  expect(contention._tag).toBe("Failure");
   if (contention._tag === "Failure") expect(contention.failure.reason).toBe("lock");
   expect(journal?.root).toBe(appRoot);
   const retry = await scoped(Effect.result(transactions.prepare({ appRoot, operations: [] })));
@@ -188,7 +188,7 @@ test("never overwrites a stage planted after path validation", async () => {
     ),
   );
   // Then it fails without replacing or cleaning the foreign inode
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   const names = await readdir(appRoot);
   expect(names).toHaveLength(1);
   expect(await readFile(join(appRoot, names[0] ?? "missing"), "utf8")).toBe("foreign");

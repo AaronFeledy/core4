@@ -665,7 +665,7 @@ const parseFragment = (
 const validationIssues = (cause: unknown): ReadonlyArray<string> =>
   Schema.isSchemaError(cause)
     ? SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-        issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
+        (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
       )
     : [causeMessage(cause)];
 

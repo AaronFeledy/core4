@@ -1,4 +1,4 @@
-import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
+import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Queue, Ref, Stream } from "effect";
 
 import type { EventError } from "@lando/sdk/errors";
 import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
@@ -23,6 +23,7 @@ const EMPTY_HISTORY: ReadonlyArray<LandoEvent> = Object.freeze([]);
 
 type EventServiceConfig = {
   readonly subscribers: Set<PubSub.PubSub<LandoEvent>>;
+  readonly queueSubscribers: Set<Queue.Queue<LandoEvent>>;
   readonly deliveryQueueCapacity: number;
   readonly history: Ref.Ref<ReadonlyArray<LandoEvent>>;
   readonly historyCap: number;
@@ -42,7 +43,10 @@ export interface EventDeliveryMetricsSnapshot {
   readonly droppedEvents: number;
 }
 
-export class EventDeliveryMetrics extends Context.Service<EventDeliveryMetrics, { readonly snapshot: Effect.Effect<EventDeliveryMetricsSnapshot> }>()("@lando/core/EventDeliveryMetrics") {}
+export class EventDeliveryMetrics extends Context.Service<
+  EventDeliveryMetrics,
+  { readonly snapshot: Effect.Effect<EventDeliveryMetricsSnapshot> }
+>()("@lando/core/EventDeliveryMetrics") {}
 
 export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
 export type EventDispatchRegistration = {
@@ -50,7 +54,10 @@ export type EventDispatchRegistration = {
   readonly dispatch: EventDispatcher;
 };
 
-export class EventDispatchControl extends Context.Service<EventDispatchControl, { readonly install: (registration: EventDispatchRegistration) => Effect.Effect<void> }>()("@lando/core/EventDispatchControl") {}
+export class EventDispatchControl extends Context.Service<
+  EventDispatchControl,
+  { readonly install: (registration: EventDispatchRegistration) => Effect.Effect<void> }
+>()("@lando/core/EventDispatchControl") {}
 
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
@@ -79,6 +86,7 @@ const makeEventService = (
 ): Context.Service.Shape<typeof EventService> => {
   const {
     subscribers,
+    queueSubscribers,
     deliveryQueueCapacity,
     history,
     historyCap,
@@ -102,6 +110,20 @@ const makeEventService = (
     return queue;
   });
 
+  const trackedSubscribeQueue = Effect.acquireRelease(
+    Queue.dropping<LandoEvent>(deliveryQueueCapacity).pipe(
+      Effect.tap((queue) =>
+        Effect.sync(() => {
+          queueSubscribers.add(queue);
+        }),
+      ),
+    ),
+    (queue) =>
+      Effect.sync(() => {
+        queueSubscribers.delete(queue);
+      }).pipe(Effect.andThen(Queue.shutdown(queue))),
+  );
+
   const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
     if (historyCap <= 0) return Effect.void;
     return Effect.gen(function* () {
@@ -117,7 +139,10 @@ const makeEventService = (
       instrumentation.onPubSubPublish?.();
       let rejectedDeliveries = 0;
       for (const pubsub of subscribers) {
-        if (!pubsub.unsafeOffer(event)) rejectedDeliveries += 1;
+        if (!PubSub.publishUnsafe(pubsub, event)) rejectedDeliveries += 1;
+      }
+      for (const queue of queueSubscribers) {
+        if (!Queue.offerUnsafe(queue, event)) rejectedDeliveries += 1;
       }
       return rejectedDeliveries;
     }).pipe(
@@ -136,7 +161,7 @@ const makeEventService = (
     Effect.scoped(
       Effect.gen(function* () {
         const queue = yield* trackedSubscribe;
-        const awaited = Stream.fromQueue(queue).pipe(
+        const awaited = Stream.fromSubscription(queue).pipe(
           Stream.filter(predicate),
           Stream.runHead,
           Effect.flatMap(
@@ -150,7 +175,10 @@ const makeEventService = (
         return yield* timeout === undefined
           ? awaited
           : awaited.pipe(
-              Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.fail((() => timeoutEventError(label))()) }),
+              Effect.timeoutOrElse({
+                duration: timeout,
+                orElse: () => Effect.fail((() => timeoutEventError(label))()),
+              }),
             );
       }),
     );
@@ -162,7 +190,8 @@ const makeEventService = (
           Effect.suspend(() => {
             const registration = getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
-            if (!hasManifest && subscribers.size === 0) return appendHistory(event);
+            if (!hasManifest && subscribers.size === 0 && queueSubscribers.size === 0)
+              return appendHistory(event);
             return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
               Effect.andThen(decodeDeliverableEvent(event, eventName)),
               Effect.flatMap((decoded) =>
@@ -173,12 +202,8 @@ const makeEventService = (
               ),
             );
           }).pipe(
-            Effect.catchCauseFilter((cause) =>
-              Cause.hasDies(cause)
-                ? Option.some(
-                    Effect.fail(eventError(eventName, `Failed to publish event: ${eventName}`, cause)),
-                  )
-                : Option.none(),
+            Effect.catchCauseIf(Cause.hasDies, (cause) =>
+              Effect.fail(eventError(eventName, `Failed to publish event: ${eventName}`, cause)),
             ),
           ),
         ),
@@ -187,12 +212,12 @@ const makeEventService = (
     subscribe: <Name extends string>(name: Name) =>
       Stream.unwrap(
         Effect.map(trackedSubscribe, (queue) =>
-          Stream.fromQueue(queue).pipe(
+          Stream.fromSubscription(queue).pipe(
             Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
           ),
         ),
       ),
-    subscribeQueue: trackedSubscribe,
+    subscribeQueue: trackedSubscribeQueue,
     waitFor: (name, options) =>
       waitForMatch<EventFor<typeof name>>(
         name,
@@ -231,7 +256,9 @@ export const makeEventServiceLive = (
         dispatch: () => Effect.void,
       };
       const subscribers = new Set<PubSub.PubSub<LandoEvent>>();
+      const queueSubscribers = new Set<Queue.Queue<LandoEvent>>();
       yield* Effect.addFinalizer(() => Effect.forEach(subscribers, PubSub.shutdown, { discard: true }));
+      yield* Effect.addFinalizer(() => Effect.forEach(queueSubscribers, Queue.shutdown, { discard: true }));
       const history = yield* Ref.make<ReadonlyArray<LandoEvent>>([]);
       const droppedEvents = yield* Ref.make(0);
       const redaction = yield* Effect.serviceOption(RedactionService);
@@ -240,6 +267,7 @@ export const makeEventServiceLive = (
         makeEventService(
           {
             subscribers,
+            queueSubscribers,
             deliveryQueueCapacity,
             history,
             historyCap,

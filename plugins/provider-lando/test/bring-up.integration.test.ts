@@ -69,17 +69,18 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? nodeCommand : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  appMount:
-    name === "node"
-      ? {
+  ...(name === "node"
+    ? {
+        appMount: {
           source: appRoot,
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: [],
           includes: [],
           realization: "passthrough",
-        }
-      : undefined,
+        },
+      }
+    : {}),
   mounts: [],
   storage: [],
   endpoints:
@@ -501,10 +502,10 @@ describe("provider-lando bringUp", () => {
 
   test("fails passthrough bind mounts without a source before creating the container", async () => {
     const fake = makeFakeApi();
+    const { appMount: _omitAppMount, ...nodeWithoutAppMount } = node;
     const invalidNode: ServicePlan = {
-      ...node,
+      ...nodeWithoutAppMount,
       dependsOn: [],
-      appMount: undefined,
       mounts: [
         {
           type: "bind",
@@ -717,7 +718,9 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -740,7 +743,9 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&

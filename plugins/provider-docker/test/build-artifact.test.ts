@@ -30,14 +30,14 @@ const metadata = {
 };
 
 const service = (
-  artifact: ServicePlan["artifact"],
+  artifact: ServicePlan["artifact"] | undefined,
   extensions: ServicePlan["extensions"] = {},
 ): ServicePlan => ({
   name: serviceName,
   type: "node",
   provider: providerId,
   primary: true,
-  artifact,
+  ...(artifact === undefined ? {} : { artifact }),
   environment: {},
   mounts: [],
   storage: [],

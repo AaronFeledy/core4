@@ -38,7 +38,7 @@ describe("lando3 document set", () => {
       document(".lando.recipe.yaml", "name: from-yaml\nservices: {web: {image: evil}}\n"),
       document("package.json", '{"name":"pkg"}', "application/json"),
     ]);
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     if (result._tag !== "Success") return;
     expect(result.success.outputs).toEqual([
       {
@@ -55,7 +55,7 @@ describe("lando3 document set", () => {
       document(".lando.yml", "name: Kitchen Sink\n"),
       document("docker-compose.yml", "services: [\n"),
     ]);
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     if (result._tag !== "Success") return;
     expect(result.success.outputs[0]?.fragment).toEqual({ name: "kitchen-sink" });
   });
@@ -74,7 +74,7 @@ describe("lando3 document set", () => {
         ].join("\n"),
       ),
     ]);
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     if (result._tag !== "Success") return;
     const custom = result.success.diagnostics.filter((diagnostic) => diagnostic.kind === "needs-review");
     expect(custom.map((diagnostic) => diagnostic.keyPath)).toEqual([
@@ -95,7 +95,7 @@ describe("lando3 document set", () => {
   test("omits source text from a parse failure", async () => {
     const secret = "canary-secret-value";
     const result = await translate([document(".lando.yml", `name: app\n${secret}: 1\n${secret}: 2\n`)]);
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
     expect(result.failure.message).not.toContain(secret);
     expect(result.failure.message).toContain(".lando.yml");

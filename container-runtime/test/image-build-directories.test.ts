@@ -119,7 +119,7 @@ test.each(["relative", "/", "/etc/../tmp", "/etc/lando\nRUN evil"])(
       ),
     );
     // Then
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(requests).toBe(0);
   },
 );

@@ -31,7 +31,7 @@ const plannedPlan: AppPlan = {
 };
 
 /** The same app carried on a plan that lost `identity` (hand-built, or decoded from older state). */
-const identitylessPlan: AppPlan = { ...plannedPlan, identity: undefined };
+const { identity: _identity, ...identitylessPlan } = plannedPlan;
 
 const composeVolumeLabels = (plan: AppPlan, store: string): Readonly<Record<string, unknown>> => {
   const document = Bun.YAML.parse(renderCompose(plan, ctx)) as {

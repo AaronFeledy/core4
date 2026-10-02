@@ -1,4 +1,4 @@
-import { Cause, Effect, Option, Schema } from "effect";
+import { Cause, Effect, Schema } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
 import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
@@ -10,7 +10,10 @@ export const eventError = (event: string, message: string, cause?: unknown): Eve
 export const timeoutEventError = (event: string): EventError =>
   new EventError({ message: `Timed out waiting for event: ${event}`, event, reason: "timeout" });
 
-const DeliverableEventSchema = Schema.Union([Schema.toEncoded(LandoEventSchema), Schema.toType(LandoEventSchema)]);
+const DeliverableEventSchema = Schema.Union([
+  Schema.toEncoded(LandoEventSchema),
+  Schema.toType(LandoEventSchema),
+]);
 
 export const readEventName = (event: LandoEvent): Effect.Effect<string, EventError> =>
   Effect.try({
@@ -30,12 +33,8 @@ export const decodeDeliverableEvent = (
 ): Effect.Effect<LandoEvent, EventError> =>
   Schema.decodeUnknownEffect(DeliverableEventSchema)(event, { onExcessProperty: "error" }).pipe(
     Effect.mapError((cause) => eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
-    Effect.catchCauseFilter((cause) =>
-      Cause.hasDies(cause)
-        ? Option.some(
-            Effect.fail(eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
-          )
-        : Option.none(),
+    Effect.catchCauseIf(Cause.hasDies, (cause) =>
+      Effect.fail(eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
     ),
     Effect.as(event),
   );

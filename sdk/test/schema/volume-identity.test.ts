@@ -17,7 +17,7 @@ test("rejects an empty generation even when name and ownership are available", (
     ownerRoot: "/root",
     origin: "created",
   });
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
 });
 
 test("keeps adopted generation separate from actual creation history", () => {

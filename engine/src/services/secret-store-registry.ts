@@ -23,10 +23,13 @@ export interface SecretStoreRegistration {
   readonly layer: SecretStoreContributionLayer;
 }
 
-export class SecretStoreRegistry extends Context.Service<SecretStoreRegistry, {
+export class SecretStoreRegistry extends Context.Service<
+  SecretStoreRegistry,
+  {
     readonly list: Effect.Effect<readonly SecretStoreRegistration[]>;
     readonly select: (id: string) => Effect.Effect<SecretStoreRegistration, SecretReferenceInvalidError>;
-  }>()("@lando/core/SecretStoreRegistry") {}
+  }
+>()("@lando/core/SecretStoreRegistry") {}
 
 const invalidReference = (reference: string) =>
   new SecretReferenceInvalidError({
@@ -61,9 +64,11 @@ export const makeSecretStoreRegistryLive = (modules: readonly LandoPluginModule[
   Layer.effect(
     SecretStoreRegistry,
     Effect.gen(function* () {
-      const index = yield* makePluginCapabilityIndex(modules).pipe(
-        Result.mapError((cause) =>
-          bootstrapError("Invalid secret store plugin descriptor. Repair the plugin descriptor.", cause),
+      const index = yield* Effect.fromResult(
+        makePluginCapabilityIndex(modules).pipe(
+          Result.mapError((cause) =>
+            bootstrapError("Invalid secret store plugin descriptor. Repair the plugin descriptor.", cause),
+          ),
         ),
       );
       const registrations = new Map<string, SecretStoreRegistration>([
@@ -127,7 +132,7 @@ export const RoutedSecretStoreLive = Layer.effect(
     }
     const select = (raw: string) =>
       Effect.gen(function* () {
-        const reference = yield* parseSecretReference(raw);
+        const reference = yield* Effect.fromResult(parseSecretReference(raw));
         const id =
           reference.scheme === undefined
             ? ((yield* config

@@ -71,7 +71,7 @@ describe("openBuildTranscript", () => {
         );
 
         // Then
-        expect(result._tag).toBe("Left");
+        expect(result._tag).toBe("Failure");
         if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderInternalError);
         expect(await Bun.file(escapeTarget).exists()).toBe(false);
       } finally {
@@ -129,7 +129,7 @@ describe("openBuildTranscript", () => {
         );
 
         // Then
-        expect(result._tag).toBe("Left");
+        expect(result._tag).toBe("Failure");
         if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderInternalError);
         expect(await readFile(target, "utf8")).toBe("preserve me");
       } finally {

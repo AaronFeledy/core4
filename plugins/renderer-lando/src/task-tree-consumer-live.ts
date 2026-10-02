@@ -1,5 +1,5 @@
 import { Semaphore } from "effect";
-import { Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
+import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
@@ -11,6 +11,7 @@ import {
   claimOpenTuiDegradationNotice,
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
+import { takeAllAvailable } from "./queue-available.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
@@ -231,7 +232,7 @@ export const makeTaskTreeConsumerLive = (
           handleResize = () => {};
           unsubscribe?.();
           toolingStatus.stop();
-          const remaining = yield* Queue.takeAll(queue);
+          const remaining = yield* takeAllAvailable(queue);
           for (const event of remaining) yield* serialized(consume(event));
           yield* Fiber.interrupt(fiber);
           const substrate = active;

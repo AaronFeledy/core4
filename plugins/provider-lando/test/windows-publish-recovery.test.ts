@@ -341,7 +341,7 @@ describe("Windows published-port recovery", () => {
         ),
       );
     const malformed = await run("{");
-    expect(malformed._tag).toBe("Left");
+    expect(malformed._tag).toBe("Failure");
     if (malformed._tag === "Failure") expect(malformed.failure._tag).toBe("ProviderUnavailableError");
     const redirected = await run(
       JSON.stringify({
@@ -362,7 +362,7 @@ describe("Windows published-port recovery", () => {
         ],
       }),
     );
-    expect(redirected._tag).toBe("Right");
+    expect(redirected._tag).toBe("Success");
     if (redirected._tag === "Success") expect(redirected.success).toEqual([]);
   });
   test("rejects reservation when a native foreign listener or foreign guest target overlaps", async () => {

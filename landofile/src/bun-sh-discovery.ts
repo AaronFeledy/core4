@@ -132,7 +132,7 @@ const parseFrontMatterBody = (
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (Schema.isSchemaError(cause)) {
     return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
+      (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
     );
   }
   return [cause instanceof Error ? cause.message : "Invalid .bun.sh front-matter."];

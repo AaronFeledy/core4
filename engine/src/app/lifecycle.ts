@@ -1,5 +1,5 @@
 import { Semaphore } from "effect";
-import { Effect, ExecutionStrategy, Exit, Ref, Scope } from "effect";
+import { Effect, Exit, Ref, Scope } from "effect";
 
 /**
  * Per-handle lifecycle controller. It owns a single managed start scope under
@@ -30,18 +30,14 @@ export const makeAppLifecycle = (handleScope: Scope.Scope): Effect.Effect<AppLif
       Effect.uninterruptible,
     );
 
-    const installFresh: Effect.Effect<Scope.Closeable> = Scope.fork(
-      handleScope,
-      "sequential",
-    ).pipe(
+    const installFresh: Effect.Effect<Scope.Closeable> = Scope.fork(handleScope, "sequential").pipe(
       Effect.tap((scope) => Ref.set(current, scope)),
       Effect.uninterruptible,
     );
 
-    const stageFresh: Effect.Effect<Scope.Closeable> = Scope.fork(
-      handleScope,
-      "sequential",
-    ).pipe(Effect.uninterruptible);
+    const stageFresh: Effect.Effect<Scope.Closeable> = Scope.fork(handleScope, "sequential").pipe(
+      Effect.uninterruptible,
+    );
 
     const replaceCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
       Ref.getAndSet(current, scope).pipe(

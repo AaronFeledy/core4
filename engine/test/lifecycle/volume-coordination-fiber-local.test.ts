@@ -58,7 +58,7 @@ describe("volume coordination fiber-local state", () => {
           body: () =>
             Effect.gen(function* () {
               yield* verifyActiveVolumeCoordination(provider);
-              const child = yield* Effect.fork(
+              const child = yield* Effect.forkChild(
                 withVolumeCoordinationLock(
                   recordingStore,
                   key("alpha"),
@@ -103,7 +103,7 @@ describe("volume coordination fiber-local state", () => {
           body: () =>
             Effect.sync(() => {
               replaced = true;
-            }).pipe(Effect.zipRight(verifyActiveVolumeCoordination(changingProvider))),
+            }).pipe(Effect.andThen(verifyActiveVolumeCoordination(changingProvider))),
         }).pipe(Effect.flip);
         yield* verifyActiveVolumeCoordination(changingProvider);
         return failure;
@@ -131,7 +131,7 @@ describe("volume coordination fiber-local state", () => {
             locateVolume: (ref: VolumeRef) =>
               Effect.sync(() => {
                 reads.push(ref.store);
-              }).pipe(Effect.zipRight(provider.locateVolume(ref))),
+              }).pipe(Effect.andThen(provider.locateVolume(ref))),
           });
           const left = yield* withPlanVolumeCoordination({
             plan: planFor("alpha"),
@@ -139,8 +139,8 @@ describe("volume coordination fiber-local state", () => {
             stateStore: store,
             body: () =>
               Deferred.succeed(leftReady, undefined).pipe(
-                Effect.zipRight(Deferred.await(release)),
-                Effect.zipRight(verifyActiveVolumeCoordination(observer(leftReads))),
+                Effect.andThen(Deferred.await(release)),
+                Effect.andThen(verifyActiveVolumeCoordination(observer(leftReads))),
               ),
           }).pipe(Effect.forkScoped);
           const right = yield* withPlanVolumeCoordination({
@@ -149,8 +149,8 @@ describe("volume coordination fiber-local state", () => {
             stateStore: store,
             body: () =>
               Deferred.succeed(rightReady, undefined).pipe(
-                Effect.zipRight(Deferred.await(release)),
-                Effect.zipRight(verifyActiveVolumeCoordination(observer(rightReads))),
+                Effect.andThen(Deferred.await(release)),
+                Effect.andThen(verifyActiveVolumeCoordination(observer(rightReads))),
               ),
           }).pipe(Effect.forkScoped);
           yield* Deferred.await(leftReady);
@@ -186,7 +186,7 @@ describe("volume coordination fiber-local state", () => {
               Effect.suspend(() => {
                 attempts++;
                 return (attempts === 2 ? Deferred.succeed(secondAttempt, undefined) : Effect.void).pipe(
-                  Effect.zipRight(store.withLock(key, body)),
+                  Effect.andThen(store.withLock(key, body)),
                 );
               }),
           };
@@ -195,7 +195,7 @@ describe("volume coordination fiber-local state", () => {
             provider,
             stateStore: observingStore,
             body: () =>
-              Deferred.succeed(firstEntered, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+              Deferred.succeed(firstEntered, undefined).pipe(Effect.andThen(Deferred.await(release))),
           }).pipe(Effect.forkScoped);
           yield* Deferred.await(firstEntered);
           const second = yield* withPlanVolumeCoordination({

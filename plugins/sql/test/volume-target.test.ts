@@ -45,7 +45,7 @@ describe("SQL physical volume selection", () => {
     if (!service) throw new Error("missing fixture service");
     // When selecting the volume, then refuse rather than infer from its position.
     const result = await Effect.runPromise(Effect.result(requireVolume(plan, service, "database")));
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
   });
 
   it("rejects duplicate database destinations", async () => {
@@ -66,6 +66,6 @@ describe("SQL physical volume selection", () => {
     if (!service) throw new Error("missing fixture service");
     // When selecting the volume, then the ambiguity fails closed.
     const result = await Effect.runPromise(Effect.result(requireVolume(plan, service, "database")));
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
   });
 });

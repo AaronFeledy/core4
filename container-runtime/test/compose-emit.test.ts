@@ -85,17 +85,18 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine",
   },
   environment: name === "web" ? { NODE_ENV: "development" } : { POSTGRES_PASSWORD: "lando" },
-  appMount:
-    name === "web"
-      ? {
+  ...(name === "web"
+    ? {
+        appMount: {
           source: appRoot,
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: ["node_modules"],
           includes: [],
-          realization: "passthrough",
-        }
-      : undefined,
+          realization: "passthrough" as const,
+        },
+      }
+    : {}),
   mounts:
     name === "web"
       ? [
@@ -393,7 +394,6 @@ describe("Podman Compose emission", () => {
         ...web.mounts,
         {
           type: "tmpfs",
-          source: undefined,
           target: PortablePath.make("/tmp/cache"),
           readOnly: false,
           realization: "passthrough",
@@ -495,7 +495,7 @@ describe("Podman Compose emission", () => {
   test("Given a podman ctx and an unbuilt artifact, When emitting, Then the failure carries the caller providerId", async () => {
     // Given
     const fileSystem = makeFileSystemFake();
-    const unbuilt: ServicePlan = { ...web, artifact: undefined };
+    const { artifact: _artifact, ...unbuilt } = web;
 
     // When
     const error = await Effect.runPromise(
@@ -519,7 +519,6 @@ describe("Podman Compose emission", () => {
       mounts: [
         {
           type: "bind",
-          source: undefined,
           target: PortablePath.make("/nope"),
           readOnly: false,
           realization: "passthrough",

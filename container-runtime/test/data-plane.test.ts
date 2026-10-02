@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { ArtifactTransferError, ServiceCopyError, VolumeOperationError } from "@lando/sdk/errors";
@@ -338,8 +338,8 @@ describe("provider data plane", () => {
 
     // Then: the import fails instead of returning an image reference.
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArtifactTransferError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ArtifactTransferError);
     }
   });
 
@@ -377,8 +377,8 @@ describe("provider data plane", () => {
     const exit = await Effect.runPromiseExit(provider.importArtifact(Stream.make(bytes("tar payload"))));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArtifactTransferError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ArtifactTransferError);
     }
   });
 
@@ -1226,7 +1226,7 @@ describe("provider data plane", () => {
     const result = await Effect.runPromise(
       provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.result),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
     expect(result.failure).toBeInstanceOf(VolumeOperationError);
     expect(result.failure.operation).toBe("removeVolume");
@@ -1334,8 +1334,8 @@ describe("provider data plane", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ServiceCopyError);
     }
   });
 

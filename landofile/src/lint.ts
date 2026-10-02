@@ -44,6 +44,40 @@ type LintIssue = {
   readonly message: string;
 };
 
+const lintIssues = (
+  issue: SchemaIssue.Issue,
+  path: ReadonlyArray<PropertyKey> = [],
+): ReadonlyArray<LintIssue> => {
+  switch (issue._tag) {
+    case "Pointer":
+      return lintIssues(issue.issue, [...path, ...issue.path]);
+    case "Encoding":
+      return lintIssues(issue.issue, path);
+    case "Composite":
+      return issue.issues.flatMap((child) => lintIssues(child, path));
+    case "AnyOf":
+      if (issue.issues.length > 0) return issue.issues.flatMap((child) => lintIssues(child, path));
+      break;
+    case "Filter":
+      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
+        return lintIssues(issue.issue, path);
+      }
+      break;
+    case "UnexpectedKey":
+    case "MissingKey":
+    case "InvalidType":
+    case "InvalidValue":
+    case "Forbidden":
+    case "OneOf":
+      break;
+  }
+  return SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map((formatted) => ({
+    _tag: issue._tag === "UnexpectedKey" ? "Unexpected" : issue._tag === "MissingKey" ? "Missing" : "Type",
+    path,
+    message: formatted.message,
+  }));
+};
+
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 
@@ -125,9 +159,14 @@ const violationsFor = (
           normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
         ),
       ].flatMap((result) =>
-        Result.match(result, { onFailure: (error) => [{ path: error.key, message: error.message, suggestedFix: error.remediation }], onSuccess: () => [] }),
+        Result.match(result, {
+          onFailure: (error) => [
+            { path: error.key, message: error.message, suggestedFix: error.remediation },
+          ],
+          onSuccess: () => [],
+        }),
       )
-    : SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues
+    : lintIssues(decoded.failure.issue)
         .map(violationFromIssue)
         .filter(
           (violation) =>
@@ -182,7 +221,8 @@ export const lintLandofile = (
       catch: (cause) => cause,
     }).pipe(Effect.result);
     if (Result.isFailure(discovery)) {
-      if (discovery.failure instanceof LandofileFormConflictError) return yield* Effect.fail(discovery.failure);
+      if (discovery.failure instanceof LandofileFormConflictError)
+        return yield* Effect.fail(discovery.failure);
       const message =
         discovery.failure instanceof Error ? discovery.failure.message : "Failed to discover Landofile.";
       return singleViolationResult(cwd, message);

@@ -176,7 +176,7 @@ test("brackets a top-level tooling run with its pre and post task events", async
   // When the task runs from the top level
   const result = await h.run("build");
   // Then the pre bracket, both authored steps, and the post bracket run in that order
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(h.executed).toEqual(["echo before", "echo body-one", "echo body-two", "echo after"]);
 });
 
@@ -239,7 +239,7 @@ test("a failing post bracket is fatal and carries the redacted output tail", asy
   const result = await h.run("build");
   // Then the whole run fails rather than reporting the body's success
   expect(h.executed).toEqual(["echo body", "echo after"]);
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") throw new Error("expected post-build failure");
   if (result.failure._tag !== "LandofileEventStepFailedError") {
     throw new Error(`expected LandofileEventStepFailedError, got ${result.failure._tag}`);
@@ -261,7 +261,7 @@ test("runs an unbracketed task without requiring the event runtime", async () =>
   // When the task runs
   const result = await h.run("build");
   // Then the empty-event fast path keeps the run green
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(h.executed).toEqual(["echo body"]);
 });
 
@@ -291,7 +291,7 @@ test("never selects a provider for a host-only task and its host-only brackets",
   // When the task runs
   const result = await h.run("build");
   // Then no provider is ever initialized
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(h.executed).toEqual(["echo before", "echo body"]);
   expect(h.selections).toEqual([]);
 });

@@ -76,9 +76,9 @@ export const runConfigTranslator = (
   input: ConfigTranslateInput,
 ): Effect.Effect<ConfigTranslateResult, ConfigTranslateError> =>
   Effect.gen(function* () {
-    const validated = yield* validateConfigTranslateInput(input);
+    const validated = yield* Effect.fromResult(validateConfigTranslateInput(input));
     const result = yield* translator.translate(validated);
-    return yield* validateConfigTranslateResult(validated, result);
+    return yield* Effect.fromResult(validateConfigTranslateResult(validated, result));
   }).pipe(
     Effect.mapError(
       (error) => new ConfigTranslateError({ ...error, message: error.message, translator: translator.id }),

@@ -78,7 +78,7 @@ describe("makeStdioMcpTransport queue and write limits", () => {
           .pipe(Effect.forkChild);
         yield* Deferred.await(writeStarted);
         yield* TestClock.adjust("5 seconds");
-        const poll = yield* replyFiber.pollUnsafe();
+        const poll = Option.fromNullishOr(replyFiber.pollUnsafe());
         yield* Fiber.interrupt(replyFiber);
         return poll;
       }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
@@ -105,8 +105,15 @@ describe("makeStdioMcpTransport queue and write limits", () => {
         });
         const incoming = yield* transport.receive;
         if (Option.isNone(incoming)) return yield* Effect.die(new Error("expected an open MCP tool call"));
+        yield* transport
+          .notify({
+            id: incoming.value.id,
+            frame: { _tag: "output", stream: "stdout", line: "progress-0" },
+          })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(writeStarted);
         const notifications = Effect.forEach(
-          Array.from({ length: 1026 }, (_, index) => index),
+          Array.from({ length: 1025 }, (_, index) => index + 1),
           (index) =>
             transport.notify({
               id: incoming.value.id,
@@ -115,7 +122,6 @@ describe("makeStdioMcpTransport queue and write limits", () => {
           { concurrency: "unbounded", discard: true },
         );
         const notifyFiber = yield* notifications.pipe(Effect.forkChild);
-        yield* Deferred.await(writeStarted);
         return yield* Fiber.await(notifyFiber);
       }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
     );
@@ -150,7 +156,7 @@ describe("makeStdioMcpTransport queue and write limits", () => {
           })
           .pipe(Effect.forkChild);
         yield* Effect.yieldNow;
-        const poll = yield* notifyFiber.pollUnsafe();
+        const poll = Option.fromNullishOr(notifyFiber.pollUnsafe());
         yield* Fiber.interrupt(notifyFiber);
         return { completion: poll, writeCalls };
       }).pipe(Effect.scoped),
@@ -225,6 +231,9 @@ describe("makeStdioMcpTransport queue and write limits", () => {
         const transport = yield* makeStdioMcpTransport({ catalog, input, write: () => Effect.void });
         const incoming = yield* transport.receive;
         if (Option.isNone(incoming)) return { count: 0, overflow: undefined };
+        // Keep cancellations pending until the reader reaches the overflow boundary.
+        const readerCompletion = yield* transport.receive.pipe(Effect.exit);
+        expectMcpTransportFailure(readerCompletion);
         let count = 0;
         while (count < 256) {
           const cancellation = yield* transport.receiveCancel;

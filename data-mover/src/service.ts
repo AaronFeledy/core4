@@ -1013,7 +1013,11 @@ const writeStreamToEndpoint = (
         yield* provider
           .copyToService(
             { app: target.app, service: target.service },
-            { sourcePath: absolutePath(staged.path), targetPath: target.path, overwrite: spec.overwrite },
+            {
+              sourcePath: absolutePath(staged.path),
+              targetPath: target.path,
+              ...(spec.overwrite === undefined ? {} : { overwrite: spec.overwrite }),
+            },
           )
           .pipe(Effect.mapError((cause) => providerFailure("copyToService", cause)));
         return {
@@ -1227,7 +1231,7 @@ export const makeDataMoverService = (
       const progress: DataTransferProgress = {
         phase: "completed",
         transferredBytes: adjusted.sizeBytes ?? 0,
-        digest: adjusted.digest,
+        ...(adjusted.digest === undefined ? {} : { digest: adjusted.digest }),
       };
       yield* events.publish(
         DataTransferProgressEvent.make({
@@ -1333,7 +1337,12 @@ export const makeDataMoverService = (
       const format = opts?.format ?? "tar";
       const native: VolumeSnapshotRef | undefined = useNative
         ? yield* provider
-            .snapshotVolume({ volume: store, snapshotId, label: opts?.label, labels: opts?.labels })
+            .snapshotVolume({
+              volume: store,
+              snapshotId,
+              ...(opts?.label === undefined ? {} : { label: opts.label }),
+              ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
+            })
             .pipe(Effect.mapError((cause) => providerFailure("snapshotVolume", cause)))
         : undefined;
       rollbackNative = native;

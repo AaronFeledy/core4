@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { EventService, ProcessRunner, type ProcessSpawnOptions, SecretStore } from "@lando/sdk/services";
-import { Deferred, Effect, Result, Fiber, Option, Stream } from "effect";
+import { Deferred, Effect, Fiber, Option, Result, Stream } from "effect";
 import type { OpRunner } from "../src/op-cli.ts";
 
 const reference = "op://Vault/Item With Space/field?ssh-format=openssh";
@@ -73,8 +73,8 @@ test.each(["BARE", "env://Vault/Item/field", "op://Vault//field", "op://Vault/..
     const result = await Effect.runPromise(Effect.result(store.get(invalid)));
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "SecretReferenceInvalidError", reference: invalid },
+      _tag: "Failure",
+      failure: { _tag: "SecretReferenceInvalidError", reference: invalid },
     });
     expect(calls).toBe(0);
   },
@@ -134,8 +134,8 @@ test("missing secrets stay absent without caching failed reads", async () => {
   );
   // Then
   expect(result.get).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "SecretNotFoundError", secret: reference },
+    _tag: "Failure",
+    failure: { _tag: "SecretNotFoundError", secret: reference },
   });
   expect(result.has).toBe(false);
   expect(result.list).toEqual([]);
@@ -176,7 +176,7 @@ test.each([
     }).pipe(Effect.provide(onePasswordSecretStore), Effect.provideService(ProcessRunner, runner)),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "SecretStoreUnavailableError", reason } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "SecretStoreUnavailableError", reason } });
   expect(JSON.stringify(result)).not.toContain("sensitive-stderr");
 });
 

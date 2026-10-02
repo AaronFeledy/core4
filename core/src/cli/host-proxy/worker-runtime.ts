@@ -22,7 +22,7 @@ import { runOpenForHostProxy } from "./dispatch";
 
 const WorkerInput = Schema.Struct({
   app: Schema.Struct({
-    kind: Schema.Literal("user", "scratch"),
+    kind: Schema.Literals(["user", "scratch"]),
     id: Schema.String,
     root: Schema.String,
   }),
@@ -36,10 +36,10 @@ const WorkerInput = Schema.Struct({
   }),
   shimArtifactPath: Schema.String,
   shimTarget: Schema.optional(
-    Schema.Union(
+    Schema.Union([
       Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("x64") }),
       Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("arm64") }),
-    ),
+    ]),
   ),
   hostGatewayName: Schema.optional(Schema.String),
 });

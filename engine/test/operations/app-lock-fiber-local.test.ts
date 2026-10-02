@@ -34,7 +34,7 @@ test("forked app-lock children reuse the parent's lock, while a later unbound ac
           app,
           Effect.gen(function* () {
             const parent = yield* readLock;
-            const child = yield* Effect.fork(withAppMutationLock(app, readLock));
+            const child = yield* Effect.forkChild(withAppMutationLock(app, readLock));
             return { parent, child: yield* Fiber.join(child) };
           }),
         );

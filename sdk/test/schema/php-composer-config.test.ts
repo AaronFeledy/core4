@@ -3,7 +3,7 @@ import { Result, Schema } from "effect";
 
 import * as SDK from "@lando/sdk/schema";
 
-const strictDecode = <A, I>(schema: Schema.Codec<A, I>, input: unknown) =>
+const strictDecode = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown) =>
   Schema.decodeUnknownResult(schema)(input, { onExcessProperty: "error" });
 
 describe("PhpComposerConfig", () => {
@@ -37,7 +37,7 @@ describe("PhpComposerConfig", () => {
     // when strictly decoded,
     // then each succeeds because both members are optional.
     for (const composer of [{}, { version: "2" }, { packages: { "vendor/tool": "^1.0" } }]) {
-      expect(strictDecode(SDK.ServiceConfigInput, { type: "php:8.3", composer })._tag).toBe("Right");
+      expect(strictDecode(SDK.ServiceConfigInput, { type: "php:8.3", composer })._tag).toBe("Success");
     }
   });
 
@@ -50,7 +50,7 @@ describe("PhpComposerConfig", () => {
     const twice = Schema.decodeUnknownSync(SDK.ServiceConfigInput)(once);
 
     expect(twice).toEqual(once);
-    expect(strictDecode(SDK.ServiceConfigInput, once)._tag).toBe("Right");
+    expect(strictDecode(SDK.ServiceConfigInput, once)._tag).toBe("Success");
   });
 
   test("decodes the object form through PhpServiceConfig and LandofileShape", () => {
@@ -62,7 +62,7 @@ describe("PhpComposerConfig", () => {
         type: "php:8.4",
         composer: { version: "2", packages: { "vendor/a": "^1" } },
       })._tag,
-    ).toBe("Right");
+    ).toBe("Success");
 
     expect(
       Result.isSuccess(
@@ -88,7 +88,7 @@ describe("PhpComposerConfig", () => {
         }),
       ),
     ).toBe(true);
-    expect(strictDecode(SDK.ServiceConfigInput, { composer: { nope: true } })._tag).toBe("Left");
+    expect(strictDecode(SDK.ServiceConfigInput, { composer: { nope: true } })._tag).toBe("Failure");
   });
 });
 
@@ -114,7 +114,7 @@ describe("ServiceConfig.globals", () => {
       globals: { yarn: "1.22.4" },
     });
 
-    expect(strictDecode(SDK.ServiceConfigInput, once)._tag).toBe("Right");
+    expect(strictDecode(SDK.ServiceConfigInput, once)._tag).toBe("Success");
   });
 
   test("rejects a globals array and non-string versions", () => {
@@ -124,8 +124,8 @@ describe("ServiceConfig.globals", () => {
     expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ServiceConfigInput)({ globals: ["yarn"] }))).toBe(
       true,
     );
-    expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ServiceConfigInput)({ globals: { yarn: 1 } }))).toBe(
-      true,
-    );
+    expect(
+      Result.isFailure(Schema.decodeUnknownResult(SDK.ServiceConfigInput)({ globals: { yarn: 1 } })),
+    ).toBe(true);
   });
 });

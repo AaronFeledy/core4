@@ -1,10 +1,11 @@
-import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
+import { DateTime, Effect, Fiber, Layer, Queue } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { RendererCapabilities, RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { renderPlainLine } from "./format.ts";
+import { takeAllAvailable } from "./queue-available.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 
 const makeEventConsumerLive = (
@@ -21,8 +22,8 @@ const makeEventConsumerLive = (
       );
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
-          const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
-          if (Option.isSome(remaining)) for (const event of remaining.value) handle(event);
+          const remaining = yield* takeAllAvailable(queue);
+          for (const event of remaining) handle(event);
           yield* Fiber.interrupt(fiber);
         }),
       );

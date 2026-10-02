@@ -1,6 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import {  } from "effect";
+import { SchemaIssue } from "effect";
 
 import { parseComposeDuration } from "../../src/schema/compose-duration.ts";
 
@@ -62,7 +61,7 @@ describe("parseComposeDuration", () => {
       // Then
       expect(failure).toBeInstanceOf(SchemaIssue.InvalidValue);
       if (!(failure instanceof SchemaIssue.InvalidValue)) return;
-      const message = failure.message;
+      const message = SchemaIssue.makeFormatterDefault()(failure);
       expect(message).toBeDefined();
       if (message === undefined) return;
       expect(["30s", "1m30s", "1h2m3s"].some((example) => message.includes(example))).toBe(true);
@@ -83,10 +82,11 @@ describe("parseComposeDuration", () => {
     }
 
     // Then
-    expect(failure?.message).toBeDefined();
-    if (failure?.message === undefined) return;
-    expect(failure.message.length).toBeLessThan(512);
-    expect(failure.message).not.toContain(literal);
+    expect(failure).toBeDefined();
+    if (failure === undefined) return;
+    const message = SchemaIssue.makeFormatterDefault()(failure);
+    expect(message.length).toBeLessThan(512);
+    expect(message).not.toContain(literal);
   });
 
   test("rejects a long invalid scalar without rescanning every suffix", () => {

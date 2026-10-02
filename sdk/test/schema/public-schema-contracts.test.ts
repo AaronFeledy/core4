@@ -38,7 +38,7 @@ describe("public schema contracts", () => {
 
   for (const schemaName of JSON_SCHEMA_NAMES) {
     test(`${schemaName} decodes, rejects invalid input, and round-trips through encode/decode`, () => {
-      const schema: Schema.Codec<unknown, unknown> = publicSchemaRegistry[schemaName];
+      const schema: Schema.Codec<unknown, unknown> = Schema.make(publicSchemaRegistry[schemaName].ast);
       const decoded = Schema.decodeUnknownResult(schema)(publicSchemaHappyPathFixture(schemaName), {
         onExcessProperty: "error",
       });

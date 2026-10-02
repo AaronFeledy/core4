@@ -29,7 +29,7 @@ const mixedFixture = async (stopAt: string) => {
       }),
     ),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   return context;
 };
 
@@ -132,7 +132,7 @@ for (const variant of [
     // When recovery preflights the recorded plan
     const outcome = await scoped(Effect.result(transactions.recover(appRoot)));
     // Then it blocks for manual resolution without touching a single user file
-    expect(outcome._tag).toBe("Left");
+    expect(outcome._tag).toBe("Failure");
     if (outcome._tag === "Failure") expect(outcome.failure.reason).toBe("blocked");
     expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("blocked");
     expect((await readdir(appRoot)).toSorted()).toEqual(before.toSorted());
@@ -141,7 +141,7 @@ for (const variant of [
     expect(await readFile(join(appRoot, "drop"), "utf8")).toBe("old-drop");
     // And a blocked journal keeps refusing rather than retrying
     const retry = await scoped(Effect.result(transactions.recover(appRoot)));
-    expect(retry._tag).toBe("Left");
+    expect(retry._tag).toBe("Failure");
   });
 }
 
@@ -152,7 +152,7 @@ test("never restores a backup over an edit made to an already applied target", a
   // When recovery preflights the mixed state
   const outcome = await scoped(Effect.result(transactions.recover(appRoot)));
   // Then the edit survives, the pending target stays untouched, and it blocks
-  expect(outcome._tag).toBe("Left");
+  expect(outcome._tag).toBe("Failure");
   expect(await readFile(join(appRoot, "keep"), "utf8")).toBe("user-edit");
   await expect(lstat(join(appRoot, "fresh"))).rejects.toMatchObject({ code: "ENOENT" });
   expect(await readFile(join(appRoot, "drop"), "utf8")).toBe("old-drop");
@@ -246,7 +246,7 @@ test("refuses to consume a partial set through the guard entry point", async () 
   // When the load/start guard checks that root
   const guarded = await Effect.runPromise(Effect.result(transactions.ensureConsistent(appRoot)));
   // Then it refuses without loading anything else
-  expect(guarded._tag).toBe("Left");
+  expect(guarded._tag).toBe("Failure");
   if (guarded._tag === "Failure") expect(guarded.failure.reason).toBe("blocked");
 });
 
@@ -286,7 +286,7 @@ test("resumes a recovery that was itself interrupted mid-plan", async () => {
     ),
   );
   const first = await scoped(Effect.result(transactions.recover(appRoot)));
-  expect(first._tag).toBe("Left");
+  expect(first._tag).toBe("Failure");
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("committing");
   // When recovery runs again against the surviving journal
   const outcome = await scoped(transactions.recover(appRoot));

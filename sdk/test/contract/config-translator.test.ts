@@ -83,10 +83,8 @@ const makeComposeTranslator = ({
         sample.fragment ?? sample.context,
       );
       const wire = yield* Schema.encodeEffect(LandofileAuthoringFragment)(value);
-      const record = yield* Schema.decodeUnknownEffect(
-        Schema.Record(Schema.String, Schema.Unknown),
-      )(wire);
-      return { text: yield* emitLandofileYamlEither(record), diagnostics: [] };
+      const record = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(wire);
+      return { text: yield* Effect.fromResult(emitLandofileYamlEither(record)), diagnostics: [] };
     }).pipe(
       Effect.mapError(
         (cause) => new ConfigTranslateError({ message: "Cannot encode authoring sample.", cause }),

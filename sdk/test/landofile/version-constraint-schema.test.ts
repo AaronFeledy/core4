@@ -9,7 +9,7 @@ describe("Landofile version-constraint schema", () => {
   test("rejects malformed lando ranges at the boundary", () => {
     const decoded = Schema.decodeUnknownResult(LandofileShape)({ name: "bad", lando: "not-semver" });
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });
 
@@ -23,6 +23,6 @@ describe("LandofileVersionConstraintError", () => {
       remediation: "Update Lando.",
     });
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });

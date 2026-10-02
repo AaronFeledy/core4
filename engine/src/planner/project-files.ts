@@ -98,7 +98,7 @@ const readTextBounded = (
 ): Effect.Effect<{ readonly text: string; readonly sha256: string }, LandofileValidationError> =>
   Stream.runFoldEffect(
     input.fileSystem.read(absolute),
-    { chunks: [], bytes: 0 } as BoundedRead,
+    (): BoundedRead => ({ chunks: [], bytes: 0 }),
     (state, chunk): Effect.Effect<BoundedRead, LandofileValidationError> => {
       const bytes = state.bytes + chunk.byteLength;
       if (bytes > limit) {

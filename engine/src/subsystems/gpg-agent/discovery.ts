@@ -7,7 +7,7 @@ import { probeRestrictedGpgAgent } from "./assuan-probe.ts";
 export type GpgSocketPathKind = "socket" | "missing" | "other";
 
 export interface GpgAgentDiscoveryOptions {
-  readonly runner: Pick<ProcessRunner["Type"], "run">;
+  readonly runner: Pick<ProcessRunner["Service"], "run">;
   readonly explicitSocket?: string;
   /** Whether a missing socket may be repaired with `gpgconf --launch gpg-agent`. Read-only probes pass false. */
   readonly launch: boolean;

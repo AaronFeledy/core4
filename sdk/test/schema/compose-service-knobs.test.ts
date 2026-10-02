@@ -213,7 +213,7 @@ describe("Compose service runtime knobs", () => {
       expect(Result.isFailure(result)).toBe(true);
       if (Result.isFailure(result)) {
         const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-        expect(issues.some((issue) => issue.path[0] === key)).toBe(true);
+        expect(issues.some((issue) => (issue.path ?? [])[0] === key)).toBe(true);
       }
     },
   );

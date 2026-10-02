@@ -185,9 +185,9 @@ const ensureConsistentRoot = (appRoot: string, inputs?: LandofileRuntimeInputs) 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (Schema.isSchemaError(cause)) {
     return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      issue.path.length === 0 || issue.message.startsWith("Landofile service")
+      (issue.path ?? []).length === 0 || issue.message.startsWith("Landofile service")
         ? issue.message
-        : issue.path.join("."),
+        : (issue.path ?? []).join("."),
     );
   }
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
@@ -518,7 +518,7 @@ export const loadLandofileLayers = (
               : undefined;
           return yield* Effect.forEach(layers, (layer) =>
             (layer === canonical && canonicalResult !== undefined
-              ? canonicalResult
+              ? Effect.fromResult(canonicalResult)
               : loadLandofileFile(
                   layer.filePath,
                   {

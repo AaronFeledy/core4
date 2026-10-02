@@ -87,7 +87,7 @@ describe("lando4 encoding", () => {
 
   test("agrees with the canonical serializer", () => {
     expect(emitLandofileYamlEither({ b: 1, a: 2 }, { sortKeys: true })).toEqual(
-      expect.objectContaining({ _tag: "Right" }),
+      expect.objectContaining({ _tag: "Success" }),
     );
   });
 });

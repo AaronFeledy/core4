@@ -23,7 +23,7 @@ test("validates target and artifact collisions before producing artifacts", asyn
     ),
   );
   // Then no backup or stage has been produced
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(await readdir(appRoot)).toEqual(["a"]);
 });
 
@@ -81,7 +81,7 @@ for (const kind of ["alias", "parent-symlink", "directory", "hardlink"] as const
       ),
     );
     // Then the whole graph is rejected without artifacts
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(await readdir(appRoot)).toEqual(before);
   });
 }
@@ -116,7 +116,7 @@ for (const kind of ["symlink", "hardlink", "permissions", "corrupt"] as const) {
       ),
     );
     // Then no target mutation or stage is allowed
-    if (kind !== "permissions" || process.platform !== "win32") expect(result._tag).toBe("Left");
+    if (kind !== "permissions" || process.platform !== "win32") expect(result._tag).toBe("Failure");
     expect(await readFile(join(appRoot, "a"), "utf8")).toBe("old");
   });
 }

@@ -11,7 +11,16 @@
  *
  * `--debug` raises the floor to `debug`. `--verbose` only changes Renderer.
  */
-import { type Context, Effect, Logger as EffectLogger, Layer, Option, absurd } from "effect";
+import {
+  type Context,
+  Effect,
+  Logger as EffectLogger,
+  Layer,
+  type LogLevel,
+  Option,
+  References,
+  absurd,
+} from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
@@ -35,12 +44,12 @@ export interface LoggerLiveOptions {
   readonly writeLine?: DiagnosticLineWriter;
 }
 
-const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): "LogLevel" => {
+const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): LogLevel.LogLevel => {
   switch (level) {
     case "error":
       return "Error";
     case "warn":
-      return "Warning";
+      return "Warn";
     case "info":
       return "Info";
     case "debug":
@@ -111,27 +120,24 @@ const noopWriteLine: DiagnosticLineWriter = () => {};
 export const LoggerLive = (options: LoggerLiveOptions = {}): Layer.Layer<Logger> => {
   const logLevel = options.logLevel;
   if (logLevel === "none" || (logLevel === undefined && options.mode === "silent")) {
-    return Layer.mergeAll(
-      loggerServiceLayer(),
-      EffectLogger.replace(EffectLogger.defaultLogger, makeEffectLogger("silent")),
-    );
+    return Layer.mergeAll(loggerServiceLayer(), EffectLogger.layer([]));
   }
   if (logLevel === undefined) {
     return Layer.mergeAll(
       loggerServiceLayer(),
-      EffectLogger.replace(EffectLogger.defaultLogger, makeEffectLogger(options.mode ?? "pretty")),
+      EffectLogger.layer([makeEffectLogger(options.mode ?? "pretty")]),
     );
   }
   return Layer.mergeAll(
     loggerServiceLayer(),
-    EffectLogger.replace(
-      EffectLogger.defaultLogger,
+    EffectLogger.layer([
       makeStderrEffectLogger({
         structured: options.structured === true,
         stderrIsTTY: options.stderrIsTTY === true,
         writeLine: options.writeLine ?? noopWriteLine,
       }),
-    ),
-    EffectLogger.minimumLogLevel(toEffectLogLevel(logLevel)),
+    ]),
+    Layer.succeed(References.LogToStderr, true),
+    Layer.succeed(References.MinimumLogLevel, toEffectLogLevel(logLevel)),
   );
 };

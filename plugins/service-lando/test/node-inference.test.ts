@@ -159,7 +159,7 @@ describe("bare node version inference", () => {
         }),
       ),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(String(result.failure)).toMatch(/Unsupported npm package "\.\.\/escape"/);
     }

@@ -6,7 +6,7 @@ import type { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Stream } from "effect";
 
 export const exportPublicKeyring = (options: {
-  readonly runner: Pick<ProcessRunner["Type"], "streamWithExit">;
+  readonly runner: Pick<ProcessRunner["Service"], "streamWithExit">;
   readonly destDir: string;
 }) => {
   const ioError = () =>

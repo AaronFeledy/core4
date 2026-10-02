@@ -506,7 +506,13 @@ const materializeJsonSchemaFixture = (root: JsonSchemaNode, node: JsonSchemaNode
   if (Array.isArray(resolved.anyOf)) return materializeJsonSchemaFixture(root, resolved.anyOf[0] ?? {}, key);
   if (Array.isArray(resolved.oneOf)) return materializeJsonSchemaFixture(root, resolved.oneOf[0] ?? {}, key);
   if (Array.isArray(resolved.allOf)) {
-    return mergeObjects(resolved.allOf.map((child) => materializeJsonSchemaFixture(root, child, key)));
+    const { allOf, ...base } = resolved;
+    const baseValue = materializeJsonSchemaFixture(root, base, key);
+    const values = allOf.map((child) => materializeJsonSchemaFixture(root, child, key));
+    if (baseValue !== null && typeof baseValue === "object" && !Array.isArray(baseValue)) {
+      return mergeObjects([baseValue, ...values]);
+    }
+    return baseValue ?? values.find((value) => value !== null) ?? null;
   }
 
   if (resolved.type === "string" || resolved.pattern !== undefined || resolved.format !== undefined) {
@@ -568,6 +574,8 @@ const recipeProvenanceFixture = {
 } as const;
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  GuideProps: {},
+  CleanupProps: {},
   RouteFilter: { type: "stripPrefix", prefix: "/api" },
   RecipeSourceKind: "bundled",
   RecipeContentDigest: `sha256:${"a".repeat(64)}`,
@@ -833,7 +841,7 @@ export const assertPublicSchemaContractCoverage = (
 
   const failingSchemas: string[] = [];
   for (const schemaName of JSON_SCHEMA_NAMES) {
-    const schema: Schema.Codec<unknown, unknown> = publicSchemaRegistry[schemaName];
+    const schema: Schema.Codec<unknown, unknown> = Schema.make(publicSchemaRegistry[schemaName].ast);
     const happy = Schema.decodeUnknownResult(schema)(publicSchemaHappyPathFixture(schemaName), {
       onExcessProperty: "error",
     });

@@ -5,7 +5,7 @@ import { EventServiceLive } from "../../src/services/event-service.ts";
 
 test("EventService builds once per graph, rebuilds for nested provide, and rebuilds for a new run", async () => {
   // Given: observe successful builds of the real layer and its fresh service instances.
-  const instances: Context.Tag.Service<typeof EventService>[] = [];
+  const instances: Context.Service.Shape<typeof EventService>[] = [];
   const layer = EventServiceLive.pipe(
     Layer.tap((context) => Effect.sync(() => instances.push(Context.get(context, EventService)))),
   );

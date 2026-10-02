@@ -202,7 +202,7 @@ describe("converted Landofile", () => {
     // Then the output is valid Lando 4 authoring and carries none of the legacy wiring.
     const fragments = result.outputs.map(({ fragment }) => fragment);
     for (const fragment of fragments) {
-      expect(Schema.decodeUnknownResult(LandofileShape)(fragment)._tag).toBe("Right");
+      expect(Schema.decodeUnknownResult(LandofileShape)(fragment)._tag).toBe("Success");
     }
     const text = JSON.stringify(fragments);
     for (const legacy of [

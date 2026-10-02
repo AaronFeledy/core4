@@ -137,7 +137,7 @@ describe("@lando/service-lando registration", () => {
     });
 
     const encoded = Schema.encodeSync(AppPlan)(appPlan);
-    expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Right");
+    expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Success");
     expect(appPlan.provider).toBe(ProviderId.make("lando"));
     expect(appPlan.services[ServiceName.make("web")]?.type).toBe("node:lts");
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");

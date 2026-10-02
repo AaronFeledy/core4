@@ -216,7 +216,7 @@ export const inspectMcpCommandOutcome = (
   outcome: CommandResultOutcome,
 ): Effect.Effect<CommandResultOutcome, McpTransportError> =>
   Effect.try({
-    try: () => {
+    try: (): CommandResultOutcome => {
       if (outcome._tag === "success") {
         const value = new BoundedDataInspector("MCP command result").inspect(outcome.value);
         return { _tag: "success", value };

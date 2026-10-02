@@ -351,7 +351,7 @@ describe("per-app mutation lock", () => {
         ),
       );
       expect(Date.now() - started).toBeGreaterThanOrEqual(300);
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure).toBeInstanceOf(AppLockTimeoutError);
         expect(result.failure.message).toBe(APP_LOCK_WAIT_MESSAGE);

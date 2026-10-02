@@ -74,7 +74,7 @@ export const VolumeInfo = Schema.Struct({
   provenance: Schema.optionalKey(Schema.Literals(["known", "legacy"])).annotate({
     description: "Whether the provider can prove this volume creation's identity.",
   }),
-  createdAt: Schema.optionalKey(Schema.DateTimeUtc),
+  createdAt: Schema.optionalKey(Schema.DateTimeUtcFromString),
   sizeBytes: Schema.optionalKey(Schema.Number),
   labels: Schema.optionalKey(LabelMap),
 });
@@ -234,7 +234,7 @@ export const SnapshotInfo = Schema.Struct({
   store: VolumeRef,
   digest: Schema.String,
   sizeBytes: Schema.Number,
-  createdAt: Schema.DateTimeUtc,
+  createdAt: Schema.DateTimeUtcFromString,
   format: Schema.optionalKey(ArchiveFormat),
   label: Schema.optionalKey(Schema.String),
   labels: Schema.optionalKey(LabelMap),
@@ -263,8 +263,8 @@ export const SnapshotFilter = Schema.Struct({
   scope: Schema.optionalKey(StorageScope),
   label: Schema.optionalKey(Schema.String),
   labels: Schema.optionalKey(LabelMap),
-  createdAfter: Schema.optionalKey(Schema.DateTimeUtc),
-  createdBefore: Schema.optionalKey(Schema.DateTimeUtc),
+  createdAfter: Schema.optionalKey(Schema.DateTimeUtcFromString),
+  createdBefore: Schema.optionalKey(Schema.DateTimeUtcFromString),
 });
 export type SnapshotFilter = typeof SnapshotFilter.Type;
 

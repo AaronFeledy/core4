@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppId } from "@lando/sdk/schema";
-import { Deferred, Effect, Either, Fiber } from "effect";
+import { Deferred, Effect, Result, Fiber } from "effect";
 import { withinEventInvocation } from "../../src/operations/event-invocation.ts";
 
 const frame = (id: string) => ({ app: AppId.make(id), event: "pre-start" as const, file: "/app/.lando.yml" });
@@ -22,7 +22,7 @@ describe("event invocation fiber-local frames", () => {
       Effect.gen(function* () {
         const first = yield* atDepth(16);
         const failed = yield* withinEventInvocation(frame("failed"), Effect.fail("body-failed")).pipe(
-          Effect.either,
+          Effect.result,
         );
         const retry = yield* withinEventInvocation(frame("failed"), atDepth(15));
         return { first, failed, retry, after: yield* atDepth(16) };
@@ -31,7 +31,7 @@ describe("event invocation fiber-local frames", () => {
     // Then
     expect(results).toEqual({
       first: "completed",
-      failed: Either.left("body-failed"),
+      failed: Result.fail("body-failed"),
       retry: "completed",
       after: "completed",
     });
@@ -43,7 +43,7 @@ describe("event invocation fiber-local frames", () => {
       withinEventInvocation(
         frame("parent"),
         Effect.gen(function* () {
-          const child = yield* Effect.fork(
+          const child = yield* Effect.forkChild(
             withinEventInvocation(frame("parent"), Effect.void).pipe(Effect.flip),
           );
           return yield* Fiber.join(child);
@@ -63,7 +63,7 @@ describe("event invocation fiber-local frames", () => {
     const work = withinEventInvocation(
       frame("parent"),
       Effect.gen(function* () {
-        const child = yield* Effect.fork(atDepth(16).pipe(Effect.flip));
+        const child = yield* Effect.forkChild(atDepth(16).pipe(Effect.flip));
         return yield* Fiber.join(child);
       }),
     );
@@ -85,15 +85,15 @@ describe("event invocation fiber-local frames", () => {
             withinEventInvocation(
               frame("shared"),
               Deferred.succeed(left, undefined).pipe(
-                Effect.zipRight(Deferred.await(right)),
-                Effect.zipRight(atDepth(15)),
+                Effect.andThen(Deferred.await(right)),
+                Effect.andThen(atDepth(15)),
               ),
             ),
             withinEventInvocation(
               frame("shared"),
               Deferred.succeed(right, undefined).pipe(
-                Effect.zipRight(Deferred.await(left)),
-                Effect.zipRight(atDepth(15)),
+                Effect.andThen(Deferred.await(left)),
+                Effect.andThen(atDepth(15)),
               ),
             ),
           ],

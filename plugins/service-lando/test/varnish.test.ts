@@ -138,7 +138,7 @@ describe("varnish ServiceType", () => {
             .pipe(Effect.result),
         );
 
-        expect(result._tag).toBe("Left");
+        expect(result._tag).toBe("Failure");
         if (result._tag !== "Failure") throw new Error("expected missing backend to fail");
         expect(result.failure).toBeInstanceOf(ServiceTypeError);
         expect(result.failure.message).toContain("backend:");

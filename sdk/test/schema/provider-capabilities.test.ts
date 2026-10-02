@@ -206,14 +206,11 @@ describe("ProviderCapabilities — field set lock", () => {
   });
 
   test("every literal capability accepts exactly the documented literal options", () => {
-    const literalEntries = Object.entries(LITERAL_FIELDS) as Array<
-      [keyof typeof LITERAL_FIELDS, readonly [string, ...string[]]]
-    >;
+    const fields = Object.keys(LITERAL_FIELDS) as Array<keyof typeof LITERAL_FIELDS>;
 
-    for (const [field, expected] of literalEntries) {
-      const literalSchema = ProviderCapabilities.fields[field] as Schema.Literal<
-        readonly [string, ...string[]]
-      >;
+    for (const field of fields) {
+      const expected = LITERAL_FIELDS[field];
+      const literalSchema = ProviderCapabilities.fields[field];
       expect([...literalSchema.literals].sort()).toEqual([...expected].sort());
 
       for (const value of expected) {
@@ -428,7 +425,7 @@ describe("ProviderCapabilities — rejection paths", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("bindMountPerformance"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("bindMountPerformance"))).toBe(true);
     }
   });
 
@@ -441,7 +438,7 @@ describe("ProviderCapabilities — rejection paths", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("composeSpec"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("composeSpec"))).toBe(true);
     }
   });
 
@@ -454,7 +451,7 @@ describe("ProviderCapabilities — rejection paths", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("composeKnobs"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("composeKnobs"))).toBe(true);
     }
   });
 
@@ -467,7 +464,7 @@ describe("ProviderCapabilities — rejection paths", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("hostPortPublish"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("hostPortPublish"))).toBe(true);
     }
   });
 
@@ -480,7 +477,7 @@ describe("ProviderCapabilities — rejection paths", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("artifactBuild"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("artifactBuild"))).toBe(true);
     }
   });
 
@@ -493,7 +490,7 @@ describe("ProviderCapabilities — rejection paths", () => {
     if (Result.isFailure(result)) {
       expect(Schema.isSchemaError(result.failure)).toBe(true);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-      expect(issues.some((issue) => issue.path.includes("providerExtensions"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("providerExtensions"))).toBe(true);
     }
   });
 
@@ -505,7 +502,7 @@ describe("ProviderCapabilities — rejection paths", () => {
       if (Result.isFailure(result)) {
         expect(Schema.isSchemaError(result.failure)).toBe(true);
         const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
-        expect(issues.some((issue) => issue.path.includes(field))).toBe(true);
+        expect(issues.some((issue) => (issue.path ?? []).includes(field))).toBe(true);
       }
     }
   });

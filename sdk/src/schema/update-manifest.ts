@@ -50,7 +50,7 @@ export type UpdateManifestChecksums = typeof UpdateManifestChecksums.Type;
 export const UpdateManifestSchema = Schema.Struct({
   channel: UpdateChannel,
   latest: UpdateManifestSemver,
-  released: Schema.DateTimeUtc,
+  released: Schema.DateTimeUtcFromString,
   minimum: UpdateManifestSemver,
   binaries: UpdateManifestBinaries,
   checksums: UpdateManifestChecksums,

@@ -1,4 +1,4 @@
-import { Context, Effect, Result, Layer, Option, Scope } from "effect";
+import { Context, Effect, Result, Layer, Option, Schema, Scope } from "effect";
 
 import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type {
@@ -6,7 +6,11 @@ import type {
   ExecutableCommandLoader,
   LandoPluginModule,
 } from "@lando/sdk/plugins";
-import type { CertificateAuthorityContribution, ResolvedPluginInput } from "@lando/sdk/schema";
+import {
+  PluginManifest,
+  type CertificateAuthorityContribution,
+  type ResolvedPluginInput,
+} from "@lando/sdk/schema";
 import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
@@ -53,7 +57,10 @@ export interface PluginContributionGraphShape {
   readonly hostContext: Context.Context<never>;
 }
 
-export class PluginContributionGraph extends Context.Service<PluginContributionGraph, PluginContributionGraphShape>()("@lando/core/private/PluginContributionGraph") {}
+export class PluginContributionGraph extends Context.Service<
+  PluginContributionGraph,
+  PluginContributionGraphShape
+>()("@lando/core/private/PluginContributionGraph") {}
 
 export interface PluginContributionGraphPolicy {
   readonly layers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
@@ -84,23 +91,44 @@ export const mergeLoadedPluginSources = (
 const validateResolvedPlugin = (
   input: ResolvedPluginInput,
 ): Result.Result<LoadedPluginContribution, PluginCapabilityIndexError> => {
-  if (input.manifest.name !== input.entry.name || input.entry.manifest.name !== input.manifest.name) {
+  const isModule = (entry: unknown): entry is LandoPluginModule =>
+    typeof entry === "object" &&
+    entry !== null &&
+    "name" in entry &&
+    typeof entry.name === "string" &&
+    "manifest" in entry &&
+    Schema.is(PluginManifest)(entry.manifest) &&
+    (!("certificateAuthorities" in entry) || entry.certificateAuthorities instanceof Map);
+  const entry = input.entry;
+  if (!isModule(entry)) {
     return Result.fail(
       new PluginDescriptorMismatchError({
-        pluginName: input.entry.name,
+        pluginName: input.manifest.name,
         kind: "identity",
         declared: [input.manifest.name],
-        provided: [input.entry.name, input.entry.manifest.name],
+        provided: [],
+        message: "Expected an already-loaded LandoPluginModule object.",
+        remediation: "Provide a loaded plugin descriptor alongside its resolved manifest.",
+      }),
+    );
+  }
+  if (input.manifest.name !== entry.name || entry.manifest.name !== input.manifest.name) {
+    return Result.fail(
+      new PluginDescriptorMismatchError({
+        pluginName: entry.name,
+        kind: "identity",
+        declared: [input.manifest.name],
+        provided: [entry.name, entry.manifest.name],
         message: "Pre-resolved plugin manifest and descriptor identities disagree.",
         remediation: "Use the same plugin name in the resolved manifest and LandoPluginModule descriptor.",
       }),
     );
   }
-  return Result.map(makePluginCapabilityIndex([input.entry]), () => ({
+  return Result.map(makePluginCapabilityIndex([entry]), () => ({
     source: "explicit" as const,
     manifest: input.manifest,
-    entry: input.entry,
-    module: input.entry,
+    entry,
+    module: entry,
   }));
 };
 
@@ -235,7 +263,10 @@ export const makePluginContributionGraphLive = (
           ? []
           : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
       const explicit = yield* Effect.forEach(policy.manifests, (input) =>
-        Result.match(validateResolvedPlugin(input), { onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)), onSuccess: Effect.succeed }),
+        Result.match(validateResolvedPlugin(input), {
+          onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+          onSuccess: Effect.succeed,
+        }),
       );
       const globalPlugins = mergeLoadedPluginSources(
         [bundled, system, user, explicit],
@@ -245,7 +276,10 @@ export const makePluginContributionGraphLive = (
         [bundled, system, user, app, explicit],
         policy.discovery.disable,
       );
-      const commands = yield* Result.match(pluginCommandCandidates(merged), { onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)), onSuccess: Effect.succeed });
+      const commands = yield* Result.match(pluginCommandCandidates(merged), {
+        onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+        onSuccess: Effect.succeed,
+      });
       const graph: PluginContributionGraphShape = {
         plugins: merged,
         globalPlugins,

@@ -135,6 +135,7 @@ export type McpConfig = typeof McpConfig.Type;
 
 export const AgentEnvConfig = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean).annotate({
+    default: true,
     description:
       "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
   }),

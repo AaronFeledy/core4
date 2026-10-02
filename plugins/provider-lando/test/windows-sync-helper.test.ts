@@ -232,7 +232,7 @@ describe("Windows named-volume sync helper", () => {
     const cleanup = await Effect.runPromise(
       Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
     );
-    expect(cleanup._tag).toBe("Left");
+    expect(cleanup._tag).toBe("Failure");
     expect(fake.volume).toBeDefined();
     expect(fake.container).toBeDefined();
     expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
@@ -269,7 +269,7 @@ describe("Windows named-volume sync helper", () => {
       const cleanup = await Effect.runPromise(
         Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
       );
-      expect(cleanup._tag).toBe("Left");
+      expect(cleanup._tag).toBe("Failure");
       expect(fake.container).toBeDefined();
       expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
     }
@@ -294,7 +294,7 @@ describe("Windows named-volume sync helper", () => {
       const cleanup = await Effect.runPromise(
         Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
       );
-      expect(cleanup._tag).toBe("Left");
+      expect(cleanup._tag).toBe("Failure");
       expect(fake.container).toBeDefined();
       expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
     }
@@ -354,7 +354,7 @@ describe("Windows named-volume sync helper", () => {
     const removal = await Effect.runPromise(
       Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
     );
-    expect(removal._tag).toBe("Left");
+    expect(removal._tag).toBe("Failure");
     expect(fake.volume).toBeDefined();
   });
 
@@ -385,7 +385,7 @@ describe("Windows named-volume sync helper", () => {
     fake.controls.failContainerInspectAfterDelete = true;
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     expect(fake.container).toBeUndefined();
     const count = fake.calls.length;
     expect((await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).message).toContain(
@@ -406,13 +406,13 @@ describe("Windows named-volume sync helper", () => {
     fake.controls.failContainerInspectAfterDelete = true;
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     fake.controls.failContainerInspectAfterDelete = false;
     fake.container = { ...(original as JsonRecord), Id: "foreign-replacement-id" };
     const count = fake.calls.length;
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     expect((await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).message).toContain(
       "ownership receipt",
     );
@@ -429,7 +429,7 @@ describe("Windows named-volume sync helper", () => {
     const result = await Effect.runPromise(
       Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
     expect(fake.container).toBeDefined();
     expect(fake.volume).toBeDefined();
@@ -455,7 +455,7 @@ describe("Windows named-volume sync helper", () => {
     );
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     fake.volume = originalVolume;
     const container = fake.container;
     if (container === undefined) throw new Error("Expected container");
@@ -465,7 +465,7 @@ describe("Windows named-volume sync helper", () => {
     );
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     fake.container = originalContainer;
   });
 
@@ -488,7 +488,7 @@ describe("Windows named-volume sync helper", () => {
     fake.controls.failContainerInspectAfterCreate = true;
     expect(
       (await Effect.runPromise(Effect.result(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     fake.controls.failContainerInspectAfterCreate = false;
     fake.container = { ...(fake.container as JsonRecord), Id: "foreign-replacement-id" };
     const count = fake.calls.length;
@@ -497,7 +497,7 @@ describe("Windows named-volume sync helper", () => {
     );
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     expect(fake.calls.slice(count).some((call) => call.method === "DELETE")).toBe(false);
     expect(fake.container?.Id).toBe("foreign-replacement-id");
   });
@@ -511,7 +511,7 @@ describe("Windows named-volume sync helper", () => {
           Effect.result(ensureWindowsSyncHelper(volumeCrash.api, volumeCrash.stateStore, spec)),
         )
       )._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     volumeCrash.controls.failVolumeInspectAfterCreate = false;
     expect(
       (await failureOf(ensureWindowsSyncHelper(volumeCrash.api, volumeCrash.stateStore, spec))).message,
@@ -526,7 +526,7 @@ describe("Windows named-volume sync helper", () => {
             Effect.result(ensureWindowsSyncHelper(helperCrash.api, helperCrash.stateStore, spec)),
           )
         )._tag,
-      ).toBe("Left");
+      ).toBe("Failure");
       helperCrash.controls.helperCreateResponse = "valid";
       const count = helperCrash.calls.length;
       expect(
@@ -543,7 +543,7 @@ describe("Windows named-volume sync helper", () => {
     fake.controls.failDelete = true;
     expect(
       (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     expect(fake.container).toBeDefined();
     expect(fake.volume).toBeDefined();
     const count = fake.calls.length;

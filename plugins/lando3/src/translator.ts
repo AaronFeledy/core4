@@ -121,7 +121,7 @@ const orphanConfigDiagnostic = (
       kind: "unsupported",
       sourceId: occurrence?.sourceId ?? fallback,
       keyPath: ["config"],
-      span: spanOf(occurrence),
+      ...spanOf(occurrence),
       message: "config has no Lando 3 recipe to apply to.",
       remediation: "Add a recipe, or remove config and author the Lando 4 services directly.",
     },

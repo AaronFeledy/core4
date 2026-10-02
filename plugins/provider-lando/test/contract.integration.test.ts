@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { Cause, Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -540,10 +540,13 @@ describe("provider-lando RuntimeProvider contract", () => {
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
-      expect(exit.cause.error._tag).toBe("ServiceCopyError");
-      expect(exit.cause.error.providerId).toBe("lando");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ServiceCopyError);
+      if (error instanceof ServiceCopyError) {
+        expect(error._tag).toBe("ServiceCopyError");
+        expect(error.providerId).toBe("lando");
+      }
     }
   });
 

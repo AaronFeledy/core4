@@ -99,7 +99,7 @@ test("fails closed when a destination is a bind mount", async () => {
     ),
   );
   // Then no volume identity is inferred from the plan or bind source.
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
 });
 
 test("returns owner-bound generation only with an observed daemon namespace", async () => {
@@ -171,7 +171,7 @@ test.each([
       ),
     ),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(paths).toEqual(["/containers/id/json"]);
 });
 

@@ -4,7 +4,7 @@
  * Service mode runs `sh -l` in the requested service via provider execStream.
  * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
  */
-import { Chunk, DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect, Queue, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
@@ -218,9 +218,12 @@ const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize>
   return Stream.callback<ShellTerminalSize>((emit) => {
     const listener = () => {
       const size = terminalSize();
-      if (size !== undefined) emit(Effect.succeed(Chunk.of(size)));
+      if (size !== undefined) Queue.offerUnsafe(emit, size);
     };
-    return Effect.sync(onResize(listener));
+    return Effect.gen(function* () {
+      const removeListener = onResize(listener);
+      yield* Effect.addFinalizer(() => Effect.sync(removeListener));
+    });
   });
 };
 

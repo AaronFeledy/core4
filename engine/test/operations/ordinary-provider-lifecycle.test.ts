@@ -124,7 +124,7 @@ for (const operation of operations.slice(0, 2)) {
       );
 
       // Then: fail closed before touching the provider.
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") expect(result.failure._tag).toBe("FileSyncStopError");
       expect(destroys).toBe(0);
     } finally {

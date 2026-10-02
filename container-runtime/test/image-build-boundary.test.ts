@@ -58,7 +58,7 @@ const plan = (servicePlan: ServicePlan): AppPlan => ({
 
 const derivedService = (artifact: ServicePlan["artifact"]): ServicePlan =>
   service({
-    artifact,
+    ...(artifact === undefined ? {} : { artifact }),
     extensions: {
       "@lando/core/service-features": {
         buildSteps: [{ id: "step", phase: "build", command: ["echo", "ok"] }],

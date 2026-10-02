@@ -36,7 +36,7 @@ test("preserves a live replacement inode during unreadable stale takeover", asyn
       ),
     );
     // Then the valid live replacement is never deleted
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(await fs.readFile(path, "utf8")).toBe(replacement);
   } finally {
     readSpy.mockRestore();
@@ -70,7 +70,7 @@ for (const old of [true, false]) {
           ),
         );
         // Then only an old artifact is reclaimed, and a fresh inode is untouched
-        expect(result._tag).toBe(old ? "Right" : "Left");
+        expect(result._tag).toBe(old ? "Success" : "Failure");
         if (old) await expect(lstat(path)).rejects.toMatchObject({ code: "ENOENT" });
         else {
           const after = await lstat(path);
@@ -127,7 +127,7 @@ for (const kind of ["symlink", "directory", "foreign-owner"] as const) {
           ),
         );
         // Then the foreign inode and its ownership/type remain unchanged
-        expect(result._tag).toBe("Left");
+        expect(result._tag).toBe("Failure");
         const after = await lstat(path);
         expect({ ino: after.ino, uid: after.uid, mode: after.mode }).toEqual({
           ino: before.ino,

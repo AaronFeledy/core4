@@ -1,6 +1,6 @@
 import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber } from "effect";
+import { Effect, Fiber, Option } from "effect";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 
@@ -139,7 +139,7 @@ describe("makeStdioMcpTransport inbound framing limits", () => {
         yield* Effect.promise(() => chunkRead.promise);
         yield* Effect.yieldNow;
         yield* TestClock.adjust("5 seconds");
-        const poll = yield* receiveFiber.pollUnsafe();
+        const poll = Option.fromNullishOr(receiveFiber.pollUnsafe());
         yield* Fiber.interrupt(receiveFiber);
         return poll;
       }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
@@ -171,7 +171,7 @@ describe("makeStdioMcpTransport inbound framing limits", () => {
         inputController.enqueue(encoder.encode(',"id":15'));
         yield* Effect.yieldNow;
         yield* TestClock.adjust("1 second");
-        const poll = yield* receiveFiber.pollUnsafe();
+        const poll = Option.fromNullishOr(receiveFiber.pollUnsafe());
         yield* Fiber.interrupt(receiveFiber);
         return poll;
       }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
