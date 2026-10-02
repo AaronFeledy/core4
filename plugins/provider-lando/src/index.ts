@@ -17,11 +17,11 @@ import {
   parseImagePullFrame,
   pullImage as runtimePullImage,
 } from "@lando/container-runtime/image-pull";
-import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import {
@@ -810,24 +810,26 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
         : Effect.succeed(mvpProviderCapabilities(platform, arch));
-    const { capabilities: resolvedCapabilities, logFileHelperPayload } = yield* capabilities.pipe(
-      Effect.map((resolved) => ({
-        capabilities: {
-          ...resolved,
-          artifactBuild: podmanApi !== undefined && resolved.artifactBuild,
-          artifactPull: podmanApi !== undefined && resolved.artifactPull,
-          serviceLogSources:
-            options.logFileAccess !== undefined ||
-            logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              resolved.hostProxy?.containerTargets,
-            ) !== undefined,
-        },
-        logFileHelperPayload: logFileHelperPayloadForTargets(
-          options.logFileHelperPayloads,
-          resolved.hostProxy?.containerTargets,
-        ),
-      })),
+    const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
+      Effect.map((resolved) => {
+        const logSourceBinding = makeProviderLogSourceBinding({
+          providerId: LANDO_CTX.providerId,
+          logFileAccess: options.logFileAccess,
+          helperPayload: logFileHelperPayloadForTargets(
+            options.logFileHelperPayloads,
+            resolved.hostProxy?.containerTargets,
+          ),
+        });
+        return {
+          capabilities: {
+            ...resolved,
+            artifactBuild: podmanApi !== undefined && resolved.artifactBuild,
+            artifactPull: podmanApi !== undefined && resolved.artifactPull,
+            serviceLogSources: logSourceBinding.supported,
+          },
+          logSourceBinding,
+        };
+      }),
     );
     const managedRuntimeStatusDeps =
       shouldManageRuntime &&
@@ -1393,19 +1395,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                       runtimeLogs(plan, target, logOptions, {
                         ...(podmanApi === undefined ? {} : { api: podmanApi }),
                         ctx: LANDO_CTX,
-                        ...(() => {
-                          const logFileAccess =
-                            options.logFileAccess ??
-                            (podmanApi === undefined || logFileHelperPayload === undefined
-                              ? undefined
-                              : makeDockerLogFileAccess({
-                                  providerId: LANDO_CTX.providerId,
-                                  api: podmanApi,
-                                  container: serviceContainerName(plan, target.service),
-                                  helperPayload: logFileHelperPayload,
-                                }));
-                          return logFileAccess === undefined ? {} : { logFileAccess };
-                        })(),
+                        ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
                       }),
                     ),
                   ),
