@@ -92,10 +92,12 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
 const EmptyCommandResultSchema = Schema.Struct({});
 
 const taggedFailureFromCause = (cause: Cause.Cause<unknown>): unknown => {
+  if (cause.reasons.length > 1) return new Error(Cause.pretty(cause), { cause });
   const failure = Cause.findErrorOption(cause);
   if (failure._tag === "Some") return failure.value;
   const defect = Cause.findDefect(cause);
   if (Result.isSuccess(defect)) return defect.success;
+  if (Cause.hasInterruptsOnly(cause)) return "All fibers interrupted without errors.";
   return Cause.pretty(cause);
 };
 
@@ -330,5 +332,5 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     }
   });
   const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(failureDiagnosticsLayer)));
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
 };

@@ -4,8 +4,12 @@ import { makeLandoRuntime, openLandoRuntime } from "@lando/core";
 import { invokeOperation } from "@lando/core/cli/operations";
 import { createBufferedRendererIO } from "@lando/core/testing";
 import { makeJsonRendererServiceLive, makePlainRendererServiceLive } from "@lando/renderer/runtime";
-import { Effect } from "effect";
-import { normalizeRejectionJson, shellFailureCases } from "../_support/shell-failure-characterization";
+import { Cause, Effect, Exit } from "effect";
+import {
+  ShellFailure,
+  normalizeRejectionJson,
+  shellFailureCases,
+} from "../_support/shell-failure-characterization";
 
 describe("library shell failure characterization", () => {
   for (const seam of ["layer", "retained"] as const) {
@@ -45,10 +49,10 @@ describe("library shell failure characterization", () => {
           expect(rejection.name).toBe(scenario.rejectionName);
           expect(rejection.message).toBe(scenario.rejectionMessage);
           expect(String(rejection)).toBe(scenario.rejectionText);
-          expect(normalizeRejectionJson(rejection)).toEqual({
-            _id: "FiberFailure",
-            cause: scenario.rejectionCause,
-          });
+          expect(normalizeRejectionJson(rejection)).toEqual(scenario.rejectionJson);
+          const exit = await Effect.runPromiseExit(program);
+          if (!Exit.isFailure(exit)) throw new Error("Expected a failed Exit");
+          expect(normalizeRejectionJson(exit.cause)).toEqual(scenario.rejectionCause);
           expect({ stdout: io.stdout(), stderr: io.stderr() }).toEqual({ stdout: "", stderr: "" });
           expect(process.exitCode).toBe(exitCodeBefore);
         });
@@ -73,16 +77,48 @@ describe("library shell failure characterization", () => {
     });
   });
 
+  test("embedding operation preserves multiple typed failures instead of selecting the first", async () => {
+    const operation = Effect.failCause(
+      Cause.combine(
+        Cause.fail(new ShellFailure({ message: "first failure", remediation: "Retry first." })),
+        Cause.fail(new ShellFailure({ message: "second failure", remediation: "Retry second." })),
+      ),
+    );
+    const renderedErrors: string[] = [];
+    const exit = await Effect.runPromiseExit(
+      invokeOperation(operation, {
+        renderError: (error) => {
+          renderedErrors.push(error.message);
+          return error.message;
+        },
+      }),
+    );
+    if (!Exit.isFailure(exit)) throw new Error("Expected combined failure to propagate");
+    const defect = Cause.findDefect(exit.cause);
+    if (defect._tag !== "Success" || !(defect.success instanceof Error))
+      throw new Error("Expected an Error defect");
+    expect(normalizeRejectionJson(defect.success.cause)).toEqual({
+      _id: "Cause",
+      failures: [
+        {
+          _tag: "Fail",
+          error: { _tag: "ShellFailure", message: "first failure", remediation: "Retry first." },
+        },
+        {
+          _tag: "Fail",
+          error: { _tag: "ShellFailure", message: "second failure", remediation: "Retry second." },
+        },
+      ],
+    });
+    expect(defect.success.message).toContain("first failure");
+    expect(defect.success.message).toContain("second failure");
+    expect(renderedErrors).toEqual([]);
+  });
+
   for (const scenario of shellFailureCases.filter((entry) => entry.kind !== "tagged")) {
     test(`embedding operation propagates ${scenario.kind} instead of returning a failure envelope`, async () => {
       // Given
       const renderedErrors: string[] = [];
-      const messages = {
-        defect: "Error: unexpected defect\n    at <fixture>",
-        interrupt: "All fibers interrupted without errors.",
-        combined:
-          "ShellFailure: operation refused\n    at <fixture>\nError: cleanup defect\n    at <fixture>",
-      } as const;
       // When
       const rejection: unknown = await Effect.runPromise(
         invokeOperation(scenario.effect(), {
@@ -100,12 +136,10 @@ describe("library shell failure characterization", () => {
       // Then
       expect(rejection).toBeInstanceOf(Error);
       if (!(rejection instanceof Error)) throw new Error("Expected an Error rejection");
-      expect(rejection.name).toBe("(FiberFailure) Error");
-      expect(rejection.message).toBe(messages[scenario.kind]);
-      expect(normalizeRejectionJson(rejection)).toEqual({
-        _id: "FiberFailure",
-        cause: { _id: "Cause", _tag: "Die", defect: {} },
-      });
+      expect(rejection.name).toBe("Error");
+      expect(rejection.message.replaceAll(/fiber \(#\d+\)/g, "fiber (#<id>)")).toBe(scenario.causeText);
+      expect(Cause.isCause(rejection.cause)).toBe(true);
+      expect(normalizeRejectionJson(rejection.cause)).toEqual(scenario.rejectionCause);
       expect(renderedErrors).toEqual([]);
     });
   }
