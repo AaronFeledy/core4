@@ -91,7 +91,7 @@ test("aggregates a provider stream error after healthy app siblings settle", asy
           const queue = yield* events.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.buildApp(plan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
@@ -142,7 +142,7 @@ test("settles started app tasks when the build fiber is interrupted", async () =
           expect(Exit.isFailure(exit)).toBe(true);
           if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
           else throw new TypeError("interrupted build unexpectedly succeeded");
-          return [...(yield* Queue.takeAll(queue))];
+          return [...(yield* Queue.clear(queue))];
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
@@ -175,7 +175,7 @@ test("reports an already-aborted build signal as interruption", async () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const exit = yield* Effect.exit(orchestrator.buildApp(plan, { signal: controller.signal }));
-          return { exit, events: [...(yield* Queue.takeAll(queue))] };
+          return { exit, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
@@ -211,7 +211,7 @@ test("bounds unterminated task detail while preserving the raw transcript", asyn
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           yield* orchestrator.buildApp(plan);
-          return [...(yield* Queue.takeAll(queue))];
+          return [...(yield* Queue.clear(queue))];
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );

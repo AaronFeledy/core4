@@ -342,7 +342,7 @@ describe("BuildOrchestratorLive", () => {
             const queue = yield* eventService.subscribeQueue;
             const orchestrator = yield* BuildOrchestrator;
             yield* orchestrator.build(plan);
-            return [...(yield* Queue.takeAll(queue))];
+            return [...(yield* Queue.clear(queue))];
           }),
         ).pipe(Effect.provide(layer(provider))),
       );
@@ -401,7 +401,7 @@ describe("BuildOrchestratorLive", () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.build(scratchPlan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(layer(TestRuntimeProvider, failingStateStore))),
     );
@@ -473,7 +473,7 @@ describe("BuildOrchestratorLive", () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.build(scratchPlan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(layer(provider, failingStateStore))),
     );

@@ -220,7 +220,7 @@ test("keeps gate nodes out of the task tree, its counts, and every build-step ev
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           yield* Effect.flip(orchestrator.buildApp(plan));
-          return [...(yield* Queue.takeAll(queue))];
+          return [...(yield* Queue.clear(queue))];
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
@@ -272,7 +272,7 @@ test("blocks a cached step on a newly failed gate instead of short-circuiting it
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.buildApp(plan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(makeLayer(unhealthy.provider))),
     );

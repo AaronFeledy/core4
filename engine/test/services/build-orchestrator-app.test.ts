@@ -175,7 +175,7 @@ describe("BuildOrchestrator app phase", () => {
             yield* orchestrator.buildApp(plan);
             yield* Fiber.join(detailSubscriber);
             yield* orchestrator.buildApp(plan);
-            return { events: [...(yield* Queue.takeAll(queue))] };
+            return { events: [...(yield* Queue.clear(queue))] };
           }),
         ).pipe(Effect.provide(makeLayer(provider))),
       );
@@ -313,7 +313,7 @@ describe("BuildOrchestrator artifact phase", () => {
             const queue = yield* eventService.subscribeQueue;
             const orchestrator = yield* BuildOrchestrator;
             const error = yield* Effect.flip(orchestrator.build(artifactPlan));
-            return { error, events: [...(yield* Queue.takeAll(queue))] };
+            return { error, events: [...(yield* Queue.clear(queue))] };
           }),
         ).pipe(Effect.provide(makeLayer(provider))),
       ),
