@@ -16,6 +16,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { ListFilter } from "@lando/sdk/services";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const makeStateStore = () => makeStateStoreUsing({ privateFileAccess: ownerOnlyFileAccess });
@@ -119,6 +120,92 @@ const typedFailure = (exit: Exit.Exit<unknown, unknown>): { readonly _tag: strin
 };
 
 describe("provider-lando service lifecycle", () => {
+  test.each([
+    { filter: {}, ids: ["planned"] },
+    { filter: { includeUnplanned: false }, ids: ["planned"] },
+    { filter: { includeUnplanned: true }, ids: ["planned", "untracked-planned-app", "orphan"] },
+    {
+      filter: { includeUnplanned: true, includeScratch: true },
+      ids: ["planned", "untracked-planned-app", "orphan", "scratch"],
+    },
+    { filter: { includeUnplanned: true, app: AppId.make("orphan") }, ids: ["orphan"] },
+    { filter: { includeUnplanned: true, app: AppId.make("scratch") }, ids: [] },
+  ] satisfies ReadonlyArray<{ readonly filter: ListFilter; readonly ids: ReadonlyArray<string> }>)(
+    "lists only opted-in unplanned containers: $filter",
+    async ({ filter, ids }) => {
+      const directory = await mkdtemp(join(tmpdir(), "lando-list-unplanned-"));
+      try {
+        const store = makePluginStateStore(makeStateStore(), AbsolutePath.make(directory));
+        await Effect.runPromise(persistAppliedPlan(store, plan));
+        const calls: EngineHttpRequest[] = [];
+        const api: PodmanApiClient = {
+          info: Effect.succeed({}),
+          ping: Effect.void,
+          request: (input) => {
+            calls.push(input);
+            return Effect.succeed({
+              status: 200,
+              body: JSON.stringify(
+                input.path.startsWith("/containers/json?")
+                  ? [
+                      {
+                        Id: "planned",
+                        State: "running",
+                        Labels: {
+                          "dev.lando.app": appId,
+                          "dev.lando.service": "web",
+                          "dev.lando.app-root": "/relabeled",
+                        },
+                      },
+                      {
+                        Id: "untracked-planned-app",
+                        State: "running",
+                        Labels: { "dev.lando.app": appId, "dev.lando.service": "extra" },
+                      },
+                      {
+                        Id: "orphan",
+                        State: "running",
+                        Labels: { "dev.lando.app": "orphan", "dev.lando.service": "db" },
+                      },
+                      {
+                        Id: "scratch",
+                        State: "running",
+                        Labels: {
+                          "dev.lando.app": "scratch",
+                          "dev.lando.service": "db",
+                          "dev.lando.scratch": "TRUE",
+                        },
+                      },
+                    ]
+                  : { Id: "planned", State: { Running: true } },
+              ),
+            });
+          },
+        };
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            podmanApi: api,
+            appliedPlanState: store,
+            appliedPlanStateDir: directory,
+            platform: "linux",
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+          }),
+        );
+        const result = await Effect.runPromise(provider.list(filter));
+        expect(result.map((snapshot) => snapshot.containerId)).toEqual(ids);
+        const plannedRoot = result.find((snapshot) => snapshot.containerId === "planned")?.appRoot;
+        if (ids.includes("planned")) {
+          expect(plannedRoot === "/relabeled").toBe(filter.includeUnplanned === true);
+        }
+        expect(calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(
+          filter.includeUnplanned === true,
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("quiesces services from the applied plan after one is removed from the Landofile", async () => {
     const directory = await mkdtemp(join(tmpdir(), "lando-quiesce-applied-"));
     try {

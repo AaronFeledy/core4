@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -17,7 +17,7 @@ import {
   ServiceName,
   type VolumeInfo,
 } from "@lando/sdk/schema";
-import type { AppliedOrphanGroup } from "@lando/sdk/services";
+import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -30,9 +30,11 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
+import { FileSystemLive } from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -92,10 +94,15 @@ const makeLayer = (input: {
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly providerId?: string;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
+  readonly observed?: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly listFailure?: ProviderUnavailableError;
+  readonly removalFailure?: ProviderUnavailableError;
   /** Observed services whose container survives removal; every other one is reported removed. */
   readonly survivingServices?: ReadonlyArray<string>;
 }) => {
   const destroyCalls: AppPlan[] = [];
+  const mutationOrder: string[] = [];
+  const listFilters: ListFilter[] = [];
   const destroyTargets: Array<{
     readonly app: string;
     readonly hasPlan: boolean;
@@ -105,15 +112,27 @@ const makeLayer = (input: {
   const removedVolumes: Array<{ readonly store: string; readonly generation: string }> = [];
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const desiredLoads: string[] = [];
+  const evidenceRoots: string[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
     id: input.providerId ?? "lando",
+    list: (filter: ListFilter) =>
+      Effect.sync(() => {
+        listFilters.push(filter);
+      }).pipe(
+        Effect.zipRight(
+          input.listFailure === undefined
+            ? Effect.succeed(input.observed ?? [])
+            : Effect.fail(input.listFailure),
+        ),
+      ),
     destroy: (
       target: { readonly app: string; readonly plan?: AppPlan },
       options: { readonly removeState?: boolean; readonly volumes?: boolean },
     ) =>
       Effect.sync(() => {
+        mutationOrder.push("destroy");
         if (target.plan !== undefined) destroyCalls.push(target.plan);
         destroyTargets.push({
           app: String(target.app),
@@ -141,29 +160,46 @@ const makeLayer = (input: {
       readonly containerId?: string;
     }) =>
       Effect.sync(() => {
+        mutationOrder.push(`remove:${observed.service}`);
         removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
         const survives =
           observed.containerId === undefined ||
           (input.survivingServices ?? []).includes(String(observed.service));
         return survives ? ({ kind: "absent" } as const) : ({ kind: "removed" } as const);
-      }),
+      }).pipe(
+        Effect.tap(() =>
+          input.removalFailure === undefined ? Effect.void : Effect.fail(input.removalFailure),
+        ),
+      ),
   };
   const registry = {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
-    resolveTeardownEvidence: (_root: AbsolutePath) => {
-      if (appliedPlan !== undefined) {
+    // Providers answer only for the root they are asked about. Either root field may match, so a
+    // malformed plan still reaches the ownership validators under test.
+    resolveTeardownEvidence: (root: AbsolutePath) => {
+      evidenceRoots.push(root);
+      if (
+        appliedPlan !== undefined &&
+        (appliedPlan.root === root || appliedPlan.identity?.appRoot === root)
+      ) {
         return Effect.succeed({ kind: "applied", plan: appliedPlan } as const);
       }
-      if (input.orphans !== undefined && input.orphans.length > 0) {
-        return Effect.succeed({ kind: "orphans", groups: input.orphans } as const);
+      const groups = (input.orphans ?? []).filter(
+        (group) =>
+          group.services.some((service) => service.appRoot === root) ||
+          group.volumes.some((volume) => volume.identity?.ownerRoot === root),
+      );
+      if (groups.length > 0) {
+        return Effect.succeed({ kind: "orphans", groups } as const);
       }
       return Effect.succeed({ kind: "absent" } as const);
     },
   };
   const layer = Layer.mergeAll(
+    FileSystemLive,
     PrivateFileAccessLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
@@ -193,11 +229,14 @@ const makeLayer = (input: {
   );
   return {
     layer,
+    mutationOrder,
+    listFilters,
     destroyCalls,
     destroyTargets,
     removedVolumes,
     removalAttempts,
     desiredLoads,
+    evidenceRoots,
     appliedPlan: () => appliedPlan,
   };
 };
@@ -244,6 +283,288 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test.each(["cwd", "root"] as const)(
+    "%s destroy removes only same-app, same-root stray containers before the plan",
+    async (mode) => {
+      await withTempRoot(async (parent) => {
+        const root = mode === "root" ? join(parent, "gone") : parent;
+        const appliedPlan = { ...planAt(root), services: { [web.name]: web } };
+        const observed = orphanGroup({
+          root,
+          services: ["stray", "web", "unobserved"],
+          withoutContainerId: ["unobserved"],
+        }).services;
+        const harness = makeLayer({
+          appliedPlan,
+          observed: [
+            ...observed,
+            ...orphanGroup({ root: join(parent, "other"), services: ["other-root"] }).services,
+            {
+              ...observed[0],
+              app: AppId.make("other-app"),
+              service: ServiceName.make("other-app"),
+              appRoot: AbsolutePath.make(root),
+              providerId,
+              status: "running",
+              containerId: "foreign",
+            },
+          ],
+        });
+        await Effect.runPromise(
+          (mode === "root" ? destroyAppAtRoot(root) : withResolvedCwd(root, destroyApp())).pipe(
+            Effect.provide(harness.layer),
+          ),
+        );
+        expect(harness.mutationOrder).toEqual(["remove:stray", "destroy"]);
+        expect(harness.removalAttempts).toEqual([{ service: "stray", containerId: "container-stray" }]);
+        expect(harness.listFilters).toEqual([{ app: appliedPlan.id, includeUnplanned: true }]);
+      });
+    },
+  );
+
+  test("destroy continues when stray inventory fails", async () => {
+    await withTempRoot(async (root) => {
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({
+        appliedPlan,
+        listFailure: new ProviderUnavailableError({
+          providerId,
+          operation: "list",
+          message: "Cannot inventory containers.",
+        }),
+      });
+      await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+      expect(harness.removalAttempts).toEqual([]);
+    });
+  });
+
+  test("destroy propagates stray removal failure before destroying the plan", async () => {
+    await withTempRoot(async (root) => {
+      const failure = new ProviderUnavailableError({
+        providerId,
+        operation: "removeObservedService",
+        message: "Cannot remove stray container.",
+      });
+      const harness = makeLayer({
+        appliedPlan: planAt(root),
+        observed: orphanGroup({ root, services: ["stray"] }).services,
+        removalFailure: failure,
+      });
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      expect(result).toMatchObject({ _tag: "Left", left: failure });
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test("destroy skips stray inventory for the global app", async () => {
+    await withTempRoot(async (root) => {
+      const appliedPlan = { ...planAt(root), id: AppId.make("global") };
+      const harness = makeLayer({ appliedPlan });
+      await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
+      expect(harness.listFilters).toEqual([]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+  test.each([
+    [
+      "identity",
+      (plan: AppPlan): AppPlan => {
+        const { identity, ...rest } = plan;
+        return rest;
+      },
+    ],
+    [
+      "canonical-root",
+      (plan: AppPlan): AppPlan => ({
+        ...plan,
+        identity: { appRoot: AbsolutePath.make("/other/root"), ownerKey: "other" },
+      }),
+    ],
+    ["provider", (plan: AppPlan): AppPlan => ({ ...plan, provider: ProviderId.make("docker") })],
+    [
+      "owner-key",
+      (plan: AppPlan): AppPlan => ({
+        ...plan,
+        identity: { appRoot: plan.root, ownerKey: ownerKey("/somewhere/else") },
+      }),
+    ],
+  ] as const)("destroy at a missing root rejects mismatched %s before mutation", async (detail, mutate) => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const harness = makeLayer({ appliedPlan: mutate(planAt(root)) });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
+      expect(result.left).toMatchObject({ _tag: "AppResolveError", reason: "mismatch", detail });
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test("destroy at root refuses an existing folder before provider access", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ appliedPlan: planAt(root) });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
+      expect(result.left).toMatchObject({
+        _tag: "AppResolveError",
+        reason: "mismatch",
+        detail: "root-exists",
+      });
+      expect(harness.evidenceRoots).toEqual([]);
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test.each(["dangling-symlink", "non-directory-parent"] as const)(
+    "destroy at root explains an unresolvable path under a %s before provider access",
+    async (kind) => {
+      await withTempRoot(async (parent) => {
+        const broken = join(parent, "broken");
+        if (kind === "dangling-symlink") await symlink(join(parent, "absent-target"), broken);
+        else await Bun.write(broken, "not a folder");
+        const root = join(broken, "gone");
+        const harness = makeLayer({});
+        const result = await Effect.runPromise(
+          destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+        );
+        if (result._tag !== "Left") throw new TypeError("expected unresolvable-root refusal");
+        expect(result.left).toMatchObject({
+          _tag: "AppResolveError",
+          reason: "missing-root",
+          detail: "unresolvable-root",
+          message: `The app folder path ${root} cannot be resolved.`,
+          remediation:
+            kind === "dangling-symlink"
+              ? `Part of ${root} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando destroy --root ${root}.`
+              : `Check that you can read every folder in ${root}, then rerun.`,
+        });
+        expect(harness.evidenceRoots).toEqual([]);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
+
+  test("destroy at a missing root uses its applied plan without loading the folder", async () => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({ appliedPlan });
+      const result = await Effect.runPromise(destroyAppAtRoot(root).pipe(Effect.provide(harness.layer)));
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+      expect(harness.desiredLoads).toEqual([]);
+      expect(harness.evidenceRoots).toEqual([root, root]);
+    });
+  });
+
+  test.each([
+    { volumes: false, purgeCaches: false, removed: [] },
+    { volumes: true, purgeCaches: false, removed: ["database"] },
+    { volumes: false, purgeCaches: true, removed: ["cache"] },
+    { volumes: true, purgeCaches: true, removed: ["database", "cache"] },
+  ])(
+    "destroy at a missing root honors orphan storage options %j",
+    async ({ volumes, purgeCaches, removed }) => {
+      await withTempRoot(async (parent) => {
+        const root = join(parent, "gone");
+        const harness = makeLayer({
+          orphans: [orphanGroup({ root, services: ["web"], volumes: ["database", "cache"] })],
+        });
+        const result = await Effect.runPromise(
+          destroyAppAtRoot(root, { volumes, purgeCaches }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result).toMatchObject({
+          outcome: "destroyed",
+          servicesDestroyed: ["web"],
+          volumesRemoved: removed.length > 0,
+        });
+        expect(harness.removedVolumes.map((volume) => volume.store)).toEqual([...removed]);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
+
+  test("destroy at an absent missing root returns unchanged without desired config", async () => {
+    await withTempRoot(async (parent) => {
+      const harness = makeLayer({});
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(join(parent, "gone")).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result).toEqual({
+        app: "gone",
+        outcome: "unchanged",
+        servicesDestroyed: [],
+        volumesRemoved: false,
+      });
+      expect(harness.destroyCalls).toEqual([]);
+      expect(harness.desiredLoads).toEqual([]);
+    });
+  });
+
+  test("destroy at a missing root removes orphan leftovers after the applied plan in one run", async () => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({
+        appliedPlan,
+        orphans: [orphanGroup({ root, services: ["leftover"], volumes: ["cache"] })],
+      });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root, { purgeCaches: true }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+      expect(harness.removalAttempts).toEqual([{ service: "leftover", containerId: "container-leftover" }]);
+      expect(harness.removedVolumes).toEqual([{ store: "cache", generation: "generation-cache" }]);
+      expect(result).toMatchObject({
+        outcome: "destroyed",
+        servicesDestroyed: ["leftover"],
+        volumesRemoved: true,
+      });
+      expect(harness.evidenceRoots).toEqual([root, root]);
+    });
+  });
+
+  test("destroy at a missing root canonicalizes a symlinked parent before resolving evidence", async () => {
+    await withTempRoot(async (parent) => {
+      const alias = join(parent, "alias");
+      await symlink(parent, alias);
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({ appliedPlan });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+
+  test("destroy at a missing root finds the recorded path after its parent became a symlink", async () => {
+    await withTempRoot(async (parent) => {
+      // Given an app recorded under projects/, which was later moved and replaced by a symlink.
+      await mkdir(join(parent, "new-projects"));
+      await symlink(join(parent, "new-projects"), join(parent, "projects"));
+      const recorded = join(parent, "projects", "gone");
+      const appliedPlan = planAt(recorded);
+      const harness = makeLayer({ appliedPlan });
+
+      // When the user passes the path doctor printed.
+      const result = await Effect.runPromise(destroyAppAtRoot(recorded).pipe(Effect.provide(harness.layer)));
+
+      // Then the recorded path wins over the symlink's current destination.
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.evidenceRoots).toEqual([recorded, recorded]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+
   test("tears down from the last applied plan when desired config is invalid", async () => {
     await withTempRoot(async (root) => {
       const appliedPlan = planAt(root);
