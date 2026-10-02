@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Result, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";

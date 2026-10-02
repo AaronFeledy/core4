@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Layer, Option } from "effect";
+import { Effect, Exit, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
@@ -85,8 +85,8 @@ describe("makeHealthcheckRunner", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(earlyRunner.run(plan, appId, service));
         yield* TestClock.adjust("19 seconds");
-        const early = yield* fiber.pollUnsafe();
-        expect(Option.isNone(early)).toBe(true);
+        const early = fiber.pollUnsafe();
+        expect(early).toBeUndefined();
         yield* TestClock.adjust("1 second");
         const result = yield* Fiber.join(fiber);
         expect(result.healthy).toBe(false);
@@ -139,8 +139,8 @@ describe("makeHealthcheckRunner", () => {
           runner.run(commandPlan("exit 0", { startPeriodSeconds: 15 }), appId, service),
         );
         yield* TestClock.adjust("14 seconds");
-        const early = yield* fiber.pollUnsafe();
-        expect(Option.isNone(early)).toBe(true);
+        const early = fiber.pollUnsafe();
+        expect(early).toBeUndefined();
         expect(fake.calls).toHaveLength(0);
         yield* TestClock.adjust("1 second");
         const result = yield* Fiber.join(fiber);

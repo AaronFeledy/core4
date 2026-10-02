@@ -20,7 +20,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Result, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
@@ -134,8 +134,8 @@ test("rejects a freshly disabled task even when the plan carries an enabled task
   const result = await f.run();
   // Then the fresh declaration is authoritative
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "ToolingDisabledError", tool: "custom", source: { task: "custom" } },
+    _tag: "Failure",
+    failure: { _tag: "ToolingDisabledError", tool: "custom", source: { task: "custom" } },
   });
   expect(f.selections).toHaveLength(0);
 });
@@ -178,7 +178,7 @@ test.each([...invalidInputs])(
     // When invalid argv is submitted
     const result = await f.run({ args });
     // Then validation prevents all execution
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingInputError", field } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError", field } });
     expect(f.selections).toHaveLength(0);
     expect(f.calls).toHaveLength(0);
   },
@@ -253,7 +253,7 @@ test("preserves ToolingExecError for an unknown service", async () => {
   // When invoked
   const result = await f.run();
   // Then the service resolver keeps its error contract
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingExecError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingExecError" } });
 });
 
 test.each(["worker", ":host"])("stops at the first nonzero step on %s", async (service) => {
@@ -270,7 +270,7 @@ test.each(["worker", ":host"])("stops at the first nonzero step on %s", async (s
   // When invoked
   const result = await f.run();
   // Then execution stops and the failing step's exit code is the task result
-  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 17 } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 17 } });
   expect(f.calls).toHaveLength(1);
 });
 
@@ -280,7 +280,7 @@ test("preserves arguments false rejection", async () => {
   // When arguments are provided
   const result = await f.run({ args: ["extra"] });
   // Then the original compile error tag is retained
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingCompileError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
   expect(f.selections).toHaveLength(0);
 });
 
@@ -295,6 +295,6 @@ test("accepts declared flags when arguments is false", async () => {
   // When a declared flag is supplied
   const result = await f.run({ args: ["--verbose"] });
   // Then the flag is parsed instead of treated as a forbidden positional
-  expect(result).toMatchObject({ _tag: "Right" });
+  expect(result).toMatchObject({ _tag: "Success" });
   expect(f.selections).toHaveLength(0);
 });

@@ -92,8 +92,8 @@ test("win32 does not select a named pipe that refuses the identities probe", asy
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { reason: "host-agent-not-found" },
+    _tag: "Failure",
+    failure: { reason: "host-agent-not-found" },
   });
 });
 
@@ -107,8 +107,8 @@ test("fails host-agent-not-found with remediation", async () => {
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: {
+    _tag: "Failure",
+    failure: {
       _tag: "SshAgentUnavailableError",
       reason: "host-agent-not-found",
       remediation: expect.stringContaining("SSH_AUTH_SOCK"),
@@ -132,7 +132,7 @@ test("missing explicit socket fails without falling back", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "socket-missing", socketPath: "/missing" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing", socketPath: "/missing" } });
 });
 
 test("gpg precedes yubikey-agent and absent gpg falls through", async () => {
@@ -221,8 +221,8 @@ test("explicit symlink is socket-missing and does not fall through", async () =>
     );
     // Then host mode fails closed.
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "SshAgentUnavailableError", reason: "socket-missing", socketPath: link },
+      _tag: "Failure",
+      failure: { _tag: "SshAgentUnavailableError", reason: "socket-missing", socketPath: link },
     });
   } finally {
     await agent.close();
@@ -260,8 +260,8 @@ test("explicit socket probe failure does not fall through", async () => {
     );
     // Then discovery fails closed instead of using 1Password.
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { reason: "socket-missing", socketPath: explicit },
+      _tag: "Failure",
+      failure: { reason: "socket-missing", socketPath: explicit },
     });
   } finally {
     await new Promise<void>((resolve) => silent.close(() => resolve()));

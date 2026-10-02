@@ -15,8 +15,7 @@ export const EmbeddingPluginDiscoveryPolicy = Schema.Struct({
 export type EmbeddingPluginDiscoveryPolicy = typeof EmbeddingPluginDiscoveryPolicy.Type;
 
 const LandoPluginModuleEntry = Schema.Unknown.pipe(
-  Schema.check(
-    Schema.makeFilter(
+  Schema.refine(
       (input): input is LandoPluginModule =>
         typeof input === "object" &&
         input !== null &&
@@ -25,8 +24,7 @@ const LandoPluginModuleEntry = Schema.Unknown.pipe(
         "manifest" in input &&
         Schema.is(PluginManifest)(input.manifest) &&
         (!("certificateAuthorities" in input) || input.certificateAuthorities instanceof Map),
-      { message: "Expected an already-loaded LandoPluginModule object.", jsonSchema: {} },
-    ),
+      { message: "Expected an already-loaded LandoPluginModule object." },
   ),
 );
 

@@ -324,7 +324,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     }),
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => void lifecycleOrder.push(event._tag)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),

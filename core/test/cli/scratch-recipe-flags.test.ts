@@ -16,7 +16,7 @@ const failureTag = async <A, E>(effect: Effect.Effect<A, E, ScratchAppService>):
   const result = await Effect.runPromise(
     effect.pipe(Effect.provide(makeLandoRuntime({ bootstrap: "scratch" })), Effect.result),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   if (result._tag === "Success") throw new Error("expected scratch start to fail");
   return (result.failure as { readonly _tag?: string })._tag ?? "";
 };

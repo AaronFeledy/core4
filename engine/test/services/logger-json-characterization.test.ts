@@ -27,14 +27,14 @@ test("structured diagnostics preserve the exact JSON record keys", async () => {
   expect(Object.keys(record).sort()).toEqual([
     "annotations",
     "fiberId",
-    "logLevel",
+    "level",
     "message",
     "spans",
     "timestamp",
   ]);
   expect(record).toMatchObject({
     message: "record-marker",
-    logLevel: "INFO",
+    level: "INFO",
     annotations: { operation: "characterize" },
     spans: {},
   });

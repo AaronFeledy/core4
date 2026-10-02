@@ -178,12 +178,19 @@ const makeService = (
           });
 
           const completeInFlight = (id: string): Effect.Effect<void> =>
-            Ref.update(inFlight, (current) => {
-              const next = new Map(current);
-              next.delete(id);
-              return next;
-            }).pipe(
-              Effect.andThen(Ref.update(completed, (current) => rememberCompletedRequestId(current, id))),
+            Effect.withFiber((fiber) =>
+              Ref.modify(inFlight, (current) => {
+                if (current.get(id)?.id !== fiber.id) return [false, current];
+                const next = new Map(current);
+                next.delete(id);
+                return [true, next];
+              }).pipe(
+                Effect.flatMap((removed) =>
+                  removed
+                    ? Ref.update(completed, (current) => rememberCompletedRequestId(current, id))
+                    : Effect.void,
+                ),
+              ),
             );
 
           const clearCompleted = (id: string): Effect.Effect<void> =>
@@ -202,11 +209,15 @@ const makeService = (
               Effect.matchCauseEffect({
                 onFailure: (cause) => {
                   const failure = Cause.findErrorOption(cause);
-                  return Option.isSome(failure)
+                  const reply = Option.isSome(failure)
                     ? transport.reply({ id: incoming.id, ok: false, error: failure.value })
                     : replyMcpCanceled(transport, incoming.id);
+                  return completeInFlight(incoming.id).pipe(Effect.andThen(reply));
                 },
-                onSuccess: (result) => transport.reply({ id: incoming.id, ok: true, result }),
+                onSuccess: (result) =>
+                  completeInFlight(incoming.id).pipe(
+                    Effect.andThen(transport.reply({ id: incoming.id, ok: true, result })),
+                  ),
               }),
             );
 
@@ -231,10 +242,9 @@ const makeService = (
                 .withPermits(1)(
                   Deferred.await(start).pipe(
                     Effect.andThen(handleOne(incoming)),
-                    Effect.ensuring(completeInFlight(incoming.id)),
                   ),
                 )
-                .pipe(Effect.forkScoped);
+                .pipe(Effect.ensuring(completeInFlight(incoming.id)), Effect.forkScoped);
               yield* Ref.update(inFlight, (current) => new Map(current).set(incoming.id, fiber));
               yield* Deferred.succeed(start, undefined);
             });

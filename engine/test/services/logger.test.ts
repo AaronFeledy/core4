@@ -234,7 +234,7 @@ describe("LoggerLive logLevel and stderr", () => {
 
     const stderrText = captured.stderr.join("");
     expect(stderrText).toContain("structured-marker");
-    expect(stderrText).toContain('"logLevel"');
+    expect(stderrText).toContain('"level"');
     expect(captured.stdout.join("")).not.toContain("structured-marker");
   });
 
@@ -252,7 +252,7 @@ describe("LoggerLive logLevel and stderr", () => {
 
     const stderrText = captured.stderr.join("");
     expect(stderrText).toContain("pretty-marker");
-    expect(stderrText).not.toContain('"logLevel"');
+    expect(stderrText).not.toContain('"level"');
   });
 
   test("passes message and data through when RedactionService is absent", async () => {

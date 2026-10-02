@@ -135,7 +135,7 @@ test.each(["readiness", "identity"] as const)("terminates a worker when %s fails
       ),
     );
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "SshAgentTransportError", stage: "worker" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "SshAgentTransportError", stage: "worker" } });
     expect(terminated).toBe(1);
   } finally {
     await rm(root, { recursive: true, force: true });

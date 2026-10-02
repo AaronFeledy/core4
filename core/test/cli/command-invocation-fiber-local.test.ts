@@ -84,7 +84,7 @@ describe("command invocation fiber-local ancestry", () => {
       lifecycle(
         Effect.gen(function* () {
           const direct = yield* nested();
-          const child = yield* Effect.fork(nested());
+          const child = yield* Effect.forkChild(nested());
           return { direct, child: yield* Fiber.join(child) };
         }),
         parent,
@@ -107,15 +107,15 @@ describe("command invocation fiber-local ancestry", () => {
           [
             lifecycle(
               Deferred.succeed(left, undefined).pipe(
-                Effect.zipRight(Deferred.await(right)),
-                Effect.zipRight(nested()),
+                Effect.andThen(Deferred.await(right)),
+                Effect.andThen(nested()),
               ),
               invocation("left"),
             ),
             lifecycle(
               Deferred.succeed(right, undefined).pipe(
-                Effect.zipRight(Deferred.await(left)),
-                Effect.zipRight(nested()),
+                Effect.andThen(Deferred.await(left)),
+                Effect.andThen(nested()),
               ),
               invocation("right"),
             ),

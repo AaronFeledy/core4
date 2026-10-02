@@ -493,7 +493,7 @@ describe("App handle managed lifecycle scopes", () => {
           ).pipe(Effect.provide(appLayer(engine, dir))),
         );
 
-        expect(insideScope.result._tag).toBe("Left");
+        expect(insideScope.result._tag).toBe("Failure");
         if (insideScope.result._tag === "Failure") {
           expect(insideScope.result.failure._tag).toBe("FileSyncStopError");
         }
@@ -524,7 +524,7 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(tracking.engine, dir, planWithFileSync(dir), provider))),
       );
 
-      expect(secondStop._tag).toBe("Left");
+      expect(secondStop._tag).toBe("Failure");
       if (secondStop._tag === "Failure") expect(secondStop.failure._tag).toBe("FileSyncStopError");
       expect(destroys).toEqual([{ volumes: false, removeState: false }]);
       expect(tracking.sessions.size).toBe(0);
@@ -604,7 +604,7 @@ describe("App handle managed lifecycle scopes", () => {
 
         expect(insideScope).toEqual({
           destroyCalls: 1,
-          failed: "Left",
+          failed: "Failure",
           finalizerCalls: 0,
           sessions: 1,
         });
@@ -848,8 +848,8 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(engine, dir))),
       );
 
-      expect(insideScope.failedReuse).toBe("Left");
-      expect(insideScope.blockedRetry).toBe("Left");
+      expect(insideScope.failedReuse).toBe("Failure");
+      expect(insideScope.blockedRetry).toBe("Failure");
       expect(insideScope.blockedMessage).toContain("automatic recovery is not available");
       expect(insideScope.createCalls).toBe(1);
       expect(insideScope.flushCalls).toBe(2);
@@ -949,8 +949,8 @@ describe("App handle managed lifecycle scopes", () => {
       expect(insideScope).toEqual({
         applyCalls: 2,
         createCalls: 1,
-        failedReuse: "Left",
-        blockedRetry: "Left",
+        failedReuse: "Failure",
+        blockedRetry: "Failure",
         blockedMessage: expect.stringContaining("automatic recovery is not available"),
         finalizerCalls: 0,
         sessions: 1,

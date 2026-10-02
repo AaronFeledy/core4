@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Result, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";

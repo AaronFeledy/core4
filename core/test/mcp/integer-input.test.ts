@@ -4,7 +4,7 @@ import { type McpRunInput, dispatchTool } from "@lando/mcp/dispatch";
 import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect, Result, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import { logsSpec } from "../../src/cli/command-specs/app/logs.ts";
 import { parseFlagValue } from "../../src/cli/compiled-argv.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";

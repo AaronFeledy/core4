@@ -16,7 +16,7 @@ const recordingRunner = (calls: ReadonlyArray<string>[], stdout = "/extra\n") =>
       calls.push(args);
       return Effect.succeed({ exitCode: 0, stdout, stderr: "" });
     },
-  }) satisfies Pick<ProcessRunner["Type"], "run">;
+  }) satisfies Pick<ProcessRunner["Service"], "run">;
 const restricted: Pick<GpgAgentDiscoveryOptions, "inspectPath" | "probeRestricted"> = {
   inspectPath: async () => "socket",
   probeRestricted: async () => "restricted",
@@ -48,7 +48,7 @@ test("prefers an explicit socket without invoking gpgconf", async () => {
 
 test("reports gpg-missing when gpgconf is unavailable", async () => {
   // Given
-  const runner: Pick<ProcessRunner["Type"], "run"> = {
+  const runner: Pick<ProcessRunner["Service"], "run"> = {
     run: () => Effect.succeed({ exitCode: 127, stdout: "", stderr: "" }),
   };
   // When
@@ -57,8 +57,8 @@ test("reports gpg-missing when gpgconf is unavailable", async () => {
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
+    _tag: "Failure",
+    failure: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
   });
 });
 
@@ -77,7 +77,7 @@ test("launches once then fails socket-missing when the socket remains absent", a
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "socket-missing" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing" } });
   expect(calls).toEqual([
     ["--list-dirs", "agent-extra-socket"],
     ["--launch", "gpg-agent"],
@@ -99,7 +99,7 @@ test("never launches gpg-agent when launch is false", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "socket-missing", socketPath: "/extra" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing", socketPath: "/extra" } });
   expect(calls).toEqual([["--list-dirs", "agent-extra-socket"]]);
 });
 
@@ -126,8 +126,8 @@ test("rejects a symlink or regular file at the socket path without launching", a
       );
       // Then
       expect(result).toMatchObject({
-        _tag: "Left",
-        left: {
+        _tag: "Failure",
+        failure: {
           _tag: "GpgAgentUnavailableError",
           reason: "socket-missing",
           socketPath: path,
@@ -167,8 +167,8 @@ test.each([
       expect(Result.isSuccess(result) ? result.success : result).toEqual({ _tag: "unix", path, source });
     } else {
       expect(result).toMatchObject({
-        _tag: "Left",
-        left: {
+        _tag: "Failure",
+        failure: {
           _tag: "GpgAgentUnavailableError",
           ...failure,
           socketPath: path,
@@ -200,6 +200,6 @@ test("a socket nobody answers fails socket-missing", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "socket-missing", socketPath: "/extra" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing", socketPath: "/extra" } });
   expect(JSON.stringify(result)).not.toContain("connection refused");
 });

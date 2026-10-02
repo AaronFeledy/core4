@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { expect } from "bun:test";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import { HttpRequestError, type ScannerError } from "@lando/sdk/errors";
 import { AppId, type HttpRequest, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
@@ -133,7 +133,9 @@ export const requestSequence = (
             new HttpRequestError({ message: scripted.message, urlOrigin: urlOrigin(req.url) }),
           );
         case "sleep":
-          return Effect.sleep(Duration.fromInputUnsafe(scripted.duration)).pipe(Effect.as(response(scripted.status)));
+          return Effect.sleep(Duration.fromInputUnsafe(scripted.duration)).pipe(
+            Effect.as(response(scripted.status)),
+          );
       }
     },
   };

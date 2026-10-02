@@ -4,7 +4,7 @@ import { ConfigError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PathsService, SecretStore } from "@lando/sdk/services";
-import { Effect, Result, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
 

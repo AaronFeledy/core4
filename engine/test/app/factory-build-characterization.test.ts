@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import type { App } from "@lando/sdk/app";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { Context, DateTime, Effect, Layer, Runtime } from "effect";
+import { Context, DateTime, Effect, Layer } from "effect";
 import { type AppHandleRuntimeServices, makeAppHandle } from "../../src/app/handle.ts";
 import { type AppLifecycle, makeAppLifecycle } from "../../src/app/lifecycle.ts";
 import { appOperations } from "../../src/app/operations.ts";
 
-class Lifecycle extends Context.Tag("app-factory-build-test/Lifecycle")<Lifecycle, AppLifecycle>() {}
-class Handle extends Context.Tag("app-factory-build-test/Handle")<Handle, App>() {}
+class Lifecycle extends Context.Service<Lifecycle, AppLifecycle>()("app-factory-build-test/Lifecycle") {}
+class Handle extends Context.Service<Handle, App>()("app-factory-build-test/Handle") {}
 
 const characterizeBuilds = async <R, S, E>(
   layer: Layer.Layer<R>,
@@ -35,7 +35,7 @@ const characterizeBuilds = async <R, S, E>(
 test("the real lifecycle factory constructs at counts 1, 2, 3 behind a test-only layer", async () => {
   // Given: lifecycle is a factory, not a production Layer; the adapter supplies its owning scope.
   const instances: AppLifecycle[] = [];
-  const layer = Layer.scoped(
+  const layer = Layer.effect(
     Lifecycle,
     Effect.gen(function* () {
       const lifecycle = yield* makeAppLifecycle(yield* Effect.scope);
@@ -54,10 +54,7 @@ test("the real lifecycle factory constructs at counts 1, 2, 3 behind a test-only
 
 test("the real handle factory constructs at counts 1, 2, 3 behind a test-only layer", async () => {
   // Given: only the handle's pure plan surface is used, so its captured runtime needs no services.
-  const runtime = Runtime.make({
-    ...Runtime.defaultRuntime,
-    context: Context.unsafeMake<AppHandleRuntimeServices>(new Map()),
-  });
+  const runtime = Context.makeUnsafe<AppHandleRuntimeServices>(new Map());
   const plan: AppPlan = {
     id: AppId.make("factory-characterization"),
     name: "factory-characterization",
@@ -73,7 +70,7 @@ test("the real handle factory constructs at counts 1, 2, 3 behind a test-only la
     extensions: {},
   };
   const instances: App[] = [];
-  const layer = Layer.scoped(
+  const layer = Layer.effect(
     Handle,
     Effect.gen(function* () {
       const lifecycle = yield* makeAppLifecycle(yield* Effect.scope);

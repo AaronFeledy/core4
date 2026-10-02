@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 
 import {
   CleanupProps,
@@ -29,16 +29,16 @@ import {
   decodeVerifyPropsEither,
 } from "@lando/core/docs/components";
 import { NotImplementedError } from "@lando/sdk/errors";
-import { Result, JSONSchema, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 const expectRight = <A>(decoded: Result.Result<A, unknown>): A => {
-  expect(decoded._tag).toBe("Right");
+  expect(decoded._tag).toBe("Success");
   if (Result.isFailure(decoded)) throw decoded.failure;
   return decoded.success;
 };
 
 const expectNotImplemented = (decoded: Result.Result<unknown, unknown>, key: string) => {
-  expect(decoded._tag).toBe("Left");
+  expect(decoded._tag).toBe("Failure");
   if (Result.isSuccess(decoded)) return;
   const left = decoded.failure;
   expect(left).toBeInstanceOf(NotImplementedError);
@@ -49,7 +49,7 @@ const expectNotImplemented = (decoded: Result.Result<unknown, unknown>, key: str
 };
 
 const expectParseError = (decoded: Result.Result<unknown, unknown>): Schema.SchemaError => {
-  expect(decoded._tag).toBe("Left");
+  expect(decoded._tag).toBe("Failure");
   if (Result.isSuccess(decoded)) throw decoded.success;
   expect(decoded.failure).toBeInstanceOf(Schema.SchemaError);
   if (!(decoded.failure instanceof Schema.SchemaError)) throw decoded.failure;
@@ -93,21 +93,23 @@ describe("component prop schemas", () => {
     });
 
     const missingReason = decodeScenarioPropsEither({ id: "hidden", render: false });
-    expect(missingReason._tag).toBe("Left");
+    expect(missingReason._tag).toBe("Failure");
     if (Result.isFailure(missingReason)) {
       expect(missingReason.failure).toBeInstanceOf(Schema.SchemaError);
-      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(missingReason).issue).issues;
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(
+        expectParseError(missingReason).issue,
+      ).issues;
       expect(issues.map((issue) => issue.message)).toContain(
         "<Scenario render={false}> requires a `reason` of at least 8 characters.",
       );
     }
 
     const missingId = decodeScenarioPropsEither({ render: false });
-    expect(missingId._tag).toBe("Left");
+    expect(missingId._tag).toBe("Failure");
     if (Result.isFailure(missingId)) {
       expect(missingId.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(missingId).issue).issues;
-      expect(issues.some((issue) => issue.path.includes("id"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("id"))).toBe(true);
     }
 
     expect(expectRight(decodeScenarioPropsEither({ id: "reader", layer: "e2e", tags: ["@smoke"] }))).toEqual({
@@ -118,7 +120,7 @@ describe("component prop schemas", () => {
     });
 
     const invalidLayer = decodeScenarioPropsEither({ id: "reader", layer: "unit" });
-    expect(invalidLayer._tag).toBe("Left");
+    expect(invalidLayer._tag).toBe("Failure");
     if (Result.isFailure(invalidLayer)) expect(invalidLayer.failure).toBeInstanceOf(Schema.SchemaError);
   });
 
@@ -148,47 +150,49 @@ describe("component prop schemas", () => {
     });
 
     const both = decodeRunPropsEither({ command: "lando start", shell: "lando start" });
-    expect(both._tag).toBe("Left");
+    expect(both._tag).toBe("Failure");
     if (Result.isFailure(both)) {
       expect(both.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(both).issue).issues;
-      expect(issues.some((issue) => issue._tag === "Unexpected" && issue.path.join(".") === "shell")).toBe(
+      expect(issues.some((issue) => issue.message === "Expected no excess property" && (issue.path ?? []).join(".") === "shell")).toBe(
         true,
       );
-      expect(issues.some((issue) => issue._tag === "Unexpected" && issue.path.join(".") === "command")).toBe(
+      expect(issues.some((issue) => issue.message === "Expected no excess property" && (issue.path ?? []).join(".") === "command")).toBe(
         true,
       );
     }
 
     const invalidAnswers = decodeRunPropsEither({ command: "lando start", answers: { name: 123 } });
-    expect(invalidAnswers._tag).toBe("Left");
+    expect(invalidAnswers._tag).toBe("Failure");
     if (Result.isFailure(invalidAnswers)) {
       expect(invalidAnswers.failure).toBeInstanceOf(Schema.SchemaError);
-      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(invalidAnswers).issue).issues;
-      expect(issues.some((issue) => issue.path.join(".") === "answers.name")).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(
+        expectParseError(invalidAnswers).issue,
+      ).issues;
+      expect(issues.some((issue) => (issue.path ?? []).join(".") === "answers.name")).toBe(true);
     }
 
     const excess = decodeRunPropsEither({ command: "lando start", extra: true });
-    expect(excess._tag).toBe("Left");
+    expect(excess._tag).toBe("Failure");
     if (Result.isFailure(excess)) {
       expect(excess.failure).toBeInstanceOf(Schema.SchemaError);
     }
 
     const unsupportedRuntime = decodeRunPropsEither({ runtime: "appStart", code: "x", displayCode: "y" });
-    expect(unsupportedRuntime._tag).toBe("Left");
+    expect(unsupportedRuntime._tag).toBe("Failure");
     if (Result.isFailure(unsupportedRuntime)) {
       expect(unsupportedRuntime.failure).toBeInstanceOf(Schema.SchemaError);
       expect(unsupportedRuntime.failure).not.toBeInstanceOf(NotImplementedError);
     }
 
     const missingCode = decodeRunPropsEither({ runtime: "library", displayCode: "y" });
-    expect(missingCode._tag).toBe("Left");
+    expect(missingCode._tag).toBe("Failure");
     if (Result.isFailure(missingCode)) {
       expect(missingCode.failure).toBeInstanceOf(Schema.SchemaError);
     }
 
     const missingDisplayCode = decodeRunPropsEither({ runtime: "library", code: "x" });
-    expect(missingDisplayCode._tag).toBe("Left");
+    expect(missingDisplayCode._tag).toBe("Failure");
     if (Result.isFailure(missingDisplayCode)) {
       expect(missingDisplayCode.failure).toBeInstanceOf(Schema.SchemaError);
     }
@@ -199,7 +203,7 @@ describe("component prop schemas", () => {
       code: "x",
       displayCode: "y",
     });
-    expect(commandAndRuntime._tag).toBe("Left");
+    expect(commandAndRuntime._tag).toBe("Failure");
     if (Result.isFailure(commandAndRuntime)) {
       expect(commandAndRuntime.failure).toBeInstanceOf(Schema.SchemaError);
     }
@@ -229,10 +233,12 @@ describe("component prop schemas", () => {
     });
 
     const multipleTargets = decodeVerifyPropsEither({ event: "post-start", file: "lando.yml" });
-    expect(multipleTargets._tag).toBe("Left");
+    expect(multipleTargets._tag).toBe("Failure");
     if (Result.isFailure(multipleTargets)) {
       expect(multipleTargets.failure).toBeInstanceOf(Schema.SchemaError);
-      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(multipleTargets).issue).issues;
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(
+        expectParseError(multipleTargets).issue,
+      ).issues;
       expect(issues.map((issue) => issue.message)).toContain("<Verify> requires exactly one target.");
     }
 
@@ -260,11 +266,11 @@ describe("component prop schemas", () => {
     expect(expectRight(decodeInspectPropsEither({ events: true }))).toEqual({ events: true });
     expect(expectRight(decodeInspectPropsEither({ output: true }))).toEqual({ output: true });
 
-    expect(decodeInspectPropsEither({ events: false })._tag).toBe("Left");
-    expect(decodeInspectPropsEither({ output: false })._tag).toBe("Left");
+    expect(decodeInspectPropsEither({ events: false })._tag).toBe("Failure");
+    expect(decodeInspectPropsEither({ output: false })._tag).toBe("Failure");
 
     const none = decodeInspectPropsEither({});
-    expect(none._tag).toBe("Left");
+    expect(none._tag).toBe("Failure");
     if (Result.isFailure(none)) {
       expect(none.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(none).issue).issues;
@@ -274,7 +280,7 @@ describe("component prop schemas", () => {
     }
 
     const multiple = decodeInspectPropsEither({ file: "package.json", output: true });
-    expect(multiple._tag).toBe("Left");
+    expect(multiple._tag).toBe("Failure");
     if (Result.isFailure(multiple)) {
       expect(multiple.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(multiple).issue).issues;
@@ -288,11 +294,11 @@ describe("component prop schemas", () => {
     const expectSchemaRoundTrip = <S extends Schema.Codec<unknown, unknown>>(
       name: string,
       schema: S,
-      value: Schema.Schema.Encoded<S>,
+      value: S["Encoded"],
     ) => {
       const decoded = Schema.decodeUnknownSync(schema)(value);
       expect(Schema.encodeSync(schema)(decoded)).toEqual(value);
-      expect(JSONSchema.make(schema)).toHaveProperty(["$defs", name]);
+      expect(Schema.toJsonSchemaDocument(schema)).toHaveProperty(["definitions", name]);
     };
 
     expectSchemaRoundTrip("GuideProps", GuideProps, {});
@@ -316,15 +322,15 @@ describe("component prop schemas", () => {
     });
 
     const shortReason = decodeHiddenPropsEither({ reason: "short" });
-    expect(shortReason._tag).toBe("Left");
+    expect(shortReason._tag).toBe("Failure");
     if (Result.isFailure(shortReason)) {
       expect(shortReason.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(shortReason).issue).issues;
-      expect(issues.some((issue) => issue.path.includes("reason"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("reason"))).toBe(true);
     }
 
     const missingReason = decodeHiddenPropsEither({});
-    expect(missingReason._tag).toBe("Left");
+    expect(missingReason._tag).toBe("Failure");
   });
 
   test("accepts Tabs props with optional axis and rejects unknown keys", () => {
@@ -332,13 +338,13 @@ describe("component prop schemas", () => {
     expect(expectRight(decodeTabsPropsEither({ axis: "default" }))).toEqual({ axis: "default" });
 
     const badAxis = decodeTabsPropsEither({ axis: "Default" });
-    expect(badAxis._tag).toBe("Left");
+    expect(badAxis._tag).toBe("Failure");
     if (Result.isFailure(badAxis)) {
       expect(badAxis.failure).toBeInstanceOf(Schema.SchemaError);
     }
 
     const excess = decodeTabsPropsEither({ name: "linux" });
-    expect(excess._tag).toBe("Left");
+    expect(excess._tag).toBe("Failure");
   });
 
   test("accepts Tab props with a kebab name and rejects missing or malformed names", () => {
@@ -346,18 +352,18 @@ describe("component prop schemas", () => {
     expect(expectRight(decodeTabPropsEither({ name: "drupal-10" }))).toEqual({ name: "drupal-10" });
 
     const missing = decodeTabPropsEither({});
-    expect(missing._tag).toBe("Left");
+    expect(missing._tag).toBe("Failure");
     if (Result.isFailure(missing)) {
       expect(missing.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(missing).issue).issues;
-      expect(issues.some((issue) => issue.path.includes("name"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("name"))).toBe(true);
     }
 
     const malformed = decodeTabPropsEither({ name: "Linux" });
-    expect(malformed._tag).toBe("Left");
+    expect(malformed._tag).toBe("Failure");
 
     const legacyValueRejected = decodeTabPropsEither({ value: "linux" });
-    expect(legacyValueRejected._tag).toBe("Left");
+    expect(legacyValueRejected._tag).toBe("Failure");
   });
 
   test.each(["Bogus", "NotAComponent"] as const)(
@@ -407,11 +413,11 @@ describe("component prop schemas", () => {
     ).toEqual({ code: "print(1)", lang: "py", justification: "python sample only" });
 
     const shortJustification = decodeInlinePropsEither({ code: "x", justification: "tiny" });
-    expect(shortJustification._tag).toBe("Left");
+    expect(shortJustification._tag).toBe("Failure");
     const missingCode = decodeInlinePropsEither({ justification: "explains the omitted code" });
-    expect(missingCode._tag).toBe("Left");
+    expect(missingCode._tag).toBe("Failure");
 
-    expect(JSONSchema.make(InlineProps)).toBeDefined();
+    expect(Schema.toJsonSchemaDocument(InlineProps)).toBeDefined();
   });
 
   test("accepts Skip props, requires reason >= 8 chars, and allows optional until", () => {
@@ -424,10 +430,10 @@ describe("component prop schemas", () => {
     });
 
     const shortReason = decodeSkipPropsEither({ reason: "soon" });
-    expect(shortReason._tag).toBe("Left");
+    expect(shortReason._tag).toBe("Failure");
     const missingReason = decodeSkipPropsEither({ until: "v4.1.0" });
-    expect(missingReason._tag).toBe("Left");
+    expect(missingReason._tag).toBe("Failure");
 
-    expect(JSONSchema.make(SkipProps)).toBeDefined();
+    expect(Schema.toJsonSchemaDocument(SkipProps)).toBeDefined();
   });
 });

@@ -150,8 +150,8 @@ test.each(["sidecar", "host"] as const)(
       // Then
       if (mode === "host") {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
+          _tag: "Failure",
+          failure: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
         });
         expect(applied).toEqual([]);
       } else {

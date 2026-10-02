@@ -48,11 +48,7 @@ type LifecycleOperation = ReturnType<
 >;
 const operations: ReadonlyArray<{
   readonly name: string;
-  readonly run: Effect.Effect<
-    void,
-    Effect.Error<LifecycleOperation>,
-    Effect.Services<LifecycleOperation>
-  >;
+  readonly run: Effect.Effect<void, Effect.Error<LifecycleOperation>, Effect.Services<LifecycleOperation>>;
   readonly applies: number;
   readonly removeState: boolean;
 }> = [

@@ -1,5 +1,5 @@
-import { Result } from "effect";
 import { describe, expect, test } from "bun:test";
+import { Result } from "effect";
 
 import { Cause, type Context, DateTime, Effect, Layer, Schema } from "effect";
 
@@ -173,7 +173,7 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
     const result = await selectEither([module], [manifest]);
 
     // Then: the descriptor factory's provider shape is returned unchanged.
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     if (result._tag === "Success") {
       expect(result.success).toEqual(fakeProvider);
     }

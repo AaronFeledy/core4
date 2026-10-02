@@ -1,5 +1,5 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
+import { TestClock } from "effect/testing";
 
 import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Schema } from "effect";
 
@@ -114,12 +114,12 @@ describe("waitForEvent", () => {
       Effect.gen(function* () {
         const waiter = yield* waitForEvent("pre-app-start").pipe(Effect.forkChild);
         yield* TestClock.adjust("1 hour");
-        const result = yield* waiter.pollUnsafe();
+        const result = waiter.pollUnsafe();
         yield* Fiber.interrupt(waiter);
         return result;
       }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
-    expect(Option.isNone(polled)).toBe(true);
+    expect(polled).toBeUndefined();
   });
 });

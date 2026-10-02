@@ -112,7 +112,7 @@ const BUILD_BLOCK_DESCRIPTION =
 
 const BuildBlockFrom = Schema.Union([Schema.String, BuildBlockObjectFrom]).annotate({
   description: BUILD_BLOCK_DESCRIPTION,
-  jsonSchema: buildBlockJsonSchema,
+  jsonSchemaProjection: buildBlockJsonSchema,
 });
 
 type BuildBlockShape = typeof BuildBlockCanonical.Type;

@@ -1,7 +1,7 @@
-import { Result } from "effect";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Result } from "effect";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { Result } from "effect";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
@@ -804,16 +803,24 @@ const hostReadError = (path: string, cause: unknown): DataTransferError => {
 };
 
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
-  Stream.fromReadableStream({
-    evaluate: () => Bun.file(path).stream(),
-    onError: (cause) => hostReadError(path, cause),
-    releaseLockOnEnd: true,
-  }).pipe(
-    Stream.catchCause((cause) =>
-      Option.match(Result.getSuccess(Cause.findDefect(cause)), {
-        onNone: () => Stream.failCause(cause),
-        onSome: (died) => Stream.fail(hostReadError(path, died)),
+  Stream.unwrap(
+    Effect.acquireRelease(
+      Effect.try({
+        try: () => Bun.file(path).stream().getReader(),
+        catch: (cause) => hostReadError(path, cause),
       }),
+      (reader) => Effect.sync(() => reader.releaseLock()),
+    ).pipe(
+      Effect.map((reader) =>
+        Stream.fromEffectRepeat(
+          Effect.tryPromise({
+            try: () => reader.read(),
+            catch: (cause) => hostReadError(path, cause),
+          }).pipe(
+            Effect.flatMap((result) => (result.done ? Cause.done() : Effect.succeed(result.value))),
+          ),
+        ),
+      ),
     ),
   );
 

@@ -485,9 +485,9 @@ test("stored-secret prompt names receive references that the decomposer may pers
             received = input.secrets;
             const stored = input.secrets.apiToken;
             return Effect.map(base.decompose(input), (output) => {
-              const fragment = Schema.decodeUnknownResult(
-                Schema.Record(Schema.String, Schema.Unknown),
-              )(output.fragment);
+              const fragment = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Unknown))(
+                output.fragment,
+              );
               return {
                 ...output,
                 fragment:

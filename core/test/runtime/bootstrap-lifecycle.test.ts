@@ -111,7 +111,7 @@ describe("runtime bootstrap lifecycle", () => {
     );
     await Effect.runPromise(tracker.complete("minimal", events));
     await Effect.runPromise(tracker.complete("plugins", events));
-    const failingResource = Layer.fail("plugin bootstrap failed");
+    const failingResource = Layer.effectDiscard(Effect.fail("plugin bootstrap failed"));
 
     await Effect.runPromiseExit(
       Layer.build(superviseBootstrapLayer(failingResource, tracker)).pipe(Effect.scoped),
@@ -163,7 +163,7 @@ describe("runtime bootstrap lifecycle", () => {
     await Effect.runPromise(tracker.useBaseEventService(service));
 
     await Effect.runPromiseExit(
-      Layer.build(superviseBootstrapLayer(Layer.fail("minimal bootstrap failed"), tracker)).pipe(
+      Layer.build(superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("minimal bootstrap failed")), tracker)).pipe(
         Effect.scoped,
       ),
     );
@@ -203,7 +203,7 @@ describe("runtime bootstrap lifecycle", () => {
     await Effect.runPromise(tracker.complete("minimal", service));
 
     await Effect.runPromiseExit(
-      Layer.build(superviseBootstrapLayer(Layer.fail("plugin bootstrap failed"), tracker)).pipe(
+      Layer.build(superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("plugin bootstrap failed")), tracker)).pipe(
         Effect.scoped,
       ),
     );

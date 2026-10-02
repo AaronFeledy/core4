@@ -51,7 +51,7 @@ const SafeHttpUrl = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter(isSafeHttpUrl, {
       message: "Expected an http(s) URL without credentials, query, or fragment.",
-      jsonSchema: { format: "uri", pattern: SAFE_HTTP_URL_PATTERN.source },
+      toJsonSchema: () => ({ format: "uri", pattern: SAFE_HTTP_URL_PATTERN.source }),
     }),
   ),
 );
@@ -76,7 +76,7 @@ const LoopbackUrl = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter(isLoopbackUrl, {
       message: "Expected a core-created http(s) loopback URL.",
-      jsonSchema: { format: "uri", pattern: LOOPBACK_URL_PATTERN.source },
+      toJsonSchema: () => ({ format: "uri", pattern: LOOPBACK_URL_PATTERN.source }),
     }),
   ),
 );

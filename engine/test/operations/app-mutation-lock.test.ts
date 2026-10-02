@@ -3,7 +3,7 @@ import { access, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Deferred, Effect, Exit, Fiber, Layer, Schema } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppLockTimeoutError } from "@lando/sdk/errors";
@@ -50,7 +50,7 @@ const isolate = async () => {
               events.push(event);
             })
           : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),
@@ -321,7 +321,7 @@ describe("per-app mutation lock", () => {
       await Effect.runPromise(Deferred.await(acquired));
       const path = lockPathFor(isolated.userDataRoot, app.id, app.root);
       expect(await exists(path)).toBe(true);
-      const exit = await Effect.runPromise(Fiber.interrupt(fiber));
+      const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(await exists(path)).toBe(false);
     } finally {

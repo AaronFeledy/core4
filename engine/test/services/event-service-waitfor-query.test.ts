@@ -1,5 +1,5 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
+import { TestClock } from "effect/testing";
 
 import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
@@ -87,14 +87,14 @@ describe("EventService waitFor", () => {
         Effect.gen(function* () {
           const waiter = yield* events.waitFor("download-progress").pipe(Effect.forkChild);
           yield* TestClock.adjust("1 hour");
-          const poll = yield* waiter.pollUnsafe();
+          const poll = waiter.pollUnsafe();
           yield* Fiber.interrupt(waiter);
           return poll;
         }),
       ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
-    expect(exit._tag).toBe("None");
+    expect(exit).toBeUndefined();
   });
 });
 

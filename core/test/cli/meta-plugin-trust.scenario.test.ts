@@ -111,7 +111,7 @@ describe("meta:plugin:trust commands", () => {
     const store = await Effect.runPromise(PluginTrustStore.pipe(Effect.provide(layer)));
     const state = await Effect.runPromise(store.read);
 
-    expect(Schema.decodeUnknownResult(PluginTrustState)(state)._tag).toBe("Right");
+    expect(Schema.decodeUnknownResult(PluginTrustState)(state)._tag).toBe("Success");
     expect(state.trustedPlugins).toEqual(["Plugin-A", "plugin-b"]);
     expect(state.trustedAuthoringRoots).toEqual([
       resolve(userConfRoot, "A-root"),

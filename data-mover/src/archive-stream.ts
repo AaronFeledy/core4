@@ -133,7 +133,7 @@ export const decodeArchiveStream = <E, R>(input: {
   const decoded =
     input.format === "tar" ? input.body : throughDecompression(input.body, input.format, input.path);
   return Stream.unwrap(
-    Stream.toAsyncIterableEffect(decoded).pipe(
+    Stream.toReadableStreamEffect(decoded, { strategy: { highWaterMark: 0 } }).pipe(
       Effect.map((source) =>
         Stream.fromAsyncIterable(
           tarPayload(source, input.format, input.path, input.maxPayloadBytes),

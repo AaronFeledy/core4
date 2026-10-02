@@ -153,7 +153,7 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
 
     const result = await runSelectEither({ manifests }, "totally-unknown-provider");
 
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("NoProviderInstalledError");
       expect(result.failure.message).toBe("Runtime provider totally-unknown-provider is not installed.");
@@ -165,7 +165,7 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
 
     const result = await runSelectEither({ manifests }, "docker");
 
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("NoProviderInstalledError");
       expect(result.failure.message).toBe("Runtime provider docker is not installed.");
@@ -180,7 +180,7 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
     await withEnvProvider(undefined, async () => {
       const result = await runSelectEither({ manifests, defaultProviderId: null });
 
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure.message).toBe("Runtime provider lando is not installed.");
       }
@@ -191,7 +191,7 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
     await withEnvProvider(undefined, async () => {
       const result = await runSelectEither({ manifests, defaultProviderId: "custom-config-provider" });
 
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure.message).toBe("Runtime provider custom-config-provider is not installed.");
       }
@@ -202,7 +202,7 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
     await withEnvProvider("custom-env-provider", async () => {
       const result = await runSelectEither({ manifests, defaultProviderId: "custom-config-provider" });
 
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag === "Failure") {
         expect(result.failure.message).toBe("Runtime provider custom-env-provider is not installed.");
       }

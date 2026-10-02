@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
@@ -147,11 +147,14 @@ describe("validateMcpAllowlistIds", () => {
       validateMcpAllowlistIds({ allow: ["does:not:exist"], deny: [], tooling: false }, known),
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-      if (exit.cause.error instanceof McpToolInputError) {
-        expect(exit.cause.error.path).toBe("flags.allow");
-        expect(exit.cause.error.toolId).toBe("does:not:exist");
+    if (Exit.isFailure(exit)) {
+      const error = Cause.findError(exit.cause);
+      expect(Result.isSuccess(error)).toBe(true);
+      if (Result.isFailure(error)) throw error.failure;
+      expect(error.success).toBeInstanceOf(McpToolInputError);
+      if (error.success instanceof McpToolInputError) {
+        expect(error.success.path).toBe("flags.allow");
+        expect(error.success.toolId).toBe("does:not:exist");
       }
     }
   });
@@ -359,10 +362,13 @@ describe("mcpListResult", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-      if (exit.cause.error instanceof McpToolInputError) {
-        expect(exit.cause.error.toolId).toBe("app:config");
+    if (Exit.isFailure(exit)) {
+      const error = Cause.findError(exit.cause);
+      expect(Result.isSuccess(error)).toBe(true);
+      if (Result.isFailure(error)) throw error.failure;
+      expect(error.success).toBeInstanceOf(McpToolInputError);
+      if (error.success instanceof McpToolInputError) {
+        expect(error.success.toolId).toBe("app:config");
       }
     }
   });
@@ -374,9 +380,12 @@ describe("mcpListResult", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-        if (exit.cause.error instanceof McpToolInputError) expect(exit.cause.error.toolId).toBe(id);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.findError(exit.cause);
+        expect(Result.isSuccess(error)).toBe(true);
+        if (Result.isFailure(error)) throw error.failure;
+        expect(error.success).toBeInstanceOf(McpToolInputError);
+        if (error.success instanceof McpToolInputError) expect(error.success.toolId).toBe(id);
       }
     }
   });
@@ -388,9 +397,12 @@ describe("mcpListResult", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-        if (exit.cause.error instanceof McpToolInputError) expect(exit.cause.error.toolId).toBe(id);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.findError(exit.cause);
+        expect(Result.isSuccess(error)).toBe(true);
+        if (Result.isFailure(error)) throw error.failure;
+        expect(error.success).toBeInstanceOf(McpToolInputError);
+        if (error.success instanceof McpToolInputError) expect(error.success.toolId).toBe(id);
       }
     }
   });

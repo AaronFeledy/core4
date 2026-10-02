@@ -272,7 +272,7 @@ const makeStopLayer = (
           events.push(event._tag);
           publishedEvents.push(event);
         }),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),
@@ -504,7 +504,7 @@ describe("lando stop", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -759,7 +759,7 @@ describe("lando stop", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),

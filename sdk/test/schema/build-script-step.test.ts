@@ -21,7 +21,7 @@ const expectRejected = (input: unknown): ReadonlyArray<string> => {
     if (!Result.isFailure(result)) continue;
     messages.push(
       SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
-        .issues.map(({ message }) => message)
+        .issues.map(({ path, message }) => `${path?.join(".")}: ${message}`)
         .join("\n"),
     );
   }

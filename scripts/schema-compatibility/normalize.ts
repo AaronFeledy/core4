@@ -1,4 +1,5 @@
 import { type JsonSchema, type JsonValue, isJsonObject, jsonValueKey } from "./model.ts";
+import { normalizeStructure } from "./structural-normalize.ts";
 
 const annotations = new Set([
   "$schema",
@@ -72,7 +73,7 @@ export const normalizeJsonSchema = (root: JsonSchema): JsonSchema => {
         result[key] = [...value].sort((a, b) => jsonValueKey(a).localeCompare(jsonValueKey(b)));
       } else result[key] = value;
     }
-    return result;
+    return normalizeStructure(result);
   };
   return visit(root, []);
 };

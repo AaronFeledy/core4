@@ -13,6 +13,7 @@ const PluginDoctorContextKey = Schema.String.pipe(
   Schema.check(Schema.isMaxLength(128)),
 );
 const PluginDoctorContext = Schema.Record(PluginDoctorContextKey, PluginDoctorMessage).pipe(
+  Schema.check(Schema.isMaxProperties(32)),
   Schema.check(
     Schema.makeFilter(
       (context) =>
@@ -24,7 +25,6 @@ const PluginDoctorContext = Schema.Record(PluginDoctorContextKey, PluginDoctorMe
       },
     ),
   ),
-  Schema.annotate({ jsonSchema: { maxProperties: 32 } }),
 );
 
 const PluginDoctorSolution = Schema.Struct({

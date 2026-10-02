@@ -289,7 +289,7 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { failApply: true }))),
       );
 
-      expect(retained.outcome._tag).toBe("Left");
+      expect(retained.outcome._tag).toBe("Failure");
       expect(retained.entries).toHaveLength(1);
       expect(retained.entries[0]?.status).toBe("acquiring");
       expect(destroyCalls).toEqual([]);
@@ -362,7 +362,8 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
             ),
           );
           yield* Deferred.await(ready);
-          return yield* Fiber.interrupt(fiber);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
       );
 

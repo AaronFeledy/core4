@@ -98,7 +98,7 @@ test("does not signal a reused PID when worker identity differs", async () => {
     );
     // Then
     expect(calls).toEqual([]);
-    expect(outcome).toMatchObject({ _tag: "Left", left: { _tag: "SshAgentTransportError" } });
+    expect(outcome).toMatchObject({ _tag: "Failure", failure: { _tag: "SshAgentTransportError" } });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

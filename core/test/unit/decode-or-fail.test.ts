@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 import { Effect, Result, Schema } from "effect";
 
 import {
@@ -15,7 +15,7 @@ import { decodeOrFail } from "@lando/landofile/decode";
 const issuesWithMessages = (cause: unknown, fallback: string): ReadonlyArray<string> => {
   if (Schema.isSchemaError(cause)) {
     return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
+      (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
     );
   }
   return [cause instanceof Error ? cause.message : fallback];
@@ -24,7 +24,7 @@ const issuesWithMessages = (cause: unknown, fallback: string): ReadonlyArray<str
 const globalIssues = (cause: unknown): ReadonlyArray<string> => {
   if (Schema.isSchemaError(cause)) {
     return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
+      (issue.path ?? []).length === 0 ? issue.message : (issue.path ?? []).join("."),
     );
   }
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];

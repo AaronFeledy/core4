@@ -289,7 +289,7 @@ describe("ScratchAppServiceLive --mount-cwd transform", () => {
           ),
         ).pipe(Effect.provide(makeLayer(appliedPlans)), Effect.result),
       );
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchIsolationConflictError");
       expect(appliedPlans).toHaveLength(0);
     });
@@ -321,7 +321,7 @@ describe("ScratchAppServiceLive --share-global-storage transform", () => {
           ),
         ).pipe(Effect.provide(makeLayer(appliedPlans, false)), Effect.result),
       );
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchAppError");
     });
   });

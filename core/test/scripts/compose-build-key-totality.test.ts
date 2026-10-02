@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 import { BuildBlock } from "@lando/sdk/schema";
@@ -61,8 +61,8 @@ describe("Compose build-key totality", () => {
         const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
         expect(Result.isFailure(result)).toBe(true);
         if (!Result.isFailure(result)) continue;
-        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
-          .map(({ message }) => message)
+        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+          .issues.map(({ message }) => message)
           .join("\n");
         expect(message).toContain(authoredKey);
         expect(message).toContain("mixes two key families");
@@ -76,8 +76,8 @@ describe("Compose build-key totality", () => {
         );
         expect(Result.isSuccess(composeOnlyResult)).toBe(disposition === "normalized");
         if (disposition === "rejected" && Result.isFailure(composeOnlyResult)) {
-          const rejectedMessage = SchemaIssue.makeFormatterStandardSchemaV1()(composeOnlyResult.failure.issue).issues
-            .map(({ message: issue }) => issue)
+          const rejectedMessage = SchemaIssue.makeFormatterStandardSchemaV1()(composeOnlyResult.failure.issue)
+            .issues.map(({ message: issue }) => issue)
             .join("\n");
           expect(rejectedMessage).toContain(authoredKey);
         }

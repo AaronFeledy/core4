@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { expect } from "bun:test";
 import { Cause, Clock, type Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
+import { TestClock } from "effect/testing";
 
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AppId, type HealthcheckPlan, ServiceName } from "@lando/sdk/schema";

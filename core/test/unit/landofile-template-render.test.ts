@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Result, Exit } from "effect";
+import { Effect, Exit, Result } from "effect";
 
 import { LandofileParseError } from "@lando/core/errors";
 import type { TemplateRenderContext } from "@lando/core/schema";

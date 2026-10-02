@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Transcript as CoreTranscript } from "@lando/core/schema";
 import { Transcript } from "@lando/sdk/docs/components";
-import { JSONSchema, Schema } from "effect";
+import { Schema } from "effect";
 
 const exampleTranscript = {
   guideId: "node-postgres",
@@ -31,8 +31,8 @@ describe("Transcript", () => {
 
     expect(Schema.encodeSync(Transcript)(decoded)).toEqual(exampleTranscript);
     expect(Schema.decodeUnknownSync(CoreTranscript)(decoded)).toEqual(decoded);
-    expect(JSONSchema.make(Transcript)).toMatchObject({
-      $defs: { Transcript: { title: "Guide Scenario Transcript" } },
+    expect(Schema.toJsonSchemaDocument(Transcript)).toMatchObject({
+      definitions: { Transcript: { title: "Guide Scenario Transcript" } },
     });
   });
 

@@ -1,16 +1,16 @@
 import { expect, test } from "bun:test";
 import { EventService } from "@lando/sdk/services";
-import { Context, Effect, Exit, Layer, Runtime, Scope } from "effect";
+import { Context, Effect, Exit, Layer, Scope } from "effect";
 import {
   makeBootstrapLifecycleTracker,
   superviseBootstrapLayer,
 } from "../../src/runtime/bootstrap-lifecycle.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
-class Resource extends Context.Tag("bootstrap-resource-lifetime-test/Resource")<
+class Resource extends Context.Service<
   Resource,
   { readonly isOpen: Effect.Effect<boolean> }
->() {}
+>()("bootstrap-resource-lifetime-test/Resource") {}
 
 test("bootstrap resources outlive runtime construction and runs, and close with the runtime scope", async () => {
   // Given: the real bootstrap supervisor owns a scoped resource and a real event bus.
@@ -21,7 +21,7 @@ test("bootstrap resources outlive runtime construction and runs, and close with 
   const events = EventServiceLive.pipe(
     Layer.tap((context) => tracker.complete("minimal", Context.get(context, EventService))),
   );
-  const resource = Layer.scoped(
+  const resource = Layer.effect(
     Resource,
     Effect.acquireRelease(
       Effect.sync(() => {
@@ -48,13 +48,13 @@ test("bootstrap resources outlive runtime construction and runs, and close with 
 
   // When: building returns a retained runtime, then two independent runtime runs finish.
   try {
-    const runtime = await Effect.runPromise(Layer.toRuntime(layer).pipe(Scope.extend(runtimeScope)));
+    const context = await Effect.runPromise(Layer.buildWithScope(layer, runtimeScope));
     expect(acquired).toBe(1);
     expect(released).toBe(0);
     const use = Resource.pipe(Effect.flatMap((resource) => resource.isOpen));
-    expect(await Runtime.runPromise(runtime)(use)).toBe(true);
+    expect(await Effect.runPromiseWith(context)(use)).toBe(true);
     expect(released).toBe(0);
-    expect(await Runtime.runPromise(runtime)(use)).toBe(true);
+    expect(await Effect.runPromiseWith(context)(use)).toBe(true);
     expect(released).toBe(0);
   } finally {
     await Effect.runPromise(Scope.close(runtimeScope, Exit.void));

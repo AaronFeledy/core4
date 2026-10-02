@@ -1,5 +1,5 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
+import { TestClock } from "effect/testing";
 
 import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 
@@ -102,7 +102,9 @@ describe("doctor chaos: provider path", () => {
     // When the caller aborts the run
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(doctor({ signal: controller.signal }).pipe(Effect.provide(layers)));
+        const fiber = yield* Effect.forkChild(
+          doctor({ signal: controller.signal }).pipe(Effect.provide(layers)),
+        );
         yield* Deferred.await(started);
         yield* Effect.sync(() => controller.abort());
         return yield* Fiber.await(fiber);

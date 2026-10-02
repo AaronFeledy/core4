@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect, Result, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import {
   InstallRecord,
   decodeInstallRecord,

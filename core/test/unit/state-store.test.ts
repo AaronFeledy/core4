@@ -9,7 +9,7 @@ import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
@@ -31,8 +31,9 @@ const runExit = <A>(effect: Effect.Effect<A, StateStoreError>) =>
 
 const failure = async <A>(effect: Effect.Effect<A, StateStoreError>): Promise<StateStoreError> => {
   const exit = await runExit(effect);
-  if (Exit.isFailure(exit) && exit.cause._tag === "Fail" && exit.cause.error instanceof StateStoreError) {
-    return exit.cause.error;
+  if (Exit.isFailure(exit)) {
+    const error = Cause.squash(exit.cause);
+    if (error instanceof StateStoreError) return error;
   }
   throw new Error(`expected a StateStoreError failure, got ${JSON.stringify(exit)}`);
 };

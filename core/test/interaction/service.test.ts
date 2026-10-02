@@ -501,7 +501,8 @@ describe("InteractionServiceLive — interruption", () => {
           ),
         );
         yield* Effect.sleep("25 millis");
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
     expect(Exit.isFailure(exit)).toBe(true);
@@ -563,7 +564,8 @@ describe("InteractionServiceLive — interruption", () => {
           ),
         );
         yield* Effect.promise(() => readStarted);
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     ).then((exit) => {
       interruptSettled = true;
@@ -605,7 +607,8 @@ describe("InteractionServiceLive — interruption", () => {
           ),
         );
         yield* Effect.sleep("25 millis");
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
     expect(failureTag(exit)).toBe("InteractionCancelledError");

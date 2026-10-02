@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, Effect, Result, Exit, Layer, Option, Schema } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";

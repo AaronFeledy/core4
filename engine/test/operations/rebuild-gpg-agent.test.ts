@@ -134,8 +134,8 @@ for (const prepareExit of [0, 1]) {
         expect(calls).toEqual(["stop:web", "apply", "gpg-prepare", "build-app"]);
       } else {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: { _tag: "GpgAgentTransportError", stage: "worker" },
+          _tag: "Failure",
+          failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
         expect(calls).toEqual(["stop:web", "apply", "gpg-prepare", "stop:web"]);
       }

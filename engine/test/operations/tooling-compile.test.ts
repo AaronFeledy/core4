@@ -210,7 +210,7 @@ describe("compileToolingInvocations", () => {
     );
 
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingDisabledError", tool: "off" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingDisabledError", tool: "off" } });
   });
 
   test("fails rather than throws when a task defines no steps", () => {
@@ -220,7 +220,7 @@ describe("compileToolingInvocations", () => {
     );
 
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingCompileError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
   });
 
   test("rejects the drupal-scaffold composer.json deletion reproducer", () => {

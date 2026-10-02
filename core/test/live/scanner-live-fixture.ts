@@ -63,7 +63,11 @@ export const waitForFile = (root: string, name: string) =>
 export const scannerFixture = (path: "/scan" | "/fail" | "/hang") =>
   Effect.gen(function* () {
     if (!isScannerLiveEligible()) {
-      return yield* Effect.die(new Error(`LANDO_TEST_PODMAN_SOCKET must be explicitly set to the live managed runtime socket at ${managedProviderSocketPath}; this fixture requires openLandoRuntime's default provider socket, and socket existence alone is not a sufficient opt-in.`));
+      return yield* Effect.die(
+        new Error(
+          `LANDO_TEST_PODMAN_SOCKET must be explicitly set to the live managed runtime socket at ${managedProviderSocketPath}; this fixture requires openLandoRuntime's default provider socket, and socket existence alone is not a sufficient opt-in.`,
+        ),
+      );
     }
     const root = yield* Effect.acquireRelease(
       Effect.promise(() => mkdtemp(join(tmpdir(), "lando-scanner-live-"))),

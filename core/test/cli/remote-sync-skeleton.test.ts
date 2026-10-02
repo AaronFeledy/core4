@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AbsolutePath } from "@lando/core/schema";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Redacted, Schema } from "effect";
+import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 
 import {
   AppPlanner,
@@ -282,7 +282,7 @@ describe("remote sync command skeleton", () => {
       const dataMover: DataMoverShape = {
         transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
         transferStream: () =>
-          Effect.die("external transfer stream is not used by the orchestration skeleton"),
+          Stream.die("external transfer stream is not used by the orchestration skeleton"),
         snapshot: (store) =>
           Effect.sync(() => {
             snapshots.push(store.store);
@@ -798,7 +798,7 @@ describe("remote sync command skeleton", () => {
       const dataMover: DataMoverShape = {
         transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
         transferStream: () =>
-          Effect.die("external transfer stream is not used by the orchestration skeleton"),
+          Stream.die("external transfer stream is not used by the orchestration skeleton"),
         snapshot: () =>
           Effect.sync(() => {
             snapshotCalls += 1;

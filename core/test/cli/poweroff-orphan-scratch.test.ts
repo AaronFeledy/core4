@@ -125,15 +125,19 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
       switch (mode) {
         case "orphan":
         case "registered":
-          expect(result._tag).toBe("Right");
+          expect(result._tag).toBe("Success");
           if (result._tag === "Success") expect(result.success.appsPoweredOff).toEqual([id]);
           expect(calls).toEqual(mode === "orphan" ? ["destroy", "prune", "runtime"] : ["destroy", "runtime"]);
           break;
         case "prune-failure":
         case "destroy-failure":
-          expect(result._tag).toBe("Left");
+          expect(result._tag).toBe("Failure");
           if (result._tag === "Failure") {
-            expect(result.failure).toMatchObject({ _tag: "PoweroffStopError", appId: id, providerId: "lando" });
+            expect(result.failure).toMatchObject({
+              _tag: "PoweroffStopError",
+              appId: id,
+              providerId: "lando",
+            });
             if (result.failure._tag === "PoweroffStopError") {
               expect(result.failure.remediation).toContain("lando scratch gc --prune");
               if (mode === "prune-failure")

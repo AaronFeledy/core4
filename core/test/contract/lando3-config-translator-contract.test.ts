@@ -136,7 +136,7 @@ describe("ConfigTranslator contract — bundled lando3", () => {
       configTranslators: lando3.makeConfigTranslators(),
     };
     const index = makePluginCapabilityIndex([lando3.plugin, rival]);
-    expect(index._tag).toBe("Left");
+    expect(index._tag).toBe("Failure");
     if (index._tag !== "Failure") return;
     expect(index.failure._tag).toBe("ConfigTranslatorConflictError");
     expect(index.failure.message).toContain("lando3");
@@ -146,6 +146,6 @@ describe("ConfigTranslator contract — bundled lando3", () => {
 
   test("one contributor of the lando3 id resolves cleanly", () => {
     const index = makePluginCapabilityIndex([lando3.plugin]);
-    expect(index._tag).toBe("Right");
+    expect(index._tag).toBe("Success");
   });
 });

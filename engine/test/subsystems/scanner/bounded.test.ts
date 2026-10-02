@@ -71,7 +71,8 @@ describe("bounded scanner", () => {
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(scanner.scan(appId));
         yield* Deferred.await(acquired);
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
     // Then: interruption is preserved and the request is released exactly once.

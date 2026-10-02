@@ -63,8 +63,8 @@ test("gpg capability-missing fails before apply", async () => {
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "GpgAgentUnavailableError", reason: "capability-missing" },
+    _tag: "Failure",
+    failure: { _tag: "GpgAgentUnavailableError", reason: "capability-missing" },
   });
   expect(applied).toBe(false);
 });
@@ -209,14 +209,14 @@ for (const exitCode of [0, 1]) {
         "worker:app",
         "routes",
       ]);
-      expect(results.map((result) => result._tag)).toEqual(["Right", "Right"]);
+      expect(results.map((result) => result._tag)).toEqual(["Success", "Success"]);
       expect(closed).toBe(0);
     } else {
       expect(calls).toEqual(["apply", "web:1001:1001", "apply", "web:1001:1001"]);
       for (const result of results) {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: {
+          _tag: "Failure",
+          failure: {
             _tag: "GpgAgentTransportError",
             stage: "worker",
             remediation: expect.stringMatching(/install.*gpg.*image/i),
@@ -229,7 +229,7 @@ for (const exitCode of [0, 1]) {
   });
 }
 
-const fakeGnuPg = (exportExit: number): ProcessRunner["Type"] => ({
+const fakeGnuPg = (exportExit: number): ProcessRunner["Service"] => ({
   run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   stream: () => Stream.empty,
   streamWithExit: ({ cmd, args }) =>
@@ -327,8 +327,8 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
     );
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
+      _tag: "Failure",
+      failure: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
     });
     expect(terminated.count).toBe(1);
   } finally {
@@ -417,8 +417,8 @@ for (const prepareExit of [0, 1]) {
         expect(closed).toBe(0);
       } else {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: { _tag: "GpgAgentTransportError", stage: "worker" },
+          _tag: "Failure",
+          failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
         expect(calls).toEqual(["apply", "gpg-prepare", "destroy"]);
         expect(closed).toBe(1);

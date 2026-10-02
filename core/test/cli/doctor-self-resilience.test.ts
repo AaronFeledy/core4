@@ -1,8 +1,8 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TestClock } from "effect/testing";
 
 import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "effect";
 

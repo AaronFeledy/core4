@@ -46,7 +46,7 @@ describe("requireConfirmation", () => {
         },
       });
     } else {
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     }
   });
 

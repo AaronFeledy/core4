@@ -176,7 +176,7 @@ test("runs converted brackets around the body in Lando 3 order and services", as
   // When
   const { result, executed } = await run(landofile);
   // Then
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(executed).toEqual([
     "node: echo before",
     "node: echo body-one",
@@ -192,7 +192,7 @@ test("stops before the body when a converted pre step fails", async () => {
   // When
   const { result, executed } = await run(landofile, "node: echo before");
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(executed).toEqual(["node: echo before"]);
 });
 
@@ -212,7 +212,7 @@ test("fails the run and skips the tail when a converted post step fails", async 
   // When
   const { result, executed } = await run(landofile, "appserver: echo after");
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(executed).toEqual([
     "node: echo before",
     "node: echo body-one",

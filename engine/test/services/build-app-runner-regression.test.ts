@@ -137,7 +137,8 @@ test("settles started app tasks when the build fiber is interrupted", async () =
           const orchestrator = yield* BuildOrchestrator;
           const fiber = yield* Effect.forkChild(orchestrator.buildApp(plan));
           yield* eventService.waitFor("task.start");
-          const exit = yield* Fiber.interrupt(fiber);
+          yield* Fiber.interrupt(fiber);
+          const exit = yield* Fiber.await(fiber);
           expect(Exit.isFailure(exit)).toBe(true);
           if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
           else throw new TypeError("interrupted build unexpectedly succeeded");

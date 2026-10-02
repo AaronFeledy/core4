@@ -106,7 +106,7 @@ describe("ScratchAppServiceLive", () => {
             Effect.result,
           ),
         );
-        expect(result._tag).toBe("Left");
+        expect(result._tag).toBe("Failure");
         if (result._tag === "Failure") expect(result.failure._tag).toBe("ScratchAppError");
       }
     });
@@ -132,13 +132,13 @@ describe("ScratchAppServiceLive", () => {
         });
 
         const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
-        expect(result.acquired._tag).toBe("Left");
+        expect(result.acquired._tag).toBe("Failure");
         if (result.acquired._tag === "Failure")
           expect(result.acquired.failure._tag).toBe("ScratchSourceUnresolvedError");
         expect(result.listed).toEqual([]);
         expect(result.gc).toEqual({ inspected: 0, reaped: [], errors: [] });
         for (const outcome of [result.resolved, result.started, result.stopped, result.destroyed]) {
-          expect(outcome._tag).toBe("Left");
+          expect(outcome._tag).toBe("Failure");
           if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchAppNotFoundError");
         }
       });

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -220,7 +220,7 @@ const makeLayer = (input: {
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(EventService, {
       publish: () => Effect.void,
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),
@@ -354,7 +354,7 @@ describe("applied-state teardown", () => {
       const result = await Effect.runPromise(
         withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      expect(result).toMatchObject({ _tag: "Left", left: failure });
+      expect(result).toMatchObject({ _tag: "Failure", failure });
       expect(harness.destroyCalls).toEqual([]);
     });
   });

@@ -147,7 +147,7 @@ export const makeHarness = (
               events.push(event);
             })
           : Effect.die(new TypeError(`Unexpected event in destroy progress topology test: ${event._tag}`)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),

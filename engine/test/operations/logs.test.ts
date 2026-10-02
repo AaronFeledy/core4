@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
 
 import { CapabilityError, ToolingExecError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -130,12 +130,13 @@ describe("logsForPlan", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ToolingExecError);
-      if (!(exit.cause.error instanceof ToolingExecError)) return;
-      expect(exit.cause.error.message).toContain("missing");
-      expect(exit.cause.error.message).toContain("database");
-      expect(exit.cause.error.remediation).toBe("Example: lando logs --service database");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ToolingExecError);
+      if (!(error instanceof ToolingExecError)) return;
+      expect(error.message).toContain("missing");
+      expect(error.message).toContain("database");
+      expect(error.remediation).toBe("Example: lando logs --service database");
     }
     expect(calls).toEqual([]);
   });
@@ -148,9 +149,10 @@ describe("logsForPlan", () => {
     const exit = await Effect.runPromiseExit(logsForPlan(plan).pipe(Effect.provide(provide(provider))));
 
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(CapabilityError);
-      expect(exit.cause.error).toMatchObject({ capability: "serviceLogs" });
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(CapabilityError);
+      expect(error).toMatchObject({ capability: "serviceLogs" });
     }
   });
 });

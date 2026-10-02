@@ -116,8 +116,8 @@ test("fails SshAgentUnavailableError capability-missing before provider apply", 
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
+    _tag: "Failure",
+    failure: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
   });
   expect(applied).toBe(false);
 });
@@ -170,7 +170,7 @@ test("host mode with no agent fails host-agent-not-found and never spawns a work
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "host-agent-not-found" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "host-agent-not-found" } });
 });
 
 test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
@@ -272,6 +272,6 @@ test.each(["sidecar", "host"] as const)(
     );
     // Then
     expect(applied).toBe(mode === "sidecar");
-    expect(result._tag).toBe(mode === "sidecar" ? "Right" : "Left");
+    expect(result._tag).toBe(mode === "sidecar" ? "Success" : "Failure");
   },
 );

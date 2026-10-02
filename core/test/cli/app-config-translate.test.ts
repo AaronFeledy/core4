@@ -105,9 +105,7 @@ const makeLando4Encoder = (
   encode: ({ context, fragment }) =>
     Effect.succeed({
       text: emitLandofileYaml(
-        Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
-          fragment ?? context,
-        ),
+        Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(fragment ?? context),
         { sortKeys: true },
       ),
       diagnostics,

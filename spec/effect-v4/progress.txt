@@ -95,3 +95,15 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck fails (237 errors; the tooling dual-shape errors are gone). Effect pin and schema-artifact tests pass (9). The scratch namespace suite does not load (`Logger.replace` is still unported). Lint fails (414 diagnostics, formatter debt from the port, not these fixes).
 ---
+## 2026-10-02 02:42 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-10-02 02:42 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-02 02:42 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-10-02 02:42 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---

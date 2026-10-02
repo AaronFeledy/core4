@@ -54,7 +54,8 @@ describe.serial("live start scanner", () => {
                 .find((line) => line.startsWith('{"_tag":"event","event":"message.warn"'));
               expect(warningLine !== undefined).toBe(path === "/fail");
               if (warningLine !== undefined) {
-                const body = Schema.decodeUnknownSync(Schema.fromJsonString(warning))(warningLine).payload.body;
+                const body = Schema.decodeUnknownSync(Schema.fromJsonString(warning))(warningLine).payload
+                  .body;
                 expect(body).toContain(`${url}/fail`);
                 expect(body).toContain("503");
               }

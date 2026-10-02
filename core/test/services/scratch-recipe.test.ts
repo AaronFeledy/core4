@@ -345,12 +345,14 @@ describe("ScratchAppServiceLive recipe acquire", () => {
         ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") {
         expect(outcome.failure._tag).toBe("ScratchAppError");
         expect(outcome.failure.message).toContain('recipe prompt "php"');
         expect(outcome.failure.message).toContain('Invalid value for prompt "php"');
-        expect(outcome.failure.message).not.toContain("Unable to render the recipe into the scratch app root");
+        expect(outcome.failure.message).not.toContain(
+          "Unable to render the recipe into the scratch app root",
+        );
         expect(outcome.failure.remediation).toBe(
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
@@ -375,7 +377,7 @@ describe("ScratchAppServiceLive recipe acquire", () => {
         ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") {
         expect(outcome.failure._tag).toBe("ScratchSourceUnresolvedError");
         expect(outcome.failure.remediation).toBe(

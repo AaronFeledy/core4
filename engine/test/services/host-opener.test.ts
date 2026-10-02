@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 import { ShellRunner } from "@lando/sdk/services";
 
@@ -60,7 +60,7 @@ describe("openUrl", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect((error as { _tag?: string } | undefined)?._tag).toBe("HostProxyOpenUrlSchemeError");
     }
     expect(record.commands).toEqual([]);

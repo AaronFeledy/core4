@@ -515,7 +515,7 @@ const makeStartLayer = (
       discover: Effect.succeed({
         name: "test-start",
         services: {},
-        events: effectiveEventsForPlan(plannedApp),
+        ...(effectiveEventsForPlan(plannedApp) === undefined ? {} : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,
@@ -574,7 +574,7 @@ const makeStartLayer = (
                 : Effect.void,
           ),
         ),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),
@@ -677,7 +677,6 @@ const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
     networks: [],
     stores: [],
     fileSync: [],
-    requires: undefined,
   };
 };
 
@@ -788,7 +787,7 @@ const makeAutoStartLayer = async (options: {
       discover: Effect.succeed({
         name: options.userPlan.name,
         services: {},
-        events: effectiveEventsForPlan(options.userPlan),
+        ...(effectiveEventsForPlan(options.userPlan) === undefined ? {} : { events: effectiveEventsForPlan(options.userPlan) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,
@@ -1463,8 +1462,8 @@ describe("lando start", () => {
       const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+      if (Exit.isFailure(exit)) {
+        expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProxyTransportUnavailableError);
       }
       expect(harness.applyPlans).toHaveLength(0);
     });
@@ -2081,7 +2080,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2220,7 +2219,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2353,7 +2352,7 @@ describe("lando start", () => {
           Effect.sync(() => {
             events.push(event);
           }),
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2491,7 +2490,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2640,7 +2639,7 @@ describe("lando start", () => {
           Effect.sync(() => {
             events.push(event);
           }),
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2818,7 +2817,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2979,7 +2978,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),

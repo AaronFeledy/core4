@@ -65,9 +65,15 @@ describe("HttpClient contract suite", () => {
 
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
-        Effect.timeoutOrElse(Effect.flatMap(handle.service.stream({ url, timeoutMs: 10 }), (response) =>
+        Effect.timeoutOrElse(
+          Effect.flatMap(handle.service.stream({ url, timeoutMs: 10 }), (response) =>
             Stream.runDrain(response.body),
-          ), { duration: Duration.millis(100), orElse: () => Effect.fail((() => new Error("test body did not time out"))()) }),
+          ),
+          {
+            duration: Duration.millis(100),
+            orElse: () => Effect.fail((() => new Error("test body did not time out"))()),
+          },
+        ),
       ),
     );
 

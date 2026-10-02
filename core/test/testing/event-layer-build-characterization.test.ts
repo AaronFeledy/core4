@@ -5,7 +5,7 @@ import { Context, DateTime, Effect, Layer } from "effect";
 
 test("the public testing event bus shares a graph but rebuilds for nested provide and a new run", async () => {
   // Given: use the public testing export, not makeTestRuntime's fake event bus.
-  const instances: Context.Tag.Service<typeof EventService>[] = [];
+  const instances: Context.Service.Shape<typeof EventService>[] = [];
   const layer = EventServiceLive.pipe(
     Layer.tap((context) => Effect.sync(() => instances.push(Context.get(context, EventService)))),
   );
@@ -15,7 +15,7 @@ test("the public testing event bus shares a graph but rebuilds for nested provid
   const outer = await Effect.runPromise(
     Effect.gen(function* () {
       const outer = yield* EventService;
-      yield* outer.publish({ _tag: "ready", timestamp: DateTime.unsafeMake(0) });
+      yield* outer.publish({ _tag: "ready", timestamp: DateTime.makeUnsafe(0) });
       expect(instances).toHaveLength(1);
       expect(yield* recordedEvents()).toHaveLength(1);
       const nested = yield* Effect.gen(function* () {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Ref } from "effect";
+import { Cause, Effect, Exit, Option, Ref } from "effect";
 
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
@@ -80,12 +80,10 @@ describe("compileEventStepProgram", () => {
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        expect(exit.cause._tag).toBe("Fail");
-        if (exit.cause._tag === "Fail") {
-          expect(exit.cause.error.cause).toBeInstanceOf(ToolingStepSelectorUnavailableError);
-          if (exit.cause.error.cause instanceof ToolingStepSelectorUnavailableError) {
-            expect(exit.cause.error.cause.selector).toBe(selector);
-          }
+        const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+        expect(error.cause).toBeInstanceOf(ToolingStepSelectorUnavailableError);
+        if (error.cause instanceof ToolingStepSelectorUnavailableError) {
+          expect(error.cause.selector).toBe(selector);
         }
       }
     });

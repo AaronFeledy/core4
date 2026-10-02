@@ -220,6 +220,16 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
   const targetSchema = jsonSchemaTarget(target, context);
   if (alreadyVisited(targetSchema, ast, context)) return;
 
+  const projection = jsonObject(ast.annotations?.jsonSchemaProjection);
+  const targetObject = jsonObject(targetSchema);
+  if (projection !== undefined && targetObject !== undefined) {
+    for (const key of Object.keys(targetObject)) delete targetObject[key];
+    Object.assign(targetObject, cloneJson(projection));
+    const description = AST.resolveDescription(ast);
+    if (description !== undefined) targetObject.description = description;
+    return;
+  }
+
   if (AST.isUnion(ast)) {
     setDeprecation(targetSchema, getSchemaDeprecation(ast));
     applyUnionDeprecations(targetSchema, ast, context);
@@ -348,8 +358,13 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
   schema: S,
   options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
 ): unknown => {
+  const rootIdentifier = AST.resolveIdentifier(jsonInputAst(schema.ast));
   const document = JsonSchema.toDocumentDraft07(
-    Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), options),
+    Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), {
+      referencePolicy: ({ identifier }) => identifier === rootIdentifier ? undefined : identifier,
+      includeAnnotationKey: (key) => key === "acceptsImportRef",
+      ...options,
+    }),
   );
   return withSchemaDeprecations(schema, {
     $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Layer, Stream } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -45,7 +45,7 @@ const eventRuntime = (
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => void published.push(event._tag)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),

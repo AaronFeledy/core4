@@ -375,7 +375,7 @@ describe("ScratchAppServiceLive fork acquire", () => {
         ),
       );
 
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("LandofileVersionConstraintError");
       expect(capabilitiesCalls).toBe(0);
     });
@@ -606,7 +606,7 @@ describe("ScratchAppServiceLive fork acquire", () => {
         ),
       );
 
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
         { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
@@ -622,7 +622,7 @@ describe("ScratchAppServiceLive fork acquire", () => {
         ).pipe(Effect.provide(makeScratchForkLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchSourceUnresolvedError");
     });
   });

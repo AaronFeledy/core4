@@ -1,5 +1,5 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
+import { TestClock } from "effect/testing";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
 

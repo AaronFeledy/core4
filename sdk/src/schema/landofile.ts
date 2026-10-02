@@ -119,25 +119,7 @@ const ReservedComposeScalarMapInput = Schema.Unknown.annotate({
   },
 });
 
-const ReservedDependencyMapInput = Schema.Unknown.annotate({
-  jsonSchema: {
-    type: "object",
-    propertyNames: RESERVED_KEY_PROPERTY_NAMES,
-    additionalProperties: {
-      type: "object",
-      required: ["condition"],
-      properties: {
-        condition: {
-          type: "string",
-          enum: ["service_started", "service_healthy", "service_completed_successfully"],
-        },
-        required: { type: "boolean" },
-        restart: { type: "boolean" },
-      },
-      additionalProperties: false,
-    },
-  },
-});
+const ReservedDependencyMapInput = Schema.Record(Schema.String, ServiceDependencyInput);
 
 const reservedMapKeyFailure = (input: unknown) =>
   Effect.fail(
@@ -438,7 +420,7 @@ const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
 
 const ServiceSecurityCaEntry = Schema.Union([Schema.String, StringImportRef]).annotate({
-  jsonSchema: { acceptsImportRef: true },
+  acceptsImportRef: true,
 });
 
 const ServiceSecurity = Schema.Struct({
@@ -667,7 +649,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
-    environment: Schema.optionalKey(ComposeEnvironmentInput),
+    environment: Schema.optionalKey(ComposeEnvironmentInput).annotateKey({
+      description: "Service environment variables as a map or a Compose KEY=value list; host-environment interpolation is rejected.",
+    }),
     envFile: Schema.optionalKey(ComposeEnvFileInput).annotate({
       description:
         "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
@@ -746,7 +730,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "Hostnames routed to service endpoints.",
     }),
 
-    healthcheck: Schema.optionalKey(HealthcheckField).annotate({
+    healthcheck: Schema.optionalKey(HealthcheckField).annotateKey({
       description:
         "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.",
     }),
@@ -756,7 +740,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
-    dependsOn: Schema.optionalKey(ComposeDependsOnInput),
+    dependsOn: Schema.optionalKey(ComposeDependsOnInput).annotateKey({
+      description: "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
+    }),
 
     providers: Schema.optionalKey(ProviderExtensionConfig).annotate({
       description: "Provider-specific service configuration keyed by provider id.",

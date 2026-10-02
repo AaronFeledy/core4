@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, DateTime, Effect, Result, Exit, Schema } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Result, Schema } from "effect";
 
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";

@@ -137,15 +137,22 @@ describe("BuildOrchestrator app phase", () => {
           target: { readonly service: ServiceName },
           command: { readonly command: ReadonlyArray<string> },
         ) =>
-          Stream.scoped(Stream.fromEffect(Effect.acquireRelease(Effect.sync(() => {
-              calls += 1;
-              active += 1;
-              maxActive = Math.max(maxActive, active);
-              return String(target.service);
-            }), () =>
-              Effect.sync(() => {
-                active -= 1;
-              })))).pipe(Stream.flatMap((name) => outputStream(name, Number(command.command[1] ?? "0"), 0))),
+          Stream.scoped(
+            Stream.fromEffect(
+              Effect.acquireRelease(
+                Effect.sync(() => {
+                  calls += 1;
+                  active += 1;
+                  maxActive = Math.max(maxActive, active);
+                  return String(target.service);
+                }),
+                () =>
+                  Effect.sync(() => {
+                    active -= 1;
+                  }),
+              ),
+            ),
+          ).pipe(Stream.flatMap((name) => outputStream(name, Number(command.command[1] ?? "0"), 0))),
       } satisfies RuntimeProviderShape;
 
       // When

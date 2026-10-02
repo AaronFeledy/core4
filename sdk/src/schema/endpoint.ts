@@ -22,7 +22,7 @@ export const BindAddress = Schema.String.pipe(
   Schema.check(
     Schema.makeFilter(isBindAddress, {
       message: "Expected an IPv4 or IPv6 bind address.",
-      jsonSchema: { format: "ip" },
+      toJsonSchema: () => ({ format: "ip" }),
     }),
   ),
 );

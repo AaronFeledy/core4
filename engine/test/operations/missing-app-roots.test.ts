@@ -166,7 +166,8 @@ test("groups plans by their recorded identity root and sorts roots deterministic
 });
 
 test("ignores applied plans without an identity, which teardown cannot target", async () => {
-  const result = await run([snapshot({ appliedPlans: [{ ...plan, identity: undefined }] })]);
+  const { identity: _identity, ...withoutIdentity } = plan;
+  const result = await run([snapshot({ appliedPlans: [withoutIdentity] })]);
   expect(result).toEqual([]);
 });
 

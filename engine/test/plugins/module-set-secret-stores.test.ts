@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { SecretStore } from "@lando/sdk/services";
-import { Effect, Result, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { makePluginCapabilityIndex } from "../../src/plugins/module-set.ts";
 
 const module: LandoPluginModule = {

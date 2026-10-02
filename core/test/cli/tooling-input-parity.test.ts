@@ -17,7 +17,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Context, DateTime, Effect, Result, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Result, Schema } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";

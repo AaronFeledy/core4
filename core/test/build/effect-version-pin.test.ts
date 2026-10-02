@@ -26,12 +26,16 @@ const readManifest = async (path: string): Promise<PackageManifest> =>
   JSON.parse(await Bun.file(path).text()) as PackageManifest;
 
 const rootManifest = await readManifest(resolve(repoRoot, "package.json"));
-const workspaceGlobs = (rootManifest.workspaces as { packages?: ReadonlyArray<string> } | undefined)?.packages ?? [];
+const workspaceGlobs =
+  (rootManifest.workspaces as { packages?: ReadonlyArray<string> } | undefined)?.packages ?? [];
 
 const workspaceDirs = async (): Promise<ReadonlyArray<string>> => {
   const dirs: string[] = [];
   for (const pattern of workspaceGlobs) {
-    for await (const match of new Bun.Glob(`${pattern}/package.json`).scan({ cwd: repoRoot, onlyFiles: true })) {
+    for await (const match of new Bun.Glob(`${pattern}/package.json`).scan({
+      cwd: repoRoot,
+      onlyFiles: true,
+    })) {
       dirs.push(match.slice(0, -"/package.json".length));
     }
   }
@@ -44,7 +48,11 @@ const importsEffect = async (dir: string): Promise<boolean> => {
     if (path.includes("/node_modules/") || path.includes("/dist/")) continue;
     const source = await Bun.file(path).text();
     if (!source.includes("effect")) continue;
-    if (scanModuleEdges(path, source).some((edge) => edge.specifier === "effect" || edge.specifier.startsWith("effect/"))) {
+    if (
+      scanModuleEdges(path, source).some(
+        (edge) => edge.specifier === "effect" || edge.specifier.startsWith("effect/"),
+      )
+    ) {
       return true;
     }
   }
@@ -54,7 +62,9 @@ const importsEffect = async (dir: string): Promise<boolean> => {
 describe("Effect version pin", () => {
   test("root workspaces use the object form with an exact effect catalog entry", () => {
     // Given: the root manifest owns the single Effect version.
-    const workspaces = rootManifest.workspaces as { packages?: unknown; catalog?: Record<string, string> } | undefined;
+    const workspaces = rootManifest.workspaces as
+      | { packages?: unknown; catalog?: Record<string, string> }
+      | undefined;
 
     // Then: the catalog pins exactly one Effect release and lists workspace packages.
     expect(Array.isArray(workspaces?.packages)).toBe(true);

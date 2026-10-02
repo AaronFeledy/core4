@@ -185,7 +185,9 @@ describe("update telemetry", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       expect(
-        Cause.findErrorOption(exit.cause).pipe((option) => (option._tag === "Some" ? option.value : undefined)),
+        Cause.findErrorOption(exit.cause).pipe((option) =>
+          option._tag === "Some" ? option.value : undefined,
+        ),
       ).toBe(failure);
     }
 

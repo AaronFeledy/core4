@@ -32,8 +32,8 @@ afterEach(async () => {
 
 type CommandsBootstrapLayer = ReturnType<typeof makeCommandsBootstrapLayer>;
 type SelfContainedBootstrapLayer = Layer.Layer<
-  Layer.Layer.Success<CommandsBootstrapLayer>,
-  Layer.Layer.Error<CommandsBootstrapLayer>
+  Layer.Success<CommandsBootstrapLayer>,
+  Layer.Error<CommandsBootstrapLayer>
 >;
 
 /**

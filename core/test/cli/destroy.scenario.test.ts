@@ -341,7 +341,7 @@ const makeDestroyLayer = (
         events.push(event._tag);
         publishedEvents.push(event);
       }),
-    subscribe: () => Effect.die("not used"),
+    subscribe: () => Stream.die("not used"),
     subscribeQueue: Effect.die("not used"),
     waitFor: () => Effect.die("not used"),
     waitForAny: () => Effect.die("not used"),

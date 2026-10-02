@@ -169,7 +169,7 @@ test.each(["provider", "no-plan", "scratch"] as const)(
       // When: poweroff uses its production stop.
       const result = await Effect.runPromise(poweroff(options).pipe(Effect.result, Effect.provide(layer)));
       // Then: no successful result or runtime teardown hides the failed stop.
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
       if (result._tag !== "Failure") throw new Error("Expected a typed stop failure");
       expect(result.failure).toMatchObject({
         _tag: "PoweroffStopError",
@@ -194,7 +194,7 @@ test("turns injected stop rejection into a tagged failure", async () => {
       }).pipe(Effect.result, Effect.provide(layer)),
     );
     // Then: poweroff fails without claiming success or shutting down the runtime.
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(calls).toEqual([]);
   });
 });
@@ -256,7 +256,7 @@ test("omits the global post event when its provider fails", async () => {
       }).pipe(Effect.result, Effect.provide(layer)),
     );
     // Then: the failed stop never emits a success event.
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(events).toEqual(["pre-global-stop"]);
   }, "provider");
 });

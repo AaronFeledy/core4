@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { AppId } from "@lando/sdk/schema";
-import { Deferred, Effect, Result, Fiber } from "effect";
+import { Deferred, Effect, Fiber, Result } from "effect";
 import { withinEventInvocation } from "../../src/operations/event-invocation.ts";
 
 const frame = (id: string) => ({ app: AppId.make(id), event: "pre-start" as const, file: "/app/.lando.yml" });

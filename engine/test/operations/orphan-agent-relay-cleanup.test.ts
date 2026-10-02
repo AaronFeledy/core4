@@ -16,7 +16,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -87,7 +87,7 @@ const layerFor = (root: string) => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),

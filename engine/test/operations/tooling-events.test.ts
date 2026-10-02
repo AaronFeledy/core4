@@ -27,7 +27,7 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
@@ -96,7 +96,7 @@ const harness = (input: {
   const provider = {
     ...TestRuntimeProvider,
     execStream: (_target: ExecTarget, spec: CommandSpec) =>
-      Effect.succeed({ exitCode: record(executedLabel(spec.command, "exec")) }),
+      Stream.make({ exitCode: record(executedLabel(spec.command, "exec")) }),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const eventRuntime =
@@ -207,7 +207,7 @@ test("skips the post bracket when the task body exits non-zero", async () => {
   // Then the remaining steps and the post bracket never run
   expect(h.executed).toEqual(["echo before", "echo body-one"]);
   // And the non-zero exit stays the task result rather than becoming a failure
-  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 7 } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 7 } });
 });
 
 test("a failing pre bracket prevents the task body", async () => {
@@ -222,8 +222,8 @@ test("a failing pre bracket prevents the task body", async () => {
   // Then the body never runs and the failure is tagged with the event identity
   expect(h.executed).toEqual(["echo before"]);
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "LandofileEventStepFailedError", event: "pre-build", exitCode: 7 },
+    _tag: "Failure",
+    failure: { _tag: "LandofileEventStepFailedError", event: "pre-build", exitCode: 7 },
   });
 });
 
@@ -277,8 +277,8 @@ test("fails a configured bracket when the event runtime is unavailable", async (
   // Then the bracket refuses loudly instead of being silently dropped
   expect(h.executed).toEqual([]);
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "LandofileEventStepFailedError", event: "pre-build" },
+    _tag: "Failure",
+    failure: { _tag: "LandofileEventStepFailedError", event: "pre-build" },
   });
 });
 

@@ -1,4 +1,3 @@
-import { TestClock } from "effect/testing";
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { type Server, createServer } from "node:http";
@@ -6,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -1584,7 +1584,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         );
         yield* Deferred.await(rootReadStarted);
         expect(rootReads).toBe(1);
-        expect(Option.isNone(yield* fiber.pollUnsafe())).toBe(true);
+        expect(fiber.pollUnsafe()).toBeUndefined();
         yield* TestClock.adjust("25 millis");
         return yield* Fiber.join(fiber);
       }).pipe(

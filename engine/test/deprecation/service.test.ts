@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import { type DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
@@ -252,7 +252,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(DeprecatedSurfaceError);
     }
   });
@@ -268,7 +268,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(DeprecationContradictionError);
     }
   });
@@ -354,7 +354,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect((failure as { _tag?: string } | undefined)?._tag).toBe("SetupFlagCollisionError");
     }
   });

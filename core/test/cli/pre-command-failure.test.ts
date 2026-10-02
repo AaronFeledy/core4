@@ -135,7 +135,7 @@ describe("pre-command failure surface", () => {
       message: "Failed to construct the app runtime layer.",
       stage: "app",
     });
-    const failingRuntime = Layer.fail(bootstrapError) as Layer.Layer<never, LandoRuntimeBootstrapError>;
+    const failingRuntime = Layer.effectDiscard(Effect.fail(bootstrapError));
 
     await runWithRendererHandling(Effect.succeed("unreached"), {
       runtime: Layer.merge(failingRuntime, harness.layer) as Layer.Layer<
@@ -171,12 +171,12 @@ describe("pre-command failure surface", () => {
     const previous = process.env.BUN_AUTH_TOKEN;
     process.env.BUN_AUTH_TOKEN = "layer-secret-token";
     try {
-      const failingRuntime = Layer.fail(
+      const failingRuntime = Layer.effectDiscard(Effect.fail(
         new PreCommandLayerError({
           message: "boot failed with layer-secret-token",
           remediation: "Unset BUN_AUTH_TOKEN=layer-secret-token and retry.",
         }),
-      ) as Layer.Layer<never, PreCommandLayerError>;
+      ));
 
       await runWithRendererHandling(Effect.succeed("unreached"), {
         runtime: failingRuntime,
