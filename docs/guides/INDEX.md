@@ -287,3 +287,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
 | — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
+| — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
