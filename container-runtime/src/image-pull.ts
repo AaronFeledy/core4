@@ -4,8 +4,8 @@ import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/erro
 import { ImagePullProgressEvent } from "@lando/sdk/events";
 
 import type { PullDialect } from "./dialect.ts";
-import type { EngineHttpApi, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
-import { missingApi } from "./engine-errors.ts";
+import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { redactDetails, redactString, withApiReason } from "./redact.ts";
 
 const REGISTRY_AUTH_REMEDIATION =
@@ -197,23 +197,6 @@ const pullFailureFromTransport = (
     : pullFailure(input);
 };
 
-const parseResponseJson = (
-  response: EngineHttpResponse,
-  ctx: ProviderErrorContext,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: (): unknown => (response.body.length === 0 ? {} : JSON.parse(response.body)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: ctx.providerId,
-        operation: "pullArtifact",
-        message: "Container engine API returned malformed JSON.",
-        details: redactDetails(response),
-        remediation: ctx.remediation,
-        cause,
-      }),
-  });
-
 export const pullImage = <E = never>(
   api: EngineHttpApi,
   reference: string,
@@ -245,7 +228,7 @@ export const pullImage = <E = never>(
                   ...(frame.stream === undefined ? {} : { stream: redactString(frame.stream) }),
                   ...(frame.current === undefined ? {} : { current: frame.current }),
                   ...(frame.total === undefined ? {} : { total: frame.total }),
-                  timestamp: DateTime.unsafeMake(Date.now()),
+                  timestamp: DateTime.unsafeNow(),
                 }),
               );
       }
@@ -313,7 +296,10 @@ export const pullImage = <E = never>(
         }),
       );
     }
-    const decoded = yield* parseResponseJson(response, options.ctx);
+    const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
+      message: "Container engine API returned malformed JSON.",
+      details: redactDetails(response),
+    });
     const digest = inspect.decodeDigest(decoded);
     return { ref: reference, ...(digest === undefined ? {} : { digest }) };
   });

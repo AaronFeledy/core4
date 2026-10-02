@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { PluginManifestError } from "@lando/sdk/errors";
+import { Effect } from "effect";
 
 const isMissingPathError = (cause: unknown): boolean =>
   typeof cause === "object" &&
@@ -30,10 +31,7 @@ const looksLikePluginPackage = (pkg: Readonly<Record<string, unknown>>): boolean
   return Array.isArray(keywords) && keywords.some((entry) => entry === "lando-plugin");
 };
 
-export const findNearestPluginPackageRoot = async (
-  cwd: string,
-  commandId: "meta:plugin:build" | "meta:plugin:test" | "meta:plugin:publish",
-): Promise<string> => {
+export const findNearestPluginPackageRoot = async (cwd: string, commandId: string): Promise<string> => {
   let current = resolve(cwd);
   while (true) {
     const packagePath = join(current, "package.json");
@@ -55,3 +53,18 @@ export const findNearestPluginPackageRoot = async (
     current = parent;
   }
 };
+
+export const resolvePluginPackageRoot = (cwd: string | undefined, commandId: string) =>
+  Effect.gen(function* () {
+    const directory = cwd ?? process.cwd();
+    return yield* Effect.tryPromise({
+      try: () => findNearestPluginPackageRoot(directory, commandId),
+      catch: (cause) =>
+        cause instanceof PluginManifestError
+          ? cause
+          : new PluginManifestError({
+              message: `Unable to locate plugin root from ${resolve(directory)}.`,
+              issues: [String(cause)],
+            }),
+    });
+  });

@@ -7,7 +7,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../landofile/src/compose/dispositions.ts";
+} from "@lando/sdk/landofile";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "docs/reference/compose-key-matrix.mdx");

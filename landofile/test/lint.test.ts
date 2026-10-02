@@ -11,7 +11,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../src/compose/dispositions.ts";
+} from "@lando/sdk/landofile";
 import { lintLandofile } from "../src/lint.ts";
 
 describe("lintLandofile", () => {

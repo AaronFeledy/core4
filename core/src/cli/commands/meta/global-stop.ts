@@ -3,7 +3,6 @@ import { DateTime, Effect, Schema } from "effect";
 import type { EventError, ProxyError } from "@lando/sdk/errors";
 
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   EventService,
@@ -13,13 +12,12 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { globalAppRef } from "./global-common";
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
-
-const globalAppRef = (plan: AppPlan): AppRef => ({ kind: "global", id: plan.id, root: plan.root });
+const now = () => DateTime.unsafeNow();
 
 export interface GlobalStopResult {
   readonly app: string;

@@ -1,11 +1,15 @@
 import { Effect, Stream } from "effect";
 
+import {
+  UstarHeaderError,
+  TAR_BLOCK_SIZE as blockSize,
+  encodeUstarHeader,
+  padToBlock,
+} from "@lando/container-runtime/tar";
 import { ArchiveFormatError } from "@lando/sdk/errors";
 
 export type ArchiveStreamFormat = "tar" | "tar.gz" | "tar.zst";
 
-const blockSize = 512;
-const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const archiveError = (format: ArchiveStreamFormat, path: string, message: string, cause?: unknown) =>
@@ -16,34 +20,6 @@ const archiveError = (format: ArchiveStreamFormat, path: string, message: string
     ...(cause === undefined ? {} : { cause }),
     remediation: "Recreate the archive and retry the transfer.",
   });
-
-const octal = (value: number, width: number, path: string): string => {
-  const text = value.toString(8);
-  if (text.length > width - 1)
-    throw archiveError("tar", path, "Archive payload is too large for the tar header.");
-  return text.padStart(width - 1, "0");
-};
-
-const writeAscii = (target: Uint8Array, offset: number, value: string, length: number): void => {
-  target.set(encoder.encode(value).slice(0, length), offset);
-};
-
-const tarHeader = (size: number, path: string): Uint8Array => {
-  const header = new Uint8Array(blockSize);
-  writeAscii(header, 0, "payload", 100);
-  writeAscii(header, 100, `${octal(0o644, 8, path)}\0`, 8);
-  writeAscii(header, 108, `${octal(0, 8, path)}\0`, 8);
-  writeAscii(header, 116, `${octal(0, 8, path)}\0`, 8);
-  writeAscii(header, 124, `${octal(size, 12, path)}\0`, 12);
-  writeAscii(header, 136, `${octal(0, 12, path)}\0`, 12);
-  header.fill(0x20, 148, 156);
-  writeAscii(header, 156, "0", 1);
-  writeAscii(header, 257, "ustar", 6);
-  writeAscii(header, 263, "00", 2);
-  const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  writeAscii(header, 148, `${octal(checksum, 7, path)}\0 `, 8);
-  return header;
-};
 
 const compressionName = (format: Exclude<ArchiveStreamFormat, "tar">): "gzip" | "zstd" =>
   format === "tar.gz" ? "gzip" : "zstd";
@@ -88,9 +64,17 @@ export const encodeArchiveStream = <E, R>(input: {
   readonly format: ArchiveStreamFormat;
   readonly path: string;
 }): Stream.Stream<Uint8Array, E | ArchiveFormatError, R> => {
-  const padding = (blockSize - (input.sizeBytes % blockSize)) % blockSize;
+  let header: Uint8Array;
+  try {
+    header = encodeUstarHeader({ name: "payload", size: input.sizeBytes, mode: 0o644, typeflag: "0" });
+  } catch (cause) {
+    if (cause instanceof UstarHeaderError)
+      throw archiveError("tar", input.path, "Archive payload is too large for the tar header.");
+    throw cause;
+  }
+  const padding = padToBlock(input.sizeBytes);
   const tar = Stream.concat(
-    Stream.make(tarHeader(input.sizeBytes, input.path)),
+    Stream.make(header),
     Stream.concat(input.body, Stream.make(new Uint8Array(padding + blockSize * 2))),
   );
   return input.format === "tar" ? tar : throughCompression(tar, input.format, input.path);

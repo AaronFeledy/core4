@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 
 import { Context, Effect, Layer, Schema } from "effect";
 
-import { ScratchAppError } from "@lando/sdk/errors";
+import { ScratchAppError, isErrnoCode } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { StateBucket } from "@lando/sdk/services";
 
@@ -111,9 +111,6 @@ const scratchRegistryError = (operation: string, message: string, cause: unknown
 const sortById = (entries: RegistryEntries): RegistryEntries =>
   [...entries].sort((left, right) => left.id.localeCompare(right.id));
 
-const isMissing = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && (cause as { readonly code?: unknown }).code === "ENOENT";
-
 const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
   try {
     const parsed = JSON.parse(content) as unknown;
@@ -150,7 +147,7 @@ const migrateLegacyEnvelope = (privateFileAccess: PrivateFileAccess): Effect.Eff
         try {
           return decodeLegacyEnvelope(await readFile(registryFile, "utf8"));
         } catch (cause) {
-          if (isMissing(cause)) return null;
+          if (isErrnoCode(cause, "ENOENT")) return null;
           return null;
         }
       });

@@ -16,7 +16,7 @@ cd my-jekyll
 
 Jekyll declares no recipe options, so the only prompt is the app name and `--yes` answers it. Pass an undeclared `--answer` and init fails instead of quietly ignoring it.
 
-The scaffold writes only `.lando.yml`. Park `builder` with compile tooling before the first start, install gems and scaffold the site, then restore the serve command. Open the **builder** URL from `lando info` after that restore.
+The scaffold writes only `.lando.yml`. Park `builder` with compile tooling before the first start, install gems and scaffold the site, then restore the serve command. Open the **builder** URL from `lando info` after that restore. The app hostname URL (`web`) serves `_site/` through nginx once a build has written it.
 
 For park, install, scaffold, build, browse, and cleanup steps, see [Run the Jekyll recipe](/guides/recipes/jekyll-workflow/).
 
@@ -37,6 +37,7 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"builder\":\\s*\\{[^}]*\"type\":\\s*\"ruby:3\\.3\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bundle exec jekyll serve --host 0.0.0.0 --port 4000" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/_site\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

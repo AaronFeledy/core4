@@ -3,12 +3,9 @@ import { Flags } from "../../../spec/metadata";
 import type { ScratchGcReport } from "@lando/sdk/services";
 import { ScratchGcReportResultSchema, renderScratchGcReport, scratchGc } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";
 
-export const pruneFromInput = (input: unknown): boolean => {
-  if (typeof input !== "object" || input === null) return false;
-  const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
-  return flags.prune === true;
-};
+export const pruneFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "prune");
 
 export const appsScratchGcSpec: LandoCommandSpec<ScratchGcReport> = {
   resultSchema: ScratchGcReportResultSchema,

@@ -5,7 +5,7 @@ import { rename, stat } from "node:fs/promises";
 
 import { Effect, Layer } from "effect";
 
-import { StateStoreError } from "@lando/sdk/errors";
+import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import {
   type StateBucket,
@@ -24,9 +24,6 @@ import {
   PrivateFileAccessLive,
   PrivateFileAccessService,
 } from "./private-file-access.ts";
-
-const isMissing = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && (cause as { code?: string }).code === "ENOENT";
 
 const ioError = (operation: string, path: string, cause: unknown): StateStoreError =>
   new StateStoreError({ reason: "io", operation, path, cause });
@@ -70,7 +67,7 @@ const buildBucket = <A, I>(
     catch: (cause) => ioError("get", file, cause),
   }).pipe(
     Effect.catchIf(
-      (error) => isMissing(error.cause),
+      (error) => isErrnoCode(error.cause, "ENOENT"),
       () => Effect.succeed<Uint8Array | null>(null),
     ),
   );
@@ -186,7 +183,7 @@ const buildBucket = <A, I>(
       catch: (cause) => ioError("remove", file, cause),
     }).pipe(
       Effect.catchIf(
-        (error) => isMissing(error.cause),
+        (error) => isErrnoCode(error.cause, "ENOENT"),
         () => Effect.void,
       ),
     ),
@@ -198,7 +195,7 @@ const buildBucket = <A, I>(
   }).pipe(
     Effect.as(true),
     Effect.catchIf(
-      (error) => isMissing(error.cause),
+      (error) => isErrnoCode(error.cause, "ENOENT"),
       () => Effect.succeed(false),
     ),
   );

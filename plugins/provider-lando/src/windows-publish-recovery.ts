@@ -1,3 +1,4 @@
+import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -105,8 +106,8 @@ export const publishedFactsFromPodman = (input: {
   const entries = networks === undefined ? [] : Object.entries(networks);
   if (
     typeof container?.Id !== "string" ||
-    typeof labels?.["dev.lando.app"] !== "string" ||
-    typeof labels?.["dev.lando.service"] !== "string" ||
+    typeof labels?.[APP_LABEL] !== "string" ||
+    typeof labels?.[SERVICE_LABEL] !== "string" ||
     entries.length !== 1 ||
     bindings === undefined
   )
@@ -167,8 +168,8 @@ export const publishedFactsFromPodman = (input: {
     networkName,
     subnet,
     containerId: container.Id,
-    appId: labels["dev.lando.app"],
-    serviceId: labels["dev.lando.service"],
+    appId: labels[APP_LABEL],
+    serviceId: labels[SERVICE_LABEL],
     containerAddress: attachment.IPAddress,
     publishedPorts,
     liveAddresses,

@@ -14,7 +14,6 @@ import type {
   SecretStoreUnavailableError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -26,14 +25,13 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { globalAppRef, renderGlobalServiceRow } from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
-
-const globalAppRef = (plan: AppPlan): AppRef => ({ kind: "global", id: plan.id, root: plan.root });
+const now = () => DateTime.unsafeNow();
 
 export interface GlobalRebuildOptions {
   readonly signal?: AbortSignal;
@@ -157,11 +155,6 @@ export const globalRebuild = (
 export const renderGlobalRebuildResult = (result: GlobalRebuildResult): string => {
   if (!result.materialized) return "global app is not installed";
   if (result.servicesRebuilt.length === 0) return `rebuilt: ${result.app} - no services`;
-  const services = result.servicesRebuilt
-    .map((service) => {
-      const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
-      return `${service.name} (${service.state}) ${endpoints}`;
-    })
-    .join("; ");
+  const services = result.servicesRebuilt.map(renderGlobalServiceRow).join("; ");
   return `rebuilt: ${result.app} - ${services}`;
 };

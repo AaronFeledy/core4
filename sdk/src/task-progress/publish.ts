@@ -20,7 +20,7 @@ import type { EventServiceShape } from "../services/events.ts";
 
 export type ProgressEmitter = Pick<EventServiceShape, "publish">;
 
-const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
+const nowUtc = () => DateTime.unsafeNow();
 
 const publishEvent = (
   events: ProgressEmitter | undefined,

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
+import { serviceContainerName } from "../plan.ts";
 
-import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, EndpointPlan, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
@@ -10,7 +11,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi } from "../engine-errors.ts";
+import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import { withApiReason } from "../redact.ts";
 
 interface ContainerInspect {
@@ -78,8 +79,7 @@ export interface InspectOptions {
   readonly ctx: ProviderErrorContext;
 }
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const apiRequired = (ctx: ProviderErrorContext, operation: string): ProviderUnavailableError =>
   missingApi(ctx, operation, `provider-${ctx.providerId} ${operation} requires an engine API client.`);
@@ -98,21 +98,6 @@ const request = (
   operation: string,
 ): Effect.Effect<EngineHttpResponse, ProviderError> =>
   deps.api.request === undefined ? Effect.fail(apiRequired(deps.ctx, operation)) : deps.api.request(input);
-
-const parseJson = (
-  ctx: ProviderErrorContext,
-  response: EngineHttpResponse,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: ctx.providerId,
-        operation: "inspect",
-        message: `provider-${ctx.providerId} API returned invalid JSON.`,
-        cause,
-      }),
-  });
 
 const statusFromInspect = (inspect: ContainerInspect): string => {
   if (inspect.State?.Running === true || inspect.State?.Status === "running") {
@@ -192,7 +177,7 @@ export const inspect = (
       );
     }
 
-    const decoded = (yield* parseJson(ctx, response)) as ContainerInspect;
+    const decoded = (yield* parseEngineJson(response, ctx, "inspect")) as ContainerInspect;
     const status = statusFromInspect(decoded);
     const health = healthFromInspect(decoded);
     const startedAt = lastStartedAt(decoded);

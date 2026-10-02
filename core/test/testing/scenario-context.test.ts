@@ -304,7 +304,7 @@ describe("withScenarioContext", () => {
             "services:",
             "  web:",
             "    type: static",
-            "    root: dist",
+            "    webroot: /app/dist",
           ]);
           yield* Effect.promise(() =>
             writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
@@ -568,7 +568,7 @@ describe("ScenarioContextFactory", () => {
             "services:",
             "  web:",
             "    type: static",
-            "    root: dist",
+            "    webroot: /app/dist",
           ]);
           yield* Effect.promise(() =>
             writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),

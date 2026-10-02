@@ -1,7 +1,6 @@
 import { type Context, Effect, Layer, Stream } from "effect";
 
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
-import type { Redactor } from "@lando/sdk/secrets";
 import {
   EventService,
   type ProcessResult,
@@ -13,6 +12,7 @@ import {
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { identityRedactor } from "@lando/sdk/command-result";
 
 const textEncoder = new TextEncoder();
 
@@ -42,10 +42,6 @@ const timeoutError = (input: ProcessSpawnOptions, elapsedMs: number): ProcessTim
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     elapsedMs,
   });
-
-type RuntimeRedactor = Pick<Redactor, "redactString" | "redactValue">;
-
-const identityRedactor: RuntimeRedactor = { redactString: (text) => text, redactValue: (value) => value };
 
 const redactorForInput = (input: ProcessSpawnOptions) =>
   Effect.gen(function* () {

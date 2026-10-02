@@ -237,6 +237,9 @@ export interface ServiceRuntimeIdentity {
 export interface ListFilter {
   readonly app?: AppId;
   readonly includeScratch?: boolean;
+  /** Also report Lando-labeled containers no applied plan accounts for. Used by teardown evidence
+   * and host-wide observation; providers that already discover by label may ignore this flag. */
+  readonly includeUnplanned?: boolean;
 }
 
 /** Runtime resources owned by one app root that no applied plan accounts for. */
@@ -253,6 +256,15 @@ export type AppliedTeardownEvidence =
   | { readonly kind: "orphans"; readonly groups: ReadonlyArray<AppliedOrphanGroup> }
   | { readonly kind: "absent" };
 
+/** Read-only host-wide evidence; an unobserved runtime contributes only applied plans. */
+export interface ProviderRuntimeSnapshot {
+  readonly providerId: ProviderId;
+  readonly runtimeObserved: boolean;
+  readonly appliedPlans: ReadonlyArray<AppPlan>;
+  readonly services: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly volumes: ReadonlyArray<VolumeInfo>;
+}
+
 export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
   RuntimeProviderRegistry,
   {
@@ -265,6 +277,10 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
     readonly resolveTeardownEvidence?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly observeRuntime?: Effect.Effect<
+      ReadonlyArray<ProviderRuntimeSnapshot>,
+      AppResolveError | ProviderError | NoProviderInstalledError
+    >;
   }
 >() {}
 

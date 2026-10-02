@@ -2,7 +2,6 @@ import { type Context, DateTime, Effect, FiberRef, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
 import type { ArtifactRef, ProviderError } from "@lando/sdk/services";
 import {
   BuildOrchestrator,
@@ -14,6 +13,7 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { identityRedactor } from "@lando/sdk/command-result";
 import { collectAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
@@ -29,7 +29,7 @@ import { makeBuildTranscriptPath } from "./build-transcript.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
-const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+const timestamp = () => DateTime.unsafeNow();
 
 const isScratchPlan = (plan: AppPlan): boolean => String(plan.id).startsWith("scratch-");
 
@@ -244,8 +244,6 @@ const buildService = (input: {
       return serviceWithArtifact(service, artifact);
     }).pipe(Effect.tapError(() => progress.failTask(service)));
   });
-
-const identityRedactor: Pick<Redactor, "redactString"> = { redactString: (text) => text };
 
 export const BuildOrchestratorLive = Layer.effect(
   BuildOrchestrator,

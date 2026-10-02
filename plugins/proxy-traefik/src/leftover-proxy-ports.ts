@@ -6,7 +6,7 @@ import { Socket } from "node:net";
 import { makeLandoPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import type { HostPlatform } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { Effect, absurd } from "effect";
 
 import { type TraefikPublishState, resolveTraefikPublishPorts } from "./global-services/traefik.ts";
 import { commLooksLikeRootlessport, identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
@@ -44,10 +44,6 @@ const HTTP_PROBE_MS = 500;
 const LAST_FALLBACK: LeftoverProxyPortPair = {
   httpPort: TRAEFIK_HTTP_PORT,
   httpsPort: TRAEFIK_HTTPS_PORT,
-};
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
 
 const isLeftoverRootlessportHolder = (snapshot: LoopbackPortSnapshot): boolean =>
@@ -119,7 +115,7 @@ const readPort = async (
     case "open":
       break;
     default:
-      return assertNever(tcp);
+      return absurd<never>(tcp);
   }
 
   if (await probeHttp(port, role)) {

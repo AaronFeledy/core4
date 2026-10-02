@@ -1,4 +1,3 @@
-import type { ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
 import {
   identityKeyFor,
   isPlainRecord,
@@ -6,7 +5,8 @@ import {
   mergeValues,
   routeFilterIdentity,
   routeFilterMatches,
-} from "./v4-merge.ts";
+} from "@lando/sdk/landofile";
+import type { ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
 
 type UnitSegment =
   | { readonly kind: "key"; readonly key: string }
