@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Effect } from "effect";
 
+import { isPathWithin } from "@lando/paths";
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
@@ -143,14 +144,6 @@ const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray
     .filter((source) => !isRemoteInclude(source));
 };
 
-const pathIsUnderRoot = (root: string, path: string): boolean => {
-  const relativePath = relative(root, path);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
-};
-
 const realpathIfPresent = async (path: string): Promise<string | undefined> => {
   try {
     return await realpath(path);
@@ -167,7 +160,7 @@ const localIncludePath = async (
 ): Promise<{ readonly filePath: string; readonly relativePath: string } | undefined> => {
   if (isRemoteInclude(source)) return undefined;
   const candidate = isAbsolute(source) ? source : resolve(appRoot, source);
-  if (!pathIsUnderRoot(appRoot, candidate)) {
+  if (!isPathWithin(appRoot, candidate)) {
     if (!allowOutsideRoot || !isAbsolute(source)) return undefined;
     const realCandidate = await realpathIfPresent(candidate);
     return {
@@ -181,7 +174,7 @@ const localIncludePath = async (
   if (realCandidate === undefined) {
     return { filePath: candidate, relativePath: relative(appRoot, candidate).split(sep).join("/") };
   }
-  if (!pathIsUnderRoot(realRoot, realCandidate)) {
+  if (!isPathWithin(realRoot, realCandidate)) {
     throw new CacheError({
       message: `Local include ${source} resolves outside the app root.`,
       key: "app-command",
