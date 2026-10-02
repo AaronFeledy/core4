@@ -132,7 +132,10 @@ test("missing explicit socket fails without falling back", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing", socketPath: "/missing" } });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { reason: "socket-missing", socketPath: "/missing" },
+  });
 });
 
 test("gpg precedes yubikey-agent and absent gpg falls through", async () => {

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { AbsolutePath, type AppId } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { makeTestSshService } from "@lando/sdk/test";
-import { Context, Effect } from "effect";
+import { type Context, Effect } from "effect";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 
 const SECURITY =

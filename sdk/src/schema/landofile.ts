@@ -650,7 +650,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
     environment: Schema.optionalKey(ComposeEnvironmentInput).annotateKey({
-      description: "Service environment variables as a map or a Compose KEY=value list; host-environment interpolation is rejected.",
+      description:
+        "Service environment variables as a map or a Compose KEY=value list; host-environment interpolation is rejected.",
     }),
     envFile: Schema.optionalKey(ComposeEnvFileInput).annotate({
       description:
@@ -741,7 +742,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
     dependsOn: Schema.optionalKey(ComposeDependsOnInput).annotateKey({
-      description: "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
+      description:
+        "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
     }),
 
     providers: Schema.optionalKey(ProviderExtensionConfig).annotate({

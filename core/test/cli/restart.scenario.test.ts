@@ -239,7 +239,9 @@ const makeRestartLayer = (
       discover: Effect.succeed({
         name: "test-restart",
         services: {},
-        ...(effectiveEventsForPlan(plannedApp) === undefined ? {} : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
+        ...(effectiveEventsForPlan(plannedApp) === undefined
+          ? {}
+          : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,

@@ -515,7 +515,9 @@ const makeStartLayer = (
       discover: Effect.succeed({
         name: "test-start",
         services: {},
-        ...(effectiveEventsForPlan(plannedApp) === undefined ? {} : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
+        ...(effectiveEventsForPlan(plannedApp) === undefined
+          ? {}
+          : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,
@@ -787,7 +789,9 @@ const makeAutoStartLayer = async (options: {
       discover: Effect.succeed({
         name: options.userPlan.name,
         services: {},
-        ...(effectiveEventsForPlan(options.userPlan) === undefined ? {} : { events: effectiveEventsForPlan(options.userPlan) ?? {} }),
+        ...(effectiveEventsForPlan(options.userPlan) === undefined
+          ? {}
+          : { events: effectiveEventsForPlan(options.userPlan) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,

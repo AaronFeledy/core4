@@ -361,7 +361,7 @@ export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
   const rootIdentifier = AST.resolveIdentifier(jsonInputAst(schema.ast));
   const document = JsonSchema.toDocumentDraft07(
     Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), {
-      referencePolicy: ({ identifier }) => identifier === rootIdentifier ? undefined : identifier,
+      referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
       includeAnnotationKey: (key) => key === "acceptsImportRef",
       ...options,
     }),

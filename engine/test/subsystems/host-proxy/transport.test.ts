@@ -360,20 +360,17 @@ describe("host-proxy runLando physical transport", () => {
     if (Exit.isFailure(missing)) {
       const error = Option.getOrThrow(Cause.findErrorOption(missing.cause));
       expect(error).toBeInstanceOf(HostProxyAuthenticationError);
-      if (error instanceof HostProxyAuthenticationError)
-        expect(error.reason).toBe("missing");
+      if (error instanceof HostProxyAuthenticationError) expect(error.reason).toBe("missing");
     }
     if (Exit.isFailure(stale)) {
       const error = Option.getOrThrow(Cause.findErrorOption(stale.cause));
       expect(error).toBeInstanceOf(HostProxyAuthenticationError);
-      if (error instanceof HostProxyAuthenticationError)
-        expect(error.reason).toBe("stale");
+      if (error instanceof HostProxyAuthenticationError) expect(error.reason).toBe("stale");
     }
     if (Exit.isFailure(crossApp)) {
       const error = Option.getOrThrow(Cause.findErrorOption(crossApp.cause));
       expect(error).toBeInstanceOf(HostProxyAuthenticationError);
-      if (error instanceof HostProxyAuthenticationError)
-        expect(error.reason).toBe("cross-app");
+      if (error instanceof HostProxyAuthenticationError) expect(error.reason).toBe("cross-app");
     }
     await session.close();
   });
@@ -427,11 +424,15 @@ describe("host-proxy runLando physical transport", () => {
 
     expect(Exit.isFailure(recursion)).toBe(true);
     if (Exit.isFailure(recursion)) {
-      expect(Option.getOrThrow(Cause.findErrorOption(recursion.cause))).toBeInstanceOf(HostProxyRecursionError);
+      expect(Option.getOrThrow(Cause.findErrorOption(recursion.cause))).toBeInstanceOf(
+        HostProxyRecursionError,
+      );
     }
     expect(Exit.isFailure(saturated)).toBe(true);
     if (Exit.isFailure(saturated)) {
-      expect(Option.getOrThrow(Cause.findErrorOption(saturated.cause))).toBeInstanceOf(HostProxyBackpressureError);
+      expect(Option.getOrThrow(Cause.findErrorOption(saturated.cause))).toBeInstanceOf(
+        HostProxyBackpressureError,
+      );
     }
     release?.();
     await first;
@@ -455,7 +456,9 @@ describe("host-proxy runLando physical transport", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(HostProxyCommandNotAllowedError);
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+        HostProxyCommandNotAllowedError,
+      );
     }
     await session.close();
   });
@@ -838,7 +841,9 @@ describe("host-proxy runLando physical transport", () => {
     expect(chmodCalled).toBe(true);
     expect(Exit.isFailure(failed)).toBe(true);
     if (Exit.isFailure(failed))
-      expect(Option.getOrThrow(Cause.findErrorOption(failed.cause))).toBeInstanceOf(HostProxyTransportUnavailableError);
+      expect(Option.getOrThrow(Cause.findErrorOption(failed.cause))).toBeInstanceOf(
+        HostProxyTransportUnavailableError,
+      );
     expect(server.listening).toBe(false);
     await expectMissingPath(socketPath);
   });

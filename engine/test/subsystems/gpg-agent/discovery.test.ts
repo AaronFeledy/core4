@@ -99,7 +99,10 @@ test("never launches gpg-agent when launch is false", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing", socketPath: "/extra" } });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { reason: "socket-missing", socketPath: "/extra" },
+  });
   expect(calls).toEqual([["--list-dirs", "agent-extra-socket"]]);
 });
 
@@ -200,6 +203,9 @@ test("a socket nobody answers fails socket-missing", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "socket-missing", socketPath: "/extra" } });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { reason: "socket-missing", socketPath: "/extra" },
+  });
   expect(JSON.stringify(result)).not.toContain("connection refused");
 });

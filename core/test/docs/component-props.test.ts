@@ -154,12 +154,18 @@ describe("component prop schemas", () => {
     if (Result.isFailure(both)) {
       expect(both.failure).toBeInstanceOf(Schema.SchemaError);
       const issues = SchemaIssue.makeFormatterStandardSchemaV1()(expectParseError(both).issue).issues;
-      expect(issues.some((issue) => issue.message === "Expected no excess property" && (issue.path ?? []).join(".") === "shell")).toBe(
-        true,
-      );
-      expect(issues.some((issue) => issue.message === "Expected no excess property" && (issue.path ?? []).join(".") === "command")).toBe(
-        true,
-      );
+      expect(
+        issues.some(
+          (issue) =>
+            issue.message === "Expected no excess property" && (issue.path ?? []).join(".") === "shell",
+        ),
+      ).toBe(true);
+      expect(
+        issues.some(
+          (issue) =>
+            issue.message === "Expected no excess property" && (issue.path ?? []).join(".") === "command",
+        ),
+      ).toBe(true);
     }
 
     const invalidAnswers = decodeRunPropsEither({ command: "lando start", answers: { name: 123 } });

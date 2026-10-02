@@ -32,7 +32,10 @@ test("secretStores rejects a missing schemes array", () => {
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result)) {
     expect(SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues).toContainEqual(
-      expect.objectContaining({ message: "Missing key", path: ["contributes", "secretStores", 0, "schemes"] }),
+      expect.objectContaining({
+        message: "Missing key",
+        path: ["contributes", "secretStores", 0, "schemes"],
+      }),
     );
   }
 });

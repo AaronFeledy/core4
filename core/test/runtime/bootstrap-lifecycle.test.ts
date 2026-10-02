@@ -163,9 +163,9 @@ describe("runtime bootstrap lifecycle", () => {
     await Effect.runPromise(tracker.useBaseEventService(service));
 
     await Effect.runPromiseExit(
-      Layer.build(superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("minimal bootstrap failed")), tracker)).pipe(
-        Effect.scoped,
-      ),
+      Layer.build(
+        superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("minimal bootstrap failed")), tracker),
+      ).pipe(Effect.scoped),
     );
 
     expect(events).toEqual(["before-exit"]);
@@ -203,9 +203,9 @@ describe("runtime bootstrap lifecycle", () => {
     await Effect.runPromise(tracker.complete("minimal", service));
 
     await Effect.runPromiseExit(
-      Layer.build(superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("plugin bootstrap failed")), tracker)).pipe(
-        Effect.scoped,
-      ),
+      Layer.build(
+        superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("plugin bootstrap failed")), tracker),
+      ).pipe(Effect.scoped),
     );
 
     expect(events.map((event) => event._tag)).toEqual(["pre-bootstrap-minimal", "before-exit"]);

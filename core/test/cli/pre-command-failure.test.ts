@@ -171,12 +171,14 @@ describe("pre-command failure surface", () => {
     const previous = process.env.BUN_AUTH_TOKEN;
     process.env.BUN_AUTH_TOKEN = "layer-secret-token";
     try {
-      const failingRuntime = Layer.effectDiscard(Effect.fail(
-        new PreCommandLayerError({
-          message: "boot failed with layer-secret-token",
-          remediation: "Unset BUN_AUTH_TOKEN=layer-secret-token and retry.",
-        }),
-      ));
+      const failingRuntime = Layer.effectDiscard(
+        Effect.fail(
+          new PreCommandLayerError({
+            message: "boot failed with layer-secret-token",
+            remediation: "Unset BUN_AUTH_TOKEN=layer-secret-token and retry.",
+          }),
+        ),
+      );
 
       await runWithRendererHandling(Effect.succeed("unreached"), {
         runtime: failingRuntime,

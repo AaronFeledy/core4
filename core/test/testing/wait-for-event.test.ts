@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { TestClock } from "effect/testing";
 
-import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Schema } from "effect";
+import { Cause, DateTime, Duration, Effect, Exit, Fiber, Schema } from "effect";
 
 import { EventService } from "@lando/core/services";
 import { EventServiceLive } from "@lando/engine/services/event-service";

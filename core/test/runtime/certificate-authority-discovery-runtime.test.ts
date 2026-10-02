@@ -25,7 +25,9 @@ const resolveAuthority = (
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const context = yield* Layer.build(makeLandoRuntime({ bootstrap: "provider", plugins, ...(config === undefined ? {} : { config }) }));
+      const context = yield* Layer.build(
+        makeLandoRuntime({ bootstrap: "provider", plugins, ...(config === undefined ? {} : { config }) }),
+      );
       return yield* Context.get(context, CertificateAuthorityResolver).resolve;
     }),
   );

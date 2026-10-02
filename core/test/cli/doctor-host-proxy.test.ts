@@ -4,7 +4,7 @@ import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema } from "effect";
+import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";

@@ -1,8 +1,18 @@
 import { type JsonSchema, type JsonValue, isJsonObject, jsonEquals, jsonValueKey } from "./model.ts";
 
 const scalarChecks = new Set([
-  "type", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
-  "minLength", "maxLength", "pattern", "format", "enum", "const",
+  "type",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "format",
+  "enum",
+  "const",
 ]);
 
 const emptySchema = (value: JsonValue | undefined): boolean =>
@@ -13,7 +23,10 @@ export const normalizeStructure = (schema: JsonSchema): JsonSchema => {
   const result: Record<string, JsonValue> = { ...schema };
   for (const key of ["required", "properties", "patternProperties", "dependentSchemas"]) {
     const value = result[key];
-    if ((Array.isArray(value) && value.length === 0) || (isJsonObject(value) && Object.keys(value).length === 0)) {
+    if (
+      (Array.isArray(value) && value.length === 0) ||
+      (isJsonObject(value) && Object.keys(value).length === 0)
+    ) {
       Reflect.deleteProperty(result, key);
     }
   }
@@ -39,7 +52,12 @@ export const normalizeStructure = (schema: JsonSchema): JsonSchema => {
     Reflect.deleteProperty(result, "additionalItems");
   }
   const patterns = result.patternProperties;
-  if (isJsonObject(patterns) && Object.keys(patterns).length === 1 && patterns[""] !== undefined && result.properties === undefined) {
+  if (
+    isJsonObject(patterns) &&
+    Object.keys(patterns).length === 1 &&
+    patterns[""] !== undefined &&
+    result.properties === undefined
+  ) {
     result.additionalProperties = patterns[""];
     Reflect.deleteProperty(result, "patternProperties");
     if (emptySchema(result.additionalProperties)) Reflect.deleteProperty(result, "additionalProperties");
@@ -56,10 +74,12 @@ export const normalizeStructure = (schema: JsonSchema): JsonSchema => {
   if (Array.isArray(result.anyOf)) {
     const branches = result.anyOf.flatMap((child) =>
       isJsonObject(child) && Object.keys(child).length === 1 && Array.isArray(child.anyOf)
-        ? child.anyOf : [child],
+        ? child.anyOf
+        : [child],
     );
-    result.anyOf = [...new Map(branches.map((child) => [jsonValueKey(child), child])).values()]
-      .sort((a, b) => jsonValueKey(a).localeCompare(jsonValueKey(b)));
+    result.anyOf = [...new Map(branches.map((child) => [jsonValueKey(child), child])).values()].sort((a, b) =>
+      jsonValueKey(a).localeCompare(jsonValueKey(b)),
+    );
   }
   if (Array.isArray(result.allOf)) {
     const branches = result.allOf.filter((child) => !emptySchema(child));
@@ -74,13 +94,22 @@ export const normalizeStructure = (schema: JsonSchema): JsonSchema => {
       // additionalProperties sees only properties declared in its own subschema.
       const keys = Object.keys(child);
       const properties = result.properties;
-      const recordIntersection = keys.every((key) => key === "type" || key === "additionalProperties") &&
-        child.type === "object" && result.type === "object" && child.additionalProperties !== undefined &&
-        result.additionalProperties === undefined && result.patternProperties === undefined &&
-        isJsonObject(properties) && Object.values(properties).every((property) => jsonEquals(property, child.additionalProperties));
-      const canMerge = recordIntersection || (Object.keys(result).length === 0 && child.allOf === undefined) || keys.every((key) =>
-        scalarChecks.has(key) && (result[key] === undefined || jsonEquals(result[key], child[key])),
-      );
+      const recordIntersection =
+        keys.every((key) => key === "type" || key === "additionalProperties") &&
+        child.type === "object" &&
+        result.type === "object" &&
+        child.additionalProperties !== undefined &&
+        result.additionalProperties === undefined &&
+        result.patternProperties === undefined &&
+        isJsonObject(properties) &&
+        Object.values(properties).every((property) => jsonEquals(property, child.additionalProperties));
+      const canMerge =
+        recordIntersection ||
+        (Object.keys(result).length === 0 && child.allOf === undefined) ||
+        keys.every(
+          (key) =>
+            scalarChecks.has(key) && (result[key] === undefined || jsonEquals(result[key], child[key])),
+        );
       if (canMerge) Object.assign(result, child);
       else retained.push(child);
     }

@@ -16,15 +16,15 @@ export type EmbeddingPluginDiscoveryPolicy = typeof EmbeddingPluginDiscoveryPoli
 
 const LandoPluginModuleEntry = Schema.Unknown.pipe(
   Schema.refine(
-      (input): input is LandoPluginModule =>
-        typeof input === "object" &&
-        input !== null &&
-        "name" in input &&
-        typeof input.name === "string" &&
-        "manifest" in input &&
-        Schema.is(PluginManifest)(input.manifest) &&
-        (!("certificateAuthorities" in input) || input.certificateAuthorities instanceof Map),
-      { message: "Expected an already-loaded LandoPluginModule object." },
+    (input): input is LandoPluginModule =>
+      typeof input === "object" &&
+      input !== null &&
+      "name" in input &&
+      typeof input.name === "string" &&
+      "manifest" in input &&
+      Schema.is(PluginManifest)(input.manifest) &&
+      (!("certificateAuthorities" in input) || input.certificateAuthorities instanceof Map),
+    { message: "Expected an already-loaded LandoPluginModule object." },
   ),
 );
 

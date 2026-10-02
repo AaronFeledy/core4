@@ -226,7 +226,10 @@ test("rejects conflicting persisted root claims even when one runtime is unavail
     ),
   ]);
   // Then
-  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "AppResolveError", reason: "ambiguous" } });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "AppResolveError", reason: "ambiguous" },
+  });
 });
 
 test("skips unavailable unused providers when no persisted owner exists", async () => {

@@ -7,10 +7,9 @@ import {
 } from "../../src/runtime/bootstrap-lifecycle.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
-class Resource extends Context.Service<
-  Resource,
-  { readonly isOpen: Effect.Effect<boolean> }
->()("bootstrap-resource-lifetime-test/Resource") {}
+class Resource extends Context.Service<Resource, { readonly isOpen: Effect.Effect<boolean> }>()(
+  "bootstrap-resource-lifetime-test/Resource",
+) {}
 
 test("bootstrap resources outlive runtime construction and runs, and close with the runtime scope", async () => {
   // Given: the real bootstrap supervisor owns a scoped resource and a real event bus.

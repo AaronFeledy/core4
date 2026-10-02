@@ -816,9 +816,7 @@ const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransfe
           Effect.tryPromise({
             try: () => reader.read(),
             catch: (cause) => hostReadError(path, cause),
-          }).pipe(
-            Effect.flatMap((result) => (result.done ? Cause.done() : Effect.succeed(result.value))),
-          ),
+          }).pipe(Effect.flatMap((result) => (result.done ? Cause.done() : Effect.succeed(result.value)))),
         ),
       ),
     ),

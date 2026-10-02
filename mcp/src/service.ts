@@ -239,11 +239,7 @@ const makeService = (
               }
               const start = yield* Deferred.make<void>();
               const fiber = yield* semaphore
-                .withPermits(1)(
-                  Deferred.await(start).pipe(
-                    Effect.andThen(handleOne(incoming)),
-                  ),
-                )
+                .withPermits(1)(Deferred.await(start).pipe(Effect.andThen(handleOne(incoming))))
                 .pipe(Effect.ensuring(completeInFlight(incoming.id)), Effect.forkScoped);
               yield* Ref.update(inFlight, (current) => new Map(current).set(incoming.id, fiber));
               yield* Deferred.succeed(start, undefined);
