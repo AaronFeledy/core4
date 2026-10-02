@@ -424,6 +424,15 @@ describe("linkKnownHttpUrls", () => {
     );
   });
 
+  test("links a shorter endpoint on its own line when a longer prefix sibling is also known", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const line = `${shortUrl}\n${longUrl}`;
+    const out = linkKnownHttpUrls(line, [shortUrl, longUrl]);
+    expect(out).toBe(`${hyperlink(shortUrl, shortUrl)}\n${hyperlink(longUrl, longUrl)}`);
+    expect(stripAnsi(out)).toBe(line);
+  });
+
   test("copies a BEL-terminated OSC 8 span whole instead of re-linking its label", () => {
     const url = "http://localhost:8080";
     const already = `${ESC}]8;;${url}${BEL}${url}${ESC}]8;;${BEL}`;

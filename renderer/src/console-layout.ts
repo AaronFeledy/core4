@@ -135,18 +135,27 @@ const isSoftBoundary = (ch: string | undefined): boolean => {
 };
 
 /**
- * True when `url` matched at `index` may be the head of a longer known endpoint
- * that a hard wrap cut after it: a soft boundary follows and some candidate
- * extends `url`. Linking it would point a partial label at the wrong endpoint.
+ * True when `url` matched at `index` is the head of a longer known endpoint that
+ * a hard wrap cut after it: a soft boundary follows, and the bytes after that
+ * run are that longer candidate's remaining suffix. A newline before a different
+ * whole endpoint is not a wrap.
  */
 const isWrappedPrefixOfCandidate = (
   text: string,
   index: number,
   url: string,
   candidates: ReadonlyArray<string>,
-): boolean =>
-  isSoftBoundary(text[index + url.length]) &&
-  candidates.some((candidate) => candidate.length > url.length && candidate.startsWith(url));
+): boolean => {
+  const after = index + url.length;
+  if (!isSoftBoundary(text[after])) return false;
+  let rest = after + 1;
+  while (rest < text.length && isSoftBoundary(text[rest])) rest += 1;
+  const continuation = text.slice(rest);
+  return candidates.some((candidate) => {
+    if (candidate.length <= url.length || !candidate.startsWith(url)) return false;
+    return continuation.startsWith(candidate.slice(url.length));
+  });
+};
 
 /**
  * Wrap each known http(s) URL that still appears as a whole token in `text`.
