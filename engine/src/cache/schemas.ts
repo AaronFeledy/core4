@@ -3,14 +3,14 @@
  *
  * Each cache has a versioned schema header. A version mismatch triggers
  * automatic invalidation. Hot-path caches (app-plan) are Effect-Schema
- * binary-encoded; small JSON caches use Schema.JsonString.
+ * binary-encoded; small caches use JSON codecs.
  */
 import { Schema } from "effect";
 
 /** All cache header types must include a version + checksum. */
 export const CacheHeader = Schema.Struct({
   schemaVersion: Schema.Number,
-  createdAt: Schema.DateTimeUtc,
+  createdAt: Schema.DateTimeUtcFromString,
   /** `Bun.hash` of the encoded payload below. */
   contentHash: Schema.String,
 });

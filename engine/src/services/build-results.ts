@@ -20,7 +20,7 @@ export const BuildResultEntry = Schema.Struct({
   sourceArtifactRef: Schema.optionalKey(Schema.String),
   sourceArtifactDigest: Schema.optionalKey(Schema.String),
   transcriptPath: AbsolutePath,
-  completedAt: Schema.DateTimeUtc,
+  completedAt: Schema.DateTimeUtcFromString,
 });
 export type BuildResultEntry = typeof BuildResultEntry.Type;
 
