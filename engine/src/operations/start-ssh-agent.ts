@@ -13,7 +13,7 @@ import {
 import { EventService, PathsService, SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Option, Ref, Scope } from "effect";
+import { DateTime, Effect, Option, Ref, type Scope } from "effect";
 import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
@@ -29,6 +29,7 @@ import {
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-agent/session.ts";
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
+import { withRetainedSession } from "./retained-session.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
@@ -197,7 +198,6 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
 ): Effect.fn.Return<A, E | AgentError, R | PathsService | PrivateFileAccessService | EventService> {
   if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
     return yield* options.use(plan);
-  const keep = yield* Ref.make(false);
   const acquire = (
     options.startSession?.() ?? startSshAgentSession(plan, app, capabilities, intent, options)
   ).pipe(
@@ -223,28 +223,13 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
       }
     }),
   );
-  return yield* Effect.acquireUseRelease(
+  return yield* withRetainedSession(
     acquire,
     (session) =>
-      options
-        .use(session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session))
-        .pipe(
-          Effect.tap(() =>
-            Effect.gen(function* () {
-              if (session !== undefined && options.managed !== undefined) {
-                yield* Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
-                  Effect.provideService(Scope.Scope, options.managed.scope),
-                );
-              }
-              yield* Ref.set(keep, true);
-            }),
-          ),
-        ),
-    (session) =>
-      Ref.get(keep).pipe(
-        Effect.flatMap((retained) =>
-          retained || session === undefined ? Effect.void : Effect.promise(() => session.close()),
-        ),
-      ),
+      options.use(session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session)),
+    {
+      close: (session) => (session === undefined ? Effect.void : Effect.promise(() => session.close())),
+      ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+    },
   );
 });
