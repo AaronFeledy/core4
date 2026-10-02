@@ -158,7 +158,7 @@ interface HarnessOptions {
 }
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch run test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch run test provider should not call ${operation}`));
 
 const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const provider: RuntimeProviderShape = {
@@ -215,7 +215,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
           env: spec.env,
         });
       });
-      if (options.execNever === true) return record.pipe(Effect.zipRight(Effect.never));
+      if (options.execNever === true) return record.pipe(Effect.andThen(Effect.never));
       return record.pipe(
         Effect.as({
           exitCode: options.execExitCode ?? 0,
@@ -662,7 +662,7 @@ describe("scratchRun", () => {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Exit.causeOption(exit);
+        const failure = Exit.getCause(exit);
         const rendered = JSON.stringify(failure);
         expect(rendered).toContain("ScratchRunTargetError");
         expect(rendered).toContain("toolbox");
@@ -711,7 +711,7 @@ describe("scratchRun", () => {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(Exit.causeOption(exit))).toContain("ScratchAppError");
+        expect(JSON.stringify(Exit.getCause(exit))).toContain("ScratchAppError");
       }
       expect(recorded.appliedPlans).toHaveLength(0);
     });
@@ -748,7 +748,7 @@ describe("scratchRun", () => {
       const layer = makeHarnessLayer(recorded, { execNever: true });
       await Effect.runPromise(
         Effect.gen(function* () {
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             scratchRun({
               command: ["sleep", "infinity"],
               mount: true,
@@ -911,7 +911,7 @@ describe("scratch run cleanup and warm repeats", () => {
       const layer = makeHarnessLayer(recorded, { execNever: true });
       await Effect.runPromise(
         Effect.gen(function* () {
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             scratchRun({
               command: ["sleep", "infinity"],
               mount: true,

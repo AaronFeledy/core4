@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { PublicTranscript, type PublicTranscriptFrame } from "@lando/core/schema";
-import { Either, type ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { variantFileSuffix } from "../variant";
 import { type RedactionEnvironment, redactPublicTranscript } from "./redaction";
@@ -14,8 +14,8 @@ export {
 
 export const decodePublicTranscriptEither = (
   input: unknown,
-): Either.Either<PublicTranscript, ParseResult.ParseError> =>
-  Schema.decodeUnknownEither(PublicTranscript)(input);
+): Result.Result<PublicTranscript, Schema.SchemaError> =>
+  Schema.decodeUnknownResult(PublicTranscript)(input);
 
 export interface SourceLinkOptions {
   readonly sourceLinkBase?: string;
@@ -234,9 +234,9 @@ export const loadPublicTranscript = async (args: {
   const input = await Bun.file(transcriptPath).json();
   const decoded = decodePublicTranscriptEither(input);
 
-  if (Either.isLeft(decoded)) {
+  if (Result.isFailure(decoded)) {
     throw new Error(`Failed to decode public transcript at ${transcriptPath}`);
   }
 
-  return redactPublicTranscript(decoded.right);
+  return redactPublicTranscript(decoded.success);
 };

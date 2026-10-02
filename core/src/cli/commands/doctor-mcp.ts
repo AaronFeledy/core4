@@ -70,7 +70,7 @@ const canaryEntry: McpCommandEntry = { spec: canarySpec };
 const canaryExecute: McpExecute = (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
-    Effect.catchAll((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
+    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
   ) as Effect.Effect<CommandResultOutcome, never>;
 
 type McpExecute = (
@@ -134,12 +134,12 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
       sourceEnv: process.env,
     });
 
-    const allowlistFreshResult = yield* Effect.either(
+    const allowlistFreshResult = yield* Effect.result(
       Effect.try(() => isMcpDefaultAllowlistFresh(MCP_DEFAULT_ALLOWLIST)),
     );
-    const allowlistFresh = allowlistFreshResult._tag === "Right" && allowlistFreshResult.right;
+    const allowlistFresh = allowlistFreshResult._tag === "Success" && allowlistFreshResult.success;
 
-    const catalog = yield* Effect.either(
+    const catalog = yield* Effect.result(
       Effect.try(() =>
         buildCatalog({
           commandEntries: [canaryEntry],
@@ -147,12 +147,12 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
         }),
       ),
     );
-    const catalogTools = catalog._tag === "Right" ? catalog.right.tools.length : 0;
+    const catalogTools = catalog._tag === "Success" ? catalog.success.tools.length : 0;
     const catalogGenerated =
-      catalog._tag === "Right" &&
+      catalog._tag === "Success" &&
       catalogTools > 0 &&
-      typeof catalog.right.tools[0]?.inputSchema === "object" &&
-      catalog.right.tools[0]?.inputSchema !== null;
+      typeof catalog.success.tools[0]?.inputSchema === "object" &&
+      catalog.success.tools[0]?.inputSchema !== null;
 
     const deps: McpDispatchDeps = {
       registry: new Map([[CANARY_TOOL_ID, canaryEntry]]),
@@ -161,13 +161,13 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
       redactor,
       execute: canaryExecute,
     };
-    const dispatch = yield* Effect.either(dispatchTool({ toolId: CANARY_TOOL_ID }, deps));
-    const canaryRoundTrip = dispatch._tag === "Right" && dispatch.right.ok === true;
-    const envelopeText = dispatch._tag === "Right" ? JSON.stringify(dispatch.right.envelope) : "";
+    const dispatch = yield* Effect.result(dispatchTool({ toolId: CANARY_TOOL_ID }, deps));
+    const canaryRoundTrip = dispatch._tag === "Success" && dispatch.success.ok === true;
+    const envelopeText = dispatch._tag === "Success" ? JSON.stringify(dispatch.success.envelope) : "";
     const canaryRedacted = canaryRoundTrip && !envelopeText.includes(MCP_DOCTOR_CANARY_SECRET);
     const canaryError =
-      dispatch._tag === "Left"
-        ? redactor.redactString(dispatch.left.message ?? dispatch.left._tag)
+      dispatch._tag === "Failure"
+        ? redactor.redactString(dispatch.failure.message ?? dispatch.failure._tag)
         : undefined;
 
     const passed = allowlistFresh && catalogGenerated && canaryRoundTrip && canaryRedacted;
@@ -180,8 +180,8 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
       canaryRoundTrip: redactor.redactString(String(canaryRoundTrip)),
       canaryRedacted: redactor.redactString(String(canaryRedacted)),
     };
-    if (allowlistFreshResult._tag === "Left")
-      context.allowlistError = redactor.redactString(String(allowlistFreshResult.left));
+    if (allowlistFreshResult._tag === "Failure")
+      context.allowlistError = redactor.redactString(String(allowlistFreshResult.failure));
     if (canaryError !== undefined) context.canaryError = canaryError;
 
     const check: McpDoctorCheck = {

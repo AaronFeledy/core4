@@ -259,7 +259,7 @@ const appPlan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
     source: "ensure-global-services.test",
     runtime: 4,
   },
@@ -270,7 +270,7 @@ const appPlan: AppPlan = {
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;

@@ -39,8 +39,8 @@ export interface PluginUnlinkResult {
 export const PluginUnlinkResultSchema = Schema.Struct({
   pluginName: Schema.String,
   registryEntry: Schema.String,
-  action: Schema.Literal("restored", "removed"),
-  restoredPath: Schema.optional(Schema.String),
+  action: Schema.Literals(["restored", "removed"]),
+  restoredPath: Schema.optionalKey(Schema.String),
 });
 
 const notLinkedRemediation =

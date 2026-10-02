@@ -18,7 +18,7 @@ import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/la
 
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 
-const fakeLandofileService = (shape: LandofileShape): Context.Tag.Service<typeof LandofileService> => ({
+const fakeLandofileService = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> => ({
   discover: Effect.succeed(shape),
 });
 
@@ -46,7 +46,7 @@ const capturingRendererLayer = (
       stdout: () => Effect.void,
       stderr: (chunk: string) => Effect.sync(() => sink.stderr?.push(chunk)),
     },
-  } as Context.Tag.Service<typeof Renderer>);
+  } as Context.Service.Shape<typeof Renderer>);
 
 describe("assertLandoVersionConstraint", () => {
   test("passes when the running version satisfies the constraint", async () => {

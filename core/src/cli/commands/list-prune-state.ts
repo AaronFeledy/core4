@@ -14,14 +14,14 @@ const AppliedPlanIdentity = Schema.Struct({
   id: AppId,
   root: AbsolutePath,
 });
-const AppliedPlans = Schema.Record({ key: AppId, value: AppPlan });
+const AppliedPlans = Schema.Record(AppId, AppPlan);
 const LegacyAppliedPlan = Schema.Struct({
   version: Schema.Literal(1),
-  providerId: Schema.optional(Schema.String),
+  providerId: Schema.optionalKey(Schema.String),
   plan: Schema.Struct({
     id: AppId,
     root: AbsolutePath,
-    provider: Schema.optional(Schema.String),
+    provider: Schema.optionalKey(Schema.String),
   }),
 });
 
@@ -102,7 +102,7 @@ export const pruneAppliedPlanState = (
         codec: {
           encode: JSON.stringify,
           decode: (raw) =>
-            Schema.decodeUnknownSync(Schema.parseJson(LegacyAppliedPlan))(new TextDecoder().decode(raw)),
+            Schema.decodeUnknownSync(Schema.fromJsonString(LegacyAppliedPlan))(new TextDecoder().decode(raw)),
         },
         lock: "advisory",
         onCorrupt: "fail",

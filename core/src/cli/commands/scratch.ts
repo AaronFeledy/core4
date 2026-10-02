@@ -74,13 +74,10 @@ export interface ScratchLogsResult {
   readonly lines: ReadonlyArray<string>;
 }
 
-export const ScratchSourceResultSchema = Schema.Union(
-  Schema.Struct({ kind: Schema.Literal("fork") }),
-  Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String }),
-);
+export const ScratchSourceResultSchema = Schema.Union([Schema.Struct({ kind: Schema.Literal("fork") }), Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String })]);
 
 export const ScratchAppRefResultSchema = Schema.Struct({
-  kind: Schema.Literal("user", "global", "scratch"),
+  kind: Schema.Literals(["user", "global", "scratch"]),
   id: Schema.String,
   root: Schema.String,
 });
@@ -94,9 +91,9 @@ export const ScratchSummaryResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
   source: ScratchSourceResultSchema,
-  mode: Schema.Literal("full", "baked", "cwd"),
+  mode: Schema.Literals(["full", "baked", "cwd"]),
   created: Schema.String,
-  status: Schema.Literal("attached", "detached", "orphan"),
+  status: Schema.Literals(["attached", "detached", "orphan"]),
 });
 
 export const ScratchListResultSchema = Schema.Array(ScratchSummaryResultSchema);
@@ -104,20 +101,20 @@ export const ScratchListResultSchema = Schema.Array(ScratchSummaryResultSchema);
 const ScratchMountPointResultSchema = Schema.Struct({
   service: Schema.String,
   target: Schema.String,
-  source: Schema.optional(Schema.String),
-  kind: Schema.Literal("app", "bind", "tmpfs", "volume"),
+  source: Schema.optionalKey(Schema.String),
+  kind: Schema.Literals(["app", "bind", "tmpfs", "volume"]),
   readOnly: Schema.Boolean,
 });
 
 const ScratchNetworkMembershipResultSchema = Schema.Struct({
-  perAppBridge: Schema.optional(Schema.String),
-  sharedNetwork: Schema.optional(Schema.String),
+  perAppBridge: Schema.optionalKey(Schema.String),
+  sharedNetwork: Schema.optionalKey(Schema.String),
 });
 
 const ScratchEndpointResultSchema = Schema.Struct({
   protocol: Schema.String,
-  port: Schema.optional(Schema.Number),
-  name: Schema.optional(Schema.String),
+  port: Schema.optionalKey(Schema.Number),
+  name: Schema.optionalKey(Schema.String),
 });
 
 const ScratchServiceEndpointsResultSchema = Schema.Struct({
@@ -129,9 +126,9 @@ export const ScratchInfoResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
   source: ScratchSourceResultSchema,
-  mode: Schema.Literal("full", "baked", "cwd"),
+  mode: Schema.Literals(["full", "baked", "cwd"]),
   created: Schema.String,
-  status: Schema.Literal("attached", "detached", "orphan"),
+  status: Schema.Literals(["attached", "detached", "orphan"]),
   mounts: Schema.Array(ScratchMountPointResultSchema),
   network: ScratchNetworkMembershipResultSchema,
   endpoints: Schema.Array(ScratchServiceEndpointsResultSchema),
@@ -140,7 +137,7 @@ export const ScratchInfoResultSchema = Schema.Struct({
 export const ScratchStartResultSchema = Schema.Struct({
   handle: ScratchHandleResultSchema,
   detached: Schema.Boolean,
-  rendered: Schema.optional(Schema.Boolean),
+  rendered: Schema.optionalKey(Schema.Boolean),
 });
 
 export const ScratchGcReportResultSchema = Schema.Struct({
@@ -165,7 +162,7 @@ type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError 
 
 export const waitForAbortSignal = (signal: AbortSignal | undefined): Effect.Effect<void> => {
   if (signal === undefined) return Effect.never;
-  return Effect.async<void>((resume) => {
+  return Effect.callback<void>((resume) => {
     if (signal.aborted) {
       resume(Effect.void);
       return;

@@ -54,7 +54,7 @@ export const attachedHostTerminal = (
 const stdoutResizeStream = (
   output: TerminalOutput,
 ): Stream.Stream<{ readonly columns: number; readonly rows: number }> =>
-  Stream.async((emit) => {
+  Stream.callback((emit) => {
     const onResize = (): void => {
       const columns = output.columns;
       const rows = output.rows;

@@ -152,7 +152,7 @@ describe("meta:uninstall", () => {
     });
     const listDiscoveredApps = mock(async () => []);
     const lifecycle: string[] = [];
-    const privateAccess = Layer.scoped(
+    const privateAccess = Layer.effect(
       PrivateFileAccessService,
       Effect.acquireRelease(
         Effect.sync(() => {

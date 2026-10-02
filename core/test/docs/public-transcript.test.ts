@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { PublicTranscript as CorePublicTranscript } from "@lando/core/schema";
 import { PublicTranscript } from "@lando/sdk/docs/components";
-import { JSONSchema, ParseResult, Schema } from "effect";
+import { JSONSchema, Schema } from "effect";
 
 const examplePublicTranscript = {
   guideId: "node-postgres",
@@ -69,13 +69,13 @@ describe("PublicTranscript", () => {
         ...examplePublicTranscript,
         frames: [{ kind: "hidden", sourceFile: "docs/guides/x.mdx", sourceLine: 1 }],
       }),
-    ).toThrow(ParseResult.ParseError);
+    ).toThrow(Schema.SchemaError);
 
     expect(() =>
       Schema.decodeUnknownSync(PublicTranscript)({
         ...examplePublicTranscript,
         frames: [{ kind: "step", sourceFile: "docs/guides/x.mdx", sourceLine: 0 }],
       }),
-    ).toThrow(ParseResult.ParseError);
+    ).toThrow(Schema.SchemaError);
   });
 });

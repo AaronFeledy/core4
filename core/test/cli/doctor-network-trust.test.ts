@@ -28,7 +28,7 @@ const tempRoot = async (): Promise<string> => {
 
 const configService = (
   load: Effect.Effect<GlobalConfig, ConfigError>,
-): Context.Tag.Service<typeof ConfigService> => ({
+): Context.Service.Shape<typeof ConfigService> => ({
   load,
   get: (key) => Effect.map(load, (config) => config[key]),
 });

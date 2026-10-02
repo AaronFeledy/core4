@@ -191,7 +191,7 @@ export interface ScenarioContext {
  * Effect service tag for the active scenario context.
  * Scenario bodies receive this service automatically from `withScenarioContext` and factory runners.
  */
-export const ScenarioContext = Context.GenericTag<ScenarioContext>("@lando/core/ScenarioContext");
+export const ScenarioContext = Context.Service<ScenarioContext>("@lando/core/ScenarioContext");
 
 /**
  * Options used to create a scenario context.
@@ -386,17 +386,17 @@ const findFixtureSource = (
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem;
     for (const candidate of candidates) {
-      const stat = yield* Effect.either(fileSystem.lstat(candidate));
-      if (stat._tag === "Left") {
-        if (stat.left instanceof FileNotFoundError) {
+      const stat = yield* Effect.result(fileSystem.lstat(candidate));
+      if (stat._tag === "Failure") {
+        if (stat.failure instanceof FileNotFoundError) {
           continue;
         }
-        return yield* Effect.fail(stat.left);
+        return yield* Effect.fail(stat.failure);
       }
-      if (stat.right.isSymbolicLink === true) {
+      if (stat.success.isSymbolicLink === true) {
         return yield* Effect.fail(fixtureSymlinkError(name, candidate));
       }
-      if (stat.right.isDirectory) {
+      if (stat.success.isDirectory) {
         return candidate;
       }
       return yield* Effect.fail(
@@ -631,7 +631,7 @@ const testRuntimeProviderRegistry = {
   list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),
-} satisfies Context.Tag.Service<typeof RuntimeProviderRegistry>;
+} satisfies Context.Service.Shape<typeof RuntimeProviderRegistry>;
 
 const testRuntimeProviderRegistryLayer = Layer.succeed(RuntimeProviderRegistry, testRuntimeProviderRegistry);
 
@@ -900,7 +900,7 @@ const withScenarioContextInternal = <A, E, R>(
   options: WithScenarioContextOptions,
   runnerKind: ScenarioRunnerKind,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
   Effect.scoped(
     Effect.acquireRelease(
       Effect.tryPromise(() =>
@@ -938,7 +938,7 @@ const withScenarioContextInternal = <A, E, R>(
 export const withScenarioContext = <A, E, R>(
   options: WithScenarioContextOptions,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
   withScenarioContextInternal(options, "testOnlyFake", body);
 
 /**
@@ -955,7 +955,7 @@ export const ScenarioContextFactory = {
   scenario: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+  ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "scenario", body),
   /**
    * Runs with the compiled binary e2e runner.
@@ -966,7 +966,7 @@ export const ScenarioContextFactory = {
   e2e: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+  ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "e2e", body),
   /**
    * Runs with the deterministic fake runner used by unit tests.
@@ -977,6 +977,6 @@ export const ScenarioContextFactory = {
   testOnlyFake: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+  ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "testOnlyFake", body),
 } as const;

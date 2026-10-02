@@ -1,9 +1,10 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, Deferred, Effect, Fiber, Layer, TestClock, TestContext } from "effect";
+import { type Context, Deferred, Effect, Fiber, Layer } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -36,7 +37,7 @@ const buildRegistry = (provider: RuntimeServiceTestProvider) => ({
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
@@ -163,7 +164,7 @@ describe("meta:doctor runtime-service check", () => {
     const provider: RuntimeServiceTestProvider = {
       ...TestRuntimeProvider,
       id: "lando",
-      getStatus: Deferred.succeed(primaryStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+      getStatus: Deferred.succeed(primaryStarted, undefined).pipe(Effect.andThen(Effect.never)),
       getRuntimeServiceStatus: Effect.sync(() => {
         detailedStatusReads += 1;
         return { running: true, socketReachable: true, ownedServiceProcess: true };
@@ -173,7 +174,7 @@ describe("meta:doctor runtime-service check", () => {
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           doctor({ env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } }).pipe(
             Effect.provide(buildLayers(provider)),
           ),
@@ -181,7 +182,7 @@ describe("meta:doctor runtime-service check", () => {
         yield* Deferred.await(primaryStarted);
         yield* TestClock.adjust("1 second");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
 
     // Then

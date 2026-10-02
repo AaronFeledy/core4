@@ -8,7 +8,7 @@ import { InteractionService, Renderer } from "@lando/sdk/services";
 import { makeInteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
 
-type RendererService = Context.Tag.Service<typeof Renderer>;
+type RendererService = Context.Service.Shape<typeof Renderer>;
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
   Readable.from(lines.map((line) => `${line}\n`));

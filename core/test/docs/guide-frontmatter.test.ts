@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test";
 
 import { GuideFrontmatter as CoreGuideFrontmatter } from "@lando/core/schema";
 import { GuideFrontmatter, decodeGuideFrontmatterEither } from "@lando/sdk/docs/components";
-import { Either, JSONSchema, ParseResult, Schema } from "effect";
+import { Result, JSONSchema, Schema } from "effect";
 
 const decode = (input: unknown) => decodeGuideFrontmatterEither(input);
 
 const expectRight = (input: unknown): GuideFrontmatter => {
   const decoded = decode(input);
   expect(decoded._tag).toBe("Right");
-  if (Either.isLeft(decoded)) throw decoded.left;
-  return decoded.right;
+  if (Result.isFailure(decoded)) throw decoded.failure;
+  return decoded.success;
 };
 
 describe("GuideFrontmatter", () => {
@@ -37,9 +37,9 @@ describe("GuideFrontmatter", () => {
   test("rejects non-kebab-case ids", () => {
     const decoded = decode({ id: "NodePostgres" });
     expect(decoded._tag).toBe("Left");
-    if (Either.isRight(decoded)) return;
-    expect(decoded.left).toBeInstanceOf(ParseResult.ParseError);
-    expect(decoded.left.message).toContain("lowercase kebab-case");
+    if (Result.isSuccess(decoded)) return;
+    expect(decoded.failure).toBeInstanceOf(Schema.SchemaError);
+    expect(decoded.failure.message).toContain("lowercase kebab-case");
   });
 
   test("accepts single-axis `tabs:` value declarations", () => {
@@ -88,9 +88,9 @@ describe("GuideFrontmatter", () => {
   test("rejects `tabs:` and `axes:` declared together", () => {
     const decoded = decode({ id: "node-postgres", tabs: ["linux"], axes: { os: ["linux"] } });
     expect(decoded._tag).toBe("Left");
-    if (Either.isRight(decoded)) return;
-    expect(decoded.left).toBeInstanceOf(ParseResult.ParseError);
-    expect(decoded.left.message).toContain("mutually exclusive");
+    if (Result.isSuccess(decoded)) return;
+    expect(decoded.failure).toBeInstanceOf(Schema.SchemaError);
+    expect(decoded.failure.message).toContain("mutually exclusive");
   });
 
   test("rejects `variants:` keys that are not Cartesian cells", () => {
@@ -100,9 +100,9 @@ describe("GuideFrontmatter", () => {
       variants: { windows: { tags: ["x"] } },
     });
     expect(decoded._tag).toBe("Left");
-    if (Either.isRight(decoded)) return;
-    expect(decoded.left).toBeInstanceOf(ParseResult.ParseError);
-    expect(decoded.left.message).toContain("Cartesian");
+    if (Result.isSuccess(decoded)) return;
+    expect(decoded.failure).toBeInstanceOf(Schema.SchemaError);
+    expect(decoded.failure.message).toContain("Cartesian");
   });
 
   test("rejects empty `axes:` and empty axis value lists", () => {
@@ -118,8 +118,8 @@ describe("GuideFrontmatter", () => {
 
     const invalid = decode({ id: "node-postgres", defaultLayer: "unit" });
     expect(invalid._tag).toBe("Left");
-    if (Either.isRight(invalid)) return;
-    expect(invalid.left).toBeInstanceOf(ParseResult.ParseError);
-    expect(invalid.left.message).toContain("defaultLayer");
+    if (Result.isSuccess(invalid)) return;
+    expect(invalid.failure).toBeInstanceOf(Schema.SchemaError);
+    expect(invalid.failure.message).toContain("defaultLayer");
   });
 });

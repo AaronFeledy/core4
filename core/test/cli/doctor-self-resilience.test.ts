@@ -1,20 +1,10 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  Cause,
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Schema,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "effect";
 
 import { makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError } from "@lando/sdk/errors";
@@ -53,7 +43,7 @@ describe("doctor safe mode", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
   test("reports a bootstrap failure as a self check and still returns a report", async () => {
@@ -217,7 +207,7 @@ describe("isolateDoctorSection", () => {
   test("still cancels the whole run when the caller is interrupted", async () => {
     // Given an isolated section that never settles, forked so we can interrupt its caller
     const program = Effect.gen(function* () {
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         isolateDoctorSection({
           section: "unit",
           effect: Effect.never,
@@ -236,7 +226,7 @@ describe("isolateDoctorSection", () => {
     // Then cancellation propagates rather than becoming a self check
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(Cause.isInterrupted(exit.cause)).toBe(true);
+      expect(Cause.hasInterrupts(exit.cause)).toBe(true);
     }
   });
 
@@ -385,8 +375,8 @@ describe("isolateDoctorSection", () => {
         Effect.sync(() => {
           finalized = true;
         }),
-      ).pipe(Effect.zipRight(Effect.never), Effect.scoped);
-      const fiber = yield* Effect.fork(
+      ).pipe(Effect.andThen(Effect.never), Effect.scoped);
+      const fiber = yield* Effect.forkChild(
         isolateDoctorSection({ section: "unit", effect: section, fallback: "fallback", budgetMs: 1_000 }),
       );
       yield* Deferred.await(started);
@@ -395,7 +385,7 @@ describe("isolateDoctorSection", () => {
       yield* TestClock.adjust("1 second");
       return yield* Fiber.join(fiber);
     });
-    const outcome = await Effect.runPromise(program.pipe(Effect.provide(TestContext.TestContext)));
+    const outcome = await Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 
     // Then
     expect(outcome.self?.reason).toBe("timeout");

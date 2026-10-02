@@ -4,7 +4,7 @@ import { type McpRunInput, dispatchTool } from "@lando/mcp/dispatch";
 import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect, Either, Option } from "effect";
+import { Effect, Result, Option } from "effect";
 import { logsSpec } from "../../src/cli/command-specs/app/logs.ts";
 import { parseFlagValue } from "../../src/cli/compiled-argv.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
@@ -63,7 +63,7 @@ test("preserves native and structured input error tags for invalid tail", async 
   // Given / When
   const cli = validateCliFlagValues(["--tail=1.5"], logsSpec.flags ?? {});
   const event = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       validateEventCommandInput(logsSpec, {
         flags: { tail: 1.5 },
         args: {},
@@ -73,7 +73,7 @@ test("preserves native and structured input error tags for invalid tail", async 
   );
   // Then
   expect(cli).toMatchObject({ _tag: "MalformedCliFlagValueError", flag: "tail" });
-  expect(Either.isLeft(event) ? event.left : undefined).toMatchObject({
+  expect(Result.isFailure(event) ? event.failure : undefined).toMatchObject({
     _tag: "CommandInputValidationError",
     field: "tail",
   });
@@ -125,7 +125,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
         });
         const received = yield* transport.receive;
         if (Option.isNone(received)) throw new Error("Missing tools/call request");
-        const result = yield* Effect.either(
+        const result = yield* Effect.result(
           dispatchTool(received.value.request, {
             registry: new Map([[logsSpec.id, { spec: logsSpec }]]),
             effective: new Set([logsSpec.id]),
@@ -140,9 +140,9 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
           }),
         );
         yield* transport.reply(
-          Either.isRight(result)
-            ? { id: received.value.id, ok: true, result: result.right }
-            : { id: received.value.id, ok: false, error: result.left },
+          Result.isSuccess(result)
+            ? { id: received.value.id, ok: true, result: result.success }
+            : { id: received.value.id, ok: false, error: result.failure },
         );
         return result;
       }),
@@ -150,14 +150,14 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
   );
   // Then
   if (tail === 7) {
-    expect(Either.isRight(outcome)).toBe(true);
+    expect(Result.isSuccess(outcome)).toBe(true);
     expect(executed.map((value) => value.flags.tail)).toEqual([tail]);
     expect(writes.map((line) => JSON.parse(line))).toContainEqual(
       expect.objectContaining({ id: 1, result: expect.anything() }),
     );
   } else {
     expect(executed).toEqual([]);
-    expect(Either.isLeft(outcome) ? outcome.left : undefined).toMatchObject({
+    expect(Result.isFailure(outcome) ? outcome.failure : undefined).toMatchObject({
       _tag: "McpToolInputError",
       path: "flags.tail",
     });

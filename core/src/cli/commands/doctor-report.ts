@@ -117,18 +117,18 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
   if (appRoot === undefined) return;
   for (const name of [".lando.yml", ".lando.yaml"] as const) {
     const path = join(appRoot, name);
-    const exists = yield* maybeFs.value.exists(path).pipe(Effect.catchAll(() => Effect.succeed(false)));
+    const exists = yield* maybeFs.value.exists(path).pipe(Effect.catch(() => Effect.succeed(false)));
     if (!exists) continue;
-    const text = yield* maybeFs.value.readText(path).pipe(Effect.catchAll(() => Effect.succeed("")));
+    const text = yield* maybeFs.value.readText(path).pipe(Effect.catch(() => Effect.succeed("")));
     if (MAILHOG_TYPE.test(text)) {
       yield* maybeDeprecations.value
         .use({
           kind: "service-type",
           id: "mailhog",
           notice: MAILHOG_DEPRECATION_NOTICE,
-          timestamp: DateTime.unsafeNow(),
+          timestamp: DateTime.nowUnsafe(),
         })
-        .pipe(Effect.catchAll(() => Effect.void));
+        .pipe(Effect.catch(() => Effect.void));
     }
     return;
   }
@@ -178,7 +178,7 @@ export interface CollectDoctorReportInput<R> {
   readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
   readonly appConfig?: Effect.Effect<
     ConfigLintResult | undefined,
-    Effect.Effect.Error<ReturnType<typeof appConfigForReport>>,
+    Effect.Error<ReturnType<typeof appConfigForReport>>,
     R
   >;
   /**
@@ -226,7 +226,7 @@ const collectWithTree = <R>(
       outcome: (value: A) => DoctorSectionOutcome,
     ): Effect.Effect<A, never, SR> =>
       tree.startTask(name).pipe(
-        Effect.zipRight(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
+        Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
         Effect.flatMap((isolated) => {
           if (isolated.self !== undefined) selfChecks.push(isolated.self);
           const settled =

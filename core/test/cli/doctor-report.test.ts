@@ -78,7 +78,7 @@ const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
@@ -135,7 +135,7 @@ const useDeprecation = (kind: DeprecationSurfaceKind, id: string, notice = depre
       notice,
       app: "doctor-app",
       plugin: kind === "plugin" || kind === "manifest-contribution" ? "legacy-plugin" : undefined,
-      timestamp: DateTime.unsafeMake("2026-06-13T00:00:00.000Z"),
+      timestamp: DateTime.makeUnsafe("2026-06-13T00:00:00.000Z"),
     });
   });
 

@@ -36,7 +36,7 @@ const makeRecordingEventLayer = (tags: string[]): Layer.Layer<EventService> =>
 describe("runtime bootstrap lifecycle", () => {
   test("emits the app bootstrap sequence and before-exit before host finalizers", async () => {
     const ordering: string[] = [];
-    const hostFinalizer = Layer.scopedDiscard(
+    const hostFinalizer = Layer.effectDiscard(
       Effect.addFinalizer(() => Effect.sync(() => ordering.push("host-finalizer"))),
     );
 

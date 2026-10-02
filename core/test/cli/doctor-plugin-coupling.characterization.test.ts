@@ -37,7 +37,7 @@ import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },

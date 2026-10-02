@@ -52,7 +52,7 @@ test.each([
             return Effect.map(base.decompose(input), (output) => ({
               ...output,
               fragment: {
-                ...Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+                ...Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
                   output.fragment,
                 ),
                 "x-decomposer-destinations": Object.fromEntries(

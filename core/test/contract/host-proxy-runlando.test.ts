@@ -120,7 +120,7 @@ const hostSideEnvelope = (
       : {
           outcome: {
             _tag: "failure" as const,
-            error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
+            error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
               _tag: "HostProxyDispatchError",
               message: Cause.pretty(outcome.cause),
             })),

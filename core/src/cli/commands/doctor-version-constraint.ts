@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 
@@ -32,18 +32,18 @@ export interface AppVersionConstraintDoctorResult {
   readonly checks: ReadonlyArray<AppVersionConstraintDoctorCheck>;
 }
 
-const DoctorStatusSchema = Schema.Literal("pass", "warn", "fail");
-const DoctorSeveritySchema = Schema.Literal("info", "warn", "error");
+const DoctorStatusSchema = Schema.Literals(["pass", "warn", "fail"]);
+const DoctorSeveritySchema = Schema.Literals(["info", "warn", "error"]);
 const DoctorSolutionSchema = Schema.Struct({
   kind: Schema.Literal("manual"),
   description: Schema.String,
-  command: Schema.optional(Schema.String),
+  command: Schema.optionalKey(Schema.String),
 });
 const AppVersionConstraintDoctorCheckSchema = Schema.Struct({
   name: Schema.Literal("app-version-constraint"),
   status: DoctorStatusSchema,
   severity: DoctorSeveritySchema,
-  context: Schema.Record({ key: Schema.String, value: Schema.String }),
+  context: Schema.Record(Schema.String, Schema.String),
   solutions: Schema.Array(DoctorSolutionSchema),
 });
 export const AppVersionConstraintDoctorResultSchema = Schema.Struct({
@@ -109,66 +109,66 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
     const cwd = process.cwd();
     const redactor = createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
     const redact = redactor.redactString;
-    const discovery = yield* Effect.either(
+    const discovery = yield* Effect.result(
       Effect.tryPromise({
         try: () => findDiscoveredLandofilePath(cwd),
         catch: (cause) => cause,
       }),
     );
-    if (Either.isLeft(discovery)) {
-      if (Schema.is(LandofileNotFoundError)(discovery.left)) return undefined;
-      if (Schema.is(LandofileFormConflictError)(discovery.left)) {
+    if (Result.isFailure(discovery)) {
+      if (Schema.is(LandofileNotFoundError)(discovery.failure)) return undefined;
+      if (Schema.is(LandofileFormConflictError)(discovery.failure)) {
         return failedLoadResult(
           {
             declared: "(conflicting Landofile forms)",
-            layer: redact(discovery.left.layer),
-            loadFailure: redact(discovery.left.message),
+            layer: redact(discovery.failure.layer),
+            loadFailure: redact(discovery.failure.message),
           },
-          [{ kind: "manual", description: redact(discovery.left.remediation) }],
+          [{ kind: "manual", description: redact(discovery.failure.remediation) }],
         );
       }
-      return yield* Effect.die(discovery.left);
+      return yield* Effect.die(discovery.failure);
     }
-    const discovered = discovery.right;
+    const discovered = discovery.success;
     const { appRoot, filePath } = discovered;
-    const resolved = yield* Effect.either(
+    const resolved = yield* Effect.result(
       loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLive)),
     );
-    if (Either.isLeft(resolved)) {
-      if (resolved.left._tag === "LandofileParseError") {
+    if (Result.isFailure(resolved)) {
+      if (resolved.failure._tag === "LandofileParseError") {
         return failedLoadResult(
           {
             declared: "(malformed Landofile)",
-            loadFailure: redact(resolved.left.message),
+            loadFailure: redact(resolved.failure.message),
           },
           [MALFORMED_LANDOFILE_SOLUTION],
         );
       }
-      if (resolved.left._tag === "LandofileFormConflictError") {
+      if (resolved.failure._tag === "LandofileFormConflictError") {
         return failedLoadResult(
           {
             declared: "(conflicting Landofile forms)",
-            layer: redact(resolved.left.layer),
-            loadFailure: redact(resolved.left.message),
+            layer: redact(resolved.failure.layer),
+            loadFailure: redact(resolved.failure.message),
           },
-          [{ kind: "manual", description: redact(resolved.left.remediation) }],
+          [{ kind: "manual", description: redact(resolved.failure.remediation) }],
         );
       }
       if (
-        resolved.left._tag === "LandofileIncludeError" ||
-        resolved.left._tag === "LandofileLockMismatchError"
+        resolved.failure._tag === "LandofileIncludeError" ||
+        resolved.failure._tag === "LandofileLockMismatchError"
       ) {
         return failedLoadResult(
           {
             declared: "(unresolved includes)",
-            includeResolution: redact(resolved.left.message),
+            includeResolution: redact(resolved.failure.message),
           },
           [INCLUDE_RESOLUTION_SOLUTION],
         );
       }
       return undefined;
     }
-    const landofile = resolved.right;
+    const landofile = resolved.success;
     const entries = getVersionConstraintEntries(landofile, filePath);
     const skipped = isVersionConstraintSkipped(process.env);
     if (entries.length === 0 && !skipped) return undefined;

@@ -206,7 +206,7 @@ export const staleRenameRefsLandofile = (): string =>
     '  db:\n    type: "{{ recipe.database }}"\n',
   );
 export const parseMigrationLandofile = (text: string) => {
-  const document = Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+  const document = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
     Bun.YAML.parse(text),
   );
   const provenance = Schema.decodeUnknownSync(LandofileRecipeProvenance)(document.recipe);

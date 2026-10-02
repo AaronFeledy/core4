@@ -30,7 +30,7 @@ const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   select: () => Effect.succeed(provider),
 });
 
-const buildConfigService = (): Context.Tag.Service<typeof ConfigService> => {
+const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },

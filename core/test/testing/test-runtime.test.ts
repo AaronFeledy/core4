@@ -155,7 +155,7 @@ describe("@lando/core/testing", () => {
           const queue = yield* events.subscribeQueue;
           const waiter = yield* events
             .waitFor("test-runtime:event", { filter: (event) => event.value === 2 })
-            .pipe(Effect.fork);
+            .pipe(Effect.forkChild);
 
           yield* Effect.sleep("10 millis");
           yield* events.publish(firstEvent);

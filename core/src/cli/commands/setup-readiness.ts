@@ -71,7 +71,7 @@ export const writeSetupReadiness = (
     };
     yield* Effect.promise(() =>
       writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
-    ).pipe(Effect.catchAll(() => Effect.void));
+    ).pipe(Effect.catch(() => Effect.void));
   });
 
 export const readSetupReadiness = (
@@ -91,7 +91,7 @@ const readSetupReadinessRaw = (
     try: async () =>
       JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as SetupReadinessSummary,
     catch: () => undefined,
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  }).pipe(Effect.catch(() => Effect.succeed(undefined)));
 };
 
 const redactSetupReadinessSummary = (summary: SetupReadinessSummary): SetupReadinessSummary => ({

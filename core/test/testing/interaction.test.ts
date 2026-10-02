@@ -12,7 +12,7 @@ const runScopedExit = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<
 
 const failureTag = <A, E>(exit: Exit.Exit<A, E>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined;
 };
 

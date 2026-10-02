@@ -35,7 +35,7 @@ const silentRenderer = {
     stdout: () => Effect.void,
     stderr: () => Effect.void,
   },
-} satisfies Context.Tag.Service<typeof Renderer>;
+} satisfies Context.Service.Shape<typeof Renderer>;
 
 const redactorFor = (tokens: ReadonlyArray<string>) =>
   Effect.gen(function* () {
@@ -48,7 +48,7 @@ const redactorFor = (tokens: ReadonlyArray<string>) =>
 const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
   Effect.serviceOption(RedactionService).pipe(
     Effect.map(
-      (service): Context.Tag.Service<typeof RedactionService> => ({
+      (service): Context.Service.Shape<typeof RedactionService> => ({
         registerValues: (values) =>
           service._tag === "Some" ? service.value.registerValues(values) : registerRedactionValues(values),
         forProfile: (profile, options) => {
@@ -65,9 +65,9 @@ const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
   );
 
 const withRedaction = (
-  renderer: Context.Tag.Service<typeof Renderer>,
+  renderer: Context.Service.Shape<typeof Renderer>,
   redact: (value: string) => string,
-): Context.Tag.Service<typeof Renderer> => ({
+): Context.Service.Shape<typeof Renderer> => ({
   id: renderer.id,
   capabilities: renderer.capabilities,
   message: {
@@ -85,7 +85,7 @@ const withRedaction = (
 export const makeEventCommandExecutor = (
   runtimeContext: Context.Context<unknown>,
   fixedEntries: ReadonlyArray<BuiltInCommandEntry> = [],
-): Context.Tag.Service<typeof EventCommandExecutor> => ({
+): Context.Service.Shape<typeof EventCommandExecutor> => ({
   validate(resolved) {
     return Effect.gen(function* () {
       const target = yield* resolveEventCommandTarget(
@@ -217,7 +217,7 @@ export const makeEventCommandExecutor = (
               : "",
         };
       }
-      if (Cause.isInterruptedOnly(exit.cause)) return yield* Effect.interrupt;
+      if (Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.interrupt;
       return yield* Effect.fail(Cause.squash(exit.cause));
     }).pipe(Effect.provide(Context.add(runtimeContext, EventCommandExecutor, this)));
   },

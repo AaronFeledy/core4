@@ -288,7 +288,7 @@ const flattenRaw = (
   ctx: FlattenRecipeContext,
 ): Effect.Effect<Record<string, unknown>, FlattenError> =>
   Effect.gen(function* () {
-    if (!Predicate.isRecord(parsed)) return {};
+    if (!Predicate.isObject(parsed)) return {};
     const ref = extendsRefOf(parsed);
     if (ref === undefined) return stripExtendsAndDrop(parsed);
 
@@ -314,7 +314,7 @@ export const flattenRecipe = (
   parsed: unknown,
   ctx?: Partial<FlattenRecipeContext>,
 ): Effect.Effect<Record<string, unknown>, FlattenError> => {
-  if (!Predicate.isRecord(parsed)) return Effect.succeed({});
+  if (!Predicate.isObject(parsed)) return Effect.succeed({});
   return flattenRaw(source, parsed, {
     hops: ctx?.hops ?? 0,
     chain: ctx?.chain ?? [identityOf(source)],

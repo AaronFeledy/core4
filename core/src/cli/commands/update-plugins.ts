@@ -54,7 +54,7 @@ const advertisedMetadata = (packument: NpmPackument): PluginUpdateMetadata => {
 const loadManifest = (path: string): Effect.Effect<PluginManifest | undefined> =>
   Effect.tryPromise(() => validatePluginManifest(path)).pipe(
     Effect.map(({ manifest }) => manifest),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 const inventoryFor = (
@@ -74,7 +74,7 @@ const inventoryFor = (
           const manifest = yield* loadManifest(entry.path);
           const trusted = yield* trustStore
             .isPluginTrusted(entry.name)
-            .pipe(Effect.catchAll(() => Effect.succeed(false)));
+            .pipe(Effect.catch(() => Effect.succeed(false)));
           const mayResolve =
             resolveMetadata &&
             entry.requestedSelector !== undefined &&
@@ -83,7 +83,7 @@ const inventoryFor = (
             trusted;
           const packument = mayResolve
             ? yield* Effect.tryPromise(() => registryClient.fetchPackument(entry.name)).pipe(
-                Effect.catchAll(() => Effect.succeed(undefined)),
+                Effect.catch(() => Effect.succeed(undefined)),
               )
             : undefined;
           return {

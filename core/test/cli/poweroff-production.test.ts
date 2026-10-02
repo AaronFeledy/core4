@@ -167,11 +167,11 @@ test.each(["provider", "no-plan", "scratch"] as const)(
     // Given: an app that cannot be stopped by its owning provider.
     await withPoweroff(async ({ calls, options, layer }) => {
       // When: poweroff uses its production stop.
-      const result = await Effect.runPromise(poweroff(options).pipe(Effect.either, Effect.provide(layer)));
+      const result = await Effect.runPromise(poweroff(options).pipe(Effect.result, Effect.provide(layer)));
       // Then: no successful result or runtime teardown hides the failed stop.
       expect(result._tag).toBe("Left");
-      if (result._tag !== "Left") throw new Error("Expected a typed stop failure");
-      expect(result.left).toMatchObject({
+      if (result._tag !== "Failure") throw new Error("Expected a typed stop failure");
+      expect(result.failure).toMatchObject({
         _tag: "PoweroffStopError",
         appId: failure === "scratch" ? "scratch-one" : "user",
         providerId: failure === "scratch" ? "lando" : "docker",
@@ -191,7 +191,7 @@ test("turns injected stop rejection into a tagged failure", async () => {
         stopApp: async () => {
           throw new Error("stop failed");
         },
-      }).pipe(Effect.either, Effect.provide(layer)),
+      }).pipe(Effect.result, Effect.provide(layer)),
     );
     // Then: poweroff fails without claiming success or shutting down the runtime.
     expect(result._tag).toBe("Left");
@@ -253,7 +253,7 @@ test("omits the global post event when its provider fails", async () => {
         discoverContainers: async () => [
           { appId: "global", appName: "global", providerId: "lando", appRoot: root, services: [] },
         ],
-      }).pipe(Effect.either, Effect.provide(layer)),
+      }).pipe(Effect.result, Effect.provide(layer)),
     );
     // Then: the failed stop never emits a success event.
     expect(result._tag).toBe("Left");

@@ -1,5 +1,5 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
-import { Data, Effect, Either, Schema } from "effect";
+import { Data, Effect, Result, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -12,35 +12,24 @@ import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 export type SubsystemRecovery = "automatic" | "manual";
 
 export const SshAgentPostureDetails = Schema.Struct({
-  mode: Schema.Literal("sidecar", "host"),
+  mode: Schema.Literals(["sidecar", "host"]),
   upstream: Schema.Struct({
-    source: Schema.Literal(
-      "sidecar",
-      "explicit",
-      "env",
-      "1password",
-      "gpg",
-      "yubikey-agent",
-      "windows-openssh",
-      "none",
-    ),
+    source: Schema.Literals(["sidecar", "explicit", "env", "1password", "gpg", "yubikey-agent", "windows-openssh", "none"]),
     reachable: Schema.Boolean,
-    identities: Schema.optional(Schema.NonNegativeInt),
+    identities: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   }),
-  delivery: Schema.Union(AgentSocketDelivery, Schema.Literal("none", "runtime-volume")),
-  runtimeVolume: Schema.optional(Schema.String),
+  delivery: Schema.Union([AgentSocketDelivery, Schema.Literals(["none", "runtime-volume"])]),
+  runtimeVolume: Schema.optionalKey(Schema.String),
   security: Schema.String,
-  gpg: Schema.optional(
-    Schema.Struct({
+  gpg: Schema.optionalKey(Schema.Struct({
       forward: Schema.Literal(true),
       upstream: Schema.Struct({
-        source: Schema.Literal("explicit", "gpgconf", "none"),
+        source: Schema.Literals(["explicit", "gpgconf", "none"]),
         reachable: Schema.Boolean,
       }),
       keyringExported: Schema.Boolean,
       security: Schema.String,
-    }),
-  ),
+    })),
 });
 
 export interface DoctorSubsystemCheck {
@@ -235,8 +224,8 @@ export const buildDegradedCheck = (
 
     if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
       const fixCommand = `${spec.name}.setup`;
-      const result = yield* Effect.either(runSetup());
-      if (Either.isRight(result)) {
+      const result = yield* Effect.result(runSetup());
+      if (Result.isSuccess(result)) {
         const liveContext = refreshContext === undefined ? {} : yield* refreshContext();
         return passCheck(spec, {
           ...withoutPreFixState(baseContext),
@@ -247,7 +236,7 @@ export const buildDegradedCheck = (
           fixExitCode: "0",
         });
       }
-      const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.left);
+      const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.failure);
       return {
         name: spec.name,
         status: "warn",
@@ -258,7 +247,7 @@ export const buildDegradedCheck = (
           fixOutcome: "failed",
           fixCommand,
           fixExitCode: "1",
-          fixError: errorMessage(result.left),
+          fixError: errorMessage(result.failure),
         },
         solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
       };

@@ -191,7 +191,7 @@ test.each([
             const outcome = yield* startApp(
               {},
               { plan, landofile, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } },
-            ).pipe(Effect.either);
+            ).pipe(Effect.result);
             const cachedPlan = yield* planner.plan(landofile, provider.capabilities);
             return {
               view,

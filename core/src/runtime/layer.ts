@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { writeStdioLine } from "@lando/renderer/io";
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { LogLevel } from "@lando/sdk/schema";
@@ -211,8 +211,8 @@ const runtimeLayerFor = (
     rootOverrides,
   }) as RuntimeLayer;
 
-const signalHandlersLayer = Layer.scopedDiscard(
-  Effect.withFiberRuntime((fiber) => installSignalHandlers({ fiber })),
+const signalHandlersLayer = Layer.effectDiscard(
+  Effect.withFiber((fiber) => installSignalHandlers({ fiber })),
 );
 
 type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOptions & {
@@ -247,23 +247,27 @@ export function makeLandoRuntime(
 export function makeLandoRuntime(options: LandoRuntimeOptions): EngineRuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer {
-  const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);
+  const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)(options);
 
-  if (Either.isLeft(decoded)) {
-    return Layer.fail(bootstrapError("Invalid Lando runtime options.", decoded.left));
-  }
-
-  const pluginPolicy = normalizePluginPolicy(decoded.right.plugins);
-  if (pluginPolicy.discovery.bundled && bundledPluginModules().length === 0) {
-    return Layer.fail(
-      new LandoRuntimeBootstrapError({
-        message:
-          "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
-        stage: "plugins",
-      }),
+  if (Result.isFailure(decoded)) {
+    return Layer.effectDiscard(
+      Effect.fail(bootstrapError("Invalid Lando runtime options.", decoded.failure)),
     );
   }
-  const capturedCwd = decoded.right.cwd ?? process.cwd();
+
+  const pluginPolicy = normalizePluginPolicy(decoded.success.plugins);
+  if (pluginPolicy.discovery.bundled && bundledPluginModules().length === 0) {
+    return Layer.effectDiscard(
+      Effect.fail(
+        new LandoRuntimeBootstrapError({
+          message:
+            "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
+          stage: "plugins",
+        }),
+      ),
+    );
+  }
+  const capturedCwd = decoded.success.cwd ?? process.cwd();
   const lifecycle = makeBootstrapLifecycleTracker();
   const runtimeProviderRegistryOverride = getRuntimeProviderRegistryOverride();
   const hostLayersResult = collectEmbeddingPluginLayers(
@@ -272,29 +276,29 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
       : [...pluginPolicy.layers, runtimeProviderRegistryOverride],
   );
 
-  if (Either.isLeft(hostLayersResult)) {
-    return Layer.fail(hostLayersResult.left);
+  if (Result.isFailure(hostLayersResult)) {
+    return Layer.effectDiscard(Effect.fail(hostLayersResult.failure));
   }
-  const bootstrap = decoded.right.bootstrap ?? "app";
-  const logging = resolveRuntimeLogging(decoded.right);
+  const bootstrap = decoded.success.bootstrap ?? "app";
+  const logging = resolveRuntimeLogging(decoded.success);
   const baseLayer = runtimeLayerFor(
     bootstrap,
     logging.loggerMode,
     logging.logLevel,
     logging.structured,
-    normalizeLibraryRendererMode(decoded.right.renderer ?? decoded.right.config?.renderer),
-    decoded.right.telemetry ?? decoded.right.config?.telemetry?.enabled ?? false,
+    normalizeLibraryRendererMode(decoded.success.renderer ?? decoded.success.config?.renderer),
+    decoded.success.telemetry ?? decoded.success.config?.telemetry?.enabled ?? false,
     pluginPolicy,
-    rootOverridesFromConfig(decoded.right.config),
+    rootOverridesFromConfig(decoded.success.config),
     lifecycle,
-    hostLayersResult.right,
+    hostLayersResult.success,
     capturedCwd,
   );
 
   // Library mode defaults prompts to non-interactive; the option overrides the
   // bootstrap default mode and is itself overridden by an explicit host
   // InteractionService in plugins.layers (merged last, so it wins).
-  const interactionMode = decoded.right.interaction ?? "non-interactive";
+  const interactionMode = decoded.success.interaction ?? "non-interactive";
   const interactionOverride = Layer.succeed(
     InteractionServiceTag,
     makeInteractionService({
@@ -306,10 +310,10 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const baseHostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> = [
     Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
     interactionOverride,
-    ...(bootstrap === "none" || bootstrap === "minimal" ? hostLayersResult.right : []),
+    ...(bootstrap === "none" || bootstrap === "minimal" ? hostLayersResult.success : []),
   ];
   const hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =
-    decoded.right.installSignalHandlers === true
+    decoded.success.installSignalHandlers === true
       ? [...baseHostLayers, signalHandlersLayer as unknown as Layer.Layer<unknown, unknown, unknown>]
       : baseHostLayers;
   return mergeRuntimeWithHostLayers(

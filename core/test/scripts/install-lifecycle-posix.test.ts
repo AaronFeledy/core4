@@ -27,8 +27,7 @@ import {
   withoutHostRuntimes,
 } from "./install-lifecycle-support.ts";
 
-const DryRunEnvelope = Schema.parseJson(
-  Schema.Struct({
+const DryRunEnvelope = Schema.fromJsonString(Schema.Struct({
     ok: Schema.Boolean,
     result: Schema.Struct({
       dryRun: Schema.Boolean,
@@ -41,8 +40,7 @@ const DryRunEnvelope = Schema.parseJson(
         }),
       ),
     }),
-  }),
-);
+  }));
 
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));

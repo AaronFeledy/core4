@@ -1,17 +1,7 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 
-import {
-  Cause,
-  DateTime,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Option,
-  Schema,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, DateTime, Duration, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import { EventService } from "@lando/core/services";
 import { EventServiceLive } from "@lando/engine/services/event-service";
@@ -35,7 +25,7 @@ const preAppStartInput: unknown = {
   eventName: "pre-app-start",
   appRef: appRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const postAppStartInput: unknown = {
@@ -43,7 +33,7 @@ const postAppStartInput: unknown = {
   eventName: "post-app-start",
   appRef: appRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const filteredOutPreAppStartInput: unknown = {
@@ -51,7 +41,7 @@ const filteredOutPreAppStartInput: unknown = {
   eventName: "pre-app-start",
   appRef: otherAppRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)(preAppStartInput);
@@ -64,7 +54,7 @@ describe("waitForEvent", () => {
       Effect.gen(function* () {
         const waiter = yield* waitForEvent("pre-app-start", {
           filter: (event) => event.appRef.id === "myapp",
-        }).pipe(Effect.fork);
+        }).pipe(Effect.forkChild);
         yield* Effect.sleep("10 millis");
         yield* Effect.flatMap(EventService, (events) => events.publish(postAppStartEvent));
         yield* Effect.flatMap(EventService, (events) => events.publish(filteredOutPreAppStartEvent));
@@ -82,10 +72,10 @@ describe("waitForEvent", () => {
   test("returns the same payload as EventService.waitFor for the same event", async () => {
     const [viaHelper, viaService] = await Effect.runPromise(
       Effect.gen(function* () {
-        const helperWaiter = yield* waitForEvent("pre-app-start").pipe(Effect.fork);
+        const helperWaiter = yield* waitForEvent("pre-app-start").pipe(Effect.forkChild);
         const serviceWaiter = yield* Effect.flatMap(EventService, (events) =>
           events.waitFor("pre-app-start"),
-        ).pipe(Effect.fork);
+        ).pipe(Effect.forkChild);
         yield* Effect.sleep("10 millis");
         yield* Effect.flatMap(EventService, (events) => events.publish(preAppStartEvent));
         return [yield* Fiber.join(helperWaiter), yield* Fiber.join(serviceWaiter)] as const;
@@ -101,15 +91,15 @@ describe("waitForEvent", () => {
       Effect.gen(function* () {
         const waiter = yield* waitForEvent("download-progress", {
           timeout: Duration.seconds(2),
-        }).pipe(Effect.exit, Effect.fork);
+        }).pipe(Effect.exit, Effect.forkChild);
         yield* TestClock.adjust("3 seconds");
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       expect(error._tag).toBe("Some");
       if (error._tag === "Some") {
         expect(error.value._tag).toBe("EventError");
@@ -122,12 +112,12 @@ describe("waitForEvent", () => {
   test("waits indefinitely when no timeout is supplied", async () => {
     const polled = await Effect.runPromise(
       Effect.gen(function* () {
-        const waiter = yield* waitForEvent("pre-app-start").pipe(Effect.fork);
+        const waiter = yield* waitForEvent("pre-app-start").pipe(Effect.forkChild);
         yield* TestClock.adjust("1 hour");
-        const result = yield* Fiber.poll(waiter);
+        const result = yield* waiter.pollUnsafe();
         yield* Fiber.interrupt(waiter);
         return result;
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(Option.isNone(polled)).toBe(true);

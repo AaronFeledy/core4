@@ -127,7 +127,7 @@ const withEnv = async (name: string, value: string, run: () => Promise<void>): P
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected tagged failure");
   return failure.value;
@@ -734,7 +734,7 @@ describe("initApp tarball source boundary", () => {
           }
           expect(Runtime.isFiberFailure(caught)).toBe(true);
           if (!Runtime.isFiberFailure(caught)) throw new Error("expected Effect fiber failure");
-          const failure = Cause.failureOption(caught[Runtime.FiberFailureCauseId]);
+          const failure = Cause.findErrorOption(caught[Runtime.FiberFailureCauseId]);
           expect(failure._tag).toBe("Some");
           if (failure._tag !== "Some") throw new Error("expected typed download failure");
           expect(failure.value).toBeInstanceOf(DownloadFetchError);

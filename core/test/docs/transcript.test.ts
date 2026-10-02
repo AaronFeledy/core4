@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Transcript as CoreTranscript } from "@lando/core/schema";
 import { Transcript } from "@lando/sdk/docs/components";
-import { JSONSchema, ParseResult, Schema } from "effect";
+import { JSONSchema, Schema } from "effect";
 
 const exampleTranscript = {
   guideId: "node-postgres",
@@ -42,13 +42,13 @@ describe("Transcript", () => {
         ...exampleTranscript,
         startedAt: "2026-05-23 12:00:00",
       }),
-    ).toThrow(ParseResult.ParseError);
+    ).toThrow(Schema.SchemaError);
 
     expect(() =>
       Schema.decodeUnknownSync(Transcript)({
         ...exampleTranscript,
         frames: [{ kind: "verify", target: "command", matched: true, expected: "ok", actual: "ok" }],
       }),
-    ).toThrow(ParseResult.ParseError);
+    ).toThrow(Schema.SchemaError);
   });
 });

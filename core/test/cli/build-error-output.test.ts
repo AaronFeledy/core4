@@ -13,7 +13,7 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
   const providerId = ProviderId.make("lando");
   const app = AppId.make("build-output");
   const service = ServiceName.make("web");
-  const metadata = { resolvedAt: DateTime.unsafeMake(0), source: "test", runtime: 4 as const };
+  const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 as const };
   const build = buildContainerArtifact(
     {
       app,

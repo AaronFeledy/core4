@@ -273,7 +273,7 @@ describe("subscriber runtime integration", () => {
     // Then: cwd-independent validation identifies the entry and its remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -316,7 +316,7 @@ describe("subscriber runtime integration", () => {
     // Then: validation fails identically despite app discovery finding that tooling id.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -422,7 +422,7 @@ describe("subscriber runtime integration", () => {
     expect(observed.markerValue).toBe("app");
     expect(Exit.isFailure(observed.invalidExit)).toBe(true);
     if (Exit.isFailure(observed.invalidExit)) {
-      const failure = Cause.failureOption(observed.invalidExit.cause);
+      const failure = Cause.findErrorOption(observed.invalidExit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -515,7 +515,7 @@ describe("subscriber runtime integration", () => {
     // Then: registration reports the exact invalid entry and remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const value: unknown = failure.value;
@@ -553,7 +553,7 @@ describe("subscriber runtime integration", () => {
     // Then: absence of tooling reports the same exact entry and remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);

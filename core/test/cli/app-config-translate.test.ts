@@ -105,7 +105,7 @@ const makeLando4Encoder = (
   encode: ({ context, fragment }) =>
     Effect.succeed({
       text: emitLandofileYaml(
-        Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+        Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
           fragment ?? context,
         ),
         { sortKeys: true },
@@ -119,7 +119,7 @@ const runExit = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromiseE
 
 const failureTag = (exit: Exit.Exit<unknown, unknown>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some" ? (failure.value as { _tag: string })._tag : undefined;
 };
 
@@ -127,7 +127,7 @@ const failureValue = (
   exit: Exit.Exit<unknown, unknown>,
 ): { _tag: string; message?: string; remediation?: string } | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some"
     ? (failure.value as { _tag: string; message?: string; remediation?: string })
     : undefined;
@@ -808,7 +808,7 @@ describe("appConfigTranslate", () => {
     // Then: the collision propagates untouched.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       expect(error._tag).toBe("Some");
       if (error._tag === "Some") expect(error.value).toBe(conflict);
     }

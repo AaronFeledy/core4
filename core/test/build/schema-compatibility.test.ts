@@ -19,6 +19,60 @@ const objectSchema = (
 });
 
 describe("schema compatibility classifier", () => {
+  test.each([
+    [
+      "definitions location",
+      { $ref: "#/$defs/Text", $defs: { Text: { type: "string" } } },
+      { $ref: "#/definitions/Text", definitions: { Text: { type: "string" } } },
+    ],
+    [
+      "reference names",
+      { $ref: "#/$defs/Text", $defs: { Text: { type: "string" } } },
+      { $ref: "#/definitions/0", definitions: { "0": { type: "string" } } },
+    ],
+    [
+      "generated check descriptions",
+      { anyOf: [{ type: "number", minimum: 1, description: "a number" }] },
+      { anyOf: [{ description: "a value greater than or equal to 1", minimum: 1, type: "number" }] },
+    ],
+    [
+      "key order",
+      { type: "object", properties: { a: { type: "string" }, b: { type: "number" } }, required: ["a", "b"] },
+      { required: ["b", "a"], properties: { b: { type: "number" }, a: { type: "string" } }, type: "object" },
+    ],
+    ["enum order", { type: "string", enum: ["b", "a"] }, { enum: ["a", "b"], type: "string" }],
+    [
+      "recursive reference names",
+      {
+        $ref: "#/$defs/Node",
+        $defs: { Node: { type: "object", properties: { next: { $ref: "#/$defs/Node" } } } },
+      },
+      {
+        $ref: "#/definitions/0",
+        definitions: { "0": { type: "object", properties: { next: { $ref: "#/definitions/0" } } } },
+      },
+    ],
+  ] satisfies ReadonlyArray<readonly [string, JsonSchema, JsonSchema]>)(
+    "ignores %s when constraints are unchanged",
+    (_name, before, after) => {
+      // Given equivalent documents emitted by different generators.
+      // When their meaning is compared.
+      const findings = classifySchemaChange(before, after, "input");
+      // Then representation differences do not require compatibility exceptions.
+      expect(findings).toEqual([]);
+    },
+  );
+
+  test("detects a changed constraint behind renamed references", () => {
+    // Given definitions whose names and constraints both changed.
+    const before = { $ref: "#/$defs/Text", $defs: { Text: { type: "string" } } };
+    const after = { $ref: "#/definitions/0", definitions: { "0": { type: "number" } } };
+    // When compared through the same normalization as generator-only changes.
+    const findings = classifySchemaChange(before, after, "input");
+    // Then the changed accepted value type is still breaking.
+    expect(findings).toEqual([expect.objectContaining({ verdict: "breaking", changeKind: "type-changed" })]);
+  });
+
   test("classifies an optional input property addition as compatible", () => {
     const before = objectSchema({ name: { type: "string" } }, ["name"]);
     const after = objectSchema({ name: { type: "string" }, port: { type: "number" } }, ["name"]);

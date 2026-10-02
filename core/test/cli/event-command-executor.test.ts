@@ -84,18 +84,18 @@ const makeHarness = (): Harness => {
       stdout: (chunk: string) => Effect.sync(() => presentation.push(`stdout:${chunk}`)),
       stderr: (chunk: string) => Effect.sync(() => presentation.push(`stderr:${chunk}`)),
     },
-  } satisfies Context.Tag.Service<typeof Renderer>;
+  } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
     registerValues: registerRedactionValues,
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],
     ) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  } satisfies Context.Tag.Service<typeof RedactionService>;
+  } satisfies Context.Service.Shape<typeof RedactionService>;
   return {
     events,
     presentation,
-    context: Context.make(Context.GenericTag<unknown>("test/runtime"), {}).pipe(
+    context: Context.make(Context.Service<unknown>("test/runtime"), {}).pipe(
       Context.add(EventService, eventService),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),
@@ -150,7 +150,7 @@ const eventPlan = (): AppPlan => ({
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 });
 
@@ -353,7 +353,7 @@ describe("EventCommandExecutorLive", () => {
     );
 
     // Then
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(harness.events.at(-1)).toMatchObject({
       _tag: "cli-meta:test:event-command-error",
       failureTag: "Interrupted",
@@ -367,7 +367,7 @@ describe("EventCommandExecutorLive", () => {
       ...testSpec(() =>
         StreamFrameSink.pipe(
           Effect.flatMap((sink) => sink.emit({ _tag: "stdout", service: "app", chunk: "before interrupt" })),
-          Effect.zipRight(Effect.interrupt),
+          Effect.andThen(Effect.interrupt),
         ),
       ),
       id: "app:logs",
@@ -398,7 +398,7 @@ describe("EventCommandExecutorLive", () => {
 
     // Then
     expect(harness.presentation).toContain("stdout:app stdout: before interrupt\n");
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   });
 
   test("returns meta:bun nonzero exit without mutating the embedding host exit code", async () => {

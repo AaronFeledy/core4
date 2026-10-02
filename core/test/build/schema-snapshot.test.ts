@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { SchemaTransformation } from "effect";
 
 import { describe, expect, test } from "bun:test";
 import type { JsonSchemaName } from "@lando/sdk/schema";
@@ -57,6 +58,48 @@ const runGenerator = (): void => {
 };
 
 describe("schema snapshot artifact-set gate", () => {
+  test("authored-input draft-07 artifacts do not advertise nullable property types", async () => {
+    // Given the emitted authored-input artifact families, including registered lockfiles.
+    runGenerator();
+    const names = JSON_SCHEMA_NAMES.filter(
+      (name) =>
+        /^(LandofileShape|LandofileAuthoring(?:Shape|Fragment)(?:Wire)?|GlobalConfig|PluginManifest|RecipeManifest|IncludeEntry|ToolingIncludeShape)$/.test(
+          name,
+        ) || /Lock(?:file|File|Entries|Entry)?(?:Schema)?$/.test(name),
+    );
+    const nullablePaths: string[] = [];
+    const scan = (value: unknown, path: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((child, index) => scan(child, `${path}[${index}]`));
+        return;
+      }
+      if (value === null || typeof value !== "object") return;
+      if (
+        "type" in value &&
+        (value.type === "null" || (Array.isArray(value.type) && value.type.includes("null")))
+      )
+        nullablePaths.push(path);
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "enum" || key === "const" || key === "default" || key === "examples") continue;
+        scan(child, `${path}.${key}`);
+      }
+    };
+    // When the actual draft-07 documents are scanned, not the source AST.
+    for (const name of names) scan(JSON.parse(await readFile(schemaArtifactPath(name), "utf8")), name);
+    // Then optional keys never permit null through type arrays or union alternatives.
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "LandofileShape",
+        "GlobalConfig",
+        "PluginManifest",
+        "RecipeManifest",
+        "IncludeEntry",
+        "ToolingIncludeShape",
+      ]),
+    );
+    expect(nullablePaths).toEqual([]);
+  });
+
   test("bundled plugin manifest fixture freezes every in-binary plugin manifest", async () => {
     runGenerator();
     const bundledPluginManifests = JSON.parse(
@@ -163,10 +206,7 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("reference renderer documents root record schemas", () => {
-    const rendered = renderSchemaReferenceMarkdown(
-      "StringMap",
-      Schema.Record({ key: Schema.String, value: Schema.String }),
-    );
+    const rendered = renderSchemaReferenceMarkdown("StringMap", Schema.Record(Schema.String, Schema.String));
 
     expect(rendered).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
@@ -180,7 +220,7 @@ describe("schema snapshot artifact-set gate", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "ArtifactBackedShape",
       Schema.Struct({
-        value: Schema.String.annotations({ description: "Documented value." }),
+        value: Schema.String.annotate({ description: "Documented value." }),
       }),
       {
         jsonSchema: {
@@ -199,7 +239,7 @@ describe("schema snapshot artifact-set gate", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "RefBackedShape",
       Schema.Struct({
-        value: Schema.String.annotations({ description: "Documented value." }),
+        value: Schema.String.annotate({ description: "Documented value." }),
       }),
       {
         jsonSchema: {
@@ -224,7 +264,7 @@ describe("schema snapshot artifact-set gate", () => {
     const fieldRendered = renderSchemaReferenceMarkdown(
       "ExampleShape",
       Schema.Struct({
-        value: Schema.Unknown.annotations({
+        value: Schema.Unknown.annotate({
           description: "Documented value.",
           examples: ["alpha", { nested: true }],
         }),
@@ -238,7 +278,7 @@ describe("schema snapshot artifact-set gate", () => {
     );
     const rootRendered = renderSchemaReferenceMarkdown(
       "RootExample",
-      Schema.Unknown.annotations({ examples: ["root", { nested: true }] }),
+      Schema.Unknown.annotate({ examples: ["root", { nested: true }] }),
       { jsonSchema: { type: "string" } },
     );
 
@@ -254,7 +294,7 @@ describe("schema snapshot artifact-set gate", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "MdxUnsafeShape",
       Schema.Struct({
-        value: Schema.String.annotations({ description: "Field <Value> uses {template} | pipes." }),
+        value: Schema.String.annotate({ description: "Field <Value> uses {template} | pipes." }),
       }),
       {
         title: "Alpha <Guide> {shape} & docs",
@@ -277,11 +317,11 @@ describe("schema snapshot artifact-set gate", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "UnionBackedShape",
       Schema.Struct({
-        value: Schema.Union(
+        value: Schema.Union([
           Schema.Literal(false),
           Schema.String,
           Schema.Struct({ id: Schema.String }),
-        ).annotations({
+        ]).annotate({
           description: "Documented union value.",
         }),
       }),
@@ -309,7 +349,7 @@ describe("schema snapshot artifact-set gate", () => {
   test("reference renderer surfaces root union branch types", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "CommandLike",
-      Schema.Union(Schema.String, Schema.Array(Schema.String)),
+      Schema.Union([Schema.String, Schema.Array(Schema.String)]),
       {
         jsonSchema: {
           anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
@@ -324,14 +364,14 @@ describe("schema snapshot artifact-set gate", () => {
   test("reference renderer surfaces root union object branch fields as optional when branch-specific", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "RunLike",
-      Schema.Union(
+      Schema.Union([
         Schema.Struct({
-          command: Schema.String.annotations({ description: "Command to execute." }),
+          command: Schema.String.annotate({ description: "Command to execute." }),
         }),
         Schema.Struct({
-          shell: Schema.String.annotations({ description: "Shell command to execute." }),
+          shell: Schema.String.annotate({ description: "Shell command to execute." }),
         }),
-      ),
+      ]),
       {
         jsonSchema: {
           anyOf: [
@@ -361,18 +401,18 @@ describe("schema snapshot artifact-set gate", () => {
   test("reference renderer marks root union fields required only when present and required in every branch", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "VariantLike",
-      Schema.Union(
+      Schema.Union([
         Schema.Struct({
-          shared: Schema.String.annotations({ description: "Shared field." }),
-          requiredOnly: Schema.String.annotations({ description: "Required variant field." }),
+          shared: Schema.String.annotate({ description: "Shared field." }),
+          requiredOnly: Schema.String.annotate({ description: "Required variant field." }),
         }),
         Schema.Struct({
-          shared: Schema.optional(Schema.String).annotations({ description: "Shared field." }),
-          optionalOnly: Schema.optional(Schema.String).annotations({
+          shared: Schema.optionalKey(Schema.String).annotate({ description: "Shared field." }),
+          optionalOnly: Schema.optionalKey(Schema.String).annotate({
             description: "Optional variant field.",
           }),
         }),
-      ),
+      ]),
       {
         jsonSchema: {
           anyOf: [
@@ -416,10 +456,10 @@ describe("schema snapshot artifact-set gate", () => {
     const DeprecatedShape = deprecateSchema(
       Schema.Struct({
         oldField: deprecateField(
-          Schema.String.annotations({ description: "Deprecated field retained for compatibility." }),
+          Schema.String.annotate({ description: "Deprecated field retained for compatibility." }),
           notice,
         ),
-      }).annotations({
+      }).annotate({
         identifier: "DeprecatedShape",
         title: "Deprecated Shape",
         description: "A schema used to prove deprecation reference rendering.",
@@ -453,7 +493,7 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("schema annotation gate names missing top-level annotations", () => {
-    const MissingTopLevelAnnotations = Schema.Struct({ id: Schema.String }).annotations({
+    const MissingTopLevelAnnotations = Schema.Struct({ id: Schema.String }).annotate({
       identifier: "MissingTopLevelAnnotations",
     });
 
@@ -463,7 +503,7 @@ describe("schema snapshot artifact-set gate", () => {
   });
 
   test("schema annotation gate names undescribed public fields", () => {
-    const MissingFieldDescription = Schema.Struct({ id: Schema.String }).annotations({
+    const MissingFieldDescription = Schema.Struct({ id: Schema.String }).annotate({
       identifier: "MissingFieldDescription",
       title: "Missing Field Description",
       description: "A schema used to prove field annotation enforcement.",
@@ -476,20 +516,19 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate accepts a description carried on an encoded transform", () => {
     const EncodedTransformDescription = Schema.Struct({
-      names: Schema.optional(
-        Schema.transform(
-          Schema.Array(Schema.String).annotations({ description: DESCRIBED }),
-          Schema.Array(Schema.String),
-          {
-            strict: true,
-            decode: (entries) => entries,
-            encode: (entries) => entries,
-          },
-        ),
+      names: Schema.optionalKey(
+        Schema.Array(Schema.String)
+          .annotate({ description: DESCRIBED })
+          .pipe(
+            Schema.decodeTo(
+              Schema.Array(Schema.String),
+              SchemaTransformation.transform({ decode: (entries) => entries, encode: (entries) => entries }),
+            ),
+          ),
       ),
     });
 
-    const encoded = Schema.encodedBoundSchema(EncodedTransformDescription).annotations({
+    const encoded = Schema.toEncoded(EncodedTransformDescription).annotate({
       identifier: "EncodedTransformDescription",
       title: "Encoded Transform Description",
       description: "A schema used to prove encoded transform descriptions are recognized.",
@@ -502,16 +541,17 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate names an encoded transform field whose description was removed", () => {
     const UndescribedTransform = Schema.Struct({
-      names: Schema.optional(
-        Schema.transform(Schema.Array(Schema.String), Schema.Array(Schema.String), {
-          strict: true,
-          decode: (entries) => entries,
-          encode: (entries) => entries,
-        }),
+      names: Schema.optionalKey(
+        Schema.Array(Schema.String).pipe(
+          Schema.decodeTo(
+            Schema.Array(Schema.String),
+            SchemaTransformation.transform({ decode: (entries) => entries, encode: (entries) => entries }),
+          ),
+        ),
       ),
     });
 
-    const encoded = Schema.encodedBoundSchema(UndescribedTransform).annotations({
+    const encoded = Schema.toEncoded(UndescribedTransform).annotate({
       identifier: "UndescribedTransform",
       title: "Undescribed Transform",
       description: "A schema used to prove removed transform descriptions still fail.",
@@ -524,10 +564,10 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate rejects a partially described multi-variant union", () => {
     const PartiallyDescribedUnion = Schema.Struct({
-      value: Schema.optional(
-        Schema.Union(Schema.String.annotations({ description: DESCRIBED }), Schema.Number),
+      value: Schema.optionalKey(
+        Schema.Union([Schema.String.annotate({ description: DESCRIBED }), Schema.Number]),
       ),
-    }).annotations({
+    }).annotate({
       identifier: "PartiallyDescribedUnion",
       title: "Partially Described Union",
       description: "A schema used to prove one documented variant does not document the field.",
@@ -540,10 +580,10 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate validates attached examples", () => {
     const InvalidExample = Schema.Struct({
-      mode: Schema.String.pipe(Schema.pattern(/^valid$/u)).annotations({
+      mode: Schema.String.pipe(Schema.check(Schema.isPattern(/^valid$/u))).annotate({
         description: "Allowed mode literal.",
       }),
-    }).annotations({
+    }).annotate({
       identifier: "InvalidExample",
       title: "Invalid Example",
       description: "A schema used to prove example validation.",
@@ -557,11 +597,11 @@ describe("schema snapshot artifact-set gate", () => {
 
   test("schema annotation gate validates attached field examples", () => {
     const InvalidFieldExample = Schema.Struct({
-      mode: Schema.String.pipe(Schema.pattern(/^valid$/u)).annotations({
+      mode: Schema.String.pipe(Schema.check(Schema.isPattern(/^valid$/u))).annotate({
         description: "Allowed mode literal.",
         examples: ["invalid"],
       }),
-    }).annotations({
+    }).annotate({
       identifier: "InvalidFieldExample",
       title: "Invalid Field Example",
       description: "A schema used to prove field-level example validation.",

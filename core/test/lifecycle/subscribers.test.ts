@@ -221,7 +221,7 @@ describe("subscriber runtime", () => {
       // Then: the concrete tagged failure is complete and no partial index is published.
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(SubscriberLevelMismatchError);
@@ -254,7 +254,7 @@ describe("subscriber runtime", () => {
       // Then: mismatch rejection leaves the registration closure unpublished.
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toMatchObject({
@@ -315,7 +315,7 @@ describe("subscriber runtime", () => {
     // Then: strict membership validation rejects the selector without publishing an index.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PluginManifestError);
@@ -340,7 +340,7 @@ describe("subscriber runtime", () => {
     // Then: the tagged manifest failure identifies the subscriber and no index becomes visible.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PluginManifestError);
@@ -361,7 +361,7 @@ describe("subscriber runtime", () => {
     // Then: the existing ConfigError identifies the offending array entry.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -386,7 +386,7 @@ describe("subscriber runtime", () => {
     // Then: the offending index and remediation are reported as ConfigError.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);

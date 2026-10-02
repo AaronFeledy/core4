@@ -6,10 +6,7 @@ export interface HostDnsResolverShape {
   readonly lookup: (hostname: string) => Effect.Effect<ReadonlyArray<string>, Error>;
 }
 
-export class HostDnsResolver extends Context.Tag("@lando/core/HostDnsResolver")<
-  HostDnsResolver,
-  HostDnsResolverShape
->() {}
+export class HostDnsResolver extends Context.Service<HostDnsResolver, HostDnsResolverShape>()("@lando/core/HostDnsResolver") {}
 
 export const HostDnsResolverLive = Layer.succeed(HostDnsResolver, {
   lookup: (hostname) =>

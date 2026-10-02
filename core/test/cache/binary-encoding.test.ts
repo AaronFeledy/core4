@@ -71,7 +71,7 @@ const appPlanFixture: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-20T00:00:00Z"),
     source: "/workspace/fixture-app/.lando.yml",
     runtime: 4,
   },

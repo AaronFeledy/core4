@@ -26,7 +26,7 @@ import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
 import type { SetupReadinessRecorder } from "./setup-steps";
 
 type SetupPrivilegeOptions = {
-  readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
+  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
 };
 
 const SKIP_CA_TRUST_EVIDENCE = "Certificate authority trust installation skipped by --skip-install-ca.";
@@ -106,7 +106,7 @@ export const runCaSetupStep = (
             .publish(
               MessageInfoEvent.make({
                 body: "Installing local certificate trust. Windows may open a Security Warning; approve it to continue. --yes cannot answer Windows security prompts.",
-                timestamp: DateTime.unsafeNow(),
+                timestamp: DateTime.nowUnsafe(),
               }),
             )
             .pipe(Effect.ignore);

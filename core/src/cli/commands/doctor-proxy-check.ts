@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { PortNumber } from "@lando/sdk/schema";
 import { FileSystem, PathsService, type RouterService } from "@lando/sdk/services";
@@ -36,8 +36,8 @@ const isAcquisitionMode = (value: unknown): value is AcquisitionMode =>
   ACQUISITION_MODES.some((mode) => mode === value);
 
 const decodePort = (value: unknown): number | undefined => {
-  const decoded = Schema.decodeUnknownEither(PortNumber)(value);
-  return Either.isRight(decoded) ? decoded.right : undefined;
+  const decoded = Schema.decodeUnknownResult(PortNumber)(value);
+  return Result.isSuccess(decoded) ? decoded.success : undefined;
 };
 
 const readAcquisitionSnapshot = (): Effect.Effect<AcquisitionSnapshot | undefined> =>
@@ -53,12 +53,12 @@ const readAcquisitionSnapshot = (): Effect.Effect<AcquisitionSnapshot | undefine
     );
     const text = yield* fileSystem.value
       .readText(stateFile)
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+      .pipe(Effect.catch(() => Effect.succeed(undefined)));
     if (text === undefined) return undefined;
     const parsed = yield* Effect.try({
       try: (): unknown => JSON.parse(text),
       catch: (error) => error,
-    }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)));
     if (typeof parsed !== "object" || parsed === null || !("mode" in parsed)) return undefined;
     if (!isAcquisitionMode(parsed.mode)) return undefined;
     const httpPort = decodePort("httpPort" in parsed ? parsed.httpPort : undefined) ?? LAST_FALLBACK_HTTP;
@@ -70,8 +70,8 @@ const liveProxyStateContext = (
   proxy: typeof RouterService.Service,
   acquisitionMode: AcquisitionMode | undefined,
 ): Effect.Effect<Record<string, string>, never> =>
-  Effect.map(Effect.either(proxy.status), (status) => ({
-    ...(Either.isRight(status) ? { state: status.right.state } : {}),
+  Effect.map(Effect.result(proxy.status), (status) => ({
+    ...(Result.isSuccess(status) ? { state: status.success.state } : {}),
     ...(acquisitionMode === undefined ? {} : { acquisitionMode }),
   }));
 
@@ -124,8 +124,8 @@ export const buildProxyCheck = (
   fix: boolean,
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
-    const status = yield* Effect.either(proxy.status);
-    const state = Either.isRight(status) ? status.right.state : undefined;
+    const status = yield* Effect.result(proxy.status);
+    const state = Result.isSuccess(status) ? status.success.state : undefined;
     const snapshot = yield* readAcquisitionSnapshot();
     const acquisitionMode = snapshot?.mode;
     const running = isReadySubsystemId(proxy.id) && state === "running";
@@ -156,7 +156,7 @@ export const buildProxyCheck = (
             return yield* Effect.fail(new Error("Router is still serving on high ports after setup."));
           }
         }),
-      Either.isLeft(status) ? status.left : undefined,
+      Result.isFailure(status) ? status.failure : undefined,
       () =>
         Effect.gen(function* () {
           const after = yield* readAcquisitionSnapshot();

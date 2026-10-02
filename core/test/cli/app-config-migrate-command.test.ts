@@ -50,7 +50,7 @@ test("fails closed when selectable hunks lack non-interactive approval", async (
   const input = await setup();
   // When
   const result = await Effect.runPromise(
-    appConfigMigrate({ ...input, nonInteractive: true }).pipe(Effect.either),
+    appConfigMigrate({ ...input, nonInteractive: true }).pipe(Effect.result),
   );
   // Then
   expect(result).toMatchObject({
@@ -81,7 +81,7 @@ test("preserves an edit made while migration approval is pending", async () => {
 
   // When the first confirmation edits the file before transaction preparation
   const result = await Effect.runPromise(
-    appConfigMigrate(input).pipe(Effect.provideService(InteractionService, service), Effect.either),
+    appConfigMigrate(input).pipe(Effect.provideService(InteractionService, service), Effect.result),
   );
 
   // Then prepare reports a conflict and the concurrent bytes survive
@@ -113,7 +113,7 @@ test("inspects pending recovery without locking when dry-run input is invalid", 
           }),
         pending: () => Effect.succeed(report),
       }),
-      Effect.either,
+      Effect.result,
     ),
   );
   // Then
@@ -221,7 +221,7 @@ test("fails closed when a valid recorded recipe is absent from the injected sour
   const input = await setup();
   // When
   const result = await Effect.runPromise(
-    appConfigMigrate({ ...input, recipes: new Map(), dryRun: true }).pipe(Effect.either),
+    appConfigMigrate({ ...input, recipes: new Map(), dryRun: true }).pipe(Effect.result),
   );
   // Then
   expect(result).toMatchObject({ _tag: "Left", left: { reason: "unknown-recipe" } });

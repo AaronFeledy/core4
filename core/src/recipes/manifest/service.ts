@@ -1,3 +1,5 @@
+import { SchemaIssue } from "effect";
+import { Schema } from "effect";
 /**
  * `RecipeManifestService` live layer.
  *
@@ -9,7 +11,7 @@
  *   - `choices:` required and non-empty for `select`/`multiselect`
  *     prompts
  */
-import { type Context, Effect, Layer, ParseResult } from "effect";
+import { type Context, Effect, Layer } from "effect";
 
 import {
   NotImplementedError,
@@ -103,8 +105,8 @@ const rejectUnsupportedSections = (
 const recipeSourceLabel = (source: string): string => source.split(/[\\/]/).filter(Boolean).at(-1) ?? source;
 
 const validationIssues = (source: string, cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
+  if (Schema.isSchemaError(cause)) {
+    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
       issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
     );
   }
@@ -247,7 +249,7 @@ const parseRecipe = (
     Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
   );
 
-const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> = {
+const recipeManifestService: Context.Service.Shape<typeof RecipeManifestService> = {
   parse: parseRecipe,
 };
 

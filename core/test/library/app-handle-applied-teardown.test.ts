@@ -29,7 +29,7 @@ const appliedPlanAt = (root: string): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00.000Z"),
     source: "app-handle-applied-teardown.test",
     runtime: 4,
   },

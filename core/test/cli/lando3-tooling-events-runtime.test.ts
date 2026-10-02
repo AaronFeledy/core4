@@ -83,7 +83,7 @@ const convert = async (text: string): Promise<LandofileShape> => {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-22T00:00:00Z"),
   source: "lando3-tooling-events-runtime.test",
   runtime: 4 as const,
 };
@@ -165,7 +165,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
       select: () => Effect.succeed(provider),
     }),
   );
-  return Effect.runPromise(runTooling({ name: "build" }).pipe(Effect.provide(layer), Effect.either)).then(
+  return Effect.runPromise(runTooling({ name: "build" }).pipe(Effect.provide(layer), Effect.result)).then(
     (result) => ({ result, executed }),
   );
 };

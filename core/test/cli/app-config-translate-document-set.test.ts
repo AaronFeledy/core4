@@ -25,7 +25,7 @@ const makeAppDir = async (files: Readonly<Record<string, string>>) => {
 };
 
 const failureValue = <A, E>(exit: Exit.Exit<A, E>): E | undefined =>
-  Exit.isFailure(exit) ? Option.getOrUndefined(Cause.failureOption(exit.cause)) : undefined;
+  Exit.isFailure(exit) ? Option.getOrUndefined(Cause.findErrorOption(exit.cause)) : undefined;
 
 const yamlDocument = (path: string, content: string): ConfigTranslateDocument => {
   const bytes = new TextEncoder().encode(content);

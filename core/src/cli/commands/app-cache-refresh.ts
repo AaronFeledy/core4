@@ -44,8 +44,8 @@ export interface AppCacheRefreshResult {
 export const AppCacheRefreshResultSchema = Schema.Struct({
   app: Schema.String,
   commandsCompiled: Schema.Number,
-  appCommandCachePath: Schema.optional(Schema.String),
-  pluginCommandCachePath: Schema.optional(Schema.String),
+  appCommandCachePath: Schema.optionalKey(Schema.String),
+  pluginCommandCachePath: Schema.optionalKey(Schema.String),
 });
 
 type AppCacheRefreshError =
@@ -67,7 +67,7 @@ const discoverScripts = (cwd: string): Effect.Effect<ReadonlyArray<DiscoveredBun
     const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
     if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
     return yield* discoverBunShellScripts({ appRoot }).pipe(
-      Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
+      Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
     );
   });
 

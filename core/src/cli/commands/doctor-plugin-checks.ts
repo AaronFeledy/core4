@@ -6,7 +6,7 @@
  * hanging or throwing contribution degrades to one attributed self check and
  * cannot take the doctor run down.
  */
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type {
   LandoPluginModule,
@@ -61,7 +61,7 @@ export interface PluginDoctorRunOutcome {
  */
 const PROBE_BUDGET_MS = 5_000;
 const MAX_REPORTS_PER_CHECK = 32;
-const PluginDoctorReports = Schema.Array(PluginDoctorReport).pipe(Schema.maxItems(MAX_REPORTS_PER_CHECK));
+const PluginDoctorReports = Schema.Array(PluginDoctorReport).pipe(Schema.check(Schema.isMaxLength(MAX_REPORTS_PER_CHECK)));
 
 class PluginDoctorReportInvalidError extends Schema.TaggedError<PluginDoctorReportInvalidError>()(
   "PluginDoctorReportInvalidError",
@@ -91,8 +91,8 @@ export const pluginDoctorReports = (
 ): Effect.Effect<PluginDoctorRunOutcome, never> =>
   Effect.gen(function* () {
     const index = makePluginCapabilityIndex(modules);
-    if (Either.isLeft(index)) {
-      const described = describeDoctorFailure(index.left);
+    if (Result.isFailure(index)) {
+      const described = describeDoctorFailure(index.failure);
       return {
         reports: [],
         selfChecks: [
@@ -108,7 +108,7 @@ export const pluginDoctorReports = (
     }
 
     const isolated = yield* Effect.forEach(
-      index.right.doctorChecks.entries(),
+      index.success.doctorChecks.entries(),
       ([id, check]) =>
         isolateDoctorSection({
           section: `plugin-check:${id}`,
@@ -116,7 +116,7 @@ export const pluginDoctorReports = (
           // attributed to the plugin rather than escaping the isolate.
           effect: Effect.suspend(() => check.run(input)).pipe(
             Effect.flatMap((reports) =>
-              Schema.decodeUnknown(PluginDoctorReports, { onExcessProperty: "error" })(reports).pipe(
+              Schema.decodeUnknownEffect(PluginDoctorReports, { onExcessProperty: "error" })(reports).pipe(
                 Effect.map((decoded) =>
                   decoded.map((report) =>
                     redactor.redactValue({
@@ -130,7 +130,7 @@ export const pluginDoctorReports = (
                     }),
                   ),
                 ),
-                Effect.flatMap(Schema.decodeUnknown(PluginDoctorReports)),
+                Effect.flatMap(Schema.decodeUnknownEffect(PluginDoctorReports)),
                 Effect.mapError(
                   () =>
                     new PluginDoctorReportInvalidError({

@@ -31,7 +31,7 @@ export const HelpCatalogRow = Schema.Struct({
   extras: Schema.Array(Schema.String),
   canonicalId: Schema.String,
   summary: Schema.String,
-  source: Schema.Literal("built-in", "tooling"),
+  source: Schema.Literals(["built-in", "tooling"]),
 });
 
 export const HelpCatalogResult = Schema.Struct({

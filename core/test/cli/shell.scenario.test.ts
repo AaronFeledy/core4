@@ -72,7 +72,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
   source: "shell.scenario.test",
   runtime: 4 as const,
 };
@@ -154,7 +154,7 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
 const shellRunnerLayer = (
   interactive: (spec: ShellInteractiveSpec) => Effect.Effect<{ readonly exitCode: number }, never> = () =>
     Effect.die("interactive not expected"),
-  exec: Context.Tag.Service<typeof ShellRunner>["exec"] = () => Effect.die("exec not expected"),
+  exec: Context.Service.Shape<typeof ShellRunner>["exec"] = () => Effect.die("exec not expected"),
 ) =>
   Layer.succeed(ShellRunner, {
     exec,

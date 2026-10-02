@@ -103,11 +103,11 @@ describe("ScratchAppServiceLive", () => {
         const result = await Effect.runPromise(
           Effect.flatMap(ScratchAppService, (service) => service.paths(unsafe)).pipe(
             Effect.provide(scratchAppLayer),
-            Effect.either,
+            Effect.result,
           ),
         );
         expect(result._tag).toBe("Left");
-        if (result._tag === "Left") expect(result.left._tag).toBe("ScratchAppError");
+        if (result._tag === "Failure") expect(result.failure._tag).toBe("ScratchAppError");
       }
     });
   });
@@ -119,27 +119,27 @@ describe("ScratchAppServiceLive", () => {
           const service = yield* ScratchAppService;
           const acquired = yield* Effect.scoped(
             service.acquire({ source: { kind: "fork" }, detached: true }),
-          ).pipe(Effect.either);
+          ).pipe(Effect.result);
           const listed = yield* service.list();
           const gc = yield* service.gc({ prune: true });
-          const resolved = yield* service.resolveById("scratch-nope-000000").pipe(Effect.either);
-          const started = yield* service.start("scratch-nope-000000", { detach: true }).pipe(Effect.either);
-          const stopped = yield* service.stop("scratch-nope-000000").pipe(Effect.either);
+          const resolved = yield* service.resolveById("scratch-nope-000000").pipe(Effect.result);
+          const started = yield* service.start("scratch-nope-000000", { detach: true }).pipe(Effect.result);
+          const stopped = yield* service.stop("scratch-nope-000000").pipe(Effect.result);
           const destroyed = yield* service
             .destroy("scratch-nope-000000", { keepVolumes: true })
-            .pipe(Effect.either);
+            .pipe(Effect.result);
           return { acquired, listed, gc, resolved, started, stopped, destroyed };
         });
 
         const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
         expect(result.acquired._tag).toBe("Left");
-        if (result.acquired._tag === "Left")
-          expect(result.acquired.left._tag).toBe("ScratchSourceUnresolvedError");
+        if (result.acquired._tag === "Failure")
+          expect(result.acquired.failure._tag).toBe("ScratchSourceUnresolvedError");
         expect(result.listed).toEqual([]);
         expect(result.gc).toEqual({ inspected: 0, reaped: [], errors: [] });
         for (const outcome of [result.resolved, result.started, result.stopped, result.destroyed]) {
           expect(outcome._tag).toBe("Left");
-          if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchAppNotFoundError");
+          if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchAppNotFoundError");
         }
       });
     });

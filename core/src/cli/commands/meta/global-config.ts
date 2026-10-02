@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
@@ -60,21 +60,21 @@ export const GlobalAppPathsSchema = Schema.Struct({
 });
 
 export const GlobalConfigResultSchema = Schema.Struct({
-  app: Schema.optional(Schema.String),
-  source: Schema.optional(Schema.Literal("global")),
-  materialized: Schema.optional(Schema.Boolean),
-  distLandofile: Schema.optional(Schema.String),
-  userLandofile: Schema.optional(Schema.String),
-  paths: Schema.optional(GlobalAppPathsSchema),
-  landofile: Schema.optional(LandofileShape),
-  subcommand: Schema.optional(Schema.Literal("view", "set", "unset", "edit", "validate")),
-  key: Schema.optional(Schema.String),
-  value: Schema.optional(Schema.Unknown),
-  changed: Schema.optional(Schema.Boolean),
-  dryRun: Schema.optional(Schema.Boolean),
-  valid: Schema.optional(Schema.Boolean),
-  issues: Schema.optional(Schema.Array(Schema.String)),
-  filePath: Schema.optional(Schema.String),
+  app: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literal("global")),
+  materialized: Schema.optionalKey(Schema.Boolean),
+  distLandofile: Schema.optionalKey(Schema.String),
+  userLandofile: Schema.optionalKey(Schema.String),
+  paths: Schema.optionalKey(GlobalAppPathsSchema),
+  landofile: Schema.optionalKey(LandofileShape),
+  subcommand: Schema.optionalKey(Schema.Literals(["view", "set", "unset", "edit", "validate"])),
+  key: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.Unknown),
+  changed: Schema.optionalKey(Schema.Boolean),
+  dryRun: Schema.optionalKey(Schema.Boolean),
+  valid: Schema.optionalKey(Schema.Boolean),
+  issues: Schema.optionalKey(Schema.Array(Schema.String)),
+  filePath: Schema.optionalKey(Schema.String),
 });
 
 type GlobalConfigReadError =
@@ -88,7 +88,7 @@ type GlobalConfigServices = FileSystem | GlobalAppService;
 
 const emptyGlobalLandofile: LandofileShapeType = { name: "global", runtime: 4, services: {} };
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" });
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, { onExcessProperty: "error" });
 
 const readGlobalText = (filePath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({
@@ -128,8 +128,8 @@ export const globalConfigSet = (
     }
     const tree = yield* readGlobalTree(filePath);
     const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: filePath });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
+    if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+    const next = mutation.success.next;
     const issues = decodeIssues(decodeLandofile(next));
     if (issues.length > 0) {
       return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
@@ -137,10 +137,10 @@ export const globalConfigSet = (
     const dryRun = options.dryRun === true;
     if (!dryRun) {
       const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeGlobalText(filePath, emitted.right);
+      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+      yield* writeGlobalText(filePath, emitted.success);
     }
-    return { subcommand: "set", key, value: mutation.right.value, changed: true, dryRun, filePath };
+    return { subcommand: "set", key, value: mutation.success.value, changed: true, dryRun, filePath };
   });
 
 export const globalConfigUnset = (
@@ -161,19 +161,19 @@ export const globalConfigUnset = (
     }
     const tree = yield* readGlobalTree(filePath);
     const mutation = applyUnsetMutation({ tree, key, file: filePath });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
+    if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+    const next = mutation.success.next;
     const issues = decodeIssues(decodeLandofile(next));
     if (issues.length > 0) {
       return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
     }
     const dryRun = options.dryRun === true;
-    if (!dryRun && mutation.right.changed) {
+    if (!dryRun && mutation.success.changed) {
       const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeGlobalText(filePath, emitted.right);
+      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+      yield* writeGlobalText(filePath, emitted.success);
     }
-    return { subcommand: "unset", key, changed: mutation.right.changed, dryRun, filePath };
+    return { subcommand: "unset", key, changed: mutation.success.changed, dryRun, filePath };
   });
 
 export const globalConfigValidate = (

@@ -49,7 +49,7 @@ const secretStoreLayer = Layer.succeed(SecretStore, {
   },
   has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
   list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
-} satisfies Context.Tag.Service<typeof SecretStore>);
+} satisfies Context.Service.Shape<typeof SecretStore>);
 
 const realRedactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer));
 const shellRunnerLive = makeShellRunnerLive(() => {
@@ -64,7 +64,7 @@ const captureEventLayer = (events: LandoEvent[]) =>
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies Context.Tag.Service<typeof EventService>);
+  } satisfies Context.Service.Shape<typeof EventService>);
 
 const capturingDownloaderEvents = (): {
   readonly events: DownloaderEvents;
@@ -78,7 +78,7 @@ const capturingDownloaderEvents = (): {
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies Context.Tag.Service<typeof EventService>;
+  } satisfies Context.Service.Shape<typeof EventService>;
   return { events: makeLiveDownloaderEvents(Option.some(eventService)), captured };
 };
 
@@ -143,7 +143,7 @@ describe("audited services compose canonical redaction", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected ShellRunner to fail");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure)).toBe(true);
       if (!Option.isSome(failure)) throw new Error("expected ShellExecError failure");
       expect(failure.value).toBeInstanceOf(ShellExecError);

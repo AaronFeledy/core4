@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { nodeTsDecomposer } from "../../src/recipes/builtin/node-ts/decomposer.ts";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
 import {
@@ -29,7 +29,7 @@ const decompose = (options: RecipeDecomposeInput["options"]) =>
 
 const authoringOf = (options: RecipeDecomposeInput["options"]) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -92,7 +92,7 @@ describe("node-ts decomposition", () => {
   });
 
   test("has zero snapshot template violations when authoring expressions are inert literals", () => {
-    expect(Either.isRight(validateSnapshotTemplate("node-ts", nodeTsSnapshot.template))).toBe(true);
+    expect(Result.isSuccess(validateSnapshotTemplate("node-ts", nodeTsSnapshot.template))).toBe(true);
   });
 
   test.each([
@@ -104,12 +104,12 @@ describe("node-ts decomposition", () => {
     for (const [key, value] of Object.entries(options)) {
       Object.defineProperty(input.options, key, { value, enumerable: true });
     }
-    const failure = Effect.runSync(Effect.either(decomposer.decompose(input)));
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    const failure = Effect.runSync(Effect.result(decomposer.decompose(input)));
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -132,6 +132,6 @@ describe("node-ts decomposition", () => {
   });
 
   test("renders the same authoring data from the snapshot when options are empty", () => {
-    expect(Either.getOrThrow(renderRecipeSnapshot(nodeTsSnapshot, {}))).toEqual(authoringOf(defaults));
+    expect(Result.getOrThrow(renderRecipeSnapshot(nodeTsSnapshot, {}))).toEqual(authoringOf(defaults));
   });
 });

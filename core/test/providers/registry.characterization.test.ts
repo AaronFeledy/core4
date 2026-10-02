@@ -57,12 +57,12 @@ const buildDependencyLayer = (
     ...(options.defaultProviderId === undefined ? {} : { defaultProviderId: options.defaultProviderId }),
   });
   const load = Effect.succeed(config);
-  const configService: Context.Tag.Service<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = {
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
   };
 
-  const pluginRegistryService: Context.Tag.Service<typeof PluginRegistry> = {
+  const pluginRegistryService: Context.Service.Shape<typeof PluginRegistry> = {
     list: Effect.succeed(options.manifests),
     load: (name) => Effect.fail(notRegistered(name)),
     loadServiceType: (id) => Effect.fail(notRegistered(id)),
@@ -101,7 +101,7 @@ const runSelectEither = (options: FakeRegistryOptions, providerId?: string) =>
       const registry = yield* RuntimeProviderRegistry;
       return yield* registry
         .select(providerId === undefined ? undefined : ({ provider: ProviderId.make(providerId) } as never))
-        .pipe(Effect.either);
+        .pipe(Effect.result);
     }).pipe(Effect.provide(RuntimeProviderRegistryLive.pipe(Layer.provide(buildDependencyLayer(options))))),
   );
 
@@ -154,9 +154,9 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
     const result = await runSelectEither({ manifests }, "totally-unknown-provider");
 
     expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("NoProviderInstalledError");
-      expect(result.left.message).toBe("Runtime provider totally-unknown-provider is not installed.");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("NoProviderInstalledError");
+      expect(result.failure.message).toBe("Runtime provider totally-unknown-provider is not installed.");
     }
   });
 
@@ -166,9 +166,9 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
     const result = await runSelectEither({ manifests }, "docker");
 
     expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("NoProviderInstalledError");
-      expect(result.left.message).toBe("Runtime provider docker is not installed.");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("NoProviderInstalledError");
+      expect(result.failure.message).toBe("Runtime provider docker is not installed.");
     }
   });
 });
@@ -181,8 +181,8 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
       const result = await runSelectEither({ manifests, defaultProviderId: null });
 
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left.message).toBe("Runtime provider lando is not installed.");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toBe("Runtime provider lando is not installed.");
       }
     });
   });
@@ -192,8 +192,8 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
       const result = await runSelectEither({ manifests, defaultProviderId: "custom-config-provider" });
 
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left.message).toBe("Runtime provider custom-config-provider is not installed.");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toBe("Runtime provider custom-config-provider is not installed.");
       }
     });
   });
@@ -203,8 +203,8 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
       const result = await runSelectEither({ manifests, defaultProviderId: "custom-config-provider" });
 
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left.message).toBe("Runtime provider custom-env-provider is not installed.");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toBe("Runtime provider custom-env-provider is not installed.");
       }
     });
   });

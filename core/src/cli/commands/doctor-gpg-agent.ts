@@ -2,7 +2,7 @@ import { discoverHostGpgAgent } from "@lando/engine/subsystems/gpg-agent/discove
 import { resolveGpgAgentIntent } from "@lando/engine/subsystems/gpg-agent/intent";
 import type { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
-import { Effect, Either, Option } from "effect";
+import { Effect, Result, Option } from "effect";
 
 export const GPG_AGENT_SECURITY =
   "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
@@ -32,8 +32,8 @@ export const gpgAgentPostureDetail = (input: {
     const exists = input.exists;
     const discovered =
       runner === undefined
-        ? Either.left(undefined)
-        : yield* Effect.either(
+        ? Result.fail(undefined)
+        : yield* Effect.result(
             discoverHostGpgAgent({
               runner,
               ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
@@ -46,14 +46,14 @@ export const gpgAgentPostureDetail = (input: {
           );
     const exported =
       runner === undefined
-        ? Either.left(undefined)
-        : yield* Effect.either(runner.run({ cmd: "gpg", args: ["--batch", "--export"], timeoutMs: 5_000 }));
+        ? Result.fail(undefined)
+        : yield* Effect.result(runner.run({ cmd: "gpg", args: ["--batch", "--export"], timeoutMs: 5_000 }));
     return {
       forward: true,
-      upstream: Either.isRight(discovered)
-        ? { source: discovered.right.source, reachable: true }
+      upstream: Result.isSuccess(discovered)
+        ? { source: discovered.success.source, reachable: true }
         : { source: "none", reachable: false },
-      keyringExported: Either.isRight(exported) && exported.right.exitCode === 0,
+      keyringExported: Result.isSuccess(exported) && exported.success.exitCode === 0,
       security: GPG_AGENT_SECURITY,
     };
   });

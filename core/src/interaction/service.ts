@@ -1,3 +1,4 @@
+import { Semaphore } from "effect";
 /**
  * Default `InteractionServiceLive` — the single prompting chokepoint.
  *
@@ -64,7 +65,7 @@ import { getInteractionServiceOverride } from "./testing-override";
 
 const STDIO_INTERACTION_ID = "stdio";
 
-type RendererService = Context.Tag.Service<typeof Renderer>;
+type RendererService = Context.Service.Shape<typeof Renderer>;
 
 /** Driver-resolution seam: render rich (e.g. OpenTUI) controls when interactive on a TTY. */
 export type ResolveInteractionDriver = (gate: {
@@ -228,7 +229,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   // One reader per service instance: buffered-ahead stdin survives across batches.
   const lineReader: PromptLineReader = createLineReader(stdin);
   // Serialize batches: the shared reader and its buffer are mutable single-stream state.
-  const promptLock = Effect.unsafeMakeSemaphore(1);
+  const promptLock = Semaphore.makeUnsafe(1);
 
   const buildIo = (rendererOption: Option.Option<RendererService>, signal: AbortSignal): PromptIO => {
     const base = createStdioPromptIO({
@@ -258,7 +259,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   ): Effect.Effect<EnginePromptAnswers, InteractionError> =>
     Effect.uninterruptibleMask((restore) =>
       restore(
-        Effect.async<EnginePromptAnswers, InteractionError>((resume, signal) => {
+        Effect.callback<EnginePromptAnswers, InteractionError>((resume, signal) => {
           const rawModeBefore = readRawMode(stdin);
           const io = buildIo(rendererOption, signal);
           const driver = collect.interactiveDriver;
@@ -286,7 +287,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           return Effect.sync(() => {
             if (!settled) restoreTty(stdin, rawModeBefore);
           }).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               Effect.promise(() =>
                 collectPromise.then(
                   () => undefined,
@@ -297,8 +298,8 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           );
         }),
       ).pipe(
-        Effect.catchAllCause((cause) =>
-          Cause.isInterruptedOnly(cause) ? Effect.fail(interruptedCancellation()) : Effect.failCause(cause),
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause) ? Effect.fail(interruptedCancellation()) : Effect.failCause(cause),
         ),
       ),
     );
@@ -331,7 +332,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     Effect.gen(function* () {
       const rendererOption = yield* Effect.serviceOption(Renderer);
       const loggerOption = yield* Effect.serviceOption(Logger);
-      const runtime = yield* Effect.runtime<never>();
+      const runtime = yield* Effect.context<never>();
       const tty = isTtyStdin(stdin);
       const gate = resolveGate(options, tty, defaultMode);
       const cwd = options?.cwd ?? process.cwd();
@@ -359,7 +360,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       const debug = Option.isNone(loggerOption)
         ? undefined
         : (message: string, data: Readonly<Record<string, unknown>>): Promise<void> =>
-            Runtime.runPromise(runtime)(loggerOption.value.debug(message, data).pipe(Effect.ignore));
+            Effect.runPromiseWith(runtime)(loggerOption.value.debug(message, data).pipe(Effect.ignore));
       const driver = yield* resolveDriver(gate.interactive, tty, gate, rendererOption, debug);
       const collect: Omit<CollectPromptsOptions, "io"> = {
         prompts: specs as ReadonlyArray<RecipePrompt>,

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Result, Schema } from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
@@ -68,7 +68,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
   readonly invocation?: CliInvocationSnapshot;
-  readonly resultSchema?: Schema.Schema.AnyNoContext;
+  readonly resultSchema?: Schema.Codec<unknown, unknown>;
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live";
   readonly streamFrames?: (value: A) => ReadonlyArray<StreamOutputFrame>;
@@ -92,10 +92,10 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
 const EmptyCommandResultSchema = Schema.Struct({});
 
 const taggedFailureFromCause = (cause: Cause.Cause<unknown>): unknown => {
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (failure._tag === "Some") return failure.value;
-  const defect = Cause.dieOption(cause);
-  if (defect._tag === "Some") return defect.value;
+  const defect = Cause.findDefect(cause);
+  if (Result.isSuccess(defect)) return defect.success;
   return Cause.pretty(cause);
 };
 
@@ -107,7 +107,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const { landoRenderer } = await import("./renderer/bundled-renderers");
   const io = options.io ?? createStdioRendererIO();
   let brokenPipe = false;
-  const brokenPipeSignal = Effect.async<never>((resume) => {
+  const brokenPipeSignal = Effect.callback<never>((resume) => {
     const unsubscribe = onStdioBrokenPipe((destination) => {
       if (destination !== "stdout") return;
       brokenPipe = true;
@@ -167,7 +167,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     };
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
-        const failure = Cause.failureOption(cause);
+        const failure = Cause.findErrorOption(cause);
         if (failure._tag === "Some" && failure.value instanceof JqExpressionError) {
           setExitCode(2);
           return;
@@ -184,12 +184,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           } as const;
           const emit = (next: typeof outcome) => (framedJson ? emitStreamResult(next) : emitJsonResult(next));
           if (framedJson && !liveStreaming) yield* replayBufferedEvents();
-          const emitted = yield* emit(outcome).pipe(Effect.either);
-          if (emitted._tag === "Left") {
-            if (!(emitted.left instanceof JqExpressionError)) {
-              return yield* Effect.fail(emitted.left);
+          const emitted = yield* emit(outcome).pipe(Effect.result);
+          if (emitted._tag === "Failure") {
+            if (!(emitted.failure instanceof JqExpressionError)) {
+              return yield* Effect.fail(emitted.failure);
             }
-            yield* emit({ _tag: "failure", error: emitted.left });
+            yield* emit({ _tag: "failure", error: emitted.failure });
             setExitCode(2);
             return;
           }
@@ -218,15 +218,15 @@ export const runWithRendererHandling = async <A, E, R, RE>(
             });
       if (options.invocation !== undefined) {
         // Terminal subscribers publish to the command-scoped renderer before its scope closes.
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
       }
-      if (brokenPipe && Exit.isFailure(commandExit) && Cause.isInterruptedOnly(commandExit.cause)) {
+      if (brokenPipe && Exit.isFailure(commandExit) && Cause.hasInterruptsOnly(commandExit.cause)) {
         return { _tag: "handled-failure" } as const;
       }
       if (
         options.suppressInterruptionDiagnostics === true &&
         Exit.isFailure(commandExit) &&
-        Cause.isInterruptedOnly(commandExit.cause)
+        Cause.hasInterruptsOnly(commandExit.cause)
       ) {
         return { _tag: "handled-failure" } as const;
       }
@@ -248,13 +248,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
             renderContext.format === "json"
               ? emitStreamResult({ _tag: "success", value: commandExit.value }, tokens)
               : emitJsonResult({ _tag: "success", value: commandExit.value }, tokens);
-          yield* emitTerminal.pipe(Effect.catchAllCause((cause) => renderFailure(cause)));
+          yield* emitTerminal.pipe(Effect.catchCause((cause) => renderFailure(cause)));
         }
         return { _tag: "handled-success" } as const;
       }
       if (framedJson) {
         yield* emitStreamingSuccess(commandExit.value).pipe(
-          Effect.catchAllCause((cause) => renderFailure(cause)),
+          Effect.catchCause((cause) => renderFailure(cause)),
         );
         return { _tag: "handled-success" } as const;
       }
@@ -301,7 +301,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       yield* emitJsonResult(
         { _tag: "success", value: commandOutcome.value.value },
         options.redactionTokens?.(commandOutcome.value.value) ?? [],
-      ).pipe(Effect.catchAllCause((cause) => renderFailure(cause)));
+      ).pipe(Effect.catchCause((cause) => renderFailure(cause)));
       return;
     }
     const value = commandOutcome.value.value;
@@ -329,5 +329,6 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       yield* writeResultLine(output);
     }
   });
-  await Effect.runPromise(program.pipe(Effect.provide(failureDiagnosticsLayer)));
+  const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(failureDiagnosticsLayer)));
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
 };

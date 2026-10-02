@@ -1,6 +1,7 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Exit, Fiber, TestClock, TestContext } from "effect";
+import { Cause, Effect, Exit, Fiber } from "effect";
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { expectEvent } from "../../src/testing/events.ts";
@@ -9,15 +10,15 @@ describe("expectEvent", () => {
   test("uses a five-second default timeout when options omit timeout", async () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const waiter = yield* expectEvent("download-progress").pipe(Effect.exit, Effect.fork);
+        const waiter = yield* expectEvent("download-progress").pipe(Effect.exit, Effect.forkChild);
         yield* TestClock.adjust("6 seconds");
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       expect(error._tag).toBe("Some");
       if (error._tag === "Some") {
         expect(error.value._tag).toBe("EventError");
@@ -29,15 +30,15 @@ describe("expectEvent", () => {
   test("keeps the default timeout when passed an empty options object", async () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const waiter = yield* expectEvent("download-progress", {}).pipe(Effect.exit, Effect.fork);
+        const waiter = yield* expectEvent("download-progress", {}).pipe(Effect.exit, Effect.forkChild);
         yield* TestClock.adjust("6 seconds");
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       expect(error._tag).toBe("Some");
       if (error._tag === "Some") {
         expect(error.value._tag).toBe("EventError");

@@ -6,7 +6,7 @@ export class CommandConfirmationError extends Schema.TaggedError<CommandConfirma
   {
     message: Schema.String,
     remediation: Schema.String,
-    reason: Schema.Literal("declined", "non-interactive"),
+    reason: Schema.Literals(["declined", "non-interactive"]),
   },
 ) {}
 
@@ -23,7 +23,7 @@ export const requireConfirmation = (options: { readonly yes: boolean; readonly m
     }
     const confirmed = yield* interaction.value
       .confirm({ message: options.message, default: false })
-      .pipe(Effect.catchAll(() => Effect.succeed(false)));
+      .pipe(Effect.catch(() => Effect.succeed(false)));
     if (!confirmed) {
       return yield* new CommandConfirmationError({
         reason: "declined",

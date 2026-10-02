@@ -36,14 +36,14 @@ export const AppsListEntrySchema = Schema.Struct({
   providerId: Schema.String,
   appRoot: Schema.String,
   services: Schema.Array(Schema.String),
-  status: Schema.Literal("active", "stopped", "unknown"),
-  stale: Schema.optionalWith(Schema.Boolean, { exact: true }),
-  scratch: Schema.optionalWith(Schema.Boolean, { exact: true }),
+  status: Schema.Literals(["active", "stopped", "unknown"]),
+  stale: Schema.optionalKey(Schema.Boolean),
+  scratch: Schema.optionalKey(Schema.Boolean),
 });
 
 export const AppsListResultSchema = Schema.Struct({
   apps: Schema.Array(AppsListEntrySchema),
-  pruned: Schema.optional(Schema.Array(AppsListEntrySchema)),
+  pruned: Schema.optionalKey(Schema.Array(AppsListEntrySchema)),
 });
 
 export interface ListServicesOptions {
@@ -130,7 +130,7 @@ const listServicesInternal = <E, R>(
 
     const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
     const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(
-      Effect.catchAll(() => Effect.succeed([])),
+      Effect.catch(() => Effect.succeed([])),
     );
 
     const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
@@ -158,7 +158,7 @@ const listServicesInternal = <E, R>(
           options.includeScratch === true ? { includeScratch: true } : {},
         );
       }).pipe(
-        Effect.catchAll(() =>
+        Effect.catch(() =>
           Effect.succeed({ apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] }),
         ),
       );

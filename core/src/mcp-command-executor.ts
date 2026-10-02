@@ -6,7 +6,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./cli/command-lifecycle";
 
 const executeNestedCommand = <A, E, R>(
-  redaction: Context.Tag.Service<typeof RedactionService>,
+  redaction: Context.Service.Shape<typeof RedactionService>,
   command: Effect.Effect<A, E, R>,
   execution: McpCommandExecution<A>,
 ): Effect.Effect<Exit.Exit<A, E>, never, R> =>

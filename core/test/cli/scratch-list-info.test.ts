@@ -146,7 +146,7 @@ const seedEntry = (cacheRoot: string, overrides: Partial<ScratchRegistryEntry>):
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-31T18:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-31T18:00:00Z"),
   source: "scratch-list-info.test",
   runtime: 4 as const,
 };

@@ -51,11 +51,7 @@ export const PluginTrustRevokeResultSchema = Schema.Struct({
   pluginName: Schema.String,
 });
 
-export const PluginTrustCommandResultSchema = Schema.Union(
-  PluginTrustResultSchema,
-  PluginTrustListResultSchema,
-  PluginTrustRevokeResultSchema,
-);
+export const PluginTrustCommandResultSchema = Schema.Union([PluginTrustResultSchema, PluginTrustListResultSchema, PluginTrustRevokeResultSchema]);
 
 export const pluginTrust = (input: { readonly name: string; readonly cacheRoot?: string }): Effect.Effect<
   PluginTrustResult,

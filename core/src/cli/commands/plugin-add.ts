@@ -501,7 +501,7 @@ export const pluginAdd = (
       expectedManifest: manifest,
       ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
     }).pipe(
-      Effect.tapErrorCause(() =>
+      Effect.tapCause(() =>
         Effect.promise(async () => {
           if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
           if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {

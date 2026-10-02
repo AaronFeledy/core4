@@ -32,7 +32,7 @@ export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | un
     if (root === undefined || landofile.name === undefined) return undefined;
     const canonicalRoot = yield* Effect.tryPromise(() => realpath(root));
     return { name: landofile.name, root: canonicalRoot };
-  }).pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
+  }).pipe(Effect.catchCause(() => Effect.succeed(undefined)));
 
 export const makeDoctorResourceInspector = (options: {
   readonly provider: Effect.Effect<RuntimeProviderShape, unknown>;
@@ -43,7 +43,7 @@ export const makeDoctorResourceInspector = (options: {
   return {
     inspect: (query) =>
       Effect.gen(function* () {
-        const checked = yield* Schema.decodeUnknown(DoctorResourceNameQuery)(query);
+        const checked = yield* Schema.decodeUnknownEffect(DoctorResourceNameQuery)(query);
         const selected = yield* provider;
         if (selected.inspectResourceNames === undefined)
           return {
@@ -59,7 +59,7 @@ export const makeDoctorResourceInspector = (options: {
         } satisfies DoctorResourceInspection;
       }).pipe(
         Effect.timeout(options.budgetMs),
-        Effect.catchAllCause((cause) => {
+        Effect.catchCause((cause) => {
           const described = describeDoctorCause(cause);
           const message =
             described.tag === undefined ? described.message : `${described.tag}: ${described.message}`;
@@ -92,7 +92,7 @@ export const makeDoctorExecutableLocator = (options: {
     locate: (name) =>
       Effect.gen(function* () {
         const runningPath = yield* Effect.tryPromise(() => realpath(options.execPath)).pipe(
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catch(() => Effect.succeed(undefined)),
         );
         const running = { runningBasename, ...(runningPath === undefined ? {} : { runningPath }) };
         if (name.length === 0 || /[\\/]/u.test(name))
@@ -119,7 +119,7 @@ export const makeDoctorExecutableLocator = (options: {
               const info = await stat(candidate);
               if (!info.isFile() || (!windows && (info.mode & 0o111) === 0)) return undefined;
               return realpath(candidate);
-            }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+            }).pipe(Effect.catch(() => Effect.succeed(undefined)));
             if (path !== undefined)
               return { ...running, candidate: { kind: "found", path } } satisfies DoctorExecutableLocation;
           }
@@ -132,7 +132,7 @@ export const makeDoctorExecutableLocator = (options: {
               : { kind: "missing" },
         } satisfies DoctorExecutableLocation;
       }).pipe(
-        Effect.catchAllCause(() =>
+        Effect.catchCause(() =>
           Effect.succeed({
             runningBasename,
             candidate: { kind: "ambiguous", reason: "Executable location could not be inspected." },

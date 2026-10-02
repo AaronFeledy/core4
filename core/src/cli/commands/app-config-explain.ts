@@ -10,7 +10,7 @@ import {
 } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
 import { sameRecipeVersion } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { parseLandofile } from "@lando/landofile/parser";
@@ -132,15 +132,15 @@ const compareAgainstSnapshot = (
   }
 
   const rendered = renderRecipeSnapshot(snapshot, provenance.options);
-  if (Either.isLeft(rendered)) {
+  if (Result.isFailure(rendered)) {
     return {
-      comparison: blocked("render-failed", rendered.left.message),
+      comparison: blocked("render-failed", rendered.failure.message),
       takenOver: empty,
       services: [],
     };
   }
 
-  const generated = generatedServiceNames(rendered.right);
+  const generated = generatedServiceNames(rendered.success);
   const mappings = Object.entries(provenance.services ?? {});
   const unknown = mappings.filter(([name]) => !generated.has(name)).map(([name]) => name);
   if (unknown.length > 0) {
@@ -173,12 +173,12 @@ const compareAgainstSnapshot = (
   }
 
   const takenOver = new Map<string, ExplainTakenOverSite[]>();
-  for (const site of collectRecipeSites(rendered.right, filePath)) {
+  for (const site of collectRecipeSites(rendered.success, filePath)) {
     const path = applyServiceMap(site.path, serviceMap);
     const current = getAtPath(document, path);
     if (typeof current === "string") {
       const parsed = parseExpressionEither(current, { filePath });
-      if (Either.isRight(parsed) && isDeepStrictEqual(parsed.right, site.template)) continue;
+      if (Result.isSuccess(parsed) && isDeepStrictEqual(parsed.success, site.template)) continue;
     }
     for (const option of site.options) {
       const entries = takenOver.get(option) ?? [];
@@ -216,11 +216,11 @@ const readProvenance = (
     };
   }
   const validated = validateLandofileRecipeProvenance(raw);
-  if (Either.isLeft(validated)) {
+  if (Result.isFailure(validated)) {
     const reason: ExplainBlockedReason =
-      validated.left.reason === "service-map-not-injective" ? "invalid-service-map" : "invalid-provenance";
+      validated.failure.reason === "service-map-not-injective" ? "invalid-service-map" : "invalid-provenance";
     const facts =
-      validated.left.reason === "service-map-not-injective" ? provenanceWithoutServiceMap(raw) : undefined;
+      validated.failure.reason === "service-map-not-injective" ? provenanceWithoutServiceMap(raw) : undefined;
     return {
       form: "declarative",
       recipe:
@@ -230,20 +230,20 @@ const readProvenance = (
             ? { id: (raw as { readonly id: string }).id }
             : undefined,
       ...(facts === undefined ? {} : { provenance: facts }),
-      blockedComparison: blocked(reason, validated.left.message),
+      blockedComparison: blocked(reason, validated.failure.message),
     };
   }
-  if (isBareRecipeReference(validated.right)) {
+  if (isBareRecipeReference(validated.success)) {
     return {
       form: "bare",
-      recipe: { id: validated.right },
+      recipe: { id: validated.success },
       blockedComparison: blocked(
         "bare-provenance",
         "This Landofile records a recipe id with no producer identity or option values.",
       ),
     };
   }
-  const provenance = validated.right;
+  const provenance = validated.success;
   return {
     form: "declarative",
     recipe: { id: provenance.id, version: provenance.version, producer: provenance.producer },

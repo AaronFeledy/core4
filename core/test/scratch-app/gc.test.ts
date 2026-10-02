@@ -122,7 +122,7 @@ const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise
   }
 };
 
-const die = (operation: string) => Effect.dieMessage(`scratch gc test provider should not call ${operation}`);
+const die = (operation: string) => Effect.die(new Error(`scratch gc test provider should not call ${operation}`));
 
 const makeLayer = (
   labelIds: ReadonlyArray<string>,

@@ -256,7 +256,7 @@ describe("cold-start regression: no events dropped before first task.tree.start"
       yield* events.publish(childStart);
       yield* events.publish(childComplete);
       yield* events.publish(treeComplete);
-      yield* Effect.yieldNow();
+      yield* Effect.yieldNow;
       yield* Effect.sleep("20 millis");
     });
 

@@ -100,7 +100,7 @@ const runScratch = <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> =>
 
 const failureTag = async <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<string> => {
   const result = await Effect.runPromise(
-    effect.pipe(Effect.provide(scratchRuntime()), Effect.either) as unknown as Effect.Effect<
+    effect.pipe(Effect.provide(scratchRuntime()), Effect.result) as unknown as Effect.Effect<
       { readonly _tag: "Left"; readonly left: E } | { readonly _tag: "Right"; readonly right: A },
       never,
       never

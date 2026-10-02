@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { validateLandofileRecipeProvenance, validateRecipeSecretPrompts } from "@lando/sdk/recipes";
 import { LandofileAuthoringFragment, type RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import {
   ISOLATED_RECIPE_PRODUCER,
   isolatedInitDecomposer,
@@ -34,7 +34,7 @@ const decomposer = isolatedInitDecomposer({
 describe("isolated init recipe fixture", () => {
   test("validates the single init-only secret environment binding", () => {
     const result = validateRecipeSecretPrompts(isolatedInitManifest);
-    expect(Either.getOrThrow(result)).toEqual([
+    expect(Result.getOrThrow(result)).toEqual([
       {
         promptName: "apiToken",
         disposition: { kind: "init-only", sink: { kind: "secretEnv", name: "ISOLATED_API_TOKEN" } },
@@ -57,7 +57,7 @@ describe("isolated init recipe fixture", () => {
 
   test("validates provenance with the passed nonsecret options", async () => {
     const { provenance } = await Effect.runPromise(decomposer.decompose(validInput));
-    expect(Either.getOrThrow(validateLandofileRecipeProvenance(provenance))).toEqual({
+    expect(Result.getOrThrow(validateLandofileRecipeProvenance(provenance))).toEqual({
       id: "isolated-init",
       version: "1.0.0",
       producer: ISOLATED_RECIPE_PRODUCER,

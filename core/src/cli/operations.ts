@@ -1,3 +1,4 @@
+import { Result } from "effect";
 /**
  * `@lando/core/cli/operations` — unstable Effect-bearing command invocation API.
  *
@@ -42,9 +43,9 @@ export const invokeOperation = <A, E, R>(
     // is *exclusively* a typed failure. Mixed causes (typed failure + defect
     // or interrupt) are propagated as defects so callers never silently lose
     // defect / interrupt information.
-    const failure = Cause.failureOption(exit.cause);
-    const hasDefect = Cause.dieOption(exit.cause)._tag === "Some";
-    const hasInterrupt = Cause.isInterrupted(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
+    const hasDefect = Result.getSuccess(Cause.findDefect(exit.cause))._tag === "Some";
+    const hasInterrupt = Cause.hasInterrupts(exit.cause);
     if (failure._tag === "Some" && !hasDefect && !hasInterrupt) {
       const output = options.renderError?.(failure.value);
       return {

@@ -1,3 +1,4 @@
+import { Result } from "effect";
 /**
  * Doctor self-resilience substrate.
  *
@@ -116,7 +117,7 @@ export const describeDoctorFailure = (value: unknown): { readonly tag?: string; 
  */
 export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause => {
   // Defects outrank typed failures: a mixed cause is the more severe of the two.
-  const defect = Cause.dieOption(cause);
+  const defect = Result.getSuccess(Cause.findDefect(cause));
   if (Option.isSome(defect)) {
     const described = inspectFailure(defect.value);
     return {
@@ -125,7 +126,7 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
       message: described.message,
     };
   }
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (Option.isSome(failure)) {
     const described = inspectFailure(failure.value);
     return {
@@ -203,7 +204,7 @@ export const isolateDoctorSection = <A, E, R>(
     // Forked so a section that interrupts *itself* cannot masquerade as user
     // cancellation: if the parent were interrupted, `Fiber.await` would itself be
     // interrupted and never reach the classification below.
-    const fiber = yield* Effect.fork(options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))));
+    const fiber = yield* Effect.forkChild(options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))));
     const outcome = yield* Fiber.await(fiber);
 
     if (Exit.isSuccess(outcome)) {
@@ -222,7 +223,7 @@ export const isolateDoctorSection = <A, E, R>(
 
     // Reaching here with an interrupt means the section aborted itself, which is
     // a section defect rather than the user asking to stop.
-    if (Cause.isInterruptedOnly(outcome.cause)) {
+    if (Cause.hasInterruptsOnly(outcome.cause)) {
       return {
         value: options.fallback,
         self: doctorSelfCheck({

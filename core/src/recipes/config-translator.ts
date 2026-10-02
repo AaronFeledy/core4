@@ -4,7 +4,7 @@
  * A recipe request is delegated to an injected `RecipeDecomposer`. Encode is
  * absent so `app:config:translate --to recipe` fails closed at selection.
  */
-import { Effect, Either, Match, Schema } from "effect";
+import { Effect, Result, Match, Schema } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { validateConfigTranslateResult } from "@lando/sdk/landofile";
@@ -83,7 +83,7 @@ const translateRecipe = (
           ),
         ),
       );
-    const mapping = yield* Schema.decodeUnknown(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+    const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
       decomposed.fragment,
     ).pipe(
       Effect.mapError(() =>
@@ -112,10 +112,10 @@ const translateRecipe = (
       deletions: [],
     };
     const validated = validateConfigTranslateResult(input, result);
-    if (Either.isLeft(validated)) {
-      return yield* Effect.fail(validated.left);
+    if (Result.isFailure(validated)) {
+      return yield* Effect.fail(validated.failure);
     }
-    return validated.right;
+    return validated.success;
   });
 
 export const makeRecipeConfigTranslator = (ports: RecipeConfigTranslatorPorts): ConfigTranslatorShape => ({

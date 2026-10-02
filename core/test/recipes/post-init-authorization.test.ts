@@ -12,7 +12,7 @@ test("accepts a manifest with a canonical translation action", async () => {
     version: "1.0.0",
     postInit: [{ type: "command", cmd: "app:config:translate" }],
   };
-  const result = await Effect.runPromise(Effect.either(validateRecipeManifestObject("test", manifest)));
+  const result = await Effect.runPromise(Effect.result(validateRecipeManifestObject("test", manifest)));
   expect(result._tag).toBe("Right");
 });
 
@@ -25,7 +25,7 @@ for (const guard of [undefined, "true", "{{ true }}", "{{ options.start || true 
       version: "1.0.0",
       postInit: [{ type: "command", cmd: "app:start", when: guard }],
     };
-    const result = await Effect.runPromise(Effect.either(validateRecipeManifestObject("test", manifest)));
+    const result = await Effect.runPromise(Effect.result(validateRecipeManifestObject("test", manifest)));
     expect(result._tag).toBe("Left");
   });
 }
@@ -39,7 +39,7 @@ test("rejects an opt-in prompt that starts services by default", async () => {
     prompts: [{ name: "start", type: "confirm", message: "Start?", default: true }],
     postInit: [{ type: "command", cmd: "app:start", when: "{{ options.start }}" }],
   };
-  const result = await Effect.runPromise(Effect.either(validateRecipeManifestObject("test", manifest)));
+  const result = await Effect.runPromise(Effect.result(validateRecipeManifestObject("test", manifest)));
   expect(result._tag).toBe("Left");
 });
 
@@ -95,7 +95,7 @@ for (const cmd of ["start", "config:translate", "app:destroy", "meta:setup", "gi
       postInit: [{ type: "command", cmd }],
     };
     // When decoded before scaffolding.
-    const result = await Effect.runPromise(Effect.either(validateRecipeManifestObject("test", manifest)));
+    const result = await Effect.runPromise(Effect.result(validateRecipeManifestObject("test", manifest)));
     // Then authorization fails before commit.
     expect(result._tag).toBe("Left");
   });

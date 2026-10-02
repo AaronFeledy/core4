@@ -33,7 +33,7 @@ test("rejects a changed unselected lower layer without changing the selected tar
   }));
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       writeTranslateTargets({
         appRoot,
         privateFileAccess: ownerOnlyFileAccess,

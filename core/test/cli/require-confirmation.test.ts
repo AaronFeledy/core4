@@ -20,7 +20,7 @@ describe("requireConfirmation", () => {
     const result = await Effect.runPromise(
       Effect.scoped(
         requireConfirmation({ yes, message: "Confirm?" }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.sync(() => {
               mutations += 1;
             }),
@@ -29,7 +29,7 @@ describe("requireConfirmation", () => {
             ...interaction.service,
             isInteractive: Effect.succeed(interactive),
           }),
-          Effect.either,
+          Effect.result,
         ),
       ),
     );

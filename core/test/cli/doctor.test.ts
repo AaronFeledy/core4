@@ -79,7 +79,7 @@ const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },

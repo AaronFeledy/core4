@@ -15,10 +15,10 @@ const ValueSchema = Schema.Struct({ value: Schema.String });
 const PackageManifestSchema = Schema.Struct({
   name: Schema.String,
   private: Schema.Boolean,
-  workspaces: Schema.optional(Schema.Array(Schema.String)),
-  dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  devDependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  peerDependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  workspaces: Schema.optionalKey(Schema.Array(Schema.String)),
+  dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  devDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  peerDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 type StateStoreServiceModule = typeof import("@lando/state-store/service");
@@ -70,7 +70,7 @@ describe("StateStore package seam", () => {
     );
 
     // When the dynamically resolved package implementation writes and reads the bucket
-    const value = await Effect.runPromise(bucket.set({ value: "package" }).pipe(Effect.zipRight(bucket.get)));
+    const value = await Effect.runPromise(bucket.set({ value: "package" }).pipe(Effect.andThen(bucket.get)));
 
     // Then package metadata, plugin resolution, and the durable round trip satisfy the private seam
     expect(artifactExists).toBe(true);

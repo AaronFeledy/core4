@@ -170,7 +170,7 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =
       http.request({ url: SETUP_NETWORK_PROBE_URL, method: "HEAD", redirect: "manual" }),
     ).pipe(
       Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
-      Effect.catchAll((error) => {
+      Effect.catch((error) => {
         if (error._tag === "HttpTrustError") return Effect.fail(classifySetupNetworkFailure(error));
         if (error._tag === "HttpRequestError") {
           return Effect.fail(

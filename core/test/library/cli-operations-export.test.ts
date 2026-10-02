@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -136,18 +137,18 @@ describe("@lando/core/cli/operations package export", () => {
     const defectExit = await Effect.runPromiseExit(invokeOperation(Effect.die(defect)));
     expect(Exit.isFailure(defectExit)).toBe(true);
     if (Exit.isFailure(defectExit)) {
-      expect(Cause.dieOption(defectExit.cause)._tag).toBe("Some");
+      expect(Result.getSuccess(Cause.findDefect(defectExit.cause))._tag).toBe("Some");
     }
 
     const interruptExit = await Effect.runPromiseExit(invokeOperation(Effect.interrupt));
     expect(Exit.isFailure(interruptExit)).toBe(true);
     if (Exit.isFailure(interruptExit)) {
-      expect(Cause.failureOption(interruptExit.cause)._tag).toBe("None");
+      expect(Cause.findErrorOption(interruptExit.cause)._tag).toBe("None");
     }
 
     const mixedExit = await Effect.runPromiseExit(
       invokeOperation(
-        Effect.failCause(Cause.parallel(Cause.fail("typed-error"), Cause.die(new Error("inner-defect")))),
+        Effect.failCause(Cause.combine(Cause.fail("typed-error"), Cause.die(new Error("inner-defect")))),
       ),
     );
     expect(Exit.isFailure(mixedExit)).toBe(true);

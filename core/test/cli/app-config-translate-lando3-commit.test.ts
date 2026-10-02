@@ -36,7 +36,7 @@ test("full write folds recipe content and backs up every overwritten or removed 
       await Effect.runPromise(
         parseLandofile({ file, content, cwd: root }).pipe(
           Effect.flatMap((value) =>
-            Schema.decodeUnknown(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+            Schema.decodeUnknownEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
           ),
         ),
       );

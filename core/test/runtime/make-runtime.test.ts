@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, Effect, Either, Exit, Layer, Option, Schema } from "effect";
+import { Cause, Context, Effect, Result, Exit, Layer, Option, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
@@ -49,7 +49,7 @@ const expectRuntimeBootstrapError = (exit: Exit.Exit<unknown, unknown>): LandoRu
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
 
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected tagged failure");
 
@@ -191,7 +191,7 @@ describe("makeLandoRuntime", () => {
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         Effect.gen(function* () {
-          yield* Effect.withFiberRuntime((fiber) => installSignalHandlers({ fiber, signals: ["SIGUSR2"] }));
+          yield* Effect.withFiber((fiber) => installSignalHandlers({ fiber, signals: ["SIGUSR2"] }));
           expect(process.listenerCount("SIGUSR2")).toBe(before + 1);
           process.emit("SIGUSR2");
           yield* Effect.never;
@@ -201,7 +201,7 @@ describe("makeLandoRuntime", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
-    expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(process.listenerCount("SIGUSR2")).toBe(before);
   });
 
@@ -224,7 +224,7 @@ describe("makeLandoRuntime", () => {
       assert.equal(during, before + 1);
       assert.equal(Exit.isFailure(exit), true);
       if (!Exit.isFailure(exit)) throw new Error("expected signal interruption");
-      assert.equal(Cause.isInterruptedOnly(exit.cause), true);
+      assert.equal(Cause.hasInterruptsOnly(exit.cause), true);
       assert.equal(process.listenerCount("SIGINT"), before);
       console.log("signal-ok");
     `;
@@ -261,7 +261,7 @@ describe("makeLandoRuntime", () => {
 
   test("the returned runtime layer finalizes scoped resources when the scope closes", async () => {
     let finalized = false;
-    const scopedResource = Layer.scopedDiscard(
+    const scopedResource = Layer.effectDiscard(
       Effect.addFinalizer(() =>
         Effect.sync(() => {
           finalized = true;
@@ -375,20 +375,20 @@ describe("makeLandoRuntime", () => {
   });
 
   test("accepts and preserves the interaction mode option", () => {
-    const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)({
+    const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)({
       bootstrap: "minimal",
       interaction: "non-interactive",
     });
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) expect(decoded.right.interaction).toBe("non-interactive");
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) expect(decoded.success.interaction).toBe("non-interactive");
   });
 
   test("rejects an invalid interaction mode", () => {
-    const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)({
+    const decoded = Schema.decodeUnknownResult(LandoRuntimeOptions)({
       bootstrap: "minimal",
       interaction: "loud",
     });
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("the interaction mode flows to the constructed InteractionService default", async () => {
@@ -406,7 +406,7 @@ describe("makeLandoRuntime", () => {
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    const failure = Cause.failureOption((exit as Exit.Failure<unknown, unknown>).cause);
+    const failure = Cause.findErrorOption((exit as Exit.Failure<unknown, unknown>).cause);
     expect(Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined).toBe(
       "InteractionRequiredError",
     );

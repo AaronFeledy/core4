@@ -17,7 +17,7 @@ import {
   makeInteractionService,
 } from "../../src/interaction/service.ts";
 
-type RendererService = Context.Tag.Service<typeof Renderer>;
+type RendererService = Context.Service.Shape<typeof Renderer>;
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
   Readable.from(lines.map((line) => `${line}\n`));
@@ -69,7 +69,7 @@ const runScopedExit = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<
 
 const failureTag = <A, E>(exit: Exit.Exit<A, E>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined;
 };
 
@@ -245,7 +245,7 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    const failure = Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none();
+    const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : Option.none();
     expect(Option.isSome(failure) ? failure.value : undefined).toBeInstanceOf(ChoicesUnavailableError);
     if (Option.isSome(failure) && failure.value instanceof ChoicesUnavailableError) {
       expect(failure.value.command).toBe("services:list");
@@ -331,7 +331,7 @@ describe("InteractionServiceLive — rich driver wiring", () => {
       releaseNotice = resolve;
     });
     const notices: string[] = [];
-    const logger: Context.Tag.Service<typeof Logger> = {
+    const logger: Context.Service.Shape<typeof Logger> = {
       debug: (message) =>
         Effect.promise(async () => {
           notices.push(message);
@@ -495,7 +495,7 @@ describe("InteractionServiceLive — interruption", () => {
     const service = makeInteractionService({ stdin: neverStdin(), stdout: capturingWritable().stream });
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(
             service.promptAll([{ name: "app", type: "text", message: "Name?" }], { interactive: true }),
           ),
@@ -555,7 +555,7 @@ describe("InteractionServiceLive — interruption", () => {
     let interruptSettled = false;
     const interrupted = Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(
             service.promptAll([{ name: "app", type: "text", message: "Name?" }], {
               interactive: true,
@@ -599,7 +599,7 @@ describe("InteractionServiceLive — interruption", () => {
     const service = makeInteractionService({ stdin: fakeTty, stdout: capturingWritable().stream });
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(
             service.promptAll([{ name: "app", type: "text", message: "Name?" }], { interactive: true }),
           ),

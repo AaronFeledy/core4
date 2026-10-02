@@ -65,7 +65,7 @@ services:
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected discovery to fail");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected a typed failure");
       expect(failure.value).toBeInstanceOf(LandofileValidationError);

@@ -12,7 +12,7 @@ export class AppConfigMigrateError extends Schema.TaggedError<AppConfigMigrateEr
   "AppConfigMigrateError",
   {
     message: Schema.String,
-    reason: Schema.Literal("unknown-recipe", "identity-mismatch", "confirmation-required", "encode-failed"),
+    reason: Schema.Literals(["unknown-recipe", "identity-mismatch", "confirmation-required", "encode-failed"]),
     remediation: Schema.String,
   },
 ) {}

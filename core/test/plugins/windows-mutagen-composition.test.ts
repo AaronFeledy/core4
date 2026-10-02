@@ -31,7 +31,7 @@ const provider = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
 const volumeName = fileSyncVolumeName("demo", serviceName, "app-mount");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "windows-mutagen-composition.test.ts",
   runtime: 4 as const,
 };

@@ -141,7 +141,7 @@ const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, Deprec
                 kind: "flag",
                 id: HOST_FLAG_DEPRECATION_ID,
                 notice: notice.value,
-                timestamp: DateTime.unsafeNow(),
+                timestamp: DateTime.nowUnsafe(),
               }),
         ),
       );
@@ -215,7 +215,7 @@ const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize>
   if (io?.onResize === undefined || io.terminalSize === undefined) return Stream.empty;
   const onResize = io.onResize;
   const terminalSize = io.terminalSize;
-  return Stream.async<ShellTerminalSize>((emit) => {
+  return Stream.callback<ShellTerminalSize>((emit) => {
     const listener = () => {
       const size = terminalSize();
       if (size !== undefined) emit(Effect.succeed(Chunk.of(size)));

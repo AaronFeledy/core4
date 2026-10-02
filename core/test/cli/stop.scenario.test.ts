@@ -89,7 +89,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "stop.scenario.test",
   runtime: 4 as const,
 };
@@ -585,7 +585,7 @@ describe("lando stop", () => {
       mountKey: index === 0 ? "app-mount" : "cache-mount",
       spec: testSessionSpec(index === 0 ? "app-mount" : "cache-mount"),
       status: "running",
-      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     }));
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
@@ -653,7 +653,7 @@ describe("lando stop", () => {
       mountKey: "app-mount",
       spec: testSessionSpec("app-mount"),
       status: "running",
-      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     };
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {

@@ -1,3 +1,4 @@
+import { Result } from "effect";
 import { describe, expect, test } from "bun:test";
 
 import { Cause, type Context, DateTime, Effect, Layer, Schema } from "effect";
@@ -53,11 +54,11 @@ const notRegistered = (id: string): PluginLoadError =>
 const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
   const load = Effect.succeed(config);
-  const configService: Context.Tag.Service<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = {
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
   };
-  const pluginRegistry: Context.Tag.Service<typeof PluginRegistry> = {
+  const pluginRegistry: Context.Service.Shape<typeof PluginRegistry> = {
     list: Effect.succeed(manifests),
     load: (name) => Effect.fail(notRegistered(name)),
     loadServiceType: (id) => Effect.fail(notRegistered(id)),
@@ -92,7 +93,7 @@ const planFor = (provider: ProviderId): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
     source: "registry.descriptor.test",
     runtime: 4,
   },
@@ -117,7 +118,7 @@ const selectEither = (modules: ReadonlyArray<LandoPluginModule>, manifests: Read
   Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
-      return yield* registry.select(planFor(fakeProviderId)).pipe(Effect.either);
+      return yield* registry.select(planFor(fakeProviderId)).pipe(Effect.result);
     }).pipe(
       Effect.provide(
         makeRuntimeProviderRegistry(modules, ownerOnlyFileAccess).pipe(
@@ -139,7 +140,7 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
     // Then: the packaging invariant violation is a defect carrying the tagged mismatch error.
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const defect = Cause.dieOption(exit.cause);
+      const defect = Result.getSuccess(Cause.findDefect(exit.cause));
       expect(defect._tag).toBe("Some");
       if (defect._tag === "Some" && defect.value instanceof PluginDescriptorMismatchError) {
         expect(defect.value._tag).toBe("PluginDescriptorMismatchError");
@@ -173,8 +174,8 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
 
     // Then: the descriptor factory's provider shape is returned unchanged.
     expect(result._tag).toBe("Right");
-    if (result._tag === "Right") {
-      expect(result.right).toEqual(fakeProvider);
+    if (result._tag === "Success") {
+      expect(result.success).toEqual(fakeProvider);
     }
   });
 });

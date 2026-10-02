@@ -61,11 +61,11 @@ describe("lifecycle confirmation boundary", () => {
               ),
             ),
           ),
-          Effect.either,
+          Effect.result,
         ),
       );
-      if (result._tag !== "Left") throw new TypeError("expected declined confirmation");
-      expect(result.left).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
+      if (result._tag !== "Failure") throw new TypeError("expected declined confirmation");
+      expect(result.failure).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
       expect(interaction.transcript()).toHaveLength(1);
       expect(interaction.transcript()[0]?.message).toBe(message);
     },

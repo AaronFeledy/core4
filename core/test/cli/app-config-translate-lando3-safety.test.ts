@@ -49,8 +49,8 @@ test("single-layer conversion refuses legacy context before staging", () =>
     const result = await failure(run({ write: true, files: [".lando.local.yml"] }));
     // Then
     expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ConfigTranslateError" } });
-    if (result._tag === "Left" && result.left._tag === "ConfigTranslateError")
-      expect(result.left.remediation).toContain("full conversion");
+    if (result._tag === "Failure" && result.failure._tag === "ConfigTranslateError")
+      expect(result.failure.remediation).toContain("full conversion");
     expect(await snapshot(root)).toEqual(originals);
     expect((await readdir(root)).sort()).toEqual(Object.keys(originals).sort());
   }));

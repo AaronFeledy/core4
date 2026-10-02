@@ -60,7 +60,7 @@ const renderStartFailure = async (reference: string) => {
         Layer.succeed(SecretStore, {
           id: "fake-vault",
           schemes: ["fake"],
-          get: (id) => Effect.sync(() => reads.push(id)).pipe(Effect.zipRight(Effect.fail(unavailable))),
+          get: (id) => Effect.sync(() => reads.push(id)).pipe(Effect.andThen(Effect.fail(unavailable))),
           has: () => Effect.fail(unavailable),
           list: Effect.succeed([]),
         }),
