@@ -59,9 +59,14 @@ export interface RenderContext {
 export const isDecoratedContext = (ctx?: RenderContext): boolean =>
   ctx?.mode === "lando" && ctx.isTTY === true;
 
-/** OSC 8 wraps existing labels only on a TTY when TERM is not dumb and NO_COLOR is unset. */
+/**
+ * OSC 8 wraps existing labels only where decorated output already goes: the
+ * default `lando` renderer on a TTY, with TERM not dumb and NO_COLOR unset.
+ * `--renderer=plain` advertises `color: false`, so it stays escape-free.
+ */
 export const contextAllowsHyperlinks = (ctx?: RenderContext): boolean =>
   ctx !== undefined &&
+  isDecoratedContext(ctx) &&
   shouldEmitHyperlinks({
     isTTY: ctx.isTTY,
     ...(ctx.env === undefined ? {} : { env: ctx.env }),

@@ -49,6 +49,12 @@ describe("renderAppsListResult ROOT hyperlinks", () => {
     expect(out).toBe(renderAppsListResult(result));
   });
 
+  test("keeps ROOT plain under the plain renderer on a TTY", () => {
+    const out = renderAppsListResult(result, "table", { ...tty(), mode: "plain" });
+    expect(out).toContain("/srv/apps/my-app");
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
   test("keeps ROOT plain when NO_COLOR is set", () => {
     const out = renderAppsListResult(result, "table", tty({ TERM: "xterm-256color", NO_COLOR: "1" }));
     expect(out).toContain("/srv/apps/my-app");

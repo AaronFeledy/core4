@@ -50,6 +50,12 @@ describe("renderInfoAppResult URL hyperlinks", () => {
     expect(out).not.toContain(`${ESC}]8;`);
   });
 
+  test("keeps endpoints plain under the plain renderer on a TTY", () => {
+    const out = renderInfoAppResult(result, { ...tty(), mode: "plain" });
+    expect(out).toContain("https://my-app.lndo.site");
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
   test("keeps endpoints plain when NO_COLOR is set", () => {
     const out = renderInfoAppResult(result, tty({ TERM: "xterm-256color", NO_COLOR: "1" }));
     expect(out).toContain("https://my-app.lndo.site");
