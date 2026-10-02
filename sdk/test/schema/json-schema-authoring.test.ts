@@ -8,12 +8,14 @@ describe("authoring JSON Schema publication", () => {
     // When its public artifact is emitted.
     const schema = getJsonSchema(name);
     // Then the object member keeps its properties and fragment-specific definitions survive publication.
-    const root = (
-      schema as { definitions?: Record<string, { anyOf?: ReadonlyArray<Record<string, unknown>> }> }
-    ).definitions?.[name];
-    expect(
-      root?.anyOf?.some((member) => "properties" in member && "router" in (member.properties as object)),
-    ).toBe(true);
+    expect(schema).toHaveProperty(
+      "anyOf",
+      expect.arrayContaining([
+        expect.objectContaining({
+          properties: expect.objectContaining({ router: expect.anything() }),
+        }),
+      ]),
+    );
     expect(schema).toHaveProperty("definitions.ServiceConfigInputAuthoringFragment");
     expect(schema).not.toHaveProperty("definitions.ServiceConfigInput");
   });
