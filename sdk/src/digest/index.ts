@@ -10,7 +10,7 @@ export const sha256Hex = (payload: Uint8Array | string): string =>
  * null, matching JSON's array convention. Non-JSON inputs may throw TypeError.
  */
 export const canonicalJson = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map((item: unknown) => canonicalJson(item)).join(",")}]`;
+  if (Array.isArray(value)) return `[${Array.from(value, (item: unknown) => canonicalJson(item)).join(",")}]`;
   if (value !== null && typeof value === "object")
     return `{${Object.entries(value)
       .filter(([, item]) => item !== undefined)
