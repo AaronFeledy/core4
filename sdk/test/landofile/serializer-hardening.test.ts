@@ -149,7 +149,7 @@ describe("Landofile serializer hardening — non-emittable values", () => {
     expect(() => emitLandofileYaml(cyclic)).toThrow(LandofileEmitError);
   });
 
-  test("the Either form returns Left for a non-emittable input", () => {
+  test("the Result form returns Failure for a non-emittable input", () => {
     const result = emitLandofileYamlEither({ d: new Date(0) });
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
