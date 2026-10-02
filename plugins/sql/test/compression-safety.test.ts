@@ -34,6 +34,7 @@ describe("host dump compression safety", () => {
           Effect.promise(async () => {
             staged = path;
             await writeFile(path, "select 1;");
+            return { accelerated: false };
           }),
       }),
     );
@@ -58,6 +59,7 @@ describe("host dump compression safety", () => {
           transfer: (path) =>
             Effect.promise(async () => {
               mode = (await stat(path)).mode & 0o777;
+              return { accelerated: false };
             }),
         }),
       );

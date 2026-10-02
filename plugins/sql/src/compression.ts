@@ -5,6 +5,7 @@ import { basename, dirname, join } from "node:path";
 import { Effect, Stream } from "effect";
 
 import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/errors";
+import type { DataTransferResult } from "@lando/sdk/schema";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
@@ -142,13 +143,13 @@ export const acquireStagedDump = (
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
   Effect.promise(() => rm(path, { recursive: true, force: true }));
 
-export const withHostDumpCompression = <A, E, R>(input: {
+export const withHostDumpCompression = <E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly direction: "export" | "import";
   readonly expectedDigest?: string;
-  readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<A, E, R>;
-}): Effect.Effect<A, E | SqlDumpCompressionError | DataChecksumMismatchError, R> => {
+  readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<DataTransferResult, E, R>;
+}): Effect.Effect<DataTransferResult, E | SqlDumpCompressionError | DataChecksumMismatchError, R> => {
   const compression = input.compression;
   if (compression === "none") return input.transfer(input.path);
   return Effect.scoped(
@@ -173,8 +174,8 @@ export const withHostDumpCompression = <A, E, R>(input: {
         return yield* input.transfer(staged, decompressed.digest);
       }
       const result = yield* input.transfer(staged);
-      yield* writeDumpTransform(staged, input.path, compression, "compress");
-      return result;
+      const compressed = yield* writeDumpTransform(staged, input.path, compression, "compress");
+      return { ...result, ...compressed };
     }),
   );
 };
