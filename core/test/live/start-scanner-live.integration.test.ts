@@ -98,7 +98,8 @@ describe.serial("live start scanner", () => {
             );
             expect(yield* Effect.promise(() => independent.text())).toBe("published-responder");
             // When: interrupt only after the container observes the in-flight scanner GET.
-            const exit = yield* Fiber.interrupt(start);
+            yield* Fiber.interrupt(start);
+            const exit = yield* Fiber.await(start);
             // Then: interruption propagates rather than becoming a successful warning.
             expect(Exit.hasInterrupts(exit)).toBe(true);
             yield* closed.pipe(Effect.timeout("5 seconds"));

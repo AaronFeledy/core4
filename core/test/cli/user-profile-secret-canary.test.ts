@@ -208,7 +208,7 @@ test.each([
 
       // Then: provider action sees the value; durable identities and every observed surface do not.
       expect(providerValue).toBe(sentinel);
-      expect(result.outcome._tag).toBe(fails ? "Left" : "Right");
+      expect(result.outcome._tag).toBe(fails ? "Failure" : "Success");
       expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
       expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
       expect(result.cachedPlan).toEqual(result.plan);

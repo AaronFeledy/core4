@@ -279,8 +279,7 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 describe("ensureGlobalServicesRunning", () => {
   test("reads required global services from AppPlan.requires", () => {
     expect(requiredGlobalServicesForPlan(appPlan)).toEqual(["traefik"]);
-    const { requires: _requires, ...withoutRequirements } = appPlan;
-    expect(requiredGlobalServicesForPlan(withoutRequirements)).toEqual([]);
+    expect(requiredGlobalServicesForPlan({})).toEqual([]);
   });
 
   test("cold ensure publishes pre/post-global-start and applies the selected global service", async () => {

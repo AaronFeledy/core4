@@ -128,7 +128,6 @@ describe("@lando/core/testing package export", () => {
     expect(testing.waitForEvent).toBeFunction();
     expect(testing.recordedEvents).toBeFunction();
     expect(testing.TestClock).toBeDefined();
-    expect(testing.TestContext).toBeDefined();
     expect(testing.AppPlanner).toBeDefined();
     expect(testing.AppPlannerLive).toBeDefined();
     expect(testing.EventServiceLive).toBeDefined();

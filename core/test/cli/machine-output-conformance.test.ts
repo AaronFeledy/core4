@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Arbitrary, Effect, FastCheck, Schema } from "effect";
+import { Arbitrary, Effect, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
@@ -63,8 +63,8 @@ const successValueFor = (spec: LandoCommandSpec): unknown => {
   if (landofileResultCommandIds.has(spec.id)) return {};
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
-  const arbitrary = Arbitrary.make(spec.resultSchema);
-  const [sample] = FastCheck.sample(arbitrary, { numRuns: 1, seed: 7 });
+  const arbitrary = Arbitrary.schema(spec.resultSchema);
+  const [sample] = Effect.runSync(Arbitrary.sampleEffect(arbitrary, { count: 1, seed: 7 }));
   return sample;
 };
 

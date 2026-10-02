@@ -26,7 +26,9 @@ const sample = (
   steps: [{ id: "start", durationMs, exitCode: outcome === "passed" ? 0 : 7, stdout: "", stderr: "" }],
 });
 
-const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerformanceReport => ({
+const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerformanceReport => {
+  const statistics = statisticsForSamples(samples);
+  return {
   schemaVersion: 1,
   series: { provider: "lando", platform: "linux-x64", fixtureSet: "db-v1" },
   run: {
@@ -46,10 +48,11 @@ const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerforma
       class: "start",
       outcome: samples.some((entry) => entry.outcome === "failed") ? "failed" : "passed",
       samples,
-      statistics: statisticsForSamples(samples),
+      ...(statistics === undefined ? {} : { statistics }),
     },
   ],
-});
+  };
+};
 
 const reportWithDiagnostic = (diagnostic: unknown): unknown => {
   const valid = report([sample(0, "failed", 10)]);

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Chunk, Effect, Layer, Queue, type Scope } from "effect";
+import { Effect, Layer, Queue, type Scope } from "effect";
 
 import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
@@ -179,7 +179,7 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
               file({
                 id: "cms:settings",
                 owner: "cms",
-                base: base as ManagedFile["base"],
+                base: base as NonNullable<ManagedFile["base"]>,
                 path: "settings.php",
                 mode: "block",
                 content: { kind: "text", value: `$conf['password'] = '${secret}';\n` },
@@ -187,7 +187,7 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
             ]);
             yield* Effect.sleep("25 millis");
             const drained = yield* Queue.takeAll(queue);
-            return Chunk.toReadonlyArray(drained);
+            return drained;
           }).pipe(Effect.provide(layer)),
         ),
       );
@@ -235,14 +235,14 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
               file({
                 id: "cms:settings",
                 owner: secret,
-                base: base as ManagedFile["base"],
+                base: base as NonNullable<ManagedFile["base"]>,
                 path: "settings.txt",
                 content: { kind: "text", value: "hello world\n" },
               }),
             ]);
             yield* Effect.sleep("25 millis");
             const drained = yield* Queue.takeAll(queue);
-            return Chunk.toReadonlyArray(drained);
+            return drained;
           }).pipe(Effect.provide(layer)),
         ),
       );

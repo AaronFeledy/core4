@@ -31,7 +31,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 /**
@@ -132,7 +132,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   const provider = {
     ...TestRuntimeProvider,
     execStream: (target: ExecTarget, spec: CommandSpec) =>
-      Effect.succeed({ exitCode: record(spec.command, String(target.service)) }),
+      Stream.fromEffect(Effect.sync(() => ({ exitCode: record(spec.command, String(target.service)) }))),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
