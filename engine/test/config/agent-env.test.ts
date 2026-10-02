@@ -36,6 +36,21 @@ describe("agent-context env allowlist", () => {
 });
 
 describe("resolveAgentContextEnv — presence-gated selection", () => {
+  test.each([
+    "CLAUDE_CODE_IS_COWORK",
+    "OPENCODE_CLIENT",
+    "CODEX_SANDBOX",
+    "CODEX_CI",
+    "AUGMENT_AGENT",
+    "ANTIGRAVITY_AGENT",
+    "PI_CODING_AGENT",
+    "AI_AGENT",
+  ])("forwards %s without forwarding adjacent secret or session names", (name) => {
+    const host = { [name]: "present", [`${name}_TOKEN`]: "secret", [`${name}_SESSION`]: "/private/path" };
+    expect(resolveAgentContextEnv(host)).toEqual({ [name]: "present" });
+    expect(filterHostProxyEnv(host)).toEqual({ [name]: "present" });
+  });
+
   test("forwards only allowlisted names that are set in the host env", () => {
     const resolved = resolveAgentContextEnv({
       CLAUDECODE: "1",
