@@ -60,7 +60,10 @@ describe("Landofile package seam", () => {
     expect(packageManifest.private).toBe(true);
     expect(packageManifest.main).toBe("./src/index.ts");
     expect(packageManifest.types).toBe("./src/index.ts");
-    expect(stringArray(rootManifest.workspaces)).toContain("landofile");
+    expect(isJsonObject(rootManifest.workspaces)).toBe(true);
+    if (!isJsonObject(rootManifest.workspaces))
+      throw new TypeError("Expected workspace catalog configuration");
+    expect(stringArray(rootManifest.workspaces.packages)).toContain("landofile");
     expect(projectReferencePaths(rootTsconfig.references)).toContain("./landofile");
     expect(scripts).toEqual({
       build: "tsc -b",
@@ -119,7 +122,7 @@ describe("Landofile package seam", () => {
     const devDependencies = stringRecord(packageManifest.devDependencies);
 
     // Then
-    expect(dependencies.effect).toBe("^3.21.2");
+    expect(dependencies.effect).toBe("catalog:");
     expect(dependencies.semver).toBe("^7.8.5");
     expect(devDependencies["@types/semver"]).toBe("^7.7.1");
   });
