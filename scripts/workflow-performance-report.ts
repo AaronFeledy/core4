@@ -17,7 +17,7 @@ const MAX_SAMPLES = 10;
 const MAX_STEPS = 16;
 const OMITTED_DIAGNOSTIC = "[diagnostic evidence omitted]";
 
-const OutcomeSchema = Schema.Literal("passed", "failed", "skipped");
+const OutcomeSchema = Schema.Literals(["passed", "failed", "skipped"]);
 const SeriesSchema = Schema.Struct({
   provider: Schema.String,
   platform: Schema.String,
@@ -37,7 +37,7 @@ const VersionsSchema = Schema.Struct({
   provider: Schema.String,
 });
 const FixtureSchema = Schema.Struct({
-  family: Schema.Literal("mysql", "postgres"),
+  family: Schema.Literals(["mysql", "postgres"]),
   version: Schema.String,
   seed: Schema.String,
   rowCount: Schema.Number,
@@ -45,23 +45,21 @@ const FixtureSchema = Schema.Struct({
   sha256: Schema.String,
 });
 const StepSchema = Schema.Struct({
-  id: Schema.Literal(...WORKFLOW_PERFORMANCE_STEP_IDS),
+  id: Schema.Literals([...WORKFLOW_PERFORMANCE_STEP_IDS]),
   durationMs: Schema.Number,
   exitCode: Schema.Number,
-  stdout: Schema.String.pipe(Schema.maxLength(EVIDENCE_LIMIT + "\n[truncated]".length)),
-  stderr: Schema.String.pipe(Schema.maxLength(EVIDENCE_LIMIT + "\n[truncated]".length)),
-  diagnostic: Schema.optional(ImagePullFailureDiagnosticSchema),
+  stdout: Schema.String.pipe(Schema.check(Schema.isMaxLength(EVIDENCE_LIMIT + "\n[truncated]".length))),
+  stderr: Schema.String.pipe(Schema.check(Schema.isMaxLength(EVIDENCE_LIMIT + "\n[truncated]".length))),
+  diagnostic: Schema.optionalKey(ImagePullFailureDiagnosticSchema),
 });
 const SampleSchema = Schema.Struct({
-  index: Schema.Int.pipe(Schema.between(0, MAX_SAMPLES - 1)),
+  index: Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: MAX_SAMPLES - 1 }))),
   key: Schema.String,
   outcome: OutcomeSchema,
   resetCondition: Schema.String,
-  stagedFixture: Schema.optional(
-    Schema.Struct({ path: Schema.String, bytes: Schema.Number, sha256: Schema.String }),
-  ),
-  steps: Schema.Array(StepSchema).pipe(Schema.maxItems(MAX_STEPS)),
-  skipReason: Schema.optional(Schema.String),
+  stagedFixture: Schema.optionalKey(Schema.Struct({ path: Schema.String, bytes: Schema.Number, sha256: Schema.String })),
+  steps: Schema.Array(StepSchema).pipe(Schema.check(Schema.isMaxLength(MAX_STEPS))),
+  skipReason: Schema.optionalKey(Schema.String),
 });
 const StatisticsSchema = Schema.Struct({
   successfulSamples: Schema.Number,
@@ -71,18 +69,18 @@ const StatisticsSchema = Schema.Struct({
   maxMs: Schema.Number,
 });
 const LaneSchema = Schema.Struct({
-  id: Schema.Literal(...WORKFLOW_PERFORMANCE_LANE_IDS),
-  class: Schema.Literal("start", "heavy"),
+  id: Schema.Literals([...WORKFLOW_PERFORMANCE_LANE_IDS]),
+  class: Schema.Literals(["start", "heavy"]),
   outcome: OutcomeSchema,
-  samples: Schema.Array(SampleSchema).pipe(Schema.maxItems(MAX_SAMPLES)),
-  statistics: Schema.optional(StatisticsSchema),
-  skipReason: Schema.optional(Schema.String),
+  samples: Schema.Array(SampleSchema).pipe(Schema.check(Schema.isMaxLength(MAX_SAMPLES))),
+  statistics: Schema.optionalKey(StatisticsSchema),
+  skipReason: Schema.optionalKey(Schema.String),
 });
 
 const WorkflowPerformanceReportStruct = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  status: Schema.optional(Schema.Literal("running", "completed", "interrupted", "failed")),
-  failure: Schema.optional(Schema.String),
+  status: Schema.optionalKey(Schema.Literals(["running", "completed", "interrupted", "failed"])),
+  failure: Schema.optionalKey(Schema.String),
   series: SeriesSchema,
   run: RunSchema,
   versions: VersionsSchema,
@@ -90,20 +88,19 @@ const WorkflowPerformanceReportStruct = Schema.Struct({
     eligible: Schema.Boolean,
     reason: Schema.String,
   }),
-  fixtures: Schema.Array(FixtureSchema).pipe(Schema.maxItems(2)),
-  lanes: Schema.Array(LaneSchema).pipe(Schema.maxItems(MAX_LANES)),
+  fixtures: Schema.Array(FixtureSchema).pipe(Schema.check(Schema.isMaxLength(2))),
+  lanes: Schema.Array(LaneSchema).pipe(Schema.check(Schema.isMaxLength(MAX_LANES))),
 });
 
 export const WorkflowPerformanceReportSchema = WorkflowPerformanceReportStruct.pipe(
-  Schema.filter((report) =>
+  Schema.check(Schema.makeFilter((report) =>
     report.lanes.every((lane) =>
       lane.samples.every((sample) =>
         isWorkflowPerformanceSampleKey(sample.key, report.run.id, lane.id, sample.index),
       ),
     )
       ? undefined
-      : "sample keys must be derived from their lane and ordinal",
-  ),
+      : "sample keys must be derived from their lane and ordinal")),
 );
 
 export type WorkflowPerformanceReport = typeof WorkflowPerformanceReportSchema.Type;
