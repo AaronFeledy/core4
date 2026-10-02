@@ -19,7 +19,7 @@ type LineFormatter = (event: LandoEvent) => string | null;
 const makeEventConsumerRendererLive = (
   handle: (event: LandoEvent) => void,
 ): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const queue = yield* events.subscribeQueue;
@@ -92,7 +92,7 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, io, "stderr", events);
 
-const nowTimestamp = (): DateTime.Utc => DateTime.unsafeNow();
+const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
 /**
  * Build a renderer's `message.{info,warn,error}` contract: each severity is

@@ -114,7 +114,7 @@ export const withOptionalStderrOutput = <A extends { readonly stderr: string }, 
 const requireRenderer = Effect.serviceOption(Renderer).pipe(
   Effect.flatMap((option) =>
     Option.isNone(option)
-      ? Effect.dieMessage("Renderer not provided at the CLI command boundary")
+      ? Effect.die(new Error("Renderer not provided at the CLI command boundary"))
       : Effect.succeed(option.value),
   ),
 );
