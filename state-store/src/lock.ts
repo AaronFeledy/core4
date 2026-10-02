@@ -1,3 +1,4 @@
+import { Semaphore } from "effect";
 import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -12,27 +13,27 @@ const LOCK_ATTEMPTS = 200;
 
 // The file lock serializes processes, while this guard closes the release-unlink
 // race between fibers in the same process.
-const inProcessGuards = new Map<string, Effect.Semaphore>();
+const inProcessGuards = new Map<string, Semaphore.Semaphore>();
 
 const canonicalLockTarget = (file: string): Effect.Effect<string> =>
   Effect.promise(() => realpath(file).catch(() => file));
 
-const guardFor = (file: string): Effect.Effect<Effect.Semaphore> =>
+const guardFor = (file: string): Effect.Effect<Semaphore.Semaphore> =>
   Effect.sync(() => {
     const existing = inProcessGuards.get(file);
     if (existing !== undefined) return existing;
-    const created = Effect.unsafeMakeSemaphore(1);
+    const created = Semaphore.makeUnsafe(1);
     inProcessGuards.set(file, created);
     return created;
   });
 
 const LockRecord = Schema.Struct({
-  pid: Schema.Number.pipe(Schema.int(), Schema.between(1, 2_147_483_647)),
-  token: Schema.NonEmptyString.pipe(Schema.maxLength(256)),
-  createdAt: Schema.Number.pipe(Schema.int(), Schema.between(0, Number.MAX_SAFE_INTEGER)),
+  pid: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 }))),
+  token: Schema.NonEmptyString.pipe(Schema.check(Schema.isMaxLength(256))),
+  createdAt: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))),
 });
 type LockRecord = typeof LockRecord.Type;
-const parseLockRecord = Schema.decodeUnknownOption(Schema.parseJson(LockRecord), {
+const parseLockRecord = Schema.decodeUnknownOption(Schema.fromJsonString(LockRecord), {
   onExcessProperty: "error",
 });
 const processIsDead = (pid: number): boolean => {

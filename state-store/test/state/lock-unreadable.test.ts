@@ -24,7 +24,7 @@ test("preserves a live replacement inode during unreadable stale takeover", asyn
   try {
     // When stale takeover rechecks identity before unlinking
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         Effect.acquireUseRelease(
           acquireAdvisoryLockAt(path, "test", {
             expireLiveOwner: false,
@@ -58,7 +58,7 @@ for (const old of [true, false]) {
       try {
         // When a non-expiring acquisition encounters the unreadable lock
         const result = await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             Effect.acquireUseRelease(
               acquireAdvisoryLockAt(path, "test", {
                 expireLiveOwner: false,
@@ -115,7 +115,7 @@ for (const kind of ["symlink", "directory", "foreign-owner"] as const) {
       try {
         // When non-expiring acquisition considers stale takeover
         const result = await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             Effect.acquireUseRelease(
               acquireAdvisoryLockAt(path, "test", {
                 expireLiveOwner: false,
