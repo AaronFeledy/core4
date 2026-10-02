@@ -651,7 +651,7 @@ ${scenario.render === false ? "// @render: false\n" : ""}${variantHeader}${varia
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { Effect, Result } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 ${
   usesLibraryRuntime
     ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";'
@@ -684,7 +684,7 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
 };
 
 ${testFnExpression}(${testNameExpression}, async () => {
-  await Effect.runPromise(
+  const exit = await Effect.runPromiseExit(
     ${contextRunner}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;
@@ -693,6 +693,7 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
       }),
     ),
   );
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
 }${testTimeoutArg});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };

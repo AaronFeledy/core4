@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { rewriteScenarioSourceMappedOutput } from "../../../scripts/test-reporters/scenario-source-mapper";
 import { shellFailureCases } from "../_support/shell-failure-characterization";
 import { withEnvVar } from "../_support/temp-cwd";
@@ -11,24 +11,32 @@ const generated =
 
 describe("scenario reporter shell failure characterization", () => {
   for (const scenario of shellFailureCases) {
-    test(`maps the real ${scenario.kind} rejection text`, async () => {
+    test(`maps the real ${scenario.kind} failure cause`, async () => {
       // Given
-      const rejection: unknown = await Effect.runPromise(scenario.effect()).then(
-        () => {
-          throw new Error("Expected rejection");
-        },
-        (error: unknown) => error,
-      );
-      const input = `${String(rejection).replaceAll("at <fixture>", `at ${repoRoot}/${generated}:19:13`)}\n(fail) source-map-guide:runs [<time>]\n`;
+      const exit = await Effect.runPromiseExit(scenario.effect());
+      if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+      const input = `${Cause.pretty(exit.cause)
+        .replaceAll(/fiber \(#\d+\)/g, "fiber (#<id>)")
+        .replaceAll(
+          "at <fixture>",
+          `at ${repoRoot}/${generated}:19:13`,
+        )}\n(fail) source-map-guide:runs [<time>]\n`;
 
       // When
       const output = await withEnvVar("GITHUB_ACTIONS", "false", async () =>
         rewriteScenarioSourceMappedOutput(input, { repoRoot }),
       );
 
-      // Then: only the defect's '(FiberFailure) Error:' line currently gets a guide prefix.
-      const prefix = scenario.kind === "defect" ? "[source-map-guide:runs] " : "";
-      const mapped = scenario.rejectionText.replaceAll(
+      // Then: render every failure and its stack, not runPromise's lossy squash.
+      const prefix = scenario.kind === "interrupt" ? "" : "[source-map-guide:runs] ";
+      const failureText =
+        scenario.kind === "interrupt"
+          ? "InterruptError: All fibers interrupted without error {\n  [cause]: InterruptCause: The fiber was interrupted by:\n      at fiber (#<id>)\n}"
+          : scenario.causeText.replace(
+              "\nError: cleanup defect",
+              "\n[source-map-guide:runs] Error: cleanup defect",
+            );
+      const mapped = failureText.replaceAll(
         "    at <fixture>",
         `    at docs/guides/source-map-guide.mdx:9\n    Generated: ${generated}:19:13`,
       );
@@ -63,8 +71,12 @@ describe("scenario reporter shell failure characterization", () => {
     ]);
     // Then
     expect(exitCode).toBe(1);
-    expect(stdout + stderr).toContain("(FiberFailure) Error: seeded failure");
-    expect(stdout + stderr).toContain("[source-map-guide:runs] error: seeded failure");
+    expect(stdout + stderr).toContain("[source-map-guide:runs] error: Error: seeded failure");
+    expect(stdout + stderr).toContain("[source-map-guide:runs] Error: cleanup defect");
+    expect(
+      (stdout + stderr).match(/at docs\/guides\/source-map-guide\.mdx:9/g)?.length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(stdout + stderr).toContain(`Generated: ${generated}:19:`);
     expect(stdout + stderr).toContain("Re-run: bun run docs:scenario source-map-guide --scenario runs");
     expect(stdout + stderr).toMatch(/0 pass\s+1 fail/);
   }, 15_000);
