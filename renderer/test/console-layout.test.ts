@@ -414,6 +414,16 @@ describe("linkKnownHttpUrls", () => {
     );
   });
 
+  test("leaves a wrapped head of a longer endpoint plain even when it equals a shorter one", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const wrapped = `${shortUrl}\n80`;
+    expect(linkKnownHttpUrls(wrapped, [shortUrl, longUrl])).toBe(wrapped);
+    expect(linkKnownHttpUrls(`${shortUrl}, ${longUrl}`, [shortUrl, longUrl])).toBe(
+      `${hyperlink(shortUrl, shortUrl)}, ${hyperlink(longUrl, longUrl)}`,
+    );
+  });
+
   test("copies a BEL-terminated OSC 8 span whole instead of re-linking its label", () => {
     const url = "http://localhost:8080";
     const already = `${ESC}]8;;${url}${BEL}${url}${ESC}]8;;${BEL}`;

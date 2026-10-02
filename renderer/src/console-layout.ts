@@ -128,12 +128,33 @@ const isWholeEndpointTokenAt = (text: string, index: number, url: string): boole
   return isUrlTokenBoundary(text[index - 1]) && isUrlTokenBoundary(text[index + url.length]);
 };
 
+/** A boundary a line wrap could have produced, unlike punctuation or the end of the text. */
+const isSoftBoundary = (ch: string | undefined): boolean => {
+  const code = ch?.codePointAt(0);
+  return code !== undefined && (code <= 0x20 || code === 0x7f);
+};
+
+/**
+ * True when `url` matched at `index` may be the head of a longer known endpoint
+ * that a hard wrap cut after it: a soft boundary follows and some candidate
+ * extends `url`. Linking it would point a partial label at the wrong endpoint.
+ */
+const isWrappedPrefixOfCandidate = (
+  text: string,
+  index: number,
+  url: string,
+  candidates: ReadonlyArray<string>,
+): boolean =>
+  isSoftBoundary(text[index + url.length]) &&
+  candidates.some((candidate) => candidate.length > url.length && candidate.startsWith(url));
+
 /**
  * Wrap each known http(s) URL that still appears as a whole token in `text`.
  * Longer endpoints win so a prefix (`:80` vs `:8080`, host vs host:port) cannot
  * nest inside another link. An OSC 8 span already in `text` (open, label, close)
  * is copied whole, never rewritten or re-linked. A URL split by wrapping is left
- * plain so OSC 8 never wraps a partial label.
+ * plain so OSC 8 never wraps a partial label, including a head that happens to
+ * equal a shorter known endpoint.
  */
 export const linkKnownHttpUrls = (text: string, urls: ReadonlyArray<string>): string => {
   const candidates = [...new Set(urls.filter(isHttpUrl))].sort((left, right) => right.length - left.length);
@@ -148,7 +169,7 @@ export const linkKnownHttpUrls = (text: string, urls: ReadonlyArray<string>): st
       continue;
     }
     const match = candidates.find((url) => isWholeEndpointTokenAt(text, index, url));
-    if (match !== undefined) {
+    if (match !== undefined && !isWrappedPrefixOfCandidate(text, index, match, candidates)) {
       out += hyperlink(match, match);
       index += match.length;
       continue;
