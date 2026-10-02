@@ -19,7 +19,7 @@ export const outcomeFromExit = (exit: Exit.Exit<unknown, unknown>): Effect.Effec
   if (exit._tag === "Success") {
     return Effect.succeed({ _tag: "success", value: exit.value } satisfies CommandResultOutcome);
   }
-  if (Cause.isInterruptedOnly(exit.cause)) return Effect.interrupt;
+  if (Cause.hasInterruptsOnly(exit.cause)) return Effect.interrupt;
   return Effect.succeed({
     _tag: "failure",
     error: Cause.squash(exit.cause),
@@ -29,7 +29,7 @@ export const outcomeFromExit = (exit: Exit.Exit<unknown, unknown>): Effect.Effec
 export const makeNestedExecute =
   (
     runtimeContext: Context.Context<never>,
-    streamSink: Context.Tag.Service<typeof StreamFrameSink>,
+    streamSink: Context.Service.Shape<typeof StreamFrameSink>,
     executor: McpCommandExecutorShape,
   ): McpExecute =>
   (entry, runInput) =>

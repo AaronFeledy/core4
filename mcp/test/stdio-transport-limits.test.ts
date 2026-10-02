@@ -1,5 +1,6 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Option, TestClock, TestContext } from "effect";
+import { Deferred, Effect, Fiber, Option } from "effect";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 
@@ -64,7 +65,7 @@ describe("makeStdioMcpTransport queue and write limits", () => {
           catalog,
           input,
           write: () =>
-            Deferred.succeed(writeStarted, undefined).pipe(Effect.zipRight(Deferred.await(releaseWrite))),
+            Deferred.succeed(writeStarted, undefined).pipe(Effect.andThen(Deferred.await(releaseWrite))),
         });
         const incoming = yield* transport.receive;
         if (Option.isNone(incoming)) return Option.none();
@@ -74,13 +75,13 @@ describe("makeStdioMcpTransport queue and write limits", () => {
             ok: true,
             result: { envelope: { apiVersion: "v4", command: "app:info", ok: true }, ok: true },
           })
-          .pipe(Effect.fork);
+          .pipe(Effect.forkChild);
         yield* Deferred.await(writeStarted);
         yield* TestClock.adjust("5 seconds");
-        const poll = yield* Fiber.poll(replyFiber);
+        const poll = yield* replyFiber.pollUnsafe();
         yield* Fiber.interrupt(replyFiber);
         return poll;
-      }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
     );
 
     // Then
@@ -100,7 +101,7 @@ describe("makeStdioMcpTransport queue and write limits", () => {
           catalog,
           input,
           write: () =>
-            Deferred.succeed(writeStarted, undefined).pipe(Effect.zipRight(Deferred.await(releaseWrite))),
+            Deferred.succeed(writeStarted, undefined).pipe(Effect.andThen(Deferred.await(releaseWrite))),
         });
         const incoming = yield* transport.receive;
         if (Option.isNone(incoming)) return yield* Effect.die(new Error("expected an open MCP tool call"));
@@ -113,10 +114,10 @@ describe("makeStdioMcpTransport queue and write limits", () => {
             }),
           { concurrency: "unbounded", discard: true },
         );
-        const notifyFiber = yield* notifications.pipe(Effect.fork);
+        const notifyFiber = yield* notifications.pipe(Effect.forkChild);
         yield* Deferred.await(writeStarted);
         return yield* Fiber.await(notifyFiber);
-      }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
     );
 
     // Then
@@ -147,9 +148,9 @@ describe("makeStdioMcpTransport queue and write limits", () => {
             id: incoming.value.id,
             frame: { _tag: "output", stream: "stdout", line: "x".repeat(8 * 1024 * 1024 + 1) },
           })
-          .pipe(Effect.fork);
-        yield* Effect.yieldNow();
-        const poll = yield* Fiber.poll(notifyFiber);
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        const poll = yield* notifyFiber.pollUnsafe();
         yield* Fiber.interrupt(notifyFiber);
         return { completion: poll, writeCalls };
       }).pipe(Effect.scoped),

@@ -1,3 +1,4 @@
+import { Semaphore } from "effect";
 /**
  * `McpService` — the in-process MCP dispatch core.
  *
@@ -59,10 +60,7 @@ export interface McpRuntimeConfigShape {
   readonly runtimeLayer: Layer.Layer<unknown> | Layer.Layer<never>;
 }
 
-export class McpRuntimeConfig extends Context.Tag("@lando/mcp/McpRuntimeConfig")<
-  McpRuntimeConfig,
-  McpRuntimeConfigShape
->() {}
+export class McpRuntimeConfig extends Context.Service<McpRuntimeConfig, McpRuntimeConfigShape>()("@lando/mcp/McpRuntimeConfig") {}
 
 export interface McpServiceShape {
   /**
@@ -81,12 +79,12 @@ export interface McpServiceShape {
   readonly handleMemoryPressure: (level: MemoryPressureLevel) => void;
 }
 
-export class McpService extends Context.Tag("@lando/mcp/McpService")<McpService, McpServiceShape>() {}
+export class McpService extends Context.Service<McpService, McpServiceShape>()("@lando/mcp/McpService") {}
 
 const makeService = (
   config: McpRuntimeConfigShape,
-  redaction: Context.Tag.Service<typeof RedactionService>,
-  events: Option.Option<Context.Tag.Service<typeof EventService>>,
+  redaction: Context.Service.Shape<typeof RedactionService>,
+  events: Option.Option<Context.Service.Shape<typeof EventService>>,
   executor: McpCommandExecutorShape,
 ): McpServiceShape => {
   const catalogCache = new Map<string, McpCatalog>();
@@ -101,7 +99,7 @@ const makeService = (
     });
   };
   const publish: ((event: LandoEvent) => Effect.Effect<void>) | undefined = Option.isSome(events)
-    ? (event) => events.value.publish(event).pipe(Effect.catchAll(() => Effect.void))
+    ? (event) => events.value.publish(event).pipe(Effect.catch(() => Effect.void))
     : undefined;
   const allowWithTooling = (allow: ReadonlyArray<string> | undefined, tooling: boolean | undefined) =>
     tooling === true
@@ -143,7 +141,7 @@ const makeService = (
           const detachMemoryPressure = attachMemoryPressureListener(handleMemoryPressure);
           yield* Effect.addFinalizer(() => Effect.sync(() => detachMemoryPressure()));
           const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-          const semaphore = yield* Effect.makeSemaphore(options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
+          const semaphore = yield* Semaphore.make(options.maxConcurrent ?? DEFAULT_MCP_MAX_CONCURRENT);
           const effective = computeEffectiveAllowlist({
             defaults: config.defaultAllowlist,
             allow: allowWithTooling(options.allow, options.tooling),
@@ -156,7 +154,7 @@ const makeService = (
             ).map((entry) => [entry.spec.id, entry]),
           );
           const runtimeContext = yield* Layer.build(config.runtimeLayer);
-          const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, McpTransportError>>());
+          const inFlight = yield* Ref.make(new Map<string, Fiber.Fiber<void, McpTransportError>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());
           const completed = yield* Ref.make(emptyCompletedRequestIds());
           const notifyFor =
@@ -183,7 +181,7 @@ const makeService = (
               next.delete(id);
               return next;
             }).pipe(
-              Effect.zipRight(Ref.update(completed, (current) => rememberCompletedRequestId(current, id))),
+              Effect.andThen(Ref.update(completed, (current) => rememberCompletedRequestId(current, id))),
             );
 
           const clearCompleted = (id: string): Effect.Effect<void> =>
@@ -201,7 +199,7 @@ const makeService = (
             dispatchTool(incoming.request, depsFor(incoming)).pipe(
               Effect.matchCauseEffect({
                 onFailure: (cause) => {
-                  const failure = Cause.failureOption(cause);
+                  const failure = Cause.findErrorOption(cause);
                   return Option.isSome(failure)
                     ? transport.reply({ id: incoming.id, ok: false, error: failure.value })
                     : replyMcpCanceled(transport, incoming.id);
@@ -213,8 +211,8 @@ const makeService = (
           const handleCanceledBeforeStart = (incoming: McpTransportRequest) =>
             dispatchTool(incoming.request, { ...depsFor(incoming), execute: () => Effect.interrupt }).pipe(
               Effect.ignore,
-              Effect.zipRight(replyMcpCanceled(transport, incoming.id)),
-              Effect.zipRight(
+              Effect.andThen(replyMcpCanceled(transport, incoming.id)),
+              Effect.andThen(
                 Ref.update(completed, (current) => rememberCompletedRequestId(current, incoming.id)),
               ),
             );
@@ -230,7 +228,7 @@ const makeService = (
               const fiber = yield* semaphore
                 .withPermits(1)(
                   Deferred.await(start).pipe(
-                    Effect.zipRight(handleOne(incoming)),
+                    Effect.andThen(handleOne(incoming)),
                     Effect.ensuring(completeInFlight(incoming.id)),
                   ),
                 )
@@ -244,7 +242,7 @@ const makeService = (
               Effect.flatMap((current) => {
                 const fiber = current.get(id);
                 if (fiber !== undefined)
-                  return Fiber.interrupt(fiber).pipe(Effect.zipRight(replyMcpCanceled(transport, id)));
+                  return Fiber.interrupt(fiber).pipe(Effect.andThen(replyMcpCanceled(transport, id)));
                 return Ref.get(completed).pipe(
                   Effect.flatMap((done) =>
                     done.has(id)

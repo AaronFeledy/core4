@@ -1,4 +1,4 @@
-import { Chunk, Deferred, Effect, Queue, Ref, Scope } from "effect";
+import { Deferred, Effect, Queue, Ref, Scope } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
@@ -65,7 +65,7 @@ export const makeStdioWriter = (
       Queue.takeAll(queue).pipe(
         Effect.flatMap((messages) =>
           Effect.forEach(
-            Chunk.toReadonlyArray(messages),
+            messages,
             (message) => Deferred.fail(message.completed, error),
             { discard: true },
           ),
@@ -73,7 +73,7 @@ export const makeStdioWriter = (
       );
 
     const failTerminal = (error: McpTransportError): Effect.Effect<void> =>
-      Deferred.fail(options.terminal, error).pipe(Effect.zipRight(failQueued(error)), Effect.asVoid);
+      Deferred.fail(options.terminal, error).pipe(Effect.andThen(failQueued(error)), Effect.asVoid);
 
     const terminalFailure = Deferred.await(options.terminal).pipe(
       Effect.matchEffect({
@@ -86,10 +86,7 @@ export const makeStdioWriter = (
       Queue.take(queue).pipe(
         Effect.flatMap((message) =>
           Effect.raceFirst(
-            Effect.timeoutFail(options.writeLine(message.line), {
-              duration: OUTBOUND_WRITE_DEADLINE,
-              onTimeout: writeDeadlineFailure,
-            }).pipe(
+            Effect.timeoutOrElse(options.writeLine(message.line), { duration: OUTBOUND_WRITE_DEADLINE, orElse: () => Effect.fail((writeDeadlineFailure)()) }).pipe(
               Effect.mapError((cause) =>
                 cause instanceof McpTransportError
                   ? cause
@@ -101,12 +98,12 @@ export const makeStdioWriter = (
             Effect.matchEffect({
               onFailure: (error) =>
                 Ref.update(queuedBytes, (current) => current - message.bytes).pipe(
-                  Effect.zipRight(Deferred.fail(message.completed, error)),
-                  Effect.zipRight(failTerminal(error)),
+                  Effect.andThen(Deferred.fail(message.completed, error)),
+                  Effect.andThen(failTerminal(error)),
                 ),
               onSuccess: () =>
                 Ref.update(queuedBytes, (current) => current - message.bytes).pipe(
-                  Effect.zipRight(Deferred.succeed(message.completed, undefined)),
+                  Effect.andThen(Deferred.succeed(message.completed, undefined)),
                 ),
             }),
           ),
@@ -116,7 +113,7 @@ export const makeStdioWriter = (
     yield* worker.pipe(Effect.forkScoped);
 
     yield* Deferred.await(options.terminal).pipe(
-      Effect.catchAll((error) => failQueued(error)),
+      Effect.catch((error) => failQueued(error)),
       Effect.forkScoped,
     );
 
