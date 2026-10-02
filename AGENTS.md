@@ -16,6 +16,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Public contracts come from Effect Schema with inferred TypeScript types; do not maintain parallel hand-written public types.
 - Core failures are `Schema.TaggedError` values with machine `_tag` and human remediation, not thrown generic exceptions.
 - Acquire handles, locks, files, ports, networks, and subprocesses in `Scope` so cancellation cleans them up.
+- Effect 4 `Queue.takeAll` waits for at least one item. Use `Queue.clear` for a nonblocking drain of currently buffered items, especially in finalizers and event assertions; waiting on an empty queue inside a finalizer can prevent shutdown.
 - Validate provider capabilities before planning, and plan before provider action; do not let providers discover unsupported intent at execution time.
 - Prefer interfaces/plugins over config flags when implementations can differ; flags should tune one implementation, not choose architecture.
 - Use Bun primitives first. Node compatibility APIs need a narrow adapter; use `ProcessRunner` for argv-precise spawn and `ShellRunner` for shell-shaped pipelines.
