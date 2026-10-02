@@ -66,7 +66,7 @@ const makeTransport = (
     // re-enables interruption so the bounded flush can actually time out.
     yield* Effect.addFinalizer(() =>
       Effect.interruptible(
-        Queue.takeAll(queue).pipe(
+        Queue.clear(queue).pipe(
           Effect.flatMap((records) =>
             Effect.forEach(records, (record) => dispatchRecord(sinks, budget, record), { discard: true }),
           ),

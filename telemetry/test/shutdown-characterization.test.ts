@@ -4,6 +4,23 @@ import { type TelemetryRecord, TelemetrySinks, makeTelemetryLayer } from "@lando
 import { Clock, Deferred, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 
+test("shutdown completes promptly when the telemetry queue is empty", async () => {
+  // Given: an idle transport whose sink budget is longer than the native watchdog.
+  const deadline = Promise.withResolvers<"deadline">();
+  const timer = setTimeout(() => deadline.resolve("deadline"), 1000);
+  try {
+    // When: close its scope without recording anything.
+    const closed = Effect.runPromise(
+      Telemetry.pipe(Effect.provide(makeTelemetryLayer(true, { flushBudgetMillis: 10_000 }))),
+    ).then(() => "closed");
+
+    // Then: empty drains finish without spending the sink budget.
+    expect(await Promise.race([closed, deadline.promise])).toBe("closed");
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 test("shutdown drains queued records before interrupting the in-flight sink", async () => {
   // Given: one blocked dispatch leaves the subsequent records queued.
   const delivered: TelemetryRecord[] = [];
