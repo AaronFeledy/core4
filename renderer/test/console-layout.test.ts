@@ -13,6 +13,7 @@ import {
   resolveSummaryWidth,
   shouldEmitHyperlinks,
   stripAnsi,
+  styleBoxBottom,
   toneChip,
   truncateToWidth,
   wrapFieldToWidth,
@@ -451,6 +452,37 @@ describe("linkKnownHttpUrls", () => {
     const out = linkKnownHttpUrls(text, [shortUrl, longUrl]);
     expect(out).toBe(text);
     expect(out).not.toContain(`${ESC}]8;`);
+  });
+
+  test("leaves a framed multi-break wrapped head plain when the first line equals a shorter endpoint", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080/very/long/extra/path";
+    const label = "endpoints";
+    const width = 37;
+    const innerWidth = width - 4;
+    const lines = wrapFieldToWidth(label, longUrl, label.length, innerWidth - 2);
+    expect(lines[0]?.endsWith(shortUrl)).toBe(true);
+    expect(lines.length).toBeGreaterThan(2);
+    const framed = lines.map((segment) => boxBody(`  ${segment}`, width, styleBoxBottom)).join("\n");
+    expect(stripAnsi(framed)).toContain(shortUrl);
+    expect(stripAnsi(framed)).not.toContain(longUrl);
+    const out = linkKnownHttpUrls(framed, [shortUrl, longUrl]);
+    expect(out).toBe(framed);
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
+  test("links a shorter endpoint on its own framed line when a longer prefix sibling is also known", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const other = "http://example.com/other";
+    const width = 80;
+    const framed = [shortUrl, other]
+      .map((url) => boxBody(`  endpoints : ${url}`, width, styleBoxBottom))
+      .join("\n");
+    const out = linkKnownHttpUrls(framed, [shortUrl, longUrl, other]);
+    expect(out).toContain(hyperlink(shortUrl, shortUrl));
+    expect(out).toContain(hyperlink(other, other));
+    expect(stripAnsi(out)).toBe(stripAnsi(framed));
   });
 
   test("copies a BEL-terminated OSC 8 span whole instead of re-linking its label", () => {

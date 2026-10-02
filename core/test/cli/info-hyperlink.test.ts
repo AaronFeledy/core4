@@ -104,4 +104,32 @@ describe("renderInfoAppResult URL hyperlinks", () => {
     expect(visible).toContain("ss/columns");
     expect(visible).not.toContain(longUrl);
   });
+
+  test("leaves a framed wrapped head plain when another service owns the shorter prefix", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080/very/long/extra/path";
+    const service = (name: string, endpoints: ReadonlyArray<string>): InfoAppResult["services"][number] => ({
+      app: "my-app",
+      service: name,
+      api: 4,
+      type: "node",
+      provider: "lando",
+      primary: true,
+      status: "running",
+      endpoints,
+    });
+    const out = renderInfoAppResult(
+      { app: "my-app", services: [service("web", [shortUrl]), service("api", [longUrl])] },
+      { ...tty(), columns: 37 },
+    );
+    const visible = stripAnsi(out);
+    expect(visible).toContain(shortUrl);
+    expect(visible).not.toContain(longUrl);
+    expect(out).toContain(hyperlink(shortUrl, shortUrl));
+    expect(out).not.toContain(`${ESC}]8;;${longUrl}`);
+    const hrefs = [...out.matchAll(new RegExp(`${ESC}\\]8;;(.*?)(?:${ESC}\\\\|\\x07)`, "g"))]
+      .map((match) => match[1] ?? "")
+      .filter((href) => href.length > 0);
+    expect(hrefs).toEqual([shortUrl]);
+  });
 });

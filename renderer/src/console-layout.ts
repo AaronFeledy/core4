@@ -128,32 +128,84 @@ const isWholeEndpointTokenAt = (text: string, index: number, url: string): boole
   return isUrlTokenBoundary(text[index - 1]) && isUrlTokenBoundary(text[index + url.length]);
 };
 
-/** A boundary a line wrap could have produced, unlike punctuation or the end of the text. */
-const isSoftBoundary = (ch: string | undefined): boolean => {
+/** Wrap whitespace only; ESC starts CSI and must be consumed as a whole sequence. */
+const isWrapSoft = (ch: string | undefined): boolean => {
   const code = ch?.codePointAt(0);
-  return code !== undefined && (code <= 0x20 || code === 0x7f);
+  return code !== undefined && code !== 0x1b && (code <= 0x20 || code === 0x7f);
+};
+
+/** Box-drawing glyphs `formatSummary` paints around each wrapped field segment. */
+const FRAME_GLYPHS = new Set(["│", "╭", "╮", "├", "┤", "╰", "╯", "─"]);
+
+/** End index of a CSI/SGR sequence starting at `start`, or undefined if none. */
+const skipCsiAt = (text: string, start: number): number | undefined => {
+  if (text.charCodeAt(start) !== 0x1b || text[start + 1] !== "[") return undefined;
+  let index = start + 2;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if ((code >= 48 && code <= 57) || code === 0x3b) {
+      index += 1;
+      continue;
+    }
+    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) return index + 1;
+    return undefined;
+  }
+  return undefined;
 };
 
 /**
- * Walk `suffix` against `text` from `start`, skipping wrap soft runs (newlines
- * and indent spaces) between suffix bytes. True when every suffix byte is found
- * in order and the next character is a token boundary or the end of `text`.
+ * Skip wrap soft runs, CSI, and frame glyphs. These are layout chrome between
+ * hard-broken URL fragments, not suffix bytes.
+ */
+const skipLayoutChromeAt = (text: string, start: number): number => {
+  let index = start;
+  while (index < text.length) {
+    const csiEnd = skipCsiAt(text, index);
+    if (csiEnd !== undefined) {
+      index = csiEnd;
+      continue;
+    }
+    const ch = text[index];
+    if (ch !== undefined && isWrapSoft(ch)) {
+      index += 1;
+      continue;
+    }
+    if (ch !== undefined && FRAME_GLYPHS.has(ch)) {
+      index += ch.length;
+      continue;
+    }
+    break;
+  }
+  return index;
+};
+
+/**
+ * Walk `suffix` against `text` from `start`, skipping wrap soft runs, CSI, and
+ * frame glyphs between suffix bytes. True when every suffix byte is found in
+ * order and the next real character is a token boundary or the end of `text`.
  */
 const matchesWrappedSuffix = (text: string, start: number, suffix: string): boolean => {
   let index = start;
   let taken = 0;
   while (taken < suffix.length) {
-    while (index < text.length && isSoftBoundary(text[index])) index += 1;
+    index = skipLayoutChromeAt(text, index);
     if (index >= text.length || text[index] !== suffix[taken]) return false;
     index += 1;
     taken += 1;
   }
-  return isUrlTokenBoundary(text[index]);
+  let next = index;
+  for (;;) {
+    const csiEnd = skipCsiAt(text, next);
+    if (csiEnd === undefined) break;
+    next = csiEnd;
+  }
+  const ch = text[next];
+  return isUrlTokenBoundary(ch) || (ch !== undefined && FRAME_GLYPHS.has(ch));
 };
 
 /**
  * True when `url` matched at `index` is the head of a longer known endpoint that
- * a hard wrap cut after it: a soft boundary follows, and walking the longer
+ * a hard wrap cut after it: layout chrome follows, and walking the longer
  * candidate's remaining suffix across later wrap breaks consumes that suffix.
  * A newline before a different whole endpoint is not a wrap.
  */
@@ -164,7 +216,7 @@ const isWrappedPrefixOfCandidate = (
   candidates: ReadonlyArray<string>,
 ): boolean => {
   const after = index + url.length;
-  if (!isSoftBoundary(text[after])) return false;
+  if (skipLayoutChromeAt(text, after) === after) return false;
   return candidates.some((candidate) => {
     if (candidate.length <= url.length || !candidate.startsWith(url)) return false;
     return matchesWrappedSuffix(text, after, candidate.slice(url.length));
