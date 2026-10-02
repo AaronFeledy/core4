@@ -215,25 +215,53 @@ describe("static ServiceType", () => {
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy" });
   });
 
-  test("root: dist sets LANDO_WEBROOT to /app/dist and records root in extensions", async () => {
-    const plan = await composeStaticPlan({ type: "static", root: "dist" });
+  test("absolute webroot sets the nginx document root and LANDO_WEBROOT", async () => {
+    const plan = await composeStaticPlan({ type: "static", webroot: "/app/dist" });
 
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/dist");
     expect(plan.command).toEqual(["sh", "-c", expect.stringContaining('root "/app/dist";')]);
     expect(plan.appMount?.readOnly).toBe(true);
     expect(firstEndpointPort(plan)).toBe(80);
-    expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", root: "dist" });
+    expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", webroot: "/app/dist" });
   });
 
-  test("root: '/' or empty string falls back to /app without trailing slash", async () => {
-    for (const rootValue of ["", "/", "///", "/dist/", "dist/"] as const) {
-      const plan = await composeStaticPlan({ type: "static", root: rootValue });
+  test("absolute webroot is passed through without path normalization", async () => {
+    for (const webroot of ["/", "/app/dist/"] as const) {
+      const plan = await composeStaticPlan({ type: "static", webroot });
 
-      const expectedWebroot = rootValue.replace(/^\/+/, "").replace(/\/+$/, "") === "" ? "/app" : "/app/dist";
-      expect(plan.environment.LANDO_WEBROOT).toBe(expectedWebroot);
-      expect(plan.command).toEqual(["sh", "-c", expect.stringContaining(`root "${expectedWebroot}";`)]);
-      expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", root: rootValue });
+      expect(plan.environment.LANDO_WEBROOT).toBe(webroot);
+      expect(plan.command).toEqual(["sh", "-c", expect.stringContaining(`root "${webroot}";`)]);
+      expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", webroot });
     }
+  });
+
+  test("caddy uses the authored absolute webroot", async () => {
+    const plan = await composeStaticPlan(
+      { type: "static:caddy", webroot: "/app/_site" },
+      staticCaddyServiceType,
+    );
+
+    expect(plan.command).toEqual(["caddy", "file-server", "--listen", ":80", "--root", "/app/_site"]);
+    expect(plan.environment.LANDO_WEBROOT).toBe("/app/_site");
+    expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy", webroot: "/app/_site" });
+  });
+
+  test("rejects relative or unsafe webroots during service-type resolution", async () => {
+    for (const webroot of ["dist", "", "/app/my site", '/app/bad"quote'] as const) {
+      await expectRejectsToThrow(
+        composeStaticPlan({ type: "static", webroot }),
+        /Static webroot must be an absolute container path/,
+      );
+    }
+  });
+
+  test("rejects the removed root service key during strict Landofile decode", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(LandofileShape)(
+        { name: "myapp", services: { web: { type: "static", root: "dist" } } },
+        { onExcessProperty: "error" },
+      ),
+    ).toThrow(/root/);
   });
 
   test("custom static commands are preserved", async () => {

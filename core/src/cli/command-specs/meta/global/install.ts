@@ -9,11 +9,11 @@ import {
 import { renderGlobalInstallResult } from "../../../commands/meta/global-install";
 
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
 
 export const globalInstallOptionsFromInput = (input: unknown): GlobalInstallOptions => {
-  if (typeof input !== "object" || input === null) return {};
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  return typeof args.plugin === "string" ? { plugin: args.plugin } : {};
+  const plugin = stringFlag(specArgsOf(input), "plugin");
+  return plugin === undefined ? {} : { plugin };
 };
 
 export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {

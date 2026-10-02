@@ -4,8 +4,9 @@
 import { chmod, mkdir, stat } from "node:fs/promises";
 import { Effect, Layer } from "effect";
 
-import { SshError } from "@lando/sdk/errors";
+import { SshError, isErrnoCode } from "@lando/sdk/errors";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { SSH_AGENT_VOLUME } from "./socket.ts";
 
 const SSH_SIDECAR_ID = "sidecar" as const;
 const SSH_GLOBAL_SERVICE_NAME = "ssh-agent" as const;
@@ -18,16 +19,13 @@ const setupError = (cause: unknown): SshError =>
     cause,
   });
 
-const isEnoent = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
-
 /** `<userDataRoot>/ssh` is private. A looser existing directory is tightened; a tighter one is left alone. */
 export const ensurePrivateSshDirectory = async (sshDir: string): Promise<void> => {
   try {
     const current = await stat(sshDir);
     if ((current.mode & 0o077) !== 0) await chmod(sshDir, SSH_DIRECTORY_MODE);
   } catch (cause) {
-    if (!isEnoent(cause)) throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
     await mkdir(sshDir, { recursive: true, mode: SSH_DIRECTORY_MODE });
     await chmod(sshDir, SSH_DIRECTORY_MODE);
   }
@@ -53,6 +51,7 @@ export const sshService = Layer.effect(
       getAgentSocket: (appId) =>
         Effect.succeed({
           socketPath: `${paths.roots.userDataRoot}/ssh/ssh-agent.sock`,
+          runtimeVolume: SSH_AGENT_VOLUME,
           appId,
         }),
     };

@@ -1,6 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
 
 import { Cause, DateTime, Effect, Exit } from "effect";
 
@@ -22,6 +21,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
 import {
@@ -42,8 +42,9 @@ import { LANDO_CTX } from "./provider-context.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
+import { prepareWindowsDockerCli } from "./windows-docker-cli.ts";
 
-const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
+const nowUtc = () => DateTime.unsafeNow();
 
 const PROVIDER_ID = "lando";
 const WINDOWS_MACHINE_HELPERS = ["gvproxy.exe", "win-sshproxy.exe"] as const;
@@ -134,6 +135,7 @@ export class WindowsMachineOsUnsupportedError extends ProviderUnavailableError {
   }
 }
 
+import { sha256Hex } from "@lando/sdk/digest";
 import { windowsPublishClaims } from "./windows-publish-claims.ts";
 
 export interface PodmanCommandRunner {
@@ -1088,7 +1090,6 @@ const infoPodmanVersion = (info: unknown): string | undefined => {
   return undefined;
 };
 
-const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const normalizeSha256 = (checksum: string): string => checksum.replace(/^sha256:/u, "");
 
 const verifyRuntimeBundle = (bundle: RuntimeBundle) =>
@@ -1124,17 +1125,12 @@ export const persistSetupState = (
 ) =>
   Effect.tryPromise({
     try: async () => {
-      const providerDir = `${stateDir.replace(/\/+$/u, "")}/provider-lando`;
       const statePath = providerStatePath(stateDir);
-      const tempPath = `${statePath}.tmp-${process.pid}-${randomUUID()}`;
-
-      await mkdir(providerDir, { recursive: true });
-      try {
-        await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
-        await renameState(tempPath, statePath);
-      } finally {
-        await rm(tempPath, { force: true });
-      }
+      await writeFileAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`, {
+        mode: 0o600,
+        ownerOnly: "best-effort",
+        renameFile: renameState,
+      });
 
       return statePath;
     },
@@ -1291,7 +1287,15 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
                         version: verified.version,
                         runtimeBinDir,
                         platform,
-                      }),
+                      }).pipe(
+                        Effect.zipRight(
+                          family === "win32"
+                            ? prepareWindowsDockerCli(runtimeBinDir, platform, { repairExisting: true }).pipe(
+                                Effect.asVoid,
+                              )
+                            : Effect.void,
+                        ),
+                      ),
                 ),
               ),
             );

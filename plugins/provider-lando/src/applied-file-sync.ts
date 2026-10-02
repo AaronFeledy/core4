@@ -1,3 +1,4 @@
+import { APP_LABEL } from "@lando/container-runtime/labels";
 import { Effect } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
@@ -101,7 +102,7 @@ const syncVolumeEvidence = (body: string, plan: AppPlan): "none" | "accelerated"
     if (typeof name !== "string") return "unknown";
     if (labels !== null && labels !== undefined && (typeof labels !== "object" || Array.isArray(labels)))
       return "unknown";
-    const app = labels === null || labels === undefined ? undefined : Reflect.get(labels, "dev.lando.app");
+    const app = labels === null || labels === undefined ? undefined : Reflect.get(labels, APP_LABEL);
     const kind =
       labels === null || labels === undefined ? undefined : Reflect.get(labels, "dev.lando.sync.kind");
     if (app === String(plan.id) && kind === "volume") return "accelerated";

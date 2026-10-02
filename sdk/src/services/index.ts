@@ -202,6 +202,7 @@ import type {
   LogTarget,
   ObservedServiceRemoval,
   ProviderError,
+  ProviderRuntimeSnapshot,
   ProviderSelectionError,
   ProviderSetupInspectOptions,
   ProviderSetupOptions,
@@ -313,7 +314,7 @@ export interface RuntimeProviderShape {
   readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
     {
       readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-      readonly rollback: Effect.Effect<void, ProviderError>;
+      readonly rollback?: Effect.Effect<void, ProviderError>;
     },
     ProviderError
   >;
@@ -634,6 +635,10 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
     readonly resolveTeardownEvidence?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly observeRuntime?: Effect.Effect<
+      ReadonlyArray<ProviderRuntimeSnapshot>,
+      AppResolveError | ProviderError | NoProviderInstalledError
+    >;
   }
 >() {}
 

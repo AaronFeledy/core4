@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
+import { isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
-import { isPlainRecord, mergeLandofiles } from "../src/v4-merge.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 const translate = (text: string) => {
@@ -67,7 +67,7 @@ test("flattens a raw service when nested Compose fields are authored", async () 
         web: {
           type: "compose",
           image: "nginx:latest",
-          command: "nginx",
+          command: ["nginx"],
           ports: ["8080:80"],
           user: "www-data",
           certs: true,
@@ -78,6 +78,7 @@ test("flattens a raw service when nested Compose fields are authored", async () 
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "needs-review", keyPath: ["services", "web"] },
+    { kind: "rewritten", keyPath: ["services", "web", "services", "command"] },
     { kind: "rewritten", keyPath: ["services", "web", "meUser"] },
     { kind: "rewritten", keyPath: ["services", "web", "ssl"] },
   ]);
@@ -177,12 +178,13 @@ test("overlays authored services while preserving recipe siblings", async () => 
   // Then
   const fragment = result.outputs[0]?.fragment;
   expect(isPlainRecord(fragment) ? fragment.services : undefined).toEqual({
-    appserver: { type: "compose", image: "custom:1", command: "serve", home: false },
+    appserver: { type: "compose", image: "custom:1", command: ["serve"], home: false },
     redis: { image: "redis:7" },
   });
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "generated", keyPath: ["recipe"] },
     { kind: "generated", keyPath: ["services", "appserver"] },
+    { kind: "rewritten", keyPath: ["services", "appserver", "services", "command"] },
   ]);
 });
 
@@ -258,7 +260,7 @@ test("dispatches API-4 services with hooks and Compose overrides", async () => {
           type: "lando",
           image: "alpine:3",
           build: { artifact: [{ run: "touch /ready" }] },
-          command: "serve",
+          command: ["serve"],
           home: false,
         },
       },
@@ -267,6 +269,7 @@ test("dispatches API-4 services with hooks and Compose overrides", async () => {
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "needs-review", keyPath: ["services", "app"] },
     { kind: "rewritten", keyPath: ["services", "app", "build"] },
+    { kind: "rewritten", keyPath: ["services", "app", "overrides", "command"] },
   ]);
 });
 

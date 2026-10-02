@@ -11,24 +11,13 @@ import {
 } from "../../commands/doctor-report";
 import type { RenderContext } from "../../renderer-boundary";
 
-import type { LandoCommandSpec } from "../../spec/command-base";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
-  if (typeof input !== "object" || input === null) return {};
-  const signal = (input as { readonly signal?: unknown }).signal;
-  const flags = (
-    input as {
-      flags?: {
-        provider?: unknown;
-        fix?: unknown;
-        app?: unknown;
-        deprecations?: unknown;
-        all?: unknown;
-        format?: unknown;
-      };
-    }
-  ).flags;
-  const provider = typeof flags?.provider === "string" ? flags.provider : undefined;
+  const signal = extractSpecAbortSignal(input);
+  const flags = specFlagsOf(input);
+  const provider = stringFlag(flags, "provider");
   const fix = flags?.fix === true;
   const app = flags?.app === true;
   const deprecations = flags?.deprecations === true;

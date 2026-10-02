@@ -6,6 +6,7 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
+import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
 
 import {
   bindSourceForComposeConfig,
@@ -25,6 +26,10 @@ export const mergeAppliedPlan = (
   previous === undefined || reconcile || previous.id !== incoming.id
     ? incoming
     : { ...incoming, services: { ...previous.services, ...incoming.services } };
+
+/** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
+export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
+  `lando-${plan.slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
@@ -105,9 +110,9 @@ export const commonContainerLabels = (
       : {};
   return {
     ...userLabels,
-    "dev.lando.app": plan.id,
-    "dev.lando.app-root": plan.root,
-    "dev.lando.service": service.name,
+    [APP_LABEL]: plan.id,
+    [APP_ROOT_LABEL]: plan.root,
+    [SERVICE_LABEL]: service.name,
     ...extra,
   };
 };
@@ -167,7 +172,7 @@ const containerMountObjects = (
     if (sameAppMountTarget(service.appMount, mount)) return [];
     const strictBind =
       mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false;
-    if (!strictBind && !requiresLongMountSyntax(mount.target)) {
+    if (mount.type !== "volume" && !strictBind && !requiresLongMountSyntax(mount.target)) {
       return [];
     }
     if (mount.type === "tmpfs") return [{ Type: "tmpfs", Target: mount.target, ReadOnly: mount.readOnly }];

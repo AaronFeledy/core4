@@ -1,4 +1,4 @@
-import { Cause, DateTime, Effect, Exit, Fiber, Option, Ref, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Ref, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
@@ -52,7 +52,9 @@ import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { beginAcceleratedStart, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { isRecoverableStart } from "./accelerated-start-record.ts";
+import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runPostAppEvent } from "./events.ts";
@@ -63,12 +65,8 @@ import {
 } from "./file-sync-plan.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
-import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
-import {
-  type PreparedFileSyncSessions,
-  type StartManagedScope,
-  startFileSyncSessions,
-} from "./start-file-sync.ts";
+import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
+import type { StartManagedScope } from "./start-file-sync.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
@@ -115,16 +113,21 @@ type StartAppServices =
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 /** Private preflight shared by start, restart, and rebuild before any app hook or provider action. */
 export const ensureStartTransactionConsistent = (target: ResolvedAppTarget) =>
   ManagedFileTransactionGuard.pipe(Effect.flatMap((guard) => guard.ensureConsistent(String(target.root))));
 
 /** Verify saved accelerated ownership and clear a prior drain before init hooks can write. */
-export const preflightStartAppDrain = (target: ResolvedAppTarget, stopPreflight?: StopAppPreflight) =>
+export const preflightStartAppDrain = (
+  target: ResolvedAppTarget,
+  stopPreflight?: StopAppPreflight,
+  allowRetained = false,
+) =>
   Effect.gen(function* () {
-    yield* requireNoPendingAcceleratedStart(target.app, target.plan);
+    const retained = yield* requireNoPendingAcceleratedStart(target.app, target.plan, allowRetained);
+    if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained);
     const prior =
       stopPreflight?.appliedFileSync ??
       (yield* Effect.gen(function* () {
@@ -201,7 +204,19 @@ export const startAppForTargetUnlocked = (
     const inspectAppliedFileSync = candidateProvider.inspectAppliedFileSync;
     const inspectPrior =
       inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
-    const resolvedPlan = yield* resolveFileSyncMountPlan(target.plan, inspectPrior);
+    const { pending: retainedJournal } = yield* readJournal(target.app);
+    const recovering = isRecoverableStart(retainedJournal);
+    if (recovering && target.plan.fileSync.length === 0)
+      return yield* Effect.fail(
+        new FileSyncStartError({
+          engineId: retainedJournal.engineId,
+          message: "Automatic recovery is not possible: mount plan digest changed (no planned sessions).",
+          remediation: "Restore the original mount plan and run `lando start`, or run `lando destroy`.",
+        }),
+      );
+    const resolvedPlan = recovering
+      ? target.plan
+      : yield* resolveFileSyncMountPlan(target.plan, inspectPrior);
     const selectedProvider =
       resolvedPlan === target.plan ? candidateProvider : yield* registry.select(resolvedPlan);
     if (
@@ -220,8 +235,17 @@ export const startAppForTargetUnlocked = (
     }
     const needsProviderFallback =
       resolvedPlan.fileSync.length > 0 && selectedProvider.prepareFileSyncTargets === undefined;
+    if (recovering && needsProviderFallback)
+      return yield* Effect.fail(
+        new FileSyncStartError({
+          engineId: retainedJournal.engineId,
+          message: "Automatic recovery is not possible: provider cannot prepare targets.",
+          remediation: "Restore the recorded provider or run `lando destroy`.",
+        }),
+      );
     if (needsProviderFallback) yield* guardOrdinaryFileSyncFallback(target.plan, inspectPrior);
     const plan = needsProviderFallback ? withOrdinaryMounts(resolvedPlan) : resolvedPlan;
+    const engineId = plan.fileSync[0]?.engineId ?? "unknown";
     if (plan !== target.plan) {
       yield* events.publish(
         MessageWarnEvent.make({
@@ -236,7 +260,7 @@ export const startAppForTargetUnlocked = (
       if (prior.status === "accelerated" && prior.engineId !== plan.fileSync[0]?.engineId) {
         return yield* Effect.fail(
           new FileSyncStartError({
-            engineId: plan.fileSync[0]?.engineId ?? "unknown",
+            engineId,
             message: "The applied app used a different file sync engine.",
             remediation: "Restore the engine recorded in provider state before restarting this app.",
           }),
@@ -315,126 +339,11 @@ export const startAppForTargetUnlocked = (
                   const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
                   const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
                   const serviceList = Object.values(builtPlan.services);
-                  const prepareFileSyncTargets = provider.prepareFileSyncTargets;
-                  if (plan.fileSync.length > 0 && prepareFileSyncTargets === undefined) {
-                    return yield* Effect.fail(
-                      new FileSyncStartError({
-                        engineId: plan.fileSync[0]?.engineId ?? "unknown",
-                        message:
-                          "The selected provider cannot prepare accelerated mount targets before app startup.",
-                        remediation:
-                          "Use ordinary bind mounts or select a provider with accelerated mount target support.",
-                      }),
-                    );
-                  }
-                  const pendingStart =
-                    plan.fileSync.length > 0 ? yield* beginAcceleratedStart(builtPlan, ref) : undefined;
-                  let preparedRollback: Effect.Effect<void, ProviderError> | undefined;
-                  let sessionLease: PreparedFileSyncSessions | undefined;
-                  if (plan.fileSync.length > 0) {
-                    const selectedPrepare = prepareFileSyncTargets as NonNullable<
-                      typeof prepareFileSyncTargets
-                    >;
-                    const prepared = yield* selectedPrepare(builtPlan);
-                    preparedRollback = prepared.rollback;
-                    const coverage = yield* Effect.exit(
-                      verifyPreparedFileSyncTargets(builtPlan, prepared.targets),
-                    );
-                    if (Exit.isFailure(coverage)) {
-                      const rollback = yield* Effect.exit(prepared.rollback);
-                      if (Exit.isFailure(rollback)) {
-                        return yield* Effect.failCause(Cause.sequential(coverage.cause, rollback.cause));
-                      }
-                      if (pendingStart !== undefined) yield* pendingStart.clear;
-                      return yield* Effect.failCause(coverage.cause);
-                    }
-                    sessionLease = yield* Effect.uninterruptibleMask((restore) =>
-                      Effect.gen(function* () {
-                        const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
-                        const bindPreparedTargets =
-                          selectedEngine._tag === "Some"
-                            ? selectedEngine.value.bindPreparedTargets
-                            : undefined;
-                        const bindingExit =
-                          bindPreparedTargets === undefined
-                            ? Exit.succeed(undefined)
-                            : yield* Effect.exit(
-                                restore(bindPreparedTargets(builtPlan, prepared.targets)).pipe(
-                                  Effect.flatMap((engine) =>
-                                    engine.boundApp.kind === ref.kind &&
-                                    engine.boundApp.id === ref.id &&
-                                    engine.boundApp.root === (builtPlan.identity?.appRoot ?? builtPlan.root)
-                                      ? Effect.succeed(engine)
-                                      : Effect.fail(
-                                          new FileSyncStartError({
-                                            engineId: engine.id,
-                                            message:
-                                              "The file-sync engine returned a binding for another app.",
-                                            remediation:
-                                              "Fix the engine's app binding before retrying accelerated startup.",
-                                          }),
-                                        ),
-                                  ),
-                                ),
-                              );
-                        const boundEngine = Exit.isSuccess(bindingExit) ? bindingExit.value : undefined;
-                        // No session mutation has occurred yet. The reconciler revokes
-                        // this permission before reusing or mutating a session.
-                        const safeToRollbackTargets = yield* Ref.make(true);
-                        const syncExit = Exit.isFailure(bindingExit)
-                          ? Exit.failCause(bindingExit.cause)
-                          : yield* Effect.exit(
-                              restore(
-                                startFileSyncSessions(
-                                  builtPlan,
-                                  events,
-                                  managed,
-                                  safeToRollbackTargets,
-                                  boundEngine,
-                                ),
-                              ),
-                            );
-                        if (Exit.isSuccess(syncExit)) return syncExit.value;
-
-                        const safe = yield* Ref.get(safeToRollbackTargets);
-                        const app = builtPlan.fileSync[0]?.session.app;
-                        const engine =
-                          boundEngine ?? (selectedEngine._tag === "Some" ? selectedEngine.value : undefined);
-                        // The parent may already be interrupted. Verify ownership in
-                        // an interruptible child with a deadline, while keeping this
-                        // compensation boundary masked until it can decide safely.
-                        const noOwnedSessions =
-                          safe && app !== undefined && engine !== undefined
-                            ? yield* Effect.forkDaemon(
-                                restore(engine.listSessions({ app })).pipe(Effect.timeoutOption("3 seconds")),
-                              ).pipe(
-                                Effect.flatMap(Fiber.await),
-                                Effect.flatMap((inventoryExit) => {
-                                  if (Exit.isFailure(inventoryExit)) {
-                                    return Effect.failCause(
-                                      Cause.sequential(syncExit.cause, inventoryExit.cause),
-                                    );
-                                  }
-                                  return Effect.succeed(
-                                    Option.isSome(inventoryExit.value) &&
-                                      inventoryExit.value.value.length === 0,
-                                  );
-                                }),
-                              )
-                            : false;
-                        if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
-                        const rollbackExit = yield* Effect.exit(
-                          prepared.rollback.pipe(Effect.zipRight(pendingStart?.clear ?? Effect.void)),
-                        );
-                        if (Exit.isFailure(rollbackExit)) {
-                          return yield* Effect.failCause(
-                            Cause.sequential(syncExit.cause, rollbackExit.cause),
-                          );
-                        }
-                        return yield* Effect.failCause(syncExit.cause);
-                      }),
-                    );
-                  }
+                  const { pendingStart, preparedRollback, sessionLease } = yield* prepareAcceleratedStart(
+                    builtPlan,
+                    provider,
+                    { app: ref, events, managed },
+                  );
 
                   const teardownForFailure = teardownAppliedApp(provider, plan).pipe(
                     Effect.tap(() => Ref.set(writersStopped, true)),
@@ -559,7 +468,14 @@ export const startAppForTargetUnlocked = (
 
                     return { app: plan.name, servicesStarted };
                   });
-                  if (sessionLease === undefined) return yield* finishStart;
+                  if (sessionLease === undefined)
+                    return yield* pendingStart?.retained === undefined
+                      ? finishStart
+                      : finishStart.pipe(
+                          Effect.catchAllCause((cause) =>
+                            pendingStart.retainTargets(cause).pipe(Effect.flatMap(Effect.failCause)),
+                          ),
+                        );
                   return yield* Effect.uninterruptibleMask((restore) =>
                     Effect.gen(function* () {
                       const exit = yield* Effect.exit(restore(finishStart));
@@ -575,16 +491,30 @@ export const startAppForTargetUnlocked = (
                             ...(needWriters ? [teardownForFailure] : []),
                           ]);
                           yield* sessionLease.rollback;
-                          if (sessionLease.rollbackTargets && preparedRollback !== undefined)
-                            yield* preparedRollback;
+                          if (sessionLease.rollbackTargets) {
+                            if (preparedRollback === undefined && pendingStart !== undefined) {
+                              return yield* pendingStart.retainTargets(exit.cause);
+                            }
+                            if (preparedRollback !== undefined) yield* preparedRollback;
+                          }
                           yield* Ref.set(leaseCleanupDone, true);
                           if (sessionLease.rollbackTargets && pendingStart !== undefined)
                             yield* pendingStart.clear;
                         }),
                       );
                       if (Exit.isFailure(cleanupExit)) {
-                        return yield* Effect.failCause(Cause.parallel(exit.cause, cleanupExit.cause));
+                        const failure = Cause.parallel(exit.cause, cleanupExit.cause);
+                        // Without provider rollback, prepared targets survive any cleanup failure.
+                        if (
+                          sessionLease.rollbackTargets &&
+                          preparedRollback === undefined &&
+                          pendingStart !== undefined
+                        ) {
+                          return yield* Effect.failCause(yield* pendingStart.retainTargets(failure));
+                        }
+                        return yield* Effect.failCause(failure);
                       }
+                      if (cleanupExit.value !== undefined) return yield* Effect.failCause(cleanupExit.value);
                       return yield* Effect.failCause(exit.cause);
                     }),
                   );

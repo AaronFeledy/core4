@@ -8,7 +8,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "@lando/landofile/compose/dispositions";
+} from "@lando/sdk/landofile";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 

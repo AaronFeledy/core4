@@ -1,8 +1,7 @@
 /**
  * SSH agent sidecar global service.
  *
- * Runs a real ssh-agent that forwards SSH keys from the host into app networks.
- * Apps opt in via `sshAgent: true`.
+ * Loads default host key files and publishes the agent inside the managed runtime.
  */
 import { join } from "node:path";
 
@@ -11,9 +10,8 @@ import { Effect, Schema } from "effect";
 import { makeLandoPaths } from "@lando/paths";
 
 import { ServiceConfig } from "@lando/sdk/schema";
+import { SSH_AGENT_DIRECTORY, SSH_AGENT_SOCKET, SSH_AGENT_VOLUME } from "./socket.ts";
 
-// Compose realizes authored bind mounts; the socket directory must be shared with the host so
-// the per-app agent relay can reach it.
 const sshAgentServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   api: 4,
   type: "compose",
@@ -25,18 +23,21 @@ const sshAgentServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
     "sh",
     "-c",
     [
-      "apk add --no-cache openssh-client",
+      "apk add --no-cache openssh-client socat",
       "mkdir -p /ssh-auth",
-      "eval $(ssh-agent -s -a /ssh-auth/ssh-agent.sock)",
-      "chmod 777 /ssh-auth/ssh-agent.sock",
+      `chmod 755 ${SSH_AGENT_DIRECTORY}`,
+      `rm -f ${SSH_AGENT_SOCKET} /tmp/ssh-agent.sock /ssh-auth/ssh-agent.sock`,
+      "eval $(ssh-agent -s -a /tmp/ssh-agent.sock)",
       // Load host keys from ~/.ssh
       // ssh-add without args loads id_rsa, id_dsa, id_ecdsa, id_ed25519
       // Skip passphrase-protected keys gracefully (no stdin in container)
-      "ssh-add 2>/dev/null || true",
-      // Keep container running
-      "tail -f /dev/null",
+      "(ssh-add 2>/dev/null || true)",
+      // ssh-agent checks peer UIDs even with 0666 permissions; socat connects as the agent's owner.
+      `(socat UNIX-LISTEN:${SSH_AGENT_SOCKET},fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock &)`,
+      "exec socat UNIX-LISTEN:/ssh-auth/ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock",
     ].join(" && "),
   ],
+  storage: [{ store: SSH_AGENT_VOLUME, target: SSH_AGENT_DIRECTORY, scope: "app" }],
   mounts: [
     {
       type: "bind",
@@ -52,7 +53,7 @@ const sshAgentServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
     },
   ],
   environment: {
-    SSH_AUTH_SOCK: "/ssh-auth/ssh-agent.sock",
+    SSH_AUTH_SOCK: SSH_AGENT_SOCKET,
   },
 });
 

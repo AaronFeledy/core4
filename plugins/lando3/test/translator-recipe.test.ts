@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
-import { mergeLandofiles } from "../src/v4-merge.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 /**

@@ -7,12 +7,14 @@ import {
   type AppRef,
   type HostPlatform,
   type ProviderCapabilities,
+  type ProviderId,
   SSH_AGENT_SOCKET_NAME,
 } from "@lando/sdk/schema";
 import { EventService, PathsService, SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option, Ref, Scope } from "effect";
+import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
 import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
@@ -25,7 +27,7 @@ import {
   withSshAgentOverlay,
 } from "../subsystems/ssh-agent/overlay.ts";
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
-import type { AgentRelaySession } from "../subsystems/ssh-agent/session.ts";
+import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-agent/session.ts";
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
 
@@ -63,31 +65,34 @@ export const validateAgentSocketCapability = (capabilities: Capabilities, intent
 export const resolveSshAgentUpstream = (
   input: SessionOptions & {
     readonly appId: AppId;
+    readonly provider?: ProviderId;
     readonly intent: SshAgentIntent;
   },
-): Effect.Effect<AgentRelayUpstream, SshAgentUnavailableError> =>
+): Effect.Effect<
+  AgentRelayUpstream | { readonly _tag: "volume"; readonly volume: string },
+  SshAgentUnavailableError
+> =>
   Effect.gen(function* () {
-    const unavailable = (reason: "sidecar-not-running" | "socket-missing") =>
+    const unavailable = () =>
       new SshAgentUnavailableError({
         message: "The selected SSH agent is unavailable.",
-        mode: input.intent.mode,
-        reason,
-        remediation:
-          input.intent.mode === "sidecar"
-            ? "Run `lando setup` to install and start the SSH agent sidecar, then restart this app."
-            : "Start your host SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path.",
+        mode: "sidecar",
+        reason: "sidecar-not-running",
+        remediation: "Run `lando setup` to install and start the SSH agent sidecar, then restart this app.",
       });
     switch (input.intent.mode) {
       case "sidecar": {
         const ssh = yield* Effect.serviceOption(SshService);
-        if (Option.isNone(ssh)) return yield* Effect.fail(unavailable("sidecar-not-running"));
-        const socket = yield* ssh.value
-          .getAgentSocket(input.appId)
-          .pipe(Effect.mapError(() => unavailable("sidecar-not-running")));
+        if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
+        const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
+        if (input.provider === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
+          if (!(yield* runtimeSshAgentReady)) return yield* Effect.fail(unavailable());
+          return { _tag: "volume" as const, volume: socket.runtimeVolume };
+        }
         const upstream: AgentRelayUpstream = { _tag: "unix", path: socket.socketPath };
         yield* Effect.tryPromise({
           try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
-          catch: () => unavailable("sidecar-not-running"),
+          catch: unavailable,
         });
         return upstream;
       }
@@ -127,9 +132,21 @@ export const startSshAgentSession = (
     const upstream = yield* resolveSshAgentUpstream({
       ...options,
       appId: plan.id,
+      provider: plan.provider,
       intent,
       platform: options.platform ?? paths.platform,
     });
+    if (upstream._tag === "volume") {
+      return {
+        appId: plan.id,
+        sessionId: `runtime:${upstream.volume}`,
+        kind: "ssh",
+        mount: upstream,
+        socketName: SSH_AGENT_SOCKET_NAME,
+        close: () => Promise.resolve(),
+        closed: Promise.resolve(),
+      } satisfies AgentRelaySession;
+    }
     const privateFileAccess = yield* PrivateFileAccessService;
     const events = yield* EventService;
     const acquired = yield* Ref.make<AgentRelaySession | undefined>(undefined);
@@ -198,7 +215,7 @@ export const withStartedSshAgent = <A, E, R>(
                 .publish(
                   MessageWarnEvent.make({
                     body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
-                    timestamp: DateTime.unsafeMake(new Date().toISOString()),
+                    timestamp: DateTime.unsafeNow(),
                   }),
                 )
                 .pipe(Effect.catchAll(() => Effect.void));

@@ -8,12 +8,10 @@ import {
   scratchIdFromInput,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";
 
-export const keepVolumesFromInput = (input: unknown): boolean => {
-  if (typeof input !== "object" || input === null) return false;
-  const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
-  return flags["keep-volumes"] === true;
-};
+export const keepVolumesFromInput = (input: unknown): boolean =>
+  booleanFlag(specFlagsOf(input), "keep-volumes");
 
 export const appsScratchDestroySpec: LandoCommandSpec<ScratchHandle> = {
   resultSchema: ScratchHandleResultSchema,

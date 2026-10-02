@@ -532,7 +532,7 @@ describe("lando rebuild", () => {
 
   test("fails outside an app directory with init remediation", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["rebuild"], dir);
+      const result = await runCli(["rebuild", "--yes"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");

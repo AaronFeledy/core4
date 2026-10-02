@@ -1,6 +1,8 @@
+import { Effect } from "effect";
+
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
-import type { EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
+import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
 import { ContainerTransportError } from "./transport.ts";
 
@@ -49,3 +51,22 @@ export const engineApiFailure = (
     cause,
   });
 };
+
+export const parseEngineJson = (
+  response: EngineHttpResponse,
+  ctx: ProviderErrorContext,
+  operation: string,
+  options?: { readonly message?: string; readonly details?: unknown; readonly remediation?: string },
+): Effect.Effect<unknown, ProviderInternalError> =>
+  Effect.try({
+    try: (): unknown => (response.body.length === 0 ? {} : JSON.parse(response.body)),
+    catch: (cause) =>
+      new ProviderInternalError({
+        providerId: ctx.providerId,
+        operation,
+        message: options?.message ?? `provider-${ctx.providerId} API returned invalid JSON.`,
+        ...(options?.details === undefined ? {} : { details: options.details }),
+        remediation: options?.remediation ?? ctx.remediation,
+        cause,
+      }),
+  });

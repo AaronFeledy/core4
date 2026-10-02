@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { renderConfigLintResult } from "@lando/core/cli/operations";
-import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
+import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { ConfigLintResult } from "@lando/sdk/schema";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

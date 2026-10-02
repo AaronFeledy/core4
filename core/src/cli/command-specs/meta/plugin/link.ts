@@ -8,11 +8,11 @@ import {
 } from "../../../commands/plugin-link";
 
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown): { path?: string } => {
-  if (typeof input !== "object" || input === null) return {};
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  return typeof args.path === "string" ? { path: args.path } : {};
+  const path = stringFlag(specArgsOf(input), "path");
+  return path === undefined ? {} : { path };
 };
 
 export const pluginLinkSpec: LandoCommandSpec<PluginLinkResult> = {

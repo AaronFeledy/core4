@@ -8,18 +8,7 @@ import { runWithRendererHandling } from "../renderer-boundary";
 
 const EmptyPreCommandResultSchema = Schema.Struct({});
 
-export const extractSpecFlags = (input: unknown): Readonly<Record<string, unknown>> => {
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    !("flags" in input) ||
-    typeof input.flags !== "object" ||
-    input.flags === null ||
-    Array.isArray(input.flags)
-  )
-    return {};
-  return Object.fromEntries(Object.entries(input.flags));
-};
+export { specFlagsOf as extractSpecFlags } from "./input-coercion";
 
 export const extractSpecParsedArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null) return [];

@@ -1,6 +1,5 @@
 import { Args, Flags } from "../../../spec/metadata";
 
-import type { ValueType } from "@lando/engine/config-write/write-core";
 import {
   type AppConfigOptions,
   type AppConfigResult,
@@ -10,41 +9,10 @@ import {
   renderAppConfigResult,
 } from "../../../commands/app-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-
-const isValueType = (s: unknown): s is ValueType =>
-  s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
+import { configWriteOptionsFromInput } from "../../config-write-input";
 
 export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
-  if (typeof input !== "object" || input === null) return {};
-  const i = input as { args?: Record<string, unknown>; flags?: Record<string, unknown> };
-  const opts: {
-    // Widened to `string` (not `AppConfigSubcommand`) so an unrecognized verb
-    // reaches `appConfig()` and fails there, instead of being dropped here
-    // and silently defaulting to the view path.
-    subcommand?: string;
-    key?: string;
-    value?: string;
-    type?: ValueType;
-    format?: "json" | "yaml" | "table";
-    path?: string;
-    dryRun?: boolean;
-    editor?: string;
-  } = {};
-  const subcommand = i.args?.subcommand;
-  const key = i.args?.key;
-  const value = i.args?.value;
-  const type = i.flags?.type;
-  const format = i.flags?.format;
-  const path = i.flags?.path;
-  const editor = i.flags?.editor;
-  if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
-  if (typeof key === "string") opts.key = key;
-  if (typeof value === "string") opts.value = value;
-  if (isValueType(type)) opts.type = type;
-  if (format === "json" || format === "table" || format === "yaml") opts.format = format;
-  if (typeof path === "string") opts.path = path;
-  if (i.flags?.["dry-run"] === true) opts.dryRun = true;
-  if (typeof editor === "string") opts.editor = editor;
+  const opts = configWriteOptionsFromInput(input, { formats: ["json", "yaml", "table"] });
   return opts as AppConfigOptions;
 };
 

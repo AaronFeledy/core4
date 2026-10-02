@@ -3,8 +3,8 @@ import { isAbsolute, resolve } from "node:path";
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import type { IncludeEntry, LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
+import { mergeValues } from "@lando/sdk/landofile";
 import { includeError } from "./include-guard.ts";
-import { mergeValues } from "./merge.ts";
 
 type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 

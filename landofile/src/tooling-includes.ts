@@ -1,6 +1,6 @@
 import { dirname, isAbsolute, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import {
   type ComposeKeyRejectedError,
@@ -14,7 +14,7 @@ import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { parseLandofile } from "./parser.ts";
-import { assertToolingFragment, isPlainRecord } from "./tooling-fragment.ts";
+import { assertToolingFragment } from "./tooling-fragment.ts";
 import {
   type NormalizedToolingInclude,
   assertCompatibleIncludeFields,
@@ -64,8 +64,8 @@ const COLLISION_REMEDIATION =
 const CYCLE_REMEDIATION = "Break the tooling include cycle so no fragment transitively includes itself.";
 
 const withIncludeVars = (task: unknown, vars: Readonly<Record<string, ToolingVarLiteral>>): unknown => {
-  if (Object.keys(vars).length === 0 || !isPlainRecord(task)) return task;
-  const taskVars = isPlainRecord(task.vars) ? task.vars : {};
+  if (Object.keys(vars).length === 0 || !Predicate.isRecord(task)) return task;
+  const taskVars = Predicate.isRecord(task.vars) ? task.vars : {};
   return { ...task, vars: { ...vars, ...taskVars } };
 };
 
@@ -125,7 +125,7 @@ const loadFragment = (
     Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.map((parsed) => ({
       filePath,
-      tooling: isPlainRecord(parsed.tooling) ? parsed.tooling : {},
+      tooling: Predicate.isRecord(parsed.tooling) ? parsed.tooling : {},
       nested: parsed as Pick<LandofileShape, "includes" | "toolingIncludes">,
     })),
   );

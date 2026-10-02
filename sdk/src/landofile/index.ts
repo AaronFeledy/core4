@@ -8,11 +8,31 @@ export {
   type LandofileLeadingCommentBlock,
 } from "./emit.ts";
 export {
+  compareKeyPaths,
   declaredConfigTranslateSourceIds,
   validateConfigTranslateInput,
   validateConfigTranslateResult,
 } from "./config-translate.ts";
 export { LandofileEmitError } from "./errors.ts";
+export { LANDOFILE_LAYER_ORDER, landofileLayerRank } from "./layer-order.ts";
+export {
+  ARRAY_IDENTITY_KEYS,
+  type RouteFilterIdentity,
+  identityKeyFor,
+  isPlainRecord,
+  mergeLandofiles,
+  mergeValues,
+  routeFilterIdentity,
+  routeFilterMatches,
+} from "./overlay-merge.ts";
+export {
+  type ComposeDisposition,
+  type ComposeDispositionEntry,
+  ComposeDispositionMatrixError,
+  composeServiceDispositions,
+  composeTagDispositions,
+  composeTopLevelDispositions,
+} from "./compose-dispositions.ts";
 export {
   detectLandofileTags,
   type LandofileTag,

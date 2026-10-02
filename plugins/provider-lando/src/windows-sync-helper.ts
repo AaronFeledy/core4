@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
 
 import { Effect, Schema } from "effect";
 
@@ -220,8 +221,8 @@ const labelsFor = (
   kind: "volume" | "helper",
   resourceNonce: string,
 ): Readonly<Record<string, string>> => ({
-  "dev.lando.provider": "lando",
-  "dev.lando.app": spec.appId,
+  [PROVIDER_LABEL]: "lando",
+  [APP_LABEL]: spec.appId,
   "dev.lando.sync.service": spec.service,
   "dev.lando.sync.mount-key": spec.mountKey,
   "dev.lando.sync.kind": kind,

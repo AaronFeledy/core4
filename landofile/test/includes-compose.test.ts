@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { composeServiceDispositions } from "../src/compose/dispositions.ts";
+import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { resolveLandofileIncludes as resolveLandofileIncludesPackage } from "../src/includes.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 

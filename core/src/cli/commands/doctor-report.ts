@@ -23,12 +23,13 @@ import type { TaskTreeController } from "@lando/sdk/task-progress";
 
 import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
+import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
+import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
 import {
   type DoctorSectionId,
@@ -52,6 +53,7 @@ import {
   subsystemDoctor,
 } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export type {
   DoctorDeprecationEntry,
@@ -124,7 +126,7 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
           kind: "service-type",
           id: "mailhog",
           notice: MAILHOG_DEPRECATION_NOTICE,
-          timestamp: DateTime.unsafeMake(new Date().toISOString()),
+          timestamp: DateTime.unsafeNow(),
         })
         .pipe(Effect.catchAll(() => Effect.void));
     }
@@ -209,11 +211,7 @@ const collectWithTree = <R>(
   Effect.gen(function* () {
     const options = input.options;
     const sourceEnv = { ...(options.env ?? process.env) };
-    const redactionService = yield* Effect.serviceOption(RedactionService);
-    const redactor = Option.isSome(redactionService)
-      ? yield* redactionService.value.forProfile("secrets", { sourceEnv })
-      : createStandaloneRedactor("secrets", { sourceEnv });
-    const redact = (value: string): string => redactor.redactString(value);
+    const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
     const budgetMs = doctorSectionBudgetMs(sourceEnv);
     const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
     yield* tree.start;
@@ -301,10 +299,26 @@ const collectWithTree = <R>(
       options.app === true && input.appConfig !== undefined
         ? yield* section("app-config", input.appConfig, undefined, appConfigOutcome)
         : undefined;
+    const accelerated = yield* isolateDoctorSection({
+      section: "accelerated-starts",
+      effect: acceleratedStartsDoctor(redact),
+      fallback: [],
+      budgetMs,
+      redact,
+    });
+    if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
+    const missingRoots = yield* isolateDoctorSection({
+      section: "missing-app-roots",
+      effect: missingAppRootsDoctor(redact),
+      fallback: [],
+      budgetMs,
+      redact,
+    });
+    if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
     const report: DoctorReport = {
       version: CORE_VERSION,
       provider: { checks: provider.checks },
-      subsystems,
+      subsystems: { checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value] },
       globalApp,
       mcp,
       ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),

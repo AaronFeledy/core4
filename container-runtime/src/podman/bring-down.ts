@@ -1,4 +1,5 @@
 import { type Context, DateTime, Effect } from "effect";
+import { serviceContainerName } from "../plan.ts";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
@@ -57,12 +58,11 @@ const appRef = (plan: AppPlan): AppRef => ({
   root: plan.root,
 });
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 const missingApi = (ctx: ProviderErrorContext) =>
   new ProviderUnavailableError({
