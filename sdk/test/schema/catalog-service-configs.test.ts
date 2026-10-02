@@ -15,8 +15,8 @@ import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 
-const strictDecode = (schema: Schema.Schema.AnyNoContext, input: unknown) =>
-  Schema.decodeUnknownEither(schema, { onExcessProperty: "error" })(input);
+const strictDecode = (schema: Schema.Codec<unknown, unknown>, input: unknown) =>
+  Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);
 
 describe("catalog service config schemas", () => {
   test.each(["rabbitmq", "rabbitmq:3", "rabbitmq:4"] as const)(

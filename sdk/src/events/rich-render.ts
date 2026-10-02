@@ -10,19 +10,17 @@ import { NotifyDesktopEvent } from "./notify.ts";
  * rich TTY presentation is deferred.
  */
 export const CodeSnippetEvent = Schema.TaggedStruct("code.snippet", {
-  code: Schema.String.annotations({ description: "Source code text to render." }),
-  language: Schema.optional(Schema.String).annotations({
+  code: Schema.String.annotate({ description: "Source code text to render." }),
+  language: Schema.optional(Schema.String).annotate({
     description: "Optional tree-sitter language id; plain text when absent or unknown.",
   }),
-  path: Schema.optional(Schema.String).annotations({
+  path: Schema.optional(Schema.String).annotate({
     description: "Optional display-only origin path (already redacted by the publisher).",
   }),
-  startLine: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())).annotations({
+  startLine: Schema.optional(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))).annotate({
     description: "Optional 1-based first line number for gutter numbering.",
   }),
-  highlightLines: Schema.optional(
-    Schema.Array(Schema.Number.pipe(Schema.int(), Schema.positive())),
-  ).annotations({
+  highlightLines: Schema.optional(Schema.Array(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))))).annotate({
     description: "Optional 1-based line numbers to highlight.",
   }),
 });
@@ -33,11 +31,11 @@ export type CodeSnippetEvent = typeof CodeSnippetEvent.Type;
  * plain text; colorized hunks are deferred.
  */
 export const DiffRenderEvent = Schema.TaggedStruct("diff.render", {
-  unified: Schema.String.annotations({ description: "Standard unified-diff text." }),
-  path: Schema.optional(Schema.String).annotations({
+  unified: Schema.String.annotate({ description: "Standard unified-diff text." }),
+  path: Schema.optional(Schema.String).annotate({
     description: "Optional display-only path for the diff.",
   }),
-  language: Schema.optional(Schema.String).annotations({
+  language: Schema.optional(Schema.String).annotate({
     description: "Optional language hint for future syntax-aware presentation.",
   }),
 });
@@ -47,7 +45,7 @@ export type DiffRenderEvent = typeof DiffRenderEvent.Type;
  * Markdown block. Bundled renderers emit the source verbatim; terminal markdown is deferred.
  */
 export const MarkdownBlockEvent = Schema.TaggedStruct("markdown.block", {
-  markdown: Schema.String.annotations({ description: "Markdown source to render or pass through." }),
+  markdown: Schema.String.annotate({ description: "Markdown source to render or pass through." }),
 });
 export type MarkdownBlockEvent = typeof MarkdownBlockEvent.Type;
 
@@ -56,10 +54,5 @@ export type MarkdownBlockEvent = typeof MarkdownBlockEvent.Type;
  * LandoPluginContext.events.publishRender. Includes rich content events and
  * notify.desktop.
  */
-export const RenderEvent = Schema.Union(
-  CodeSnippetEvent,
-  DiffRenderEvent,
-  MarkdownBlockEvent,
-  NotifyDesktopEvent,
-);
+export const RenderEvent = Schema.Union([CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent, NotifyDesktopEvent]);
 export type RenderEvent = typeof RenderEvent.Type;

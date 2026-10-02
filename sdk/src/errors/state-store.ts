@@ -8,7 +8,7 @@ import { Schema } from "effect";
  * `cause`, and `remediation` carry optional diagnostics.
  */
 export class StateStoreError extends Schema.TaggedError<StateStoreError>()("StateStoreError", {
-  reason: Schema.Literal("io", "decode", "lock", "path", "version"),
+  reason: Schema.Literals(["io", "decode", "lock", "path", "version"]),
   operation: Schema.String,
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),

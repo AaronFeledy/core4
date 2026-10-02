@@ -4,8 +4,8 @@ import { Schema } from "effect";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 
-const strictDecode = (schema: Schema.Schema.AnyNoContext, input: unknown) =>
-  Schema.decodeUnknownEither(schema, { onExcessProperty: "error" })(input);
+const strictDecode = (schema: Schema.Codec<unknown, unknown>, input: unknown) =>
+  Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);
 
 describe("PHP via serving-mode schema", () => {
   test("Given PHP via fpm, when decoding PhpServiceConfig, then it succeeds", () => {

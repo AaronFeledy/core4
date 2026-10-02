@@ -1,6 +1,7 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
 
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { BOOTSTRAP_RANK, BootstrapLevel } from "@lando/sdk/schema";
 
@@ -37,18 +38,18 @@ describe("BootstrapLevel", () => {
 
   test("decodes every known level successfully", () => {
     for (const level of EXPECTED_LITERALS) {
-      const result = Schema.decodeUnknownEither(BootstrapLevel)(level);
-      expect(Either.isRight(result)).toBe(true);
+      const result = Schema.decodeUnknownResult(BootstrapLevel)(level);
+      expect(Result.isSuccess(result)).toBe(true);
     }
   });
 
   test("rejects unknown literals with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(BootstrapLevel)("not-a-level");
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      expect(result.left._tag).toBe("ParseError");
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+    const result = Schema.decodeUnknownResult(BootstrapLevel)("not-a-level");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      expect(result.failure._tag).toBe("ParseError");
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.length).toBeGreaterThan(0);
       for (const issue of issues) {
         expect(issue._tag).toBe("Type");
@@ -58,10 +59,10 @@ describe("BootstrapLevel", () => {
   });
 
   test("rejects non-string inputs with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(BootstrapLevel)(42);
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
+    const result = Schema.decodeUnknownResult(BootstrapLevel)(42);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
     }
   });
 });

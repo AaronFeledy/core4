@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 import {
   canonicalJson,
   classifyHunk,
@@ -56,7 +56,7 @@ const reason = (
   raw?: ReadonlyArray<unknown>,
 ) => {
   const result = validateMigrationChain(target, chain, raw);
-  return Either.isLeft(result) ? result.left.reason : "ok";
+  return Result.isFailure(result) ? result.failure.reason : "ok";
 };
 test("canonical JSON sorts nested keys but preserves array order", () => {
   expect(canonicalJson({ z: [2, 1], a: { y: 2, x: 1 } })).toBe('{"a":{"x":1,"y":2},"z":[2,1]}');
@@ -114,7 +114,7 @@ test("hunk-id-mismatch", () =>
 test("hunk-id-collision", () =>
   expect(reason([{ ...edge(1, 3), hunks: [hunk(edge(1, 3)), hunk(edge(1, 3))] }])).toBe("hunk-id-collision"));
 test("sorts a contiguous chain without treating its shared endpoint as a cycle", () => {
-  expect(Either.getOrThrow(validateMigrationChain(producer(3), [edge(2, 3), edge(1, 2)]))).toEqual([
+  expect(Result.getOrThrow(validateMigrationChain(producer(3), [edge(2, 3), edge(1, 2)]))).toEqual([
     edge(1, 2),
     edge(2, 3),
   ]);

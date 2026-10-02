@@ -26,7 +26,7 @@ import {
 
 const providerId = ProviderId.make("contract");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "tooling-engine.contract",
   runtime: 4 as const,
 };

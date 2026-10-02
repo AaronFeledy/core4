@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LandofileShape, ServiceConfig, ServiceName, getJsonSchema } from "../../src/schema/index.ts";
 
@@ -40,13 +40,13 @@ describe("ServiceConfig certs authoring", () => {
     ["a certificate without a key", { cert: "./certs/web.crt" }],
     ["an unknown certificate field", { cert: "./certs/web.crt", unexpected: true }],
   ])("rejects %s with a certs-scoped failure", (_name, certs) => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       { name: "app", services: { web: { certs } } },
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(result.left.message).toContain("certs");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure.message).toContain("certs");
   });
 
   test("leaf certs and additional certificate authorities stay independent", () => {

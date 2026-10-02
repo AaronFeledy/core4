@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import {
   ExpressionContext,
@@ -14,8 +14,8 @@ import {
 const budget = { maxSteps: 100000, maxDepth: 100, maxOutputBytes: 1000000, maxCollectionSize: 10000 };
 const parseTemplate = (source: string) => {
   const result = parseExpressionEither(source, { filePath: "/app/.lando.yml" });
-  if (Either.isLeft(result)) throw result.left;
-  return result.right;
+  if (Result.isFailure(result)) throw result.failure;
+  return result.success;
 };
 const expression = (source: string): ExpressionNode => {
   const segment = parseTemplate(source).segments[0];
@@ -26,16 +26,16 @@ const expectBudgetFailure = (
   result: ReturnType<typeof evaluateExpressionEither>,
   limit: keyof typeof budget,
 ) => {
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isRight(result)) throw new Error("expected budget failure");
-  expect(result.left._tag).toBe("LandofileExpressionEvalError");
-  expect(result.left.message).toStartWith(`Expression budget exceeded (${limit})`);
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) throw new Error("expected budget failure");
+  expect(result.failure._tag).toBe("LandofileExpressionEvalError");
+  expect(result.failure.message).toStartWith(`Expression budget exceeded (${limit})`);
 };
 
 describe("expression evaluation budgets", () => {
   test("options scope resolves from the supplied context", () => {
     const context = Schema.decodeUnknownSync(ExpressionContext)({ options: { db: "mysql" } });
-    expect(evaluateTemplateEither(parseTemplate("{{ options.db }}"), context)).toEqual(Either.right("mysql"));
+    expect(evaluateTemplateEither(parseTemplate("{{ options.db }}"), context)).toEqual(Result.succeed("mysql"));
   });
 
   test("collection budget rejects an oversized range", () => {
@@ -78,8 +78,8 @@ describe("expression evaluation budgets", () => {
 
   test("omitting the budget preserves current behaviour", () => {
     const result = evaluateExpressionEither(expression("{{ range(0, 50000) }}"), {});
-    if (Either.isLeft(result)) throw result.left;
-    expect(result.right).toEqual(Array.from({ length: 50000 }, (_, index) => index));
+    if (Result.isFailure(result)) throw result.failure;
+    expect(result.success).toEqual(Array.from({ length: 50000 }, (_, index) => index));
   });
 
   test.each([
@@ -149,7 +149,7 @@ describe("expression evaluation budgets", () => {
 
   test("Effect template entry reports tagged budget failures", () => {
     const result = Effect.runSync(
-      Effect.either(
+      Effect.result(
         evaluateTemplate(parseTemplate("plain text"), {}, { budget: { ...budget, maxOutputBytes: 2 } }),
       ),
     );

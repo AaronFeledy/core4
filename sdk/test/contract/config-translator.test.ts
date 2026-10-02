@@ -79,12 +79,12 @@ const makeComposeTranslator = ({
     ),
   encode: (sample) =>
     Effect.gen(function* () {
-      const value = yield* Schema.decodeUnknown(LandofileAuthoringFragment)(
+      const value = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(
         sample.fragment ?? sample.context,
       );
-      const wire = yield* Schema.encode(LandofileAuthoringFragment)(value);
-      const record = yield* Schema.decodeUnknown(
-        Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+      const wire = yield* Schema.encodeEffect(LandofileAuthoringFragment)(value);
+      const record = yield* Schema.decodeUnknownEffect(
+        Schema.Record(Schema.String, Schema.Unknown),
       )(wire);
       return { text: yield* emitLandofileYamlEither(record), diagnostics: [] };
     }).pipe(

@@ -1,6 +1,7 @@
+import { Struct } from "effect";
 import { expect, test } from "bun:test";
 import * as Contracts from "@lando/sdk/schema";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 test("AgentSocketBridgeResult decodes bind-directory and volume members", () => {
   // Given
@@ -20,9 +21,9 @@ test("AgentSocketUpstream rejects a non-integer port", () => {
   // Given
   const input = { _tag: "loopback-tcp", port: 1234.5 };
   // When
-  const result = Schema.decodeUnknownEither(Contracts.AgentSocketUpstream)(input);
+  const result = Schema.decodeUnknownResult(Contracts.AgentSocketUpstream)(input);
   // Then
-  expect(Either.isLeft(result)).toBe(true);
+  expect(Result.isFailure(result)).toBe(true);
 });
 
 test("AgentSocketBridgeInput preserves app identity, kind and upstream", () => {
@@ -48,7 +49,7 @@ test.each(["bind-directory", "guest-bridge", "volume-relay"])(
     const input = { agentSocket: { delivery } };
     expect(Contracts.ProviderCapabilities.fields).toHaveProperty("agentSocket");
     // When
-    const result = Schema.decodeUnknownSync(Contracts.ProviderCapabilities.pick("agentSocket"))(input);
+    const result = Schema.decodeUnknownSync(Schema.Struct(Struct.pick(Contracts.ProviderCapabilities.fields, ["agentSocket"])))(input);
     // Then
     expect(result).toEqual(input);
   },

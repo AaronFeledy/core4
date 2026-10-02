@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import * as SDK from "@lando/sdk/schema";
 
-const strictDecode = <A, I>(schema: Schema.Schema<A, I>, input: unknown) =>
-  Schema.decodeUnknownEither(schema)(input, { onExcessProperty: "error" });
+const strictDecode = <A, I>(schema: Schema.Codec<A, I>, input: unknown) =>
+  Schema.decodeUnknownResult(schema)(input, { onExcessProperty: "error" });
 
 describe("PhpComposerConfig", () => {
   test("preserves the object form when decoding ServiceConfigInput", () => {
@@ -65,8 +65,8 @@ describe("PhpComposerConfig", () => {
     ).toBe("Right");
 
     expect(
-      Either.isRight(
-        Schema.decodeUnknownEither(SDK.LandofileShape)({
+      Result.isSuccess(
+        Schema.decodeUnknownResult(SDK.LandofileShape)({
           name: "composer-object",
           services: { appserver: { type: "php:8.4", composer: { packages: { "vendor/a": "^1" } } } },
         }),
@@ -79,11 +79,11 @@ describe("PhpComposerConfig", () => {
     // when decoded,
     // then each is refused by the schema.
     expect(
-      Either.isLeft(Schema.decodeUnknownEither(SDK.ServiceConfigInput)({ composer: { version: 2 } })),
+      Result.isFailure(Schema.decodeUnknownResult(SDK.ServiceConfigInput)({ composer: { version: 2 } })),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(SDK.ServiceConfigInput)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(SDK.ServiceConfigInput)({
           composer: { packages: { "vendor/a": 1 } },
         }),
       ),
@@ -121,10 +121,10 @@ describe("ServiceConfig.globals", () => {
     // Given globals authored as a list or with non-string versions,
     // when decoded,
     // then the schema refuses both.
-    expect(Either.isLeft(Schema.decodeUnknownEither(SDK.ServiceConfigInput)({ globals: ["yarn"] }))).toBe(
+    expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ServiceConfigInput)({ globals: ["yarn"] }))).toBe(
       true,
     );
-    expect(Either.isLeft(Schema.decodeUnknownEither(SDK.ServiceConfigInput)({ globals: { yarn: 1 } }))).toBe(
+    expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ServiceConfigInput)({ globals: { yarn: 1 } }))).toBe(
       true,
     );
   });

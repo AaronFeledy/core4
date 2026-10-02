@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LogLevelSelectionError, RendererSelectionError } from "@lando/sdk/errors";
 import { GlobalConfig, LOG_LEVELS } from "@lando/sdk/schema";
@@ -43,8 +43,8 @@ describe("GlobalConfig.logLevel decode", () => {
   });
 
   test("rejects a non-string logLevel", () => {
-    const result = Schema.decodeUnknownEither(GlobalConfig)({ logLevel: 1 });
-    expect(Either.isLeft(result)).toBe(true);
+    const result = Schema.decodeUnknownResult(GlobalConfig)({ logLevel: 1 });
+    expect(Result.isFailure(result)).toBe(true);
   });
 });
 

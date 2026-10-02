@@ -87,4 +87,4 @@ export interface LandoPaths {
  * `PathsService` is host/test-overridable but is NOT a plugin contribution
  * surface (there is no `provides.paths` manifest key).
  */
-export class PathsService extends Context.Tag("@lando/core/PathsService")<PathsService, LandoPaths>() {}
+export class PathsService extends Context.Service<PathsService, LandoPaths>()("@lando/core/PathsService") {}

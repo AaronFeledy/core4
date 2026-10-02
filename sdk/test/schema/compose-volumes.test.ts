@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   type ComposeVolumeEntry,
@@ -11,7 +11,7 @@ const decodeVolumes = (input: unknown): ReadonlyArray<ComposeVolumeEntry> =>
   Schema.decodeUnknownSync(ComposeVolumesField)(input, { onExcessProperty: "error" });
 
 const decodeVolumesEither = (input: unknown) =>
-  Schema.decodeUnknownEither(ComposeVolumesField)(input, { onExcessProperty: "error" });
+  Schema.decodeUnknownResult(ComposeVolumesField)(input, { onExcessProperty: "error" });
 
 const bindLongInput = { type: "bind", source: "./src", target: "/app" } as const;
 const volumeLongInput = { type: "volume", source: "db", target: "/data" } as const;
@@ -171,23 +171,23 @@ describe("ComposeVolumesField", () => {
 
   test.each(rejectedLongCases)("S30 rejects long %s", (_label, properties, input) => {
     // Given / When
-    const results = [Schema.decodeUnknownEither(ComposeVolumesField)([input]), decodeVolumesEither([input])];
+    const results = [Schema.decodeUnknownResult(ComposeVolumesField)([input]), decodeVolumesEither([input])];
 
     // Then
     for (const result of results) {
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        for (const property of properties) expect(String(result.left)).toContain(property);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        for (const property of properties) expect(String(result.failure)).toContain(property);
       }
     }
   });
 
   test.each(incompatibleLongCases)("rejects %s under default and strict decoding", (_label, input) => {
     // Given / When
-    const results = [Schema.decodeUnknownEither(ComposeVolumesField)([input]), decodeVolumesEither([input])];
+    const results = [Schema.decodeUnknownResult(ComposeVolumesField)([input]), decodeVolumesEither([input])];
 
     // Then
-    expect(results.every(Either.isLeft)).toBe(true);
+    expect(results.every(Result.isFailure)).toBe(true);
   });
 
   test.each([
@@ -199,16 +199,16 @@ describe("ComposeVolumesField", () => {
     ["tmpfs/createHostPath", { type: "tmpfs", target: "/x", readOnly: false, createHostPath: false }],
   ] as const)("rejects canonical %s during decode and encode", (_label, input) => {
     // Given / When / Then
-    expect(Schema.decodeUnknownEither(ComposeVolumesField)([input])._tag).toBe("Left");
+    expect(Schema.decodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Left");
     expect(decodeVolumesEither([input])._tag).toBe("Left");
-    expect(Schema.encodeUnknownEither(ComposeVolumesField)([input])._tag).toBe("Left");
+    expect(Schema.encodeUnknownResult(ComposeVolumesField)([input])._tag).toBe("Left");
   });
 
   test.each(rejectedShortCases)("S31 rejects short mode %s", (token, matrixKey) => {
     const result = decodeVolumesEither([`src:/app:${token}`]);
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(String(result.left)).toContain(matrixKey);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(String(result.failure)).toContain(matrixKey);
   });
 
   test("S32 ignores an unknown short mode token", () => {
@@ -246,13 +246,13 @@ describe("ComposeVolumesField", () => {
     const input = [{ type: "bind", source: "./src", target: "/app", read_only: true, createHostPath: false }];
 
     // When
-    const defaultResult = Schema.decodeUnknownEither(ComposeVolumesField)(input);
+    const defaultResult = Schema.decodeUnknownResult(ComposeVolumesField)(input);
     const strictResult = decodeVolumesEither(input);
 
     // Then
     for (const result of [defaultResult, strictResult]) {
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) expect(String(result.left)).toContain("createHostPath");
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) expect(String(result.failure)).toContain("createHostPath");
     }
   });
 

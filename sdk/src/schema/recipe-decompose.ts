@@ -12,10 +12,10 @@ const metadata = (identifier: string, description: string) => ({
 });
 
 interface AuthoringFragmentSchema
-  extends Schema.Schema<Schema.Schema.Type<typeof LandofileAuthoringFragmentWire>> {}
+  extends Schema.Codec<Schema.Schema.Type<typeof LandofileAuthoringFragmentWire>> {}
 
 const authoringFragment = (description: string): AuthoringFragmentSchema =>
-  LandofileAuthoringFragmentWire.annotations({ description });
+  LandofileAuthoringFragmentWire.annotate({ description });
 
 /**
  * Everything a decomposer is allowed to see. Options are already merged and
@@ -23,21 +23,17 @@ const authoringFragment = (description: string): AuthoringFragmentSchema =>
  * named init-only sink, never as bytes.
  */
 export const RecipeDecomposeInput = Schema.Struct({
-  producer: RecipeProducer.annotations({ description: "Versioned identity of the recipe being decomposed." }),
-  options: Schema.Record({ key: Schema.String, value: RecipeOptionValue }).annotations({
+  producer: RecipeProducer.annotate({ description: "Versioned identity of the recipe being decomposed." }),
+  options: Schema.Record(Schema.String, RecipeOptionValue).annotate({
     description: "Already-merged persistable nonsecret option values.",
   }),
-  secrets: Schema.Record({ key: Schema.String, value: ConfigTranslateSecretReference }).annotations({
+  secrets: Schema.Record(Schema.String, ConfigTranslateSecretReference).annotate({
     description: "Approved secret references or named init-only sinks, keyed by prompt name.",
   }),
-  services: Schema.optional(
-    RecipeServiceMap.annotations({
+  services: Schema.optionalKey(RecipeServiceMap.annotate({
       description: "Generated to current service names, when the caller already renamed services.",
-    }),
-  ),
-}).annotations(
-  metadata("RecipeDecomposeInput", "Merged recipe identity and nonsecret options to decompose."),
-);
+    })),
+}).annotate(metadata("RecipeDecomposeInput", "Merged recipe identity and nonsecret options to decompose."));
 export type RecipeDecomposeInput = typeof RecipeDecomposeInput.Type;
 
 /**
@@ -47,10 +43,8 @@ export type RecipeDecomposeInput = typeof RecipeDecomposeInput.Type;
  */
 export const RecipeDecomposeResult = Schema.Struct({
   fragment: authoringFragment("Complete authoring wire fragment the recipe selected."),
-  provenance: LandofileRecipeProvenance.annotations({
+  provenance: LandofileRecipeProvenance.annotate({
     description: "Inert provenance recorded alongside the generated authoring data.",
   }),
-}).annotations(
-  metadata("RecipeDecomposeResult", "Authoring fragment and provenance produced by one decomposition."),
-);
+}).annotate(metadata("RecipeDecomposeResult", "Authoring fragment and provenance produced by one decomposition."));
 export type RecipeDecomposeResult = typeof RecipeDecomposeResult.Type;

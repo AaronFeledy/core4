@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { DateTime, Effect, Either, Schema, Stream } from "effect";
+import { DateTime, Effect, Result, Schema, Stream } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import {
@@ -69,9 +69,9 @@ const requireFileSyncTaggedFailure = <A>(
   tag: FileSyncError["_tag"],
   assertion: string,
 ): Effect.Effect<void, ContractFailure> =>
-  Effect.either(effect).pipe(
+  Effect.result(effect).pipe(
     Effect.flatMap((result) =>
-      Either.isLeft(result) && result.left._tag === tag
+      Result.isFailure(result) && result.failure._tag === tag
         ? Effect.void
         : Effect.fail(fileSyncContractFailure(assertion, result)),
     ),
@@ -96,8 +96,8 @@ export const runFileSyncEngineContract = (
       engine.displayName,
     );
 
-    const decodedCapabilities = Schema.decodeUnknownEither(FileSyncEngineCapabilities)(engine.capabilities);
-    yield* requireFileSyncContract(Either.isRight(decodedCapabilities), "capabilities decode", {
+    const decodedCapabilities = Schema.decodeUnknownResult(FileSyncEngineCapabilities)(engine.capabilities);
+    yield* requireFileSyncContract(Result.isSuccess(decodedCapabilities), "capabilities decode", {
       capabilities: engine.capabilities,
       decoded: decodedCapabilities,
     });
@@ -521,7 +521,7 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
         mountKey: spec.mountKey,
         spec,
         status: "running",
-        lastUpdatedAt: DateTime.unsafeMake("2026-05-28T00:00:00Z"),
+        lastUpdatedAt: DateTime.makeUnsafe("2026-05-28T00:00:00Z"),
       };
       state.sessions.set(ref, info);
       yield* Effect.addFinalizer(() =>

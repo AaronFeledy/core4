@@ -31,26 +31,26 @@ import { Cause, Clock, Duration, Effect, Schedule, Schema } from "effect";
  */
 export const RetryPolicy = Schema.Struct({
   /** Total attempts including the first; default 1 (no retry). */
-  maxAttempts: Schema.optional(Schema.Int),
+  maxAttempts: Schema.optionalKey(Schema.Int),
   /** Base delay between attempts; default 0. */
-  delay: Schema.optional(Schema.DurationFromMillis),
+  delay: Schema.optionalKey(Schema.DurationFromMillis),
   /** Backoff curve applied to {@link delay}; default `"fixed"`. */
-  backoff: Schema.optional(Schema.Literal("fixed", "exponential")),
+  backoff: Schema.optionalKey(Schema.Literals(["fixed", "exponential"])),
   /** Exponential multiplier applied per attempt; default 2. */
-  factor: Schema.optional(Schema.Number),
+  factor: Schema.optionalKey(Schema.Number),
   /** Cap on a single inter-attempt delay; default unbounded. */
-  maxDelay: Schema.optional(Schema.DurationFromMillis),
+  maxDelay: Schema.optionalKey(Schema.DurationFromMillis),
   /** Full jitter applied to each delay; default false. */
-  jitter: Schema.optional(Schema.Boolean),
+  jitter: Schema.optionalKey(Schema.Boolean),
   /** Overall deadline across all attempts; default unbounded. */
-  timeout: Schema.optional(Schema.DurationFromMillis),
+  timeout: Schema.optionalKey(Schema.DurationFromMillis),
 });
 
 /** Decoded {@link RetryPolicy}. */
 export type RetryPolicy = Schema.Schema.Type<typeof RetryPolicy>;
 
 /** Green/yellow/red verdict for a single probe attempt or overall run. */
-export const ProbeOutcome = Schema.Literal("green", "yellow", "red");
+export const ProbeOutcome = Schema.Literals(["green", "yellow", "red"]);
 
 /** Decoded {@link ProbeOutcome}. */
 export type ProbeOutcome = Schema.Schema.Type<typeof ProbeOutcome>;
@@ -100,7 +100,7 @@ export const ProbeResult = Schema.Struct({
    * The last attempt error, returned verbatim for the consuming surface to
    * redact. Absent when the run ended green or no attempt failed.
    */
-  lastError: Schema.optional(Schema.Unknown),
+  lastError: Schema.optionalKey(Schema.Unknown),
 });
 
 /** Decoded {@link ProbeResult}. */
@@ -132,9 +132,9 @@ export class ProbeError extends Schema.TaggedError<ProbeError>()("ProbeError", {
   /** Human-readable message. */
   message: Schema.String,
   /** Optional deadline-expiry sub-shape. */
-  timeout: Schema.optional(ProbeTimeoutError),
+  timeout: Schema.optionalKey(ProbeTimeoutError),
   /** Underlying cause, if any. */
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 const DEFAULT_FACTOR = 2;
@@ -187,8 +187,8 @@ export const toSchedule = (policy: RetryPolicy): Schedule.Schedule<number> => {
   // recurs(n) permits n recurrences after the first run; its output is the
   // 0-based recurrence count, which is exactly the retry index the curve wants.
   const maxRetries = policyMaxAttempts(policy) - 1;
-  return Schedule.addDelay(Schedule.recurs(maxRetries), (recurrenceCount) =>
-    Duration.millis(delayForRetryIndex(policy, recurrenceCount)),
+  return Schedule.addDelay(Schedule.recurs(maxRetries), ({ output }) =>
+    Effect.succeed(Duration.millis(delayForRetryIndex(policy, output))),
   );
 };
 
@@ -235,10 +235,9 @@ export const runProbe = <A, E, R>(
       const completed =
         deadline === undefined
           ? yield* Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit }))
-          : yield* Effect.timeoutTo(run, {
+          : yield* Effect.timeoutOrElse(Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit })), {
               duration: Duration.millis(deadline - (yield* Clock.currentTimeMillis)),
-              onSuccess: (exit) => ({ _tag: "Completed" as const, exit }),
-              onTimeout: () => ({ _tag: "TimedOut" as const }),
+              orElse: () => Effect.succeed({ _tag: "TimedOut" as const }),
             });
 
       if (completed._tag === "TimedOut") {
@@ -256,7 +255,7 @@ export const runProbe = <A, E, R>(
           break;
         }
       } else {
-        if (Cause.isInterruptedOnly(exit.cause)) {
+        if (Cause.hasInterruptsOnly(exit.cause)) {
           return yield* Effect.interrupt;
         }
         const error = yield* extractFailure(spec, exit.cause);
@@ -317,21 +316,5 @@ const extractFailure = (spec: ProbeSpec, cause: Cause.Cause<unknown>): Effect.Ef
   });
 
 const causeFailures = (cause: Cause.Cause<unknown>): ReadonlyArray<unknown> => {
-  const out: unknown[] = [];
-  const visit = (node: Cause.Cause<unknown>): void => {
-    switch (node._tag) {
-      case "Fail":
-        out.push(node.error);
-        return;
-      case "Sequential":
-      case "Parallel":
-        visit(node.left);
-        visit(node.right);
-        return;
-      default:
-        return;
-    }
-  };
-  visit(cause);
-  return out;
+  return cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error);
 };

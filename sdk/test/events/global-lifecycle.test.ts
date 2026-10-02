@@ -1,6 +1,7 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Either, ParseResult, Schema } from "effect";
+import { DateTime, Result, Schema } from "effect";
 
 import {
   LandoEvent,
@@ -14,8 +15,8 @@ import {
 } from "@lando/sdk/events";
 import { AppId, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
 
-const FIXED_TIMESTAMP = DateTime.unsafeMake("2026-05-11T07:30:00Z");
-const FIXED_RESOLVED_AT = DateTime.unsafeMake("2026-05-10T18:51:00Z");
+const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-05-11T07:30:00Z");
+const FIXED_RESOLVED_AT = DateTime.makeUnsafe("2026-05-10T18:51:00Z");
 
 const timestamp = DateTime.formatIso(FIXED_TIMESTAMP);
 
@@ -66,7 +67,7 @@ const globalPlanFixture: typeof AppPlan.Encoded = {
 
 describe("global lifecycle event payload schemas", () => {
   test("pre-global-start carries scope:global, the global AppRef, plan, and ensure-running metadata", () => {
-    const result = Schema.decodeUnknownEither(PreGlobalStartEvent)({
+    const result = Schema.decodeUnknownResult(PreGlobalStartEvent)({
       _tag: "pre-global-start",
       scope: "global",
       app: globalAppRef,
@@ -77,18 +78,18 @@ describe("global lifecycle event payload schemas", () => {
       timestamp,
     });
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right.scope).toBe("global");
-      expect(result.right.app.kind).toBe("global");
-      expect(result.right.app.id).toBe("global");
-      expect(result.right.cached).toBe(false);
-      expect(result.right.triggeredBy).toBe("meta:global:start");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.scope).toBe("global");
+      expect(result.success.app.kind).toBe("global");
+      expect(result.success.app.id).toBe("global");
+      expect(result.success.cached).toBe(false);
+      expect(result.success.triggeredBy).toBe("meta:global:start");
     }
   });
 
   test("post-global-start carries scope:global and the cached flag", () => {
-    const result = Schema.decodeUnknownEither(PostGlobalStartEvent)({
+    const result = Schema.decodeUnknownResult(PostGlobalStartEvent)({
       _tag: "post-global-start",
       scope: "global",
       app: globalAppRef,
@@ -97,43 +98,43 @@ describe("global lifecycle event payload schemas", () => {
       timestamp,
     });
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right.scope).toBe("global");
-      expect(result.right.cached).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.scope).toBe("global");
+      expect(result.success.cached).toBe(true);
     }
   });
 
   test("pre-global-stop and post-global-stop carry scope:global", () => {
-    const pre = Schema.decodeUnknownEither(PreGlobalStopEvent)({
+    const pre = Schema.decodeUnknownResult(PreGlobalStopEvent)({
       _tag: "pre-global-stop",
       scope: "global",
       app: globalAppRef,
       triggeredBy: "meta:global:stop",
       timestamp,
     });
-    const post = Schema.decodeUnknownEither(PostGlobalStopEvent)({
+    const post = Schema.decodeUnknownResult(PostGlobalStopEvent)({
       _tag: "post-global-stop",
       scope: "global",
       app: globalAppRef,
       timestamp,
     });
 
-    expect(Either.isRight(pre)).toBe(true);
-    expect(Either.isRight(post)).toBe(true);
-    if (Either.isRight(pre)) expect(pre.right.scope).toBe("global");
-    if (Either.isRight(post)) expect(post.right.scope).toBe("global");
+    expect(Result.isSuccess(pre)).toBe(true);
+    expect(Result.isSuccess(post)).toBe(true);
+    if (Result.isSuccess(pre)) expect(pre.success.scope).toBe("global");
+    if (Result.isSuccess(post)) expect(post.success.scope).toBe("global");
   });
 
   test("pre-global-rebuild and post-global-rebuild carry scope:global and the global plan", () => {
-    const pre = Schema.decodeUnknownEither(PreGlobalRebuildEvent)({
+    const pre = Schema.decodeUnknownResult(PreGlobalRebuildEvent)({
       _tag: "pre-global-rebuild",
       scope: "global",
       app: globalAppRef,
       plan: globalPlanFixture,
       timestamp,
     });
-    const post = Schema.decodeUnknownEither(PostGlobalRebuildEvent)({
+    const post = Schema.decodeUnknownResult(PostGlobalRebuildEvent)({
       _tag: "post-global-rebuild",
       scope: "global",
       app: globalAppRef,
@@ -142,14 +143,14 @@ describe("global lifecycle event payload schemas", () => {
       timestamp,
     });
 
-    expect(Either.isRight(pre)).toBe(true);
-    expect(Either.isRight(post)).toBe(true);
-    if (Either.isRight(pre)) expect(pre.right.plan.id).toBe(AppId.make("global"));
-    if (Either.isRight(post)) expect(post.right.services).toEqual(["traefik"]);
+    expect(Result.isSuccess(pre)).toBe(true);
+    expect(Result.isSuccess(post)).toBe(true);
+    if (Result.isSuccess(pre)) expect(pre.success.plan.id).toBe(AppId.make("global"));
+    if (Result.isSuccess(post)) expect(post.success.services).toEqual(["traefik"]);
   });
 
   test("the per-app lifecycle analog carries scope:app, distinguishing it from the global scope", () => {
-    const result = Schema.decodeUnknownEither(PreStartEvent)({
+    const result = Schema.decodeUnknownResult(PreStartEvent)({
       _tag: "pre-start",
       scope: "app",
       app: { kind: "user", id: "myapp", root: "/srv/apps/myapp" },
@@ -158,14 +159,14 @@ describe("global lifecycle event payload schemas", () => {
       timestamp,
     });
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right.scope).toBe("app");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.scope).toBe("app");
     }
   });
 
   test("rejects a global event whose scope claims to be app with a structured ParseError on the scope path", () => {
-    const result = Schema.decodeUnknownEither(PreGlobalStartEvent)({
+    const result = Schema.decodeUnknownResult(PreGlobalStartEvent)({
       _tag: "pre-global-start",
       scope: "app",
       app: globalAppRef,
@@ -176,10 +177,10 @@ describe("global lifecycle event payload schemas", () => {
       timestamp,
     });
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.some((issue) => issue.path.includes("scope"))).toBe(true);
     }
   });
@@ -230,10 +231,10 @@ describe("global lifecycle event payload schemas", () => {
     ] as const;
 
     for (const payload of payloads) {
-      const result = Schema.decodeUnknownEither(LandoEvent)(payload);
-      expect(Either.isRight(result)).toBe(true);
-      if (Either.isRight(result)) {
-        expect(result.right._tag).toBe(payload._tag);
+      const result = Schema.decodeUnknownResult(LandoEvent)(payload);
+      expect(Result.isSuccess(result)).toBe(true);
+      if (Result.isSuccess(result)) {
+        expect(result.success._tag).toBe(payload._tag);
       }
     }
   });

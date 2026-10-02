@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import {
   LandofileExpressionEvalError,
@@ -1371,11 +1371,11 @@ export const evaluateExpressionEither = (
   node: ExpressionNode,
   context: ExpressionContext,
   options: EvaluateExpressionOptions = {},
-): Either.Either<unknown, LandofileExpressionEvaluationError> => {
+): Result.Result<unknown, LandofileExpressionEvaluationError> => {
   try {
-    return Either.right(evaluateExpressionSync(node, context, options));
+    return Result.succeed(evaluateExpressionSync(node, context, options));
   } catch (cause) {
-    return Either.left(wrapUnknownEvaluationError(options, cause));
+    return Result.fail(wrapUnknownEvaluationError(options, cause));
   }
 };
 
@@ -1393,11 +1393,11 @@ export const evaluateTemplateEither = (
   template: ExpressionTemplate,
   context: ExpressionContext,
   options: EvaluateExpressionOptions = {},
-): Either.Either<unknown, LandofileExpressionEvaluationError> => {
+): Result.Result<unknown, LandofileExpressionEvaluationError> => {
   try {
-    return Either.right(evaluateTemplateSync(template, context, options));
+    return Result.succeed(evaluateTemplateSync(template, context, options));
   } catch (cause) {
-    return Either.left(wrapUnknownEvaluationError(options, cause));
+    return Result.fail(wrapUnknownEvaluationError(options, cause));
   }
 };
 

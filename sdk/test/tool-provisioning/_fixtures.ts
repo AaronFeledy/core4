@@ -242,7 +242,7 @@ export const makeFakeDownloader = (): FakeDownloaderHandle => {
           destinationPath,
           ...(request.expectedSha256 === undefined ? {} : { expectedSha256: request.expectedSha256 }),
         }).pipe(
-          Effect.catchAll((cause) =>
+          Effect.catch((cause) =>
             Effect.fail(new DownloadFetchError({ message: "persist failed", urlOrigin: request.url, cause })),
           ),
         );

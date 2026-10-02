@@ -10,7 +10,7 @@ test("preserves legacy volume consumers without inventing identity", () => {
 });
 
 test("rejects an empty generation even when name and ownership are available", () => {
-  const result = Schema.decodeUnknownEither(VolumeIdentity)({
+  const result = Schema.decodeUnknownResult(VolumeIdentity)({
     coordinationKey: "namespace-volume",
     nativeName: "volume",
     generation: "",

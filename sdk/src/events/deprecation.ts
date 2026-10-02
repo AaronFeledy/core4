@@ -4,7 +4,7 @@ import { DeprecationUse } from "../schema/deprecation.ts";
 
 export const DeprecationUsedEvent = Schema.TaggedStruct("deprecation-used", {
   use: DeprecationUse,
-}).annotations({
+}).annotate({
   identifier: "DeprecationUsedEvent",
   title: "Deprecation Used Event",
   description:

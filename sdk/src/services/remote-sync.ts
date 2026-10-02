@@ -53,7 +53,7 @@ export type DatasetServiceError =
 export interface RemoteSourceShape {
   readonly id: string;
   readonly capabilities: RemoteCapabilities;
-  readonly configSchema: Schema.Schema<unknown>;
+  readonly configSchema: Schema.Codec<unknown>;
   readonly listEnvironments: (
     cfg: RemoteConfig,
   ) => Effect.Effect<ReadonlyArray<RemoteEnvironment>, RemoteSourceError>;
@@ -94,9 +94,6 @@ export interface DatasetShape {
   readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetServiceError>;
 }
 
-export class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<
-  RemoteSource,
-  RemoteSourceShape
->() {}
+export class RemoteSource extends Context.Service<RemoteSource, RemoteSourceShape>()("@lando/core/RemoteSource") {}
 
-export class Dataset extends Context.Tag("@lando/core/Dataset")<Dataset, DatasetShape>() {}
+export class Dataset extends Context.Service<Dataset, DatasetShape>()("@lando/core/Dataset") {}

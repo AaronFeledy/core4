@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Either, JSONSchema, Schema } from "effect";
+import { Effect } from "effect";
+import { SchemaAST as AST, Result, Schema } from "effect";
 
 import { DeprecationUsedEvent, LandoEvent } from "@lando/sdk/events";
 import {
@@ -15,7 +16,16 @@ import {
   structuralDeprecationKey,
 } from "@lando/sdk/schema";
 
-const decode = (input: unknown) => Schema.decodeUnknownEither(DeprecationNotice)(input);
+const decode = (input: unknown) => Schema.decodeUnknownResult(DeprecationNotice)(input);
+
+const rootJsonSchema = (schema: unknown): unknown => {
+  if (schema === null || typeof schema !== "object") throw new TypeError("Expected a schema document");
+  const ref: unknown = Reflect.get(schema, "$ref");
+  if (typeof ref !== "string") return schema;
+  const definitions: unknown = Reflect.get(schema, "definitions");
+  if (definitions === null || typeof definitions !== "object") throw new TypeError("Expected definitions");
+  return Reflect.get(definitions, ref.replace(/^#\/definitions\//, ""));
+};
 
 describe("DeprecationNotice", () => {
   test("decodes a notice and applies the default severity", () => {
@@ -28,10 +38,10 @@ describe("DeprecationNotice", () => {
       ticket: "https://github.com/lando/core/issues/1234",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isLeft(decoded)) return;
-    expect(decoded.right.severity).toBe("warn");
-    expect(structuralDeprecationKey(decoded.right)).toEqual({
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isFailure(decoded)) return;
+    expect(decoded.success.severity).toBe("warn");
+    expect(structuralDeprecationKey(decoded.success)).toEqual({
       since: "4.2.0",
       removeIn: "5.0.0",
       note: "Use the new surface.",
@@ -39,32 +49,33 @@ describe("DeprecationNotice", () => {
   });
 
   test("rejects invalid severity, semver, and docsUrl values", () => {
-    expect(decode({ since: "4.2.0", severity: "fatal", note: "Use something else." })._tag).toBe("Left");
-    expect(decode({ since: "next", note: "Use something else." })._tag).toBe("Left");
-    expect(decode({ since: "4.2.0", note: "Use something else.", docsUrl: "not a url" })._tag).toBe("Left");
+    expect(decode({ since: "4.2.0", severity: "fatal", note: "Use something else." })._tag).toBe("Failure");
+    expect(decode({ since: "next", note: "Use something else." })._tag).toBe("Failure");
+    expect(decode({ since: "4.2.0", note: "Use something else.", docsUrl: "not a url" })._tag).toBe(
+      "Failure",
+    );
   });
 
   test("rejects patch, same-release, and past removeIn releases", () => {
-    expect(decode({ since: "4.2.0", removeIn: "4.2.1", note: "Use something else." })._tag).toBe("Left");
-    expect(decode({ since: "4.2.0", removeIn: "4.2.0", note: "Use something else." })._tag).toBe("Left");
-    expect(decode({ since: "4.2.0", removeIn: "4.1.0", note: "Use something else." })._tag).toBe("Left");
+    expect(decode({ since: "4.2.0", removeIn: "4.2.1", note: "Use something else." })._tag).toBe("Failure");
+    expect(decode({ since: "4.2.0", removeIn: "4.2.0", note: "Use something else." })._tag).toBe("Failure");
+    expect(decode({ since: "4.2.0", removeIn: "4.1.0", note: "Use something else." })._tag).toBe("Failure");
   });
 
   test("requires removeIn for notices older than the active 4.x line", () => {
-    expect(decode({ since: "3.21.0", note: "Use something else." })._tag).toBe("Left");
-    expect(decode({ since: "4.0.0", note: "Use something else." })._tag).toBe("Left");
-    expect(decode({ since: "4.2.0", note: "Use something else." })._tag).toBe("Right");
+    expect(decode({ since: "3.21.0", note: "Use something else." })._tag).toBe("Failure");
+    expect(decode({ since: "4.0.0", note: "Use something else." })._tag).toBe("Failure");
+    expect(decode({ since: "4.2.0", note: "Use something else." })._tag).toBe("Success");
   });
 
   test("publishes JSON Schema through the registry", () => {
+    expect(AST.resolveTitle(DeprecationNotice.ast)).toBe("Deprecation Notice");
+    expect(JSON.stringify(getJsonSchemaWithDeprecations(DeprecationNotice))).toContain("Deprecation Notice");
     expect(
-      Object.getOwnPropertySymbols(DeprecationNotice.ast.annotations).map(
-        (key) => DeprecationNotice.ast.annotations[key],
+      JSON.stringify(
+        (getJsonSchemaWithDeprecations(DeprecationNotice) as { definitions?: Record<string, unknown> })
+          .definitions,
       ),
-    ).toContain("Deprecation Notice");
-    expect(JSON.stringify(JSONSchema.make(DeprecationNotice))).toContain("Deprecation Notice");
-    expect(
-      JSON.stringify((JSONSchema.make(DeprecationNotice) as { $defs?: Record<string, unknown> }).$defs),
     ).not.toContain('"$ref"');
     const jsonSchema = getJsonSchema("DeprecationNotice") as Record<string, unknown>;
     expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
@@ -74,7 +85,7 @@ describe("DeprecationNotice", () => {
 
 describe("DeprecationUse", () => {
   test("decodes a runtime deprecation use with timestamp metadata", () => {
-    const decoded = Schema.decodeUnknownEither(DeprecationUse)({
+    const decoded = Schema.decodeUnknownResult(DeprecationUse)({
       kind: "command",
       id: "app:start",
       notice: {
@@ -88,17 +99,17 @@ describe("DeprecationUse", () => {
       timestamp: "2026-06-11T16:00:00.000Z",
     });
 
-    expect(decoded._tag).toBe("Right");
-    if (decoded._tag === "Right") {
-      expect(decoded.right.kind).toBe("command");
-      expect(decoded.right.id).toBe("app:start");
+    expect(decoded._tag).toBe("Success");
+    if (decoded._tag === "Success") {
+      expect(decoded.success.kind).toBe("command");
+      expect(decoded.success.id).toBe("app:start");
     }
   });
 
   test("rejects unknown deprecation surface kinds", () => {
-    const decoded = Schema.decodeUnknownEither(DeprecationSurfaceKind)("not-a-surface");
+    const decoded = Schema.decodeUnknownResult(DeprecationSurfaceKind)("not-a-surface");
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });
 
@@ -118,14 +129,14 @@ describe("DeprecationUsedEvent", () => {
       },
     };
 
-    const decoded = Schema.decodeUnknownEither(DeprecationUsedEvent)(payload);
-    const event = Schema.decodeUnknownEither(LandoEvent)(payload);
+    const decoded = Schema.decodeUnknownResult(DeprecationUsedEvent)(payload);
+    const event = Schema.decodeUnknownResult(LandoEvent)(payload);
 
-    expect(decoded._tag).toBe("Right");
-    expect(event._tag).toBe("Right");
-    if (decoded._tag === "Right") {
-      expect(decoded.right._tag).toBe("deprecation-used");
-      expect(decoded.right.use.id).toBe("app:start");
+    expect(decoded._tag).toBe("Success");
+    expect(event._tag).toBe("Success");
+    if (decoded._tag === "Success") {
+      expect(decoded.success._tag).toBe("deprecation-used");
+      expect(decoded.success.use.id).toBe("app:start");
     }
   });
 });
@@ -144,7 +155,7 @@ describe("schema deprecation annotations", () => {
     Schema.Struct({
       oldField: deprecateField(Schema.String, notice),
       newField: Schema.String,
-    }).annotations({
+    }).annotate({
       identifier: "ExampleDeprecatedSchema",
       title: "Example Deprecated Schema",
       description: "A schema used to prove schema-level deprecation propagation.",
@@ -153,7 +164,7 @@ describe("schema deprecation annotations", () => {
   );
 
   test("emits deprecated JSON Schema metadata for annotated schemas and fields", () => {
-    const jsonSchema = getJsonSchemaWithDeprecations(ExampleSchema) as {
+    const jsonSchema = rootJsonSchema(getJsonSchemaWithDeprecations(ExampleSchema)) as {
       readonly deprecated?: boolean;
       readonly "x-deprecation"?: unknown;
       readonly properties?: Record<
@@ -191,7 +202,7 @@ describe("schema deprecation annotations", () => {
 
   test("propagates nested optional field deprecations", () => {
     const jsonSchema = getJsonSchemaWithDeprecations(
-      Schema.Struct({ optionalOldField: Schema.optional(deprecateField(Schema.String, notice)) }),
+      Schema.Struct({ optionalOldField: Schema.optionalKey(deprecateField(Schema.String, notice)) }),
     ) as {
       readonly properties?: Record<
         string,
@@ -226,7 +237,9 @@ describe("schema deprecation annotations", () => {
 
   test("propagates optionalWith transformation field deprecations to JSON Schema and reference docs", () => {
     const OptionalWithSchema = Schema.Struct({
-      oldField: Schema.optionalWith(deprecateField(Schema.String, notice), { default: () => "legacy" }),
+      oldField: deprecateField(Schema.String, notice).pipe(
+        Schema.withDecodingDefaultKey(Effect.sync(() => "legacy")),
+      ),
       newField: Schema.String,
     });
     const jsonSchema = getJsonSchemaWithDeprecations(OptionalWithSchema) as {
@@ -246,10 +259,10 @@ describe("schema deprecation annotations", () => {
   });
 
   test("propagates union branch field deprecations to matching JSON Schema anyOf members", () => {
-    const UnionSchema = Schema.Union(
+    const UnionSchema = Schema.Union([
       Schema.Struct({ kind: Schema.Literal("old"), oldField: deprecateField(Schema.String, notice) }),
       Schema.Struct({ kind: Schema.Literal("new"), newField: Schema.String }),
-    );
+    ]);
     const jsonSchema = getJsonSchemaWithDeprecations(UnionSchema) as {
       readonly anyOf?: ReadonlyArray<{
         readonly properties?: Record<
@@ -268,13 +281,13 @@ describe("schema deprecation annotations", () => {
     const ReferencedChild = Schema.Struct({
       oldField: deprecateField(Schema.String, notice),
       newField: Schema.String,
-    }).annotations({ identifier: "ReferencedDeprecatedChild" });
-    const ReferencedParent = Schema.Struct({ child: ReferencedChild }).annotations({
+    }).annotate({ identifier: "ReferencedDeprecatedChild" });
+    const ReferencedParent = Schema.Struct({ child: ReferencedChild }).annotate({
       identifier: "ReferencedDeprecatedParent",
     });
     const jsonSchema = getJsonSchemaWithDeprecations(ReferencedParent) as {
       readonly $ref?: string;
-      readonly $defs?: Record<
+      readonly definitions?: Record<
         string,
         {
           readonly properties?: Record<
@@ -285,12 +298,14 @@ describe("schema deprecation annotations", () => {
       >;
     };
 
-    expect(jsonSchema.$ref).toBe("#/$defs/ReferencedDeprecatedParent");
-    expect(jsonSchema.$defs?.ReferencedDeprecatedChild?.properties?.oldField?.deprecated).toBe(true);
-    expect(jsonSchema.$defs?.ReferencedDeprecatedChild?.properties?.oldField?.["x-deprecation"]).toEqual(
-      notice,
-    );
-    expect(jsonSchema.$defs?.ReferencedDeprecatedChild?.properties?.newField?.deprecated).toBeUndefined();
+    expect(jsonSchema.$ref).toBe("#/definitions/ReferencedDeprecatedParent");
+    expect(jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.oldField?.deprecated).toBe(true);
+    expect(
+      jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.oldField?.["x-deprecation"],
+    ).toEqual(notice);
+    expect(
+      jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.newField?.deprecated,
+    ).toBeUndefined();
   });
 
   test("does not mark a union root deprecated when only one branch is deprecated", () => {
@@ -299,7 +314,7 @@ describe("schema deprecation annotations", () => {
       notice,
     );
     const CurrentBranch = Schema.Struct({ kind: Schema.Literal("new"), value: Schema.String });
-    const jsonSchema = getJsonSchemaWithDeprecations(Schema.Union(DeprecatedBranch, CurrentBranch)) as {
+    const jsonSchema = getJsonSchemaWithDeprecations(Schema.Union([DeprecatedBranch, CurrentBranch])) as {
       readonly deprecated?: boolean;
       readonly "x-deprecation"?: unknown;
       readonly anyOf?: ReadonlyArray<{ readonly deprecated?: boolean; readonly "x-deprecation"?: unknown }>;
@@ -313,7 +328,7 @@ describe("schema deprecation annotations", () => {
   });
 
   test("keeps whole-union deprecations on the union root", () => {
-    const UnionSchema = deprecateSchema(Schema.Union(Schema.String, Schema.Number), notice);
+    const UnionSchema = deprecateSchema(Schema.Union([Schema.String, Schema.Number]), notice);
     const jsonSchema = getJsonSchemaWithDeprecations(UnionSchema) as {
       readonly deprecated?: boolean;
       readonly "x-deprecation"?: unknown;
@@ -326,13 +341,13 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.anyOf?.[1]?.deprecated).toBeUndefined();
   });
 
-  test("propagates deprecations in nullish unions where Effect drops Undefined from JSON Schema", () => {
+  test("propagates deprecations in output nullish unions where Effect encodes Undefined as null", () => {
     const NullishUnionSchema = Schema.Struct({
-      nullishField: Schema.Union(
+      nullishField: Schema.Union([
         Schema.Struct({ kind: Schema.Literal("old"), oldField: deprecateField(Schema.String, notice) }),
         Schema.Struct({ kind: Schema.Literal("new"), newField: Schema.String }),
         Schema.Undefined,
-      ),
+      ]),
     });
     const jsonSchema = getJsonSchemaWithDeprecations(NullishUnionSchema) as {
       readonly properties?: Record<
@@ -348,7 +363,7 @@ describe("schema deprecation annotations", () => {
       >;
     };
 
-    expect(jsonSchema.properties?.nullishField?.anyOf).toHaveLength(2);
+    expect(jsonSchema.properties?.nullishField?.anyOf).toHaveLength(3);
     expect(jsonSchema.properties?.nullishField?.anyOf?.[0]?.properties?.oldField?.deprecated).toBe(true);
     expect(jsonSchema.properties?.nullishField?.anyOf?.[0]?.properties?.oldField?.["x-deprecation"]).toEqual(
       notice,
@@ -357,11 +372,11 @@ describe("schema deprecation annotations", () => {
   });
 
   test("propagates record value deprecations to emitted index-signature schemas", () => {
-    const StringRecord = Schema.Record({ key: Schema.String, value: deprecateField(Schema.String, notice) });
-    const PatternRecord = Schema.Record({
-      key: Schema.TemplateLiteral("x-", Schema.String),
-      value: deprecateField(Schema.String, notice),
-    });
+    const StringRecord = Schema.Record(Schema.String, deprecateField(Schema.String, notice));
+    const PatternRecord = Schema.Record(
+      Schema.TemplateLiteral(["x-", Schema.String]),
+      deprecateField(Schema.String, notice),
+    );
     const stringJsonSchema = getJsonSchemaWithDeprecations(StringRecord) as {
       readonly additionalProperties?: { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown };
     };
@@ -406,7 +421,7 @@ describe("schema deprecation annotations", () => {
   test("renders generated reference callouts for nested optional field deprecations", () => {
     const markdown = renderSchemaReferenceMarkdown(
       "ExampleOptionalDeprecatedSchema",
-      Schema.Struct({ optionalOldField: Schema.optional(deprecateField(Schema.String, notice)) }),
+      Schema.Struct({ optionalOldField: Schema.optionalKey(deprecateField(Schema.String, notice)) }),
     );
 
     expect(markdown).toContain(
@@ -415,12 +430,8 @@ describe("schema deprecation annotations", () => {
   });
 
   test("adds hover documentation where schema annotations support it", () => {
-    const docs = Object.getOwnPropertySymbols(ExampleSchema.ast.annotations).map(
-      (key) => ExampleSchema.ast.annotations[key],
-    );
+    const docs = AST.resolve(ExampleSchema.ast)?.documentation;
 
-    expect(docs).toContain(
-      "Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.",
-    );
+    expect(docs).toBe("Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.");
   });
 });

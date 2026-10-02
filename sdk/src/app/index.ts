@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 // `@lando/sdk/app` — stable App-handle contract surface for embedding hosts.
 //
 // These are the canonical, semver-stable contracts an embedding host consumes
@@ -8,7 +9,7 @@
 // they are handed; they do not structurally implement the interface, which keeps
 // future method additions non-breaking inside the 4.x line.
 
-import type { Effect, ParseResult, Scope, Stream } from "effect";
+import type { Effect, Scope, Stream } from "effect";
 
 import type {
   AppIdReservedError,
@@ -514,7 +515,7 @@ export type ShareAppError =
   | TunnelProviderUnavailableError
   | AppResolveError
   | StateStoreError
-  | ParseResult.ParseError;
+  | Schema.SchemaError;
 
 export type RemoteSyncError =
   | AppIdReservedError

@@ -1,3 +1,4 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
 import { ParseResult } from "effect";
 
@@ -84,13 +85,13 @@ describe("parseComposeByteSize", () => {
       try {
         parseComposeByteSize(literal);
       } catch (error) {
-        if (error instanceof ParseResult.Type) failure = error;
+        if (error instanceof SchemaIssue.InvalidValue) failure = error;
         else throw error;
       }
 
       // Then
-      expect(failure).toBeInstanceOf(ParseResult.Type);
-      if (!(failure instanceof ParseResult.Type)) return;
+      expect(failure).toBeInstanceOf(SchemaIssue.InvalidValue);
+      if (!(failure instanceof SchemaIssue.InvalidValue)) return;
       const message = failure.message;
       expect(message).toBeDefined();
       if (message === undefined) return;

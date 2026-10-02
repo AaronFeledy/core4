@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import {
   expressionInterpolationsTouchOnlyScopes,
@@ -12,8 +12,8 @@ const allowed = ["app", "proxy"] as const;
 
 const parse = (source: string) => {
   const parsed = parseExpressionEither(source, { filePath });
-  if (Either.isLeft(parsed)) throw parsed.left;
-  return parsed.right;
+  if (Result.isFailure(parsed)) throw parsed.failure;
+  return parsed.success;
 };
 
 describe("expressionTouchesOnlyScopes", () => {

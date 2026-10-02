@@ -1,10 +1,10 @@
 import { Schema } from "effect";
 
 export class RouteInputError extends Schema.TaggedError<RouteInputError>()("RouteInputError", {
-  message: Schema.String.annotations({ description: "Human-readable route input failure." }),
-  key: Schema.String.annotations({ description: "Authored route key path, including its array index." }),
-  file: Schema.optional(Schema.String).annotations({ description: "File containing the authored route." }),
-  remediation: Schema.String.annotations({ description: "Action required to correct the route input." }),
+  message: Schema.String.annotate({ description: "Human-readable route input failure." }),
+  key: Schema.String.annotate({ description: "Authored route key path, including its array index." }),
+  file: Schema.optional(Schema.String).annotate({ description: "File containing the authored route." }),
+  remediation: Schema.String.annotate({ description: "Action required to correct the route input." }),
 }) {}
 
 export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFoundError>()(
@@ -51,7 +51,7 @@ export class LandofileFormConflictError extends Schema.TaggedError<LandofileForm
   "LandofileFormConflictError",
   {
     message: Schema.String,
-    layer: Schema.Literal("base", "dist", "upstream", "canonical", "local", "user"),
+    layer: Schema.Literals(["base", "dist", "upstream", "canonical", "local", "user"]),
     yamlPath: Schema.String,
     typescriptPath: Schema.String,
     remediation: Schema.String,
@@ -96,35 +96,35 @@ export class LandofileExpressionEvalError extends Schema.TaggedError<LandofileEx
 export class LandofileLoadOutsideRootError extends Schema.TaggedError<LandofileLoadOutsideRootError>()(
   "LandofileLoadOutsideRootError",
   {
-    message: Schema.String.annotations({ description: "Human-readable outside-root failure message." }),
-    sourcePath: Schema.String.annotations({
+    message: Schema.String.annotate({ description: "Human-readable outside-root failure message." }),
+    sourcePath: Schema.String.annotate({
       description: "Landofile or fragment containing the expression.",
     }),
-    authoredPath: Schema.String.annotations({ description: "File path as authored in the expression." }),
-    resolvedPath: Schema.optional(Schema.String).annotations({ description: "Resolved absolute file path." }),
-    appRoot: Schema.String.annotations({ description: "App root that bounds local Landofile reads." }),
-    remediation: Schema.String.annotations({ description: "Action required to permit or contain the read." }),
+    authoredPath: Schema.String.annotate({ description: "File path as authored in the expression." }),
+    resolvedPath: Schema.optional(Schema.String).annotate({ description: "Resolved absolute file path." }),
+    appRoot: Schema.String.annotate({ description: "App root that bounds local Landofile reads." }),
+    remediation: Schema.String.annotate({ description: "Action required to permit or contain the read." }),
   },
 ) {}
 
 export class LandofileLoadLimitError extends Schema.TaggedError<LandofileLoadLimitError>()(
   "LandofileLoadLimitError",
   {
-    message: Schema.String.annotations({
+    message: Schema.String.annotate({
       description: "Human-readable Landofile load-limit failure message.",
     }),
-    kind: Schema.Literal("file-bytes", "files-per-expression", "recursion-depth").annotations({
+    kind: Schema.Literals(["file-bytes", "files-per-expression", "recursion-depth"]).annotate({
       description: "Configured load limit that was exceeded.",
     }),
-    limit: Schema.Number.annotations({ description: "Configured maximum value." }),
-    observed: Schema.Number.annotations({ description: "Observed value that exceeded the maximum." }),
-    sourcePath: Schema.String.annotations({
+    limit: Schema.Number.annotate({ description: "Configured maximum value." }),
+    observed: Schema.Number.annotate({ description: "Observed value that exceeded the maximum." }),
+    sourcePath: Schema.String.annotate({
       description: "Landofile or fragment containing the expression.",
     }),
-    authoredPath: Schema.optional(Schema.String).annotations({
+    authoredPath: Schema.optional(Schema.String).annotate({
       description: "File path as authored, when applicable.",
     }),
-    remediation: Schema.String.annotations({
+    remediation: Schema.String.annotate({
       description: "Global config adjustment or expression change required.",
     }),
   },
@@ -133,17 +133,17 @@ export class LandofileLoadLimitError extends Schema.TaggedError<LandofileLoadLim
 export class LandofileImportRefMisuseError extends Schema.TaggedError<LandofileImportRefMisuseError>()(
   "LandofileImportRefMisuseError",
   {
-    message: Schema.String.annotations({
+    message: Schema.String.annotate({
       description: "Human-readable ImportRef placement failure message.",
     }),
-    sourcePath: Schema.String.annotations({
+    sourcePath: Schema.String.annotate({
       description: "Landofile or fragment containing the expression.",
     }),
-    configPath: Schema.String.annotations({ description: "Configuration path that rejected the ImportRef." }),
-    acceptingPath: Schema.String.annotations({
+    configPath: Schema.String.annotate({ description: "Configuration path that rejected the ImportRef." }),
+    acceptingPath: Schema.String.annotate({
       description: "Nearest configuration path that accepts ImportRef values.",
     }),
-    remediation: Schema.String.annotations({
+    remediation: Schema.String.annotate({
       description: "Action required to use load or move the import.",
     }),
   },
@@ -185,14 +185,7 @@ const versionConstraintProvenance = (
     order: Schema.Literal(order),
   });
 
-const VersionConstraintProvenance = Schema.Union(
-  versionConstraintProvenance("base", 0),
-  versionConstraintProvenance("dist", 1),
-  versionConstraintProvenance("upstream", 2),
-  versionConstraintProvenance("canonical", 3),
-  versionConstraintProvenance("local", 4),
-  versionConstraintProvenance("user", 5),
-);
+const VersionConstraintProvenance = Schema.Union([versionConstraintProvenance("base", 0), versionConstraintProvenance("dist", 1), versionConstraintProvenance("upstream", 2), versionConstraintProvenance("canonical", 3), versionConstraintProvenance("local", 4), versionConstraintProvenance("user", 5)]);
 
 /**
  * The running Lando core version does not satisfy the top-level
@@ -275,16 +268,7 @@ export class LandofileIncludeError extends Schema.TaggedError<LandofileIncludeEr
   {
     message: Schema.String,
     source: Schema.String,
-    kind: Schema.Literal(
-      "source-unresolved",
-      "fetch-failed",
-      "parse-failed",
-      "forbidden-field",
-      "outside-root",
-      "cycle",
-      "max-depth",
-      "subpath-invalid",
-    ),
+    kind: Schema.Literals(["source-unresolved", "fetch-failed", "parse-failed", "forbidden-field", "outside-root", "cycle", "max-depth", "subpath-invalid"]),
     remediation: Schema.String,
   },
 ) {}

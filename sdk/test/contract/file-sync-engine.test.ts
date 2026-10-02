@@ -72,7 +72,7 @@ describe("FileSyncEngine contract", () => {
     expect(Effect.isEffect(TestFileSyncEngine.flushSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.terminateSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.listSessions({}))).toBe(true);
-    expect(Stream.StreamTypeId in Object(TestFileSyncEngine.streamEvents(FileSyncSessionRef.make("x")))).toBe(
+    expect(Stream.TypeId in Object(TestFileSyncEngine.streamEvents(FileSyncSessionRef.make("x")))).toBe(
       true,
     );
   });

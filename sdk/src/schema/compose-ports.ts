@@ -1,48 +1,47 @@
-import { Either, ParseResult, Schema } from "effect";
+import { SchemaIssue, SchemaTransformation } from "effect";
+import { Effect } from "effect";
+import { Result, Schema } from "effect";
 
 import { BindAddress } from "./endpoint.ts";
 import { PortNumber } from "./primitives.ts";
 
-const PortProtocol = Schema.Literal("tcp", "udp");
-const Forbidden = Schema.optional(Schema.Never);
+const PortProtocol = Schema.Literals(["tcp", "udp"]);
+const Forbidden = Schema.optionalKey(Schema.Never);
 const DecimalPortToken = /^[0-9]{1,5}$/;
 
 export const ComposePortEntry = Schema.Struct({
   target: PortNumber,
-  published: Schema.optional(PortNumber),
-  hostIp: Schema.optional(BindAddress),
+  published: Schema.optionalKey(PortNumber),
+  hostIp: Schema.optionalKey(BindAddress),
   protocol: PortProtocol,
-  name: Schema.optional(Schema.String),
-  appProtocol: Schema.optional(Schema.String),
+  name: Schema.optionalKey(Schema.String),
+  appProtocol: Schema.optionalKey(Schema.String),
 });
 export type ComposePortEntry = typeof ComposePortEntry.Type;
 
 const ComposePortLongInput = Schema.Struct({
   target: PortNumber,
-  published: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  host_ip: Schema.optional(BindAddress),
-  protocol: Schema.optional(PortProtocol),
-  name: Schema.optional(Schema.String),
-  app_protocol: Schema.optional(Schema.String),
+  published: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
+  host_ip: Schema.optionalKey(BindAddress),
+  protocol: Schema.optionalKey(PortProtocol),
+  name: Schema.optionalKey(Schema.String),
+  app_protocol: Schema.optionalKey(Schema.String),
   hostIp: Forbidden,
   appProtocol: Forbidden,
-  mode: Schema.optional(Schema.Never).annotations({ description: "Compose ports.mode is unsupported." }),
+  mode: Schema.optionalKey(Schema.Never).annotate({ description: "Compose ports.mode is unsupported." }),
 });
 
-const ComposePortCanonicalInput = Schema.extend(
-  ComposePortEntry,
-  Schema.Struct({
+const ComposePortCanonicalInput = ComposePortEntry.pipe(Schema.fieldsAssign({
     host_ip: Forbidden,
     app_protocol: Forbidden,
-    mode: Schema.optional(Schema.Never).annotations({ description: "Compose ports.mode is unsupported." }),
-  }),
-);
+    mode: Schema.optionalKey(Schema.Never).annotate({ description: "Compose ports.mode is unsupported." }),
+  }));
 
 const decodePort = (value: string | number): PortNumber | undefined => {
   if (typeof value === "string" && !DecimalPortToken.test(value)) return undefined;
   const numeric = typeof value === "number" ? value : Number(value);
-  const decoded = Schema.decodeUnknownEither(PortNumber)(numeric);
-  return Either.isRight(decoded) ? decoded.right : undefined;
+  const decoded = Schema.decodeUnknownResult(PortNumber)(numeric);
+  return Result.isSuccess(decoded) ? decoded.success : undefined;
 };
 
 const decodePortRange = (value: string): ReadonlyArray<PortNumber> | undefined => {
@@ -65,23 +64,23 @@ const decodeHostIp = (value: string): BindAddress | undefined => {
   const bracketed = value.startsWith("[") && value.endsWith("]");
   if (value.includes(":") && !bracketed) return undefined;
   const candidate = bracketed ? value.slice(1, -1) : value;
-  const decoded = Schema.decodeUnknownEither(BindAddress)(candidate);
-  return Either.isRight(decoded) ? decoded.right : undefined;
+  const decoded = Schema.decodeUnknownResult(BindAddress)(candidate);
+  return Result.isSuccess(decoded) ? decoded.success : undefined;
 };
 
-const parseShortPort = (value: string): Either.Either<ReadonlyArray<ComposePortEntry>, string> => {
+const parseShortPort = (value: string): Result.Result<ReadonlyArray<ComposePortEntry>, string> => {
   const protocolSeparator = value.lastIndexOf("/");
   const protocolText = protocolSeparator < 0 ? "tcp" : value.slice(protocolSeparator + 1);
   if (protocolText !== "tcp" && protocolText !== "udp") {
-    return Either.left(`Unsupported port protocol "${protocolText}"; expected tcp or udp.`);
+    return Result.fail(`Unsupported port protocol "${protocolText}"; expected tcp or udp.`);
   }
   const body = protocolSeparator < 0 ? value : value.slice(0, protocolSeparator);
   const targetSeparator = body.lastIndexOf(":");
   const targetText = targetSeparator < 0 ? body : body.slice(targetSeparator + 1);
   const targets = decodePortRange(targetText);
-  if (targets === undefined) return Either.left(`Invalid container port or range "${targetText}".`);
+  if (targets === undefined) return Result.fail(`Invalid container port or range "${targetText}".`);
   if (targetSeparator < 0) {
-    return Either.right(targets.map((target) => ({ target, protocol: protocolText })));
+    return Result.succeed(targets.map((target) => ({ target, protocol: protocolText })));
   }
 
   const host = body.slice(0, targetSeparator);
@@ -90,10 +89,10 @@ const parseShortPort = (value: string): Either.Either<ReadonlyArray<ComposePortE
   const publishedText = hostSeparator < 0 ? host : host.slice(hostSeparator + 1);
   const hostIp = hostIpText === undefined || hostIpText === "" ? undefined : decodeHostIp(hostIpText);
   if (hostIpText !== undefined && hostIpText !== "" && hostIp === undefined) {
-    return Either.left(`Invalid host IP address "${hostIpText}".`);
+    return Result.fail(`Invalid host IP address "${hostIpText}".`);
   }
   if (publishedText === "") {
-    return Either.right(
+    return Result.succeed(
       targets.map((target) => ({
         target,
         ...(hostIp === undefined ? {} : { hostIp }),
@@ -103,48 +102,40 @@ const parseShortPort = (value: string): Either.Either<ReadonlyArray<ComposePortE
   }
 
   const published = decodePortRange(publishedText);
-  if (published === undefined) return Either.left(`Invalid published port or range "${publishedText}".`);
+  if (published === undefined) return Result.fail(`Invalid published port or range "${publishedText}".`);
   const hostIsRange = publishedText.includes("-");
   const targetIsRange = targetText.includes("-");
   if (hostIsRange && !targetIsRange) {
-    return Either.left(
+    return Result.fail(
       "A host port range cannot map to one target; enumerate individual host-port mappings.",
     );
   }
   if (published.length !== targets.length) {
-    return Either.left("Published and target port range lengths differ; use equal-length ranges.");
+    return Result.fail("Published and target port range lengths differ; use equal-length ranges.");
   }
-  return Either.right(
-    targets.map((target, index) => ({
+  return Result.succeed(
+    targets.map((target, index) => {
+      const publishedPort = published[index];
+      return {
       target,
-      published: published[index],
+      ...(publishedPort === undefined ? {} : { published: publishedPort }),
       ...(hostIp === undefined ? {} : { hostIp }),
       protocol: protocolText,
-    })),
+    }; }),
   );
 };
 
-const ComposePortInput = Schema.Union(
-  Schema.String,
-  Schema.Number,
-  ComposePortLongInput,
-  ComposePortCanonicalInput,
-);
+const ComposePortInput = Schema.Union([Schema.String, Schema.Number, ComposePortLongInput, ComposePortCanonicalInput]);
 
-export const ComposePortsField = Schema.transformOrFail(
-  Schema.Array(ComposePortInput),
-  Schema.Array(ComposePortEntry),
-  {
-    strict: true,
-    decode: (input, _options, ast) => {
+export const ComposePortsField = Schema.Array(ComposePortInput).pipe(Schema.decodeTo(Schema.Array(ComposePortEntry), SchemaTransformation.transformEffect<ReadonlyArray<typeof ComposePortEntry.Encoded>, ReadonlyArray<typeof ComposePortInput.Type>>({ decode: (input, _options) => {
       const entries: Array<ComposePortEntry> = [];
       for (const [index, entry] of input.entries()) {
         const fail = (actual: unknown, message: string) =>
-          ParseResult.fail(new ParseResult.Pointer(index, input, new ParseResult.Type(ast, actual, message)));
+          Effect.fail(new SchemaIssue.Pointer([index], new SchemaIssue.InvalidValue({ message: message }, actual)));
         if (typeof entry === "string") {
           const parsed = parseShortPort(entry);
-          if (Either.isLeft(parsed)) return fail(entry, parsed.left);
-          entries.push(...parsed.right);
+          if (Result.isFailure(parsed)) return fail(entry, parsed.failure);
+          entries.push(...parsed.success);
           continue;
         }
         if (typeof entry === "number") {
@@ -171,10 +162,9 @@ export const ComposePortsField = Schema.transformOrFail(
           ...(appProtocol === undefined ? {} : { appProtocol }),
         });
       }
-      return ParseResult.succeed(entries);
-    },
-    encode: (entries) =>
-      ParseResult.succeed(
+      return Effect.succeed(entries);
+     }, encode: (entries: ReadonlyArray<typeof ComposePortEntry.Encoded>) =>
+      Effect.succeed(
         entries.map((entry) => ({
           target: entry.target,
           ...(entry.published === undefined ? {} : { published: entry.published }),
@@ -183,32 +173,21 @@ export const ComposePortsField = Schema.transformOrFail(
           ...(entry.name === undefined ? {} : { name: entry.name }),
           ...(entry.appProtocol === undefined ? {} : { app_protocol: entry.appProtocol }),
         })),
-      ),
-  },
-);
+      ) })));
 
-export const ComposeExposeField = Schema.transformOrFail(
-  Schema.Array(Schema.Union(Schema.String, Schema.Number)),
-  Schema.Array(PortNumber),
-  {
-    strict: true,
-    decode: (input, _options, ast) => {
+export const ComposeExposeField = Schema.Array(Schema.Union([Schema.String, Schema.Number])).pipe(Schema.decodeTo(Schema.Array(PortNumber), SchemaTransformation.transformEffect<ReadonlyArray<typeof PortNumber.Encoded>, ReadonlyArray<string | number>>({ decode: (input, _options) => {
       const ports: Array<PortNumber> = [];
       for (const [index, entry] of input.entries()) {
         const decoded = typeof entry === "number" ? decodePort(entry) : decodePortRange(entry);
         if (decoded === undefined) {
-          return ParseResult.fail(
-            new ParseResult.Pointer(
-              index,
-              input,
-              new ParseResult.Type(ast, entry, "Expected a container port or ascending port range."),
+          return Effect.fail(
+            new SchemaIssue.Pointer(
+              [index],
+              new SchemaIssue.InvalidValue({ message: "Expected a container port or ascending port range." }, entry),
             ),
           );
         }
         ports.push(...(typeof decoded === "number" ? [decoded] : decoded));
       }
-      return ParseResult.succeed(ports);
-    },
-    encode: (ports) => ParseResult.succeed(ports),
-  },
-);
+      return Effect.succeed(ports);
+     }, encode: (ports) => Effect.succeed(ports) })));

@@ -1,5 +1,6 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
@@ -201,7 +202,7 @@ describe("Compose service runtime knobs", () => {
     "Given invalid %s, when decoded, then ParseError reports its issue path",
     (key, invalid) => {
       // Given / When
-      const result = Schema.decodeUnknownEither(ServiceConfig)(
+      const result = Schema.decodeUnknownResult(ServiceConfig)(
         { [key]: invalid },
         {
           onExcessProperty: "error",
@@ -209,9 +210,9 @@ describe("Compose service runtime knobs", () => {
       );
 
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
         expect(issues.some((issue) => issue.path[0] === key)).toBe(true);
       }
     },
@@ -224,13 +225,13 @@ describe("Compose service runtime knobs", () => {
       const input = { [key]: Object.fromEntries([["__proto__", "polluted"]]) };
 
       // When
-      const defaultResult = Schema.decodeUnknownEither(ServiceConfig)(input);
-      const strictResult = Schema.decodeUnknownEither(ServiceConfig)(input, { onExcessProperty: "error" });
+      const defaultResult = Schema.decodeUnknownResult(ServiceConfig)(input);
+      const strictResult = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
 
       // Then
       for (const result of [defaultResult, strictResult]) {
-        expect(Either.isLeft(result)).toBe(true);
-        if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
+        expect(Result.isFailure(result)).toBe(true);
+        if (Result.isFailure(result)) expect(String(result.failure)).toContain("__proto__");
       }
     },
   );
@@ -245,12 +246,12 @@ describe("Compose service runtime knobs", () => {
       const input = { [key]: ["\u001b]2;CONTROL-INJECTED\u0007"] };
 
       // When
-      const result = Schema.decodeUnknownEither(ServiceConfig)(input);
+      const result = Schema.decodeUnknownResult(ServiceConfig)(input);
 
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        const failure = String(result.left);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        const failure = String(result.failure);
         expect(failure).toContain(remediation);
         expect(failure).not.toContain("\u001b");
         expect(failure).not.toContain("\u0007");
@@ -277,16 +278,16 @@ describe("Compose service runtime knobs", () => {
     };
 
     // When
-    const defaultResult = Schema.decodeUnknownEither(ServiceConfig)(input);
-    const strictResult = Schema.decodeUnknownEither(ServiceConfig)(input, { onExcessProperty: "error" });
+    const defaultResult = Schema.decodeUnknownResult(ServiceConfig)(input);
+    const strictResult = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isRight(defaultResult)).toBe(true);
-    if (Either.isRight(defaultResult)) {
-      expect(defaultResult.right.deploy).toEqual({
+    expect(Result.isSuccess(defaultResult)).toBe(true);
+    if (Result.isSuccess(defaultResult)) {
+      expect(defaultResult.success.deploy).toEqual({
         resources: { limits: { memory: 1_048_576 } },
       });
     }
-    expect(Either.isLeft(strictResult)).toBe(true);
+    expect(Result.isFailure(strictResult)).toBe(true);
   });
 });

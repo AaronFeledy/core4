@@ -1,5 +1,6 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { ParseResult } from "effect";
+import {  } from "effect";
 
 import { parseComposeDuration } from "../../src/schema/compose-duration.ts";
 
@@ -54,13 +55,13 @@ describe("parseComposeDuration", () => {
       try {
         parseComposeDuration(literal);
       } catch (error) {
-        if (error instanceof ParseResult.Type) failure = error;
+        if (error instanceof SchemaIssue.InvalidValue) failure = error;
         else throw error;
       }
 
       // Then
-      expect(failure).toBeInstanceOf(ParseResult.Type);
-      if (!(failure instanceof ParseResult.Type)) return;
+      expect(failure).toBeInstanceOf(SchemaIssue.InvalidValue);
+      if (!(failure instanceof SchemaIssue.InvalidValue)) return;
       const message = failure.message;
       expect(message).toBeDefined();
       if (message === undefined) return;
@@ -73,11 +74,11 @@ describe("parseComposeDuration", () => {
     const literal = `attacker-${"x".repeat(4_096)}`;
 
     // When
-    let failure: ParseResult.Type | undefined;
+    let failure: SchemaIssue.InvalidValue | undefined;
     try {
       parseComposeDuration(literal);
     } catch (error) {
-      if (error instanceof ParseResult.Type) failure = error;
+      if (error instanceof SchemaIssue.InvalidValue) failure = error;
       else throw error;
     }
 
@@ -93,6 +94,6 @@ describe("parseComposeDuration", () => {
     const literal = "9".repeat(64_000);
 
     // When / Then
-    expect(() => parseComposeDuration(literal)).toThrow(ParseResult.Type);
+    expect(() => parseComposeDuration(literal)).toThrow(SchemaIssue.InvalidValue);
   });
 });

@@ -1,4 +1,4 @@
-import { type Context, Effect, Either, Fiber } from "effect";
+import { type Context, Effect, Result, Fiber } from "effect";
 
 import type { ManagedFileError } from "../errors/index.ts";
 import type {
@@ -35,7 +35,7 @@ const MANAGED_FILE_CONTRACT_OWNER = "contract";
  */
 export interface ManagedFileContractHarness {
   readonly name?: string;
-  readonly service: Context.Tag.Service<typeof ManagedFileService>;
+  readonly service: Context.Service.Shape<typeof ManagedFileService>;
   readonly base: AbsolutePath;
   readonly read: (path: PortablePath) => Effect.Effect<string | null>;
   readonly seed: (path: PortablePath, content: string) => Effect.Effect<void>;
@@ -158,9 +158,9 @@ export const runManagedFileContract = (
 
     // 5. a path escaping the base is rejected with reason "path".
     const escapeFile = managedContractTextFile("../escape.txt", "nope\n");
-    const escapeResult = yield* Effect.either(apply([escapeFile]));
+    const escapeResult = yield* Effect.result(apply([escapeFile]));
     yield* requireManagedFileContract(
-      Either.isLeft(escapeResult) && escapeResult.left.reason === "path",
+      Result.isFailure(escapeResult) && escapeResult.failure.reason === "path",
       "a path escaping the base is rejected with reason path",
       escapeResult,
     );
@@ -304,7 +304,7 @@ export const runManagedFileContract = (
     yield* apply([atomicBeta]).pipe(Effect.mapError(failWith("apply updates the atomic fixture")));
     const beforeInterrupt = yield* harness.read("atomic.txt" as PortablePath);
     const atomicGamma = managedContractTextFile("atomic.txt", "gamma\n");
-    const fiber = yield* Effect.fork(apply([atomicGamma]));
+    const fiber = yield* Effect.forkChild(apply([atomicGamma]));
     yield* Fiber.interrupt(fiber);
     const afterInterrupt = yield* harness.read("atomic.txt" as PortablePath);
     const interruptedFileIsTorn =

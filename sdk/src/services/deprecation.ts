@@ -15,7 +15,7 @@ export type DeprecatedCallable<
   readonly deprecation: DeprecationNotice;
 };
 
-const nowUtc = () => DateTime.unsafeNow();
+const nowUtc = () => DateTime.nowUnsafe();
 
 export function markDeprecated<
   Args extends ReadonlyArray<unknown>,
@@ -49,7 +49,7 @@ export function markDeprecated<
           ? Effect.void
           : deprecations.value.use({ kind: "export", id, notice, timestamp: nowUtc() }),
       ),
-      Effect.zipRight(result),
+      Effect.andThen(result),
     );
 
     return recorded as DeprecatedEffectReturn<Return>;
@@ -65,9 +65,7 @@ export interface DeprecationSummaryEntry extends DeprecationUse {
 
 export type DeprecationRegistrySource = "core" | "plugin" | "schema-walk";
 
-export class DeprecationService extends Context.Tag("@lando/core/DeprecationService")<
-  DeprecationService,
-  {
+export class DeprecationService extends Context.Service<DeprecationService, {
     readonly use: (use: DeprecationUse) => Effect.Effect<void, DeprecatedSurfaceError>;
     readonly summary: () => Effect.Effect<ReadonlyArray<DeprecationSummaryEntry>>;
     readonly lookup: (
@@ -87,5 +85,4 @@ export class DeprecationService extends Context.Tag("@lando/core/DeprecationServ
       aliasId: string,
       aliasNotice?: DeprecationNotice,
     ) => Effect.Effect<void, DeprecationContradictionError>;
-  }
->() {}
+  }>()("@lando/core/DeprecationService") {}

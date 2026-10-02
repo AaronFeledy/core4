@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 
@@ -23,7 +23,7 @@ describe("FileSyncStartError", () => {
   });
 
   test("decodes through schema preserving every documented field", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncStartError)({
+    const decoded = Schema.decodeUnknownResult(FileSyncStartError)({
       _tag: "FileSyncStartError",
       engineId: "mutagen",
       message: "binary missing",
@@ -31,10 +31,10 @@ describe("FileSyncStartError", () => {
       remediation: "Run lando setup",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.engineId).toBe("mutagen");
-      expect(decoded.right.sessionSpec).toEqual({
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.engineId).toBe("mutagen");
+      expect(decoded.success.sessionSpec).toEqual({
         app: "myapp",
         service: "web",
         mountKey: "app-root",
@@ -76,7 +76,7 @@ describe("FileSyncDriftError", () => {
   });
 
   test("decodes through schema preserving sessionRef and conflictedPaths", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncDriftError)({
+    const decoded = Schema.decodeUnknownResult(FileSyncDriftError)({
       _tag: "FileSyncDriftError",
       engineId: "mutagen",
       message: "drift detected",
@@ -84,11 +84,11 @@ describe("FileSyncDriftError", () => {
       conflictedPaths: ["a", "b"],
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.sessionRef).toBe("session-xyz");
-      expect(decoded.right.conflictedPaths).toEqual(["a", "b"]);
-      expect(decoded.right.suggestedMode).toBeUndefined();
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.sessionRef).toBe("session-xyz");
+      expect(decoded.success.conflictedPaths).toEqual(["a", "b"]);
+      expect(decoded.success.suggestedMode).toBeUndefined();
     }
   });
 
@@ -123,17 +123,17 @@ describe("FileSyncStopError", () => {
   });
 
   test("decodes through schema preserving sessionRef", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncStopError)({
+    const decoded = Schema.decodeUnknownResult(FileSyncStopError)({
       _tag: "FileSyncStopError",
       engineId: "mutagen",
       sessionRef: "session-xyz",
       message: "terminate failed",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.sessionRef).toBe("session-xyz");
-      expect(decoded.right.remediation).toBeUndefined();
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.sessionRef).toBe("session-xyz");
+      expect(decoded.success.remediation).toBeUndefined();
     }
   });
 });

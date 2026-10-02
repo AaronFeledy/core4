@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { Schema } from "effect";
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
@@ -15,30 +16,23 @@ const encodedMapByteLength = (value: Readonly<Record<string, string>>): number =
 
 const APP_ENVIRONMENT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const AppEnvironmentValue = Schema.String.pipe(
-  Schema.filter((value) => encodedByteLength(value) <= 32 * 1024, {
-    message: () => "Global app environment values must not exceed 32 KiB of UTF-8 text",
-  }),
+  Schema.check(Schema.makeFilter((value) => encodedByteLength(value) <= 32 * 1024, {
+    message: "Global app environment values must not exceed 32 KiB of UTF-8 text",
+  })),
 );
 
-export const AppEnvironmentDefaults = Schema.Record({
-  key: Schema.String,
-  value: AppEnvironmentValue,
-}).pipe(
-  Schema.filter(
-    (value) => {
+export const AppEnvironmentDefaults = Schema.Record(Schema.String, AppEnvironmentValue).pipe(
+  Schema.check(Schema.makeFilter((value) => {
       const keys = Object.keys(value);
       return (
         keys.length <= 256 &&
         keys.every((key) => APP_ENVIRONMENT_KEY.test(key) && !isCoreServiceEnvKey(key)) &&
         encodedMapByteLength(value) <= 1024 * 1024
       );
-    },
-    {
-      message: () =>
-        "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
-    },
-  ),
-  Schema.annotations({
+    }, {
+      message: "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
+    })),
+  Schema.annotate({
     identifier: "AppEnvironmentDefaults",
     title: "Global App Environment Defaults",
     description: "Bounded environment defaults applied only to user-app services.",
@@ -54,23 +48,19 @@ const validAppLabelKey = (key: string): boolean => {
   );
 };
 const AppLabelValue = Schema.String.pipe(
-  Schema.filter((value) => encodedByteLength(value) <= 4 * 1024, {
-    message: () => "Global app label values must not exceed 4 KiB of UTF-8 text",
-  }),
+  Schema.check(Schema.makeFilter((value) => encodedByteLength(value) <= 4 * 1024, {
+    message: "Global app label values must not exceed 4 KiB of UTF-8 text",
+  })),
 );
 
-export const AppLabelDefaults = Schema.Record({ key: Schema.String, value: AppLabelValue }).pipe(
-  Schema.filter(
-    (value) => {
+export const AppLabelDefaults = Schema.Record(Schema.String, AppLabelValue).pipe(
+  Schema.check(Schema.makeFilter((value) => {
       const keys = Object.keys(value);
       return keys.length <= 256 && keys.every(validAppLabelKey) && encodedMapByteLength(value) <= 256 * 1024;
-    },
-    {
-      message: () =>
-        "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
-    },
-  ),
-  Schema.annotations({
+    }, {
+      message: "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
+    })),
+  Schema.annotate({
     identifier: "AppLabelDefaults",
     title: "Global App Label Defaults",
     description: "Bounded container-label defaults applied only to user-app services.",
@@ -84,20 +74,20 @@ export type AppLabelDefaults = typeof AppLabelDefaults.Type;
  * schema default for their host decision; they stay opt-in at runtime creation.
  */
 export const TelemetryConfig = Schema.Struct({
-  enabled: Schema.optionalWith(Schema.Boolean, { default: () => true }),
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
 });
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
 export const NetworkProxyConfig = Schema.Struct({
-  http: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
-  https: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
-  noProxy: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+  http: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  https: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  noProxy: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   /**
    * When true, write the resolved proxy env (`HTTP_PROXY` / `HTTPS_PROXY` /
    * `NO_PROXY`) into `type: lando` service env layers. Default false — proxy
    * URLs may embed credentials. Per-service override: `security.inheritNetworkProxy`.
    */
-  injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+  injectIntoServices: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
     description:
       "When true, write resolved HTTP(S)_PROXY / NO_PROXY into type: lando services (default false).",
   }),
@@ -105,8 +95,8 @@ export const NetworkProxyConfig = Schema.Struct({
 export type NetworkProxyConfig = typeof NetworkProxyConfig.Type;
 
 export const NetworkCaConfig = Schema.Struct({
-  trustHost: Schema.optionalWith(Schema.Boolean, { default: () => true }),
-  certs: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+  trustHost: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  certs: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   /**
    * When true (default), install `network.ca.certs` into every `type: lando`
    * service trust store and runtime CA env (`NODE_EXTRA_CA_CERTS`, etc.) so
@@ -114,48 +104,48 @@ export const NetworkCaConfig = Schema.Struct({
    * per-project Dockerfiles or Landofile edits. Per-service override:
    * `security.inheritNetworkCa`.
    */
-  injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
+  injectIntoServices: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))).annotate({
     description: "When true (default), install network.ca.certs into type: lando service trust stores.",
   }),
 });
 export type NetworkCaConfig = typeof NetworkCaConfig.Type;
 
 export const NetworkConfig = Schema.Struct({
-  proxy: Schema.optional(NetworkProxyConfig),
-  ca: Schema.optional(NetworkCaConfig),
+  proxy: Schema.optionalKey(NetworkProxyConfig),
+  ca: Schema.optionalKey(NetworkCaConfig),
 });
 export type NetworkConfig = typeof NetworkConfig.Type;
 
 export const McpConfig = Schema.Struct({
-  allow: Schema.optional(Schema.Array(Schema.String)).annotations({
+  allow: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
       "Canonical command ids allowed as MCP tools beyond the generated defaults (global mcp.allow).",
   }),
-  deny: Schema.optional(Schema.Array(Schema.String)).annotations({
+  deny: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description: "Canonical command ids denied as MCP tools; deny wins over allow (global mcp.deny).",
   }),
-  tooling: Schema.optional(Schema.Boolean).annotations({
+  tooling: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
   }),
-  maxConcurrent: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())).annotations({
+  maxConcurrent: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))).annotate({
     description: "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
   }),
 });
 export type McpConfig = typeof McpConfig.Type;
 
 export const AgentEnvConfig = Schema.Struct({
-  enabled: Schema.optional(Schema.Boolean).annotations({
+  enabled: Schema.optionalKey(Schema.Boolean).annotate({
     description:
       "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
   }),
-  allow: Schema.optional(Schema.Array(Schema.String)).annotations({
+  allow: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
       "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
   }),
-  deny: Schema.optional(Schema.Array(Schema.String)).annotations({
+  deny: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
   }),
-}).annotations({
+}).annotate({
   jsonSchema: {
     type: "object",
     required: [],
@@ -192,101 +182,89 @@ export type AgentEnvConfig = typeof AgentEnvConfig.Type;
  * unknown tokens fail later at resolve, not at config load.
  */
 export const GlobalConfig = Schema.Struct({
-  sshAgent: Schema.optional(SshAgentConfig).annotations({
+  sshAgent: Schema.optionalKey(SshAgentConfig).annotate({
     description: "Global SSH-agent forwarding defaults, overridden by each app per field.",
   }),
-  gpgAgent: Schema.optional(GpgAgentConfig).annotations({
+  gpgAgent: Schema.optionalKey(GpgAgentConfig).annotate({
     description: "Global GPG-agent forwarding defaults, overridden by each app per field.",
   }),
-  defaultSecretStore: Schema.optional(Schema.String).annotations({
+  defaultSecretStore: Schema.optionalKey(Schema.String).annotate({
     description: "SecretStore contribution id for bare secret references; defaults to env when omitted.",
   }),
-  userDataRoot: Schema.optional(AbsolutePath).annotations({ description: "Root for durable user data." }),
-  userConfRoot: Schema.optional(AbsolutePath).annotations({
+  userDataRoot: Schema.optionalKey(AbsolutePath).annotate({ description: "Root for durable user data." }),
+  userConfRoot: Schema.optionalKey(AbsolutePath).annotate({
     description: "Root containing user config files.",
   }),
-  userCacheRoot: Schema.optional(AbsolutePath).annotations({
+  userCacheRoot: Schema.optionalKey(AbsolutePath).annotate({
     description: "Root for disposable user caches.",
   }),
-  systemPluginRoot: Schema.optional(AbsolutePath).annotations({
+  systemPluginRoot: Schema.optionalKey(AbsolutePath).annotate({
     description: "Root for system-installed plugins.",
   }),
-  defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)).annotations({
+  defaultProviderId: Schema.optionalKey(Schema.Union([ProviderId, Schema.Null])).annotate({
     description: "Default container provider contribution id.",
   }),
-  defaultRouterService: Schema.optional(Schema.String).annotations({
+  defaultRouterService: Schema.optionalKey(Schema.String).annotate({
     description: "Globally selected RouterService contribution id.",
   }),
-  appEnv: Schema.optional(AppEnvironmentDefaults).annotations({
+  appEnv: Schema.optionalKey(AppEnvironmentDefaults).annotate({
     description: "Environment defaults applied below each user-app service's authored environment.",
   }),
-  appLabels: Schema.optional(AppLabelDefaults).annotations({
+  appLabels: Schema.optionalKey(AppLabelDefaults).annotate({
     description: "Container-label defaults applied below each user-app service's authored labels.",
   }),
-  telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }).annotations({
+  telemetry: TelemetryConfig.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => ({ enabled: true })))).annotate({
     description: "CLI telemetry policy.",
   }),
-  renderer: Schema.optional(Schema.String).annotations({
+  renderer: Schema.optionalKey(Schema.String).annotate({
     description: "Default CLI renderer contribution id.",
   }),
-  logLevel: Schema.optional(Schema.String).annotations({
+  logLevel: Schema.optionalKey(Schema.String).annotate({
     description:
       "Diagnostic log level (none, error, warn, info, debug, trace). Unknown values fail at resolve, not config load.",
   }),
-  allowLoadOutsideRoot: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+  allowLoadOutsideRoot: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
     description: "Allow Landofile load/import paths outside the app root (default false).",
   }),
-  loadMaxFileBytes: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
-    default: () => 1_048_576,
-  }).annotations({ description: "Maximum bytes read by one Landofile load/import call." }),
-  loadMaxFilesPerExpression: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
-    default: () => 16,
-  }).annotations({ description: "Maximum distinct files read by one Landofile expression." }),
-  loadMaxRecursionDepth: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
-    default: () => 4,
-  }).annotations({ description: "Maximum nested Landofile load/import call depth." }),
-  network: Schema.optional(NetworkConfig).annotations({
+  loadMaxFileBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 1_048_576))).annotate({ description: "Maximum bytes read by one Landofile load/import call." }),
+  loadMaxFilesPerExpression: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 16))).annotate({ description: "Maximum distinct files read by one Landofile expression." }),
+  loadMaxRecursionDepth: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 4))).annotate({ description: "Maximum nested Landofile load/import call depth." }),
+  network: Schema.optionalKey(NetworkConfig).annotate({
     description: "Outbound proxy and certificate trust policy.",
   }),
   /**
    * Ingress proxy settings (`proxy.defaultDomain`). Distinct from `network.proxy`
    * (HTTP egress / HTTP_PROXY).
    */
-  proxy: Schema.optional(
-    Schema.Struct({
-      defaultDomain: Schema.optionalWith(Schema.String, { default: () => "lndo.site" }).annotations({
+  proxy: Schema.optionalKey(Schema.Struct({
+      defaultDomain: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "lndo.site"))).annotate({
         description:
           "Default local domain used when routes omit a custom domain (global proxy.defaultDomain).",
       }),
-    }),
-  ).annotations({
+    })).annotate({
     description: "Global ingress proxy settings (global proxy). Distinct from network.proxy HTTP egress.",
   }),
-  router: Schema.optional(RouterConfig).annotations({
+  router: Schema.optionalKey(RouterConfig).annotate({
     description: "Global shared-router bind address and port policy (global router).",
   }),
-  scanner: Schema.optional(ScannerConfig).annotations({
+  scanner: Schema.optionalKey(ScannerConfig).annotate({
     description: "Global post-start URL scan settings, or false to skip scanning by default.",
   }),
-  mcp: Schema.optional(McpConfig).annotations({
+  mcp: Schema.optionalKey(McpConfig).annotate({
     description: "Global MCP command exposure policy (global mcp).",
   }),
-  agentEnv: Schema.optional(AgentEnvConfig).annotations({
+  agentEnv: Schema.optionalKey(AgentEnvConfig).annotate({
     description: "Global host agent-context env forwarding policy (global agentEnv).",
   }),
-  notify: Schema.optional(NotifyConfig).annotations({
+  notify: Schema.optionalKey(NotifyConfig).annotate({
     description: "Global desktop-notification policy (global notify).",
   }),
-  events: Schema.optional(
-    Schema.Struct({
-      deliveryQueueCapacity: Schema.optional(
-        Schema.Number.pipe(Schema.int(), Schema.positive(), Schema.lessThanOrEqualTo(65_536)).annotations({
+  events: Schema.optionalKey(Schema.Struct({
+      deliveryQueueCapacity: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)), Schema.check(Schema.isLessThanOrEqualTo(65_536))).annotate({
           description:
             "Positive per-subscriber event delivery queue capacity up to 65536 (global events.deliveryQueueCapacity; default 64).",
-        }),
-      ),
-    }),
-  ).annotations({
+        })),
+    })).annotate({
     description: "Global event delivery policy (global events).",
   }),
 });

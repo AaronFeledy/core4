@@ -44,7 +44,7 @@ const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultE
 describe("listSelectableResultKeys", () => {
   test("returns struct field names when the schema has fields", () => {
     const keys = listSelectableResultKeys(
-      Schema.Struct({ name: Schema.String, age: Schema.optional(Schema.Number) }),
+      Schema.Struct({ name: Schema.String, age: Schema.optionalKey(Schema.Number) }),
     );
 
     expect(keys).toEqual(["name", "age"]);

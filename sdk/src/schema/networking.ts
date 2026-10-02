@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { Schema } from "effect";
 import { AgentSocketProviderCapabilities } from "./agent-forwarding.ts";
 
@@ -55,36 +56,32 @@ export const ROUTE_PRIORITY_MAX = ROUTE_PRIORITY_EXACT_BASE + ROUTE_PATH_WEIGHT_
  * Route plan — host-facing HTTP/TLS mapping.
  */
 export const RoutePlan = Schema.Struct({
-  priority: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(2)), {
-    default: () => 2,
-  }).annotations({
+  priority: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(2))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 2))).annotate({
     description:
       "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
   }),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
   hostname: Schema.String,
   /** TLS scheme (`http`, `https`, `both`). */
-  scheme: Schema.Literal("http", "https", "both"),
+  scheme: Schema.Literals(["http", "https", "both"]),
   /** Service name this route targets. */
   service: ServiceName,
   /** Endpoint name or port to forward to. */
-  endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  endpoint: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
   /** Optional path prefix (e.g., `/api`). */
-  pathPrefix: Schema.optional(Schema.String),
-  filters: Schema.optional(Schema.Array(RouteFilter)).annotations({
+  pathPrefix: Schema.optionalKey(Schema.String),
+  filters: Schema.optionalKey(Schema.Array(RouteFilter)).annotate({
     description: "Ordered provider-neutral filters applied to this route.",
   }),
   /** Planner-resolved service endpoint; proxy implementations never infer it. */
-  backend: Schema.propertySignature(
-    Schema.Struct({
+  backend: Schema.Struct({
       service: ServiceName,
-      protocol: Schema.Literal("http", "https"),
+      protocol: Schema.Literals(["http", "https"]),
       port: PortNumber,
-      host: Schema.optional(Schema.String).annotations({
+      host: Schema.optionalKey(Schema.String).annotate({
         description: "Host Traefik should dial when the backend is not on the managed shared network.",
       }),
-    }),
-  ).annotations({ description: "Planner-resolved service endpoint consumed by the route provider." }),
+    }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });
 export type RoutePlan = typeof RoutePlan.Type;
 
@@ -92,13 +89,13 @@ export type RoutePlan = typeof RoutePlan.Type;
  * Healthcheck — provider-realized health probe.
  */
 export const HealthcheckPlan = Schema.Struct({
-  kind: Schema.Literal("command", "http", "tcp", "none"),
+  kind: Schema.Literals(["command", "http", "tcp", "none"]),
   /** Command to run inside the container (kind = `command`). */
-  command: Schema.optional(CommandSpec),
+  command: Schema.optionalKey(CommandSpec),
   /** URL (kind = `http`). */
-  url: Schema.optional(Schema.String),
+  url: Schema.optionalKey(Schema.String),
   /** Port (kind = `tcp`). */
-  port: Schema.optional(Schema.Number),
+  port: Schema.optionalKey(Schema.Number),
   /** Interval, seconds. */
   intervalSeconds: Schema.Number,
   /** Per-attempt timeout, seconds. */
@@ -106,27 +103,24 @@ export const HealthcheckPlan = Schema.Struct({
   /** Number of consecutive successful attempts before "healthy". */
   retries: Schema.Number,
   /** Optional grace period before first probe, seconds. */
-  startPeriodSeconds: Schema.optional(Schema.Number),
+  startPeriodSeconds: Schema.optionalKey(Schema.Number),
 });
 export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
-export const ScannerConfig = Schema.Union(
-  Schema.Literal(false),
-  Schema.Struct({
-    path: Schema.optional(Schema.String.pipe(Schema.startsWith("/"))).annotations({
+export const ScannerConfig = Schema.Union([Schema.Literal(false), Schema.Struct({
+    path: Schema.optionalKey(Schema.String.pipe(Schema.check(Schema.isStartingWith("/")))).annotate({
       description: "URL path to probe, starting with a slash.",
     }),
-    okCodes: Schema.optional(Schema.Array(Schema.Int.pipe(Schema.between(100, 599)))).annotations({
+    okCodes: Schema.optionalKey(Schema.Array(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 100, maximum: 599 }))))).annotate({
       description: "HTTP response status codes accepted as reachable.",
     }),
-    retries: Schema.optional(Schema.Int.pipe(Schema.between(0, 20))).annotations({
+    retries: Schema.optionalKey(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 20 })))).annotate({
       description: "Retry budget after the first attempt; N retries allow N+1 attempts.",
     }),
-    timeout: Schema.optional(Schema.Int.pipe(Schema.between(1, 600000))).annotations({
+    timeout: Schema.optionalKey(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 600000 })))).annotate({
       description: "Overall probe deadline in milliseconds, including all retry attempts.",
     }),
-  }),
-).annotations({
+  })]).annotate({
   identifier: "ScannerConfig",
   title: "Scanner Config",
   description: "Post-start URL scan settings, or false to skip scanning.",
@@ -134,18 +128,18 @@ export const ScannerConfig = Schema.Union(
 export type ScannerConfig = typeof ScannerConfig.Type;
 
 export const ScanPlan = Schema.Struct({
-  enabled: Schema.Boolean.annotations({ description: "Whether to scan this service after start." }),
-  path: Schema.String.annotations({ description: "Resolved URL path to probe." }),
-  okCodes: Schema.Array(Schema.Int).annotations({
+  enabled: Schema.Boolean.annotate({ description: "Whether to scan this service after start." }),
+  path: Schema.String.annotate({ description: "Resolved URL path to probe." }),
+  okCodes: Schema.Array(Schema.Int).annotate({
     description: "Resolved HTTP response status codes accepted as reachable.",
   }),
-  retries: Schema.Int.annotations({
+  retries: Schema.Int.annotate({
     description: "Resolved retry budget after the first attempt; N retries allow N+1 attempts.",
   }),
-  timeoutMs: Schema.Int.annotations({
+  timeoutMs: Schema.Int.annotate({
     description: "Resolved overall probe deadline in milliseconds, including all retry attempts.",
   }),
-}).annotations({
+}).annotate({
   identifier: "ScanPlan",
   description: "Fully resolved post-start URL scan settings for a service.",
 });
@@ -195,7 +189,7 @@ export const NetworkPlan = Schema.Struct({
   /** Whether this network is shared across apps. */
   shared: Schema.Boolean,
   /** Driver (provider-specific). */
-  driver: Schema.optional(Schema.String),
+  driver: Schema.optionalKey(Schema.String),
 });
 export type NetworkPlan = typeof NetworkPlan.Type;
 
@@ -207,7 +201,7 @@ export const PerAppBridgePlan = Schema.Struct({
   /** Provider-visible per-app network name (e.g. `lando-<slug>`). */
   name: Schema.String,
   /** Driver (provider-specific; defaults to a bridge driver). */
-  driver: Schema.optional(Schema.String),
+  driver: Schema.optionalKey(Schema.String),
 });
 export type PerAppBridgePlan = typeof PerAppBridgePlan.Type;
 
@@ -227,7 +221,7 @@ export const SharedNetworkMembershipPlan = Schema.Struct({
    * `<service>.<app>.internal` so siblings and global services resolve it on
    * the shared network.
    */
-  aliases: Schema.Record({ key: ServiceName, value: Schema.Array(Schema.String) }),
+  aliases: Schema.Record(ServiceName, Schema.Array(Schema.String)),
 });
 export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Type;
 
@@ -244,30 +238,27 @@ export const NetworkingPlan = Schema.Struct({
   /** The per-app bridge network the provider must create for intra-app DNS. */
   perAppBridge: PerAppBridgePlan,
   /** Shared cross-app network membership, present when the app joins it. */
-  sharedNetworkMembership: Schema.optional(SharedNetworkMembershipPlan),
+  sharedNetworkMembership: Schema.optionalKey(SharedNetworkMembershipPlan),
 });
 export type NetworkingPlan = typeof NetworkingPlan.Type;
 
 // Provider capabilities — the typed manifest of what a provider can do.
 
-export const HostProxyContainerTarget = Schema.Union(
-  Schema.Struct({
-    os: Schema.propertySignature(Schema.Literal("linux")).annotations({
+export const HostProxyContainerTarget = Schema.Union([Schema.Struct({
+    os: Schema.Literal("linux").annotateKey({
       description: "Container operating system.",
     }),
-    arch: Schema.propertySignature(Schema.Literal("x64")).annotations({
+    arch: Schema.Literal("x64").annotateKey({
       description: "x64 container CPU architecture.",
     }),
-  }),
-  Schema.Struct({
-    os: Schema.propertySignature(Schema.Literal("linux")).annotations({
+  }), Schema.Struct({
+    os: Schema.Literal("linux").annotateKey({
       description: "Container operating system.",
     }),
-    arch: Schema.propertySignature(Schema.Literal("arm64")).annotations({
+    arch: Schema.Literal("arm64").annotateKey({
       description: "arm64 container CPU architecture.",
     }),
-  }),
-).annotations({
+  })]).annotate({
   identifier: "HostProxyContainerTarget",
   title: "Host Proxy Container Target",
   description: "Linux container architecture eligible for the host-proxy shim.",
@@ -275,10 +266,10 @@ export const HostProxyContainerTarget = Schema.Union(
 export type HostProxyContainerTarget = typeof HostProxyContainerTarget.Type;
 
 export const HostProxyGatewayHostname = Schema.String.pipe(
-  Schema.pattern(HOST_PROXY_GATEWAY_HOSTNAME_PATTERN, {
-    message: () => "Expected a non-empty hostname without scheme, port, or path.",
-  }),
-).annotations({
+  Schema.check(Schema.isPattern(HOST_PROXY_GATEWAY_HOSTNAME_PATTERN, {
+    message: "Expected a non-empty hostname without scheme, port, or path.",
+  })),
+).annotate({
   identifier: "HostProxyGatewayHostname",
   title: "Host Proxy Gateway Hostname",
   description: "Provider DNS hostname that Linux containers use to reach the host TCP gateway.",
@@ -287,16 +278,16 @@ export type HostProxyGatewayHostname = typeof HostProxyGatewayHostname.Type;
 
 export const HostProxyProviderCapabilities = Schema.Struct({
   /** Linux container targets eligible for the host-proxy shim. */
-  containerTargets: Schema.Array(HostProxyContainerTarget).annotations({
+  containerTargets: Schema.Array(HostProxyContainerTarget).annotate({
     title: "Host Proxy Container Targets",
     description: "Linux container targets the provider can run for host-proxy shim dispatch.",
   }),
   /** Hostname for TCP host-gateway transport from Linux containers on VM-backed hosts. */
-  tcpHostGateway: Schema.optional(HostProxyGatewayHostname).annotations({
+  tcpHostGateway: Schema.optionalKey(HostProxyGatewayHostname).annotate({
     title: "Host Proxy TCP Host Gateway",
     description: "Provider DNS hostname used for host-proxy TCP host-gateway transport.",
   }),
-}).annotations({
+}).annotate({
   identifier: "HostProxyProviderCapabilities",
   title: "Host Proxy Provider Capabilities",
   description: "Structured host-proxy transport capabilities declared by a runtime provider.",
@@ -304,7 +295,7 @@ export const HostProxyProviderCapabilities = Schema.Struct({
 export type HostProxyProviderCapabilities = typeof HostProxyProviderCapabilities.Type;
 
 export const ProviderCapabilities = Schema.Struct({
-  agentSocket: Schema.optional(AgentSocketProviderCapabilities).annotations({
+  agentSocket: Schema.optionalKey(AgentSocketProviderCapabilities).annotate({
     description:
       "Agent socket delivery supported by this provider; omission means forwarding is unsupported.",
   }),
@@ -316,57 +307,57 @@ export const ProviderCapabilities = Schema.Struct({
   serviceExec: Schema.Boolean,
   serviceLogs: Schema.Boolean,
   serviceLogSources: Schema.Boolean,
-  serviceHealth: Schema.Literal("native", "lando", "none"),
-  hostReachability: Schema.Literal("native", "emulated", "none"),
+  serviceHealth: Schema.Literals(["native", "lando", "none"]),
+  hostReachability: Schema.Literals(["native", "emulated", "none"]),
   sharedCrossAppNetwork: Schema.Boolean,
   persistentStorage: Schema.Boolean,
   bindMounts: Schema.Boolean,
-  bindMountPerformance: Schema.Literal("native", "slow", "none"),
+  bindMountPerformance: Schema.Literals(["native", "slow", "none"]),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
-  volumeSnapshot: Schema.Literal("native", "copy", "none"),
-  serviceFileCopy: Schema.Literal("native", "exec", "none"),
+  volumeSnapshot: Schema.Literals(["native", "copy", "none"]),
+  serviceFileCopy: Schema.Literals(["native", "exec", "none"]),
   artifactExport: Schema.Boolean,
   artifactImport: Schema.Boolean,
   ephemeralMounts: Schema.Boolean,
-  hostPortPublish: Schema.Literal("native", "proxy", "manual", "none"),
+  hostPortPublish: Schema.Literals(["native", "proxy", "manual", "none"]),
   routeProvider: Schema.Boolean,
-  tlsCertificates: Schema.Literal("native", "lando", "none"),
+  tlsCertificates: Schema.Literals(["native", "lando", "none"]),
   rootless: Schema.Boolean,
   privilegedServices: Schema.Boolean,
-  architectureEmulation: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+  architectureEmulation: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
     title: "Architecture Emulation",
     description:
       "Whether the provider can run container images for a CPU architecture other than the host via emulation.",
   }),
-  composeSpec: Schema.Literal("none", "portable", "native"),
-  composeKnobs: Schema.optional(ComposeKnobCapabilities).annotations({
+  composeSpec: Schema.Literals(["none", "portable", "native"]),
+  composeKnobs: Schema.optionalKey(ComposeKnobCapabilities).annotate({
     title: "Compose Knobs",
     description: "Fail-closed support declaration for preserved Compose runtime knobs.",
   }),
-  composeServiceFields: Schema.optional(ComposeServiceFieldCapabilities).annotations({
+  composeServiceFields: Schema.optionalKey(ComposeServiceFieldCapabilities).annotate({
     title: "Compose Service Fields",
     description: "Native-tier fail-closed support declaration for preserved Compose service-level fields.",
   }),
-  composeProjectFields: Schema.optional(ComposeProjectFieldCapabilities).annotations({
+  composeProjectFields: Schema.optionalKey(ComposeProjectFieldCapabilities).annotate({
     title: "Compose Project Fields",
     description: "Native-tier fail-closed support declaration for preserved Compose project-level fields.",
   }),
-  composePreservedPaths: Schema.optional(ComposePreservedPathCapabilities).annotations({
+  composePreservedPaths: Schema.optionalKey(ComposePreservedPathCapabilities).annotate({
     title: "Compose Preserved Paths",
     description:
       "Native-tier fail-closed support declaration for matrix-preserved Compose service descendants.",
   }),
   providerExtensions: Schema.Array(Schema.String),
   /** Structured host-proxy transport support declared by the provider. */
-  hostProxy: Schema.optional(HostProxyProviderCapabilities).annotations({
+  hostProxy: Schema.optionalKey(HostProxyProviderCapabilities).annotate({
     title: "Host Proxy",
     description: "Structured provider-declared host-proxy transport capabilities.",
   }),
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
-export const IsolateMode = Schema.Literal("full", "baked", "cwd");
+export const IsolateMode = Schema.Literals(["full", "baked", "cwd"]);
 export type IsolateMode = typeof IsolateMode.Type;
 
 // AppRef — shared identity field across App, Global, and Scratch event scopes.
@@ -375,7 +366,7 @@ export type IsolateMode = typeof IsolateMode.Type;
 
 export const AppRef = Schema.Struct({
   /** Identity namespace this app belongs to. */
-  kind: Schema.Literal("user", "global", "scratch"),
+  kind: Schema.Literals(["user", "global", "scratch"]),
   /** User slug, the literal `"global"`, or a scratch id. */
   id: Schema.String,
   /**

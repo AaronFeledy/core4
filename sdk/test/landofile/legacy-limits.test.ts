@@ -24,7 +24,7 @@ const failureOf = (
   >,
 ) => {
   if (Exit.isSuccess(exit)) throw new Error("expected a parse failure");
-  const failure = Exit.causeOption(exit);
+  const failure = Exit.getCause(exit);
   if (failure._tag === "None") throw new Error("expected a failure cause");
   const error = failure.value;
   if (error._tag !== "Fail") throw new Error(`expected a typed failure, got ${error._tag}`);

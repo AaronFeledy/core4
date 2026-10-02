@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath } from "./primitives.ts";
@@ -20,7 +21,7 @@ export const AppMountPlan = Schema.Struct({
    * `passthrough` — provider-native bind mount.
    * `accelerated` — routed through the active FileSyncEngine.
    */
-  realization: Schema.Literal("passthrough", "accelerated"),
+  realization: Schema.Literals(["passthrough", "accelerated"]),
 });
 export type AppMountPlan = typeof AppMountPlan.Type;
 
@@ -29,24 +30,24 @@ export type AppMountPlan = typeof AppMountPlan.Type;
  */
 export const MountPlan = Schema.Struct({
   /** Mount type: `bind` (host path), `tmpfs`, or `volume` (named/anon). */
-  type: Schema.Literal("bind", "tmpfs", "volume"),
+  type: Schema.Literals(["bind", "tmpfs", "volume"]),
   /** Host path (`bind`), volume name (`volume`), or undefined (`tmpfs`). */
-  source: Schema.optional(Schema.String),
+  source: Schema.optionalKey(Schema.String),
   /** Mount point inside the container. */
   target: PortablePath,
   /** Read-only? */
   readOnly: Schema.Boolean,
   /** For bind mounts, whether the provider may create a missing host source path. */
-  createHostPath: Schema.optional(Schema.Boolean),
+  createHostPath: Schema.optionalKey(Schema.Boolean),
   /** Realization strategy (same semantics as AppMountPlan.realization). */
-  realization: Schema.Literal("passthrough", "accelerated"),
+  realization: Schema.Literals(["passthrough", "accelerated"]),
 });
 export type MountPlan = typeof MountPlan.Type;
 
 /**
  * Storage scope — drives auto-naming for named volumes.
  */
-export const StorageScope = Schema.Literal("service", "app", "global");
+export const StorageScope = Schema.Literals(["service", "app", "global"]);
 export type StorageScope = typeof StorageScope.Type;
 
 /**
@@ -57,13 +58,13 @@ export const DataStorePlan = Schema.Struct({
   name: Schema.String,
   scope: StorageScope,
   /** Storage kind; `cache` stores are cross-app shared dependency caches. */
-  kind: Schema.optionalWith(Schema.Literal("data", "cache"), { default: () => "data" as const }),
+  kind: Schema.Literals(["data", "cache"]).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "data" as const))),
   /** Cache identity when `kind` is `cache`. */
-  key: Schema.optional(Schema.String),
+  key: Schema.optionalKey(Schema.String),
   /** Driver (provider-specific; `null` = default). */
-  driver: Schema.optional(Schema.String),
+  driver: Schema.optionalKey(Schema.String),
   /** Optional driver opts. */
-  driverOpts: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  driverOpts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 export type DataStorePlan = typeof DataStorePlan.Type;
 
@@ -78,6 +79,6 @@ export const DataStoreMountPlan = Schema.Struct({
   /** Read-only? */
   readOnly: Schema.Boolean,
   /** Optional path within the data store to mount instead of its root. */
-  subpath: Schema.optional(Schema.String),
+  subpath: Schema.optionalKey(Schema.String),
 });
 export type DataStoreMountPlan = typeof DataStoreMountPlan.Type;

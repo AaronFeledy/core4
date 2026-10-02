@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
@@ -263,12 +263,12 @@ export const emitLandofileYaml = (value: Record<string, unknown>, options?: Emit
 export const emitLandofileYamlEither = (
   value: Record<string, unknown>,
   options?: EmitLandofileOptions,
-): Either.Either<string, LandofileEmitError> => {
+): Result.Result<string, LandofileEmitError> => {
   try {
-    return Either.right(emitLandofileYaml(value, options));
+    return Result.succeed(emitLandofileYaml(value, options));
   } catch (cause) {
-    if (cause instanceof LandofileEmitError) return Either.left(cause);
-    return Either.left(
+    if (cause instanceof LandofileEmitError) return Result.fail(cause);
+    return Result.fail(
       new LandofileEmitError({
         message: cause instanceof Error ? cause.message : "Failed to emit Landofile YAML.",
         cause,

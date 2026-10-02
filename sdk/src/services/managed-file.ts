@@ -29,9 +29,7 @@ export interface ManagedFileApplyOptions {
  * to silently clobber a user edit. Available at bootstrap level `minimal`,
  * host/test-overridable, but not a plugin contribution surface.
  */
-export class ManagedFileService extends Context.Tag("@lando/core/ManagedFileService")<
-  ManagedFileService,
-  {
+export class ManagedFileService extends Context.Service<ManagedFileService, {
     readonly plan: (files: ReadonlyArray<ManagedFile>) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
     readonly apply: (
       files: ReadonlyArray<ManagedFile>,
@@ -41,8 +39,7 @@ export class ManagedFileService extends Context.Tag("@lando/core/ManagedFileServ
     readonly status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError>;
     readonly adopt: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
     readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
-  }
->() {}
+  }>()("@lando/core/ManagedFileService") {}
 
 /**
  * The thin guard consulted by native Landofile loading and by `start` before a
@@ -55,15 +52,12 @@ export class ManagedFileService extends Context.Tag("@lando/core/ManagedFileServ
  * would do without acquiring the write lock and without mutating stages,
  * journals, backups, targets, or removals.
  */
-export class ManagedFileTransactionGuard extends Context.Tag("@lando/core/ManagedFileTransactionGuard")<
-  ManagedFileTransactionGuard,
-  {
+export class ManagedFileTransactionGuard extends Context.Service<ManagedFileTransactionGuard, {
     readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
     readonly pending: (
       appRoot: string,
     ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
-  }
->() {}
+  }>()("@lando/core/ManagedFileTransactionGuard") {}
 
 /** What `ManagedFileTransactionGuard.pending` reports for one app root. */
 export interface ManagedFileTransactionPendingReport {

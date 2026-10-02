@@ -6,17 +6,17 @@ import { GlobalConfig, LandofileShape, ProxyConfig } from "@lando/sdk/schema";
 test.each([
   {
     name: "ProxyConfig",
-    decode: Schema.decodeUnknownEither(ProxyConfig, { onExcessProperty: "error" }),
+    decode: Schema.decodeUnknownResult(ProxyConfig, { onExcessProperty: "error" }),
     input: { defaultDomain: "lndo.site", autoApprove: true },
   },
   {
     name: "GlobalConfig.router",
-    decode: Schema.decodeUnknownEither(GlobalConfig, { onExcessProperty: "error" }),
+    decode: Schema.decodeUnknownResult(GlobalConfig, { onExcessProperty: "error" }),
     input: { router: { autoApprove: true } },
   },
   {
     name: "LandofileShape.router",
-    decode: Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" }),
+    decode: Schema.decodeUnknownResult(LandofileShape, { onExcessProperty: "error" }),
     input: { name: "consent", router: { autoApprove: true } },
   },
 ])("rejects invocation consent in $name", ({ decode, input }) => {

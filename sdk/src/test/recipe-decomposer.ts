@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type { RecipeDecomposeError } from "../errors/recipe.ts";
 import { type RecipeDecomposeInput, RecipeDecomposeResult } from "../schema/recipe-decompose.ts";
@@ -75,7 +75,7 @@ export const runRecipeDecomposerContractSuite = (
         const outcome = yield* Effect.exit(
           Effect.tryPromise({
             try: (signal) =>
-              Effect.runPromise(Effect.either(Effect.suspend(() => decomposer.decompose(input))), { signal }),
+              Effect.runPromise(Effect.result(Effect.suspend(() => decomposer.decompose(input))), { signal }),
             catch: () => failure("decompose runs with no Effect context or defects"),
           }),
         );
@@ -88,7 +88,7 @@ export const runRecipeDecomposerContractSuite = (
         const result = yield* outcome;
         if (harness.secretProbe !== undefined) {
           const serialized = yield* Effect.try({
-            try: () => JSON.stringify(Either.isRight(result) ? result.right : result.left),
+            try: () => JSON.stringify(Result.isSuccess(result) ? result.success : result.failure),
             catch: () => failure("decompose result or failure is JSON serializable"),
           });
           yield* requireContract(
@@ -101,8 +101,8 @@ export const runRecipeDecomposerContractSuite = (
     const succeed = (input: RecipeDecomposeInput) =>
       call(input).pipe(
         Effect.flatMap((result) =>
-          Either.isRight(result)
-            ? Effect.succeed(result.right)
+          Result.isSuccess(result)
+            ? Effect.succeed(result.success)
             : Effect.fail(failure("valid input succeeds")),
         ),
       );
@@ -116,7 +116,7 @@ export const runRecipeDecomposerContractSuite = (
         result.provenance.version === harness.producer.manifestVersion,
       "provenance preserves stable recipe id and version",
     );
-    yield* Schema.encodeUnknown(RecipeDecomposeResult)(result, { onExcessProperty: "error" }).pipe(
+    yield* Schema.encodeUnknownEffect(RecipeDecomposeResult)(result, { onExcessProperty: "error" }).pipe(
       Effect.mapError(() => failure("result encodes through RecipeDecomposeResult")),
     );
     const repeated = yield* succeed(harness.validInput);
@@ -125,9 +125,9 @@ export const runRecipeDecomposerContractSuite = (
       call(input).pipe(
         Effect.flatMap((outcome) =>
           requireContract(
-            Either.isLeft(outcome) &&
-              outcome.left._tag === "RecipeDecomposeError" &&
-              outcome.left.reason === reason,
+            Result.isFailure(outcome) &&
+              outcome.failure._tag === "RecipeDecomposeError" &&
+              outcome.failure.reason === reason,
             `invalid input fails with RecipeDecomposeError reason ${reason}`,
           ),
         ),

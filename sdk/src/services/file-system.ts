@@ -12,9 +12,7 @@ export interface FileStat {
   readonly isSymbolicLink?: boolean;
 }
 
-export class FileSystem extends Context.Tag("@lando/core/FileSystem")<
-  FileSystem,
-  {
+export class FileSystem extends Context.Service<FileSystem, {
     readonly read: (path: string) => Stream.Stream<Uint8Array, FileSystemError>;
     readonly readText: (path: string) => Effect.Effect<string, FileSystemError>;
     readonly write: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
@@ -30,5 +28,4 @@ export class FileSystem extends Context.Tag("@lando/core/FileSystem")<
     readonly readDir: (path: string) => Effect.Effect<ReadonlyArray<string>, FileSystemError>;
     readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
     readonly writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>;
-  }
->() {}
+  }>()("@lando/core/FileSystem") {}

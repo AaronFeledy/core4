@@ -8,13 +8,14 @@ describe("authoring JSON Schema publication", () => {
     // When its public artifact is emitted.
     const schema = getJsonSchema(name);
     // Then the object member keeps its properties and fragment-specific definitions survive publication.
-    const root = (schema as { $defs?: Record<string, { anyOf?: ReadonlyArray<Record<string, unknown>> }> })
-      .$defs?.[name];
+    const root = (
+      schema as { definitions?: Record<string, { anyOf?: ReadonlyArray<Record<string, unknown>> }> }
+    ).definitions?.[name];
     expect(
       root?.anyOf?.some((member) => "properties" in member && "router" in (member.properties as object)),
     ).toBe(true);
-    expect(schema).toHaveProperty("$defs.ServiceConfigInputAuthoringFragment");
-    expect(schema).not.toHaveProperty("$defs.ServiceConfigInput");
+    expect(schema).toHaveProperty("definitions.ServiceConfigInputAuthoringFragment");
+    expect(schema).not.toHaveProperty("definitions.ServiceConfigInput");
   });
 
   test("keeps complete and partial definitions distinct when publishing encode input", () => {
@@ -23,7 +24,7 @@ describe("authoring JSON Schema publication", () => {
     // When both trees share an artifact.
     const schema = getJsonSchema(name);
     // Then the complete context and the partial fragment stay separate wire members.
-    const definition = (schema as { $defs?: Record<string, unknown> }).$defs?.[name] as
+    const definition = (schema as { definitions?: Record<string, unknown> }).definitions?.[name] as
       | { properties?: Record<string, unknown> }
       | undefined;
     expect(
@@ -32,7 +33,7 @@ describe("authoring JSON Schema publication", () => {
     expect(
       definition?.properties ?? (schema as { properties?: Record<string, unknown> }).properties,
     ).toHaveProperty("fragment");
-    expect(schema).not.toHaveProperty("$defs.ServiceConfigInput");
+    expect(schema).not.toHaveProperty("definitions.ServiceConfigInput");
   });
 
   test("passes annotation validation when publishing the public registry", () => {

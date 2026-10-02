@@ -46,7 +46,7 @@ export interface StateBucketSpec<A, I> {
   readonly root: StateRoot;
   readonly namespace?: string;
   readonly key: string;
-  readonly schema: Schema.Schema<A, I>;
+  readonly schema: Schema.Codec<A, I>;
   readonly version: number;
   readonly codec?: StateCodec<A, I>;
   /** Exact permissions applied to each atomic replacement, after umask. */
@@ -90,4 +90,4 @@ export const physicalVolumeLockKey = (instanceId: string): string =>
  * bootstrap level `minimal`, host/test-overridable, but NOT a plugin
  * contribution surface (there is no `provides.stateStores` manifest key).
  */
-export class StateStore extends Context.Tag("@lando/core/StateStore")<StateStore, StateStoreShape>() {}
+export class StateStore extends Context.Service<StateStore, StateStoreShape>()("@lando/core/StateStore") {}

@@ -1,6 +1,7 @@
+import { SchemaIssue } from "effect";
 import { expect, test } from "bun:test";
 import { PluginManifest } from "@lando/sdk/schema";
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 test("PluginManifest accepts contributes.secretStores with schemes", () => {
   // Given
@@ -26,11 +27,11 @@ test("secretStores rejects a missing schemes array", () => {
     contributes: { secretStores: [{ id: "1password", module: "./store.ts" }] },
   };
   // When
-  const result = Schema.decodeUnknownEither(PluginManifest)(input, { onExcessProperty: "error" });
+  const result = Schema.decodeUnknownResult(PluginManifest)(input, { onExcessProperty: "error" });
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(ParseResult.ArrayFormatter.formatErrorSync(result.left)).toContainEqual(
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues).toContainEqual(
       expect.objectContaining({ _tag: "Missing", path: ["contributes", "secretStores", 0, "schemes"] }),
     );
   }

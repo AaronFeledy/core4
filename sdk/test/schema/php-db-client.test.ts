@@ -4,8 +4,8 @@ import { Schema } from "effect";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 
-const strictDecode = (schema: Schema.Schema.AnyNoContext, input: unknown) =>
-  Schema.decodeUnknownEither(schema, { onExcessProperty: "error" })(input);
+const strictDecode = (schema: Schema.Codec<unknown, unknown>, input: unknown) =>
+  Schema.decodeUnknownResult(schema, { onExcessProperty: "error" })(input);
 
 describe("PHP db_client schema", () => {
   test("Given omitted db_client, when strictly decoding ServiceConfig, then it succeeds", () => {
@@ -16,24 +16,24 @@ describe("PHP db_client schema", () => {
   test("Given db_client auto, when decoding PhpServiceConfig, then it succeeds", () => {
     const result = strictDecode(PhpServiceConfig, { type: "php:8.3", db_client: "auto" });
     expect(result._tag).toBe("Right");
-    if (result._tag === "Right") {
-      expect(result.right.db_client).toBe("auto");
+    if (result._tag === "Success") {
+      expect(result.success.db_client).toBe("auto");
     }
   });
 
   test("Given db_client false, when strictly decoding ServiceConfig, then it succeeds", () => {
     const result = strictDecode(ServiceConfig, { type: "php:8.3", db_client: false });
     expect(result._tag).toBe("Right");
-    if (result._tag === "Right") {
-      expect(result.right.db_client).toBe(false);
+    if (result._tag === "Success") {
+      expect(result.success.db_client).toBe(false);
     }
   });
 
   test("Given an explicit family version, when decoding PhpServiceConfig, then it succeeds", () => {
     const result = strictDecode(PhpServiceConfig, { type: "php:8.3", db_client: "mariadb:11.4" });
     expect(result._tag).toBe("Right");
-    if (result._tag === "Right") {
-      expect(result.right.db_client).toBe("mariadb:11.4");
+    if (result._tag === "Success") {
+      expect(result.success.db_client).toBe("mariadb:11.4");
     }
   });
 
@@ -54,10 +54,10 @@ describe("PHP db_client schema", () => {
 
   test("Given decoded ServiceConfig with db_client, when decoding again strictly, then it round-trips", () => {
     const first = Schema.decodeUnknownSync(ServiceConfig)({ type: "php:8.3", db_client: "mariadb:11.4" });
-    const second = Schema.decodeUnknownEither(ServiceConfig, { onExcessProperty: "error" })(first);
+    const second = Schema.decodeUnknownResult(ServiceConfig, { onExcessProperty: "error" })(first);
     expect(second._tag).toBe("Right");
-    if (second._tag === "Right") {
-      expect(second.right.db_client).toBe("mariadb:11.4");
+    if (second._tag === "Success") {
+      expect(second.success.db_client).toBe("mariadb:11.4");
     }
   });
 });

@@ -1,36 +1,38 @@
-import { ParseResult, Schema } from "effect";
+import { SchemaIssue, SchemaTransformation } from "effect";
+import { Effect } from "effect";
+import { Schema } from "effect";
 
 const DRIVE_LETTER_PATH = /^[A-Za-z]:[\\/]/;
 
-const ComposeVolumeType = Schema.Literal("bind", "volume", "tmpfs");
-const Forbidden = Schema.optional(Schema.Never);
+const ComposeVolumeType = Schema.Literals(["bind", "volume", "tmpfs"]);
+const Forbidden = Schema.optionalKey(Schema.Never);
 
 const ComposeVolumeTmpfs = Schema.Struct({
-  size: Schema.optional(Schema.Union(Schema.Number, Schema.String)),
-  mode: Schema.optional(Schema.Number),
+  size: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
+  mode: Schema.optionalKey(Schema.Number),
 });
 
 const ComposeVolumeOptions = Schema.Struct({
-  subpath: Schema.optional(Schema.String),
+  subpath: Schema.optionalKey(Schema.String),
   nocopy: Forbidden,
   labels: Forbidden,
 });
 
 const ComposeVolumeBind = Schema.Struct({
-  create_host_path: Schema.optional(Schema.Boolean),
+  create_host_path: Schema.optionalKey(Schema.Boolean),
   propagation: Forbidden,
   recursive: Forbidden,
   selinux: Forbidden,
 });
 
 const ComposeVolumeLongInput = Schema.Struct({
-  type: Schema.optional(ComposeVolumeType),
-  source: Schema.optional(Schema.String),
+  type: Schema.optionalKey(ComposeVolumeType),
+  source: Schema.optionalKey(Schema.String),
   target: Schema.String,
-  read_only: Schema.optional(Schema.Boolean),
-  volume: Schema.optional(ComposeVolumeOptions),
-  bind: Schema.optional(ComposeVolumeBind),
-  tmpfs: Schema.optional(ComposeVolumeTmpfs),
+  read_only: Schema.optionalKey(Schema.Boolean),
+  volume: Schema.optionalKey(ComposeVolumeOptions),
+  bind: Schema.optionalKey(ComposeVolumeBind),
+  tmpfs: Schema.optionalKey(ComposeVolumeTmpfs),
   readOnly: Forbidden,
   subpath: Forbidden,
   createHostPath: Forbidden,
@@ -40,25 +42,22 @@ const ComposeVolumeLongInput = Schema.Struct({
 
 const ComposeVolumeEntry = Schema.Struct({
   type: ComposeVolumeType,
-  source: Schema.optional(Schema.String),
+  source: Schema.optionalKey(Schema.String),
   target: Schema.String,
   readOnly: Schema.Boolean,
-  subpath: Schema.optional(Schema.String),
-  createHostPath: Schema.optional(Schema.Boolean),
-  tmpfs: Schema.optional(ComposeVolumeTmpfs),
+  subpath: Schema.optionalKey(Schema.String),
+  createHostPath: Schema.optionalKey(Schema.Boolean),
+  tmpfs: Schema.optionalKey(ComposeVolumeTmpfs),
 });
 export type ComposeVolumeEntry = typeof ComposeVolumeEntry.Type;
 
-const ComposeVolumeCanonicalInput = Schema.extend(
-  ComposeVolumeEntry,
-  Schema.Struct({
+const ComposeVolumeCanonicalInput = ComposeVolumeEntry.pipe(Schema.fieldsAssign({
     read_only: Forbidden,
     volume: Forbidden,
     bind: Forbidden,
     consistency: Forbidden,
     image: Forbidden,
-  }),
-);
+  }));
 
 const isPathLikeSource = (source: string): boolean =>
   source.startsWith(".") ||
@@ -115,7 +114,7 @@ const shortVolumeFailure = (spec: string): string | undefined => {
 
 export const parseShortVolume = (spec: string): ComposeVolumeEntry => {
   const failure = shortVolumeFailure(spec);
-  if (failure !== undefined) throw new ParseResult.Type(Schema.String.ast, spec, failure);
+  if (failure !== undefined) throw new SchemaIssue.InvalidValue({ message: failure }, spec);
 
   const segments = splitVolumeSpec(spec);
   if (spec.length <= 2 || segments.length === 1) {
@@ -141,14 +140,13 @@ const decodeLongVolume = (
   const type =
     input.type ?? (input.source !== undefined && isPathLikeSource(input.source) ? "bind" : "volume");
   const createHostPath = input.createHostPath ?? input.bind?.create_host_path;
+  const subpath = input.subpath ?? input.volume?.subpath;
   return {
     type,
     ...(input.source === undefined ? {} : { source: input.source }),
     target: input.target,
     readOnly: input.readOnly ?? input.read_only ?? false,
-    ...((input.subpath ?? input.volume?.subpath) === undefined
-      ? {}
-      : { subpath: input.subpath ?? input.volume?.subpath }),
+    ...(subpath === undefined ? {} : { subpath }),
     ...(type === "bind"
       ? { createHostPath: createHostPath ?? true }
       : createHostPath === undefined
@@ -205,28 +203,20 @@ const encodeLongVolume = (entry: ComposeVolumeEntry): typeof ComposeVolumeLongIn
 });
 
 export const ComposeVolumesField = Schema.Array(
-  Schema.transformOrFail(
-    Schema.Union(Schema.String, ComposeVolumeLongInput, ComposeVolumeCanonicalInput),
-    ComposeVolumeEntry,
-    {
-      strict: true,
-      decode: (input, _options, ast) => {
+  Schema.Union([Schema.String, ComposeVolumeLongInput, ComposeVolumeCanonicalInput]).pipe(Schema.decodeTo(ComposeVolumeEntry, SchemaTransformation.transformEffect({ decode: (input, _options) => { 
         if (typeof input === "string") {
           const failure = shortVolumeFailure(input);
           return failure === undefined
-            ? ParseResult.succeed(parseShortVolume(input))
-            : ParseResult.fail(new ParseResult.Type(ast, input, failure));
+            ? Effect.succeed(parseShortVolume(input))
+            : Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, input));
         }
         const failure = longVolumeFailure(input);
-        if (failure !== undefined) return ParseResult.fail(new ParseResult.Type(ast, input, failure));
-        return ParseResult.succeed(decodeLongVolume(input));
-      },
-      encode: (entry, _options, ast) => {
+        if (failure !== undefined) return Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, input));
+        return Effect.succeed(decodeLongVolume(input));
+       }, encode: (entry, _options) => { 
         const failure = longVolumeFailure(entry);
         return failure === undefined
-          ? ParseResult.succeed(encodeLongVolume(entry))
-          : ParseResult.fail(new ParseResult.Type(ast, entry, failure));
-      },
-    },
-  ),
+          ? Effect.succeed(encodeLongVolume(entry))
+          : Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, entry));
+       } }))),
 );

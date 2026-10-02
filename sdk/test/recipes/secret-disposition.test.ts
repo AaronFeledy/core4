@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 import {
   approvedSecretReferencesOnly,
   secretSinkFailure,
@@ -34,7 +34,7 @@ test.each([
   ],
 ] as const)("secret disposition reason %s", (reason, value) => {
   const result = validateRecipeSecretPrompts(value);
-  expect(Either.isLeft(result) && result.left.reason).toBe(reason);
+  expect(Result.isFailure(result) && result.failure.reason).toBe(reason);
 });
 test("secretEnv binds only the declared env name", () => {
   const result = validateRecipeSecretPrompts(
@@ -43,13 +43,13 @@ test("secretEnv binds only the declared env name", () => {
       [{ type: "bun", verb: "install", secretEnv: { TOKEN: "token" } }],
     ),
   );
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
 });
 test("secret-store requires a non-empty field", () => {
   const result = validateRecipeSecretPrompts(
     manifest([{ ...prompt, disposition: { kind: "secret-store", field: "" } }]),
   );
-  expect(Either.isLeft(result) && result.left.reason).toBe("sink-unresolved");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("sink-unresolved");
 });
 test("secret-store plus an init sink is multiple", () => {
   const result = validateRecipeSecretPrompts(
@@ -65,7 +65,7 @@ test("secret-store plus an init sink is multiple", () => {
       [{ type: "command", cmd: "init", stdin: { prompt: "token" } }],
     ),
   );
-  expect(Either.isLeft(result) && result.left.reason).toBe("multiple");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("multiple");
 });
 test("init-only stdin plus secretEnv is multiple", () => {
   const result = validateRecipeSecretPrompts(
@@ -74,7 +74,7 @@ test("init-only stdin plus secretEnv is multiple", () => {
       [{ type: "command", cmd: "init", stdin: { prompt: "token" }, secretEnv: { TOKEN: "token" } }],
     ),
   );
-  expect(Either.isLeft(result) && result.left.reason).toBe("multiple");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("multiple");
 });
 test("approved references reject extra raw value fields", () => {
   const result = approvedSecretReferencesOnly({
@@ -90,7 +90,7 @@ test("approved references reject extra raw value fields", () => {
       token: Object.assign({ disposition: "postInit.stdin" as const }, { value: "never-output-this" }),
     },
   });
-  expect(Either.isLeft(result) && result.left.reason).toBe("invalid-secret-reference");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("invalid-secret-reference");
   expect(JSON.stringify(result)).not.toContain("never-output-this");
 });
 test("secretSinkFailure JSON contains only structural fields and generated diagnostics", () => {

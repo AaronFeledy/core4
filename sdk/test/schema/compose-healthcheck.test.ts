@@ -1,5 +1,6 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 
 import { HealthcheckField } from "../../src/schema/compose-healthcheck.ts";
@@ -168,10 +169,10 @@ describe("HealthcheckField", () => {
   test.each(rejectedFixtures)("rejects through the field and ServiceConfig: $name", (fixture) => {
     // Given / When
     const results = [
-      Schema.decodeUnknownEither(HealthcheckField)(fixture.input),
-      Schema.decodeUnknownEither(HealthcheckField)(fixture.input, { onExcessProperty: "error" }),
-      Schema.decodeUnknownEither(ServiceConfig)({ healthcheck: fixture.input }),
-      Schema.decodeUnknownEither(ServiceConfig)(
+      Schema.decodeUnknownResult(HealthcheckField)(fixture.input),
+      Schema.decodeUnknownResult(HealthcheckField)(fixture.input, { onExcessProperty: "error" }),
+      Schema.decodeUnknownResult(ServiceConfig)({ healthcheck: fixture.input }),
+      Schema.decodeUnknownResult(ServiceConfig)(
         { healthcheck: fixture.input },
         { onExcessProperty: "error" },
       ),
@@ -179,8 +180,8 @@ describe("HealthcheckField", () => {
 
     // Then
     for (const result of results) {
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) expect(String(result.left)).toContain(fixture.expectedErrorFragment);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) expect(String(result.failure)).toContain(fixture.expectedErrorFragment);
     }
   });
 
@@ -249,12 +250,12 @@ describe("HealthcheckField", () => {
     },
   ])("bounds $field validation messages through ServiceConfig", ({ attackerValue, input }) => {
     // Given / When
-    const result = Schema.decodeUnknownEither(ServiceConfig)({ healthcheck: input });
+    const result = Schema.decodeUnknownResult(ServiceConfig)({ healthcheck: input });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (!Either.isLeft(result)) return;
-    const message = ParseResult.ArrayFormatter.formatErrorSync(result.left).find(({ message }) =>
+    expect(Result.isFailure(result)).toBe(true);
+    if (!Result.isFailure(result)) return;
+    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(({ message }) =>
       message.startsWith("Landofile service"),
     )?.message;
     expect(message).toBeDefined();

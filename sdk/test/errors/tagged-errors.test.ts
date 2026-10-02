@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Either, Exit, Schema } from "effect";
+import { Cause, Effect, Result, Exit, Schema } from "effect";
 
 import {
   AmbiguousCertificateAuthoritiesError,
@@ -53,7 +53,7 @@ describe("DeprecatedSurfaceError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("DeprecatedSurfaceError");
@@ -92,7 +92,7 @@ describe("DeprecationContradictionError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("DeprecationContradictionError");
@@ -161,7 +161,7 @@ describe("LandofileParseError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("LandofileParseError");
@@ -222,7 +222,7 @@ describe("ProviderCapabilityError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ProviderCapabilityError");
@@ -267,7 +267,7 @@ describe("LandoRuntimeBootstrapError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("LandoRuntimeBootstrapError");
@@ -305,7 +305,7 @@ describe("PluginLoadError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("PluginLoadError");
@@ -347,7 +347,7 @@ describe("NoProviderInstalledError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("NoProviderInstalledError");
@@ -436,17 +436,17 @@ describe("GlobalServiceMissingError", () => {
   });
 
   test("decodes without remediation and without a missing payload", () => {
-    const decoded = Schema.decodeUnknownEither(GlobalServiceMissingError)({
+    const decoded = Schema.decodeUnknownResult(GlobalServiceMissingError)({
       _tag: "GlobalServiceMissingError",
       message: "Global service(s) not available in the global app: mailpit.",
       requested: ["mailpit"],
       available: ["traefik"],
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.remediation).toBeUndefined();
-      expect("missing" in decoded.right).toBe(false);
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.remediation).toBeUndefined();
+      expect("missing" in decoded.success).toBe(false);
     }
   });
 });
@@ -495,7 +495,7 @@ describe("AppResolveError", () => {
     const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("AppResolveError");

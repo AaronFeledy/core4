@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ConfigTranslateError } from "../errors/config.ts";
 import { validateConfigTranslateInput, validateConfigTranslateResult } from "../landofile/index.ts";
@@ -112,18 +112,18 @@ export const runConfigTranslatorContractSuite = (
         matches,
       );
     }
-    yield* resolve(validateConfigTranslateInput(harness.translateInput));
+    yield* resolve(Effect.fromResult(validateConfigTranslateInput(harness.translateInput)));
     const result = yield* resolve(translator.translate(harness.translateInput));
     yield* requireConfigTranslatorContract(
       !("plan" in result) && !("appId" in result),
       `${label}: result is not an AppPlan`,
       result,
     );
-    yield* resolve(Schema.encodeUnknownEither(ConfigTranslateResult)(result, { onExcessProperty: "error" }));
+    yield* resolve(Effect.fromResult(Schema.encodeUnknownResult(ConfigTranslateResult)(result, { onExcessProperty: "error" })));
     yield* resolve(
-      validateConfigTranslateResult(harness.translateInput, result).pipe(
-        Either.mapLeft((error) => new ConfigTranslateError({ ...error, translator: translator.id })),
-      ),
+      Effect.fromResult(validateConfigTranslateResult(harness.translateInput, result).pipe(
+        Result.mapError((error) => new ConfigTranslateError({ ...error, translator: translator.id })),
+      )),
     );
     const repeated = yield* resolve(translator.translate(harness.translateInput));
     yield* requireConfigTranslatorContract(
@@ -164,8 +164,8 @@ export const makeConfigTranslatorContractSuite = runConfigTranslatorContractSuit
  */
 export class RouteFilterError extends Schema.TaggedError<RouteFilterError>()("RouteFilterError", {
   message: Schema.String,
-  filter: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Unknown),
+  filter: Schema.optionalKey(Schema.String),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 const routeFilterContractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -191,7 +191,7 @@ export interface RouteFilterContractHarness<Route, Options> {
   /** The built-in/plugin filter id (e.g. `rewritePath`). */
   readonly id: string;
   /** The filter's option schema. */
-  readonly schema: Schema.Schema.AnyNoContext;
+  readonly schema: Schema.Codec<unknown, unknown>;
   /** A valid options value the schema accepts. */
   readonly validOptions: Options;
   /** An options value the schema must reject. */
@@ -226,17 +226,17 @@ export const runRouteFilterContractSuite = <Route, Options>(
     );
 
     // --- invalid options fail schema decode with a tagged error ---
-    const invalidDecoded = Schema.decodeUnknownEither(harness.schema)(harness.invalidOptions);
+    const invalidDecoded = Schema.decodeUnknownResult(harness.schema)(harness.invalidOptions);
     yield* requireRouteFilterContract(
-      Either.isLeft(invalidDecoded),
+      Result.isFailure(invalidDecoded),
       `${label}: invalid options fail schema decode before the plan is built`,
       invalidDecoded,
     );
 
     // --- valid options decode ---
-    const validDecoded = Schema.decodeUnknownEither(harness.schema)(harness.validOptions);
+    const validDecoded = Schema.decodeUnknownResult(harness.schema)(harness.validOptions);
     yield* requireRouteFilterContract(
-      Either.isRight(validDecoded),
+      Result.isSuccess(validDecoded),
       `${label}: valid options decode`,
       validDecoded,
     );

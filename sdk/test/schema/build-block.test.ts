@@ -1,5 +1,6 @@
+import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { BuildBlock, LandofileShape, ServiceConfig } from "../../src/schema/landofile.ts";
 
@@ -17,15 +18,15 @@ const expectAccepted = (input: unknown, expected: typeof BuildBlock.Type): void 
 };
 
 const expectLandofileFailure = (input: unknown, fragments: ReadonlyArray<string>): void => {
-  const results: ReadonlyArray<Either.Either<unknown, ParseResult.ParseError>> = [
-    ...decodeOptions.map((options) => Schema.decodeUnknownEither(BuildBlock)(input, options)),
-    ...decodeOptions.map((options) => Schema.decodeUnknownEither(ServiceConfig)({ build: input }, options)),
+  const results: ReadonlyArray<Result.Result<unknown, Schema.SchemaError>> = [
+    ...decodeOptions.map((options) => Schema.decodeUnknownResult(BuildBlock)(input, options)),
+    ...decodeOptions.map((options) => Schema.decodeUnknownResult(ServiceConfig)({ build: input }, options)),
   ];
 
   for (const result of results) {
-    expect(Either.isLeft(result)).toBe(true);
-    if (!Either.isLeft(result)) continue;
-    const message = ParseResult.ArrayFormatter.formatErrorSync(result.left).find(({ message }) =>
+    expect(Result.isFailure(result)).toBe(true);
+    if (!Result.isFailure(result)) continue;
+    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(({ message }) =>
       message.startsWith("Landofile service"),
     )?.message;
     expect(message?.startsWith("Landofile service")).toBe(true);
@@ -112,10 +113,10 @@ describe("BuildBlock", () => {
       // When / Then
       expectLandofileFailure(input, [...keys, "Compose", "Lando build-script", "image:"]);
       for (const options of decodeOptions) {
-        const result = Schema.decodeUnknownEither(BuildBlock)(input, options);
-        expect(Either.isLeft(result)).toBe(true);
-        if (!Either.isLeft(result)) continue;
-        const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
+        const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
+        expect(Result.isFailure(result)).toBe(true);
+        if (!Result.isFailure(result)) continue;
+        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
           .map(({ message }) => message)
           .join("\n");
         expect(message).not.toContain("build.dockerfile");
@@ -134,13 +135,13 @@ describe("BuildBlock", () => {
     for (const input of fixtures) {
       for (const options of decodeOptions) {
         // When
-        const result = Schema.decodeUnknownEither(BuildBlock)(input, options);
+        const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
 
         // Then
-        expect(Either.isLeft(result)).toBe(true);
-        if (!Either.isLeft(result)) continue;
-        expect(ParseResult.isParseError(result.left)).toBe(true);
-        const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
+        expect(Result.isFailure(result)).toBe(true);
+        if (!Result.isFailure(result)) continue;
+        expect(Schema.isSchemaError(result.failure)).toBe(true);
+        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
           .map(({ message }) => message)
           .join("\n");
         expect(message).not.toContain("Translate build.");
@@ -158,12 +159,12 @@ describe("BuildBlock", () => {
 
     for (const options of decodeOptions) {
       // When
-      const result = Schema.decodeUnknownEither(LandofileShape)(input, options);
+      const result = Schema.decodeUnknownResult(LandofileShape)(input, options);
 
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (!Either.isLeft(result)) continue;
-      const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
+      expect(Result.isFailure(result)).toBe(true);
+      if (!Result.isFailure(result)) continue;
+      const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
         .map(({ message }) => message)
         .join("\n");
       expect(message).toContain("artifact");
@@ -210,7 +211,7 @@ describe("BuildBlock", () => {
 
   test("the canonical union is structurally exclusive", () => {
     // Given
-    const BuildBlockCanonical = Schema.typeSchema(BuildBlock);
+    const BuildBlockCanonical = Schema.toType(BuildBlock);
 
     // When / Then
     expect(() => Schema.decodeUnknownSync(BuildBlockCanonical)({ artifact: ["x"], context: "." })).toThrow();
@@ -232,13 +233,13 @@ describe("BuildBlock", () => {
 
   test("ServiceConfig no longer accepts composeBuild", () => {
     // Given / When
-    const result = Schema.decodeUnknownEither(ServiceConfig)(
+    const result = Schema.decodeUnknownResult(ServiceConfig)(
       { type: "compose", composeBuild: { context: "." } },
       { onExcessProperty: "error" },
     );
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(String(result.left)).toContain("composeBuild");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(String(result.failure)).toContain("composeBuild");
   });
 });

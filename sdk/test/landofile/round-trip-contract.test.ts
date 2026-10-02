@@ -143,8 +143,8 @@ describe("@lando/sdk/landofile — rejection set fails with LandofileEmitError a
       expect(() => emitLandofileYaml(value)).toThrow(LandofileEmitError);
       const result = emitLandofileYamlEither(value);
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left).toBeInstanceOf(LandofileEmitError);
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(LandofileEmitError);
       }
     });
   };

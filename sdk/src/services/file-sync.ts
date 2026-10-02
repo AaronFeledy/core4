@@ -80,7 +80,4 @@ export interface FileSyncEngineShape {
  * implementation is the no-op `passthrough`; the bundled default for
  * `bindMountPerformance: "slow"` providers is `@lando/file-sync-mutagen`.
  */
-export class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
-  FileSyncEngine,
-  FileSyncEngineShape
->() {}
+export class FileSyncEngine extends Context.Service<FileSyncEngine, FileSyncEngineShape>()("@lando/core/FileSyncEngine") {}

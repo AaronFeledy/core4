@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
-const UnknownRecord = Schema.Record({ key: Schema.String, value: Schema.Unknown });
-const StringRecord = Schema.Record({ key: Schema.String, value: Schema.String });
+const UnknownRecord = Schema.Record(Schema.String, Schema.Unknown);
+const StringRecord = Schema.Record(Schema.String, Schema.String);
 
 export interface ExpressionContext {
   readonly host?: Readonly<Record<string, unknown>> | undefined;
@@ -26,33 +26,29 @@ export interface ExpressionContext {
   readonly key?: string | number | undefined;
 }
 
-export const ExpressionContext: Schema.Schema<ExpressionContext> = Schema.Struct({
-  host: Schema.optional(UnknownRecord),
-  env: Schema.optional(StringRecord),
-  paths: Schema.optional(UnknownRecord),
-  app: Schema.optional(UnknownRecord),
-  proxy: Schema.optional(UnknownRecord),
-  global: Schema.optional(UnknownRecord),
-  vars: Schema.optional(UnknownRecord),
-  options: Schema.optional(
-    UnknownRecord.annotations({
+export const ExpressionContext: Schema.Codec<ExpressionContext> = Schema.Struct({
+  host: Schema.optionalKey(UnknownRecord),
+  env: Schema.optionalKey(StringRecord),
+  paths: Schema.optionalKey(UnknownRecord),
+  app: Schema.optionalKey(UnknownRecord),
+  proxy: Schema.optionalKey(UnknownRecord),
+  global: Schema.optionalKey(UnknownRecord),
+  vars: Schema.optionalKey(UnknownRecord),
+  options: Schema.optionalKey(UnknownRecord.annotate({
       description:
         "Already-resolved recipe option values supplied by the caller; performs no lookup and runs no recipe code.",
-    }),
-  ),
-  recipe: Schema.optional(
-    UnknownRecord.annotations({
+    })),
+  recipe: Schema.optionalKey(UnknownRecord.annotate({
       description:
         "Recipe option values read from a Landofile's own recipe.options; performs no lookup and runs no recipe code.",
-    }),
-  ),
-  service: Schema.optional(UnknownRecord),
-  services: Schema.optional(UnknownRecord),
-  plugin: Schema.optional(UnknownRecord),
-  info: Schema.optional(UnknownRecord),
-  secrets: Schema.optional(StringRecord),
-  globalServices: Schema.optional(UnknownRecord),
-  event: Schema.optional(UnknownRecord),
-  item: Schema.optional(Schema.Unknown),
-  key: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+    })),
+  service: Schema.optionalKey(UnknownRecord),
+  services: Schema.optionalKey(UnknownRecord),
+  plugin: Schema.optionalKey(UnknownRecord),
+  info: Schema.optionalKey(UnknownRecord),
+  secrets: Schema.optionalKey(StringRecord),
+  globalServices: Schema.optionalKey(UnknownRecord),
+  event: Schema.optionalKey(UnknownRecord),
+  item: Schema.optionalKey(Schema.Unknown),
+  key: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
 });

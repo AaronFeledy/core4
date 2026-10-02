@@ -1,4 +1,4 @@
-import { Cause, Effect, Either, Exit, Option } from "effect";
+import { Cause, Effect, Result, Exit, Option } from "effect";
 
 import {
   SecretNotFoundError,
@@ -370,7 +370,7 @@ export const runSecretStoreContractSuite = (
       unknownExit,
     );
     if (Exit.isFailure(unknownExit)) {
-      const failure = Cause.failureOption(unknownExit.cause);
+      const failure = Cause.findErrorOption(unknownExit.cause);
       yield* requireSecretStoreContract(
         Option.isSome(failure) && failure.value instanceof SecretNotFoundError,
         `${label}: get(unknown) fails with SecretNotFoundError`,
@@ -389,25 +389,25 @@ export const runSecretStoreContractSuite = (
       .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(unknown) resolves`, cause)));
     yield* requireSecretStoreContract(hasUnknown === false, `${label}: has(unknown) is false`, hasUnknown);
 
-    const invalid = yield* Effect.either(store.get(harness.invalidReference));
+    const invalid = yield* Effect.result(store.get(harness.invalidReference));
     yield* requireSecretStoreContract(
-      Either.isLeft(invalid) &&
-        invalid.left instanceof SecretReferenceInvalidError &&
-        invalid.left.reference === harness.invalidReference,
+      Result.isFailure(invalid) &&
+        invalid.failure instanceof SecretReferenceInvalidError &&
+        invalid.failure.reference === harness.invalidReference,
       `${label}: get(invalidReference) fails with SecretReferenceInvalidError carrying the reference`,
     );
 
     if (harness.unavailableStore) {
       const { store: unavailable, reason } = harness.unavailableStore;
       for (const result of [
-        yield* Effect.either(Effect.asVoid(unavailable.get(harness.known.key))),
-        yield* Effect.either(Effect.asVoid(unavailable.has(harness.known.key))),
+        yield* Effect.result(Effect.asVoid(unavailable.get(harness.known.key))),
+        yield* Effect.result(Effect.asVoid(unavailable.has(harness.known.key))),
       ]) {
         yield* requireSecretStoreContract(
-          Either.isLeft(result) &&
-            result.left instanceof SecretStoreUnavailableError &&
-            result.left.reason === reason &&
-            result.left.storeId === unavailable.id,
+          Result.isFailure(result) &&
+            result.failure instanceof SecretStoreUnavailableError &&
+            result.failure.reason === reason &&
+            result.failure.storeId === unavailable.id,
           `${label}: unavailable get/has preserves SecretStoreUnavailableError with store id and reason`,
         );
       }
@@ -433,7 +433,7 @@ export const runSecretStoreContractSuite = (
         failExit,
       );
       if (Exit.isFailure(failExit)) {
-        const failure = Cause.failureOption(failExit.cause);
+        const failure = Cause.findErrorOption(failExit.cause);
         yield* requireSecretStoreContract(
           Option.isSome(failure) &&
             (failure.value instanceof SecretNotFoundError ||

@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,36 +7,11 @@ import { ServiceConfig } from "../landofile.ts";
 // LocalStack catalog service authoring contract
 // ============================================================================
 
-export const LocalStackServiceConfig = Schema.extend(
-  ServiceConfig.pick(
-    "image",
-    "port",
-    "user",
-    "database",
-    "environment",
-    "routes",
-    "ports",
-    "command",
-    "entrypoint",
-    "workingDirectory",
-    "appMount",
-    "mounts",
-    "storage",
-    "endpoints",
-    "healthcheck",
-    "dependsOn",
-    "labels",
-    "envFile",
-    "networks",
-    "security",
-    "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(Schema.Literal("localstack")).annotations({
+export const LocalStackServiceConfig = Schema.Struct(Struct.pick(ServiceConfig.fields, ["image", "port", "user", "database", "environment", "routes", "ports", "command", "entrypoint", "workingDirectory", "appMount", "mounts", "storage", "endpoints", "healthcheck", "dependsOn", "labels", "envFile", "networks", "security", "providers"])).pipe(Schema.fieldsAssign({
+    type: Schema.optionalKey(Schema.Literal("localstack")).annotate({
       description: "LocalStack catalog service type.",
     }),
-  }),
-).annotations({
+  })).annotate({
   identifier: "LocalStackServiceConfig",
   title: "LocalStack Service Config",
   description: "Landofile configuration accepted by the LocalStack catalog service.",

@@ -20,9 +20,7 @@ import type {
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
 
-export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
-  PluginRegistry,
-  {
+export class PluginRegistry extends Context.Service<PluginRegistry, {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
@@ -34,8 +32,7 @@ export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
     readonly loadAppFeature: (
       id: string,
     ) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>;
-  }
->() {}
+  }>()("@lando/core/PluginRegistry") {}
 
 /** Host identity facts a service type may read while resolving config. */
 export interface ServiceTypeHostFacts {
@@ -139,7 +136,7 @@ export interface ServiceType {
   readonly artifacts?: Readonly<Record<string, string>>;
   readonly identity?: ServiceImageIdentity;
   readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
-  readonly schema: Schema.Schema.AnyNoContext;
+  readonly schema: Schema.Codec<unknown, unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }
 
@@ -174,9 +171,6 @@ export interface RegisteredCommand {
   };
 }
 
-export class CommandRegistry extends Context.Tag("@lando/core/CommandRegistry")<
-  CommandRegistry,
-  {
+export class CommandRegistry extends Context.Service<CommandRegistry, {
     readonly list: Effect.Effect<ReadonlyArray<RegisteredCommand>, never>;
-  }
->() {}
+  }>()("@lando/core/CommandRegistry") {}

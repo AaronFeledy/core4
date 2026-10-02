@@ -1,4 +1,4 @@
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Result, Layer, Schema } from "effect";
 
 import { PluginLoadError, PluginManifestError } from "../errors/index.ts";
 import { PluginManifest } from "../schema/index.ts";
@@ -100,18 +100,18 @@ const classifyCoreRequirement = (requires: PluginManifest["requires"]): CoreRequ
 
 export const runPluginContract = (input: PluginContractInput): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
-    const decodedManifest = Schema.decodeUnknownEither(PluginManifest)(input.manifest, {
+    const decodedManifest = Schema.decodeUnknownResult(PluginManifest)(input.manifest, {
       onExcessProperty: "error",
     });
 
     yield* requirePluginContract(
-      Either.isRight(decodedManifest),
+      Result.isSuccess(decodedManifest),
       "manifest decodes as PluginManifest",
       decodedManifest,
     );
-    if (Either.isLeft(decodedManifest)) return;
+    if (Result.isFailure(decodedManifest)) return;
 
-    const manifest = decodedManifest.right;
+    const manifest = decodedManifest.success;
 
     yield* requirePluginContract(
       isNonEmptyString(manifest.name),

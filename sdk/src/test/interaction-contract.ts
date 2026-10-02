@@ -15,7 +15,7 @@ const interactionContractFailure = (assertion: string, details?: unknown): Contr
 const requireInteractionContract = (condition: boolean, assertion: string, details?: unknown) =>
   condition ? Effect.void : Effect.fail(interactionContractFailure(assertion, details));
 
-type RendererServiceShape = Context.Tag.Service<typeof Renderer>;
+type RendererServiceShape = Context.Service.Shape<typeof Renderer>;
 
 /**
  * Capturing renderer used by the contract to prove prompt chrome routes
@@ -115,7 +115,7 @@ const runInteractionScoped = <A>(
 
 const interactionFailureTag = <A>(exit: Exit.Exit<A, InteractionError>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined;
 };
 
@@ -200,10 +200,7 @@ export const runInteractionContract = (
     const failFastExit = yield* runInteractionScoped(
       failFastService.promptAll([interactionTextPrompt("app")], { mode: "non-interactive" }),
     ).pipe(
-      Effect.timeoutFail({
-        duration: Duration.seconds(5),
-        onTimeout: () => interactionContractFailure("non-interactive resolution never blocks on stdin"),
-      }),
+      Effect.timeoutOrElse({ duration: Duration.seconds(5), orElse: () => Effect.fail((() => interactionContractFailure("non-interactive resolution never blocks on stdin"))()) }),
     );
     yield* requireInteractionContract(
       interactionFailureTag(failFastExit) === "InteractionRequiredError",
@@ -272,11 +269,12 @@ export const runInteractionContract = (
     if (harness.supportsInterruption === true) {
       const interruptService = harness.makeService({ neverStdin: true, tty: true });
       const interruptExit = yield* Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(interruptService.promptAll([interactionTextPrompt("app")], { mode: "interactive" })),
         );
         yield* Effect.sleep("25 millis");
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       });
       yield* requireInteractionContract(
         interactionFailureTag(interruptExit) === "InteractionCancelledError",

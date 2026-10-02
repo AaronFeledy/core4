@@ -1,17 +1,15 @@
-import { ParseResult, Schema } from "effect";
-import type * as AST from "effect/SchemaAST";
+import { SchemaIssue, SchemaTransformation } from "effect";
+import { Effect } from "effect";
+import { Schema } from "effect";
 
 const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;
 
-const ComposeScalar = Schema.Union(Schema.String, Schema.Number, Schema.Boolean, Schema.Null);
-export const ComposeScalarMap = Schema.Record({ key: Schema.String, value: ComposeScalar });
+const ComposeScalar = Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]);
+export const ComposeScalarMap = Schema.Record(Schema.String, ComposeScalar);
 export type ComposeScalarMap = typeof ComposeScalarMap.Type;
-const ExtraHostsRecord = Schema.Record({
-  key: Schema.String,
-  value: Schema.Union(Schema.String, Schema.Array(Schema.String)),
-});
+const ExtraHostsRecord = Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Array(Schema.String)]));
 
-const ReservedComposeScalarMapInput = Schema.Unknown.annotations({
+const ReservedComposeScalarMapInput = Schema.Unknown.annotate({
   jsonSchema: {
     type: "object",
     propertyNames: RESERVED_KEY_PROPERTY_NAMES,
@@ -21,7 +19,7 @@ const ReservedComposeScalarMapInput = Schema.Unknown.annotations({
   },
 });
 
-const ReservedExtraHostsMapInput = Schema.Unknown.annotations({
+const ReservedExtraHostsMapInput = Schema.Unknown.annotate({
   jsonSchema: {
     type: "object",
     propertyNames: RESERVED_KEY_PROPERTY_NAMES,
@@ -31,31 +29,19 @@ const ReservedExtraHostsMapInput = Schema.Unknown.annotations({
   },
 });
 
-const reservedMapKeyFailure = (input: unknown, ast: AST.Transformation) =>
-  ParseResult.fail(
-    new ParseResult.Type(
-      ast,
-      input,
-      'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
-    ),
+const reservedMapKeyFailure = (input: unknown) =>
+  Effect.fail(
+    new SchemaIssue.InvalidValue({ message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.' }, input),
   );
 
-const decodeReservedKeyMap = (input: unknown, ast: AST.Transformation) =>
-  typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")
-    ? reservedMapKeyFailure(input, ast)
-    : ParseResult.succeed(input);
+const reservedMapKeyCheck = Schema.makeFilter((input: unknown) =>
+  !(typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")), {
+    message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
+  });
 
-const ComposeScalarMapInput = Schema.transformOrFail(ReservedComposeScalarMapInput, ComposeScalarMap, {
-  strict: false,
-  decode: (input, _options, ast) => decodeReservedKeyMap(input, ast),
-  encode: (record) => ParseResult.succeed(record),
-});
+const ComposeScalarMapInput = ReservedComposeScalarMapInput.check(reservedMapKeyCheck).pipe(Schema.decodeTo(ComposeScalarMap));
 
-const ComposeExtraHostsMapInput = Schema.transformOrFail(ReservedExtraHostsMapInput, ExtraHostsRecord, {
-  strict: false,
-  decode: (input, _options, ast) => decodeReservedKeyMap(input, ast),
-  encode: (record) => ParseResult.succeed(record),
-});
+const ComposeExtraHostsMapInput = ReservedExtraHostsMapInput.check(reservedMapKeyCheck).pipe(Schema.decodeTo(ExtraHostsRecord));
 
 const splitMappingEntry = (
   entry: string,
@@ -70,64 +56,44 @@ const splitMappingEntry = (
 const isStringList = (input: unknown): input is ReadonlyArray<string> =>
   Array.isArray(input) && input.every((entry) => typeof entry === "string");
 
-export const ComposeScalarMapField = Schema.transformOrFail(
-  Schema.Union(ComposeScalarMapInput, Schema.Array(Schema.String)),
-  ComposeScalarMap,
-  {
-    strict: true,
-    decode: (input, _options, ast) => {
-      if (!isStringList(input)) return ParseResult.succeed(input);
+export const ComposeScalarMapField = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)]).pipe(Schema.decodeTo(ComposeScalarMap, SchemaTransformation.transformEffect({ decode: (input, _options) => {
+      if (!isStringList(input)) return Effect.succeed(input);
       const entries: Array<readonly [string, string]> = [];
       for (const entry of input) {
         const pair = splitMappingEntry(entry, "equals");
         if (pair === undefined) {
-          return ParseResult.fail(
-            new ParseResult.Type(ast, input, "Landofile service map entries must use KEY=value."),
+          return Effect.fail(
+            new SchemaIssue.InvalidValue({ message: "Landofile service map entries must use KEY=value." }, input),
           );
         }
         entries.push(pair);
       }
       const record = Object.fromEntries(entries);
-      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record, ast);
-      return ParseResult.succeed(record);
-    },
-    encode: (record) => ParseResult.succeed(record),
-  },
-);
+      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
+      return Effect.succeed(record);
+     }, encode: (record) => Effect.succeed(record) })));
 
-export const ComposeSysctlsField = ComposeScalarMapField.annotations({
+export const ComposeSysctlsField = ComposeScalarMapField.annotate({
   description: "Kernel parameters as a Compose scalar map or KEY=value list; canonicalized to a scalar map.",
 });
 export type ComposeSysctls = typeof ComposeSysctlsField.Type;
 
-export const ComposeExtraHostsField = Schema.transformOrFail(
-  Schema.Union(ComposeExtraHostsMapInput, Schema.Array(Schema.String)),
-  ExtraHostsRecord,
-  {
-    strict: true,
-    decode: (input, _options, ast) => {
-      if (!isStringList(input)) return ParseResult.succeed(input);
+export const ComposeExtraHostsField = Schema.Union([ComposeExtraHostsMapInput, Schema.Array(Schema.String)]).pipe(Schema.decodeTo(ExtraHostsRecord, SchemaTransformation.transformEffect({ decode: (input, _options) => {
+      if (!isStringList(input)) return Effect.succeed(input);
       const entries: Array<readonly [string, string]> = [];
       for (const entry of input) {
         const pair = splitMappingEntry(entry, "host");
         if (pair === undefined) {
-          return ParseResult.fail(
-            new ParseResult.Type(
-              ast,
-              input,
-              "Landofile service extra_hosts entries must use HOST=IP or HOST:IP.",
-            ),
+          return Effect.fail(
+            new SchemaIssue.InvalidValue({ message: "Landofile service extra_hosts entries must use HOST=IP or HOST:IP." }, input),
           );
         }
         entries.push(pair);
       }
       const record = Object.fromEntries(entries);
-      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record, ast);
-      return ParseResult.succeed(record);
-    },
-    encode: (record) => ParseResult.succeed(record),
-  },
-).annotations({
+      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
+      return Effect.succeed(record);
+     }, encode: (record) => Effect.succeed(record) }))).annotate({
   description:
     "Additional host mappings as a hostname-to-address map or HOST=IP and HOST:IP list; canonicalized to a hostname map.",
 });

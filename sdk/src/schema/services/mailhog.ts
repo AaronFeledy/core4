@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { DeprecationNotice, deprecateSchema } from "../deprecation.ts";
@@ -16,36 +17,11 @@ export const MAILHOG_DEPRECATION_NOTICE = Schema.decodeUnknownSync(DeprecationNo
 });
 
 export const MailhogServiceConfig = deprecateSchema(
-  Schema.extend(
-    ServiceConfig.pick(
-      "image",
-      "port",
-      "user",
-      "database",
-      "environment",
-      "routes",
-      "ports",
-      "command",
-      "entrypoint",
-      "workingDirectory",
-      "appMount",
-      "mounts",
-      "storage",
-      "endpoints",
-      "healthcheck",
-      "dependsOn",
-      "labels",
-      "envFile",
-      "networks",
-      "security",
-      "providers",
-    ),
-    Schema.Struct({
-      type: Schema.optional(Schema.Literal("mailhog")).annotations({
+  Schema.Struct(Struct.pick(ServiceConfig.fields, ["image", "port", "user", "database", "environment", "routes", "ports", "command", "entrypoint", "workingDirectory", "appMount", "mounts", "storage", "endpoints", "healthcheck", "dependsOn", "labels", "envFile", "networks", "security", "providers"])).pipe(Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Literal("mailhog")).annotate({
         description: "Deprecated MailHog catalog service type. Use mailpit.",
       }),
-    }),
-  ).annotations({
+    })).annotate({
     identifier: "MailhogServiceConfig",
     title: "MailHog Service Config",
     description: "Landofile configuration accepted by the deprecated MailHog catalog service.",

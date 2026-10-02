@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Layer, Schema } from "effect";
+import { Result, Layer, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { EmbeddingPluginPolicy, PluginManifest, getJsonSchema } from "@lando/sdk/schema";
@@ -106,7 +106,7 @@ describe("PluginManifest", () => {
   });
 
   test("rejects invalid deprecation notices on nested plugin contribution entries", () => {
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(
       {
         name: "@lando/bad-plugin",
         version: "1.0.0",
@@ -118,11 +118,11 @@ describe("PluginManifest", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("strict decoding rejects excess fields inside nested deprecation notices", () => {
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(
       {
         name: "@lando/bad-plugin",
         version: "1.0.0",
@@ -139,7 +139,7 @@ describe("PluginManifest", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("defaults an omitted plugin bootstrap declaration to app", () => {
@@ -169,11 +169,11 @@ describe("PluginManifest", () => {
       const encoded = { name: `@lando/bootstrap-${bootstrap}`, version: "1.0.0", api: 4, bootstrap };
 
       // When: strict manifest decoding is applied.
-      const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+      const decoded = Schema.decodeUnknownResult(PluginManifest)(encoded, { onExcessProperty: "error" });
 
       // Then: the declaration is accepted and preserved for closure validation.
-      expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
-      if (Either.isRight(decoded)) expect(decoded.right).toHaveProperty("bootstrap", bootstrap);
+      expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
+      if (Result.isSuccess(decoded)) expect(decoded.success).toHaveProperty("bootstrap", bootstrap);
     }
   });
 
@@ -182,10 +182,10 @@ describe("PluginManifest", () => {
     const encoded = { name: "@lando/bootstrap-invalid", version: "1.0.0", api: 4, bootstrap: "fast" };
 
     // When: strict manifest decoding is applied.
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(encoded, { onExcessProperty: "error" });
 
     // Then: invalid declarations cannot reach subscriber registration.
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("decodes typed certificate authority contributions", () => {
@@ -207,18 +207,18 @@ describe("PluginManifest", () => {
       },
     };
 
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(encoded, { onExcessProperty: "error" });
 
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.contributes?.certificateAuthorities?.[0]).toEqual(
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.contributes?.certificateAuthorities?.[0]).toEqual(
         encoded.contributes.certificateAuthorities[0],
       );
     }
   });
 
   test("strict decoding rejects unknown cas contribution keys", () => {
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(
       {
         name: "@lando/legacy-ca",
         version: "1.0.0",
@@ -228,11 +228,11 @@ describe("PluginManifest", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("strict decoding rejects unknown proxyServices contribution keys", () => {
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(
       {
         name: "@lando/legacy-proxy",
         version: "1.0.0",
@@ -242,7 +242,7 @@ describe("PluginManifest", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("decodes typed routerServices contributions", () => {
@@ -255,11 +255,11 @@ describe("PluginManifest", () => {
       },
     };
 
-    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+    const decoded = Schema.decodeUnknownResult(PluginManifest)(encoded, { onExcessProperty: "error" });
 
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.contributes?.routerServices?.[0]).toEqual(encoded.contributes.routerServices[0]);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.contributes?.routerServices?.[0]).toEqual(encoded.contributes.routerServices[0]);
     }
   });
 });
@@ -273,11 +273,11 @@ describe("EmbeddingPluginPolicy", () => {
     });
     const entry = definePlugin({ name: manifest.name, manifest, layer: Layer.empty });
 
-    const decoded = Schema.decodeUnknownEither(EmbeddingPluginPolicy)({ manifests: [{ manifest, entry }] });
+    const decoded = Schema.decodeUnknownResult(EmbeddingPluginPolicy)({ manifests: [{ manifest, entry }] });
 
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
-    if (Either.isRight(decoded) && typeof decoded.right !== "string") {
-      expect(decoded.right.manifests?.[0]?.entry).toBe(entry);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
+    if (Result.isSuccess(decoded) && typeof decoded.success !== "string") {
+      expect(decoded.success.manifests?.[0]?.entry).toBe(entry);
     }
   });
 
@@ -288,11 +288,11 @@ describe("EmbeddingPluginPolicy", () => {
       api: 4,
     });
 
-    const decoded = Schema.decodeUnknownEither(EmbeddingPluginPolicy)({
+    const decoded = Schema.decodeUnknownResult(EmbeddingPluginPolicy)({
       manifests: [{ manifest, entry: "./src/index.ts" }],
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });
 
@@ -330,7 +330,7 @@ describe("PluginContribution.configTranslators", () => {
 
   test("rejects translator contributions without inputKinds", () => {
     // Given: a translator entry that omits its inputKinds metadata.
-    const result = Schema.decodeUnknownEither(PluginManifest)({
+    const result = Schema.decodeUnknownResult(PluginManifest)({
       name: "@lando/lando3",
       version: "1.0.0",
       api: 4,
@@ -338,7 +338,7 @@ describe("PluginContribution.configTranslators", () => {
     });
 
     // Then: the manifest is rejected.
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("publishes configTranslators in the PluginContribution JSON schema", () => {

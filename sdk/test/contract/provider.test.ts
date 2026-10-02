@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Either, Schema, Stream } from "effect";
+import { Effect, Result, Schema, Stream } from "effect";
 
 import {
   NoProviderInstalledError,
@@ -147,7 +147,7 @@ describe("RuntimeProvider contract", () => {
       ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(
           TestRuntimeProvider.execStream(
             { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
@@ -156,11 +156,11 @@ describe("RuntimeProvider contract", () => {
         ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(TestRuntimeProvider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false })),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(TestRuntimeProvider.runStream({ image: "alpine", command: ["tar", "c"] })),
     ).toBe(true);
     expect(
@@ -202,7 +202,7 @@ describe("RuntimeProvider contract", () => {
       ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(
           TestRuntimeProvider.copyFromService(
             { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
@@ -211,7 +211,7 @@ describe("RuntimeProvider contract", () => {
         ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(TestRuntimeProvider.exportArtifact({ providerId: TEST_PROVIDER_ID, ref: "web:test" })),
     ).toBe(true);
     expect(Effect.isEffect(TestRuntimeProvider.importArtifact(Stream.make(new Uint8Array([1, 2, 3]))))).toBe(
@@ -633,7 +633,7 @@ describe("SDK provider error contract", () => {
   });
 
   test("decoding ProviderCapabilityError preserves redacted details", () => {
-    const decoded = Schema.decodeUnknownEither(ProviderCapabilityError)({
+    const decoded = Schema.decodeUnknownResult(ProviderCapabilityError)({
       _tag: "ProviderCapabilityError",
       providerId: "docker",
       operation: "info",
@@ -644,9 +644,9 @@ describe("SDK provider error contract", () => {
       actualValue: false,
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.details).toEqual({ auth: "REDACTED" });
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.details).toEqual({ auth: "REDACTED" });
     }
   });
 });

@@ -7,15 +7,15 @@ export const isSortedUniquePluginTrustList = (values: ReadonlyArray<string>): bo
   }) && new Set(values).size === values.length;
 
 export const PluginTrustList = Schema.Array(Schema.String).pipe(
-  Schema.filter(isSortedUniquePluginTrustList, {
-    message: () => "Trust entries must be sorted and unique.",
+  Schema.check(Schema.makeFilter(isSortedUniquePluginTrustList, {
+    message: "Trust entries must be sorted and unique.",
     jsonSchema: {},
-  }),
+  })),
 );
 
 export const PluginTrustState = Schema.Struct({
   trustedPlugins: PluginTrustList,
   trustedAuthoringRoots: PluginTrustList,
-}).annotations({ identifier: "PluginTrustState" });
+}).annotate({ identifier: "PluginTrustState" });
 
 export type PluginTrustState = typeof PluginTrustState.Type;

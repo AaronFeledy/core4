@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import type { ToolingError } from "@lando/sdk/app";
 import * as errors from "@lando/sdk/errors";
@@ -54,9 +54,9 @@ test("lifecycle reentry decoding rejects a missing invocation chain", () => {
     remediation: "Remove the cycle.",
   };
   // When
-  const result = Schema.decodeUnknownEither(errors.LandofileEventLifecycleReentryError)(input);
+  const result = Schema.decodeUnknownResult(errors.LandofileEventLifecycleReentryError)(input);
   // Then
-  expect(Either.isLeft(result)).toBe(true);
+  expect(Result.isFailure(result)).toBe(true);
 });
 
 test("tooling failures carry event runtime errors so bracket failures keep their identity", () => {

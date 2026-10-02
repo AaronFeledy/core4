@@ -46,4 +46,4 @@ export interface HttpClientShape {
   >;
 }
 
-export class HttpClient extends Context.Tag("@lando/core/HttpClient")<HttpClient, HttpClientShape>() {}
+export class HttpClient extends Context.Service<HttpClient, HttpClientShape>()("@lando/core/HttpClient") {}

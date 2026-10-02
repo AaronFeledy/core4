@@ -12,19 +12,19 @@ const LOOPBACK_URL_PATTERN =
   /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\/[^\s?#]*)?$/u;
 
 const TunnelIdentifier = Schema.String.pipe(
-  Schema.pattern(TUNNEL_IDENTIFIER_PATTERN, {
-    message: () => "Expected a tunnel identifier without path separators or control characters.",
-  }),
+  Schema.check(Schema.isPattern(TUNNEL_IDENTIFIER_PATTERN, {
+    message: "Expected a tunnel identifier without path separators or control characters.",
+  })),
 );
 const TunnelServiceName = ServiceName.pipe(
-  Schema.pattern(TUNNEL_SERVICE_NAME_PATTERN, {
-    message: () => "Expected a service name without path separators or control characters.",
-  }),
+  Schema.check(Schema.isPattern(TUNNEL_SERVICE_NAME_PATTERN, {
+    message: "Expected a service name without path separators or control characters.",
+  })),
 );
 const TunnelHostname = Schema.String.pipe(
-  Schema.pattern(TUNNEL_HOSTNAME_PATTERN, {
-    message: () => "Expected a DNS hostname.",
-  }),
+  Schema.check(Schema.isPattern(TUNNEL_HOSTNAME_PATTERN, {
+    message: "Expected a DNS hostname.",
+  })),
 );
 const isSafeHttpUrl = (value: string): boolean => {
   if (!SAFE_HTTP_URL_PATTERN.test(value)) return false;
@@ -42,10 +42,10 @@ const isSafeHttpUrl = (value: string): boolean => {
   }
 };
 const SafeHttpUrl = Schema.String.pipe(
-  Schema.filter(isSafeHttpUrl, {
-    message: () => "Expected an http(s) URL without credentials, query, or fragment.",
+  Schema.check(Schema.makeFilter(isSafeHttpUrl, {
+    message: "Expected an http(s) URL without credentials, query, or fragment.",
     jsonSchema: { format: "uri", pattern: SAFE_HTTP_URL_PATTERN.source },
-  }),
+  })),
 );
 const isLoopbackUrl = (value: string): boolean => {
   if (!LOOPBACK_URL_PATTERN.test(value)) return false;
@@ -65,10 +65,10 @@ const isLoopbackUrl = (value: string): boolean => {
   }
 };
 const LoopbackUrl = Schema.String.pipe(
-  Schema.filter(isLoopbackUrl, {
-    message: () => "Expected a core-created http(s) loopback URL.",
+  Schema.check(Schema.makeFilter(isLoopbackUrl, {
+    message: "Expected a core-created http(s) loopback URL.",
     jsonSchema: { format: "uri", pattern: LOOPBACK_URL_PATTERN.source },
-  }),
+  })),
 );
 
 export const TunnelCapabilities = Schema.Struct({
@@ -82,49 +82,45 @@ export type TunnelCapabilities = typeof TunnelCapabilities.Type;
 
 const TunnelRouteTarget = Schema.TaggedStruct("route", {
   routeId: TunnelIdentifier,
-  hostname: Schema.optional(TunnelHostname),
+  hostname: Schema.optionalKey(TunnelHostname),
 });
 
 const TunnelServiceEndpointTarget = Schema.TaggedStruct("service", {
   service: TunnelServiceName,
   port: PortNumber,
-  protocol: Schema.optional(Schema.Literal("http", "https", "tcp")),
+  protocol: Schema.optionalKey(Schema.Literals(["http", "https", "tcp"])),
 });
 
 const TunnelLoopbackTarget = Schema.TaggedStruct("loopback", {
   url: LoopbackUrl,
 });
 
-export const TunnelTarget = Schema.Union(
-  TunnelRouteTarget,
-  TunnelServiceEndpointTarget,
-  TunnelLoopbackTarget,
-);
+export const TunnelTarget = Schema.Union([TunnelRouteTarget, TunnelServiceEndpointTarget, TunnelLoopbackTarget]);
 export type TunnelTarget = typeof TunnelTarget.Type;
 
-export const TunnelStatus = Schema.Literal("starting", "ready", "stopped", "failed", "unknown");
+export const TunnelStatus = Schema.Literals(["starting", "ready", "stopped", "failed", "unknown"]);
 export type TunnelStatus = typeof TunnelStatus.Type;
 
 export const TunnelStartRequest = Schema.Struct({
   app: AppId,
   target: TunnelTarget,
-  plan: Schema.optional(AppPlan),
-  provider: Schema.optional(TunnelIdentifier),
-  detached: Schema.optional(Schema.Boolean),
-  metadata: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  plan: Schema.optionalKey(AppPlan),
+  provider: Schema.optionalKey(TunnelIdentifier),
+  detached: Schema.optionalKey(Schema.Boolean),
+  metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
 export type TunnelStartRequest = typeof TunnelStartRequest.Type;
 
 export const TunnelStopRequest = Schema.Struct({
   sessionId: TunnelIdentifier,
-  provider: Schema.optional(TunnelIdentifier),
-  force: Schema.optional(Schema.Boolean),
+  provider: Schema.optionalKey(TunnelIdentifier),
+  force: Schema.optionalKey(Schema.Boolean),
 });
 export type TunnelStopRequest = typeof TunnelStopRequest.Type;
 
 export const TunnelStatusRequest = Schema.Struct({
   sessionId: TunnelIdentifier,
-  provider: Schema.optional(TunnelIdentifier),
+  provider: Schema.optionalKey(TunnelIdentifier),
 });
 export type TunnelStatusRequest = typeof TunnelStatusRequest.Type;
 
@@ -133,30 +129,30 @@ export const TunnelSession = Schema.Struct({
   app: AppId,
   provider: TunnelIdentifier,
   target: TunnelTarget,
-  publicUrl: Schema.optional(SafeHttpUrl),
+  publicUrl: Schema.optionalKey(SafeHttpUrl),
   status: TunnelStatus,
   detached: Schema.Boolean,
   startedAt: Schema.String,
-  updatedAt: Schema.optional(Schema.String),
-  metadata: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  updatedAt: Schema.optionalKey(Schema.String),
+  metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
 export type TunnelSession = typeof TunnelSession.Type;
 
 export const TunnelSessionFilter = Schema.Struct({
-  app: Schema.optional(AppId),
-  provider: Schema.optional(TunnelIdentifier),
-  sessionId: Schema.optional(TunnelIdentifier),
-  target: Schema.optional(TunnelTarget),
-  detached: Schema.optional(Schema.Boolean),
-  status: Schema.optional(TunnelStatus),
+  app: Schema.optionalKey(AppId),
+  provider: Schema.optionalKey(TunnelIdentifier),
+  sessionId: Schema.optionalKey(TunnelIdentifier),
+  target: Schema.optionalKey(TunnelTarget),
+  detached: Schema.optionalKey(Schema.Boolean),
+  status: Schema.optionalKey(TunnelStatus),
 });
 export type TunnelSessionFilter = typeof TunnelSessionFilter.Type;
 
 export const TunnelServiceContribution = Schema.Struct({
   id: TunnelIdentifier,
-  module: Schema.String.pipe(Schema.minLength(1)),
+  module: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   capabilities: TunnelCapabilities,
-  enabledByDefault: Schema.optional(Schema.Boolean),
-  summary: Schema.optional(Schema.String),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean),
+  summary: Schema.optionalKey(Schema.String),
 });
 export type TunnelServiceContribution = typeof TunnelServiceContribution.Type;

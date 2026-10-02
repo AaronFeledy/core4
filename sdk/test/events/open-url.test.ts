@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Either, Schema } from "effect";
+import { DateTime, Result, Schema } from "effect";
 
 import {
   type LandoEvent,
@@ -9,7 +9,7 @@ import {
   PreOpenUrlEvent,
 } from "@lando/sdk/events";
 
-const FIXED_TIMESTAMP = DateTime.unsafeMake("2026-07-06T08:00:00Z");
+const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-07-06T08:00:00Z");
 
 const appRefFixture = {
   kind: "user",
@@ -24,8 +24,8 @@ const basePayload = {
 };
 
 const openUrlEvents = [
-  ["pre-open-url", Schema.decodeUnknownEither(PreOpenUrlEvent)],
-  ["post-open-url", Schema.decodeUnknownEither(PostOpenUrlEvent)],
+  ["pre-open-url", Schema.decodeUnknownResult(PreOpenUrlEvent)],
+  ["post-open-url", Schema.decodeUnknownResult(PostOpenUrlEvent)],
 ] as const;
 
 describe("open-url events", () => {
@@ -33,18 +33,18 @@ describe("open-url events", () => {
     test(`${tag} round-trips through its schema`, () => {
       const decoded = decode({ _tag: tag, ...basePayload });
       expect(decoded._tag).toBe("Right");
-      if (decoded._tag === "Right") {
-        expect(String(decoded.right._tag)).toBe(tag);
-        expect(decoded.right.url).toBe("https://web.myapp.lndo.site");
-        expect(String(decoded.right.app.id)).toBe("myapp");
+      if (decoded._tag === "Success") {
+        expect(String(decoded.success._tag)).toBe(tag);
+        expect(decoded.success.url).toBe("https://web.myapp.lndo.site");
+        expect(String(decoded.success.app.id)).toBe("myapp");
       }
     });
 
     test(`${tag} is a member of the LandoEvent union`, () => {
-      const decoded = Schema.decodeUnknownEither(LandoEventSchema)({ _tag: tag, ...basePayload });
-      expect(Either.isRight(decoded)).toBe(true);
-      if (Either.isRight(decoded)) {
-        const event: LandoEvent = decoded.right;
+      const decoded = Schema.decodeUnknownResult(LandoEventSchema)({ _tag: tag, ...basePayload });
+      expect(Result.isSuccess(decoded)).toBe(true);
+      if (Result.isSuccess(decoded)) {
+        const event: LandoEvent = decoded.success;
         expect(String(event._tag)).toBe(tag);
       }
     });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { ToolingStepConditionError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import { AppLifecycleEventName, EventStep, LandofileEvents, PortablePath } from "@lando/sdk/schema";
@@ -35,7 +35,7 @@ describe("EventStep", () => {
     // Given / When / Then
     for (const options of decodeOptions) {
       for (const step of acceptedSteps) {
-        expect(Either.isRight(Schema.decodeUnknownEither(EventStep)(step, options))).toBe(true);
+        expect(Result.isSuccess(Schema.decodeUnknownResult(EventStep)(step, options))).toBe(true);
       }
     }
   });
@@ -54,7 +54,7 @@ describe("EventStep", () => {
     // When / Then
     for (const options of decodeOptions) {
       for (const step of overlapping) {
-        expect(Either.isLeft(Schema.decodeUnknownEither(EventStep)(step, options))).toBe(true);
+        expect(Result.isFailure(Schema.decodeUnknownResult(EventStep)(step, options))).toBe(true);
       }
     }
   });
@@ -71,7 +71,7 @@ describe("EventStep", () => {
 
     // When / Then
     for (const step of invalid) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(EventStep)(step, { onExcessProperty: "error" }))).toBe(
+      expect(Result.isFailure(Schema.decodeUnknownResult(EventStep)(step, { onExcessProperty: "error" }))).toBe(
         true,
       );
     }
@@ -92,10 +92,10 @@ describe("EventStep", () => {
     const input = { command: "app:info", args: ["appserver"] };
 
     // When
-    const decoded = Schema.decodeUnknownEither(EventStep)(input, { onExcessProperty: "error" });
+    const decoded = Schema.decodeUnknownResult(EventStep)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });
 
@@ -119,7 +119,7 @@ describe("LandofileEvents", () => {
 
     // When
     const names = AppLifecycleEventName.literals;
-    const eventKeys = Object.keys(LandofileEvents.fields);
+    const eventKeys = Object.keys(LandofileEvents.schema.fields);
 
     // Then
     expect([...names]).toEqual(expected);
@@ -130,11 +130,11 @@ describe("LandofileEvents", () => {
     // Given
     const input = { "pre-build": ["echo x"], "post-docs:build": [{ cmd: "echo y", service: ":host" }] };
     // When
-    const result = Schema.decodeUnknownEither(LandofileEvents)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileEvents)(input, { onExcessProperty: "error" });
     // Then
-    expect(result).toEqual(Either.right(input));
-    if (Either.isRight(result)) {
-      const indexed: Record<string, readonly EventStep[] | undefined> = result.right;
+    expect(result).toEqual(Result.succeed(input));
+    if (Result.isSuccess(result)) {
+      const indexed: Record<string, readonly EventStep[] | undefined> = result.success;
       expect(indexed["post-docs:build"]).toEqual(input["post-docs:build"]);
     }
   });
@@ -143,9 +143,9 @@ describe("LandofileEvents", () => {
     // Given
     const input = { serve: ["echo x"] };
     // When
-    const result = Schema.decodeUnknownEither(LandofileEvents)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileEvents)(input, { onExcessProperty: "error" });
     // Then
-    expect(result).toEqual(Either.right(input));
+    expect(result).toEqual(Result.succeed(input));
   });
 
   test("decodes all twelve named event keys", () => {
@@ -167,19 +167,19 @@ describe("LandofileEvents", () => {
       ].map((name) => [name, ["echo x"]]),
     );
     // When
-    const result = Schema.decodeUnknownEither(LandofileEvents)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileEvents)(input, { onExcessProperty: "error" });
     // Then
-    expect(result).toEqual(Either.right(input));
+    expect(result).toEqual(Result.succeed(input));
   });
 
   test("accepts only prefixed Landofile event names", () => {
     // Given / When / Then
     expect(schemas).toHaveProperty("LandofileEventName");
     for (const name of ["pre-start", "pre-build", "post-docs:build"]) {
-      expect(Either.isRight(Schema.decodeUnknownEither(schemas.LandofileEventName)(name))).toBe(true);
+      expect(Result.isSuccess(Schema.decodeUnknownResult(schemas.LandofileEventName)(name))).toBe(true);
     }
     for (const name of ["serve", "build"]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(schemas.LandofileEventName)(name))).toBe(true);
+      expect(Result.isFailure(Schema.decodeUnknownResult(schemas.LandofileEventName)(name))).toBe(true);
     }
   });
 });

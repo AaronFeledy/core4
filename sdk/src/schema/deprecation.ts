@@ -1,5 +1,4 @@
-import { Either, Schema } from "effect";
-import type * as AST from "effect/SchemaAST";
+import { type SchemaAST as AST, Effect, Result, Schema } from "effect";
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const MIN_UNSCHEDULED_DEPRECATION_SINCE = { major: 4, minor: 1, patch: 0 } as const satisfies Semver;
@@ -34,22 +33,27 @@ const isAbsoluteHttpUrl = (value: string): boolean => {
 };
 
 const SemverString = Schema.String.pipe(
-  Schema.pattern(SEMVER_PATTERN, {
-    message: () => "Version must be a semver string in major.minor.patch form.",
-  }),
+  Schema.check(
+    Schema.isPattern(SEMVER_PATTERN, {
+      message: "Version must be a semver string in major.minor.patch form.",
+      toJsonSchema: () => ({ pattern: SEMVER_PATTERN.source }),
+    }),
+  ),
 );
 
 const OptionalHttpUrl = Schema.String.pipe(
-  Schema.filter(isAbsoluteHttpUrl, {
-    message: () => "docsUrl must be an absolute http(s) URL.",
-    jsonSchema: { format: "uri" },
-  }),
+  Schema.check(
+    Schema.makeFilter(isAbsoluteHttpUrl, {
+      message: "docsUrl must be an absolute http(s) URL.",
+      toJsonSchema: () => [{ format: "uri", pattern: "^[Hh][Tt][Tt][Pp][Ss]?://" }, true],
+    }),
+  ),
 );
 
-export const DeprecationSeverity = Schema.Literal("info", "warn", "error");
+export const DeprecationSeverity = Schema.Literals(["info", "warn", "error"]);
 export type DeprecationSeverity = typeof DeprecationSeverity.Type;
 
-export const DeprecationSurfaceKind = Schema.Literal(
+export const DeprecationSurfaceKind = Schema.Literals([
   "command",
   "flag",
   "arg",
@@ -73,7 +77,7 @@ export const DeprecationSurfaceKind = Schema.Literal(
   "plugin",
   "export",
   "tagged-error",
-);
+]);
 export type DeprecationSurfaceKind = typeof DeprecationSurfaceKind.Type;
 
 const DEPRECATION_NOTICE_JSON_SCHEMA_METADATA = {
@@ -118,17 +122,16 @@ const DEPRECATION_NOTICE_JSON_SCHEMA = {
 
 export const DeprecationNoticeJsonShape = Schema.Struct({
   since: SemverString,
-  removeIn: Schema.optional(SemverString),
-  severity: Schema.optionalWith(DeprecationSeverity, { default: () => "warn" as const }),
-  replacement: Schema.optional(Schema.String),
+  removeIn: Schema.optionalKey(SemverString),
+  severity: DeprecationSeverity.pipe(Schema.withDecodingDefaultKey(Effect.succeed("warn" as const))),
+  replacement: Schema.optionalKey(Schema.String),
   note: Schema.String,
-  docsUrl: Schema.optional(OptionalHttpUrl),
-  ticket: Schema.optional(Schema.String),
-}).annotations({
+  docsUrl: Schema.optionalKey(OptionalHttpUrl),
+  ticket: Schema.optionalKey(Schema.String),
+}).annotate({
   identifier: "DeprecationNotice",
   title: "Deprecation Notice",
   description: "A structured deprecation declaration attached to a public surface.",
-  jsonSchema: DEPRECATION_NOTICE_JSON_SCHEMA,
 });
 
 const isFutureMajorOrMinorRemoval = (notice: typeof DeprecationNoticeJsonShape.Type): boolean => {
@@ -148,21 +151,23 @@ const hasRequiredScheduleForOldNotice = (notice: typeof DeprecationNoticeJsonSha
 };
 
 export const DeprecationNotice = DeprecationNoticeJsonShape.pipe(
-  Schema.filter(isFutureMajorOrMinorRemoval, {
-    message: () =>
-      "removeIn must be a future major or minor release; patch, same-release, and past removals are not allowed.",
-    jsonSchema: DEPRECATION_NOTICE_JSON_SCHEMA,
-  }),
-  Schema.filter(hasRequiredScheduleForOldNotice, {
-    message: () =>
-      "Notices from releases older than the active 4.1.0 deprecation window must declare removeIn.",
-    jsonSchema: DEPRECATION_NOTICE_JSON_SCHEMA,
-  }),
-).annotations({
+  Schema.check(
+    Schema.makeFilter(isFutureMajorOrMinorRemoval, {
+      message:
+        "removeIn must be a future major or minor release; patch, same-release, and past removals are not allowed.",
+      toJsonSchema: () => [DEPRECATION_NOTICE_JSON_SCHEMA, true],
+    }),
+  ),
+  Schema.check(
+    Schema.makeFilter(hasRequiredScheduleForOldNotice, {
+      message: "Notices from releases older than the active 4.1.0 deprecation window must declare removeIn.",
+      toJsonSchema: () => [DEPRECATION_NOTICE_JSON_SCHEMA, true],
+    }),
+  ),
+).annotate({
   identifier: "DeprecationNotice",
   title: "Deprecation Notice",
   description: "A structured deprecation declaration attached to a public surface.",
-  jsonSchema: DEPRECATION_NOTICE_JSON_SCHEMA,
 });
 export type DeprecationNotice = typeof DeprecationNotice.Type;
 
@@ -170,11 +175,11 @@ export type StructuralDeprecationKey = Pick<DeprecationNotice, "since" | "remove
 
 export const structuralDeprecationKey = (notice: DeprecationNotice): StructuralDeprecationKey => ({
   since: notice.since,
-  removeIn: notice.removeIn,
+  ...(notice.removeIn === undefined ? {} : { removeIn: notice.removeIn }),
   note: notice.note,
 });
 
-export const SchemaDeprecationAnnotationId: unique symbol = Symbol.for("lando/schema/DeprecationNotice");
+export const SchemaDeprecationAnnotationId = "lando/schema/DeprecationNotice" as const;
 
 export type SchemaDeprecationAnnotation = DeprecationNotice;
 
@@ -196,20 +201,37 @@ const deprecatedAnnotations = (notice: DeprecationNotice): DeprecatedSchemaAnnot
   documentation: formatDeprecationNotice(notice),
 });
 
-export const deprecateSchema = <S extends Schema.Annotable.All>(schema: S, notice: DeprecationNotice) =>
-  schema.annotations(deprecatedAnnotations(notice));
+export const deprecateSchema = <S extends Schema.Top>(schema: S, notice: DeprecationNotice) =>
+  schema.annotate(deprecatedAnnotations(notice));
 
-export const deprecateField = <S extends Schema.Annotable.All>(schema: S, notice: DeprecationNotice) =>
-  schema.annotations(deprecatedAnnotations(notice));
+export const deprecateField = <S extends Schema.Top>(schema: S, notice: DeprecationNotice) =>
+  schema.annotateKey(deprecatedAnnotations(notice));
 
-export const getSchemaDeprecation = (annotated: AST.Annotated): DeprecationNotice | undefined => {
-  const notice = annotated.annotations[SchemaDeprecationAnnotationId];
+export const getSchemaDeprecation = (
+  annotated: AST.AST | AST.PropertySignature,
+): DeprecationNotice | undefined => {
+  const ast = "type" in annotated ? annotated.type : annotated;
+  const checkNotice = (checks: ReadonlyArray<AST.Check<unknown>>): unknown => {
+    for (const check of [...checks].reverse()) {
+      const own = check.annotations?.[SchemaDeprecationAnnotationId];
+      if (own !== undefined) return own;
+      if (check._tag === "FilterGroup") {
+        const nested = checkNotice(check.checks);
+        if (nested !== undefined) return nested;
+      }
+    }
+    return undefined;
+  };
+  const notice =
+    ast.context?.annotations?.[SchemaDeprecationAnnotationId] ??
+    checkNotice(ast.checks ?? []) ??
+    ast.annotations?.[SchemaDeprecationAnnotationId];
   return notice !== undefined && Schema.is(DeprecationNotice)(notice) ? notice : undefined;
 };
 
 export const validateDeprecationNotice = (notice: unknown): notice is DeprecationNotice =>
   notice !== undefined &&
-  Either.isRight(Schema.decodeUnknownEither(DeprecationNotice)(notice, { onExcessProperty: "error" }));
+  Result.isSuccess(Schema.decodeUnknownResult(DeprecationNotice)(notice, { onExcessProperty: "error" }));
 
 export const DeprecationUse = Schema.Struct({
   kind: DeprecationSurfaceKind,
@@ -218,8 +240,8 @@ export const DeprecationUse = Schema.Struct({
   callsite: Schema.optional(Schema.String),
   app: Schema.optional(Schema.String),
   plugin: Schema.optional(Schema.String),
-  timestamp: Schema.DateTimeUtc,
-}).annotations({
+  timestamp: Schema.DateTimeUtcFromString,
+}).annotate({
   identifier: "DeprecationUse",
   title: "Deprecation Use",
   description: "A recorded runtime use of a deprecated public surface.",

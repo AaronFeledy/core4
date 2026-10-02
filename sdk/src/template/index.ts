@@ -84,7 +84,7 @@ export class TemplateCompileError extends Schema.TaggedError<TemplateCompileErro
   sourceId: Schema.String,
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 /** Template failed to render (e.g. strict missing field). Carries source line/column. */
@@ -94,7 +94,7 @@ export class TemplateRenderError extends Schema.TaggedError<TemplateRenderError>
   sourceId: Schema.String,
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 /** A requested template engine id is not installed / resolvable. */

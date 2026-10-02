@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 
 import { LandoEvent, PostBootstrapEvent } from "@lando/sdk/events";
@@ -43,19 +43,19 @@ describe("bootstrap lifecycle event schemas", () => {
     const payload = { _tag: "post-bootstrap", timestamp };
 
     // When: the payload is decoded without a level field.
-    const decoded = Schema.decodeUnknownEither(PostBootstrapEvent)(payload, {
+    const decoded = Schema.decodeUnknownResult(PostBootstrapEvent)(payload, {
       onExcessProperty: "error",
     });
-    const unionDecoded = Schema.decodeUnknownEither(LandoEvent)(payload, {
+    const unionDecoded = Schema.decodeUnknownResult(LandoEvent)(payload, {
       onExcessProperty: "error",
     });
 
     // Then: aggregate completion remains a public member of the closed event union.
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
-    expect(Either.isRight(unionDecoded), String(Either.getLeft(unionDecoded))).toBe(true);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
+    expect(Result.isSuccess(unionDecoded), String(Result.getFailure(unionDecoded))).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(PostBootstrapEvent)(
+      Result.isFailure(
+        Schema.decodeUnknownResult(PostBootstrapEvent)(
           { ...payload, level: "app" },
           {
             onExcessProperty: "error",
@@ -75,8 +75,8 @@ describe("bootstrap lifecycle event schemas", () => {
     // Then: callers cannot construct the obsolete level-bearing event shape.
     expect(legacy).toBeUndefined();
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(LandoEvent)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(LandoEvent)({
           _tag: "pre-bootstrap",
           level: "app",
           timestamp,

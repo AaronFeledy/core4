@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   JSON_SCHEMA_NAMES,
@@ -833,21 +833,21 @@ export const assertPublicSchemaContractCoverage = (
 
   const failingSchemas: string[] = [];
   for (const schemaName of JSON_SCHEMA_NAMES) {
-    const schema: Schema.Schema.AnyNoContext = publicSchemaRegistry[schemaName];
-    const happy = Schema.decodeUnknownEither(schema)(publicSchemaHappyPathFixture(schemaName), {
+    const schema: Schema.Codec<unknown, unknown> = publicSchemaRegistry[schemaName];
+    const happy = Schema.decodeUnknownResult(schema)(publicSchemaHappyPathFixture(schemaName), {
       onExcessProperty: "error",
     });
-    const error = Schema.decodeUnknownEither(schema)(undefined, { onExcessProperty: "error" });
+    const error = Schema.decodeUnknownResult(schema)(undefined, { onExcessProperty: "error" });
 
-    if (Either.isLeft(happy)) failingSchemas.push(`${schemaName} happy path: ${String(happy.left)}`);
-    if (Either.isRight(error)) failingSchemas.push(`${schemaName} error path accepted undefined`);
-    if (Either.isRight(happy)) {
-      const encoded = Schema.encodeEither(schema)(happy.right);
-      if (Either.isLeft(encoded)) failingSchemas.push(`${schemaName} encode: ${String(encoded.left)}`);
-      if (Either.isRight(encoded)) {
-        const decodedAgain = Schema.decodeUnknownEither(schema)(encoded.right, { onExcessProperty: "error" });
-        if (Either.isLeft(decodedAgain))
-          failingSchemas.push(`${schemaName} decode encoded: ${String(decodedAgain.left)}`);
+    if (Result.isFailure(happy)) failingSchemas.push(`${schemaName} happy path: ${String(happy.failure)}`);
+    if (Result.isSuccess(error)) failingSchemas.push(`${schemaName} error path accepted undefined`);
+    if (Result.isSuccess(happy)) {
+      const encoded = Schema.encodeResult(schema)(happy.success);
+      if (Result.isFailure(encoded)) failingSchemas.push(`${schemaName} encode: ${String(encoded.failure)}`);
+      if (Result.isSuccess(encoded)) {
+        const decodedAgain = Schema.decodeUnknownResult(schema)(encoded.success, { onExcessProperty: "error" });
+        if (Result.isFailure(decodedAgain))
+          failingSchemas.push(`${schemaName} decode encoded: ${String(decodedAgain.failure)}`);
       }
     }
   }
