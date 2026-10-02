@@ -66,7 +66,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
   const input = Schema.decodeUnknownSync(WorkerInput)(JSON.parse(await stdinText()));
   const app = { kind: input.app.kind, id: input.app.id, root: input.app.root } as AppRef;
   const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
-  // Runtime Layer scope must outlive session create (EventService is Layer.scoped).
+  // Runtime Layer scope must outlive session create (EventService acquires scoped resources).
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {

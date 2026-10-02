@@ -15,7 +15,7 @@ test("a source-mode command exits after interrupting a hanging telemetry sink", 
         id: "hanging-characterization-sink",
         record: () => Deferred.succeed(started, undefined).pipe(
           Effect.tap(() => Effect.sync(() => console.error("sink-started"))),
-          Effect.zipRight(Effect.never),
+          Effect.andThen(Effect.never),
           Effect.ensuring(Effect.sync(() => console.error("sink-interrupted"))),
         ),
       }])),
