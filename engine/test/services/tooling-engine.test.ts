@@ -21,6 +21,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
 
@@ -179,17 +180,6 @@ const runEngine = (invocation: ToolingInvocation, plan: AppPlan, provider: Runti
   Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider)).pipe(
     Effect.provide(ProviderExecToolingEngineLive),
   );
-
-const AGENT_ENV_NAMES = [
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CURSOR_AGENT",
-  "OPENCODE",
-  "COPILOT_CLI",
-  "GEMINI_CLI",
-  "AGENT",
-  "CI",
-] as const;
 
 const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
   const saved = new Map<string, string | undefined>();
