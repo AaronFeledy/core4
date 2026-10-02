@@ -7,6 +7,9 @@ import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+
 const DEFAULT_AMQP_PORT = Schema.decodeUnknownSync(PortNumber)(5672);
 const MANAGEMENT_PORT = Schema.decodeUnknownSync(PortNumber)(15672);
 const DATA_TARGET = PortablePath.make("/var/lib/rabbitmq");
@@ -17,11 +20,6 @@ const ARTIFACTS = {
 } as const;
 
 export const RABBITMQ_FEATURE_ID = "service-lando.rabbitmq";
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -56,10 +54,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 30,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const rabbitmqServiceFeature: ServiceFeatureDefinition = {
