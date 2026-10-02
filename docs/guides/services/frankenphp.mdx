@@ -29,7 +29,7 @@ tooling:
     cmd: frankenphp
 ```
 
-Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx).
+Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/).
 
 `SERVER_NAME: ":9080"` tells FrankenPHP (Caddy) to listen for HTTP on container port `9080`. The short port form publishes that port on the host. Drop a page at `public/index.php`, then start:
 
@@ -155,8 +155,8 @@ From another service, call that URL. Do not use `localhost` inside another conta
 
 ## Next
 
-- [Add a Compose service](./compose-passthrough.mdx)
-- [Add PHP](./php.mdx)
-- [Keep a service home across rebuilds and reach your host](./home-and-host.mdx)
-- [How services find each other](../subsystems/service-dns.mdx)
-- [Run the Laravel recipe](../recipes/laravel-workflow.mdx)
+- [Add a Compose service](../compose-passthrough/)
+- [Add PHP](../php/)
+- [Keep a service home across rebuilds and reach your host](../home-and-host/)
+- [How services find each other](../../subsystems/service-dns/)
+- [Run the Laravel recipe](../../recipes/laravel-workflow/)
