@@ -80,7 +80,31 @@ lando open --print
 
 Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you don't need it for the site user.
 
-For Postgres answers, host `database`, port `5432`, user `lando`, database the app name. The password is derived per app; `lando psql` opens a session without it. Use `--db-url='pgsql://lando:<password>@database/drupal-demo'` with that password when you install.
+For Postgres answers, use host `database`, port `5432`, user `lando`, and database the app name. The default password is derived per app and `lando info` redacts it. For a new app initialized with `--answer=database=postgres:16`, set explicit local-development credentials in `.lando.yml` before its first `lando start`:
+
+```yaml
+services:
+  database:
+    type: postgres:16
+    creds:
+      user: lando
+      password: drupal-local
+      database: drupal-demo
+```
+
+Keep the rest of the generated Landofile. After starting and scaffolding, replace the MariaDB install command above with:
+
+```sh
+lando drush site:install standard \
+  --db-url='pgsql://lando:drupal-local@database:5432/drupal-demo' \
+  --site-name='Drupal Demo' \
+  --account-name=admin \
+  --account-mail=admin@example.com \
+  -y
+lando drush status
+```
+
+Match `creds.database` and the URL to your app name. Changing `creds.password` does not reset the password in an existing Postgres volume; keep that database's existing credentials instead. `lando psql` opens its client with the configured credentials.
 
 ## Log in and clear caches with Drush
 
@@ -242,12 +266,12 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 
 ## Next
 
-- [Drupal recipe](/recipes/drupal/)
-- [Run the Drupal CMS recipe](./drupal-cms-workflow.mdx)
-- [Change a Drupal stack after init](./drupal-stack-overrides.mdx)
-- [Drupal multisite](./drupal-multisite.mdx)
-- [Import and export app databases](../tooling/db-import-export.mdx)
-- [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)
-- [Add Mailpit](../services/mailpit.mdx)
-- [Add PHP](../services/php.mdx)
-- [Add MariaDB](../services/mariadb.mdx)
+- [Drupal recipe](../../../recipes/drupal/)
+- [Run the Drupal CMS recipe](../drupal-cms-workflow/)
+- [Change a Drupal stack after init](../drupal-stack-overrides/)
+- [Drupal multisite](../drupal-multisite/)
+- [Import and export app databases](../../tooling/db-import-export/)
+- [Debug PHP with Xdebug in PhpStorm](../../tooling/xdebug-phpstorm/)
+- [Add Mailpit](../../services/mailpit/)
+- [Add PHP](../../services/php/)
+- [Add MariaDB](../../services/mariadb/)
