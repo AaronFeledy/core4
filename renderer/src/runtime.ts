@@ -32,7 +32,7 @@ const makeEventConsumerRendererLive = (
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* Fiber.interrupt(fiber);
-          const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) handle(event);
           }

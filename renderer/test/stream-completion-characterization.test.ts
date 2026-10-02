@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { makeEventServiceLive } from "@lando/engine/services/event-service";
 import {
   RedactionService,
   createStandaloneRedactor,
@@ -7,8 +8,14 @@ import {
 } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeStreamFrameSinkLive } from "@lando/renderer/output";
-import { makeJsonRendererServiceLive, makePlainRendererServiceLive } from "@lando/renderer/runtime";
-import { Effect, Layer, Stream } from "effect";
+import {
+  makeJsonRendererServiceLive,
+  makePlainRendererLive,
+  makePlainRendererServiceLive,
+} from "@lando/renderer/runtime";
+import { MessageInfoEvent } from "@lando/sdk/events";
+import { EventService } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 const frames = [
   { _tag: "stdout", chunk: "ready", service: "web" },
@@ -20,6 +27,39 @@ const redaction = Layer.succeed(RedactionService, {
 });
 
 describe("renderer finite stream completion", () => {
+  for (const bodies of [[], ["queued-one", "queued-two"]]) {
+    test(`event renderer closes promptly with ${bodies.length} buffered events`, async () => {
+      // Given: a real event subscription and renderer, with a watchdog outside Effect finalization.
+      const io = createBufferedRendererIO();
+      const layer = makePlainRendererLive(io).pipe(Layer.provideMerge(makeEventServiceLive()));
+      const deadline = Promise.withResolvers<"deadline">();
+      const timer = setTimeout(() => deadline.resolve("deadline"), 1000);
+      try {
+        // When: enqueue at scope closure, before the renderer's drain finalizer runs.
+        const closed = Effect.runPromise(
+          Effect.gen(function* () {
+            const context = yield* Layer.build(layer);
+            const events = Context.get(context, EventService);
+            yield* Effect.addFinalizer(() =>
+              Effect.gen(function* () {
+                for (const body of bodies) {
+                  yield* events.publish(MessageInfoEvent.make({ body, timestamp: DateTime.nowUnsafe() }));
+                }
+                expect(io.stdout()).toBe("");
+              }).pipe(Effect.orDie),
+            );
+          }).pipe(Effect.scoped),
+        ).then(() => "closed");
+
+        // Then: even an empty queue closes promptly; buffered events are rendered in order.
+        expect(await Promise.race([closed, deadline.promise])).toBe("closed");
+        expect(io.stdout()).toBe(bodies.map((body) => `ℹ ${body}\n`).join(""));
+      } finally {
+        clearTimeout(timer);
+      }
+    });
+  }
+
   for (const format of ["json", "text", "yaml"] as const) {
     test(`${format} drains every frame and finalizes before returning`, async () => {
       const io = createBufferedRendererIO();
