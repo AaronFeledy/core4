@@ -27,11 +27,11 @@ import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-run
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
-import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
@@ -636,21 +636,21 @@ const assembleRuntimeProvider = (
             platform,
             hostProxyContainerTargets(containerArch),
           );
+          const logSourceBinding = makeProviderLogSourceBinding({
+            providerId: PROVIDER_ID,
+            logFileAccess: options.logFileAccess,
+            helperPayload: logFileHelperPayloadForTargets(
+              options.logFileHelperPayloads,
+              capabilities.hostProxy?.containerTargets,
+            ),
+          });
           return {
             serverVersion,
             capabilities: {
               ...capabilities,
-              serviceLogSources:
-                options.logFileAccess !== undefined ||
-                logFileHelperPayloadForTargets(
-                  options.logFileHelperPayloads,
-                  capabilities.hostProxy?.containerTargets,
-                ) !== undefined,
+              serviceLogSources: logSourceBinding.supported,
             },
-            logFileHelperPayload: logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              capabilities.hostProxy?.containerTargets,
-            ),
+            logSourceBinding,
           };
         }),
       ),
@@ -741,7 +741,7 @@ const assembleRuntimeProvider = (
         serverVersion,
         agentBridge,
         capabilities: resolvedCapabilities,
-        logFileHelperPayload,
+        logSourceBinding,
       }): RuntimeProviderWithContainerEvents => ({
         id: PROVIDER_ID,
         inspectResourceNames: (query) => inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
@@ -823,19 +823,7 @@ const assembleRuntimeProvider = (
                   : logs(plan, target, logOptions, {
                       api: podmanApi,
                       ctx: PODMAN_CTX,
-                      ...(() => {
-                        const logFileAccess =
-                          options.logFileAccess ??
-                          (logFileHelperPayload === undefined
-                            ? undefined
-                            : makeDockerLogFileAccess({
-                                providerId: PROVIDER_ID,
-                                api: podmanApi,
-                                container: serviceContainerName(plan, target.service),
-                                helperPayload: logFileHelperPayload,
-                              }));
-                        return logFileAccess === undefined ? {} : { logFileAccess };
-                      })(),
+                      ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
                     }),
               ),
             ),
