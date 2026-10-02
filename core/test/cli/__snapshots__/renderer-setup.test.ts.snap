@@ -1,7 +1,7 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`renderer.setup fixture plain renderer snapshot is stable 1`] = `
-"▼ Setting up Lando runtime (4 services)
+"▼ Setting up Lando runtime (4 steps)
 [bundle] start: Verify runtime bundle
 [bundle] ✓ complete: Verify runtime bundle (42ms)
 [podman] start: Detect Podman
@@ -29,7 +29,7 @@ exports[`renderer.setup fixture json renderer snapshot is stable on stderr 1`] =
 `;
 
 exports[`renderer.setup fixture lando renderer snapshot matches plain renderer 1`] = `
-"▼ Setting up Lando runtime (4 services)
+"▼ Setting up Lando runtime (4 steps)
 [bundle] start: Verify runtime bundle
 [bundle] ✓ complete: Verify runtime bundle (42ms)
 [podman] start: Detect Podman

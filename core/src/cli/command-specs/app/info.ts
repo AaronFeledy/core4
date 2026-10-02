@@ -4,19 +4,15 @@ import { AppInfoResultSchema, type InfoAppResult, infoApp } from "@lando/engine/
 import { ServiceName } from "@lando/sdk/schema";
 import { renderInfoAppResult } from "../../commands/info-render";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf, stringArrayFlag } from "../../spec/input-coercion";
 
 /**
  * `lando app:info` — native command metadata adapter.
  */
 
 export const infoOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof infoApp>[0]> => {
-  if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  const values = Array.isArray(flags.service)
-    ? flags.service.filter((value): value is string => typeof value === "string")
-    : typeof flags.service === "string"
-      ? [flags.service]
-      : [];
+  const flags = specFlagsOf(input);
+  const values = stringArrayFlag(flags, "service");
   const services = values.filter((value) => value.length > 0).map((value) => ServiceName.make(value));
   return {
     ...(flags.deep === true ? { deep: true } : {}),

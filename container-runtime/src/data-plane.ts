@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
+import { serviceContainerName as namedServiceContainer } from "./plan.ts";
+import { redactString, withApiReason } from "./redact.ts";
 import { makeAttachDecoder } from "./streams.ts";
+import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
 import {
   type MountedVolumeTarget,
   type NativeVolumeIdentityResolution,
@@ -90,52 +94,13 @@ const concatBytes = (chunks: Iterable<Uint8Array>): Uint8Array => {
   return output;
 };
 
-const tarBlockSize = 512;
-
-const padToBlock = (size: number): number => Math.ceil(size / tarBlockSize) * tarBlockSize;
-
-const writeAscii = (target: Uint8Array, offset: number, value: string, length: number) => {
-  target.set(new TextEncoder().encode(value).slice(0, length), offset);
-};
-
-const octal = (value: number, width: number): string | undefined => {
-  const text = value.toString(8);
-  if (text.length > width - 1) return undefined;
-  return text.padStart(width - 1, "0");
-};
-
 const archiveFileHeader = (name: string, payloadSize: number): Uint8Array | undefined => {
-  if (name.length === 0 || new TextEncoder().encode(name).byteLength > 100) return undefined;
-  const mode = octal(0o644, 8);
-  const uid = octal(0, 8);
-  const gid = octal(0, 8);
-  const size = octal(payloadSize, 12);
-  const mtime = octal(0, 12);
-  if (
-    mode === undefined ||
-    uid === undefined ||
-    gid === undefined ||
-    size === undefined ||
-    mtime === undefined
-  ) {
-    return undefined;
+  try {
+    return encodeUstarHeader({ name, size: payloadSize, mode: 0o644, typeflag: "0" });
+  } catch (cause) {
+    if (cause instanceof UstarHeaderError) return undefined;
+    throw cause;
   }
-  const header = new Uint8Array(tarBlockSize);
-  writeAscii(header, 0, name, 100);
-  writeAscii(header, 100, `${mode}\0`, 8);
-  writeAscii(header, 108, `${uid}\0`, 8);
-  writeAscii(header, 116, `${gid}\0`, 8);
-  writeAscii(header, 124, `${size}\0`, 12);
-  writeAscii(header, 136, `${mtime}\0`, 12);
-  header.fill(32, 148, 156);
-  header[156] = 48;
-  writeAscii(header, 257, "ustar", 6);
-  writeAscii(header, 263, "00", 2);
-  const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  const checksumOctal = octal(checksum, 7);
-  if (checksumOctal === undefined) return undefined;
-  writeAscii(header, 148, `${checksumOctal}\0 `, 8);
-  return header;
 };
 
 const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
@@ -257,9 +222,7 @@ const serviceContainerName = (target: {
   readonly service: ServiceName;
   readonly plan?: AppPlan;
 }): string | undefined =>
-  target.plan === undefined
-    ? undefined
-    : `lando-${sanitize(target.plan.slug)}-${sanitize(String(target.service))}`;
+  target.plan === undefined ? undefined : namedServiceContainer(target.plan, String(target.service));
 const ephemeralContainerName = (providerId: string): string =>
   `lando-${sanitize(providerId)}-data-${randomUUID()}`;
 
@@ -286,6 +249,14 @@ const copyModeSnapshotStore = (providerId: string): string => `lando-${sanitize(
 const copyModeSnapshotFile = (snapshotId: string): string => `${sanitize(snapshotId)}.tar`;
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
+
+const isVolumeInUse = (details: unknown): details is { readonly body: string } => {
+  if (typeof details !== "object" || details === null) return false;
+  if (!("body" in details) || typeof details.body !== "string") return false;
+  return (
+    ("status" in details && details.status === 409) || /\b(?:in use|being used by)\b/i.test(details.body)
+  );
+};
 
 const volumeError = (
   options: ProviderDataPlaneOptions,
@@ -370,10 +341,10 @@ interface EngineVolume {
 }
 
 const landoVolumeLabels = {
-  app: "dev.lando.app",
-  store: "dev.lando.store",
-  scope: "dev.lando.scope",
-  instance: "dev.lando.volume-instance",
+  app: APP_LABEL,
+  store: STORE_LABEL,
+  scope: STORAGE_SCOPE_LABEL,
+  instance: VOLUME_INSTANCE_LABEL,
 } as const;
 
 const storageScopeFromLabel = (value: string | undefined): StorageScope | undefined =>
@@ -1227,9 +1198,34 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
-        Effect.mapError((cause) =>
-          volumeError(options, "removeVolume", "Provider volume remove failed.", undefined, cause, ref.store),
-        ),
+        Effect.mapError((cause) => {
+          const details = cause instanceof VolumeOperationError ? cause.details : undefined;
+          if (isVolumeInUse(details)) {
+            const base = "Provider volume remove failed.";
+            const message = withApiReason(base, details);
+            return new VolumeOperationError({
+              providerId: options.providerId,
+              operation: "removeVolume",
+              store: ref.store,
+              message:
+                message === base && details.body.trim().length > 0
+                  ? `${base} ${redactString(details.body.trim())}`
+                  : message,
+              remediation:
+                "A container still uses this volume. Remove that container first (for a Lando app, run lando destroy for it; lando doctor lists leftovers), then retry.",
+              details: options.redactDetails(details),
+              cause,
+            });
+          }
+          return volumeError(
+            options,
+            "removeVolume",
+            "Provider volume remove failed.",
+            undefined,
+            cause,
+            ref.store,
+          );
+        }),
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
@@ -1281,10 +1277,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           );
           const archive = Stream.concat(
             Stream.make(header),
-            Stream.concat(
-              source,
-              Stream.make(new Uint8Array(padToBlock(sourceSize) - sourceSize + tarBlockSize * 2)),
-            ),
+            Stream.concat(source, Stream.make(new Uint8Array(padToBlock(sourceSize) + tarBlockSize * 2))),
           );
           return Effect.scoped(
             Stream.toAsyncIterableEffect(archive).pipe(

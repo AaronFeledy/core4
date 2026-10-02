@@ -1,15 +1,23 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-
+import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { PHP_VERSIONS } from "../php-stack.ts";
-import { encodedStringNode } from "../snapshot-expression.ts";
+import {
+  arr,
+  call,
+  cond,
+  defaultRoute,
+  encodedStringNode,
+  lit,
+  obj,
+  toolNode,
+} from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:b847329e140001dc24ec3c4bf8a4caf3a9c60f065524aa29ed741e29088252ac";
-
+  "sha256:8c698a38641faf90dd8534df68244895639571c4b4e5379d2aefa5f173531553";
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal",
@@ -17,7 +25,6 @@ export const drupalProducer: RecipeProducer = {
   manifestVersion: DRUPAL_RECIPE_VERSION,
   contentDigest: DRUPAL_CONTENT_DIGEST,
 };
-
 export const drupalDefaults = {
   drupal: "11",
   php: "8.3",
@@ -26,85 +33,48 @@ export const drupalDefaults = {
   composer: "2",
   webroot: "/app/web",
 } as const;
-
 /**
  * The scaffold tooling command defers its Drupal major version to the recipe
  * option scope, so one published command text serves every declared major.
  */
 export const DRUPAL_SCAFFOLD_AUTHORING_COMMAND = drupalScaffoldCommand("{{ recipe.drupal }}");
-
-const usesNginx = (): ExpressionNode => ({
-  kind: "Call",
-  callee: "eq",
-  args: [
+const usesNginx = (): ExpressionNode =>
+  call(
+    "eq",
     { kind: "Path", head: "options", segments: [{ type: "prop", name: "webserver" }] },
-    { kind: "Literal", value: "nginx" },
-  ],
-});
-
-const primaryRoutes = (): ExpressionNode => ({
-  kind: "ArrayLiteral",
-  elements: [
-    {
-      kind: "ObjectLiteral",
-      entries: [
-        { key: "hostname", value: { kind: "Literal", value: "{{ app.name }}.{{ proxy.defaultDomain }}" } },
-        { key: "scheme", value: { kind: "Literal", value: "both" } },
-      ],
-    },
-  ],
-});
-
-const databaseService = (): ExpressionNode => ({
-  kind: "ObjectLiteral",
-  entries: [{ key: "type", value: { kind: "Literal", value: "{{ recipe.database }}" } }],
-});
-
-const apacheAppserver = (): ExpressionNode => ({
-  kind: "ObjectLiteral",
-  entries: [
-    { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
-    { key: "framework", value: { kind: "Literal", value: "drupal" } },
-    { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-    { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
-    { key: "allowOverride", value: { kind: "Literal", value: true } },
-    { key: "port", value: { kind: "Literal", value: 80 } },
-    { key: "dependsOn", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] } },
-    { key: "routes", value: primaryRoutes() },
-  ],
-});
-
-const fpmAppserver = (): ExpressionNode => ({
-  kind: "ObjectLiteral",
-  entries: [
-    { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
-    { key: "framework", value: { kind: "Literal", value: "drupal" } },
-    { key: "via", value: { kind: "Literal", value: "fpm" } },
-    { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-    { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
-    { key: "dependsOn", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] } },
-  ],
-});
-
-const edgeService = (): ExpressionNode => ({
-  kind: "ObjectLiteral",
-  entries: [
-    { key: "type", value: { kind: "Literal", value: "nginx" } },
-    { key: "backend", value: { kind: "Literal", value: "appserver" } },
-    { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-    { key: "routes", value: primaryRoutes() },
-  ],
-});
-
-const tool = (description: string, command: string): ExpressionNode => ({
-  kind: "ObjectLiteral",
-  entries: [
-    { key: "service", value: { kind: "Literal", value: "appserver" } },
-    { key: "description", value: { kind: "Literal", value: description } },
-    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: command }] } },
-  ],
-});
-
+    lit("nginx"),
+  );
+const primaryRoutes = (): ExpressionNode => arr(defaultRoute());
+const databaseService = (): ExpressionNode => obj([["type", lit("{{ recipe.database }}")]]);
+const apacheAppserver = (): ExpressionNode =>
+  obj([
+    ["type", lit("php:{{ recipe.php }}")],
+    ["primary", lit(true)],
+    ["framework", lit("drupal")],
+    ["webroot", lit("{{ recipe.webroot }}")],
+    ["composer", lit("{{ recipe.composer }}")],
+    ["allowOverride", lit(true)],
+    ["port", lit(80)],
+    ["dependsOn", arr(lit("database"))],
+    ["routes", primaryRoutes()],
+  ]);
+const fpmAppserver = (): ExpressionNode =>
+  obj([
+    ["type", lit("php:{{ recipe.php }}")],
+    ["primary", lit(true)],
+    ["framework", lit("drupal")],
+    ["via", lit("fpm")],
+    ["webroot", lit("{{ recipe.webroot }}")],
+    ["composer", lit("{{ recipe.composer }}")],
+    ["dependsOn", arr(lit("database"))],
+  ]);
+const edgeService = (): ExpressionNode =>
+  obj([
+    ["type", lit("nginx")],
+    ["backend", lit("appserver")],
+    ["webroot", lit("{{ recipe.webroot }}")],
+    ["routes", primaryRoutes()],
+  ]);
 export const drupalSnapshot: RecipeSnapshot = {
   identity: drupalProducer,
   optionTypes: {
@@ -117,64 +87,46 @@ export const drupalSnapshot: RecipeSnapshot = {
   },
   defaults: drupalDefaults,
   template: {
-    expression: {
-      kind: "ObjectLiteral",
-      entries: [
-        { key: "runtime", value: { kind: "Literal", value: 4 } },
-        {
-          key: "services",
-          value: {
-            kind: "Conditional",
-            test: usesNginx(),
-            consequent: {
-              kind: "ObjectLiteral",
-              entries: [
-                { key: "appserver", value: fpmAppserver() },
-                { key: "edge", value: edgeService() },
-                { key: "database", value: databaseService() },
-              ],
-            },
-            alternate: {
-              kind: "ObjectLiteral",
-              entries: [
-                { key: "appserver", value: apacheAppserver() },
-                { key: "database", value: databaseService() },
-              ],
-            },
-          },
-        },
-        {
-          key: "tooling",
-          value: {
-            kind: "ObjectLiteral",
-            entries: [
-              { key: "drush", value: tool("Run Drush inside the appserver service.", "vendor/bin/drush") },
-              { key: "composer", value: tool("Run Composer inside the appserver service.", "composer") },
-              {
-                key: "drupal-scaffold",
-                value: {
-                  kind: "ObjectLiteral",
-                  entries: [
-                    { key: "service", value: { kind: "Literal", value: "appserver" } },
-                    {
-                      key: "description",
-                      value: {
-                        kind: "Literal",
-                        value: "Scaffold Drupal and project-local Drush into the mounted app root.",
-                      },
-                    },
-                    { key: "arguments", value: { kind: "Literal", value: false } },
-                    { key: "cmd", value: encodedStringNode(DRUPAL_SCAFFOLD_AUTHORING_COMMAND) },
-                  ],
-                },
-              },
-            ],
-          },
-        },
+    expression: obj([
+      ["runtime", lit(4)],
+      [
+        "services",
+        cond(
+          usesNginx(),
+          obj([
+            ["appserver", fpmAppserver()],
+            ["edge", edgeService()],
+            ["database", databaseService()],
+          ]),
+          obj([
+            ["appserver", apacheAppserver()],
+            ["database", databaseService()],
+          ]),
+        ),
       ],
-    },
+      [
+        "tooling",
+        obj([
+          [
+            "drush",
+            toolNode("appserver", "Run Drush inside the appserver service.", [
+              encodedStringNode(DRUSH_TOOLING_COMMAND),
+            ]),
+          ],
+          ["composer", toolNode("appserver", "Run Composer inside the appserver service.", "composer")],
+          [
+            "drupal-scaffold",
+            obj([
+              ["service", lit("appserver")],
+              ["description", lit("Scaffold Drupal and project-local Drush into the mounted app root.")],
+              ["arguments", lit(false)],
+              ["cmd", encodedStringNode(DRUPAL_SCAFFOLD_AUTHORING_COMMAND)],
+            ]),
+          ],
+        ]),
+      ],
+    ]),
   },
   assets: [],
 };
-
 export const drupalSnapshotYaml = recipeSnapshotYaml(drupalSnapshot);

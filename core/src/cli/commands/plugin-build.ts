@@ -1,13 +1,13 @@
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
-import { EventService } from "@lando/sdk/services";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { publishOptionalEvent } from "./optional-event-publish";
 import {
   PluginBuildMixedTreeError,
   assertNoMixedTrees,
@@ -21,7 +21,7 @@ import {
   readPackageJson,
   writeDistPackageJson,
 } from "./plugin-build-package";
-import { findNearestPluginPackageRoot } from "./plugin-package-root";
+import { resolvePluginPackageRoot } from "./plugin-package-root";
 
 export { PluginBuildMixedTreeError };
 
@@ -74,28 +74,11 @@ const writeDeclarationTsconfig = async (
   await writeFile(join(pluginRoot, declarationTsconfigName), `${JSON.stringify(config, null, 2)}\n`);
 };
 
-const publishPluginBuildEvent = (event: Readonly<Record<string, unknown>>) =>
-  Effect.serviceOption(EventService).pipe(
-    Effect.flatMap((events) =>
-      events._tag === "Some" ? events.value.publish(event as never).pipe(Effect.ignore) : Effect.void,
-    ),
-  );
-
 export const pluginBuild = (
   options: PluginBuildOptions = {},
 ): Effect.Effect<PluginBuildResult, NotImplementedError | PluginManifestError | PluginBuildMixedTreeError> =>
   Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
-    const pluginRoot = yield* Effect.tryPromise({
-      try: () => findNearestPluginPackageRoot(cwd, "meta:plugin:build"),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Unable to locate plugin root from ${resolve(cwd)}.`,
-              issues: [String(cause)],
-            }),
-    });
+    const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:build");
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(pluginRoot),
       catch: (cause) =>
@@ -150,7 +133,7 @@ export const pluginBuild = (
       "esm",
     ];
     const declarationArgv = ["x", "tsc", "--project", declarationTsconfigName];
-    yield* publishPluginBuildEvent({
+    yield* publishOptionalEvent({
       _tag: "cli-meta:plugin:build-start",
       pluginName: manifest.name,
       pluginRoot,
@@ -184,7 +167,7 @@ export const pluginBuild = (
     const outputs = (yield* Effect.promise(() => outputDirectoryExists(pluginRoot)))
       ? yield* Effect.promise(() => listOutputs(pluginRoot))
       : [];
-    yield* publishPluginBuildEvent({
+    yield* publishOptionalEvent({
       _tag: "cli-meta:plugin:build-complete",
       pluginName: manifest.name,
       pluginRoot,

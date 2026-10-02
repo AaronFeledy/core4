@@ -7,8 +7,15 @@ import { Effect, Layer, Schema } from "effect";
 
 import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, AppId, type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
-import { PrivilegeService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  PrivilegeService,
+  RouterService,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
+
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { TestRouterService } from "@lando/sdk/test";
 
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -23,6 +30,8 @@ const testProviderLayers = [
   Layer.succeed(PrivilegeService, {
     elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   }),
+  Layer.succeed(RouterService, TestRouterService),
+
   Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
@@ -235,6 +244,7 @@ describe("resolveApp", () => {
                 policy: "bundled-only",
                 layers: [
                   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
+                  Layer.succeed(RouterService, TestRouterService),
                   Layer.succeed(RuntimeProviderRegistry, {
                     list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
                     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

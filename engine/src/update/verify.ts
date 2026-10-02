@@ -1,11 +1,11 @@
 /** Update manifest signatures and artifact checksum verification. */
-import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { Effect } from "effect";
 
+import { sha256Hex } from "@lando/sdk/digest";
 import { ProcessRunner } from "@lando/sdk/services";
 import {
   UpdateChecksumSignatureVerificationError,
@@ -192,8 +192,6 @@ const checksumEntryForArtifact = (checksums: string, artifact: string): string |
   }
   return undefined;
 };
-
-const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 export const verifyBinaryChecksum = ({
   artifact,

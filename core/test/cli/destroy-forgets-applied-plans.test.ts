@@ -134,16 +134,23 @@ describe("provider-lando destroy vs apps:list inventory", () => {
     });
   });
 
-  test("destroy retains the apps:list plan when bringDown cannot reach the runtime", async () => {
+  test("failed destroy retains the apps:list plan until a fresh provider completes teardown", async () => {
     await withUserDataRoot(async (userDataRoot) => {
       await persistLivePlan(userDataRoot);
-      const provider = await makeProvider(userDataRoot, false);
-      const exit = await Effect.runPromiseExit(
-        provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: true }),
-      );
+      expect(await listedAppIds(userDataRoot)).toEqual([String(appId)]);
 
+      const unavailableProvider = await makeProvider(userDataRoot, false);
+      const exit = await Effect.runPromiseExit(
+        unavailableProvider.destroy({ app: plan.id, plan }, { volumes: false, removeState: true }),
+      );
       expect(Exit.isFailure(exit)).toBe(true);
       expect(await listedAppIds(userDataRoot)).toEqual([String(appId)]);
+
+      const recoveredProvider = await makeProvider(userDataRoot, true);
+      await Effect.runPromise(
+        recoveredProvider.destroy({ app: plan.id }, { volumes: false, removeState: true }),
+      );
+      expect(await listedAppIds(userDataRoot)).toEqual([]);
     });
   });
 

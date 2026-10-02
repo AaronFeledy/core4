@@ -1,3 +1,5 @@
+import type { PluginStateStore } from "@lando/sdk/plugins";
+import type { PortNumber, ServiceName } from "@lando/sdk/schema";
 import type { Context, Effect } from "effect";
 
 import type {
@@ -33,6 +35,15 @@ export interface ProxyPaths {
 }
 
 export interface ProxyGlobalApp {
+  readonly ensureProviderReady?: Effect.Effect<void, unknown>;
+  readonly restartRunningService?: (service: ServiceName) => Effect.Effect<boolean, unknown>;
+  readonly occupiedPublishPorts?: (
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, unknown>;
+  readonly ownedPublishPorts?: (
+    service: ServiceName,
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, unknown>;
   readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<
     ReadonlyArray<{
       readonly name: string;
@@ -91,6 +102,7 @@ export interface TraefikProxyDependencies {
   readonly fileSystem: ProxyFileSystem;
   readonly paths: ProxyPaths;
   readonly globalApp: ProxyGlobalApp;
+  readonly stateStore?: PluginStateStore;
   readonly socketProxy?: SocketProxyDependencies;
   readonly fingerprint?: AcquisitionFingerprint;
   readonly router?: TraefikRouterLists;

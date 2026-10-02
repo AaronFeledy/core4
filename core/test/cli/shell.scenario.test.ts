@@ -695,9 +695,7 @@ describe("shellApp — shell modes", () => {
     );
 
     expect(error).toBeInstanceOf(ShellRequiresTtyError);
-    expect((error as ShellRequiresTtyError).remediation).toContain(
-      "app:exec --interactive --tty -- <command>",
-    );
+    expect((error as ShellRequiresTtyError).remediation).toContain("lando exec <service> -- <command>");
   });
 
   test("--no-interactive rejects service mode before provider execution", async () => {
@@ -708,14 +706,16 @@ describe("shellApp — shell modes", () => {
     expect(error).toBeInstanceOf(ShellRequiresTtyError);
   });
 
-  test("a non-TTY stdin/stdout fails with ShellRequiresTtyError pointing at app:exec", async () => {
+  test("a non-TTY stdin/stdout fails with ShellRequiresTtyError pointing at lando exec", async () => {
     const error = await Effect.runPromise(
       shellApp({ isInteractive: () => false }).pipe(Effect.provide(layer()), Effect.flip),
     );
     expect(error).toBeInstanceOf(ShellRequiresTtyError);
     const ttyError = error as ShellRequiresTtyError;
     expect(ttyError.remediation).not.toContain("lando shell --no-interactive");
-    expect(ttyError.remediation).toContain("app:exec --interactive --tty -- <command>");
+    expect(ttyError.remediation).toContain("lando exec <service> -- <command>");
+    expect(ttyError.remediation).not.toContain("--interactive");
+    expect(ttyError.remediation).not.toContain("--tty");
   });
 });
 

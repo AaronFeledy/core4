@@ -6,6 +6,7 @@ import { resolveInitDestination } from "../../commands/init-destination";
 import { parseInitSourceFlags } from "../../commands/init-source";
 import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import { booleanFlag, specArgsOf, specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
 
 type InitCommandOptions = Omit<InitAppOptions, "privateFileAccess">;
 
@@ -37,15 +38,26 @@ export interface InitFlags {
 }
 
 export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
-  const inputArgs = typeof input === "object" && input !== null && "args" in input ? input.args : undefined;
-  const destination =
-    typeof inputArgs === "object" && inputArgs !== null && "destination" in inputArgs
-      ? inputArgs.destination
-      : undefined;
-  const flags: Partial<InitFlags> =
-    typeof input === "object" && input !== null
-      ? ((input as { readonly flags?: Partial<InitFlags> }).flags ?? {})
-      : {};
+  const destination = stringFlag(specArgsOf(input), "destination");
+  const values = specFlagsOf(input);
+  const flags = {
+    name: stringFlag(values, "name"),
+    recipe: stringFlag(values, "recipe"),
+    source: stringFlag(values, "source"),
+    url: stringFlag(values, "url"),
+    id: stringFlag(values, "id"),
+    package: stringFlag(values, "package"),
+    path: stringFlag(values, "path"),
+    checksum: stringFlag(values, "checksum"),
+    answers: stringFlag(values, "answers"),
+    "registry-url": stringFlag(values, "registry-url"),
+    answer: stringArrayFlag(values, "answer"),
+    option: stringArrayFlag(values, "option"),
+    full: booleanFlag(values, "full"),
+    yes: booleanFlag(values, "yes"),
+    interactive: booleanFlag(values, "interactive"),
+    "no-interactive": booleanFlag(values, "no-interactive"),
+  };
   const answers = parseAnswerFlags(mergeAnswerSources(flags.answer, flags.option));
   const sourceOptions = parseInitSourceFlags({
     source: flags.source,

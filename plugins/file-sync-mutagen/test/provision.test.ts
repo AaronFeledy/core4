@@ -106,6 +106,11 @@ const patchHostArchive = (
       member: options.cliMember ?? (archiveKind === "zip" ? "mutagen.exe" : "mutagen"),
       installName: archiveKind === "zip" ? "mutagen.exe" : "mutagen",
     }),
+    patchArtifact(`${hostKey}/agent-bundle`, {
+      ...base,
+      member: "mutagen-agents.tar.gz",
+      installName: "mutagen-agents.tar.gz",
+    }),
     ...AGENT_GUESTS.map((guest) =>
       patchArtifact(`${hostKey}/agent/${guest}`, {
         ...base,
@@ -146,22 +151,27 @@ describe("MUTAGEN_TOOL_MANIFEST", () => {
     expect(MUTAGEN_TOOL_MANIFEST.schemaVersion).toBe(1);
     expect(MUTAGEN_TOOL_VERSION).toBe("v0.18.1");
     expect(Object.keys(MUTAGEN_TOOL_MANIFEST.artifacts).sort()).toEqual([
+      "darwin-arm64/agent-bundle",
       "darwin-arm64/agent/linux-amd64",
       "darwin-arm64/agent/linux-arm64",
       "darwin-arm64/agent/linux-armv7",
       "darwin-arm64/cli",
+      "darwin-x64/agent-bundle",
       "darwin-x64/agent/linux-amd64",
       "darwin-x64/agent/linux-arm64",
       "darwin-x64/agent/linux-armv7",
       "darwin-x64/cli",
+      "linux-arm64/agent-bundle",
       "linux-arm64/agent/linux-amd64",
       "linux-arm64/agent/linux-arm64",
       "linux-arm64/agent/linux-armv7",
       "linux-arm64/cli",
+      "linux-x64/agent-bundle",
       "linux-x64/agent/linux-amd64",
       "linux-x64/agent/linux-arm64",
       "linux-x64/agent/linux-armv7",
       "linux-x64/cli",
+      "win32-x64/agent-bundle",
       "win32-x64/agent/linux-amd64",
       "win32-x64/agent/linux-arm64",
       "win32-x64/agent/linux-armv7",
@@ -183,7 +193,7 @@ describe("mutagen install paths", () => {
 });
 
 describe("provisionMutagen", () => {
-  test("installs host CLI plus all three agents from one shared host tar.gz", async () => {
+  test("installs host CLI, agent bundle, and all three agents from one shared host tar.gz", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();
     const patch = patchHostArchive("linux-x64", HOST_TARGZ, "tar.gz");
@@ -201,6 +211,7 @@ describe("provisionMutagen", () => {
       expect(exit._tag).toBe("Success");
       expect(dl.downloadCalls()).toBe(1);
       expect(await readBytes(join(dirs.binDir, "mutagen"))).toEqual(bytes(HOST_BIN));
+      expect(await readBytes(join(dirs.binDir, "mutagen-agents.tar.gz"))).toEqual(bytes(NESTED_AGENTS));
       expect(await readBytes(mutagenAgentInstallPath(dirs.binDir, "linux-amd64"))).toEqual(
         bytes(AGENT_AMD64),
       );
@@ -216,7 +227,7 @@ describe("provisionMutagen", () => {
     }
   });
 
-  test("installs win32 host CLI plus agents from one shared zip", async () => {
+  test("installs win32 host CLI and agent bundle from one shared zip", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();
     const patch = patchHostArchive("win32-x64", HOST_ZIP, "zip");
@@ -234,6 +245,7 @@ describe("provisionMutagen", () => {
       expect(exit._tag).toBe("Success");
       expect(dl.downloadCalls()).toBe(1);
       expect(await readBytes(join(dirs.binDir, "mutagen.exe"))).toEqual(bytes(HOST_EXE));
+      expect(await readBytes(join(dirs.binDir, "mutagen-agents.tar.gz"))).toEqual(bytes(NESTED_AGENTS));
       expect(await readBytes(mutagenAgentInstallPath(dirs.binDir, "linux-amd64"))).toEqual(
         bytes(AGENT_AMD64),
       );
@@ -279,11 +291,43 @@ describe("provisionMutagen", () => {
     }
   });
 
+  test("repairs an existing install missing the agent bundle from the cached archive", async () => {
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    const patch = patchHostArchive("win32-x64", HOST_ZIP, "zip");
+    dl.serve(patch.url, HOST_ZIP);
+    try {
+      const input = {
+        binDir: dirs.binDir,
+        toolDownloadsDir: dirs.toolDownloadsDir,
+        platform: "win32",
+        arch: "x64",
+      };
+      const first = await run(provision(input).pipe(Effect.provide(dl.layer)));
+      expect(first._tag).toBe("Success");
+      expect(dl.downloadCalls()).toBe(1);
+
+      const bundlePath = join(dirs.binDir, "mutagen-agents.tar.gz");
+      await rm(bundlePath);
+      expect((await readInstalledMutagenStatus(dirs.binDir, "win32", "x64")).isCurrent).toBe(false);
+
+      const repaired = await run(provision({ ...input, offline: true }).pipe(Effect.provide(dl.layer)));
+      expect(repaired._tag).toBe("Success");
+      expect(dl.downloadCalls()).toBe(1);
+      expect(await readBytes(bundlePath)).toEqual(bytes(NESTED_AGENTS));
+      expect((await readInstalledMutagenStatus(dirs.binDir, "win32", "x64")).isCurrent).toBe(true);
+    } finally {
+      patch.restore();
+      await dirs.cleanup();
+    }
+  });
+
   test("legacy installed marker plus current fingerprints skips before touching the downloader", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();
     try {
       await writeFingerprint(mutagenHostInstallPath(dirs.binDir, "linux"), HOST_BIN);
+      await writeFingerprint(join(dirs.binDir, "mutagen-agents.tar.gz"), NESTED_AGENTS);
       await writeFingerprint(mutagenAgentInstallPath(dirs.binDir, "linux-amd64"), AGENT_AMD64);
       await writeFingerprint(mutagenAgentInstallPath(dirs.binDir, "linux-arm64"), AGENT_ARM64);
       await writeFingerprint(mutagenAgentInstallPath(dirs.binDir, "linux-armv7"), AGENT_ARMV7);
@@ -388,7 +432,7 @@ describe("provisionMutagen", () => {
 });
 
 describe("readInstalledMutagenStatus", () => {
-  test("requires the marker plus host and all three agent fingerprints", async () => {
+  test("requires the marker, host, agent bundle, and all three agent fingerprints", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();
     const patch = patchHostArchive("linux-x64", HOST_TARGZ, "tar.gz");
@@ -406,6 +450,9 @@ describe("readInstalledMutagenStatus", () => {
 
       const current = await readInstalledMutagenStatus(dirs.binDir, "linux", "x64");
       expect(current).toEqual({ installedVersion: MUTAGEN_TOOL_VERSION, isCurrent: true });
+      await rm(join(dirs.binDir, "mutagen-agents.tar.gz"), { force: true });
+      expect((await readInstalledMutagenStatus(dirs.binDir, "linux", "x64")).isCurrent).toBe(false);
+      await writeFingerprint(join(dirs.binDir, "mutagen-agents.tar.gz"), NESTED_AGENTS);
 
       await rm(mutagenInstalledVersionPath(dirs.binDir), { force: true });
       const missingMarker = await readInstalledMutagenStatus(dirs.binDir, "linux", "x64");

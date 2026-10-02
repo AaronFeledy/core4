@@ -222,7 +222,7 @@ export interface WithScenarioContextOptions {
 
 const parseCommand = (command: string | ReadonlyArray<string>): ReadonlyArray<string> => {
   const parsed = typeof command === "string" ? command.trim().split(/\s+/).filter(Boolean) : command;
-  return parsed[0] === "lando" ? parsed.slice(1) : parsed;
+  return parsed[0] === "lando" || parsed[0] === "lando4" ? parsed.slice(1) : parsed;
 };
 
 const stringFlagValue = (args: ReadonlyArray<string>, name: string): string | undefined => {
@@ -508,10 +508,11 @@ const appendInitAnswers = (
 
 const staticRootFromLandofile = (content: string): string | undefined => {
   if (!/^\s*type:\s*static(?::\w+)?\s*$/m.test(content)) return undefined;
-  const root = /^\s*root:\s*(\S+)\s*$/m.exec(content)?.[1];
-  return root === undefined || root === "" || root === "/"
-    ? "."
-    : root.replace(/^\/+/, "").replace(/\/+$/, "");
+  const webroot = /^\s*webroot:\s*(\S+)\s*$/m.exec(content)?.[1] ?? "/app";
+  if (webroot === "/app") return ".";
+  return webroot.startsWith("/app/") && !webroot.split("/").includes("..")
+    ? webroot.slice("/app/".length)
+    : undefined;
 };
 
 const runScenarioLayerCommand = async (
@@ -689,6 +690,18 @@ const createTestOnlyFakeRunCli =
     Effect.tryPromise(async () => {
       const args = appendInitAnswers(parseCommand(command), options?.answers);
       if (isVersionCommand(args)) return versionResult(args, events);
+      if (args[0] === "poweroff" || args[0] === "apps:poweroff") {
+        const started = events.some((event) => event._tag === "post-start");
+        const poweredOff = events.some((event) => event._tag === "post-global-stop");
+        if (started && !poweredOff) events.push({ _tag: "post-global-stop" } as LandoEvent);
+        return {
+          command: args,
+          stdout: started && !poweredOff ? "Powered off: test app\n" : "No Lando apps to power off.\n",
+          stderr: "",
+          exitCode: 0,
+          events: [...events],
+        };
+      }
 
       const scenarioLayerResult = await runScenarioLayerCommand(args, getWorkingDirectory(), events);
       if (scenarioLayerResult !== undefined) return scenarioLayerResult;

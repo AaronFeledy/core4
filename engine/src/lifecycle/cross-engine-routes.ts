@@ -1,4 +1,4 @@
-import type { AppPlan, EndpointPlan, ProviderId, RoutePlan } from "@lando/sdk/schema";
+import type { AppPlan, EndpointInfo, EndpointPlan, ProviderId, RoutePlan } from "@lando/sdk/schema";
 
 import { MANAGED_PROVIDER_ID } from "../providers/managed.ts";
 import { HOST_INTERNAL_ALIAS } from "../subsystems/networking.ts";
@@ -30,11 +30,11 @@ export const promoteRoutableEndpointsForHostProxy = (
 
 export const publishedTargetsFromEndpoints = (
   service: string,
-  endpoints: ReadonlyArray<EndpointPlan>,
+  endpoints: ReadonlyArray<EndpointInfo>,
 ): ReadonlyArray<PublishedProxyTarget> =>
   endpoints.flatMap((endpoint) => {
     if (endpoint._tag !== "published") return [];
-    const hostPort = endpoint.publication.hostPort;
+    const hostPort = endpoint.materialization?.hostPort ?? endpoint.publication.hostPort;
     if (hostPort === undefined) return [];
     return [{ service, containerPort: endpoint.port, hostPort }];
   });

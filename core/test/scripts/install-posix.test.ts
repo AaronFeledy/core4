@@ -1,8 +1,20 @@
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+// allow: SIZE_OK — installer scenarios share this exclusive two-file workstream; fixtures stay local.
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  readlink,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
 
 import { renderPosixShellenv } from "../../src/cli/commands/shellenv.ts";
 
@@ -106,7 +118,7 @@ const runInstaller = async (
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
   const proc = Bun.spawn(["sh", installerPath], {
     cwd: repoRoot,
-    env: { ...hostEnvWithoutLandoRoots(), ...env },
+    env: { ...hostEnvWithoutLandoRoots(), HOME: await makeTempRoot(), ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -119,6 +131,180 @@ const runInstaller = async (
 };
 
 describe("scripts/install.sh", () => {
+  test.each(["install", "a b$c;d'e\\\"f"])("records an atomic lando4 install in %s", async (directory) => {
+    // Given a verified release and an isolated destination.
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, directory);
+    const destination = join(installDir, "lando4");
+    const env = {
+      HOME: root,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_USER_DATA_ROOT: join(root, "data"),
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    };
+    // When installing.
+    const result = await runInstaller(env);
+    // Then only the owned executable and record are published.
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect((await lstat(destination)).isFile()).toBe(true);
+    expect((await lstat(destination)).mode & 0o777).toBe(0o755);
+    const bytes = await readFile(fixture.binaryPath);
+    expect(await readFile(destination)).toEqual(bytes);
+    const recordPath = join(root, "data/install/record.json");
+    const { decodeInstallRecord } = await import("@lando/engine/install/record");
+    const record = await Effect.runPromise(
+      decodeInstallRecord(await readFile(recordPath, "utf8"), recordPath),
+    );
+    expect(record.data.executable).toMatchObject({
+      path: destination,
+      sha256: sha256(bytes),
+      size: bytes.length,
+      channel: "stable",
+      platform: "linux-x64",
+    });
+    expect(record.data.shellProfiles).toEqual([]);
+    expect((await lstat(recordPath)).mode & 0o777).toBe(0o600);
+    expect(await readdir(installDir)).toEqual(["lando4"]);
+    expect(await readdir(join(root, "data/install"))).toEqual(["record.json"]);
+    await expect(lstat(join(installDir, "lando"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await runInstaller(env)).exitCode).toBe(0);
+    expect(await readFile(destination)).toEqual(bytes);
+  });
+
+  test.each(["regular", "symlink"])("preserves preinstalled Lando 3 %s", async (kind) => {
+    // Given a hostile Lando 3 executable.
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "bin");
+    await mkdir(installDir);
+    const legacy = join(installDir, "lando");
+    const target = join(root, "legacy-target");
+    await writeFile(target, "distinctive Lando 3 bytes", { mode: 0o700 });
+    if (kind === "symlink") await symlink(target, legacy);
+    else await writeFile(legacy, "distinctive Lando 3 bytes", { mode: 0o700 });
+    const before = await lstat(legacy);
+    // When installing Lando 4 beside it.
+    const result = await runInstaller({
+      HOME: root,
+      LANDO_INSTALL_DIR: installDir,
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    });
+    // Then bytes, mode and link identity survive.
+    expect(result.exitCode).toBe(0);
+    const after = await lstat(legacy);
+    expect(after.mode & 0o777).toBe(before.mode & 0o777);
+    expect(after.isFile()).toBe(before.isFile());
+    expect(after.isSymbolicLink()).toBe(before.isSymbolicLink());
+    if (kind === "symlink") expect(await readlink(legacy)).toBe(target);
+    expect(await readFile(legacy, "utf8")).toBe("distinctive Lando 3 bytes");
+    expect(await readFile(target, "utf8")).toBe("distinctive Lando 3 bytes");
+  });
+
+  test.each([
+    "owned",
+    "no-record",
+    "directory",
+    "symlink",
+    "dangling",
+    "digest-drift",
+    "size-drift",
+    "corrupt",
+    "version",
+    "wrong-path",
+  ])("bounds replacement when destination is %s", async (kind) => {
+    // Given a destination with independently seeded ownership evidence.
+    const root = await makeTempRoot();
+    const fixture = await createReleaseFixture(root);
+    const { gpgPath, logPath } = await createFakeGpg(root);
+    const installDir = join(root, "bin");
+    await mkdir(installDir);
+    const destination = join(installDir, "lando4");
+    const target = join(root, "target");
+    const bytes = await readFile(fixture.binaryPath);
+    await writeFile(target, "untouched target", { mode: 0o700 });
+    switch (kind) {
+      case "directory":
+        await mkdir(destination);
+        break;
+      case "symlink":
+        await symlink(target, destination);
+        break;
+      case "dangling":
+        await symlink(join(root, "missing"), destination);
+        break;
+      default:
+        await writeFile(destination, bytes, { mode: kind === "owned" ? 0o755 : 0o700 });
+    }
+    const recordPath = join(root, "data/install/record.json");
+    if (kind !== "no-record") {
+      await mkdir(join(root, "data/install"), { recursive: true });
+      await writeFile(
+        recordPath,
+        kind === "corrupt"
+          ? "{broken"
+          : JSON.stringify({
+              version: kind === "version" ? 2 : 1,
+              data: {
+                executable: {
+                  path: kind === "wrong-path" ? target : destination,
+                  sha256: sha256(bytes),
+                  size: bytes.length,
+                  channel: "stable",
+                  platform: "linux-x64",
+                },
+                shellProfiles: [],
+              },
+            }),
+      );
+    }
+    if (kind === "digest-drift") await writeFile(destination, Buffer.alloc(bytes.length, 65));
+    if (kind === "size-drift") await writeFile(destination, Buffer.concat([bytes, Buffer.from("drift")]));
+    const before = await lstat(destination);
+    const beforeBytes = before.isFile() ? await readFile(destination) : undefined;
+    const beforeLink = before.isSymbolicLink() ? await readlink(destination) : undefined;
+    const env = {
+      HOME: root,
+      LANDO_INSTALL_DIR: installDir,
+      LANDO_USER_DATA_ROOT: join(root, "data"),
+      GPG_LOG: logPath,
+      LANDO_INSTALL_GPG: gpgPath,
+      LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+      LANDO_INSTALL_OS: "Linux",
+      LANDO_INSTALL_ARCH: "x86_64",
+      LANDO_INSTALL_LIBC: "glibc",
+    };
+    // When replacing the destination (twice for the idempotent owned case).
+    const result = await runInstaller(env);
+    if (kind === "owned") expect((await runInstaller(env)).exitCode).toBe(0);
+    // Then only record-owned, unchanged files may be replaced.
+    if (kind === "owned") expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    else {
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain(destination);
+      expect(result.stderr).toContain("LANDO_INSTALL_DIR");
+    }
+    const after = await lstat(destination);
+    expect(after.mode & 0o777).toBe(before.mode & 0o777);
+    expect(after.isDirectory()).toBe(before.isDirectory());
+    expect(after.isSymbolicLink()).toBe(before.isSymbolicLink());
+    if (beforeBytes) expect(await readFile(destination)).toEqual(beforeBytes);
+    if (beforeLink) expect(await readlink(destination)).toBe(beforeLink);
+    expect(await readFile(target, "utf8")).toBe("untouched target");
+    expect(await readdir(installDir)).toEqual(["lando4"]);
+  });
   test("verifies SHA256SUMS.asc with the vendored GPG trust root", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root, "stable", { manifestSignatureStyle: "cosign" });
@@ -140,7 +326,7 @@ describe("scripts/install.sh", () => {
     const gpgLog = await Bun.file(logPath).text();
     expect(gpgLog).toContain("--verify");
     expect(gpgLog).toContain("SHA256SUMS.asc");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
   });
 
   test("keeps GPG verification for manifests that explicitly point at an armored signature", async () => {
@@ -165,7 +351,7 @@ describe("scripts/install.sh", () => {
     expect(gpgLog).toContain("--homedir");
     expect(gpgLog).toContain("--import");
     expect(gpgLog).toContain("--verify");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
   });
 
   test("fails closed when the vendored GPG trust root is missing", async () => {
@@ -187,8 +373,8 @@ describe("scripts/install.sh", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Missing or malformed vendored GPG trust root");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
-    expect(await Bun.file(logPath).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(logPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("matches SHA256SUMS entries that use release-style ./dist/ path prefixes", async () => {
@@ -209,7 +395,7 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
   });
 
   test("installs the verified linux-x64 binary into LANDO_INSTALL_DIR", async () => {
@@ -230,9 +416,9 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`installed: ${join(installDir, "lando")}`);
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
-    expect(await Bun.$`${join(installDir, "lando")} version`.text()).toContain("lando 4.0.0-test");
+    expect(result.stdout).toContain(`installed: ${join(installDir, "lando4")}`);
+    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
+    expect(await Bun.$`${join(installDir, "lando4")} version`.text()).toContain("lando 4.0.0-test");
     expect(await Bun.file(logPath).text()).toContain("--verify");
     expect(await Bun.file(logPath).text()).toContain("SHA256SUMS.asc");
   });
@@ -256,8 +442,8 @@ describe("scripts/install.sh", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Run this command to add Lando to PATH:");
-    expect(result.stdout).toContain(`eval "$(\"${join(userDataRoot, "bin", "lando")}\" shellenv)"`);
+    expect(result.stdout).toContain("Run this command to add lando4 to PATH:");
+    expect(result.stdout).toContain(`eval "$('${join(userDataRoot, "bin", "lando4")}' shellenv)"`);
     expect(result.stdout).toContain(renderPosixShellenv(userDataRoot));
   });
 
@@ -312,7 +498,7 @@ describe("scripts/install.sh", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("post-install setup: skipped");
-    expect(await Bun.file(setupLog).exists()).toBe(false);
+    await expect(lstat(setupLog)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("resolves stable, next, and dev manifests from the selected channel", async () => {
@@ -341,7 +527,7 @@ describe("scripts/install.sh", () => {
       expect(result.stderr).toBe("");
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`channel: ${channel}`);
-      expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+      expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
     }
   });
 
@@ -361,21 +547,29 @@ describe("scripts/install.sh", () => {
       LANDO_USER_DATA_ROOT: userDataRoot,
     });
 
-    const installedPath = join(userDataRoot, "bin", "lando");
+    const installedPath = join(userDataRoot, "bin", "lando4");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
   });
 
-  test("reads userDataRoot from config.yml when install env overrides are unset", async () => {
+  test("ignores hostile Lando 3 config when install env overrides are unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { gpgPath, logPath } = await createFakeGpg(root);
-    const confRoot = join(root, "conf");
+    const confRoot = join(root, ".lando");
     const userDataRoot = join(root, "from-config-yml");
     await mkdir(confRoot, { recursive: true });
     await writeFile(join(confRoot, "config.yml"), `userDataRoot: ${userDataRoot}\n`);
+    await writeFile(join(confRoot, "sibling"), "Lando 3 state", { mode: 0o600 });
+    const legacy = await Promise.all(
+      (await readdir(confRoot)).map(async (name) => ({
+        name,
+        bytes: await readFile(join(confRoot, name)),
+        mode: (await lstat(join(confRoot, name))).mode & 0o777,
+      })),
+    );
 
     const result = await runInstaller({
       GPG_LOG: logPath,
@@ -388,11 +582,17 @@ describe("scripts/install.sh", () => {
       LANDO_USER_CONF_ROOT: confRoot,
     });
 
-    const installedPath = join(userDataRoot, "bin", "lando");
+    const installedPath = join(root, ".local/share/lando/bin/lando4");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    for (const entry of legacy) {
+      expect(await readFile(join(confRoot, entry.name))).toEqual(entry.bytes);
+      expect((await lstat(join(confRoot, entry.name))).mode & 0o777).toBe(entry.mode);
+    }
+    expect(await readdir(confRoot)).toEqual(legacy.map((entry) => entry.name));
+    await expect(lstat(userDataRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("uses the CLI userDataRoot default on Darwin when config and install env are unset", async () => {
@@ -410,18 +610,18 @@ describe("scripts/install.sh", () => {
       LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando");
+    const installedPath = join(root, "Library/Application Support/Lando/bin/lando4");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
   });
 
-  test("matches minimal config parsing by using the last top-level string userDataRoot", async () => {
+  test("ignores duplicate Lando 3 roots in favor of XDG data home", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { gpgPath, logPath } = await createFakeGpg(root);
-    const confRoot = join(root, "conf");
+    const confRoot = join(root, ".lando");
     const firstRoot = join(root, "first-root");
     const finalRoot = join(root, "final-root");
     await mkdir(confRoot, { recursive: true });
@@ -433,6 +633,14 @@ nested:
 userDataRoot: ${finalRoot}
 `,
     );
+    await writeFile(join(confRoot, "sibling"), "legacy duplicate roots", { mode: 0o700 });
+    const legacy = await Promise.all(
+      (await readdir(confRoot)).map(async (name) => ({
+        name,
+        bytes: await readFile(join(confRoot, name)),
+        mode: (await lstat(join(confRoot, name))).mode & 0o777,
+      })),
+    );
 
     const result = await runInstaller({
       GPG_LOG: logPath,
@@ -443,26 +651,43 @@ userDataRoot: ${finalRoot}
       LANDO_INSTALL_ARCH: "x86_64",
       LANDO_INSTALL_LIBC: "glibc",
       LANDO_USER_CONF_ROOT: confRoot,
+      XDG_DATA_HOME: join(root, "xdg"),
     });
 
-    const installedPath = join(finalRoot, "bin", "lando");
+    const installedPath = join(root, "xdg/lando/bin/lando4");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    for (const entry of legacy) {
+      expect(await readFile(join(confRoot, entry.name))).toEqual(entry.bytes);
+      expect((await lstat(join(confRoot, entry.name))).mode & 0o777).toBe(entry.mode);
+    }
+    expect(await readdir(confRoot)).toEqual(legacy.map((entry) => entry.name));
+    for (const hostile of [firstRoot, finalRoot, join(root, "nested-root")]) {
+      await expect(lstat(hostile)).rejects.toMatchObject({ code: "ENOENT" });
+    }
   });
 
-  test("falls back when config userDataRoot resolves to a non-string YAML value", async () => {
+  test("leaves non-string Lando 3 config and siblings untouched", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { gpgPath, logPath } = await createFakeGpg(root);
-    const confRoot = join(root, "conf");
+    const confRoot = join(root, ".lando");
     await mkdir(confRoot, { recursive: true });
     await writeFile(
       join(confRoot, "config.yml"),
       `userDataRoot:
-  nested: value
+  nested: ${join(root, "hostile")}
 `,
+    );
+    await writeFile(join(confRoot, "sibling"), "legacy non-string root", { mode: 0o600 });
+    const legacy = await Promise.all(
+      (await readdir(confRoot)).map(async (name) => ({
+        name,
+        bytes: await readFile(join(confRoot, name)),
+        mode: (await lstat(join(confRoot, name))).mode & 0o777,
+      })),
     );
 
     const result = await runInstaller({
@@ -476,11 +701,17 @@ userDataRoot: ${finalRoot}
       LANDO_USER_CONF_ROOT: confRoot,
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando");
+    const installedPath = join(root, ".local/share/lando/bin/lando4");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    for (const entry of legacy) {
+      expect(await readFile(join(confRoot, entry.name))).toEqual(entry.bytes);
+      expect((await lstat(join(confRoot, entry.name))).mode & 0o777).toBe(entry.mode);
+    }
+    expect(await readdir(confRoot)).toEqual(legacy.map((entry) => entry.name));
+    await expect(lstat(join(root, "hostile"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("maps Darwin x64 and verifies checksums with the portable shasum path", async () => {
@@ -501,7 +732,7 @@ userDataRoot: ${finalRoot}
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("platform: darwin-x64");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(true);
+    expect((await lstat(join(installDir, "lando4"))).isFile()).toBe(true);
   });
 
   test("fails closed when signature verification fails", async () => {
@@ -522,7 +753,7 @@ userDataRoot: ${finalRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Signature verification failed");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("fails closed when the downloaded binary does not match SHA256SUMS", async () => {
@@ -543,7 +774,7 @@ userDataRoot: ${finalRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Checksum mismatch");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("rejects unsupported POSIX platform constraints before installing", async () => {
@@ -564,7 +795,7 @@ userDataRoot: ${finalRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Unsupported Linux libc");
-    expect(await Bun.file(join(installDir, "lando")).exists()).toBe(false);
-    expect(await Bun.file(logPath).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(logPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

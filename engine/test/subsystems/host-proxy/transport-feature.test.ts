@@ -16,7 +16,11 @@ import {
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SHIM,
@@ -64,6 +68,7 @@ const fakeExecutable = async (): Promise<string> => {
 };
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
 });
 const eventLayer = Layer.succeed(EventService, {
@@ -147,6 +152,32 @@ describe("hostProxyRunLandoFeature", () => {
     await session.close();
   });
 
+  test("mounts a guest Unix socket even when the Windows worker retains a loopback control URL", () => {
+    const environment: Record<string, string> = {};
+    const mounts: Array<{ readonly source: string; readonly target: string }> = [];
+    hostProxyRunLandoFeature({
+      appId: "demo",
+      sessionId: "session-1",
+      token: "secret-token",
+      url: "http://127.0.0.1:49152",
+      socketPath: "/home/user/.local/share/lando/host-proxy/session/host-proxy.sock",
+      shimPath: "C:\\lando\\shim",
+      transport: "unix-socket",
+    }).apply({
+      addEnv: (name, value) => {
+        environment[name] = value;
+      },
+      addMount: (mount) => {
+        mounts.push(mount);
+      },
+    });
+    expect(environment.LANDO_HOST_PROXY_SOCKET).toBe(HOST_PROXY_CONTAINER_SOCKET);
+    expect(environment.LANDO_HOST_PROXY_URL).toBeUndefined();
+    expect(mounts[0]).toMatchObject({
+      source: "/home/user/.local/share/lando/host-proxy/session/host-proxy.sock",
+      target: HOST_PROXY_CONTAINER_SOCKET,
+    });
+  });
   test("exposes TCP host-gateway URL without socket metadata or host-gateway mapping", () => {
     const environment: Record<string, string> = {};
     const mounts: Array<{ readonly target: string }> = [];

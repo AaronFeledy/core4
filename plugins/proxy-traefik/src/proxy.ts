@@ -1,6 +1,7 @@
 import { DateTime, Effect, Layer, Option, Stream } from "effect";
 
-import { CaError, ProxyApplyError, ProxyError, RouterWatcherError } from "@lando/sdk/errors";
+import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
+import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
   AppId,
@@ -32,7 +33,10 @@ import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
+  TRAEFIK_CONTAINER_CERTIFICATE_DIR,
   acquisitionStateFile,
+  appCertificateFiles,
+  defaultCertificateFiles,
   defaultTlsFile,
   diagnosticConfigFile,
   diagnosticHtmlFile,
@@ -50,6 +54,14 @@ import {
   publishFallbackWarn,
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
+import {
+  acknowledge,
+  certificatePairIsCurrent,
+  invalidateAcknowledgement,
+  isAcknowledged,
+  routeReloadDigest,
+  routeReloadLockKey,
+} from "./route-reload-state.ts";
 import {
   type AuthorityPorts,
   DEFAULT_AUTHORITY_PORTS,
@@ -215,6 +227,35 @@ const releaseHelperSockets = (dependencies: TraefikProxyDependencies) =>
     });
   });
 
+const persistedTlsFiles = (app: AppId) => {
+  const encoded = encodeURIComponent(String(app));
+  return {
+    certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encoded}.crt`,
+    keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encoded}.key`,
+  };
+};
+
+const readOptional = (dependencies: TraefikProxyDependencies, path: string) =>
+  dependencies.fileSystem
+    .exists(path)
+    .pipe(
+      Effect.flatMap((exists) =>
+        exists ? dependencies.fileSystem.readText(path) : Effect.succeed(undefined),
+      ),
+    );
+
+const routeReloadSnapshot = (dependencies: TraefikProxyDependencies, app: AppId, defaultDomain: string) => {
+  const certificates = appCertificateFiles(dependencies.paths, app);
+  const defaults = defaultCertificateFiles(dependencies.paths, defaultDomain);
+  return Effect.all([
+    readOptional(dependencies, routeFile(dependencies.paths, app)),
+    readOptional(dependencies, certificates.cert),
+    readOptional(dependencies, certificates.key),
+    readOptional(dependencies, defaults.cert),
+    readOptional(dependencies, defaults.key),
+    readOptional(dependencies, defaultTlsFile(dependencies.paths)),
+  ]);
+};
 const routerListsFromConfig = (router: NonNullable<ProxyConfig["router"]>): TraefikRouterLists => ({
   ...(router.bindAddress === undefined ? {} : { bindAddress: router.bindAddress }),
   ...(router.httpPort === undefined ? {} : { httpPort: router.httpPort }),
@@ -234,20 +275,77 @@ export const makeTraefikRouterService = (
   readonly readAppliedRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 } => {
   const routes = new Map<string, ReadonlyArray<RoutePlan>>();
+  const pendingReload = new Set<string>();
+  const reloadWindowsRouter = (appKey: string) =>
+    Effect.gen(function* () {
+      if (dependencies.paths.platform !== "win32") {
+        pendingReload.delete(appKey);
+        return;
+      }
+      const restart = dependencies.globalApp.restartRunningService;
+      if (restart === undefined) {
+        return yield* Effect.fail(new Error("Global app runtime cannot reload the Windows Traefik router."));
+      }
+      yield* restart(ServiceName.make(TRAEFIK_PROXY_ID));
+      pendingReload.delete(appKey);
+    });
   let authorityPorts = DEFAULT_AUTHORITY_PORTS;
   let defaultDomain = "lndo.site";
 
+  const acquire = (config: ProxyConfig) =>
+    Effect.gen(function* () {
+      if (dependencies.paths.platform === "win32") {
+        yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
+      }
+      yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
+      const socketProxy = yield* resolveSocketProxy(dependencies);
+      return yield* persistPortAcquisition({
+        ...dependencies,
+        ...(socketProxy === undefined ? {} : { socketProxy }),
+        ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+        ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
+      });
+    });
   return {
     id: TRAEFIK_PROXY_ID,
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-    setup: (config) =>
+    prepare: (config) =>
+      acquire(config).pipe(
+        Effect.tap((decision) =>
+          Effect.sync(() => {
+            defaultDomain = normalizeDefaultDomain(config.defaultDomain);
+            authorityPorts = advertisedPorts(decision);
+          }),
+        ),
+        Effect.asVoid,
+        Effect.mapError((cause) => {
+          const mapped = mapSetupError(cause);
+          return mapped instanceof RouterWatcherError
+            ? new ProxySetupError({
+                message: "Traefik ingress preparation failed.",
+                proxyId: TRAEFIK_PROXY_ID,
+                remediation: mapped.remediation,
+                cause: mapped,
+              })
+            : mapped;
+        }),
+      ),
+    setup: (config, options) =>
       Effect.gen(function* () {
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
+        if (dependencies.paths.platform === "win32") {
+          yield* dependencies.globalApp.ensureProviderReady ?? Effect.void;
+        }
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
         const socketProxy = yield* resolveSocketProxy(dependencies);
         const decision = yield* persistPortAcquisition({
           ...dependencies,
-          ...(socketProxy === undefined ? {} : { socketProxy }),
+          ...(socketProxy === undefined
+            ? {}
+            : {
+                socketProxy:
+                  options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+              }),
           ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
           ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
         });
@@ -267,16 +365,89 @@ export const makeTraefikRouterService = (
       authorityPorts = advertised;
       yield* finalizeRouterStartup(dependencies, advertised);
     }).pipe(Effect.mapError(mapStartupRevalidationError)),
-    applyRoutes: (nextRoutes, app) =>
-      Effect.gen(function* () {
+    applyRoutes: (nextRoutes, app) => {
+      const apply = Effect.gen(function* () {
         const appKey = String(app);
+        const file = routeFile(dependencies.paths, app);
+        const hadRouteFile = yield* dependencies.fileSystem.exists(file);
         if (nextRoutes.length === 0) {
-          yield* dependencies.fileSystem.remove(routeFile(dependencies.paths, app));
+          if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            yield* invalidateAcknowledgement(dependencies.stateStore, app);
+          }
+          yield* dependencies.fileSystem.remove(file);
           yield* removeAppCertificates(dependencies, app);
           routes.delete(appKey);
+          if (hadRouteFile) pendingReload.add(appKey);
         } else {
           const hostnames = httpsHostnames(nextRoutes);
+          const expectedTls = hostnames.length === 0 ? undefined : persistedTlsFiles(app);
+          const expectedConfig = renderTraefikDynamicConfig(nextRoutes, app, expectedTls);
+          if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            const snapshot = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
+            const [persistedConfig, certificate, privateKey, defaultCertificate, defaultPrivateKey] =
+              snapshot;
+            const digest = routeReloadDigest(snapshot);
+            const appCertificateCurrent =
+              hostnames.length === 0
+                ? certificate === undefined && privateKey === undefined
+                : certificate !== undefined &&
+                  privateKey !== undefined &&
+                  certificatePairIsCurrent(certificate, privateKey, hostnames);
+            const defaultCertificateCurrent =
+              hostnames.length === 0 ||
+              (defaultCertificate !== undefined &&
+                defaultPrivateKey !== undefined &&
+                certificatePairIsCurrent(defaultCertificate, defaultPrivateKey, [
+                  `test.${defaultDomain}`,
+                  defaultDomain,
+                  "traefik.lndo.site",
+                ]));
+            if (
+              persistedConfig === expectedConfig &&
+              appCertificateCurrent &&
+              defaultCertificateCurrent &&
+              (yield* isAcknowledged(dependencies.stateStore, app, digest))
+            ) {
+              routes.set(appKey, nextRoutes);
+              return {
+                app,
+                appliedRoutes: nextRoutes,
+                authorities: authoritiesFor(nextRoutes, authorityPorts),
+              } satisfies ProxyApplyResult;
+            }
+          }
+
+          if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            yield* invalidateAcknowledgement(dependencies.stateStore, app);
+          }
+          if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            pendingReload.add(appKey);
+          }
           const previousHostnames = httpsHostnames(routes.get(appKey) ?? []);
+          const appCertificate = appCertificateFiles(dependencies.paths, app);
+          const defaultCertificate = defaultCertificateFiles(dependencies.paths, defaultDomain);
+          const appCertificatePem = yield* readOptional(dependencies, appCertificate.cert);
+          const appPrivateKeyPem = yield* readOptional(dependencies, appCertificate.key);
+          const defaultCertificatePem = yield* readOptional(dependencies, defaultCertificate.cert);
+          const defaultPrivateKeyPem = yield* readOptional(dependencies, defaultCertificate.key);
+          const appCertificateCurrent =
+            hostnames.length === 0 ||
+            (appCertificatePem !== undefined &&
+              appPrivateKeyPem !== undefined &&
+              certificatePairIsCurrent(appCertificatePem, appPrivateKeyPem, hostnames));
+          const defaultCertificateCurrent =
+            hostnames.length === 0 ||
+            (defaultCertificatePem !== undefined &&
+              defaultPrivateKeyPem !== undefined &&
+              certificatePairIsCurrent(defaultCertificatePem, defaultPrivateKeyPem, [
+                `test.${defaultDomain}`,
+                defaultDomain,
+                "traefik.lndo.site",
+              ]));
+          const refreshAppCertificate =
+            hostnames.join("\n") !== previousHostnames.join("\n") || !appCertificateCurrent;
+          const refreshDefaultCertificate = !defaultCertificateCurrent;
+          const missingCertificate = !appCertificateCurrent || !defaultCertificateCurrent;
           if (hostnames.length === 0) yield* removeAppCertificates(dependencies, app);
           const tlsFiles =
             hostnames.length === 0
@@ -285,101 +456,152 @@ export const makeTraefikRouterService = (
                   app,
                   defaultDomain,
                   hostnames,
-                  refreshAppCertificate: hostnames.join("\n") !== previousHostnames.join("\n"),
+                  refreshAppCertificate,
+                  refreshDefaultCertificate,
                 });
-          yield* dependencies.fileSystem.writeAtomic(
-            routeFile(dependencies.paths, app),
-            renderTraefikDynamicConfig(nextRoutes, app, tlsFiles),
-          );
+          const nextConfig = renderTraefikDynamicConfig(nextRoutes, app, tlsFiles);
+          const previousConfig = hadRouteFile ? yield* dependencies.fileSystem.readText(file) : undefined;
+          if (previousConfig !== nextConfig || refreshAppCertificate || missingCertificate) {
+            yield* dependencies.fileSystem.writeAtomic(file, nextConfig);
+            pendingReload.add(appKey);
+          }
           routes.set(appKey, nextRoutes);
+        }
+        if (pendingReload.has(appKey)) {
+          if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+            const before = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
+            const digest = routeReloadDigest(before);
+            yield* reloadWindowsRouter(appKey);
+            const after = yield* routeReloadSnapshot(dependencies, app, defaultDomain);
+            if (routeReloadDigest(after) !== digest) {
+              return yield* Effect.fail(
+                new Error("Traefik route files changed while the Windows router reloaded."),
+              );
+            }
+            yield* acknowledge(dependencies.stateStore, app, digest);
+          } else {
+            yield* reloadWindowsRouter(appKey);
+          }
         }
         return {
           app,
           appliedRoutes: nextRoutes,
           authorities: authoritiesFor(nextRoutes, authorityPorts),
         } satisfies ProxyApplyResult;
-      }).pipe(Effect.mapError((cause) => applyError(app, cause))),
-    removeRoutes: (app) =>
-      Effect.all(
-        [
-          dependencies.fileSystem.remove(routeFile(dependencies.paths, app)),
-          removeAppCertificates(dependencies, app),
-        ],
-        { discard: true },
-      ).pipe(
-        Effect.tap(() => Effect.sync(() => void routes.delete(String(app)))),
-        Effect.mapError((cause) => proxyError("route removal", cause)),
-      ),
+      });
+      const guarded =
+        dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
+          ? dependencies.stateStore.withLock(routeReloadLockKey(), apply)
+          : apply;
+      return guarded.pipe(Effect.mapError((cause) => applyError(app, cause)));
+    },
+    removeRoutes: (app) => {
+      const remove = Effect.gen(function* () {
+        const appKey = String(app);
+        const file = routeFile(dependencies.paths, app);
+        const hadRouteFile = yield* dependencies.fileSystem.exists(file);
+        if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+          yield* invalidateAcknowledgement(dependencies.stateStore, app);
+        }
+        yield* dependencies.fileSystem.remove(file);
+        yield* removeAppCertificates(dependencies, app);
+        routes.delete(appKey);
+        if (hadRouteFile) pendingReload.add(appKey);
+        if (pendingReload.has(appKey)) yield* reloadWindowsRouter(appKey);
+      });
+      const guarded =
+        dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
+          ? dependencies.stateStore.withLock(routeReloadLockKey(), remove)
+          : remove;
+      return guarded.pipe(Effect.mapError((cause) => proxyError("route removal", cause)));
+    },
     status: persistedStatus(dependencies).pipe(Effect.mapError((cause) => proxyError("status", cause))),
-    stop: Effect.gen(function* () {
-      yield* releaseHelperSockets(dependencies);
-      const directory = dynamicConfigDir(dependencies.paths);
-      if (yield* dependencies.fileSystem.exists(directory)) {
-        const files = yield* dependencies.fileSystem.readDir(directory);
-        yield* Effect.forEach(
-          files.filter((file) => file.startsWith(ROUTE_FILE_PREFIX) && file.endsWith(ROUTE_FILE_SUFFIX)),
-          (file) => dependencies.fileSystem.remove(joinFor(dependencies.paths)(directory, file)),
-          { discard: true },
-        );
-      }
-      yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
-      yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
-      yield* dependencies.fileSystem.remove(watcherDiagnosticFile(dependencies.paths));
-      yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
-      yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
-      yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
-      yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));
-      yield* removeAllCertificates(dependencies);
-      routes.clear();
-    }).pipe(Effect.mapError((cause) => proxyError("stop", cause))),
+    stop: (() => {
+      const stop = Effect.gen(function* () {
+        yield* releaseHelperSockets(dependencies);
+        const directory = dynamicConfigDir(dependencies.paths);
+        if (yield* dependencies.fileSystem.exists(directory)) {
+          const files = yield* dependencies.fileSystem.readDir(directory);
+          yield* Effect.forEach(
+            files.filter((file) => file.startsWith(ROUTE_FILE_PREFIX) && file.endsWith(ROUTE_FILE_SUFFIX)),
+            (file) =>
+              Effect.gen(function* () {
+                const encodedApp = file.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length);
+                const routeApp = AppId.make(decodeURIComponent(encodedApp));
+                if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
+                  yield* invalidateAcknowledgement(dependencies.stateStore, routeApp);
+                }
+                yield* dependencies.fileSystem.remove(joinFor(dependencies.paths)(directory, file));
+              }),
+            { discard: true },
+          );
+        }
+        yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
+        yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
+        yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
+        yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
+        yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
+        yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));
+        yield* dependencies.fileSystem.remove(watcherDiagnosticFile(dependencies.paths));
+        yield* removeAllCertificates(dependencies);
+        routes.clear();
+      });
+      const guarded =
+        dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined
+          ? dependencies.stateStore.withLock(routeReloadLockKey(), stop)
+          : stop;
+      return guarded.pipe(Effect.mapError((cause) => proxyError("stop", cause)));
+    })(),
     readAppliedRoutes: (app) => Effect.succeed(routes.get(String(app)) ?? []),
   };
 };
 
-export const proxy = Layer.effect(
-  RouterService,
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem;
-    const paths = yield* PathsService;
-    const globalApp = yield* GlobalAppService;
-    const certificateAuthority = yield* CertificateAuthority;
-    const events = yield* Effect.serviceOption(EventService);
-    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    const socketProxy = yield* resolveLiveSocketProxy;
-    return makeTraefikRouterService({
-      certificateAuthority,
-      fileSystem: {
-        ...fileSystem,
-        writeSecretAtomic: (path, content) => Effect.tryPromise(() => writeSecretAtomic(path, content)),
-      },
-      paths,
-      globalApp,
-      ...(socketProxy === undefined ? {} : { socketProxy }),
-      ...(events._tag === "Some" ? { events: events.value } : {}),
-      ...Option.match(registry, {
-        onNone: () => ({}),
-        onSome: (registry) => ({
-          readTraefikLogs: () =>
-            Effect.gen(function* () {
-              const provider = yield* registry.select(GLOBAL_LOG_SELECT_PLAN);
-              if (provider.capabilities.serviceLogs !== true) {
-                return yield* Effect.fail(proxyError("log observation", "Service logs are unavailable."));
-              }
-              const chunks = yield* provider
-                .logs(
-                  { app: AppId.make("global"), service: ServiceName.make("traefik") },
-                  { follow: false, tail: 200 },
-                )
-                .pipe(Stream.runCollect);
-              return {
-                providerId: provider.id,
-                text: Array.from(chunks, (chunk) => chunk.line).join("\n"),
-              };
-            }),
+export const makeProxyLayer = (stateStore: PluginStateStore) =>
+  Layer.effect(
+    RouterService,
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem;
+      const paths = yield* PathsService;
+      const globalApp = yield* GlobalAppService;
+      const certificateAuthority = yield* CertificateAuthority;
+      const events = yield* Effect.serviceOption(EventService);
+      const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+      const socketProxy = yield* resolveLiveSocketProxy;
+      return makeTraefikRouterService({
+        certificateAuthority,
+        fileSystem: {
+          ...fileSystem,
+          writeSecretAtomic: (path, content) => Effect.tryPromise(() => writeSecretAtomic(path, content)),
+        },
+        paths,
+        globalApp,
+        stateStore,
+        ...(socketProxy === undefined ? {} : { socketProxy }),
+        ...(events._tag === "Some" ? { events: events.value } : {}),
+        ...Option.match(registry, {
+          onNone: () => ({}),
+          onSome: (registry) => ({
+            readTraefikLogs: () =>
+              Effect.gen(function* () {
+                const provider = yield* registry.select(GLOBAL_LOG_SELECT_PLAN);
+                if (provider.capabilities.serviceLogs !== true) {
+                  return yield* Effect.fail(proxyError("log observation", "Service logs are unavailable."));
+                }
+                const chunks = yield* provider
+                  .logs(
+                    { app: AppId.make("global"), service: ServiceName.make("traefik") },
+                    { follow: false, tail: 200 },
+                  )
+                  .pipe(Stream.runCollect);
+                return {
+                  providerId: provider.id,
+                  text: Array.from(chunks, (chunk) => chunk.line).join("\n"),
+                };
+              }),
+          }),
         }),
-      }),
-    });
-  }),
-);
+      });
+    }),
+  );
 
 export { TRAEFIK_DYNAMIC_CONFIG_SOURCE };

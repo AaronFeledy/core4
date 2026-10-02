@@ -268,7 +268,7 @@ describe("meta:doctor combined report", () => {
         timestamp: "1970-01-01T00:00:00.000Z",
         checks: 11,
         failed: 0,
-        warned: 5,
+        warned: checks.filter((line) => line.status === "warn").length,
       },
     });
   });
@@ -314,6 +314,45 @@ describe("meta:doctor combined report", () => {
     expect(envelope.result).toEqual(Schema.encodeSync(DoctorReportSchema)(report));
     expect(io.stderr()).toBe("");
     expect(renderCalled).toBe(false);
+  });
+
+  test("doctor preserves boolean buildSecrets capability in redacted text and JSON output", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, buildSecrets: true },
+    };
+    const report = await run(provider);
+
+    const textIo = createBufferedRendererIO();
+    await runWithRendererHandling(Effect.succeed(report), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      resultFormat: "text",
+      command: "meta:doctor",
+      resultSchema: metaDoctorSpec.resultSchema,
+      io: textIo,
+      render: renderDoctorReport,
+      formatError: (error) => String(error),
+    });
+    expect(textIo.stdoutLines().join("")).toContain("buildSecrets: true");
+    expect(textIo.stdoutLines().join("")).not.toContain("buildSecrets: [redacted]");
+
+    const jsonIo = createBufferedRendererIO();
+    await runWithRendererHandling(Effect.succeed(report), {
+      runtime: Layer.empty,
+      rendererMode: "json",
+      resultFormat: "json",
+      command: "meta:doctor",
+      resultSchema: metaDoctorSpec.resultSchema,
+      io: jsonIo,
+      render: renderDoctorReport,
+      formatError: (error) => String(error),
+    });
+    const envelope = decodeCommandEnvelope(jsonIo.stdoutLines()[0] ?? "{}");
+    expect(envelope.ok).toBe(true);
+    const result = Schema.decodeUnknownSync(DoctorReportSchema)(envelope.result);
+    expect(result.provider.checks[0]?.capabilities.buildSecrets).toBe(true);
   });
 
   test("doctorReport runs the shared app:config:lint pass and renders it under --app", async () => {

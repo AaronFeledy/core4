@@ -11,8 +11,8 @@ import {
   renderAppConfigResult,
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
-import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
+import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

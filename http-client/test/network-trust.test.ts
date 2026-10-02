@@ -8,7 +8,36 @@ import { Effect, Schema } from "effect";
 
 import { GlobalConfig } from "@lando/sdk/schema";
 
-import { loadCaPems, resolveServiceNetworkInject } from "../src/network-trust.ts";
+import { loadCaPems, resolveServiceNetworkInject, withWindowsHostTrust } from "../src/network-trust.ts";
+
+describe("Windows host CA trust", () => {
+  const configured = {
+    proxy: { https: "http://proxy.example:3128", noProxy: ["localhost"] },
+    caPems: ["custom-root"],
+    trustHost: true,
+  } as const;
+
+  test("passes Windows system roots explicitly alongside configured roots", () => {
+    expect(withWindowsHostTrust(configured, ["system-root"], "win32")).toEqual({
+      proxy: configured.proxy,
+      caPems: ["system-root", "custom-root"],
+      trustHost: false,
+    });
+    expect(withWindowsHostTrust(undefined, ["system-root"], "win32")).toEqual({
+      proxy: { noProxy: [] },
+      caPems: ["system-root"],
+      trustHost: false,
+    });
+  });
+
+  test("keeps explicit host opt-out and other platforms unchanged", () => {
+    const isolated = { ...configured, trustHost: false };
+    expect(withWindowsHostTrust(isolated, ["system-root"], "win32")).toBe(isolated);
+    expect(withWindowsHostTrust(configured, ["system-root"], "linux")).toBe(configured);
+    expect(withWindowsHostTrust(undefined, ["system-root"], "darwin")).toBeUndefined();
+    expect(withWindowsHostTrust(undefined, [], "win32")).toBeUndefined();
+  });
+});
 
 describe("core network trust", () => {
   test("loads PEM files with stable UTF-8 SHA-256 digests", async () => {

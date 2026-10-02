@@ -41,14 +41,26 @@ const renderDescriptorTable = (
   entries: ReadonlyArray<BundledPluginEntry>,
   exportName: "BUNDLED_PLUGIN_MODULES" | "BUNDLED_RENDERER_MODULES",
 ): string => {
-  const imports = entries.map((entry, index) => `import { plugin as plugin${index} } from "${entry.name}";`);
+  const imports = entries.flatMap((entry, index) =>
+    entry.compose === undefined
+      ? [`import { plugin as plugin${index} } from "${entry.name}";`]
+      : [
+          `import { ${entry.compose.factoryExport} } from "${entry.name}";`,
+          `import { ${entry.compose.ports.export} } from "${entry.compose.ports.module}";`,
+        ],
+  );
+  const compositions = entries.flatMap((entry, index) =>
+    entry.compose === undefined
+      ? []
+      : [`const plugin${index} = ${entry.compose.factoryExport}(${entry.compose.ports.export});`],
+  );
   const descriptors = entries.map((_entry, index) => `  plugin${index},`);
 
   return `${HEADER}
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 
 ${imports.join("\n")}
-
+${compositions.length === 0 ? "" : `\n${compositions.join("\n")}\n`}
 export const ${exportName}: ReadonlyArray<LandoPluginModule> = [
 ${descriptors.join("\n")}
 ];

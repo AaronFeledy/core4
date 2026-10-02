@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
 import { LoggerLive, type LoggerLiveOptions } from "../../src/logging/service";
@@ -271,6 +271,7 @@ describe("LoggerLive logLevel and stderr", () => {
 
   test("redacts message and data when RedactionService is present", async () => {
     const redaction = Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["super-secret-value"] })),
     });
     const captured = await withStderrTty(true, () =>

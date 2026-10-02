@@ -88,6 +88,20 @@ const EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY = EXPECTED_CAPABILITY_FIELDS
 );
 
 describe("provider-docker capabilities", () => {
+  test("native linux docker advertises bind-directory; desktop hosts advertise volume-relay", () => {
+    // Given / When
+    const native = dockerCapabilitiesForHost("linux", "/var/run/docker.sock");
+    const desktop = [
+      dockerCapabilitiesForHost("darwin", "/var/run/docker.sock"),
+      dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine"),
+      dockerCapabilitiesForHost("linux", "/home/alice/.docker/desktop/docker.sock"),
+    ];
+    // Then
+    expect(native.agentSocket).toEqual({ delivery: "bind-directory" });
+    for (const capabilities of desktop)
+      expect(capabilities.agentSocket).toEqual({ delivery: "volume-relay" });
+  });
+
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const linux = dockerCapabilitiesForPlatform("linux");
     const macos = dockerCapabilitiesForPlatform("darwin");

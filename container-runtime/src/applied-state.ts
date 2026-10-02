@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises";
 
 import { Effect, Option, Schema } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, AppPlan, type AppPlan as AppPlanShape } from "@lando/sdk/schema";
 
@@ -49,9 +49,6 @@ interface AppliedPlanStoreOptions {
   readonly providerId: "docker" | "lando" | "podman";
   readonly layout: "per-app" | "record";
 }
-
-const isMissing = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
 
 export function makeAppliedPlanStore(options: {
   readonly providerId: "docker" | "lando" | "podman";
@@ -111,7 +108,10 @@ export function makeAppliedPlanStore(
         ),
       listAppliedPlans: (stateStore, stateDir) =>
         Effect.tryPromise({ try: () => readdir(appliedPlansDir(stateDir)), catch: (cause) => cause }).pipe(
-          Effect.catchIf(isMissing, () => Effect.succeed([])),
+          Effect.catchIf(
+            (cause: unknown) => isErrnoCode(cause, "ENOENT"),
+            () => Effect.succeed([]),
+          ),
           Effect.mapError((cause) => error("list", cause)),
           Effect.map((entries) =>
             entries.flatMap((entry) => {

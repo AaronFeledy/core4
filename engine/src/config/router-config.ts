@@ -1,10 +1,13 @@
 import { Effect } from "effect";
 
-import type { AppPlan, RouterConfig } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  DEFAULT_ROUTER_HTTPS_PORTS,
+  DEFAULT_ROUTER_HTTP_PORTS,
+  type RouterConfig,
+} from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
-const DEFAULT_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 38080] as const;
-const DEFAULT_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
 const DEFAULT_BIND_ADDRESS = "127.0.0.1";
 const DEFAULT_ENABLED = true;
 
@@ -42,8 +45,8 @@ const overlayRouter = (prior: MergedRouterConfig, overlay: RouterConfig | undefi
 
 const COMPILED_DEFAULTS: MergedRouterConfig = {
   enabled: DEFAULT_ENABLED,
-  httpPorts: DEFAULT_HTTP_PORTS,
-  httpsPorts: DEFAULT_HTTPS_PORTS,
+  httpPorts: DEFAULT_ROUTER_HTTP_PORTS,
+  httpsPorts: DEFAULT_ROUTER_HTTPS_PORTS,
   bindAddress: DEFAULT_BIND_ADDRESS,
 };
 
@@ -75,13 +78,25 @@ export const extractRouterPins = (landofileRouter: RouterConfig | undefined): Ro
   ...(landofileRouter?.httpsPort === undefined ? {} : { httpsPort: landofileRouter.httpsPort }),
 });
 
-const toSetupRouter = (merged: MergedRouterConfig): RouterConfig => ({
+const toSetupRouter = (
+  merged: MergedRouterConfig,
+  globalRouter: RouterConfig | undefined,
+  landofileRouter: RouterConfig | undefined,
+): RouterConfig => ({
   enabled: merged.enabled,
   bindAddress: merged.bindAddress,
-  httpPort: merged.httpPorts[0],
-  httpsPort: merged.httpsPorts[0],
-  httpFallbacks: merged.httpPorts.slice(1),
-  httpsFallbacks: merged.httpsPorts.slice(1),
+  ...(globalRouter?.httpPort === undefined && landofileRouter?.httpPort === undefined
+    ? {}
+    : { httpPort: merged.httpPorts[0] }),
+  ...(globalRouter?.httpsPort === undefined && landofileRouter?.httpsPort === undefined
+    ? {}
+    : { httpsPort: merged.httpsPorts[0] }),
+  ...(globalRouter?.httpFallbacks === undefined && landofileRouter?.httpFallbacks === undefined
+    ? {}
+    : { httpFallbacks: merged.httpPorts.slice(1) }),
+  ...(globalRouter?.httpsFallbacks === undefined && landofileRouter?.httpsFallbacks === undefined
+    ? {}
+    : { httpsFallbacks: merged.httpsPorts.slice(1) }),
 });
 
 const resolveGlobalRouter: Effect.Effect<RouterConfig | undefined> = Effect.gen(function* () {
@@ -104,7 +119,7 @@ export const resolveRouterConfigForApp = (
     const globalRouter = yield* resolveGlobalRouter;
     const merged = mergeRouterConfig(globalRouter, landofileRouter);
     return {
-      router: toSetupRouter(merged),
+      router: toSetupRouter(merged, globalRouter, landofileRouter),
       routerPin: extractRouterPins(landofileRouter),
       enabled: merged.enabled,
     };

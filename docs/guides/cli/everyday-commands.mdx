@@ -76,6 +76,16 @@ lando destroy -y
 
 `-y` skips the confirmation prompt.
 
+If you've deleted or moved an app folder before tearing it down, use its old path to
+remove the leftovers. `lando doctor` lists app folders that no longer exist.
+`--root` refuses folders that still exist; run `lando destroy` from inside those
+folders instead. `--volumes` deletes the app's retained data, so use it only when
+you no longer need that data.
+
+```sh
+lando destroy --root <path> --volumes
+```
+
 To stop everything Lando is running:
 
 ```sh
@@ -83,7 +93,19 @@ lando list
 lando poweroff -y
 ```
 
-`lando list` marks an app as stale when its recorded root no longer exists.
+`lando list` keeps known apps in the inventory after they stop. Its status comes
+from runtime discovery, not the saved plan:
+
+| Status | Meaning |
+| --- | --- |
+| `active` | At least one container for this app is running. This does not mean every service is healthy. |
+| `stopped` | The app's provider answered discovery, and no running containers were found for the app. |
+| `unknown` | Discovery could not confirm the app's provider, including when its API socket is gone after `poweroff`. |
+
+Use `lando list --format=json` for the same `status` on each entry in `result.apps`.
+The service list includes saved service names; it is not a list of running services.
+The table adds `(stale)` when the recorded root no longer exists; JSON reports
+that separately as `stale: true`.
 Pruning also requires the provider to confirm that no matching containers or
 volumes remain. Remove those exact stale records with:
 

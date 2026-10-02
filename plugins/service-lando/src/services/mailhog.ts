@@ -78,7 +78,7 @@ export const mailhogServiceType: ServiceType = {
             id: "mailhog",
             notice: MAILHOG_DEPRECATION_NOTICE,
             ...(input.appName === undefined ? {} : { app: input.appName }),
-            timestamp: DateTime.unsafeMake(new Date().toISOString()),
+            timestamp: DateTime.unsafeNow(),
           })
           .pipe(Effect.catchAll(() => Effect.void));
       }

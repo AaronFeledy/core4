@@ -11,7 +11,21 @@
 import { DateTime } from "effect";
 
 import type { ServicePlan } from "@lando/sdk/schema";
-import type { ServiceAppMountIntent, ServiceBuildStepIntent, ServiceMountIntent } from "@lando/sdk/services";
+import type {
+  ServiceAppMountIntent,
+  ServiceBuildStepIntent,
+  ServiceFeatureDefinition,
+  ServiceMountIntent,
+} from "@lando/sdk/services";
+
+export interface BaseSeed {
+  readonly name: ServicePlan["name"];
+  readonly type: ServicePlan["type"];
+  readonly provider: ServicePlan["provider"];
+  readonly primary: ServicePlan["primary"];
+  readonly environment?: Readonly<Record<string, string>>;
+  readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
+}
 
 /** The mutable plan draft a feature mutates before finalization. */
 export interface DraftServicePlan {
@@ -57,3 +71,19 @@ export const sortRecord = <V>(input: Readonly<Record<string, V>>): Record<string
   }
   return output;
 };
+
+export const makeDraft = (base: BaseSeed): DraftServicePlan => ({
+  name: base.name,
+  type: base.type,
+  provider: base.provider,
+  primary: base.primary,
+  environment: sortRecord(base.environment ?? {}),
+  mounts: [],
+  featureIds: base.defaultFeatures.map((feature) => feature.id),
+  buildSteps: [],
+  storage: [],
+  storageOwnership: [],
+  endpoints: [],
+  dependsOn: [],
+  hostAliases: [],
+});

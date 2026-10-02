@@ -14,12 +14,17 @@ const RECIPE_IDS = [
   "django",
   "drupal",
   "drupal-cms",
+  "eleventy",
+  "fastapi",
+  "hugo",
+  "jekyll",
   "joomla",
   "lamp",
   "laravel",
   "lemp",
   "mean",
   "nextjs",
+  "node-api",
   "rails",
   "sveltekit",
   "symfony",
@@ -128,11 +133,20 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/rails-workflow");
     expect(slugs).toContain("guides/recipes/astro-workflow");
     expect(slugs).toContain("guides/recipes/django-workflow");
+    expect(slugs).toContain("guides/recipes/fastapi-workflow");
     expect(slugs).toContain("guides/recipes/mean-workflow");
     expect(slugs).toContain("guides/recipes/symfony-workflow");
     expect(slugs).toContain("guides/recipes/laravel-workflow");
     expect(slugs).toContain("guides/recipes/sveltekit-workflow");
     expect(slugs).toContain("guides/recipes/nextjs-workflow");
+    expect(slugs).toContain("guides/recipes/node-api-workflow");
+    expect(slugs).toContain("guides/recipes/eleventy-workflow");
+    expect(slugs).toContain("guides/recipes/hugo-workflow");
+    expect(slugs).toContain("guides/recipes/jekyll-workflow");
+    expect(slugs).toContain("guides/recipes/backdrop-workflow");
+    expect(slugs).toContain("guides/recipes/wordpress-workflow");
+    expect(slugs).toContain("guides/recipes/drupal-cms-workflow");
+    expect(slugs).toContain("guides/recipes/joomla-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
     expect(slugs).toContain("guides/recipes/programmatic-recipe");

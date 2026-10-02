@@ -6,7 +6,7 @@ import { Effect } from "effect";
 
 import type { PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 
-import { manifest, plugin } from "../src/index.ts";
+import { makeRuntimeProvider, manifest, plugin } from "../src/index.ts";
 import { providerLandoSetupStatePath } from "../src/provider-lando-state.ts";
 
 const contributionIds = (
@@ -32,6 +32,31 @@ afterEach(async () => {
 });
 
 describe("@lando/provider-podman plugin descriptor", () => {
+  test("routes resource inspection through the injected API", async () => {
+    // Given
+    const paths: string[] = [];
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        podmanApi: {
+          ping: Effect.void,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "amd64" } }),
+          request: (request) => {
+            paths.push(request.path);
+            return Effect.succeed({ status: 200, body: '[{"Names":["/legacy"]}]' });
+          },
+        },
+      }),
+    );
+    // When
+    const names = await Effect.runPromise(
+      provider.inspectResourceNames?.({ kind: "container", limit: 4 }) ?? Effect.die("Missing inspector"),
+    );
+    // Then
+    expect(names).toEqual(["legacy"]);
+    expect(paths).toEqual(["/containers/json?all=true&filters=%7B%7D"]);
+  });
   test("plugin.name matches manifest.name", () => {
     // Given / When the additive descriptor is exported
     // Then

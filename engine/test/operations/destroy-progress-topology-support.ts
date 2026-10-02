@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type FileSyncSessionSpec,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -63,11 +64,14 @@ export const web: ServicePlan = {
   extensions: {},
 };
 
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-test-destroy-"));
+process.once("exit", () => rmSync(testAppRoot, { recursive: true, force: true }));
+
 export const plan: AppPlan = {
   id: AppId.make("test-destroy"),
   name: "test-destroy",
   slug: "test-destroy",
-  root: AbsolutePath.make("/tmp/test-destroy"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
@@ -84,10 +88,14 @@ export const byTag = <T extends LandoEvent["_tag"]>(events: ReadonlyArray<LandoE
 export const makeHarness = (
   options: {
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly quiesceEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyAvailable?: boolean;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly stateStore?: StateStoreShape;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
+    readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
+    readonly appliedFileSyncSessions?: ReadonlyArray<FileSyncSessionSpec>;
+    readonly appliedFileSyncEngineId?: string;
   } = {},
 ) => {
   const events: LandoEvent[] = [];
@@ -96,6 +104,23 @@ export const makeHarness = (
     id: "lando",
     destroy: () => (options.destroyEffect ?? Effect.void).pipe(Effect.as({ kind: "destroyed" as const })),
     listVolumes: () => Effect.succeed(options.volumes ?? []),
+    ...(options.appliedFileSyncState === undefined
+      ? {}
+      : {
+          inspectAppliedFileSync: () =>
+            Effect.succeed(
+              options.appliedFileSyncState === "accelerated"
+                ? {
+                    status: "accelerated" as const,
+                    engineId: options.appliedFileSyncEngineId ?? "mutagen",
+                    sessions: options.appliedFileSyncSessions ?? [],
+                  }
+                : { status: options.appliedFileSyncState ?? "unknown" },
+            ),
+        }),
+    ...(options.quiesceEffect === undefined
+      ? {}
+      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };

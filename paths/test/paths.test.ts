@@ -490,6 +490,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.appPluginsDir("acme")).toBe(join(data, "apps", "acme", "plugins"));
     expect(paths.pluginAuthFile).toBe(join(data, "plugin-auth.json"));
     expect(paths.binDir).toBe(join(data, "bin"));
+    expect(paths.installRecordFile).toBe(join(data, "install", "record.json"));
     expect(paths.keysDir).toBe(join(data, "keys"));
     expect(paths.certsDir).toBe(join(data, "certs"));
     expect(paths.runtimeDir).toBe(join(data, "runtime"));
@@ -556,6 +557,7 @@ describe("makeLandoPaths derived builders", () => {
       userConfRoot: "/iso/conf",
     });
     expect(paths.pluginsDir).toBe("/iso/data/plugins");
+    expect(paths.installRecordFile).toBe("/iso/data/install/record.json");
     expect(paths.snapshotsDir).toBe("/iso/data/snapshots");
     expect(paths.appSnapshotsDir("app-one")).toBe("/iso/data/snapshots/app-one");
     expect(paths.managedFileLedger("app-one")).toBe("/iso/data/managed-files/app-one/ledger.json");
@@ -583,6 +585,9 @@ describe("makeLandoPaths derived builders", () => {
       },
     });
     expect(paths.pluginsDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\plugins");
+    expect(paths.installRecordFile).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\install\\record.json",
+    );
     expect(paths.managedFileLedger("app-one")).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\managed-files\\app-one\\ledger.json",
     );
@@ -610,5 +615,6 @@ describe("makeLandoPaths derived builders", () => {
     const paths = makeLandoPaths({ platform: "darwin", home: "/Users/tester", env: noEnv });
     const data = "/Users/tester/Library/Application Support/Lando";
     expect(paths.managedFileLedger("app-one")).toBe(`${data}/managed-files/app-one/ledger.json`);
+    expect(paths.installRecordFile).toBe(`${data}/install/record.json`);
   });
 });

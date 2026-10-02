@@ -19,7 +19,7 @@ export interface AppBuildInput {
   readonly stateStore: Context.Tag.Service<typeof StateStore>;
 }
 
-const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+const timestamp = () => DateTime.unsafeNow();
 
 const publishDetailLines = (
   input: Pick<AppBuildInput, "events" | "redactor">,

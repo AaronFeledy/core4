@@ -1,0 +1,346 @@
+# =============================================================================
+# Lando 3 global config — kitchen-sink reference for ~/.lando/config.yml
+# =============================================================================
+#
+# This is NOT a Landofile. It is the user-level override file Lando 3 reads at
+# bootstrap. Almost none of it is documented; this file was assembled from the
+# Lando 3 source (core 3.26.x) by tracing every `lando.config.<key>` read site
+# and every place a default is set. Frequencies are irrelevant here: in the
+# wild this file is nearly always empty (`{}`) or one or two lines
+# (`proxy: 'OFF'`, `networkLimit: 64`, custom Landofile names).
+#
+# HOW IT IS LOADED (utils/build-config.js, lib/cli.js, bin/lando):
+#   1. hard-coded defaults           utils/get-config-defaults.js + lib/cli.js
+#   2. <core>/config.yml             packaged defaults (channel, domain, stats,
+#                                    dockerSupportedVersions)
+#   3. ~/.lando/config.yml           THIS FILE
+#   4. Landofile `plugins:` and `pluginDirs:` (only those two keys)
+#   5. LANDO_* environment variables  LANDO_MODE=x → mode: x. camelCase keys
+#                                    split on `_`: LANDO_ENGINE_CONFIG →
+#                                    engineConfig. Values that parse as JSON
+#                                    become objects/arrays.
+#   6. LANDO_PLUGIN_CONFIG_*         → pluginConfig.<lowercased.dotted.path>
+#   7. plugin-returned config         @lando/core's index.js returns the proxy*,
+#                                    appEnv, appLabels, bindAddress, uid/gid,
+#                                    network* defaults. Merged UNDER user
+#                                    config (lib/lando.js:71), so anything
+#                                    here still wins.
+# Merge rule everywhere: lodash mergeWith; mappings deep-merge, arrays
+# concatenate then uniq (utils/legacy-merge.js). You cannot REMOVE an array
+# element from a lower layer by omitting it.
+#
+# Bootstrap-only env vars that cannot be set in this file because they decide
+# where the file is:
+#   LANDO_CORE_USERCONFROOT   directory used instead of ~/.lando
+#   LANDO_CORE_ENVPREFIX      prefix used instead of LANDO for step 5
+#   LANDO_CORE_RUNTIME        3 (legacy runtime selector; only 3 works)
+#   LANDO_CORE_LOGLEVELCONSOLE  console log level before config loads
+#   LANDO_DEBUG               1|true → enable `lando*` debug scopes; any other
+#                             string is passed to the debug module as scopes
+#   LEIA_PARSER_RUNNING       marks a test run (config.leia)
+#
+# `lando config` prints the fully merged result; `lando config --path X` one
+# key. `lando --channel X`, `--experimental`, and `--secret-toggle` WRITE to
+# this file via lib/cli.js updateUserConfig (they are the only writers).
+#
+# Keys are grouped by who owns them. A key marked (runtime) is computed at
+# bootstrap and overwritten every run; setting it here has no effect or breaks
+# things. They are listed so a compat layer knows the full key space
+# `lando config` will show.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Landofile discovery — the keys that matter most to a Lando 4 compat layer,
+# because they change which files ARE Landofiles.
+# -----------------------------------------------------------------------------
+landoFile: .lando.yml               # canonical file name
+preLandoFiles:                      # loaded before landoFile, in order
+  - .lando.base.yml
+  - .lando.dist.yml
+  - .lando.recipe.yml
+  - .lando.upstream.yml
+postLandoFiles:                     # loaded after landoFile, in order
+  - .lando.local.yml
+  - .lando.user.yml
+# Because arrays concatenate, setting `landoFile: .solo.yml` plus
+# `preLandoFiles: [.solo.dist.yml]` ADDS .solo.dist.yml to the four defaults
+# rather than replacing them (core/examples/landofile-custom/config.yml).
+
+# -----------------------------------------------------------------------------
+# Proxy (defaults from core/index.js; derived keys from
+# hooks/lando-set-proxy-config.js)
+# -----------------------------------------------------------------------------
+proxy: "ON"                         # "ON" | "OFF". The only widely used key in
+                                    # this file. OFF = no traefik container, no
+                                    # *.lndo.site URLs; ports still publish.
+domain: lndo.site                   # wildcard DNS domain for proxy hostnames and
+                                    # the CA's SAN (*.lndo.site). Recipes read it
+                                    # to build <app>.<domain>. Changing it after
+                                    # setup requires regenerating the CA.
+proxyName: landoproxyhyperion5000gandalfedition   # compose project name of the
+                                    # proxy → container <proxyName>_proxy_1,
+                                    # network <proxyName>_edge, volume
+                                    # <proxyName>_proxy_config
+proxyHttpPort: "80"                 # preferred host ports
+proxyHttpsPort: "443"
+proxyHttpFallbacks: ["8000", "8080", "8888", "8008"]   # tried in order when the
+proxyHttpsFallbacks: ["444", "4433", "4444", "4443"]   # preferred port is busy
+proxyBindAddress: 127.0.0.1         # host IP the proxy publishes on; defaults
+                                    # to bindAddress
+proxyPassThru: true                 # sets LANDO_PROXY_PASSTHRU in services;
+                                    # proxy-certs.sh uses it to add proxy SANs
+proxyDefaultCert: /certs/cert.crt   # traefik default TLS store (paths inside
+proxyDefaultKey: /certs/cert.key    # the proxy container)
+proxyCache: proxyCache              # cache key under ~/.lando/cache holding the
+                                    # last ports the proxy actually bound
+proxyCommand:                       # traefik argv. Replace wholesale to change
+  - /entrypoint.sh                  # log level, enable the dashboard, etc.
+  - --log.level=DEBUG               # (array → concatenates with defaults, so in
+  - --api.insecure=true             #  practice you cannot remove a flag here;
+  - --api.dashboard=false           #  use proxyCustom for additive config)
+  - --providers.docker=true
+  - --entrypoints.https.address=:443
+  - --entrypoints.http.address=:80
+  - --providers.docker.exposedbydefault=false
+  - --providers.file.directory=/proxy_config
+  - --providers.file.watch=true
+proxyCustom:                        # arbitrary traefik FILE-provider config,
+  http:                             # dumped to ~/.lando/proxy/config/
+    middlewares:                    # user-custom.yaml (hooks/app-init-proxy.js)
+      compress:
+        compress: {}
+# (runtime) proxyContainer, proxyNet, proxyDir, proxyConfigDir,
+#           proxyCurrentPorts, proxyHttpPorts, proxyHttpsPorts,
+#           proxyLastPorts, proxyScanHttp, proxyScanHttps, proxyDomain, proxyIp
+
+# -----------------------------------------------------------------------------
+# Networking and ports
+# -----------------------------------------------------------------------------
+bindAddress: 127.0.0.1              # IP every published service port binds to.
+                                    # 0.0.0.0 exposes apps to the LAN
+                                    # (docs/config/security.md).
+networkBridge: lando_bridge_network # the shared cross-app network ("Landonet");
+                                    # every container joins it with alias
+                                    # <service>.<project>.internal
+networkLimit: 32                    # Docker networks allowed before Lando prunes
+                                    # unused ones on start (hooks/lando-clean-
+                                    # networks.js). Raise if you run many apps
+                                    # (core/examples/networking sets 64).
+
+# -----------------------------------------------------------------------------
+# Docker engine and orchestrator
+# -----------------------------------------------------------------------------
+# Where the Docker daemon is. Anything other than the defaults also exports
+# DOCKER_HOST (and DOCKER_CERT_PATH/DOCKER_TLS_VERIFY when certPath is set) for
+# the compose child processes. Documented as "not officially supported".
+engineConfig:
+  socketPath: /var/run/docker.sock  # //./pipe/docker_engine on Windows
+  host: 127.0.0.1                   # non-127.0.0.1 → DOCKER_HOST=tcp://host:port
+  port: 2376
+  # certPath: /path/with/ca.pem,cert.pem,key.pem   # enables TLS
+dockerBin: /usr/bin/docker          # path to the docker CLI (auto-detected)
+# (runtime) dockerBinDir
+orchestratorVersion: "2.40.3"       # docker compose version Lando downloads to
+                                    # ~/.lando/bin/docker-compose-v<ver> and uses.
+                                    # "1.29.2" | "2.x" | "latest" also accepted;
+                                    # an invalid value falls back to the system
+                                    # compose.
+orchestratorBin: /usr/local/bin/docker-compose   # absolute path to a compose
+                                    # binary. When set and it exists,
+                                    # orchestratorVersion is ignored.
+# composeBin: <deprecated alias for orchestratorBin>
+orchestratorSeparator: "_"          # "_" (compose v1 style names, sets
+                                    # COMPOSE_COMPATIBILITY=true) or "-".
+                                    # Changing it renames every container.
+# (runtime) orchestratorMV (major version)
+dockerSupportedVersions:            # ranges `lando doctor`-style compat checks
+  compose:                          # use (hooks/lando-get-compat.js). Loosen to
+    satisfies: "1.x.x || 2.x.x"     # silence warnings on newer Docker.
+    recommendUpdate: "<=2.31"
+    tested: "<=2.40.99"
+    link:
+      linux: https://docs.docker.com/compose/install/#install-compose-on-linux-systems
+      darwin: https://docs.docker.com/desktop/install/mac-install/
+      win32: https://docs.docker.com/desktop/install/windows-install/
+  desktop:
+    satisfies: ">=4.0.0 <5"
+    tested: "<=4.85.99"
+    recommendUpdate: "<=4.37"
+    link:
+      darwin: https://docs.docker.com/desktop/install/mac-install/
+      win32: https://docs.docker.com/desktop/install/windows-install/
+      wsl: https://docs.docker.com/desktop/install/windows-install/
+  engine:
+    satisfies: ">=18 <30"
+    tested: "<=29.6.99"
+    link:
+      linux: https://docs.docker.com/engine/install/debian/#install-using-the-convenience-script
+
+# -----------------------------------------------------------------------------
+# Containers: env and labels applied to EVERY app service
+# (defaults from core/index.js; hosts read these to inject LANDO_* vars)
+# -----------------------------------------------------------------------------
+appEnv:
+  LANDO: "ON"
+  LANDO_WEBROOT_USER: www-data      # default user/group Lando chowns webroots to
+  LANDO_WEBROOT_GROUP: www-data
+  TERM: xterm
+  # Add your own; they land in every container:
+  COMPOSER_PROCESS_TIMEOUT: "600"
+  # (runtime, do not set) LANDO_HOST_UID, LANDO_HOST_GID, LANDO_HOST_USER,
+  # LANDO_CA_CERT, LANDO_CA_KEY, LANDO_CONFIG_DIR, LANDO_DOMAIN,
+  # LANDO_HOST_HOME, LANDO_HOST_OS, LANDO_HOST_IP, LANDO_LEIA, LANDO_MOUNT
+appLabels:
+  io.lando.container: "TRUE"        # THE label Lando uses to find its containers
+  # (runtime) io.lando.id: <hash of userConfRoot>
+  dev.example.team: platform        # extra labels are allowed
+maxKeyWarning: 10                   # warn when more than N ssh keys would be
+                                    # loaded into containers (docs/config/ssh.md)
+# (runtime) uid, gid, username — host identity; used by db plugins to decide
+#           whether to run as non-root and by the entrypoint for perms
+# (runtime) caCert, caKey, caDomain — ~/.lando/certs/LandoCA.{crt,key}, domain
+
+# -----------------------------------------------------------------------------
+# Plugins
+# -----------------------------------------------------------------------------
+# Plugins Lando will refuse to load, by name. lib/cli.js already disables
+# lando-core (the legacy in-repo core) and @lando/core-next.
+disablePlugins:
+  - lando-alliance                  # (auto-added unless `alliance: true`)
+  - "@lando/mailhog"
+# Where plugins are found. String form = scan <path>/plugins/*; object form
+# is what core uses internally. Landofile `pluginDirs:` merges in here.
+pluginDirs:
+  - /opt/lando-plugins
+  - path: /home/me/dev/plugins
+    subdir: .
+    namespace: "@myorg"
+    type: user
+# Plugins to load from the Landofile `plugins:` key are merged here too;
+# setting them globally pins a plugin for every app.
+plugins:
+  "@lando/php": /home/me/dev/php
+# npm-config passed to pacote when `lando plugin-add` / `lando setup` fetch
+# plugins (components/plugin.js). Persisted form is ~/.lando/plugin-auth.json
+# (`lando plugin-login`). Env form: LANDO_PLUGIN_CONFIG_REGISTRY=... becomes
+# pluginConfig.registry.
+pluginConfig:
+  registry: https://registry.npmjs.org
+  "@myorg:registry": https://npm.pkg.github.com
+  "//npm.pkg.github.com/:_authToken": ghp_xxx
+pluginConfigFile: /home/me/.lando/plugin-auth.json
+experimental: false                 # load <core>/experimental plugins;
+                                    # toggled by `lando --experimental`
+alliance: false                     # enables the lando-alliance plugin; toggled
+                                    # by `lando --secret-toggle` (also true if
+                                    # ~/.lando/secret-toggle exists)
+
+# -----------------------------------------------------------------------------
+# lando setup defaults (utils/get-config-defaults.js). Each is the default of
+# the matching `lando setup --<flag>`; `lando setup` runs automatically on
+# first start, so these govern unattended installs.
+# -----------------------------------------------------------------------------
+setup:
+  buildEngine: "29.6.2"             # Docker Engine (linux) or Docker Desktop
+                                    # (darwin/win32/wsl: "4.85.0") version to
+                                    # install; false to skip
+  buildEngineAcceptLicense: false   # accept the Desktop license non-interactively
+  buildx: "0.30.1"                  # buildx version; false to skip
+  orchestrator: "2.40.3"            # compose version; defaults to
+                                    # orchestratorVersion; false to skip
+  commonPlugins:                    # plugins installed by default. Set a value
+    "@lando/acquia": latest         # to a version/range, or delete by setting
+    "@lando/apache": latest         # skipCommonPlugins. (Full default list is
+    "@lando/backdrop": latest       # every @lando/* service and recipe plugin;
+    "@lando/compose": latest        # channel=edge installs @edge tags.)
+    "@lando/dotnet": latest
+    "@lando/drupal": latest
+    "@lando/elasticsearch": latest
+    "@lando/go": latest
+    "@lando/joomla": latest
+    "@lando/lagoon": latest
+    "@lando/lamp": latest
+    "@lando/laravel": latest
+    "@lando/lemp": latest
+    "@lando/mailhog": latest
+    "@lando/mailpit": latest
+    "@lando/mariadb": latest
+    "@lando/mean": latest
+    "@lando/memcached": latest
+    "@lando/mongo": latest
+    "@lando/mssql": latest
+    "@lando/mysql": latest
+    "@lando/nginx": latest
+    "@lando/node": latest
+    "@lando/pantheon": latest
+    "@lando/php": latest
+    "@lando/phpmyadmin": latest
+    "@lando/postgres": latest
+    "@lando/python": latest
+    "@lando/redis": latest
+    "@lando/ruby": latest
+    "@lando/solr": latest
+    "@lando/symfony": latest
+    "@lando/tomcat": latest
+    "@lando/varnish": latest
+    "@lando/wordpress": latest
+  plugins:                          # additional plugins (`--plugin`)
+    "@myorg/lando-thing": ^1.0.0
+  installPlugins: true              # (runtime) computed from status
+  installTasks: true                # (runtime)
+  tasks: []                         # (runtime) setup task list
+  skipCommonPlugins: false          # --skip-common-plugins (true in FATCORE)
+  skipInstallCa: false              # --skip-install-ca: do not trust LandoCA
+                                    # in the host store
+  skipNetworking: false             # --skip-networking: do not create Landonet
+
+# -----------------------------------------------------------------------------
+# Updates, telemetry, logging, UX
+# -----------------------------------------------------------------------------
+channel: stable                     # stable | edge | none. edge also pulls
+                                    # @edge plugin tags; none disables update
+                                    # checks. Written by `lando --channel`.
+stats:                              # anonymous metrics endpoints; report:false
+  - report: true                    # to opt out (docs/privacy.md)
+    url: https://metrics.lando.dev
+logLevel: debug                     # level written to ~/.lando/logs/*.log
+logLevelConsole: warn               # error|warn|info|verbose|debug|silly or an
+                                    # int 0-5; -v/-vv/-vvv override per run
+logDir: /home/me/.lando/logs
+mode: cli                           # cli | (anything) — only reported in metrics
+                                    # and used by embedders (lando as a library)
+isInteractive: true                 # (runtime) TTY detection; drives --yes
+                                    # defaults. Set false to force
+                                    # non-interactive behavior.
+userAgent: Lando/3.26.9             # (runtime) HTTP user agent
+
+# -----------------------------------------------------------------------------
+# Identity and paths (runtime; shown by `lando config`, rarely set)
+# -----------------------------------------------------------------------------
+# userConfRoot: /home/me/.lando     # where this file lives; only settable via
+                                    # LANDO_CORE_USERCONFROOT
+# home: /home/me                    # os.homedir(); bind-mounted at /user
+# configSources: [...]              # the list of files merged, in order
+# envPrefix: LANDO                  # prefix for env overrides
+# product: lando                    # names the CA (LandoCA) and hyperdrive file
+# hyperdrive: hyperdrive            # legacy; hconf = oclif cache dir/lando.json
+# runtime: 3
+# version / cli.version             # from package.json
+# cli: {packaged, dev, source, commit, entrypoint, file, installPath, slim, ...}
+# coreBase, srcRoot                 # where @lando/core was loaded from
+# fatcore: false                    # true when built with bundled plugins
+# packaged: true                    # running as a pkg binary
+# leia: false                       # LEIA_PARSER_RUNNING test flag
+# os: {type, platform, landoPlatform (wsl-aware), release, arch, isWsl,
+#      isWslInterop}
+# isArmed: false                    # arm64/aarch64 host (plugins pick images)
+# node: v20.x                       # node version
+# process: node | browser
+# instance: <sha1>                  # hash of userConfRoot; io.lando.id
+# id / user: <uuid>                 # anonymous metrics id from ~/.lando/cache/id
+# env: {...}                        # process.env minus DOCKER_*/COMPOSE_*, plus
+#                                   # COMPOSE_HTTP_TIMEOUT=300,
+#                                   # COMPOSE_COMPATIBILITY, DOCKER_CLI_HINTS=0
+# command: {_: [...], ...}          # parsed argv of the current run
+# landoFileConfig: {...}            # the discovered app's merged Landofile
+# hconf: ~/.cache/hyperdrive/lando.json

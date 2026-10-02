@@ -1,4 +1,4 @@
-import { Effect, Either, Option } from "effect";
+import { Effect, Either } from "effect";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -6,7 +6,6 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk
 import { bundledPluginModules } from "@lando/engine/composition";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
@@ -18,6 +17,11 @@ import {
   pluginDoctorReports,
   probeBudgetMs,
 } from "./doctor-plugin-checks";
+import {
+  makeDoctorExecutableLocator,
+  makeDoctorResourceInspector,
+  resolveDoctorAppIdentity,
+} from "./doctor-plugin-context";
 import { installedPluginMetadataSelfChecks } from "./doctor-plugin-metadata";
 import {
   type ProviderStatusShape,
@@ -41,6 +45,7 @@ import {
 } from "./doctor-selection";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 import { buildSetupReadinessDoctorCheck } from "./doctor-setup-readiness";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 import { type SetupReadinessSummary, readSetupReadiness } from "./setup-readiness";
 
 export type {
@@ -71,11 +76,7 @@ export const doctor = (
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
     const sourceEnv = { ...(options.env ?? process.env) };
-    const redactionService = yield* Effect.serviceOption(RedactionService);
-    const redactor = Option.isSome(redactionService)
-      ? yield* redactionService.value.forProfile("secrets", { sourceEnv })
-      : createStandaloneRedactor("secrets", { sourceEnv });
-    const redact = (value: string): string => redactor.redactString(value);
+    const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
     const probeBudget = probeBudgetMs(doctorSectionBudgetMs(sourceEnv));
     const selfChecks: DoctorSelfCheck[] = [];
     const recordConfigFailure = (section: string, cause: unknown): void => {
@@ -109,10 +110,31 @@ export const doctor = (
       if (metadataOutcome.self !== undefined) selfChecks.push(metadataOutcome.self);
     }
     const platform = options.platform ?? paths.platform;
+    const appOutcome = yield* isolateDoctorSection({
+      section: "plugin-app-identity",
+      effect: resolveDoctorAppIdentity(),
+      fallback: undefined,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (appOutcome.self !== undefined) selfChecks.push(appOutcome.self);
+    const resources = makeDoctorResourceInspector({
+      provider: Effect.suspend(() => registry.select({ provider: resolution.providerId } as never)),
+      budgetMs: probeBudget,
+      redact,
+    });
+    const executables = makeDoctorExecutableLocator({
+      env: sourceEnv,
+      platform,
+      execPath: options.execPath ?? process.execPath,
+    });
     const { reports, selfChecks: pluginSelfChecks } = yield* pluginDoctorReports(
       modules,
       {
         providerId: String(resolution.providerId),
+        app: appOutcome.value,
+        resources,
+        executables,
         platform,
         stateDir: Either.isRight(stateDirEither) ? stateDirEither.right : undefined,
         env: options.env ?? process.env,
@@ -214,17 +236,22 @@ export const doctor = (
             ];
           })
         : [];
-    const oomChecks = collectOomDoctorChecks(
-      yield* containerDiedEventPayloadsFor(
+    const diedEventsOutcome = yield* isolateDoctorSection({
+      section: "container-died-events",
+      effect: containerDiedEventPayloadsFor(
         provider as ContainerDiedEventCapableProvider,
         options.diedEventPayloads,
       ),
-      {
-        provider,
-        providerKind: diagnosis.providerKind,
-        platform: options.platform ?? provider.platform,
-      },
-    );
+      fallback: [] as ReadonlyArray<unknown>,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (diedEventsOutcome.self !== undefined) selfChecks.push(diedEventsOutcome.self);
+    const oomChecks = collectOomDoctorChecks(diedEventsOutcome.value, {
+      provider,
+      providerKind: diagnosis.providerKind,
+      platform: options.platform ?? provider.platform,
+    });
     const hostProxyOutcome = yield* isolateDoctorSection({
       section: "host-proxy",
       effect: hostProxyTransportDoctorChecks({

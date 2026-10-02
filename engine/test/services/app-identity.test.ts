@@ -18,6 +18,7 @@ const processRunner = (commonDir: string | undefined): Context.Tag.Service<typeo
       stderr: "",
     }),
   stream: () => Stream.empty,
+  streamWithExit: () => Stream.empty,
 });
 
 const withTempDir = async <A>(run: (dir: string) => Promise<A>): Promise<A> => {

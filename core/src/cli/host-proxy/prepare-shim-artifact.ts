@@ -1,6 +1,6 @@
 import { chmod, mkdir, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { Effect } from "effect";
+import { Effect, absurd } from "effect";
 
 import {
   HOST_PROXY_SHIM_ARTIFACT_ENV,
@@ -8,6 +8,7 @@ import {
   defaultHostProxyShimArtifactPath,
 } from "@lando/engine/subsystems/host-proxy/transport-shim";
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { type EmbeddedShimFile, extractEmbeddedHostProxyShim } from "./embedded-shim.ts";
 
 export interface HostProxyShimSpawnResult {
   readonly exitCode: number;
@@ -26,6 +27,8 @@ export interface PrepareHostProxyShimArtifactInput {
   readonly distRoot?: string;
   readonly sourcePath?: string;
   readonly spawn?: HostProxyShimSpawner;
+  readonly embeddedFiles?: ReadonlyArray<EmbeddedShimFile>;
+  readonly cacheRoot?: string;
 }
 
 type PrepareMode =
@@ -37,10 +40,6 @@ const CORE_PACKAGE_ROOT = new URL("../../../", import.meta.url).pathname;
 const DEFAULT_SOURCE_PATH = new URL("./shim-bin.ts", import.meta.url).pathname;
 const inflight = new Map<string, Promise<string>>();
 
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected prepare mode: ${JSON.stringify(value)}`);
-};
-
 const isNodeError = (cause: unknown): cause is NodeJS.ErrnoException =>
   cause instanceof Error && "code" in cause;
 
@@ -48,8 +47,9 @@ const unavailable = (socketPath: string, cause: unknown): HostProxyTransportUnav
   new HostProxyTransportUnavailableError({
     message: cause instanceof Error ? cause.message : String(cause),
     socketPath,
-    remediation:
-      "Run `bun run --filter='@lando/core' build:host-proxy-shim` before starting apps that use host-proxy runLando.",
+    remediation: Bun.isStandaloneExecutable
+      ? "Reinstall the Lando executable, then retry the app command. Its embedded host-proxy shim could not be prepared."
+      : "Run `bun run --filter='@lando/core' build:host-proxy-shim` before starting apps that use host-proxy runLando.",
   });
 
 const unlinkIfPresent = async (path: string): Promise<void> => {
@@ -148,12 +148,12 @@ const runPrepare = async (input: PrepareHostProxyShimArtifactInput): Promise<str
   switch (mode._tag) {
     case "override":
       return mode.path;
-    case "compiled": {
-      const sidecar = await statIfPresent(mode.path);
-      if (sidecar === undefined)
-        throw unavailable(mode.path, `Missing host-proxy shim sidecar: ${mode.path}`);
-      return mode.path;
-    }
+    case "compiled":
+      return extractEmbeddedHostProxyShim({
+        target: input.target,
+        ...(input.embeddedFiles === undefined ? {} : { embeddedFiles: input.embeddedFiles }),
+        ...(input.cacheRoot === undefined ? {} : { cacheRoot: input.cacheRoot }),
+      });
     case "source": {
       const key = resolve(mode.path);
       const existing = inflight.get(key);
@@ -165,7 +165,7 @@ const runPrepare = async (input: PrepareHostProxyShimArtifactInput): Promise<str
       return pending;
     }
     default:
-      return assertNever(mode);
+      return absurd<never>(mode);
   }
 };
 

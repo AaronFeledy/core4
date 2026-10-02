@@ -109,13 +109,14 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       }),
     snapshot: (store, opts) =>
       Effect.sync((): SnapshotHandle => {
+        lifecycle.push("snapshot");
+        if (options.snapshotFails === true) throw new FakeRestoreError();
         snapshots.push({
           store: store.store,
           ...(opts?.format === undefined ? {} : { format: opts.format }),
           ...(opts?.label === undefined ? {} : { label: opts.label }),
           ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
         });
-        lifecycle.push("snapshot");
         return { id: `snap-${store.store}-${snapshots.length}`, store };
       }),
     restore: () => {

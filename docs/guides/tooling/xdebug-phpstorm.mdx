@@ -7,7 +7,7 @@ tags: [beta, docs, php, tooling, debugging, xdebug, phpstorm]
 
 # Debug PHP with Xdebug in PhpStorm
 
-Turn Xdebug on with `xdebug: true` (or a mode string). Lando installs the extension as a checksum-pinned build step, points `client_host` at `host.docker.internal`, and listens on port `9003`. Then toggle it without a rebuild:
+Turn Xdebug on with `xdebug: true` (or a mode string). Lando installs the extension as a checksum-pinned build step, points `client_host` at `host.docker.internal`, and connects to an IDE listening on port `9003`. Then toggle it without a rebuild:
 
 ```yaml
 services:

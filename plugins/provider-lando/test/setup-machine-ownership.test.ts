@@ -16,7 +16,19 @@ import {
   setupProviderLando,
 } from "../src/setup.ts";
 
-const machineRunner = (status: PodmanMachineStatus, calls: string[]): PodmanMachineRunner => ({
+const machineRunner = (
+  status: PodmanMachineStatus,
+  calls: string[],
+  createdAt?: string,
+): PodmanMachineRunner => ({
+  ...(createdAt === undefined
+    ? {}
+    : {
+        createdAt: Effect.sync(() => {
+          calls.push("createdAt");
+          return createdAt;
+        }),
+      }),
   inspect: Effect.sync(() => {
     calls.push("inspect");
     return status;
@@ -70,7 +82,7 @@ describe("provider-lando machine ownership recording", () => {
     ["macOS", ensureMacOSPodmanMachine],
     ["Windows", ensureWindowsPodmanMachine],
   ] as const) {
-    test(`${platform} restarts a running Lando-owned machine after enabling native CA import`, async () => {
+    test(`${platform} leaves a running Lando-owned machine up during repeat setup`, async () => {
       const calls: string[] = [];
 
       const result = await Effect.runPromise(
@@ -78,7 +90,7 @@ describe("provider-lando machine ownership recording", () => {
       );
 
       expect(result).toEqual({ createdByLando: false });
-      expect(calls).toEqual(["inspect", "syncTrust", "stop", "start"]);
+      expect(calls).toEqual(["inspect"]);
     });
   }
 
@@ -97,6 +109,59 @@ describe("provider-lando machine ownership recording", () => {
 
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("records the generation when setup creates a managed machine", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-generation-"));
+    try {
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          podmanMachine: machineRunner("missing", [], "2026-09-22T12:00:00Z"),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.machine).toEqual({
+        name: "lando",
+        createdByLando: true,
+        createdAt: "2026-09-22T12:00:00Z",
+      });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not inherit ownership of a same-name replacement machine", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-replaced-"));
+    try {
+      await mkdir(join(stateDir, "provider-lando"), { recursive: true });
+      await writeFile(
+        providerStatePath(stateDir),
+        JSON.stringify({
+          podmanVersion: "6.0.2",
+          machine: { name: "lando", createdByLando: true, createdAt: "2026-09-22T12:00:00Z" },
+        }),
+      );
+      const calls: string[] = [];
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          podmanMachine: machineRunner("running", calls, "2026-09-22T13:00:00Z"),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.machine).toEqual({ name: "lando", createdByLando: false });
+      expect(calls).not.toContain("syncTrust");
+      expect(calls).not.toContain("stop");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
@@ -152,7 +217,7 @@ describe("provider-lando machine ownership recording", () => {
     }
   });
 
-  test("setup syncs trust for an existing running machine previously created by Lando", async () => {
+  test("setup preserves an existing running Lando-owned machine without restarting it", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-trust-owned-"));
     try {
       await mkdir(join(stateDir, "provider-lando"), { recursive: true });
@@ -172,7 +237,7 @@ describe("provider-lando machine ownership recording", () => {
         }),
       );
 
-      expect(calls).toEqual(["inspect", "syncTrust", "stop", "start"]);
+      expect(calls).toEqual(["inspect"]);
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state.machine).toEqual({ name: "lando", createdByLando: true });
     } finally {

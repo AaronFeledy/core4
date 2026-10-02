@@ -92,7 +92,7 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, io, "stderr", events);
 
-const nowTimestamp = (): DateTime.Utc => DateTime.unsafeMake(new Date().toISOString());
+const nowTimestamp = (): DateTime.Utc => DateTime.unsafeNow();
 
 /**
  * Build a renderer's `message.{info,warn,error}` contract: each severity is

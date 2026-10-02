@@ -289,17 +289,22 @@ describe("LandofileShape — schema gate", () => {
     expect(Either.isRight(explicit)).toBe(true);
   });
 
-  test("strict decoding rejects reserved direct SSH-agent socket mounts", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
-      { name: "myapp", sshAgent: { sidecar: false } },
-      { onExcessProperty: "error" },
-    );
+  test("strict decoding accepts sshAgent.sidecar false and an explicit socket", () => {
+    // Given
+    const input = { sshAgent: { sidecar: false, socket: "/tmp/agent.sock" } };
+    // When
+    const result = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
+    // Then
+    expect(result.sshAgent).toEqual(input.sshAgent);
+  });
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((row) => row.path.join(".") === "sshAgent.sidecar")).toBe(true);
-    }
+  test("strict decoding accepts gpgAgent.forward", () => {
+    // Given
+    const input = { gpgAgent: { forward: true, socket: "/tmp/S.gpg-agent.extra" } };
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+    // Then
+    expect(result).toEqual(Either.right(input));
   });
 
   test("strict decoding accepts raw remotes and dataset sync bindings", () => {

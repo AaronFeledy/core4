@@ -20,10 +20,12 @@ const fullBundledPluginNames = [
   "@lando/ca-mkcert",
   "@lando/proxy-traefik",
   "@lando/ssh-agent",
+  "@lando/secret-store-1password",
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
   "@lando/lando4",
+  "@lando/lando3",
 ] as const;
 const bundledPluginRuntimeDependencies = ["@opentui/core", "handlebars", "mustache"] as const;
 

@@ -1,4 +1,4 @@
-import type { ComposeDispositionEntry } from "./dispositions.ts";
+import type { ComposeDispositionEntry } from "@lando/sdk/landofile";
 
 export interface DispositionTrieNode {
   readonly exact: ReadonlyMap<string, DispositionTrieNode>;

@@ -8,7 +8,12 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
 import { withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectSecretEnvValues,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { makeStreamFrameSinkLive } from "@lando/renderer/output";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
 import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
@@ -44,6 +49,8 @@ const redactionServiceFor = (tokens: ReadonlyArray<string>) =>
   Effect.serviceOption(RedactionService).pipe(
     Effect.map(
       (service): Context.Tag.Service<typeof RedactionService> => ({
+        registerValues: (values) =>
+          service._tag === "Some" ? service.value.registerValues(values) : registerRedactionValues(values),
         forProfile: (profile, options) => {
           const scoped = {
             ...options,

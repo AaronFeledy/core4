@@ -1,8 +1,9 @@
 import { join } from "node:path";
 
 import { LandofileFormConflictError } from "@lando/sdk/errors";
+import { LANDOFILE_LAYER_ORDER } from "@lando/sdk/landofile";
 
-import type { VersionConstraintEntry } from "./version-constraint.ts";
+import type { VersionConstraintEntry, VersionConstraintOrder } from "./version-constraint.ts";
 
 export interface LandofileLayerPosition {
   readonly layer: VersionConstraintEntry["layer"];
@@ -10,14 +11,41 @@ export interface LandofileLayerPosition {
   readonly basename: string;
 }
 
-export const LANDOFILE_LAYER_POSITIONS: ReadonlyArray<LandofileLayerPosition> = [
-  { layer: "base", order: 0, basename: ".lando.base" },
-  { layer: "dist", order: 1, basename: ".lando.dist" },
-  { layer: "upstream", order: 2, basename: ".lando.upstream" },
-  { layer: "canonical", order: 3, basename: ".lando" },
-  { layer: "local", order: 4, basename: ".lando.local" },
-  { layer: "user", order: 5, basename: ".lando.user" },
-];
+const LANDOFILE_LAYER_BASENAME = {
+  base: ".lando.base",
+  dist: ".lando.dist",
+  upstream: ".lando.upstream",
+  canonical: ".lando",
+  local: ".lando.local",
+  user: ".lando.user",
+} as const satisfies Record<(typeof LANDOFILE_LAYER_ORDER)[number], string>;
+
+const positionOrder = (index: number): VersionConstraintOrder => {
+  switch (index) {
+    case 0:
+      return 0;
+    case 1:
+      return 1;
+    case 2:
+      return 2;
+    case 3:
+      return 3;
+    case 4:
+      return 4;
+    case 5:
+      return 5;
+    default:
+      throw new Error(`Landofile layer index ${String(index)} is outside 0..5.`);
+  }
+};
+
+export const LANDOFILE_LAYER_POSITIONS: ReadonlyArray<LandofileLayerPosition> = LANDOFILE_LAYER_ORDER.map(
+  (layer, index) => ({
+    layer,
+    order: positionOrder(index),
+    basename: LANDOFILE_LAYER_BASENAME[layer],
+  }),
+);
 
 export interface PresentLandofileLayer extends LandofileLayerPosition {
   readonly filePath: string;

@@ -134,6 +134,23 @@ test("packBuildContext applies ordered dockerignore patterns and preserves tar m
   );
 });
 
+test("packBuildContext retains a nested path beyond the name field", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-context-long-name-"));
+  const folder = "a".repeat(70);
+  const name = `${folder}/${"b".repeat(79)}`;
+  await mkdir(join(root, folder));
+  await writeFile(join(root, name), "content");
+  // When
+  const packed = await packBuildContext(AbsolutePath.make(root));
+  // Then
+  expect(packed.digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+  const archive = await collect(packed.tar);
+  expect(text(archive.subarray(0, 100))).toBe("b".repeat(79));
+  expect(text(archive.subarray(345, 500))).toBe(folder);
+  expect(await buildContextContentDigest(AbsolutePath.make(root))).toBe(packed.digest);
+});
+
 test("buildContextContentDigest changes for same-path content edits and matches across roots", async () => {
   const first = await mkdtemp(join(tmpdir(), "lando-context-digest-a-"));
   const second = await mkdtemp(join(tmpdir(), "lando-context-digest-b-"));

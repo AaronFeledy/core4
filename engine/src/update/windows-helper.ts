@@ -3,12 +3,15 @@ import { runProbe } from "@lando/sdk/probe";
 import { StateStore } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
 import { Duration, Effect, Either, Schema } from "effect";
+import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
 import { CoreReplacementPreconditionSchema, guardCoreReplacement } from "./compatibility.ts";
 import { UpdatePermissionError } from "./errors.ts";
 import { makeUpdateHandoff } from "./handoff.ts";
 
 const WindowsReplacementSchema = Schema.Struct({
   executablePath: Schema.String,
+  installRecordFile: Schema.String,
+  attemptedVersion: Schema.String,
   stagedBinaryPath: Schema.String,
   backupPath: Schema.String,
   token: Schema.String,
@@ -38,13 +41,31 @@ export const runWindowsReplacement = (
       guardCoreReplacement(
         input.precondition,
         Effect.gen(function* () {
+          const owned = yield* resolveOwnedExecutable({
+            recordFile: input.installRecordFile,
+            platform: "win32",
+            destination: input.executablePath,
+          });
           yield* Effect.tryPromise({
             try: () => move(input.executablePath, input.backupPath),
             catch: swapError,
           });
-          yield* Effect.tryPromise({
-            try: () => move(input.stagedBinaryPath, input.executablePath),
-            catch: swapError,
+          yield* Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => move(input.stagedBinaryPath, input.executablePath),
+              catch: swapError,
+            });
+            const bytes = yield* Effect.tryPromise({
+              try: () => Bun.file(input.executablePath).bytes(),
+              catch: swapError,
+            });
+            yield* refreshInstallRecord({
+              recordFile: input.installRecordFile,
+              record: owned.record,
+              sha256: Bun.SHA256.hash(bytes, "hex"),
+              size: bytes.byteLength,
+              releaseVersion: input.attemptedVersion,
+            });
           }).pipe(
             Effect.tapError(() =>
               Effect.tryPromise({

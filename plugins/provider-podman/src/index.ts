@@ -1,3 +1,5 @@
+import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
+
 /**
  * `@lando/provider-podman` — opt-in RuntimeProvider for a user-installed
  * Podman socket.
@@ -11,6 +13,7 @@
  */
 import { readFile } from "node:fs/promises";
 
+import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
@@ -28,6 +31,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
@@ -38,9 +42,14 @@ import {
 } from "@lando/container-runtime/podman/bring-up";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
+import {
+  discoverLabeledContainers,
+  mergeDiscoveredContainers,
+} from "@lando/container-runtime/podman/discover";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect } from "@lando/container-runtime/podman/inspect";
 import { logs } from "@lando/container-runtime/podman/logs";
+import type { MachineSshBridgeHost } from "@lando/container-runtime/podman/machine-ssh-bridge";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -78,6 +87,7 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
+  AppPlanSanitizer,
   LogFileHelperAssets,
   PathsService,
   RuntimeProvider,
@@ -86,6 +96,7 @@ import {
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import { resolvePodmanAgentBridge } from "./machine-bridge.ts";
 import { providerLandoSetupStatePath } from "./provider-lando-state.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
@@ -332,6 +343,9 @@ export const podmanCapabilitiesForPlatform = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.containers.internal"),
+    ...(hostPlatformFamily(platform) === "linux"
+      ? { agentSocket: { delivery: "bind-directory" as const } }
+      : {}),
   });
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
@@ -470,6 +484,7 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
   makeRuntimePodmanApiClient(socketPath, PODMAN_CTX);
 
 export interface ProviderLayerOptions {
+  readonly agentBridgeHost?: MachineSshBridgeHost;
   readonly podmanApi?: PodmanApiClient;
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly socketPath?: string;
@@ -492,6 +507,7 @@ export interface ProviderLayerOptions {
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
 const makeNoPlanError = (appId: AppId, operation: string) =>
@@ -559,10 +575,9 @@ const enforceServerVersionFloor = (
  * Podman host. Fails closed with `ProviderLandoConflictError` if
  * `@lando/provider-lando`'s persisted setup-state claims the same socket.
  */
-export const makeRuntimeProvider = (
+const assembleRuntimeProvider = (
   options: ProviderLayerOptions = {},
 ): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> => {
-  const plans = new Map<string, AppPlan>();
   if (options.platform === undefined) {
     return Effect.fail(
       new ProviderUnavailableError({
@@ -671,30 +686,21 @@ export const makeRuntimeProvider = (
     volumeCreationLabels: podmanVolumeCreationLabels,
   });
 
-  const resolvePlan = (app: AppId): Effect.Effect<AppPlan | undefined, never> => {
-    const cached = plans.get(app);
-    if (cached !== undefined) return Effect.succeed(cached);
-    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(options.appliedPlanState, app).pipe(
-      Effect.tap((loaded) =>
-        Effect.sync(() => {
-          if (loaded !== undefined) plans.set(app, loaded);
-        }),
-      ),
-    );
-  };
-
-  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> =>
-    (options.appliedPlanState === undefined
-      ? Effect.void
-      : persistAppliedPlan(options.appliedPlanState, plan).pipe(Effect.asVoid)
-    ).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))));
-
-  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> =>
-    (options.appliedPlanState === undefined
-      ? Effect.void
-      : removeAppliedPlan(options.appliedPlanState, appId)
-    ).pipe(Effect.tap(() => Effect.sync(() => plans.delete(appId))));
+  const appliedPlans = makeAppliedPlanCache({
+    providerId: providerIdBranded,
+    providerName: "provider-podman",
+    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+    ...(options.sanitizeAppliedPlan === undefined
+      ? {}
+      : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
+    load: loadAppliedPlan,
+    persist: persistAppliedPlan,
+    remove: removeAppliedPlan,
+  });
+  const plans = appliedPlans.plans;
+  const resolvePlan = appliedPlans.resolvePlan;
+  const rememberPlan = appliedPlans.rememberPlan;
+  const forgetPlan = appliedPlans.forgetPlan;
 
   const resolvedOps = makeResolvedProviderOps({
     ctx: PODMAN_CTX,
@@ -724,17 +730,28 @@ export const makeRuntimeProvider = (
 
   return conflictCheck.pipe(
     Effect.flatMap(() => gatedRuntime),
+    Effect.flatMap((runtime) =>
+      resolvePodmanAgentBridge({ ...options, platform }).pipe(
+        Effect.map((agentBridge) => ({ ...runtime, agentBridge })),
+      ),
+    ),
     Effect.map(
       ({
         serverVersion,
+        agentBridge,
         capabilities: resolvedCapabilities,
         logFileHelperPayload,
       }): RuntimeProviderWithContainerEvents => ({
         id: PROVIDER_ID,
+        inspectResourceNames: (query) => inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
         platform,
-        capabilities: resolvedCapabilities,
+        capabilities: {
+          ...resolvedCapabilities,
+          ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),
+        },
+        ...agentBridge,
         isAvailable: podmanApi.info.pipe(
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
@@ -773,7 +790,7 @@ export const makeRuntimeProvider = (
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = target.plan ?? (yield* resolvePlan(target.app));
@@ -812,10 +829,7 @@ export const makeRuntimeProvider = (
                             : makeDockerLogFileAccess({
                                 providerId: PROVIDER_ID,
                                 api: podmanApi,
-                                container: `lando-${plan.slug}-${target.service}`.replace(
-                                  /[^a-zA-Z0-9_.-]/gu,
-                                  "-",
-                                ),
+                                container: serviceContainerName(plan, target.service),
                                 helperPayload: logFileHelperPayload,
                               }));
                         return logFileAccess === undefined ? {} : { logFileAccess };
@@ -847,7 +861,13 @@ export const makeRuntimeProvider = (
               ),
             );
 
-            const flat = snapshots.flat();
+            const discovered =
+              filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
+            const flat = mergeDiscoveredContainers(
+              snapshots.flat(),
+              discovered,
+              filter.includeScratch === true,
+            );
             return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
           }),
         ...resolvedOps,
@@ -855,6 +875,17 @@ export const makeRuntimeProvider = (
     ),
   );
 };
+
+export const makeRuntimeProvider = (
+  options: ProviderLayerOptions = {},
+): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> =>
+  Effect.flatMap(Effect.serviceOption(AppPlanSanitizer), (found) =>
+    assembleRuntimeProvider(
+      options.sanitizeAppliedPlan !== undefined || found._tag === "None"
+        ? options
+        : { ...options, sanitizeAppliedPlan: found.value.sanitizeForPersistence },
+    ),
+  );
 
 export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
@@ -930,12 +961,14 @@ export const plugin = definePlugin({
           Effect.gen(function* () {
             const paths = yield* PathsService;
             const assets = yield* LogFileHelperAssets;
+            const appPlanSanitizer = yield* AppPlanSanitizer;
             const logFileHelperPayloads = yield* assets.payloads;
             return yield* makeRuntimeProvider({
               platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
               logFileHelperPayloads,
+              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
             });
           }),
       },

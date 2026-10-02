@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import type { LandoCommandError } from "@lando/sdk/errors";
 import { UpdateChannel as UpdateChannelSchema } from "@lando/sdk/schema";
+import type { InstallOwnershipError } from "../install/owned-executable.ts";
 
 export const CoreUpdateFailureSchema = Schema.Struct({
   tag: Schema.String,
@@ -98,6 +99,7 @@ export class UpdatePermissionError extends Schema.TaggedError<UpdatePermissionEr
 ) {}
 
 export type UpdateError =
+  | InstallOwnershipError
   | LandoCommandError
   | UpdateNetworkError
   | UpdateSignatureVerificationError

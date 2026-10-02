@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
 
+import { InstallOwnershipError } from "@lando/engine/install/owned-executable";
 import {
   type UpdateChecksumSignatureVerifier,
   UpdateLaunchProbeError,
@@ -41,17 +42,32 @@ const noopProcessRunner = {
   stream: () => {
     throw new Error("stream is not used by update manifest tests");
   },
+  streamWithExit: () => {
+    throw new Error("streamWithExit is not used by update manifest tests");
+  },
 } satisfies typeof ProcessRunner.Service;
 
 const hex = "a".repeat(64);
 let updateStateRoot = "";
 const tempRoots: string[] = [];
+const originalDataRoot = process.env.LANDO_USER_DATA_ROOT;
+const ownedRoots: string[] = [];
 
 beforeEach(async () => {
   updateStateRoot = await mkdtemp(join(tmpdir(), "lando-update-manifest-test-"));
 });
 
 afterEach(async () => {
+  try {
+    for (const root of ownedRoots.splice(0)) {
+      expect(await readFile(join(root, "bin", "lando"), "utf8")).toBe("hostile-lando3");
+      expect((await stat(join(root, "bin", "lando"))).mode & 0o777).toBe(0o755);
+      expect(await Bun.file(join(root, "bin", "lando.bak")).exists()).toBe(false);
+    }
+  } finally {
+    if (originalDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = originalDataRoot;
+  }
   await rm(updateStateRoot, { recursive: true, force: true });
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -129,6 +145,35 @@ const bytes = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(valu
 const textBytes = (value: string): Uint8Array => encoder.encode(value);
 const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
 
+const seedOwnedBinary = async (root: string, platform = "linux"): Promise<string> => {
+  const executablePath = join(root, "bin", platform === "win32" ? "lando4.exe" : "lando4");
+  await mkdir(dirname(executablePath), { recursive: true });
+  await mkdir(join(root, "install"), { recursive: true });
+  await writeFile(executablePath, "old-binary", { mode: 0o755 });
+  await writeFile(join(root, "bin", "lando"), "hostile-lando3", { mode: 0o755 });
+  await writeFile(
+    join(root, "install", "record.json"),
+    JSON.stringify({
+      version: 1,
+      data: {
+        executable: {
+          path: executablePath,
+          sha256: sha256(textBytes("old-binary")),
+          size: 10,
+          channel: "stable",
+          platform: platform === "win32" ? "windows-x64" : "linux-x64",
+          releaseVersion: "4.2.0",
+        },
+        shellProfiles: [{ path: join(root, ".bashrc"), blockSha256: "a".repeat(64) }],
+      },
+    }),
+    { mode: 0o600 },
+  );
+  process.env.LANDO_USER_DATA_ROOT = root;
+  ownedRoots.push(root);
+  return executablePath;
+};
+
 const fetcherForManifest =
   (manifest: ReturnType<typeof manifestFor>, seen: string[] = []): UpdateManifestFetcher =>
   async (url) => {
@@ -194,6 +239,81 @@ const failureValue = async (effect: Effect.Effect<unknown, unknown>): Promise<un
 };
 
 describe("update signed manifest", () => {
+  test.each(["no-record", "digest-mismatch", "foreign-basename"] as const)(
+    "refuses %s without touching either executable or creating staging files",
+    async (reason) => {
+      // Given a real installation whose ownership proof is absent or invalid.
+      const root = await makeTempRoot("lando-self-update-refusal-");
+      const executablePath = await seedOwnedBinary(root);
+      const recordFile = join(root, "install", "record.json");
+      switch (reason) {
+        case "no-record":
+          await rm(recordFile);
+          break;
+        case "digest-mismatch":
+          await writeFile(executablePath, "user-overwrite");
+          break;
+        case "foreign-basename": {
+          const record = await Bun.file(recordFile).json();
+          record.data.executable.path = join(root, "bin", "lando");
+          await writeFile(recordFile, JSON.stringify(record));
+          break;
+        }
+      }
+      const before = await readFile(executablePath);
+      const binaryBytes = textBytes("new-binary");
+      const binarySha = sha256(binaryBytes);
+      const manifest = manifestWithBinary({
+        binarySha,
+        binarySize: binaryBytes.length,
+        platform: "linux-x64",
+      });
+      // When the production options select core replacement through the environment root.
+      const failure = await failureValue(
+        runUpdate({
+          currentVersion: "4.2.0",
+          selfUpdate: { platform: "linux", arch: "x64", execve: () => Effect.void },
+          fetchManifestBytes: fetcherForSelfUpdate({
+            manifest,
+            binaryBytes,
+            checksumsText: `${binarySha}  lando-linux-x64\n`,
+          }),
+          verifyManifestSignature: verifierFor(),
+          verifyChecksumSignature: checksumVerifierFor(),
+        }),
+      );
+      // Then the shared ownership module supplies the tagged refusal before mutation.
+      expect(failure).toBeInstanceOf(InstallOwnershipError);
+      if (!(failure instanceof InstallOwnershipError)) throw new Error("expected ownership refusal");
+      expect(failure.reason).toBe(reason);
+      expect(await readFile(executablePath)).toEqual(before);
+      expect((await readdir(join(root, "bin"))).sort()).toEqual(["lando", "lando4"]);
+    },
+  );
+
+  test("dry-run with no install record succeeds without replacing either executable", async () => {
+    // Given an unrecorded binary next to a hostile Lando 3 sibling.
+    const root = await makeTempRoot("lando-self-update-dry-run-");
+    const executablePath = await seedOwnedBinary(root);
+    const recordFile = join(root, "install", "record.json");
+    await rm(recordFile);
+    // When dry-run takes the real self-update options path.
+    const result = await Effect.runPromise(
+      runUpdate({
+        currentVersion: "4.0.0",
+        dryRun: true,
+        selfUpdate: {},
+        fetchManifestBytes: fetcherFor("stable"),
+        verifyManifestSignature: verifierFor(),
+      }),
+    );
+    // Then ownership is not consulted and no binary or record is mutated.
+    expect(result).toEqual({ updatedCore: false, updatedPlugins: [], coreUpdateAvailable: true });
+    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
+    expect(await Bun.file(recordFile).exists()).toBe(false);
+    expect((await readdir(join(root, "bin"))).sort()).toEqual(["lando", "lando4"]);
+  });
+
   test("resolves stable, next, and dev channel manifest URLs", () => {
     expect(resolveUpdateManifestUrl("stable")).toBe("https://update.lando.dev/v4/stable.json");
     expect(resolveUpdateManifestUrl("next")).toBe("https://update.lando.dev/v4/next.json");
@@ -538,9 +658,8 @@ describe("update signed manifest", () => {
 
   test("POSIX core-only self-update re-execs with a one-shot result handoff", async () => {
     const root = await makeTempRoot("lando-self-update-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
-    await chmod(executablePath, 0o755);
+    const executablePath = await seedOwnedBinary(root);
+    const originalRecord = await Bun.file(join(root, "install", "record.json")).json();
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -562,6 +681,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
     const stateStore = makeTestStateStore();
     const handoff = makeUpdateHandoff(stateStore.service);
@@ -577,7 +697,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           argv: ["/previous/lando", "update", "--channel=stable"],
           env: { PATH: "/usr/bin", LANDO_CHANNEL: "stable" },
           execve: (input) =>
@@ -602,8 +721,21 @@ describe("update signed manifest", () => {
     });
     expect(await readFile(executablePath, "utf8")).toBe("new-binary");
     expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
+    expect(await Bun.file(join(root, "install", "record.json")).json()).toEqual({
+      ...originalRecord,
+      data: {
+        ...originalRecord.data,
+        executable: {
+          ...originalRecord.data.executable,
+          sha256: binarySha,
+          size: binaryBytes.byteLength,
+          releaseVersion: manifest.latest,
+        },
+      },
+    });
+    expect((await stat(join(root, "install", "record.json"))).mode & 0o777).toBe(0o600);
     expect(probeCommands).toHaveLength(2);
-    expect(dirname(dirname(probeCommands[0] ?? ""))).toBe(root);
+    expect(dirname(dirname(probeCommands[0] ?? ""))).toBe(join(root, "bin"));
     expect(basename(dirname(probeCommands[0] ?? ""))).toStartWith(".lando-update-");
     expect(probeCommands[1]).toBe(executablePath);
     expect(execs).toHaveLength(1);
@@ -634,9 +766,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update drops Bun's compiled entrypoint from re-exec argv", async () => {
     const root = await makeTempRoot("lando-self-update-bunfs-argv-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
-    await chmod(executablePath, 0o755);
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -657,7 +787,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           argv: [executablePath, "/$bunfs/root/lando", "update", "--channel", "stable"],
           env: {},
           execve: (input) =>
@@ -679,8 +808,7 @@ describe("update signed manifest", () => {
 
   test("Windows self-update schedules replacement without overwriting the running exe", async () => {
     const root = await makeTempRoot("lando-self-update-windows-");
-    const executablePath = join(root, "lando.exe");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root, "win32");
 
     const binaryBytes = textBytes("new-windows-binary");
     const binarySha = sha256(binaryBytes);
@@ -704,6 +832,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const result = await Effect.runPromise(
@@ -716,7 +845,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-windows-x64.exe\n`,
         }),
         selfUpdate: {
-          executablePath,
           platform: "win32",
           arch: "x64",
           argv: [executablePath, "update", "--channel=stable"],
@@ -748,21 +876,20 @@ describe("update signed manifest", () => {
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
     expect(renames).toEqual([]);
     expect(probes).toHaveLength(1);
-    expect(dirname(dirname(probes[0] ?? ""))).toBe(root);
+    expect(dirname(dirname(probes[0] ?? ""))).toBe(join(root, "bin"));
     expect(replacements).toHaveLength(1);
     const replacement = replacements[0];
     expect(replacement?.executablePath).toBe(executablePath);
     expect(replacement?.backupPath).toBe(`${executablePath}.bak`);
     expect(replacement?.manualFallback).toContain("Close every running Lando process");
-    expect(replacement?.manualFallback).toContain("lando.exe.bak");
+    expect(replacement?.manualFallback).toContain("lando4.exe.bak");
     expect(replacement?.stagedBinaryPath).not.toBe(executablePath);
     expect(await readFile(replacement?.stagedBinaryPath ?? "", "utf8")).toBe("new-windows-binary");
   });
 
   test("Windows self-update reports manual fallback instructions when replacement scheduling fails", async () => {
     const root = await makeTempRoot("lando-self-update-windows-fallback-");
-    const executablePath = join(root, "lando.exe");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root, "win32");
 
     const binaryBytes = textBytes("new-windows-binary");
     const binarySha = sha256(binaryBytes);
@@ -782,7 +909,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-windows-x64.exe\n`,
         }),
         selfUpdate: {
-          executablePath,
           platform: "win32",
           arch: "x64",
           replaceWindows: () =>
@@ -799,7 +925,7 @@ describe("update signed manifest", () => {
       expect(failure.message).toContain("Failed to schedule Windows Lando replacement");
       expect(failure.remediation).toContain("Close every running Lando process");
       expect(failure.remediation).toContain("PowerShell as Administrator");
-      expect(failure.remediation).toContain("lando.exe.bak");
+      expect(failure.remediation).toContain("lando4.exe.bak");
       const report = buildBugReport({
         error: failure,
         context: { commandId: "meta:update", cacheRoot: root },
@@ -818,6 +944,7 @@ describe("update signed manifest", () => {
         stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
         backupPath: "C:\\Lando\\lando.exe.bak",
         attemptedVersion: "4.4.0",
+        installRecordFile: "C:\\Lando\\data\\install\\record.json",
         manualFallback: "fallback",
       },
       "12345678-1234-4234-8234-123456789012",
@@ -846,6 +973,7 @@ describe("update signed manifest", () => {
           stagedBinaryPath,
           backupPath: join(root, "lando.exe.bak"),
           attemptedVersion: "4.4.0",
+          installRecordFile: join(root, "data", "install", "record.json"),
           manualFallback: "fallback",
           precondition: {
             pluginsRoot: join(root, "plugins"),
@@ -874,8 +1002,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update fails before probe or rename when the binary checksum does not match", async () => {
     const root = await makeTempRoot("lando-self-update-checksum-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("tampered-binary");
     const manifest = manifestWithBinary({
@@ -891,6 +1018,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const tag = await failureTag(
@@ -902,7 +1030,7 @@ describe("update signed manifest", () => {
           binaryBytes,
           checksumsText: `${"a".repeat(64)}  ./dist/lando-linux-x64\n`,
         }),
-        selfUpdate: { executablePath, execve: () => Effect.void },
+        selfUpdate: { execve: () => Effect.void },
         updateStatePath: join(root, "state.json"),
         verifyChecksumSignature: checksumVerifierFor(),
         verifyManifestSignature: verifierFor(),
@@ -920,8 +1048,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update fails before probe or rename when checksum signature verification fails", async () => {
     const root = await makeTempRoot("lando-self-update-signature-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -938,6 +1065,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const tag = await failureTag(
@@ -949,7 +1077,7 @@ describe("update signed manifest", () => {
           binaryBytes,
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
-        selfUpdate: { executablePath, execve: () => Effect.void },
+        selfUpdate: { execve: () => Effect.void },
         updateStatePath: join(root, "state.json"),
         verifyChecksumSignature: () => Effect.fail(new Error("bad signature")),
         verifyManifestSignature: verifierFor(),
@@ -967,8 +1095,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update restores the backup when installing the probed binary fails", async () => {
     const root = await makeTempRoot("lando-self-update-rename-rollback-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -989,7 +1116,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           execve: () => Effect.void,
           rename: async (from, to) => {
             renames.push([from, to]);
@@ -1018,8 +1144,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update retains the new binary and backup when re-exec fails", async () => {
     const root = await makeTempRoot("lando-self-update-exec-rollback-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -1039,7 +1164,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           execve: () => Effect.fail(new Error("execve failed")),
         },
         updateStatePath: join(root, "state.json"),
@@ -1055,8 +1179,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update restores the backup when the replaced binary fails its launch probe", async () => {
     const root = await makeTempRoot("lando-self-update-probe-rollback-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -1081,6 +1204,7 @@ describe("update signed manifest", () => {
               };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const failure = await failureValue(
@@ -1093,7 +1217,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           execve: (input) =>
             Effect.sync(() => {
               execs.push(input.path);
@@ -1146,8 +1269,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update reports rollback failure without hiding the launch probe error", async () => {
     const root = await makeTempRoot("lando-self-update-probe-rollback-fail-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -1166,6 +1288,7 @@ describe("update signed manifest", () => {
             : { exitCode: 126, stdout: "", stderr: "broken loader" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const failure = await failureValue(
@@ -1178,7 +1301,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           execve: () => Effect.void,
           rename: async (from, to) => {
             if (from === `${executablePath}.bak` && to === executablePath) {
@@ -1208,8 +1330,7 @@ describe("update signed manifest", () => {
 
   test("POSIX self-update reports rollback EACCES as UpdatePermissionError", async () => {
     const root = await makeTempRoot("lando-self-update-probe-rollback-eacces-");
-    const executablePath = join(root, "lando");
-    await writeFile(executablePath, "old-binary");
+    const executablePath = await seedOwnedBinary(root);
 
     const binaryBytes = textBytes("new-binary");
     const binarySha = sha256(binaryBytes);
@@ -1228,6 +1349,7 @@ describe("update signed manifest", () => {
             : { exitCode: 126, stdout: "", stderr: "broken loader" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const failure = await failureValue(
@@ -1240,7 +1362,6 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          executablePath,
           execve: () => Effect.void,
           rename: async (from, to) => {
             if (from === `${executablePath}.bak` && to === executablePath) {

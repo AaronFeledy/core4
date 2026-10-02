@@ -1,5 +1,6 @@
 /** Update orchestration, launch probing, and platform apply flows. */
-import { mkdtemp } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
 import { Effect } from "effect";
@@ -8,6 +9,7 @@ import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lan
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
+import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
 import { CORE_VERSION } from "../version";
 import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import {
@@ -243,6 +245,11 @@ const applyPosixSelfUpdate = ({
         yield* runLaunchProbe(tempBinaryPath, attemptedVersion, platformId);
         yield* guardCoreReplacement(
           Effect.gen(function* () {
+            const owned = yield* resolveOwnedExecutable({
+              recordFile: selfUpdate.installRecordFile,
+              platform: selfUpdate.platform,
+              destination: executablePath,
+            });
             yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
             yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
               Effect.catchAll((error) =>
@@ -266,6 +273,31 @@ const applyPosixSelfUpdate = ({
                         })
                       : withRollbackFailure(error, rollbackFailure),
                 }).pipe(Effect.flatMap(() => Effect.fail(error))),
+              ),
+            );
+            yield* Effect.tryPromise({
+              try: () => readFile(executablePath),
+              catch: (cause) =>
+                new UpdatePermissionError({
+                  message: `Failed to read updated Lando binary at ${executablePath}.`,
+                  path: executablePath,
+                  remediation: posixPermissionRemediation(executablePath),
+                  cause,
+                }),
+            }).pipe(
+              Effect.flatMap((installedBytes) =>
+                refreshInstallRecord({
+                  recordFile: selfUpdate.installRecordFile,
+                  record: owned.record,
+                  sha256: createHash("sha256").update(installedBytes).digest("hex"),
+                  size: installedBytes.byteLength,
+                  releaseVersion: attemptedVersion,
+                }),
+              ),
+              Effect.catchAll((error) =>
+                renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
+                  Effect.zipRight(Effect.fail(error)),
+                ),
               ),
             );
           }),
@@ -324,6 +356,7 @@ const applyWindowsSelfUpdate = ({
     const manualFallback = windowsManualFallback({ executablePath, stagedBinaryPath, backupPath });
     const replacementInput: UpdateWindowsReplacementInput = {
       executablePath,
+      installRecordFile: selfUpdate.installRecordFile,
       stagedBinaryPath,
       backupPath,
       attemptedVersion,
@@ -477,6 +510,7 @@ const defaultUpdate = (
     return yield* Effect.gen(function* () {
       if (
         !options.dryRun &&
+        options.only !== "plugins" &&
         selfUpdate !== undefined &&
         selfUpdate.platform !== "win32" &&
         hasNewCoreVersion &&
@@ -492,10 +526,15 @@ const defaultUpdate = (
       }
       if (
         !options.dryRun &&
+        options.only !== "plugins" &&
         selfUpdate !== undefined &&
         hasNewCoreVersion &&
         pluginExecution?.blockCore !== true
       ) {
+        const owned = yield* resolveOwnedExecutable({
+          recordFile: selfUpdate.installRecordFile,
+          platform: selfUpdate.platform,
+        });
         const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
           yield* Effect.all([
             fetchBytes(options.fetchManifestBytes, binaryUrl),
@@ -520,7 +559,7 @@ const defaultUpdate = (
         yield* applySelfUpdate({
           attemptedVersion: manifest.latest,
           binaryBytes,
-          executablePath: selfUpdate.executablePath,
+          executablePath: owned.path,
           selfUpdate,
           guardCoreReplacement: pluginExecution?.guardCoreReplacement,
           precondition: pluginExecution?.coreReplacementPrecondition,
@@ -677,7 +716,9 @@ export const update = (
           platform: platform(),
           outcome:
             result.coreFailure !== undefined
-              ? updateOutcomeFromError({ _tag: result.coreFailure.tag })
+              ? result.coreFailure.tag === "InstallOwnershipError"
+                ? "permission_failure"
+                : updateOutcomeFromError({ _tag: result.coreFailure.tag })
               : result.coreBlocked === true
                 ? "permission_failure"
                 : result.hasFailures === true
@@ -691,7 +732,8 @@ export const update = (
           targetVersion,
           channel: required.channel,
           platform: platform(),
-          outcome: updateOutcomeFromError(error),
+          outcome:
+            error._tag === "InstallOwnershipError" ? "permission_failure" : updateOutcomeFromError(error),
         }),
       ),
     );

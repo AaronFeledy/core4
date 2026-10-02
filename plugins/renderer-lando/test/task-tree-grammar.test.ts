@@ -16,6 +16,7 @@ const makeTask = (input: {
   readonly id: string;
   readonly label: string;
   readonly status: TaskStatus;
+  readonly warned?: boolean;
   readonly summary?: string;
   readonly durationMs?: number;
   readonly exitCode?: number;
@@ -29,6 +30,7 @@ const makeTask = (input: {
     transcriptPath: undefined,
     label: input.label,
     status: input.status,
+    ...(input.warned === undefined ? {} : { warned: input.warned }),
     summary: input.summary,
     durationMs: input.durationMs,
     exitCode: input.exitCode,
@@ -284,6 +286,26 @@ describe("quiet task-tree grammar", () => {
     expect(frame).toContain("│ ✓ appserver ready  cached  40ms");
     expect(frame).toContain("│ – database ready  skipped  40ms");
     expect(frame.join("\n")).not.toMatch(/\[CACHED\]|\[SKIPPED\]|\[ONLINE\]/);
+  });
+
+  test("paints a warned completion as an amber ! row", () => {
+    const frame = paint(
+      makeState({
+        tree: makeTree({ label: "doctor", childCount: 1, done: true, summary: "doctor", succeeded: 1 }),
+        tasks: [
+          makeTask({
+            id: "provider",
+            label: "provider",
+            status: "done",
+            warned: true,
+            summary: "provider · 2 warnings",
+            durationMs: 12,
+          }),
+        ],
+      }),
+    );
+    expect(frame).toContain("│ ! provider · 2 warnings  12ms");
+    expect(styleFrame(frame).join("\n")).toContain(`${csi.amber} ! provider · 2 warnings`);
   });
 
   test("keeps an expanded tail to title, glyph row, and tail footer", () => {

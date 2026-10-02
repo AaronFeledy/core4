@@ -7,7 +7,7 @@ tags: [beta, docs, recipes, drupal, php, database]
 
 # Change a Drupal stack after init
 
-`lando init --recipe drupal` writes PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Edit `.lando.yml` after that, then `lando rebuild -y`.
+`lando init --recipe drupal` writes PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Edit `.lando.yml` after that, then `lando rebuild`.
 
 Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.3, Apache, `mariadb:11.4`, Composer 2, and `/app/web`.
 
@@ -113,7 +113,7 @@ services:
 
 ## Set a Drush URI and move the webroot
 
-The generated `drush` task has no `DRUSH_OPTIONS_URI`. Add it under `services.appserver.environment`. If you also move the webroot to `/app/docroot`, leave `tooling.drush.cmds` as `vendor/bin/drush`. Drush lives at the Composer project root, not under the webroot.
+The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` to use a specific URL instead. Include the port when the proxy uses one. Moving the webroot to `/app/docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
 
 ```yaml
 services:
@@ -135,7 +135,6 @@ services:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/docroot\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DRUSH_OPTIONS_URI\":\\s*\"https://drupal-stack-overrides\\.lndo\\.site\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"vendor/bin/drush\"" } }} />
     </Step>
   </Scenario>
 
@@ -169,4 +168,4 @@ services:
   </Scenario>
 </Guide>
 
-A running app still needs `lando rebuild -y` after these edits. The scenarios above stop at lint and inspect.
+A running app still needs `lando rebuild` after these edits. The scenarios above stop at lint and inspect.

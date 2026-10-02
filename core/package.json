@@ -13,7 +13,7 @@
     "bun": ">=1.4.0"
   },
   "bin": {
-    "lando": "./bin/lando.ts"
+    "lando4": "./bin/lando.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",

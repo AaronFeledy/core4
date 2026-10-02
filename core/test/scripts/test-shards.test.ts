@@ -50,6 +50,7 @@ describe("test shards", () => {
       process.execPath,
       "--no-orphans",
       "test",
+      "--timeout=20000",
       "--shard=1/3",
       `--timings=${TEST_TIMINGS_FILE}`,
     ]);
@@ -57,6 +58,7 @@ describe("test shards", () => {
       process.execPath,
       "--no-orphans",
       "test",
+      "--timeout=20000",
       "--shard=2/3",
       `--timings=${TEST_TIMINGS_FILE}`,
       "--update-timings",

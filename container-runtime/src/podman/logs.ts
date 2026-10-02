@@ -1,4 +1,5 @@
 import { Stream } from "effect";
+import { serviceContainerName } from "../plan.ts";
 
 import { type ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
@@ -15,8 +16,7 @@ export interface LogsOptions {
   readonly ctx: ProviderErrorContext;
 }
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
   missingApi(ctx, "logs", `provider-${ctx.providerId} logs requires an engine API client.`);

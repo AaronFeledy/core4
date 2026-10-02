@@ -8,6 +8,7 @@ import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
+import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
 const providerCapabilities = {
   artifactBuild: true,
@@ -672,6 +673,7 @@ describe("@lando/service-lando registration", () => {
         ? edge.command
         : "";
     expect(command).toContain("fastcgi_pass appserver:9070");
+    expectPhpFpmPathInfoWire(command);
     expect(appserver.command?.[2]).toContain("listen = 9070");
   });
 

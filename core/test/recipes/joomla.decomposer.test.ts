@@ -65,6 +65,7 @@ describe("joomla decomposition", () => {
       services: {
         appserver: {
           type: "php:{{ recipe.php }}",
+          primary: true,
           framework: "joomla",
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",

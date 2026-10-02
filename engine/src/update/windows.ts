@@ -11,6 +11,7 @@ export { runWindowsReplacement, runWindowsReplacementProcess } from "./windows-h
 
 export interface UpdateWindowsReplacementInput {
   readonly executablePath: string;
+  readonly installRecordFile: string;
   readonly stagedBinaryPath: string;
   readonly backupPath: string;
   readonly attemptedVersion: string;

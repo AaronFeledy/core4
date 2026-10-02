@@ -9,7 +9,6 @@
  * `HttpClient`); placement, containment, and the version marker come from the
  * shared tool-provisioning helper.
  */
-import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -19,6 +18,7 @@ import { ToolManifest } from "@lando/sdk/schema";
 import type { Downloader } from "@lando/sdk/services";
 import { type ToolError, provisionTool, resolveHostKey } from "@lando/sdk/tool-provisioning";
 
+import { sha256Hex } from "@lando/sdk/digest";
 import manifestData from "../mkcert-versions.json" with { type: "json" };
 
 const TOOL_ID = "mkcert" as const;
@@ -39,8 +39,6 @@ export interface InstalledMkcertStatus {
   readonly installedVersion?: string;
   readonly isCurrent: boolean;
 }
-
-const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 export const mkcertInstallName = (platform: string = process.platform): "mkcert" | "mkcert.exe" =>
   platform === "win32" ? "mkcert.exe" : "mkcert";

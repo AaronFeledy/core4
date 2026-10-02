@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { type ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
 
@@ -35,18 +35,14 @@ const validateDockerfileToken = (value: string, field: string, providerId: strin
       )
     : Effect.void;
 
-const runInstruction = (step: PreparedBuildStep, providerId: string) =>
-  typeof step.command === "string"
-    ? validateDockerfileToken(step.command, "Build step shell command", providerId).pipe(
-        Effect.as(`RUN ${step.command}`),
+const runInstruction = (command: string | ReadonlyArray<string>, providerId: string) =>
+  typeof command === "string"
+    ? validateDockerfileToken(command, "Build step shell command", providerId).pipe(
+        Effect.as(`RUN ${command}`),
       )
-    : Effect.forEach(
-        step.command,
-        (part) => validateDockerfileToken(part, "Build step argv token", providerId),
-        {
-          discard: true,
-        },
-      ).pipe(Effect.as(`RUN ${JSON.stringify(step.command)}`));
+    : Effect.forEach(command, (part) => validateDockerfileToken(part, "Build step argv token", providerId), {
+        discard: true,
+      }).pipe(Effect.as(`RUN ${JSON.stringify(command)}`));
 
 type DerivedDockerfileInput = {
   readonly providerId: string;
@@ -64,12 +60,21 @@ const dockerfileForDerivedBuild = (
     const instructions = [`FROM ${input.baseRef}`];
     let active = input.inheritedUser;
     for (const step of input.steps) {
+      if (typeof step.command === "object" && "directories" in step.command) {
+        instructions.push(
+          ...copyInstructions(step),
+          ...step.command.directories.map(
+            (directory) => `COPY ${JSON.stringify([".lando-empty/", `${directory}/`])}`,
+          ),
+        );
+        continue;
+      }
       const target = step.user ?? input.finalUser;
       if (target !== active) {
         instructions.push(`USER ${target}`);
         active = target;
       }
-      instructions.push(...copyInstructions(step), yield* runInstruction(step, input.providerId));
+      instructions.push(...copyInstructions(step), yield* runInstruction(step.command, input.providerId));
     }
     if (active !== input.finalUser) instructions.push(`USER ${input.finalUser}`);
     return [...instructions, ""].join("\n");
@@ -105,7 +110,7 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
 export const buildContainerArtifact = (
   input: ArtifactBuildSpec,
   options: ContainerBuildOptions,
-): Effect.Effect<ArtifactRef, ProviderUnavailableError | ProviderInternalError> =>
+): Effect.Effect<ArtifactRef, ArtifactBuildError | ProviderUnavailableError | ProviderInternalError> =>
   Effect.gen(function* () {
     const request = options.api.request;
     if (request === undefined) {

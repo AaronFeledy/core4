@@ -89,7 +89,10 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     makeExport: "makeSecretStoreContractSuite",
     runExport: "runSecretStoreContractSuite",
     defaultPolicy: "built-in",
-    invocationFiles: ["core/test/services/secret-store-contract.test.ts"],
+    invocationFiles: [
+      "core/test/services/secret-store-contract.test.ts",
+      "core/test/services/secret-store-1password-contract.test.ts",
+    ],
   },
   {
     abstraction: "ConfigTranslator",
@@ -99,6 +102,7 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     invocationFiles: [
       "core/test/contract/lando4-config-translator-contract.test.ts",
       "core/test/contract/recipe-config-translator-contract.test.ts",
+      "core/test/contract/lando3-config-translator-contract.test.ts",
     ],
   },
   {

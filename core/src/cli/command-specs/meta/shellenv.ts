@@ -1,8 +1,9 @@
 import { Effect, Schema } from "effect";
 import { Flags } from "../../spec/metadata";
 
-import { normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
+import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 /**
  * `lando meta:shellenv` — print shell-profile snippets to add Lando to PATH.
@@ -10,15 +11,10 @@ import type { LandoCommandSpec } from "../../spec/command-base";
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
 
-export const shellenvShellFromInput = (input: unknown) => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";
-  const flags = (input as { readonly flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null || !("shell" in flags)) return "posix";
-  const shell = (flags as { readonly shell?: unknown }).shell;
-  return normalizeShellenvShell(typeof shell === "string" ? shell : undefined);
-};
+export const shellenvShellFromInput = (input: unknown) =>
+  normalizeShellenvShell(stringFlag(specFlagsOf(input), "shell"));
 
-export const shellenvSpec: LandoCommandSpec<string> = {
+export const shellenvSpec: LandoCommandSpec<string, ShellenvInstallRecordError, never> = {
   resultSchema: Schema.String,
   id: "meta:shellenv",
   summary: "Print shell-profile snippets to integrate Lando into your PATH.",
@@ -27,8 +23,18 @@ export const shellenvSpec: LandoCommandSpec<string> = {
   topLevelAlias: true,
   bootstrap: "none",
   flags: {
-    shell: Flags.string({ options: ["posix", "powershell", "pwsh"], default: "posix" }),
+    shell: Flags.string({
+      options: ["posix", "powershell", "pwsh"],
+      description: "Defaults to PowerShell on Windows and POSIX on other platforms.",
+    }),
   },
-  run: (input) => Effect.succeed(renderShellenv(shellenvShellFromInput(input))),
+  run: (input) =>
+    Effect.try({
+      try: () => renderShellenv(shellenvShellFromInput(input)),
+      catch: (error) => {
+        if (error instanceof ShellenvInstallRecordError) return error;
+        throw error;
+      },
+    }),
   render: (result) => (typeof result === "string" ? result : undefined),
 };

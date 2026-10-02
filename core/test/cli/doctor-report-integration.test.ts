@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { type Context, Effect, Layer, Schema } from "effect";
 
@@ -13,7 +17,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ConfigError } from "@lando/sdk/errors";
-import { GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
+import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
@@ -209,37 +213,62 @@ const mentionsUnavailableStub = (value: unknown): boolean => {
 describe("runtime-wired subsystem doctor", () => {
   test("uses injected Traefik running + SSH sidecar instead of unavailable stubs", async () => {
     // Given
-    const config = makeConfig({});
-    const proxy = { ...makeTestRouterService(), id: "traefik" };
-    await Effect.runPromise(Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })));
-    const wired = Layer.mergeAll(
-      Layer.succeed(RouterService, proxy),
-      Layer.succeed(SshService, { ...makeTestSshService(), id: "sidecar" }),
+    const root = await mkdtemp(join(tmpdir(), "doctor-report-agent-"));
+    const socketPath = join(root, "agent.sock");
+    const server = createServer((socket) =>
+      socket.once("data", () => socket.end(Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0]))),
     );
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(socketPath, resolve);
+      });
+      const config = makeConfig({});
+      const proxy = { ...makeTestRouterService(), id: "traefik" };
+      await Effect.runPromise(Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })));
+      const wired = Layer.mergeAll(
+        Layer.succeed(RouterService, proxy),
+        Layer.succeed(SshService, {
+          ...makeTestSshService(),
+          id: "sidecar",
+          getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(socketPath) }),
+        }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          ...registryService,
+          capabilities: Effect.succeed({
+            ...TestRuntimeProvider.capabilities,
+            agentSocket: { delivery: "bind-directory" as const },
+          }),
+        }),
+      );
 
-    // When
-    const report = await Effect.runPromise(
-      collectDoctorReport({
-        options: {},
-        provider: Effect.succeed({ checks: [] }),
-        deprecations: Effect.succeed({ entries: [] }),
-        subsystems: (options) =>
-          subsystemDoctor(options).pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
-      }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
-    );
+      // When
+      const report = await Effect.runPromise(
+        collectDoctorReport({
+          options: {},
+          provider: Effect.succeed({ checks: [] }),
+          deprecations: Effect.succeed({ entries: [] }),
+          subsystems: (options) =>
+            subsystemDoctor(options).pipe(Effect.provide(wired), Effect.provide(DefaultSubsystemDoctorLayer)),
+        }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
+      );
 
-    // Then
-    const proxyCheck = report.subsystems.checks.find((check) => check.name === "router");
-    const sshCheck = report.subsystems.checks.find((check) => check.name === "ssh");
-    expect(proxyCheck).toMatchObject({
-      status: "pass",
-      context: { subsystemId: "traefik", ready: "true", state: "running" },
-    });
-    expect(sshCheck).toMatchObject({
-      status: "pass",
-      context: { subsystemId: "sidecar", ready: "true" },
-    });
-    expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
+      // Then
+      const proxyCheck = report.subsystems.checks.find((check) => check.name === "router");
+      const sshCheck = report.subsystems.checks.find((check) => check.name === "ssh");
+      expect(proxyCheck).toMatchObject({
+        status: "pass",
+        context: { subsystemId: "traefik", ready: "true", state: "running" },
+      });
+      expect(sshCheck).toMatchObject({
+        status: "pass",
+        context: { subsystemId: "sidecar", ready: "true" },
+      });
+      expect(mentionsUnavailableStub(report.subsystems)).toBe(false);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("--fix invokes the injected stopped Traefik setup, not RouterServiceUnavailableLive", async () => {

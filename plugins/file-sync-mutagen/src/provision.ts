@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -9,6 +8,7 @@ import type { Downloader } from "@lando/sdk/services";
 import type { ToolError } from "@lando/sdk/tool-provisioning";
 import { provisionTool, resolveHostKey } from "@lando/sdk/tool-provisioning";
 
+import { sha256Hex } from "@lando/sdk/digest";
 import manifestData from "../mutagen-versions.json" with { type: "json" };
 
 const TOOL_ID = "mutagen" as const;
@@ -30,8 +30,6 @@ export interface InstalledMutagenStatus {
   readonly installedVersion?: string;
   readonly isCurrent: boolean;
 }
-
-const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 export const mutagenHostInstallName = (platform: string = process.platform): "mutagen" | "mutagen.exe" =>
   platform === "win32" ? "mutagen.exe" : "mutagen";
@@ -82,7 +80,11 @@ const fileMatchesRecordedFingerprint = async (path: string): Promise<boolean> =>
 };
 
 const expectedInstallPaths = (binDir: string, hostKey: string): ReadonlyArray<string> => {
-  const keys = [`${hostKey}/cli`, ...AGENT_GUESTS.map((guest) => `${hostKey}/agent/${guest}`)];
+  const keys = [
+    `${hostKey}/cli`,
+    `${hostKey}/agent-bundle`,
+    ...AGENT_GUESTS.map((guest) => `${hostKey}/agent/${guest}`),
+  ];
   const installNames = keys.map((key) => MUTAGEN_TOOL_MANIFEST.artifacts[key]?.installName);
   if (installNames.some((installName) => installName === undefined)) return [];
   return installNames.map((installName) => join(binDir, installName as string));
@@ -130,6 +132,7 @@ export const provisionMutagen = (
     };
 
     yield* provisionTool({ ...common, key: `${hostKey}/cli` });
+    yield* provisionTool({ ...common, key: `${hostKey}/agent-bundle` });
     for (const guest of AGENT_GUESTS) {
       yield* provisionTool({ ...common, key: `${hostKey}/agent/${guest}` });
     }

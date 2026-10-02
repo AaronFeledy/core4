@@ -11,7 +11,14 @@ export const apacheLauncherDirectives = (
   launcherName: string,
 ): ReadonlyArray<string> => {
   if (!Array.isArray(command)) throw new Error(`Apache command must be argv, got ${typeof command}.`);
-  const [launcher, ...rest] = command as ReadonlyArray<string>;
+  let [launcher, ...rest] = command as ReadonlyArray<string>;
+  if (launcher === "sh" && rest[0] === "-c" && rest[2] === "lando-apache") {
+    if (!rest[1]?.includes(`exec ${launcherName} "$@"`)) {
+      throw new Error("Apache worker prelude must exec the launcher with its directive arguments.");
+    }
+    launcher = launcherName;
+    rest = rest.slice(3);
+  }
   if (launcher !== launcherName) {
     throw new Error(`Apache launcher must be ${launcherName}, got ${String(launcher)}.`);
   }

@@ -1,0 +1,4 @@
+services:
+  db:
+    type: mariadb:11.4
+    portforward: true

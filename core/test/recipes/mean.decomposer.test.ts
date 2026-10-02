@@ -57,6 +57,7 @@ describe("mean decomposition", () => {
       services: {
         api: {
           type: "node:{{ recipe.node }}",
+          primary: true,
           port: 3000,
           environment: {
             NODE_ENV: "development",
@@ -125,7 +126,7 @@ describe("mean decomposition", () => {
     expect(meanSnapshot.identity.contentDigest).toBe(MEAN_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(MEAN_CONTENT_DIGEST).toBe(
-      "sha256:cac690f4c0552c0d605f52f4b0cf43fc630c6c3d1ea1280711374508223b0798",
+      "sha256:c848948037d130c7abefe3d50bce55206d98261ab63cedcabb65383d526f022f",
     );
   });
 

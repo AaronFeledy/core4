@@ -1135,8 +1135,9 @@ describe("provider-docker RuntimeProvider contract", () => {
         _tag: "published",
         port: 31080,
         protocol: "http",
-        name: "31080/tcp",
-        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
+        name: "http",
+        publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
+        materialization: { bindAddress: "0.0.0.0", hostPort: 32768 },
       },
     ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
@@ -1307,8 +1308,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     expect(Array.from(chunks)).toEqual([]);
-    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.signal).toBe(
-      controller.signal,
+    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.signal?.aborted).toBe(
+      true,
     );
   });
 
@@ -1679,8 +1680,9 @@ describe("provider-docker RuntimeProvider contract", () => {
         _tag: "published",
         port: 31080,
         protocol: "http",
-        name: "31080/tcp",
-        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
+        name: "http",
+        publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
+        materialization: { bindAddress: "0.0.0.0", hostPort: 32768 },
       },
     ]);
     expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });

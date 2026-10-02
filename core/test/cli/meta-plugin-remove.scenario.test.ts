@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -520,7 +520,9 @@ describe("meta:plugin:remove command", () => {
     expect(result.removed).toBe(true);
     const updated = JSON.parse(await readFile(manifestPath, "utf8"));
     expect(updated.dependencies).toEqual({ "@lando/plugin-node": "2.0.0" });
-    expect(await exists(`${manifestPath}.tmp`)).toBe(false);
+    expect(
+      (await readdir(dirname(manifestPath))).filter((name) => /^package\.json\.tmp-/.test(name)),
+    ).toEqual([]);
   });
 
   test("refuses to remove a versioned plugin spec referenced by the active Landofile", async () => {

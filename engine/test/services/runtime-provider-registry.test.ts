@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effect";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { DownloaderLive } from "@lando/http-client/downloader";
 import { HttpClientLive } from "@lando/http-client/live";
@@ -10,6 +13,9 @@ import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId } from "@la
 import {
   AppPlanSanitizer,
   ConfigService,
+  Downloader,
+  EventService,
+  type LandoEvent,
   LogFileHelperAssets,
   ManagedFileService,
   PathsService,
@@ -47,7 +53,11 @@ const dockerAppPlan: AppPlan = {
 
 const registryLayer = (
   defaultProviderId: "lando" | "docker" | "missing",
-  options: { userDataRoot?: string } = {},
+  options: {
+    userDataRoot?: string;
+    eventService?: Context.Tag.Service<typeof EventService>;
+    downloader?: Context.Tag.Service<typeof Downloader>;
+  } = {},
 ) => {
   const userDataRoot =
     options.userDataRoot === undefined ? undefined : AbsolutePath.make(options.userDataRoot);
@@ -68,7 +78,11 @@ const registryLayer = (
     Layer.provideMerge(Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) })),
     Layer.provideMerge(Layer.succeed(ManagedFileService, managedFiles.service)),
     Layer.provideMerge(PluginRegistryLive),
-    Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientLive))),
+    Layer.provideMerge(
+      options.downloader === undefined
+        ? DownloaderLive.pipe(Layer.provide(HttpClientLive))
+        : Layer.succeed(Downloader, options.downloader),
+    ),
     Layer.provideMerge(StateStoreLive),
     Layer.provideMerge(
       Layer.succeed(
@@ -77,6 +91,9 @@ const registryLayer = (
       ),
     ),
     Layer.provideMerge(Layer.succeed(ConfigService, configService)),
+    Layer.provideMerge(
+      options.eventService === undefined ? Layer.empty : Layer.succeed(EventService, options.eventService),
+    ),
   );
 };
 
@@ -100,6 +117,48 @@ describe("RuntimeProviderRegistryLive", () => {
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
       else process.env.LANDO_PROVIDER = previous;
+    }
+  });
+
+  test("production registry passes setup progress to its EventService", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-registry-progress-"));
+    try {
+      const events: LandoEvent[] = [];
+      const eventService: Context.Tag.Service<typeof EventService> = {
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      };
+      const downloader: Context.Tag.Service<typeof Downloader> = {
+        id: "test-downloader",
+        capabilities: {
+          schemes: ["https"],
+          memoryDownload: false,
+          cacheAware: false,
+          offline: true,
+          mirror: false,
+        },
+        download: () => Effect.die("stop before bundle download"),
+      };
+      const exit = await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          const provider = yield* registry.select(appPlan);
+          yield* Effect.scoped(
+            provider.setup({ providerId: ProviderId.make("lando"), changes: [] }, { force: false }),
+          );
+        }).pipe(Effect.provide(registryLayer("lando", { userDataRoot, eventService, downloader }))),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(events.map((event) => event._tag).slice(0, 2)).toEqual(["task.tree.start", "task.start"]);
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
     }
   });
 

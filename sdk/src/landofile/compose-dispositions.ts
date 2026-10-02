@@ -1,4 +1,4 @@
-import { ComposePreservedPathKey } from "@lando/sdk/schema";
+import { ComposePreservedPathKey } from "../schema/compose-preserved-path-capabilities.ts";
 
 export type ComposeDisposition = "normalized" | "preserved" | "rejected";
 

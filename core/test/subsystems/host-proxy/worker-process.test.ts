@@ -222,7 +222,7 @@ process.exit(7);
 describe("detached host-proxy worker readiness diagnostics", () => {
   test("does not ignore worker stderr for the worker lifetime", async () => {
     const source = await Bun.file(
-      new URL("../../../../engine/src/subsystems/host-proxy/worker-process.ts", import.meta.url),
+      new URL("../../../../engine/src/subsystems/detached-worker/process.ts", import.meta.url),
     ).text();
     expect(source).not.toContain('stderr: "ignore"');
   });

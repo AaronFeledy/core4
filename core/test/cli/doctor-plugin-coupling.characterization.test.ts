@@ -106,6 +106,7 @@ describe("doctor() file-sync plugin contribution", () => {
         engineId: "mutagen",
         mutagenVersion: "not-installed",
         expectedVersion: MUTAGEN_TOOL_VERSION,
+        clientStatus: "unavailable",
       });
       expect(check.solutions).toEqual([
         {
@@ -141,7 +142,7 @@ describe("doctor() file-sync plugin contribution", () => {
     }
   });
 
-  test("installed-matching: the correct version PLUS a valid fingerprint for every current-host artifact yields a pass check with no solutions", async () => {
+  test("installed-matching: the correct version PLUS a valid fingerprint for every current-host artifact warns when no live session client is available", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-file-sync-current-"));
     try {
       const binDir = makeLandoPaths({ userDataRoot: dataRoot }).binDir;
@@ -160,13 +161,20 @@ describe("doctor() file-sync plugin contribution", () => {
       const result = await runDoctorWithUserDataRoot(dataRoot);
       const check = fileSyncCheckFrom(result.checks);
 
-      expect(check.status).toBe("pass");
-      expect(check.severity).toBe("info");
-      expect(check.runtimeStatus).toBe("installed");
-      expect(check.runtime.running).toBe(true);
+      expect(check.status).toBe("warn");
+      expect(check.severity).toBe("warn");
+      expect(check.runtimeStatus).toBe("installed-client-unavailable");
+      expect(check.runtime.running).toBe(false);
       expect(check.runtime.version).toBe(MUTAGEN_TOOL_VERSION);
       expect(check.context.mutagenVersion).toBe(MUTAGEN_TOOL_VERSION);
-      expect(check.solutions).toEqual([]);
+      expect(check.context.clientStatus).toBe("unavailable");
+      expect(check.solutions).toEqual([
+        {
+          kind: "manual",
+          description:
+            "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
+        },
+      ]);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

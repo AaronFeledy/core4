@@ -64,7 +64,7 @@ Every story ends with tests/typecheck/lint plus the touched semantic gates:
 ## Cross-cutting non-goals
 
 - Hoster connectors (`acquia`, `lagoon`, `pantheon`, `platformsh`) and any `RemoteSource`/`Dataset` implementation — contract-frozen, 4.1 (§10.12; PRD-17 precedent).
-- Custom SSH-key mounts / `sshAgent.sidecar: false` — explicitly rejected (§10.4, mission-and-tenets decision log); this wave does not reopen it.
+- Custom SSH-key mounts and `sshAgent.sidecar: false`: host agent forwarding is owned by the host-agent-forwarding wave (§10.4); this wave does not implement it.
 - The §8.8.10 **staged** recipes (`node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `rails`, `jekyll`, `hugo`, `eleventy`, `empty`) — 4.x growth by adoption signal.
 - `image save`/`load` DataMover consumers — remains 4.1.
 - 4.1 deferred commands (`meta:events:follow`, `meta:plugin:login`, `meta:plugin:logout`).

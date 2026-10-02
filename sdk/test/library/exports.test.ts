@@ -20,6 +20,13 @@ describe("@lando/sdk package exports", () => {
     const landofile = await import("@lando/sdk/landofile");
     expect(landofile.validateConfigTranslateResult).toBeDefined();
   });
+  test("landofile entry point exports overlay merge, layer order, and compose dispositions", async () => {
+    const landofile = await import("@lando/sdk/landofile");
+    expect(typeof landofile.mergeLandofiles).toBe("function");
+    expect(typeof landofile.landofileLayerRank).toBe("function");
+    expect(landofile.composeServiceDispositions).toBeDefined();
+    expect(typeof landofile.compareKeyPaths).toBe("function");
+  });
   test("root entry point resolves the public namespaces", async () => {
     const sdk = await import("@lando/sdk");
 
@@ -584,6 +591,21 @@ describe("@lando/sdk package exports", () => {
     expect(probe.runProbe).toBeDefined();
     expect(probe.ProbeError).toBeDefined();
     expect(probe.ProbeTimeoutError).toBeDefined();
+  });
+
+  test("database-creds entry point exports the pure family env helpers", async () => {
+    const databaseCreds = await import("@lando/sdk/database-creds");
+
+    expect(databaseCreds.databaseEnvCreds).toBeDefined();
+    expect(databaseCreds.firstEnv).toBeDefined();
+    expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
+  });
+
+  test("digest entry point exports the hashing and canonical JSON helpers", async () => {
+    const digest = await import("@lando/sdk/digest");
+
+    expect(digest.sha256Hex).toBeDefined();
+    expect(digest.canonicalJson).toBeDefined();
   });
 
   test("task-progress entry point exports the shared task-tree publisher", async () => {

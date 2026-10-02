@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
@@ -7,15 +7,12 @@ import { artifactBuildStepsFor } from "./build-key.ts";
 
 const CA_BUNDLE_PATH = "/etc/lando/certs/ca-bundle.pem" as const;
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const hasTrustStoreBuild = (service: ServicePlan): boolean => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!isRecord(extension) || !Array.isArray(extension.buildSteps)) return false;
+  if (!Predicate.isRecord(extension) || !Array.isArray(extension.buildSteps)) return false;
   return extension.buildSteps.some(
     (step) =>
-      isRecord(step) &&
+      Predicate.isRecord(step) &&
       step.id === "lando.security:trust-store" &&
       step.phase === "build" &&
       Array.isArray(step.caFiles) &&

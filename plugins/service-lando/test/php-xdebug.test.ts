@@ -97,6 +97,14 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("PHP xdebug option", () => {
+  test("preserves authored XDEBUG_CONFIG when Xdebug is enabled", async () => {
+    // Given
+    const XDEBUG_CONFIG = "client_host=host.docker.internal client_port=9005 start_with_request=yes";
+    // When
+    const plan = await composePhpPlan({ xdebug: true, environment: { XDEBUG_CONFIG } });
+    // Then
+    expect(plan.environment.XDEBUG_CONFIG).toBe(XDEBUG_CONFIG);
+  });
   test("Given no xdebug key, when planning, then it installs nothing and contributes no tooling", async () => {
     const plan = await composePhpPlan();
     const steps = buildStepsFor(plan);
@@ -136,11 +144,19 @@ describe("PHP xdebug option", () => {
     expect(command).toContain(PHP_XDEBUG_RELEASE.url);
     expect(command).toContain(PHP_XDEBUG_RELEASE.sha256);
     expect(command).toContain("xdebug.mode=debug");
+    expect(command).toContain(`xdebug.client_host=${PHP_XDEBUG_CLIENT_HOST}`);
+    expect(command).toContain(`xdebug.client_port=${PHP_XDEBUG_PORT}`);
     expect(command).not.toMatch(/[\r\n]/);
     expect(plan.environment.XDEBUG_MODE).toBeUndefined();
     expect(plan.environment.XDEBUG_CONFIG).toBe(
-      `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
+      `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${PHP_XDEBUG_PORT}`,
     );
+  });
+
+  test("Given an explicitly authored XDEBUG_CONFIG, when planning, then it remains untouched", async () => {
+    const value = "client_host=debugger.example.test client_port=9003";
+    const plan = await composePhpPlan({ xdebug: true, environment: { XDEBUG_CONFIG: value } });
+    expect(plan.environment.XDEBUG_CONFIG).toBe(value);
   });
 
   test("Given an explicit mode string, when planning, then xdebug.mode and buildKey use that mode", async () => {
@@ -164,9 +180,15 @@ describe("PHP xdebug option", () => {
     expect(command).toMatch(/\bon\b/);
     expect(command).toMatch(/\boff\b/);
     expect(command).toMatch(/\bstatus\b/);
-    expect(command).toContain("grep -i xdebug || true");
-    expect(command).toMatch(/on\)[\s\S]*?grep -i xdebug \|\| true/);
-    expect(command).toMatch(/status\)[\s\S]*?grep -i xdebug \|\| true/);
+    expect(command).toContain('function_exists("xdebug_info")');
+    expect(command).toContain('xdebug_info("mode")');
+    expect(command).toContain("Xdebug enabled (");
+    expect(command).toContain("Xdebug disabled");
+    expect(command).toMatch(/on\) write_ini "\$mode"; reload; status/);
+    expect(command).toMatch(/off\) write_ini off; reload; status/);
+    expect(command).toMatch(/status\) status/);
+    expect(command).not.toContain("php -m");
+    expect(command).not.toContain("ini_get");
   });
 
   test.each(["apache", "fpm", "cli"] as const)(
@@ -239,7 +261,7 @@ describe("PHP xdebug option", () => {
     expect(buildStepsFor(plan).map(({ id }) => id)).toEqual(["lando.boot:scaffold"]);
     expect(plan.environment.XDEBUG_MODE).toBeUndefined();
     expect(plan.environment.XDEBUG_CONFIG).toBe(
-      `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
+      `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${PHP_XDEBUG_PORT}`,
     );
     expect(resolution.tooling?.xdebug).toBeDefined();
   });

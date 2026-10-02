@@ -54,7 +54,7 @@ export const validateConfigTranslateInput = (
   );
 
 // ==== Stable provenance ordering
-const compareKeyPaths = (
+export const compareKeyPaths = (
   left: ConfigTranslateDiagnostic["keyPath"],
   right: ConfigTranslateDiagnostic["keyPath"],
 ): number => {

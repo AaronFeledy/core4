@@ -21,6 +21,13 @@ export const STATIC_FEATURE_PRIORITY = 600;
 
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+const StaticWebroot = Schema.String.pipe(
+  Schema.pattern(/^\/[A-Za-z0-9._/-]*$/u, {
+    message: () =>
+      "Static webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
+  }),
+  Schema.brand("StaticWebroot"),
+);
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
@@ -52,7 +59,6 @@ export const defaultStaticCommand = (
 const StaticFeatureConfigSchema = Schema.Struct({
   server: Schema.Literal(...SUPPORTED_STATIC_SERVERS),
   docRoot: Schema.String,
-  root: Schema.optional(Schema.String),
 });
 type StaticFeatureConfig = typeof StaticFeatureConfigSchema.Type;
 
@@ -123,7 +129,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.addExtension("lando-service-static", {
     server,
-    ...(service.root != null ? { root: service.root } : {}),
+    ...(service.webroot != null ? { webroot: service.webroot } : {}),
   });
 };
 
@@ -141,11 +147,6 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
           cause,
         }),
     }),
-};
-
-const docRootFor = (root: string | undefined): string => {
-  const rel = root != null ? root.replace(/^\/+/, "").replace(/\/+$/, "") : "";
-  return rel === "" ? "/app" : `/app/${rel}`;
 };
 
 const normalizedService = (service: ServiceConfig, serviceType: string): ServiceConfig => ({
@@ -167,7 +168,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
         try: () => {
           const resolvedServer = validateServer(input.service.type, server);
           const serviceType = `static:${resolvedServer}`;
-          const docRoot = docRootFor(input.service.root);
+          const docRoot = Schema.decodeUnknownSync(StaticWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
 
           return {
             base: "lando" as const,
@@ -175,11 +176,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
             features: [
               {
                 id: STATIC_FEATURE_ID,
-                config: {
-                  server: resolvedServer,
-                  docRoot,
-                  ...(input.service.root != null ? { root: input.service.root } : {}),
-                },
+                config: { server: resolvedServer, docRoot },
               },
               {
                 id: "lando.env",

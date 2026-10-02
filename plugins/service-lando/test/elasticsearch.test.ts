@@ -51,6 +51,15 @@ const serviceTypes: ReadonlyArray<{ readonly label: string; readonly serviceType
 
 describe("elasticsearch ServiceType", () => {
   for (const { label, serviceType } of serviceTypes) {
+    test(`${label} preserves authored heap options when planning`, async () => {
+      // Given / When
+      const plan = await planElasticsearchService(serviceType, {
+        type: label,
+        environment: { ES_JAVA_OPTS: "-Xms2g -Xmx2g" },
+      });
+      // Then
+      expect(plan.environment.ES_JAVA_OPTS).toBe("-Xms2g -Xmx2g");
+    });
     test(`${label} plans a default Elasticsearch 8 service with persistent data volume and HTTP endpoint`, async () => {
       const plan = await planElasticsearchService(serviceType, { type: label });
 

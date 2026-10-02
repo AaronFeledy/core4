@@ -8,7 +8,6 @@ import {
   manifest,
   plugin,
   preferredHostPortsCheck,
-  proxy,
   proxyTlsDoctorCheck,
   routerFileWatcherCheck,
   routerServices,
@@ -45,7 +44,7 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     // Given / When
     // Then
     expect(plugin.manifest).toBe(manifest);
-    expect(plugin.layer).toBe(proxy);
+    expect(plugin.layer).toBeUndefined();
     expect(plugin.routerServices).toBe(routerServices);
     expect(plugin.globalServices).toBe(globalServices);
   });

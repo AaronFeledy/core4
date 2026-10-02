@@ -372,6 +372,32 @@ describe("compose ServiceType (raw passthrough)", () => {
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
     });
 
+    test("an authored /app mount replaces the default app-root bind", async () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          worker: {
+            type: "compose",
+            image: "alpine:3",
+            mounts: [{ source: "./alternate", target: "/app", readOnly: true }],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = await planComposeService({ service, serviceName: "worker" });
+
+      expect(plan.appMount).toBeUndefined();
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({
+        type: "bind",
+        source: "/srv/apps/myapp/alternate",
+        target: "/app",
+        readOnly: true,
+      });
+    });
+
     test("appMount: false opts out — no appMount, no synthetic /app bind, no app-path env", async () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",

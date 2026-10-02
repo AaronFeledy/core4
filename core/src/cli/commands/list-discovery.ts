@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import { access, readFile, readdir } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
+import { APP_LABEL, PROVIDER_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths } from "@lando/paths";
@@ -30,10 +31,6 @@ export const appliedPlansDirectory = (userDataRoot: string, pluginId = "@lando/p
   join(makeLandoPaths({ userDataRoot }).pluginStateDir(pluginId), APPLIED_PLANS_NAMESPACE);
 
 const APPLIED_PLANS_RECORD = "applied-plans.json";
-const APP_LABEL = "dev.lando.app";
-const SERVICE_LABEL = "dev.lando.service";
-const PROVIDER_LABEL = "dev.lando.provider";
-const SCRATCH_LABEL = "dev.lando.scratch";
 const GLOBAL_APP_ID = "global";
 const CONTAINER_LIST_TIMEOUT_MS = 1500;
 
@@ -262,7 +259,7 @@ export const appsFromContainerList = (
   options: { readonly globalAppRoot?: string; readonly includeScratch?: boolean } = {},
 ): AppsListEntry[] => {
   if (!Array.isArray(body)) return [];
-  const grouped = new Map<string, { services: Set<string>; providerId: string }>();
+  const grouped = new Map<string, { services: Set<string>; providerId: string; scratch: boolean }>();
   for (const container of body) {
     if (!isRecord(container)) continue;
     if (typeof container.State === "string" && container.State !== "running") continue;
@@ -273,10 +270,12 @@ export const appsFromContainerList = (
     const existing = grouped.get(appId) ?? {
       services: new Set<string>(),
       providerId: labels[PROVIDER_LABEL] ?? "lando",
+      scratch: false,
     };
     const service = labels[SERVICE_LABEL];
     if (service !== undefined && service !== "") existing.services.add(service);
     if (labels[PROVIDER_LABEL] !== undefined) existing.providerId = labels[PROVIDER_LABEL];
+    existing.scratch ||= labels[SCRATCH_LABEL] === "TRUE";
     grouped.set(appId, existing);
   }
   return [...grouped.entries()].map(([appId, info]) => ({
@@ -285,6 +284,7 @@ export const appsFromContainerList = (
     providerId: info.providerId,
     appRoot: appId === GLOBAL_APP_ID ? (options.globalAppRoot ?? "") : "",
     services: [...info.services].sort((left, right) => left.localeCompare(right)),
+    ...(info.scratch ? { scratch: true } : {}),
   }));
 };
 

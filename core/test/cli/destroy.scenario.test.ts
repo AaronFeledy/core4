@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+
 import { chmod, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -30,11 +31,14 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/core/services";
+import { makeTestStateStore } from "@lando/core/testing";
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type {
   AppSelector,
+  AppliedFileSyncInspection,
   DestroyOptions,
   FileSyncEngineShape,
   RuntimeProviderShape,
@@ -42,12 +46,13 @@ import type {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
+import { runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
 import {
   setActiveCommandId,
   setActiveRendererMode,
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
-import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -134,11 +139,14 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 
 const web = servicePlan("web");
 const database = servicePlan("database");
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-destroy-app-root-"));
+afterAll(() => rmSync(testAppRoot, { recursive: true, force: true }));
+
 const plan: AppPlan = {
   id: AppId.make("test-destroy"),
   name: "test-destroy",
   slug: "test-destroy",
-  root: AbsolutePath.make("/tmp/test-destroy"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
@@ -151,6 +159,16 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+
+const testSessionSpec = (mountKey: string) => ({
+  app: { kind: "user" as const, id: plan.id, root: plan.root },
+  service: web.name,
+  mountKey,
+  source: plan.root,
+  target: { _tag: "volume" as const, name: `${plan.name}-web-${mountKey}`, path: PortablePath.make("/app") },
+  mode: "two-way-safe" as const,
+  excludes: [],
+});
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-destroy-scenario-")));
@@ -182,15 +200,21 @@ const makeDestroyLayer = (
   options: {
     readonly userDataRoot?: string;
     readonly providerDestroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly quiesceEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
     readonly proxyAvailable?: boolean;
     readonly plannedApp?: AppPlan;
+    readonly appliedPlanEvidence?: boolean;
+    readonly appliedFileSync?: AppliedFileSyncInspection;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
+  const appliedFileSync = options.appliedFileSync;
+
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
   const provider: RuntimeProviderShape = {
@@ -200,6 +224,9 @@ const makeDestroyLayer = (
     version: "0.0.0",
     platform: "linux",
     capabilities,
+    ...(appliedFileSync === undefined
+      ? {}
+      : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
@@ -222,6 +249,9 @@ const makeDestroyLayer = (
       ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
+    ...(options.quiesceEffect === undefined
+      ? {}
+      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
@@ -272,9 +302,11 @@ const makeDestroyLayer = (
     stop: Effect.void,
   });
   const commandLayer = Layer.mergeAll(
+    FileSystemLive,
     PrivateFileAccessLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
+    makeTestStateStore().layer,
     Layer.succeed(
       PathsService,
       makeLandoPaths({
@@ -288,6 +320,18 @@ const makeDestroyLayer = (
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
+      ...(options.appliedPlanEvidence === true
+        ? {
+            resolveTeardownEvidence: (root: AbsolutePath) => {
+              evidenceRoots.push(root);
+              return Effect.succeed(
+                evidenceRoots.length === 1
+                  ? { kind: "applied" as const, plan: plannedApp }
+                  : { kind: "absent" as const },
+              );
+            },
+          }
+        : {}),
     }),
     ...(options.proxyAvailable === false ? [] : [proxyLayer]),
   );
@@ -305,7 +349,16 @@ const makeDestroyLayer = (
   });
   const layer = Layer.merge(commandLayer, eventLayer);
 
-  return { layer, commandLayer, events, publishedEvents, destroyCalls, routeRemovals, volumes };
+  return {
+    layer,
+    commandLayer,
+    events,
+    publishedEvents,
+    destroyCalls,
+    routeRemovals,
+    volumes,
+    evidenceRoots,
+  };
 };
 
 const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
@@ -334,6 +387,42 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando destroy", () => {
+  test("relative --root resolves against cwd and destroys the recorded missing app", async () => {
+    await withTempCwd(async (parent) => {
+      const root = AbsolutePath.make(join(parent, "gone"));
+      const appliedPlan = { ...plan, root, identity: { appRoot: root, ownerKey: ownerKey(root) } };
+      const harness = makeDestroyLayer({ plannedApp: appliedPlan, appliedPlanEvidence: true });
+      const io = createBufferedRendererIO();
+      setActiveRendererMode("plain");
+      try {
+        await withCwd(parent, () =>
+          runDestroy(["--root", "gone", "--yes"], { runtime: harness.commandLayer, io }),
+        );
+      } finally {
+        setActiveRendererMode("lando");
+      }
+      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.destroyCalls).toHaveLength(1);
+      expect(harness.destroyCalls[0]?.target.plan).toEqual(appliedPlan);
+    });
+  });
+
+  test("--root surfaces a tagged refusal for an existing folder without provider mutation", async () => {
+    await withTempCwd(async (root) => {
+      const harness = makeDestroyLayer();
+      const result = await Effect.runPromise(
+        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
+      expect(result.left).toMatchObject({
+        _tag: "AppResolveError",
+        reason: "mismatch",
+        detail: "root-exists",
+      });
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
   test("renders the proxy-unavailable warning through the production destroy command boundary", async () => {
     // Given
     const harness = makeDestroyLayer({ proxyAvailable: false });
@@ -342,7 +431,7 @@ describe("lando destroy", () => {
 
     // When
     try {
-      await runDestroy([], { runtime: harness.commandLayer, io });
+      await runDestroy(["-y"], { runtime: harness.commandLayer, io });
     } finally {
       setActiveRendererMode("lando");
     }
@@ -361,7 +450,7 @@ describe("lando destroy", () => {
 
     // When
     try {
-      await runDestroy([], { runtime: harness.commandLayer, io });
+      await runDestroy(["-y"], { runtime: harness.commandLayer, io });
     } finally {
       setActiveRendererMode("lando");
     }
@@ -388,7 +477,7 @@ describe("lando destroy", () => {
 
     // When
     try {
-      await runDestroy([], { runtime: harness.commandLayer, io });
+      await runDestroy(["--yes"], { runtime: harness.commandLayer, io });
     } finally {
       setActiveRendererMode("lando");
       setActiveResultFormat("text");
@@ -617,7 +706,7 @@ describe("lando destroy", () => {
 
   test("compiled CLI accepts lando destroy --volumes before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy", "--volumes"], dir);
+      const result = await runCli(["destroy", "--volumes", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -627,7 +716,7 @@ describe("lando destroy", () => {
 
   test("compiled CLI accepts lando destroy --purge before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy", "--purge"], dir);
+      const result = await runCli(["destroy", "--purge", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -637,7 +726,7 @@ describe("lando destroy", () => {
 
   test("compiled CLI accepts lando destroy --purge-caches before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy", "--purge-caches"], dir);
+      const result = await runCli(["destroy", "--purge-caches", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -647,7 +736,7 @@ describe("lando destroy", () => {
 
   test("preserves the missing Landofile error outside an app directory", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy"], dir);
+      const result = await runCli(["destroy", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -682,6 +771,7 @@ describe("lando destroy", () => {
       isAvailable: Effect.succeed(false),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(FileSyncSessionRef.make("session-created")),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -704,7 +794,7 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls).toHaveLength(1);
   });
 
-  test("continues provider cleanup when file-sync session listing fails", async () => {
+  test("preserves provider resources when file-sync session listing fails", async () => {
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
       id: "mutagen",
@@ -719,6 +809,7 @@ describe("lando destroy", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(FileSyncSessionRef.make("session-created")),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -741,17 +832,26 @@ describe("lando destroy", () => {
         ),
       streamEvents: () => Stream.empty,
     };
-    const harness = makeDestroyLayer();
+    const harness = makeDestroyLayer({
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: "mutagen",
+        sessions: [testSessionSpec("app-mount")],
+      },
+    });
     const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
 
-    const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
+    const error = await Effect.runPromise(
+      destroyApp({ volumes: true }).pipe(Effect.provide(layer), Effect.flip),
+    );
 
-    expect(result.app).toBe("test-destroy");
+    expect(error._tag).toBe("FileSyncStopError");
     expect(callLog).toEqual(["listSessions"]);
-    expect(harness.destroyCalls).toHaveLength(1);
+    expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
   });
 
-  test("continues provider cleanup when file-sync session termination fails", async () => {
+  test("preserves provider resources when file-sync session termination fails", async () => {
     const existingRefs: ReadonlyArray<FileSyncSessionRef> = [
       FileSyncSessionRef.make("session-web-app-mount"),
       FileSyncSessionRef.make("session-web-cache-mount"),
@@ -761,6 +861,7 @@ describe("lando destroy", () => {
       app: { kind: "user", id: plan.id, root: plan.root },
       service: web.name,
       mountKey: index === 0 ? "app-mount" : "cache-mount",
+      spec: testSessionSpec(index === 0 ? "app-mount" : "cache-mount"),
       status: "running",
       lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
     }));
@@ -778,6 +879,10 @@ describe("lando destroy", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(FileSyncSessionRef.make("session-created")),
+      flushSession: (ref) =>
+        Effect.sync(() => {
+          callLog.push(`flush:${String(ref)}`);
+        }),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) =>
@@ -804,20 +909,108 @@ describe("lando destroy", () => {
         }),
       streamEvents: () => Stream.empty,
     };
-    const harness = makeDestroyLayer();
+    const harness = makeDestroyLayer({
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: "mutagen",
+        sessions: existing.map((session) => session.spec),
+      },
+      quiesceEffect: Effect.sync(() => {
+        callLog.push("provider.quiesce");
+      }),
+    });
     const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
 
-    const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
+    const error = await Effect.runPromise(
+      destroyApp({ volumes: true }).pipe(Effect.provide(layer), Effect.flip),
+    );
 
-    expect(result.app).toBe("test-destroy");
+    expect(error._tag).toBe("FileSyncStopError");
     expect(callLog).toEqual([
       "listSessions",
+      "provider.quiesce",
+      "listSessions",
+      `flush:${String(existingRefs[0])}`,
+      `flush:${String(existingRefs[1])}`,
       `terminate:${String(existingRefs[0])}`,
-      `terminate:${String(existingRefs[1])}`,
     ]);
-    expect(harness.destroyCalls).toHaveLength(1);
+    expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
   });
 
+  test("preserves provider volumes when file-sync flush fails", async () => {
+    const ref = FileSyncSessionRef.make("session-web-app-mount");
+    const existing: FileSyncSessionInfo = {
+      ref,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      service: web.name,
+      mountKey: "app-mount",
+      spec: testSessionSpec("app-mount"),
+      status: "running",
+      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+    };
+    const callLog: string[] = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Fake Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "none",
+        exclusionPatterns: false,
+        conflictReporting: false,
+        progressReporting: false,
+      },
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      createSession: () => Effect.succeed(ref),
+      flushSession: () =>
+        Effect.sync(() => {
+          callLog.push("flush");
+        }).pipe(
+          Effect.zipRight(
+            Effect.fail(
+              new FileSyncStopError({
+                engineId: "mutagen",
+                sessionRef: String(ref),
+                message: "flush unavailable",
+              }),
+            ),
+          ),
+        ),
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: () =>
+        Effect.sync(() => {
+          callLog.push("terminate");
+        }),
+      listSessions: () =>
+        Effect.sync(() => {
+          callLog.push("listSessions");
+          return [existing];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const harness = makeDestroyLayer({
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: "mutagen",
+        sessions: [existing.spec],
+      },
+      quiesceEffect: Effect.sync(() => {
+        callLog.push("provider.quiesce");
+      }),
+    });
+    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+
+    const error = await Effect.runPromise(
+      destroyApp({ volumes: true }).pipe(Effect.provide(layer), Effect.flip),
+    );
+
+    expect(error._tag).toBe("FileSyncStopError");
+    expect(callLog).toEqual(["listSessions", "provider.quiesce", "listSessions", "flush"]);
+    expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
+  });
   test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
     const existingRef = FileSyncSessionRef.make("session-web-app-mount");
     const existing: FileSyncSessionInfo = {
@@ -825,6 +1018,7 @@ describe("lando destroy", () => {
       app: { kind: "user", id: plan.id, root: plan.root },
       service: web.name,
       mountKey: "app-mount",
+      spec: testSessionSpec("app-mount"),
       status: "running",
       lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
     };
@@ -842,6 +1036,10 @@ describe("lando destroy", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(existingRef),
+      flushSession: (ref) =>
+        Effect.sync(() => {
+          callLog.push(`flush:${String(ref)}`);
+        }),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) =>
@@ -855,15 +1053,31 @@ describe("lando destroy", () => {
         }),
       streamEvents: () => Stream.empty,
     };
-    const harness = makeDestroyLayer();
+    const harness = makeDestroyLayer({
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: "mutagen",
+        sessions: [existing.spec],
+      },
+      quiesceEffect: Effect.sync(() => {
+        callLog.push("provider.quiesce");
+      }),
+      providerDestroyEffect: Effect.sync(() => {
+        callLog.push("provider.destroy");
+      }),
+    });
     const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
 
     await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
 
-    const listIndex = callLog.indexOf("listSessions");
-    const terminateIndex = callLog.indexOf(`terminate:${String(existingRef)}`);
-    expect(listIndex).toBeGreaterThanOrEqual(0);
-    expect(terminateIndex).toBeGreaterThan(listIndex);
+    expect(callLog).toEqual([
+      "listSessions",
+      "provider.quiesce",
+      "listSessions",
+      `flush:${String(existingRef)}`,
+      `terminate:${String(existingRef)}`,
+      "provider.destroy",
+    ]);
     expect(harness.destroyCalls).toHaveLength(1);
   });
 });

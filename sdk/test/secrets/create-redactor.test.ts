@@ -159,6 +159,21 @@ describe("redactValue structure preservation", () => {
     expect(v.ok).toBe("fine");
   });
 
+  test("keeps boolean capability metadata under secret-named keys while masking credentials", () => {
+    const value = r.redactValue({
+      buildSecrets: true,
+      canReadSecrets: false,
+      password: "hunter2",
+      secret: { nested: "credential" },
+      token: 123456,
+    }) as Record<string, unknown>;
+    expect(value.buildSecrets).toBe(true);
+    expect(value.canReadSecrets).toBe(false);
+    expect(value.password).toBe("[redacted]");
+    expect(value.secret).toBe("[redacted]");
+    expect(value.token).toBe("[redacted]");
+  });
+
   test("preserves array shape and pattern-redacts string leaves", () => {
     const v = r.redactValue({ list: [1, "MY_API_KEY=zz1", true] }) as Record<string, unknown>;
     const list = v.list as unknown[];

@@ -4,6 +4,8 @@ import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-s
 
 import {
   type ErrorPageCase,
+  PATHINFO_OK,
+  PHAR_EXECUTED,
   apacheCases,
   nginxFpmCases,
   phpFixtureFiles,
@@ -56,5 +58,43 @@ for (const suite of suites) {
         await runErrorPageCase(stack, testCase);
       }, 30_000);
     }
+
+    if (suite.server === "static") return;
+
+    test("PATH_INFO for /pathinfo.php/one/two is /one/two", async () => {
+      if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
+      const response = await stack.request(`${stack.baseUrl}/pathinfo.php/one/two`, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(body).toContain(PATHINFO_OK);
+      expect(body).toMatch(/^PATH_INFO=\/one\/two$/m);
+    }, 30_000);
+
+    test("bare /pathinfo.php does not invent PATH_INFO", async () => {
+      if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
+      const response = await stack.request(`${stack.baseUrl}/pathinfo.php`, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(body).toContain(PATHINFO_OK);
+      expect(body).toMatch(/^PATH_INFO=$/m);
+      expect(body).not.toMatch(/^PATH_INFO=\/.+/m);
+    }, 30_000);
+
+    if (suite.server !== "nginx-fpm") return;
+
+    test("does not execute /uploads/x.phar/y.php", async () => {
+      if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
+      const response = await stack.request(`${stack.baseUrl}/uploads/x.phar/y.php`, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body = await response.text();
+      expect(response.status).toBe(404);
+      expect(body).not.toContain(PHAR_EXECUTED);
+      expect(body).not.toContain(PATHINFO_OK);
+    }, 30_000);
   });
 }

@@ -68,6 +68,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/data-mover": {
     dependencies: [
+      "@lando/container-runtime",
       "@lando/sdk",
       "@lando/paths",
       "@lando/landofile",
@@ -77,6 +78,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
     // Data-mover tests drive the engine `ProcessRunner` Live layer; a `@lando/data-mover/testing` double should replace this.
     testTargets: [
+      "@lando/container-runtime",
       "@lando/sdk",
       "@lando/paths",
       "@lando/landofile",
@@ -151,6 +153,11 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: PLUGIN_TEST_TARGETS,
   },
+  "@lando/lando3": {
+    // Decode-only frontend. Workspace dependencies stop at the SDK and paths.
+    dependencies: ["@lando/sdk", "@lando/paths"],
+    devDependencies: [],
+  },
   "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/renderer-lando": {
@@ -159,9 +166,15 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   },
   "@lando/service-lando": {
     dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/provider-docker", "@lando/provider-lando"],
+    devDependencies: [
+      ...PLUGIN_TEST_TARGETS,
+      "@lando/container-runtime",
+      "@lando/provider-docker",
+      "@lando/provider-lando",
+    ],
   },
   "@lando/ssh-agent": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/secret-store-1password": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-handlebars": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-mustache": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
 };

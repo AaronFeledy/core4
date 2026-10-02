@@ -1,6 +1,7 @@
+import { type DatabaseFamily, databaseEnvCreds } from "@lando/sdk/database-creds";
 import type { ServiceCreds } from "@lando/sdk/schema";
 
-export type CredsFamily = "mysql" | "mariadb" | "postgres" | "mongodb" | "mssql";
+export type CredsFamily = DatabaseFamily;
 
 export type ResolveServiceCredsInput = {
   readonly family: CredsFamily;
@@ -15,75 +16,11 @@ export type ResolveServiceCredsInput = {
   readonly topLevelDatabase?: string;
 };
 
-type EnvCreds = {
-  readonly user: string | undefined;
-  readonly password: string | undefined;
-  readonly database: string | undefined;
-  readonly rootPassword: string | undefined;
-};
-
-const assertNever = (value: never): never => {
-  throw new Error(`unexpected creds family: ${String(value)}`);
-};
-
-const firstEnv = (
-  environment: Readonly<Record<string, string>>,
-  keys: readonly string[],
-): string | undefined => {
-  for (const key of keys) {
-    const value = environment[key];
-    if (value !== undefined) return value;
-  }
-  return undefined;
-};
-
-const familyEnvCreds = (family: CredsFamily, environment: Readonly<Record<string, string>>): EnvCreds => {
-  switch (family) {
-    case "mysql":
-      return {
-        user: firstEnv(environment, ["MYSQL_USER"]),
-        password: firstEnv(environment, ["MYSQL_PASSWORD"]),
-        database: firstEnv(environment, ["MYSQL_DATABASE"]),
-        rootPassword: firstEnv(environment, ["MYSQL_ROOT_PASSWORD"]),
-      };
-    case "mariadb":
-      return {
-        user: firstEnv(environment, ["MYSQL_USER", "MARIADB_USER"]),
-        password: firstEnv(environment, ["MYSQL_PASSWORD", "MARIADB_PASSWORD"]),
-        database: firstEnv(environment, ["MYSQL_DATABASE", "MARIADB_DATABASE"]),
-        rootPassword: firstEnv(environment, ["MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD"]),
-      };
-    case "postgres":
-      return {
-        user: firstEnv(environment, ["POSTGRES_USER"]),
-        password: firstEnv(environment, ["POSTGRES_PASSWORD"]),
-        database: firstEnv(environment, ["POSTGRES_DB"]),
-        rootPassword: undefined,
-      };
-    case "mongodb":
-      return {
-        user: firstEnv(environment, ["MONGO_INITDB_ROOT_USERNAME"]),
-        password: firstEnv(environment, ["MONGO_INITDB_ROOT_PASSWORD"]),
-        database: firstEnv(environment, ["MONGO_INITDB_DATABASE"]),
-        rootPassword: undefined,
-      };
-    case "mssql":
-      return {
-        user: undefined,
-        password: undefined,
-        database: undefined,
-        rootPassword: firstEnv(environment, ["SA_PASSWORD", "MSSQL_SA_PASSWORD"]),
-      };
-    default:
-      return assertNever(family);
-  }
-};
-
 const optionalRoot = (key: string, rootPassword: string | undefined): Readonly<Record<string, string>> =>
   rootPassword === undefined ? {} : { [key]: rootPassword };
 
 export const resolveServiceCreds = (input: ResolveServiceCredsInput): ServiceCreds => {
-  const fromEnv = familyEnvCreds(input.family, input.environment ?? {});
+  const fromEnv = databaseEnvCreds(input.family, input.environment ?? {});
   const rootPassword = input.authored?.rootPassword ?? fromEnv.rootPassword ?? input.defaults.rootPassword;
   return {
     user: input.authored?.user ?? fromEnv.user ?? input.defaults.user,
@@ -129,7 +66,7 @@ export const familyEnvFor = (family: CredsFamily, creds: ServiceCreds): Readonly
     case "mssql":
       return optionalRoot("SA_PASSWORD", creds.rootPassword);
     default:
-      return assertNever(family);
+      throw new Error(`unexpected creds family: ${String(family satisfies never)}`);
   }
 };
 

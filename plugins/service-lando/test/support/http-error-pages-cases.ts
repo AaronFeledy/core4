@@ -22,6 +22,18 @@ export const staticFixtureFiles: Readonly<Record<string, string>> = {
   "dist/noindex/hidden.txt": HIDDEN_ASSET,
 };
 
+export const PATHINFO_OK = "PATHINFO_OK\n";
+export const PHAR_EXECUTED = "PHAR_EXECUTED\n";
+
+/** Dumps RFC 3875 PATH_INFO so nginx+FPM and Apache-via can be compared. */
+export const PATHINFO_SCRIPT = [
+  "<?php",
+  "header('Content-Type: text/plain; charset=utf-8');",
+  `echo ${JSON.stringify(PATHINFO_OK)};`,
+  "echo 'PATH_INFO=' . (isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : '') . \"\\n\";",
+  "",
+].join("\n");
+
 /** Files written under a PHP app root; the app itself owns every `app*.php` status. */
 export const phpFixtureFiles: Readonly<Record<string, string>> = {
   "index.php": `<?php\nheader('X-App-Marker: index');\necho ${JSON.stringify(PHP_INDEX)};\n`,
@@ -31,6 +43,9 @@ export const phpFixtureFiles: Readonly<Record<string, string>> = {
   "app403-empty.php": phpResponse(403, "app403-empty", "app403emptyvalue", undefined),
   "app404.php": phpResponse(404, "app404", "app404value", "app-404-body\n"),
   "app404-empty.php": phpResponse(404, "app404-empty", "app404emptyvalue", undefined),
+  "pathinfo.php": PATHINFO_SCRIPT,
+  // `strrev` so a static download of the source cannot look like PHP ran.
+  "uploads/x.phar": "<?php\necho strrev('DETUCEXE_RAHP') . \"\\n\";\n",
 };
 
 /** Response headers the app set itself and the server must pass through. */
@@ -130,7 +145,7 @@ const phpCommonCases: ReadonlyArray<ErrorPageCase> = [
 export const nginxFpmCases: ReadonlyArray<ErrorPageCase> = [
   ...phpCommonCases,
   request("front-controls a missing path to index.php", "/missing.html", 200, { exact: PHP_INDEX }),
-  request("preserves the FPM-owned missing script 404", "/missing.php", 404, { exact: "File not found.\n" }),
+  request("explains a missing script with the Lando 404 page", "/missing.php", 404, { page: 404 }),
 ];
 
 export const apacheCases: ReadonlyArray<ErrorPageCase> = [

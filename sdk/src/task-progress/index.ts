@@ -16,6 +16,7 @@ export type {
   TaskCompleteArgs,
   TaskDetailArgs,
   TaskFailArgs,
+  TaskOutcome,
   TaskStartArgs,
   TreeCompleteArgs,
   TreeStartArgs,

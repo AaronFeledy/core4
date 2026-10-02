@@ -7,11 +7,7 @@ import {
 import { Flags } from "../../spec/metadata";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
-
-const extractFlags = (input: unknown): Record<string, unknown> => {
-  if (typeof input !== "object" || input === null) return {};
-  return (input as { flags?: Record<string, unknown> }).flags ?? {};
-};
+import { specFlagsOf } from "../../spec/input-coercion";
 
 export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   resultSchema: PoweroffResultSchema,
@@ -20,14 +16,14 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   namespace: "apps",
   topLevelAlias: true,
   aliases: ["poweroff"],
-  bootstrap: "minimal",
+  bootstrap: "scratch",
   flags: {
     "keep-global": Flags.boolean({ description: "Do not stop the global app.", default: false }),
     "keep-scratch": Flags.boolean({ description: "Do not stop scratch apps.", default: false }),
     yes: Flags.boolean({ char: "y", description: "Skip confirmation prompts.", default: false }),
   },
   run: (input) => {
-    const flags = extractFlags(input);
+    const flags = specFlagsOf(input);
     return poweroff({
       keepGlobal: flags["keep-global"] === true,
       keepScratch: flags["keep-scratch"] === true,

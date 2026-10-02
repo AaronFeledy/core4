@@ -73,7 +73,14 @@ export const compiledCommandInputFromArgv = (
     const flags: Record<string, unknown> = {};
     flags.format = effectiveResultFormat;
     if (effectiveResultFormat === "json") flags.json = true;
-    const input = { argv, flags, args: {}, ...options, resultFormat: effectiveResultFormat };
+    const input = {
+      argv,
+      flags,
+      args: {},
+      ...options,
+      resultFormat: effectiveResultFormat,
+      hostIo: "cli" as const,
+    };
     setActiveCommandInvocation(commandId, input);
     return input;
   }
@@ -140,6 +147,7 @@ export const compiledCommandInputFromArgv = (
     args,
     ...options,
     resultFormat: effectiveResultFormat,
+    hostIo: "cli" as const,
   };
   setActiveCommandInvocation(commandId, input);
   return input;

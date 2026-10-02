@@ -44,6 +44,7 @@ import {
   defaultSystemCaPems,
   loadCaPems,
   resolveNetworkTrustPlan,
+  withWindowsHostTrust,
 } from "./network-trust.ts";
 import { HttpClient, type HttpClientShape } from "./service.ts";
 import { applyHttpStreamTimeout, applyHttpTimeout } from "./timeout.ts";
@@ -220,7 +221,7 @@ const preEvent = (
     ...(request.method === undefined ? {} : { method: request.method }),
     ...(request.callerId === undefined ? {} : { callerId: redact(request.callerId) }),
     ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-    timestamp: DateTime.unsafeMake(Date.now()),
+    timestamp: DateTime.unsafeNow(),
   });
 
 interface PostEventInput {
@@ -244,7 +245,7 @@ const postEvent = (input: PostEventInput): LandoEvent =>
     outcome: input.outcome,
     durationMs: input.durationMs,
     ...(input.failureDetail === undefined ? {} : { failureDetail: input.redact(input.failureDetail) }),
-    timestamp: DateTime.unsafeMake(Date.now()),
+    timestamp: DateTime.unsafeNow(),
   });
 
 interface FetchOutcome {
@@ -257,7 +258,9 @@ const openConnection = (
   request: HttpRequest,
 ): Effect.Effect<FetchOutcome, HttpRequestError, Scope.Scope> =>
   Effect.gen(function* () {
-    const trust = yield* resolveTrust();
+    const resolvedTrust = yield* resolveTrust();
+    const hostCaPems = process.platform === "win32" || resolvedTrust !== undefined ? systemCaPems() : [];
+    const trust = withWindowsHostTrust(resolvedTrust, hostCaPems);
     const controller = new AbortController();
     yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()));
     const response = yield* Effect.tryPromise({
@@ -267,7 +270,7 @@ const openConnection = (
           {
             transports,
             trust,
-            systemCaPems: trust === undefined ? [] : systemCaPems(),
+            systemCaPems: trust === undefined ? [] : hostCaPems,
           },
           controller.signal,
         ),

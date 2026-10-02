@@ -35,6 +35,7 @@ const sandboxUninstallIo = (root: string) => ({
     join(root, "lando-proxy-https.service"),
   ],
   socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
+  listDiscoveredApps: async () => [],
 });
 
 describe("runtime-service uninstall execution", () => {
@@ -56,10 +57,9 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
         }).pipe(Effect.provide(Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }))),
       );
@@ -87,10 +87,9 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
         }),
       );
@@ -115,10 +114,9 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false }),
           remove: async (path: string) => {
@@ -149,10 +147,9 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false, pid: 1234 }),
           remove: async (path: string) => {
@@ -183,10 +180,9 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false }),
           remove: async () => {

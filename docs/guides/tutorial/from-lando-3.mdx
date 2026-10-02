@@ -5,27 +5,164 @@ timeout: 60000
 tags: [beta, docs, tutorial, lando3]
 ---
 
-# Start fresh from Lando 3
+# Run Lando 4 next to Lando 3
 
-Lando 4 is a rewrite. A full Lando 3 to 4 migration map is not up.
-
-Start a new Landofile, or scaffold a supported recipe:
+Lando 4 installs as `lando4`. Lando 3 stays `lando`. Keep both:
 
 ```sh
-lando init --recipe lamp --yes
-lando start
+lando --version
+lando4 --version
 ```
 
-Lando 4 does not interpret your Lando 3 file. It writes a new one.
+Installing Lando 4 never renames, replaces, shims, or removes `lando`, and it never touches `~/.lando`. Your Lando 3 apps keep running exactly as they did. Every Lando 4 command on this page is spelled `lando4`. When this page says `lando`, it means Lando 3 and says so.
 
-## What to do instead
+## Put lando4 on PATH
 
-Install the Alpha and run setup. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+Download the platform-qualified binary from a `v4.0.0-dev.N` prerelease. Release assets still start with `lando-` (`lando-linux-x64`, `lando-darwin-arm64`, `lando-windows-x64.exe`). The asset name does not pick the installed name. Save the file as `lando4` (`lando4.exe` on Windows) and put it somewhere on PATH:
 
-Write a [Landofile](../landofile/your-landofile.mdx), or init `lamp`, `lemp`, `wordpress`, `drupal`, or `drupal-cms`.
+```sh
+chmod +x lando-linux-x64
+mv lando-linux-x64 ~/.local/bin/lando4
+lando4 --version
+```
 
-Use the [everyday CLI loop](../cli/everyday-commands.mdx).
+Then run setup once. The default provider is `lando` (managed Podman), so Lando 4 does not borrow the Docker daemon Lando 3 uses:
 
-Do not wait for a key-by-key converter. It is not up.
+```sh
+lando4 setup
+```
 
-The default provider is `lando` (managed Podman). If default setup fails and you have working system Docker, run `lando setup --provider=docker`. `LANDO_PROVIDER` does not persist.
+If default setup fails and you have working system Docker, run `lando4 setup --provider=docker`. `LANDO_PROVIDER=docker` does the same for one shell and does not persist.
+
+## lando4 shellenv
+
+`lando4 shellenv` prints the profile snippet that puts the Lando 4 install directory on PATH. It exports `LANDO_USER_DATA_ROOT` and prepends the directory Lando 4 recorded when it installed itself, so the snippet stays correct even when you installed outside the default `bin` directory. Nothing else on PATH moves, so wherever Lando 3's `lando` lives keeps working, and appending the block twice to a profile does not add the directory twice.
+
+```sh
+lando4 shellenv
+lando4 shellenv --shell=powershell
+```
+
+Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then open a new shell.
+
+## Update lando4
+
+`lando4 update` replaces the binary Lando 4 installed, and nothing else.
+
+```sh
+lando4 update --dry-run
+lando4 update
+```
+
+Both read the signed release manifest from the update server before they look at your disk, so neither one runs offline.
+
+Lando 4 writes an install record when it installs itself. Update reads that record to find the executable, confirms the file on disk still matches the record byte for byte, and only then stages, verifies, and swaps the new binary. A file named anything other than `lando4` (`lando4.exe` on Windows) is never a target, so Lando 3's `lando` is safe even when it sits in the same directory.
+
+If the record is missing, points somewhere else, or no longer matches the file, update refuses and tells you to rerun the installer. It does not guess, and it never adopts a binary it did not install. Installed Lando 4 some other way, such as through a package manager? Update it the same way you installed it.
+
+Windows cannot replace a running `lando4.exe`, so Lando 4 stages the new binary, exits, and lets a helper finish the swap. The helper re-reads the install record before it moves anything, moves only `lando4.exe`, and puts the original back if the swap fails. You see the result on your next `lando4` command.
+
+After a successful swap Lando 4 rewrites the record to describe the new binary, so the next update and any later uninstall still recognize it. The previous binary stays beside it as `lando4.bak` and is yours to delete.
+
+## Uninstall lando4
+
+```sh
+lando4 uninstall --dry-run
+lando4 uninstall --yes
+```
+
+Uninstall removes what the install record lists and leaves everything else alone. `lando`, `~/.lando`, and your Lando 3 containers stay exactly where they are. Run the dry run first: it prints every step and what it will do before anything is removed.
+
+A binary Lando 4 did not install is never removed, even if it sits in Lando 4's own `bin` directory. If the recorded binary changed underneath, uninstall reports it and leaves the file for you.
+
+Add `--purge` to also remove Lando 4's data, cache, and config roots, and to strip the `# >>> LANDO4 shellenv >>>` block from the profiles Lando 4 wrote to. That deletes Lando 4 app state, so check the dry run first. A Lando 3 `# >>> LANDO shellenv >>>` block is a foreign PATH entry and survives, as does every line you added yourself.
+
+Uninstall is safe to run twice. The second run finds nothing left and removes nothing.
+
+## Check for Lando 3 leftovers
+
+```sh
+lando4 doctor
+```
+
+Doctor adds two read-only Lando 3 checks. Neither changes anything.
+
+- `lando3-leftovers` runs when you are inside an app on the `docker` or `podman` provider. It looks for volumes named after the app's Lando 3 project (`<project>_...`) and containers labeled with the app's root. A hit is a warning that names what it found. Back up or confirm any data you need, then remove those resources with Lando 3's `lando destroy`. Outside an app, and on the default `lando` provider where Lando 3 never ran, the check says it skipped. Lando 3's old proxy is not this check. If that proxy still holds port 80 or 443, the existing preferred-port check names it.
+- `lando3-shadow` looks on `PATH` for a `lando` executable other than the running `lando4`. It never runs or opens that file, and it does not say what that file is. A different resolved path is information, not a problem: keep using `lando4` and `lando` side by side. If the running path cannot be resolved, the check stays unverified instead of calling the other file a shadow.
+
+Add `--format=json` when a script or an agent reads the result. Each check reports a `runtimeStatus` such as `skipped`, `none-found`, `lando3-resources-found`, or `potential-shadow`.
+
+<Guide>
+  <Scenario id="shellenv-prints-lando4-path" render>
+    <Step name="shellenv">
+      <Run command="lando4 shellenv" expectExit={0} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "LANDO_USER_DATA_ROOT.+" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "PATH.+bin" } }} />
+    </Step>
+    <Step name="shellenv-powershell">
+      <Run command="lando4 shellenv --shell=powershell" expectExit={0} />
+      <Verify command="lando4 shellenv --shell=powershell" expect={{ stdout: { regex: "\\$Env:LANDO_USER_DATA_ROOT = " } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="uninstall-dry-run-targets-the-install-record" render>
+    <Step name="dry-run">
+      <Run command="lando4 uninstall --dry-run" expectExit={0} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "dryRun.:true" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "mode.:.keep-data" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "installed-binary" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "install-record" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="doctor-reports-lando3-checks" render>
+    <Step name="doctor">
+      <Run command="lando4 doctor --format=json" />
+      <Verify command="lando4 doctor --format=json" expect={{ stdout: { regex: "lando3-leftovers" } }} />
+      <Verify command="lando4 doctor --format=json" expect={{ stdout: { regex: "lando3-shadow" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Convert an app when you are ready
+
+Keep running the app with Lando 3's `lando` until you choose to move it. Lando 4 never reads a Lando 3 Landofile on the fly: run `lando4 start` in that directory and it stops with `Lando3LandofileDetected` and the exact command to run instead.
+
+Conversion is explicit, and preview comes first:
+
+```sh
+lando4 app:config:translate --from lando3
+lando4 app:config:translate --from lando3 --write
+lando4 app:config:lint
+lando4 start
+```
+
+The preview prints every Lando 4 layer the Lando 3 files would become, with a diagnostic for each key it generated, rewrote, dropped, or could not carry. Nothing is written until `--write`, and `--write` refuses while any `unsupported` diagnostic stands. The full walkthrough, layer by layer, is [Convert a Lando 3 app to Lando 4](../landofile/convert-from-lando-3.mdx).
+
+`--write` keeps an immutable backup beside every file it replaces or removes, named `<file>.bak.<sha256>` after the original bytes. Going back to Lando 3 is copying each backup over its original name (and deleting a `.lando.dist.yml` the conversion created). Lando 4 does not adopt Lando 3 containers or volumes. They stay owned by Lando 3, so `lando` picks the app up exactly where it left it.
+
+## Or start fresh on Lando 4
+
+Would rather not carry the old config? Leave the Lando 3 `.lando.yml` where it is for `lando` and give Lando 4 its own app in another directory:
+
+```sh
+lando4 init --recipe lamp --yes
+lando4 start
+```
+
+Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Supported recipes today: `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. Then use the [everyday CLI loop](../cli/everyday-commands.mdx) with `lando4` in front.
+
+## What each lando4 command touches
+
+| Command | Changes | Leaves alone |
+| --- | --- | --- |
+| `lando4 shellenv` | Nothing. It prints a profile snippet | Your profiles and `PATH` until you paste it |
+| `lando4 update` | The recorded `lando4` binary, the install record, and a `lando4.bak` beside it | `lando`, `lando.exe`, and any file the record doesn't match |
+| `lando4 uninstall --yes` | Entries in the install record | `lando`, `~/.lando`, and Lando 3 containers and volumes |
+| `lando4 uninstall --purge --yes` | The above, Lando 4's data, cache, and config roots, and the `LANDO4` shellenv block | The Lando 3 `LANDO` shellenv block and every line you wrote |
+| `lando4 doctor` | Nothing. It never runs or opens `lando` | Everything |
+| `lando4 app:config:translate --from lando3 --write` | Landofile layers in that app, each replaced file kept as `<file>.bak.<sha256>` | Lando 3 containers, volumes, and `~/.lando` |
+
+## Gotchas
+
+- Two apps with the same name, one on each version, do not know about each other. Stop the Lando 3 one before starting the Lando 4 one if they share a port.
+- `lando poweroff` only powers off Lando 3. `lando4 poweroff` only powers off Lando 4.
+- Alpha install details and where to file bugs: [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).

@@ -7,7 +7,7 @@ tags: [beta, docs, services, database, mysql, postgres]
 
 # Switch the database engine
 
-Change `type:` from one database engine to another, then `lando rebuild -y`. That does not move your data.
+Change `type:` from one database engine to another, then `lando rebuild`. That does not move your data.
 
 ## Start from MySQL
 
@@ -42,7 +42,7 @@ services:
 ## Rebuild as Postgres
 
 Edit the Landofile: change `services.db.type` from `mysql` to `postgres`,
-then run `lando rebuild -y` to recreate the container against the new
+then run `lando rebuild` to recreate the container against the new
 engine:
 
 ```yaml

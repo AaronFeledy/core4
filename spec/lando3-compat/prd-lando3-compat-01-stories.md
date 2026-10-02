@@ -70,6 +70,9 @@ Spec: [`spec-lando3-compat.md`](./spec-lando3-compat.md). Global priorities, dep
 - [ ] Preserve command order and build-key identity, reject unsafe remote context/build-ssh variants, and pass provider/build/runtime plus applicable standard gates.
 - [ ] Lower US-618A/B/C/E fields and every `target` or mixed `target/drop` residual catalog row, including exact config destinations, Composer/Node packages, Redis, Mailpit, Apache, Node, and generated version metadata.
 - [ ] Separate supported real-runtime fixtures from unavailable-version and unsupported-option rejections; do not manufacture images; README/provider and applicable standard gates pass.
+- [ ] Deferred and dropped keys never block conversion: a source key whose §6.3 target waits for a story that has not landed (`scanner` naming US-617B, implicit per-service home persistence naming US-617A, elasticsearch/opensearch `mem` and `plugins` naming US-621C8) emits `dropped` with remediation naming that pending story id, and unconditionally dropped keys (`moreHttpPorts`; top-level `plugins`, `pluginDirs`, `keys`) emit `dropped` with their documented manual remediation; none of these emit `unsupported`, clear the encoded preview, or block `--write`. `unsupported` is reserved for inputs that cannot produce a valid v4 fragment per §6.6.
+- [ ] Catalog-typed services rewrite `meUser` to `user` with a `rewritten` diagnostic, identically to the raw API-3 branch.
+- [ ] Closed finish line: the criteria above are the complete proof set for this story. A gate that finds a further §6.3 or residual-table gap outside these criteria records it against US-621C8 (which owns every residual row not owned by US-621C1/C3/C5) or files a new follow-up story, instead of demoting this story.
 
 ### US-621C3: Lower tooling, tags, and lifecycle events
 

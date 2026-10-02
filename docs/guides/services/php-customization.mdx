@@ -37,7 +37,7 @@ Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode str
 `db_client: auto` is the default. At plan time Lando looks at the other services in your app (MySQL, MariaDB, Postgres, MongoDB) and installs the matching client CLI into the PHP container. Managed MySQL services select 8.0, 8.4, or 9.7 to match their declared series. You can force one with `db_client: "mysql:9.7"` or `db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
 Detection is deterministic from the resolved plan; it never probes the
 provider. Changing `db_client` changes the build key, so a running app needs
-`lando rebuild -y`. A custom `image:` still validates the option but skips
+`lando rebuild`. A custom `image:` still validates the option but skips
 the install steps.
 
 Oracle MySQL clients use Oracle's signed Bookworm APT repository on amd64. On Linux arm64, Lando installs pinned Oracle EL9 client RPM payloads: 8.0.46, 8.4.11, or 9.7.2 to match the selected series. All four package SHA256 checks must pass before extraction. Lando installs the client libraries and plugin paths without running RPM install scripts. Other architectures stop with `Unsupported architecture`; no MariaDB or wrong-series MySQL client is substituted.
@@ -84,7 +84,7 @@ services:
 An artifact step runs after Lando's own PHP prerequisite build steps, in
 the same image, so a manually compiled extension can depend on the apt
 packages Lando already installed. A `build.artifact` edit changes the
-build key, so `lando rebuild -y` is required for it to take effect. Restart alone reuses the previous image.
+build key, so `lando rebuild` is required for it to take effect. Restart alone reuses the previous image.
 
 ## Mount a custom php.ini
 
@@ -101,9 +101,7 @@ services:
         readOnly: true
 ```
 
-php.ini drop-ins are read alphabetically after the base `php.ini`, so a
-`zz-` prefix guarantees this file loads last and wins. Mark the mount
-read-only. The container never needs to write back to your source `php.ini`.
+php.ini drop-ins are read alphabetically after the base `php.ini`. Name your custom file so it sorts after any recipe-provided drop-in you want to override. For example, `zz-custom.ini` loads after the Drupal CMS recipe default `50-lando-drupal-cms.ini`. Mark the mount read-only. The container never needs to write back to your source `php.ini`.
 
 ## Grant a php.ini with Compose configs
 

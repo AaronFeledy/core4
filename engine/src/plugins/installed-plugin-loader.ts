@@ -41,6 +41,7 @@ const normalizeExternalContributionModules = async (
   const interactionServices = manifest.contributes?.interactionServices;
   const certificateAuthorities = manifest.contributes?.certificateAuthorities;
   const routerServices = manifest.contributes?.routerServices;
+  const secretStores = manifest.contributes?.secretStores;
   const remoteSources = manifest.contributes?.remoteSources;
   const datasets = manifest.contributes?.datasets;
   const tunnelServices = manifest.contributes?.tunnelServices;
@@ -53,6 +54,7 @@ const normalizeExternalContributionModules = async (
     interactionServices === undefined &&
     certificateAuthorities === undefined &&
     routerServices === undefined &&
+    secretStores === undefined &&
     remoteSources === undefined &&
     datasets === undefined &&
     tunnelServices === undefined &&
@@ -161,6 +163,15 @@ const normalizeExternalContributionModules = async (
             module: await normalizeContributionModulePath(contribution.module),
           })),
         );
+  const normalizedSecretStores =
+    secretStores === undefined
+      ? undefined
+      : await Promise.all(
+          secretStores.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeContributionModulePath(contribution.module),
+          })),
+        );
   const normalizedRemoteSources =
     remoteSources === undefined
       ? undefined
@@ -222,6 +233,7 @@ const normalizeExternalContributionModules = async (
         ? {}
         : { certificateAuthorities: normalizedCertificateAuthorities }),
       ...(normalizedRouterServices === undefined ? {} : { routerServices: normalizedRouterServices }),
+      ...(normalizedSecretStores === undefined ? {} : { secretStores: normalizedSecretStores }),
       ...(normalizedRemoteSources === undefined ? {} : { remoteSources: normalizedRemoteSources }),
       ...(normalizedDatasets === undefined ? {} : { datasets: normalizedDatasets }),
       ...(normalizedTunnelServices === undefined ? {} : { tunnelServices: normalizedTunnelServices }),
