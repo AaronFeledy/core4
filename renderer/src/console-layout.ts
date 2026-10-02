@@ -44,10 +44,13 @@ const isSafeHref = (href: string): boolean =>
 
 /**
  * Wrap `text` in OSC 8 ST hyperlinks when `href` is a safe http(s) or file URL.
- * The visible label is unchanged; unsupported schemes stay plain text.
+ * The visible label is unchanged; unsupported schemes stay plain text. The
+ * label is already-painted output (SGR dim/tone from the summary painters), so
+ * only the target is validated; a caller linking raw untrusted text screens it
+ * with {@link hasC0OrDel} first.
  */
 export const hyperlink = (text: string, href: string): string => {
-  if (hasC0OrDel(text) || !isSafeHref(href)) return text;
+  if (!isSafeHref(href)) return text;
   const terminator = `${ESC}\\`;
   return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
 };
@@ -69,8 +72,10 @@ const OSC8_PREFIX = `${ESC}]8;`;
 const OSC8_ST = `${ESC}\\`;
 const OSC8_BEL = "\x07";
 
+const OSC8_CLOSE = [`${OSC8_PREFIX};${OSC8_ST}`, `${OSC8_PREFIX};${OSC8_BEL}`] as const;
+
 /** End index of an OSC 8 sequence starting at `start`, or undefined if none. */
-const skipOsc8 = (text: string, start: number): number | undefined => {
+const osc8SequenceEnd = (text: string, start: number): number | undefined => {
   if (!text.startsWith(OSC8_PREFIX, start)) return undefined;
   const from = start + OSC8_PREFIX.length;
   const st = text.indexOf(OSC8_ST, from);
@@ -79,6 +84,21 @@ const skipOsc8 = (text: string, start: number): number | undefined => {
   if (st >= 0) end = st + OSC8_ST.length;
   if (bel >= 0 && (end < 0 || bel + 1 < end)) end = bel + 1;
   return end > start ? end : undefined;
+};
+
+/**
+ * End index of the OSC 8 span starting at `start`: a lone close sequence ends
+ * at itself, an open sequence runs through its label to the next close, and an
+ * unterminated open runs to the end of `text`. Undefined when no OSC 8 starts here.
+ */
+const skipOsc8 = (text: string, start: number): number | undefined => {
+  const openEnd = osc8SequenceEnd(text, start);
+  if (openEnd === undefined) return undefined;
+  if (OSC8_CLOSE.some((close) => text.startsWith(close, start))) return openEnd;
+  const close = OSC8_CLOSE.map((seq) => ({ at: text.indexOf(seq, openEnd), length: seq.length }))
+    .filter(({ at }) => at >= 0)
+    .sort((left, right) => left.at - right.at)[0];
+  return close === undefined ? text.length : close.at + close.length;
 };
 
 /** Separators around printed endpoints; a prefix of a longer URL is not a token. */
@@ -111,8 +131,9 @@ const isWholeEndpointTokenAt = (text: string, index: number, url: string): boole
 /**
  * Wrap each known http(s) URL that still appears as a whole token in `text`.
  * Longer endpoints win so a prefix (`:80` vs `:8080`, host vs host:port) cannot
- * nest inside another link. OSC 8 already in `text` is copied, never rewritten.
- * A URL split by wrapping is left plain so OSC 8 never wraps a partial label.
+ * nest inside another link. An OSC 8 span already in `text` (open, label, close)
+ * is copied whole, never rewritten or re-linked. A URL split by wrapping is left
+ * plain so OSC 8 never wraps a partial label.
  */
 export const linkKnownHttpUrls = (text: string, urls: ReadonlyArray<string>): string => {
   const candidates = [...new Set(urls.filter(isHttpUrl))].sort((left, right) => right.length - left.length);

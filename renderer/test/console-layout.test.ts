@@ -5,6 +5,7 @@ import {
   boxBottom,
   boxSeparator,
   boxTop,
+  dimText,
   displayWidth,
   fieldLabelWidth,
   hyperlink,
@@ -331,9 +332,11 @@ describe("hyperlink", () => {
     expect(hyperlink("rel", "./readme")).toBe("rel");
   });
 
-  test("returns visible text unchanged when the label contains C0 or DEL", () => {
-    expect(hyperlink(`docs${ESC}x`, "https://example.com/docs")).toBe(`docs${ESC}x`);
-    expect(hyperlink("docs\u0007", "https://example.com/docs")).toBe("docs\u0007");
+  test("keeps an SGR-styled label linked as the summary painters hand it over", () => {
+    const dimmed = dimText("https://example.com/docs");
+    expect(hyperlink(dimmed, "https://example.com/docs")).toBe(
+      `${ESC}]8;;https://example.com/docs${ST}${dimmed}${ESC}]8;;${ST}`,
+    );
   });
 
   test("returns visible text unchanged when the target contains C0, DEL, or ESC", () => {
@@ -409,5 +412,11 @@ describe("linkKnownHttpUrls", () => {
     expect(linkKnownHttpUrls(`${already}, ${shortUrl}`, [shortUrl, longUrl])).toBe(
       `${already}, ${hyperlink(shortUrl, shortUrl)}`,
     );
+  });
+
+  test("copies a BEL-terminated OSC 8 span whole instead of re-linking its label", () => {
+    const url = "http://localhost:8080";
+    const already = `${ESC}]8;;${url}${BEL}${url}${ESC}]8;;${BEL}`;
+    expect(linkKnownHttpUrls(`${already} ${url}`, [url])).toBe(`${already} ${hyperlink(url, url)}`);
   });
 });
