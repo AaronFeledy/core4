@@ -200,7 +200,7 @@ test.each([
               cachedPlan,
               buildIdentity,
               outcome,
-              events: [...(yield* Queue.takeAll(queue))],
+              events: [...(yield* Queue.clear(queue))],
             };
           }),
         ).pipe(Effect.provide(layer)),

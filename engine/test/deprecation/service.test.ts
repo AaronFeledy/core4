@@ -108,7 +108,7 @@ describe("DeprecationServiceLive", () => {
           const exit = yield* Effect.exit(
             deprecations.use({ kind: "command", id: "app:legacy", notice: errorNotice, timestamp }),
           );
-          const eventsAfterFailure = yield* Queue.takeAll(queue);
+          const eventsAfterFailure = yield* Queue.clear(queue);
           return {
             exit,
             events: Array.from(eventsAfterFailure),

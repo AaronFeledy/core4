@@ -40,7 +40,7 @@ describe("EventService bounded delivery", () => {
             const queue = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             yield* events.publish(progressEvent(2));
-            return yield* Queue.takeAll(queue);
+            return yield* Queue.clear(queue);
           }),
         ),
       ).pipe(Effect.provide(layer)),
@@ -64,7 +64,7 @@ describe("EventService bounded delivery", () => {
             const publishFiber = yield* events.publish(progressEvent(3)).pipe(Effect.forkChild);
             yield* Effect.yieldNow;
             const publishExit = publishFiber.pollUnsafe();
-            const delivered = yield* Queue.takeAll(queue);
+            const delivered = yield* Queue.clear(queue);
             const snapshot = yield* metrics.snapshot;
             return { publishExit, delivered, snapshot };
           }),
@@ -160,7 +160,7 @@ describe("EventService bounded delivery", () => {
             const queue = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             yield* events.publish(progressEvent(2));
-            const delivered = yield* Queue.takeAll(queue);
+            const delivered = yield* Queue.clear(queue);
             const history = yield* events.query("download-progress");
             return { delivered, history };
           }),

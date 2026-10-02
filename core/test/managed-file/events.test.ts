@@ -186,7 +186,7 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
               }),
             ]);
             yield* Effect.sleep("25 millis");
-            const drained = yield* Queue.takeAll(queue);
+            const drained = yield* Queue.clear(queue);
             return drained;
           }).pipe(Effect.provide(layer)),
         ),
@@ -241,7 +241,7 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
               }),
             ]);
             yield* Effect.sleep("25 millis");
-            const drained = yield* Queue.takeAll(queue);
+            const drained = yield* Queue.clear(queue);
             return drained;
           }).pipe(Effect.provide(layer)),
         ),

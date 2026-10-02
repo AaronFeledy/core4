@@ -51,7 +51,7 @@ describe("ManagedFile env redaction", () => {
             const managed = yield* ManagedFileService;
             yield* managed.apply([file(base as NonNullable<ManagedFile["base"]>, secret)]);
             yield* Effect.sleep("25 millis");
-            const drained = yield* Queue.takeAll(queue);
+            const drained = yield* Queue.clear(queue);
             return drained;
           }).pipe(Effect.provide(layer)),
         ),
