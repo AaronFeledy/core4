@@ -55,7 +55,7 @@ lando php -v
 lando mariadb -e 'SELECT 1 AS ok;'
 ```
 
-`lando composer` and `lando php` run on `appserver`. `lando mariadb` opens the client on `database` with the app credentials already set. If you init with `--answer=database=mysql:8.0`, use the MySQL client tooling that service ships instead of `lando mariadb`.
+`lando composer` and `lando php` run on `appserver`. `lando mariadb` opens the client on `database` with the app credentials already set. If you init with `--answer=database=mysql:8.0`, use `lando mysql` instead of `lando mariadb`.
 
 ## Connect PHP to MariaDB
 
