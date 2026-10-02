@@ -5,12 +5,14 @@ import { SchemaTransformation } from "effect";
 import { describe, expect, test } from "bun:test";
 import type { JsonSchemaName } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import * as AST from "effect/SchemaAST";
 
 import {
   JSON_SCHEMA_NAMES,
   assertPublicSchemaAnnotations,
   deprecateField,
   deprecateSchema,
+  getJsonSchemaWithDeprecations,
   publicSchemaMetadataIndex,
   publicSchemaRegistry,
   renderPublicSchemaReferencePages,
@@ -36,6 +38,109 @@ const mutable = <T>(values: ReadonlyArray<T>): T[] => [...values];
 
 const DESCRIBED = "A described field used to prove annotation resolution.";
 
+// Correlate actual artifact nodes with their encoded source types. Effect emits
+// Undefined as JSON null too, but only source types accepting null justify it.
+const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly string[] => {
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
+  const visited = new WeakMap<AST.AST, WeakSet<object>>();
+  const hasNullOrRef = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(hasNullOrRef);
+    if (!isObject(value)) return false;
+    return (
+      typeof value.$ref === "string" ||
+      value.type === "null" ||
+      (Array.isArray(value.type) && value.type.includes("null")) ||
+      Object.entries(value).some(
+        ([key, child]) => !["enum", "const", "default", "examples"].includes(key) && hasNullOrRef(child),
+      )
+    );
+  };
+  const nullNodes = (
+    value: unknown,
+    path: string,
+  ): ReadonlyArray<readonly [Record<string, unknown>, string]> => {
+    if (Array.isArray(value)) return value.flatMap((child, index) => nullNodes(child, `${path}[${index}]`));
+    if (!isObject(value)) return [];
+    return [
+      ...(value.type === "null" || (Array.isArray(value.type) && value.type.includes("null"))
+        ? [[value, path] as const]
+        : []),
+      ...Object.entries(value).flatMap(([key, child]) =>
+        ["enum", "const", "default", "examples"].includes(key) ? [] : nullNodes(child, `${path}.${key}`),
+      ),
+    ];
+  };
+  const unexplained = new Map(nullNodes(document, "$"));
+  const visit = (ast: AST.AST, target: unknown, path: string): void => {
+    if (!isObject(target) || !hasNullOrRef(target)) return;
+    if (typeof target.$ref === "string") {
+      expect(target.$ref.startsWith("#/"), path).toBe(true);
+      let resolved: unknown = document;
+      for (const segment of target.$ref.slice(2).split("/")) {
+        const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
+        resolved = isObject(resolved) ? resolved[key] : undefined;
+      }
+      expect(isObject(resolved), `${path}: unresolved ${target.$ref}`).toBe(true);
+      visit(ast, resolved, `${path}(${target.$ref})`);
+      return;
+    }
+    const seen = visited.get(ast) ?? new WeakSet<object>();
+    if (seen.has(target)) return;
+    seen.add(target);
+    visited.set(ast, seen);
+    if (unexplained.has(target) && Schema.is(Schema.make(ast))(null)) unexplained.delete(target);
+    const projection = ast.annotations?.jsonSchemaProjection;
+    if (isObject(projection)) {
+      const explicitPaths = new Set(nullNodes(projection, path).map(([, candidate]) => candidate));
+      for (const [node, candidate] of nullNodes(target, path)) {
+        if (explicitPaths.has(candidate)) unexplained.delete(node);
+      }
+      return;
+    }
+    if (Array.isArray(target.allOf)) {
+      target.allOf.forEach((branch, index) => visit(ast, branch, `${path}.allOf[${index}]`));
+      return;
+    }
+    if (AST.isSuspend(ast)) {
+      visit(ast.thunk(), target, path);
+    } else if (AST.isUnion(ast)) {
+      const branches = target.anyOf ?? target.oneOf;
+      const members = ast.types.filter((member) => !AST.isNever(member));
+      if (Array.isArray(branches)) {
+        expect(branches.length, `${path}: union alignment`).toBe(members.length);
+        members.forEach((member, index) => visit(member, branches[index], `${path}.anyOf[${index}]`));
+      } else {
+        // Collapsed literal unions have no child schemas to inspect.
+        expect(
+          members.every((member) => !AST.isObjects(member) && !AST.isArrays(member)),
+          path,
+        ).toBe(true);
+      }
+    } else if (AST.isObjects(ast)) {
+      for (const property of ast.propertySignatures) {
+        if (typeof property.name !== "string") continue;
+        const properties = target.properties;
+        if (isObject(properties)) visit(property.type, properties[property.name], `${path}.${property.name}`);
+      }
+      for (const signature of ast.indexSignatures) {
+        const patterns = target.patternProperties;
+        const targets = isObject(patterns) ? Object.values(patterns) : [target.additionalProperties];
+        for (const child of targets) visit(signature.type, child, `${path}.*`);
+      }
+    } else if (AST.isArrays(ast)) {
+      ast.elements.forEach((element, index) =>
+        visit(element, Array.isArray(target.items) ? target.items[index] : target.items, `${path}[${index}]`),
+      );
+      for (const rest of ast.rest) {
+        visit(rest, Array.isArray(target.items) ? target.additionalItems : target.items, `${path}[]`);
+      }
+    }
+  };
+  visit(AST.toEncoded(schema.ast), document, "$");
+  return [...unexplained.values()];
+};
+
 // Generate once because the output is deterministic, every derived family is
 // inspected below, and each invocation costs about two seconds.
 let generatorRan = false;
@@ -58,7 +163,7 @@ const runGenerator = (): void => {
 };
 
 describe("schema snapshot artifact-set gate", () => {
-  test("authored-input draft-07 artifacts do not advertise nullable property types", async () => {
+  test("authored-input draft-07 artifacts advertise null only where the encoded source accepts it", async () => {
     // Given the emitted authored-input artifact families, including registered lockfiles.
     runGenerator();
     const names = JSON_SCHEMA_NAMES.filter(
@@ -67,26 +172,12 @@ describe("schema snapshot artifact-set gate", () => {
           name,
         ) || /Lock(?:file|File|Entries|Entry)?(?:Schema)?$/.test(name),
     );
-    const nullablePaths: string[] = [];
-    const scan = (value: unknown, path: string): void => {
-      if (Array.isArray(value)) {
-        value.forEach((child, index) => scan(child, `${path}[${index}]`));
-        return;
-      }
-      if (value === null || typeof value !== "object") return;
-      if (
-        "type" in value &&
-        (value.type === "null" || (Array.isArray(value.type) && value.type.includes("null")))
-      )
-        nullablePaths.push(path);
-      for (const [key, child] of Object.entries(value)) {
-        if (key === "enum" || key === "const" || key === "default" || key === "examples") continue;
-        scan(child, `${path}.${key}`);
-      }
-    };
-    // When the actual draft-07 documents are scanned, not the source AST.
-    for (const name of names) scan(JSON.parse(await readFile(schemaArtifactPath(name), "utf8")), name);
-    // Then optional keys never permit null through type arrays or union alternatives.
+    // When actual draft-07 documents are checked against their encoded source ASTs.
+    for (const name of names) {
+      const artifact: unknown = JSON.parse(await readFile(schemaArtifactPath(name), "utf8"));
+      expect(unexplainedNullPaths(publicSchemaRegistry[name], artifact), name).toEqual([]);
+    }
+    // Then optional undefined cannot masquerade as null, while explicit Null remains legal.
     expect(names).toEqual(
       expect.arrayContaining([
         "LandofileShape",
@@ -97,7 +188,22 @@ describe("schema snapshot artifact-set gate", () => {
         "ToolingIncludeShape",
       ]),
     );
-    expect(nullablePaths).toEqual([]);
+  });
+
+  test("artifact null guard distinguishes explicit null from optional undefined", () => {
+    const schema = Schema.Struct({
+      exact: Schema.optionalKey(Schema.String),
+      optional: Schema.optional(Schema.String),
+      nullable: Schema.optionalKey(Schema.NullOr(Schema.String)),
+    });
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    expect(unexplainedNullPaths(schema, artifact)).toEqual(["$.properties.optional.anyOf[1]"]);
+  });
+
+  test.each(["value", "unexpected"])("artifact null guard detects nullable type arrays on %s", (field) => {
+    const schema = Schema.Struct({ value: Schema.optionalKey(Schema.String) });
+    const artifact = { type: "object", properties: { [field]: { type: ["string", "null"] } } };
+    expect(unexplainedNullPaths(schema, artifact)).toEqual([`$.properties.${field}`]);
   });
 
   test("bundled plugin manifest fixture freezes every in-binary plugin manifest", async () => {
@@ -180,7 +286,9 @@ describe("schema snapshot artifact-set gate", () => {
     expect(page?.content).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(page?.content).toContain("| `since` | Yes | `string` | a string matching the pattern");
+    expect(page?.content).toContain(
+      "| `since` | Yes | `string` | a string matching the RegExp ^(0\\|[1-9]\\d*)\\.(0\\|[1-9]\\d*)\\.(0\\|[1-9]\\d*)$ | — | — | — | — |",
+    );
     expect(page?.content).toContain(
       "| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |",
     );
@@ -221,18 +329,21 @@ describe("schema snapshot artifact-set gate", () => {
       "ArtifactBackedShape",
       Schema.Struct({
         value: Schema.String.annotate({ description: "Documented value." }),
+        note: Schema.optionalKey(Schema.String).annotate({ description: "Optional note." }),
       }),
       {
         jsonSchema: {
           type: "object",
           properties: {
             value: { type: "number", default: 7, enum: [7] },
+            note: { type: "string" },
           },
         },
       },
     );
 
     expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
+    expect(rendered).toContain("| `note` | No | `string` | Optional note. | — | — | — | — |");
   });
 
   test("reference renderer resolves property refs against the full JSON Schema document", () => {

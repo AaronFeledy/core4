@@ -676,7 +676,7 @@ const typeLiteralFields = (ast: AST.Objects, jsonSchema: JsonObject): ReadonlyAr
     return [
       {
         name: property.name,
-        required: isRequiredJsonSchemaProperty(jsonSchema, property.name),
+        required: !AST.isOptional(AST.toEncoded(property.type)),
         property: new AST.PropertySignature(property.name, AST.toEncoded(property.type)),
         jsonSchemas: [properties === undefined ? undefined : jsonObject(properties[property.name])],
         jsonSchemaRoot: jsonSchema,
