@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
@@ -11,7 +9,9 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
 const VERSIONS = ["1"] as const;
@@ -34,11 +34,6 @@ export const MEILISEARCH_FEATURE_ID = "service-lando.meilisearch";
 export const MEILISEARCH_DEFAULT_MASTER_KEY = "lando" as const;
 
 export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds a deterministic master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}) that is redacted from event surfaces. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -65,10 +60,7 @@ const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 30,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const meilisearchServiceFeature: ServiceFeatureDefinition = {
