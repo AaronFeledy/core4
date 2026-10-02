@@ -25,10 +25,7 @@ export interface RedactionServiceShape {
   ) => Effect.Effect<Redactor, never>;
 }
 
-export class RedactionService extends Context.Tag("@lando/core/RedactionService")<
-  RedactionService,
-  RedactionServiceShape
->() {}
+export class RedactionService extends Context.Service<RedactionService, RedactionServiceShape>()("@lando/core/RedactionService") {}
 
 const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;
@@ -55,11 +52,11 @@ const SECRET_ENV_KEY_PARTS = new Set([
   "tokens",
 ]);
 
-const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof SecretStore>) =>
+const collectSecretStoreValues = (secretStore: Context.Service.Shape<typeof SecretStore>) =>
   Effect.gen(function* () {
     const ids = yield* secretStore.list;
     const values = yield* Effect.all(
-      ids.map((id) => secretStore.get(id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))),
+      ids.map((id) => secretStore.get(id).pipe(Effect.catch(() => Effect.succeed(undefined)))),
     );
     return values.filter((value): value is string => value !== undefined && value.length > 0);
   });
@@ -181,7 +178,7 @@ export const createStandaloneRedactor = (
 ): Redactor => makeRegisteredRedactor(profile, [], options);
 
 export const makeRedactionService = (
-  secretStore: Context.Tag.Service<typeof SecretStore>,
+  secretStore: Context.Service.Shape<typeof SecretStore>,
 ): RedactionServiceShape => ({
   registerValues: registerRedactionValues,
   forProfile: (profile, options) =>
