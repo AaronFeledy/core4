@@ -35,6 +35,17 @@ describe("container engine dialects", () => {
     expect(parseImagePlatform("amd64")).toBeUndefined();
   });
 
+  test("rejects malformed platform pins instead of dropping empty or extra components", () => {
+    // Given
+    const pins = ["linux//amd64", "/linux/amd64", "linux/amd64/", "linux/arm/v7/extra"];
+
+    // When
+    const parsed = pins.map(parseImagePlatform);
+
+    // Then
+    expect(parsed).toEqual(pins.map(() => undefined));
+  });
+
   test("parses tagged, untagged, registry-port, and digest image references", () => {
     // Given
     const references = ["nginx", "nginx:1.27", "registry:5000/team/app:v1", "team/app:v1@sha256:abc"];

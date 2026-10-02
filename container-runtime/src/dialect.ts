@@ -42,8 +42,8 @@ export interface LifecycleDialect {
 }
 
 export const parseImagePlatform = (platform: string): ImagePlatform | undefined => {
-  const parts = platform.split("/").filter((part) => part.length > 0);
-  if (parts.length < 2) return undefined;
+  const parts = platform.split("/");
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => part.length === 0)) return undefined;
   const [os, architecture, variant] = parts;
   if (os === undefined || architecture === undefined) return undefined;
   return {
