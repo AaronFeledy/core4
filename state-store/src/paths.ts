@@ -1,12 +1,27 @@
 import { realpath } from "node:fs/promises";
-import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 import { Effect } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import type { StateRoot } from "@lando/sdk/services";
 
-import { resolveLandoRoots } from "@lando/paths";
+import { isPathWithin, resolveLandoRoots } from "@lando/paths";
+
+/** Climb only when the caller reports an unresolved candidate; thrown errors propagate. */
+export const findRealpathAncestor = async (
+  path: string,
+  tryRealpath: (candidate: string) => Promise<string | null>,
+): Promise<{ readonly ancestor: string; readonly realAncestor: string } | null> => {
+  let ancestor = path;
+  for (;;) {
+    const realAncestor = await tryRealpath(ancestor);
+    if (realAncestor !== null) return { ancestor, realAncestor };
+    const parent = dirname(ancestor);
+    if (parent === ancestor) return null;
+    ancestor = parent;
+  }
+};
 
 const baseDirForRoot = (root: StateRoot): string => {
   if (typeof root === "object") {
@@ -38,16 +53,8 @@ const pathError = (operation: string, path: string, cause?: unknown): StateStore
  * failures when either path has not been created yet.
  */
 const realpathOrDeepestExisting = async (path: string): Promise<string> => {
-  const tailSegments: Array<string> = [];
-  let current = path;
-  for (;;) {
-    const real = await realpath(current).catch(() => null);
-    if (real !== null) return tailSegments.length === 0 ? real : resolve(real, ...tailSegments.reverse());
-    const parent = resolve(current, "..");
-    if (parent === current) return path; // reached filesystem root without resolving anything
-    tailSegments.push(basename(current));
-    current = parent;
-  }
+  const found = await findRealpathAncestor(path, (candidate) => realpath(candidate).catch(() => null));
+  return found === null ? path : resolve(found.realAncestor, relative(found.ancestor, path));
 };
 
 export interface ResolvedStatePath {
@@ -87,15 +94,13 @@ export const resolveStatePath = (
       const rootReal = await realpathOrDeepestExisting(baseDir);
       const target = resolve(rootReal, ...segments);
 
-      const rel = relative(rootReal, target);
-      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      if (!isPathWithin(rootReal, target)) {
         throw pathError(operation, target);
       }
 
       // Reject symlinked ancestors that escape an otherwise contained lexical path.
       const targetReal = await realpathOrDeepestExisting(target);
-      const targetRel = relative(rootReal, targetReal);
-      if (targetRel === ".." || targetRel.startsWith(`..${sep}`) || isAbsolute(targetRel)) {
+      if (!isPathWithin(rootReal, targetReal)) {
         throw pathError(operation, target);
       }
 
