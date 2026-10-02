@@ -54,3 +54,11 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - 133 `Context.Tag` service classes in source;
   - 8 `FiberRef`s in 7 files (`volume-coordination.ts` holds two), all bound with `Effect.locally` and read with `FiberRef.get`, never `set`;
   - `Either` 1,981 and `Effect.either` 1,070 references, mostly in tests.
+
+## 2026-10-02 01:27 CDT - US-662 baseline (Measure, effect@3.21.2, base 15133ee26)
+- `bench:tooling-hot-path` (`lando bench` from the hot-path fixture, 30 warm runs each), three runs: p50 222.6 / 207.8 / 205.0 ms; p95 253.0 / 260.4 / 238.0 ms (script-reported warm p95 243.8 / 246.9 / 237.2 ms); cold 210 / 233 / 227 ms. Noise band on p95 about 22 ms.
+- `bench:opentui-startup` (`--version`, 20 runs each), three runs: startup p95 10.4 / 10.1 / 25.7 ms; first-output p95 9.3 / 9.3 / 10.1 ms. The 25.7 ms run is a single outlier; the noise band on startup p95 is wide.
+- linux-x64 compiled binary (`core/dist/lando`, minified, sanitized): 200,709,600 bytes.
+- `lando app:config --format=json` against the hot-path fixture: peak RSS 215,844 KB, 0.43 s wall.
+- `test:unit` wall time is not measured locally (the full suite runs in CI only); compare CI shard durations on the base and the switch PR instead.
+---
