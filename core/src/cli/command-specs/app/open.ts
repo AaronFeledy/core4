@@ -22,7 +22,9 @@ export const openSpec: LandoCommandSpec<OpenAppResult> = {
     route: Flags.string({ description: "Select an exact route hostname to open." }),
     all: Flags.boolean({ description: "Open every resolved route." }),
     print: Flags.boolean({ description: "Print the resolved URL(s) instead of opening a browser." }),
+    qr: Flags.boolean({ description: "Print the resolved URL(s) and a QR instead of opening a browser." }),
   },
   run: (input) => openApp(openOptionsFromInput(input)),
-  render: (result, _input, ctx) => renderOpenAppResult(result as OpenAppResult, ctx),
+  render: (result, input, ctx) =>
+    renderOpenAppResult(result as OpenAppResult, ctx, openOptionsFromInput(input)),
 };

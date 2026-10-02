@@ -133,10 +133,10 @@ export const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
 
 export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:open", argv)) return Promise.resolve();
-  return runCompiledCommand(
-    openApp(openOptionsFromInput(compiledCommandInputFromArgv("app:open", argv))),
-    appRuntimeLayer(),
-    renderOpenAppResult,
+  const input = compiledCommandInputFromArgv("app:open", argv);
+  const options = openOptionsFromInput(input);
+  return runCompiledCommand(openApp(options), appRuntimeLayer(), (value, ctx) =>
+    renderOpenAppResult(value, ctx, options),
   );
 };
 

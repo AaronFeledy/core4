@@ -3,17 +3,23 @@ import type { TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
 
 import type { ShareStopResult } from "@lando/engine/operations/share";
 import type { RenderContext } from "../renderer-boundary";
+import { appendTerminalQr } from "../terminal-qr";
 
 export const renderShareResult = (
   result: TunnelSessionType,
-  _format: "text" | "json" = "text",
-  _ctx?: RenderContext,
+  format: "text" | "json" = "text",
+  ctx?: RenderContext,
 ): string => {
   const target =
     result.target._tag === "service" ? `${result.target.service}:${result.target.port}` : result.target._tag;
-  return `Tunnel ${result.id} ${result.status} via ${result.provider} (${target})${
+  const line = `Tunnel ${result.id} ${result.status} via ${result.provider} (${target})${
     result.publicUrl === undefined ? "" : ` at ${result.publicUrl}`
   }\n`;
+  return appendTerminalQr(line, {
+    url: result.publicUrl,
+    isTTY: ctx?.isTTY === true,
+    format,
+  });
 };
 
 export const renderShareListResult = (
