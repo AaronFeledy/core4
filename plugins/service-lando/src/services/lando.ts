@@ -5,6 +5,7 @@ import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
@@ -23,9 +24,7 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
 
   if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
 
   if (service.appMount !== false) {
     ctx.setAppMount({
