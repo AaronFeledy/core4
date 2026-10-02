@@ -22,7 +22,7 @@ import {
 
 export interface TestManagedFileStore {
   /** The `ManagedFileService` implementation backed by memory. */
-  readonly service: Context.Tag.Service<typeof ManagedFileService>;
+  readonly service: Context.Service.Shape<typeof ManagedFileService>;
   /** A `Layer` providing the in-memory service for runtime composition. */
   readonly layer: Layer.Layer<ManagedFileService>;
   /** The resolved base (app root) the store operates against. */

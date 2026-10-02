@@ -12,7 +12,7 @@ test("validates target and artifact collisions before producing artifacts", asyn
   await writeFile(join(appRoot, "a"), "old");
   // When the complete path graph is prepared
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       transactions.prepare({
         appRoot,
         operations: [
@@ -37,7 +37,7 @@ test("rejects a symlinked later backup before creating an earlier backup", async
   const before = await readdir(appRoot);
   // When the complete artifact graph is validated
   await scoped(
-    Effect.either(
+    Effect.result(
       transactions.prepare({
         appRoot,
         operations: [
@@ -70,7 +70,7 @@ for (const kind of ["alias", "parent-symlink", "directory", "hardlink"] as const
     const before = await readdir(appRoot);
     // When the invalid target follows an otherwise valid operation
     const result = await scoped(
-      Effect.either(
+      Effect.result(
         transactions.prepare({
           appRoot,
           operations: [
@@ -111,7 +111,7 @@ for (const kind of ["symlink", "hardlink", "permissions", "corrupt"] as const) {
     }
     // When prepare tries to reuse the backup
     const result = await scoped(
-      Effect.either(
+      Effect.result(
         transactions.prepare({ appRoot, operations: [{ kind: "write", path: "a", content: "new" }] }),
       ),
     );

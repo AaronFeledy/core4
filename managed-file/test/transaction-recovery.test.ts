@@ -18,7 +18,7 @@ const mixedFixture = async (stopAt: string) => {
   await writeFile(join(context.appRoot, "keep"), "old-keep", { mode: 0o640 });
   await writeFile(join(context.appRoot, "drop"), "old-drop");
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       context.transactions.run({
         appRoot: context.appRoot,
         operations: [
@@ -130,17 +130,17 @@ for (const variant of [
     }
     const before = await readdir(appRoot);
     // When recovery preflights the recorded plan
-    const outcome = await scoped(Effect.either(transactions.recover(appRoot)));
+    const outcome = await scoped(Effect.result(transactions.recover(appRoot)));
     // Then it blocks for manual resolution without touching a single user file
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag === "Left") expect(outcome.left.reason).toBe("blocked");
+    if (outcome._tag === "Failure") expect(outcome.failure.reason).toBe("blocked");
     expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("blocked");
     expect((await readdir(appRoot)).toSorted()).toEqual(before.toSorted());
     if (variant !== "target-content" && variant !== "target-symlink" && variant !== "target-mode")
       expect(await readFile(keep, "utf8")).toBe("old-keep");
     expect(await readFile(join(appRoot, "drop"), "utf8")).toBe("old-drop");
     // And a blocked journal keeps refusing rather than retrying
-    const retry = await scoped(Effect.either(transactions.recover(appRoot)));
+    const retry = await scoped(Effect.result(transactions.recover(appRoot)));
     expect(retry._tag).toBe("Left");
   });
 }
@@ -150,7 +150,7 @@ test("never restores a backup over an edit made to an already applied target", a
   const { appRoot, transactions } = await mixedFixture("after-mutation");
   await writeFile(join(appRoot, "keep"), "user-edit", { mode: 0o640 });
   // When recovery preflights the mixed state
-  const outcome = await scoped(Effect.either(transactions.recover(appRoot)));
+  const outcome = await scoped(Effect.result(transactions.recover(appRoot)));
   // Then the edit survives, the pending target stays untouched, and it blocks
   expect(outcome._tag).toBe("Left");
   expect(await readFile(join(appRoot, "keep"), "utf8")).toBe("user-edit");
@@ -215,7 +215,7 @@ test("reports the action a blocked or committed journal needs", async () => {
   // Given a blocked journal produced by a real conflict
   const { appRoot, transactions } = await mixedFixture("prepared");
   await writeFile(join(appRoot, "keep"), "concurrent", { mode: 0o640 });
-  await scoped(Effect.either(transactions.recover(appRoot)));
+  await scoped(Effect.result(transactions.recover(appRoot)));
   // When the dry run inspects it
   const report = await scoped(transactions.pending(appRoot));
   // Then it names manual resolution instead of recovery
@@ -242,12 +242,12 @@ test("refuses to consume a partial set through the guard entry point", async () 
   // Given a blocked transaction under an app root
   const { appRoot, transactions } = await mixedFixture("prepared");
   await writeFile(join(appRoot, "keep"), "concurrent", { mode: 0o640 });
-  await scoped(Effect.either(transactions.recover(appRoot)));
+  await scoped(Effect.result(transactions.recover(appRoot)));
   // When the load/start guard checks that root
-  const guarded = await Effect.runPromise(Effect.either(transactions.ensureConsistent(appRoot)));
+  const guarded = await Effect.runPromise(Effect.result(transactions.ensureConsistent(appRoot)));
   // Then it refuses without loading anything else
   expect(guarded._tag).toBe("Left");
-  if (guarded._tag === "Left") expect(guarded.left.reason).toBe("blocked");
+  if (guarded._tag === "Failure") expect(guarded.failure.reason).toBe("blocked");
 });
 
 test("passes a clean app root through the guard without creating journal state", async () => {
@@ -275,7 +275,7 @@ test("resumes a recovery that was itself interrupted mid-plan", async () => {
   });
   await writeFile(join(appRoot, "keep"), "old-keep");
   await scoped(
-    Effect.either(
+    Effect.result(
       transactions.run({
         appRoot,
         operations: [
@@ -285,7 +285,7 @@ test("resumes a recovery that was itself interrupted mid-plan", async () => {
       }),
     ),
   );
-  const first = await scoped(Effect.either(transactions.recover(appRoot)));
+  const first = await scoped(Effect.result(transactions.recover(appRoot)));
   expect(first._tag).toBe("Left");
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("committing");
   // When recovery runs again against the surviving journal

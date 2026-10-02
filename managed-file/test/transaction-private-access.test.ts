@@ -145,7 +145,7 @@ for (const artifact of ["stage", "backup"] as const) {
     );
     await writeFile(join(context.appRoot, "config"), "old");
     await scoped(
-      Effect.either(
+      Effect.result(
         context.transactions.run({
           appRoot: context.appRoot,
           operations: [{ kind: "write", path: "config", content: "new" }],
@@ -160,11 +160,11 @@ for (const artifact of ["stage", "backup"] as const) {
     rejectedPaths.add(rejectedPath);
 
     // When recovery preflights the persisted transaction
-    const outcome = await scoped(Effect.either(context.transactions.recover(context.appRoot)));
+    const outcome = await scoped(Effect.result(context.transactions.recover(context.appRoot)));
 
     // Then it blocks before publishing the staged bytes
     expect(outcome._tag).toBe("Left");
-    if (outcome._tag === "Left") expect(outcome.left.reason).toBe("blocked");
+    if (outcome._tag === "Failure") expect(outcome.failure.reason).toBe("blocked");
     expect(await readFile(join(context.appRoot, "config"), "utf8")).toBe("old");
   });
 }
@@ -185,7 +185,7 @@ test("refuses to trust a transaction journal whose ACL is not owner-only", async
   );
   await writeFile(join(context.appRoot, "config"), "old");
   await scoped(
-    Effect.either(
+    Effect.result(
       context.transactions.run({
         appRoot: context.appRoot,
         operations: [{ kind: "write", path: "config", content: "new" }],
@@ -195,9 +195,9 @@ test("refuses to trust a transaction journal whose ACL is not owner-only", async
   rejectJournal = true;
 
   // When read-only recovery inspection opens the journal
-  const outcome = await scoped(Effect.either(context.transactions.pending(context.appRoot)));
+  const outcome = await scoped(Effect.result(context.transactions.pending(context.appRoot)));
 
   // Then inspection fails closed before decoding the journal bytes
   expect(outcome._tag).toBe("Left");
-  if (outcome._tag === "Left") expect(outcome.left.reason).toBe("journal");
+  if (outcome._tag === "Failure") expect(outcome.failure.reason).toBe("journal");
 });

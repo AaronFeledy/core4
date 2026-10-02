@@ -20,7 +20,7 @@ for (const checkpoint of ["prepared", "after-mutation"] as const) {
       await writeFile(join(appRoot, "b"), "old-b");
       // When commit validates the backups globally and immediately before mutation
       const result = await scoped(
-        Effect.either(
+        Effect.result(
           transactions.run({
             appRoot,
             operations: [

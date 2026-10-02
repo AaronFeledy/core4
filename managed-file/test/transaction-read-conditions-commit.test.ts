@@ -24,7 +24,7 @@ test.each(["prepared", "committing"] as const)(
     const before = await stat(join(appRoot, "target"));
     // When
     const result = await scoped(
-      Effect.either(
+      Effect.result(
         transactions.run({
           appRoot,
           readConditions: [
@@ -69,7 +69,7 @@ test("rejects a readonly source removed between explicit prepare and commit", as
         operations: [{ kind: "write", path: "target", content: "translated" }],
       });
       yield* Effect.promise(() => unlink(source));
-      return yield* Effect.either(transactions.commit(prepared));
+      return yield* Effect.result(transactions.commit(prepared));
     }),
   );
   // Then
