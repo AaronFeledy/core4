@@ -3,7 +3,7 @@ import { EventServiceLive, recordedEvents } from "@lando/core/testing";
 import { EventService } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer } from "effect";
 
-test("the public testing event bus shares a graph but rebuilds for nested provide and a new run", async () => {
+test("the public testing event bus is shared within a run, including nested provide, and rebuilt for a new run", async () => {
   // Given: use the public testing export, not makeTestRuntime's fake event bus.
   const instances: Context.Service.Shape<typeof EventService>[] = [];
   const layer = EventServiceLive.pipe(
@@ -16,14 +16,14 @@ test("the public testing event bus shares a graph but rebuilds for nested provid
     Effect.gen(function* () {
       const outer = yield* EventService;
       yield* outer.publish({ _tag: "ready", timestamp: DateTime.makeUnsafe(0) });
-      expect(instances).toHaveLength(1);
+      expect(new Set(instances).size).toBe(1);
       expect(yield* recordedEvents()).toHaveLength(1);
       const nested = yield* Effect.gen(function* () {
-        expect(yield* recordedEvents()).toEqual([]);
+        expect(yield* recordedEvents()).toHaveLength(1);
         return yield* EventService;
       }).pipe(Effect.provide(graph));
-      expect(instances).toHaveLength(2);
-      expect(nested).not.toBe(outer);
+      expect(new Set(instances).size).toBe(1);
+      expect(nested).toBe(outer);
       expect(yield* EventService).toBe(outer);
       expect(yield* recordedEvents()).toHaveLength(1);
       return outer;
@@ -36,8 +36,7 @@ test("the public testing event bus shares a graph but rebuilds for nested provid
     }).pipe(Effect.provide(graph)),
   );
 
-  // Then: three real buses were constructed, with independent history buffers.
-  expect(instances).toHaveLength(3);
-  expect(new Set(instances).size).toBe(3);
+  // Then: two real buses were constructed, one per run, with independent history buffers.
+  expect(new Set(instances).size).toBe(2);
   expect(fresh).not.toBe(outer);
 });

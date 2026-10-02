@@ -3,7 +3,7 @@ import { EventService } from "@lando/sdk/services";
 import { Context, Effect, Layer } from "effect";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
-test("EventService builds once per graph, rebuilds for nested provide, and rebuilds for a new run", async () => {
+test("EventService builds once per runtime, reuses it for nested provide, and rebuilds for a new run", async () => {
   // Given: observe successful builds of the real layer and its fresh service instances.
   const instances: Context.Service.Shape<typeof EventService>[] = [];
   const layer = EventServiceLive.pipe(
@@ -16,18 +16,17 @@ test("EventService builds once per graph, rebuilds for nested provide, and rebui
     Effect.gen(function* () {
       const outer = yield* EventService;
       expect(yield* EventService).toBe(outer);
-      expect(instances).toHaveLength(1);
+      expect(new Set(instances).size).toBe(1);
       const nested = yield* EventService.pipe(Effect.provide(graph));
-      expect(instances).toHaveLength(2);
-      expect(nested).not.toBe(outer);
+      expect(new Set(instances).size).toBe(1);
+      expect(nested).toBe(outer);
       expect(yield* EventService).toBe(outer);
       return outer;
     }).pipe(Effect.provide(graph)),
   );
   const fresh = await Effect.runPromise(EventService.pipe(Effect.provide(graph)));
 
-  // Then: Effect 3 uses fresh memo maps for nested layer provides and top-level runs.
-  expect(instances).toHaveLength(3);
-  expect(new Set(instances).size).toBe(3);
+  // Then: Effect 4 forks the parent memo map for nested provides; each top-level run starts a fresh one.
+  expect(new Set(instances).size).toBe(2);
   expect(fresh).not.toBe(outer);
 });

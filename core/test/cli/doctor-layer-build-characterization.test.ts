@@ -29,31 +29,30 @@ const characterizeBuilds = async <R, S>(live: Layer.Layer<R>, read: Effect.Effec
     Effect.gen(function* () {
       const outer = yield* read;
       expect(yield* read).toBe(outer);
-      expect(instances).toHaveLength(1);
+      expect(new Set(instances).size).toBe(1);
       const nested = yield* read.pipe(Effect.provide(graph));
-      expect(instances).toHaveLength(2);
-      expect(nested).not.toBe(outer);
+      expect(new Set(instances).size).toBe(1);
+      expect(nested).toBe(outer);
       expect(yield* read).toBe(outer);
       return outer;
     }).pipe(Effect.provide(graph)),
   );
   const fresh = await Effect.runPromise(read.pipe(Effect.provide(graph)));
 
-  // Then: Effect 3 rebuilds at both provide boundaries, not within the composed graph.
-  expect(instances).toHaveLength(3);
-  expect(new Set(instances).size).toBe(3);
+  // Then: one build per runtime; a nested provide reuses the parent's memoized build, and a new run rebuilds.
+  expect(new Set(instances).size).toBe(2);
   expect(fresh).not.toBe(outer);
 };
 
-test("the subsystem doctor healthcheck layer has build counts 1, 2, 3", async () => {
+test("the subsystem doctor healthcheck layer builds once per runtime", async () => {
   await characterizeBuilds(DefaultSubsystemDoctorLayer, HealthcheckRunner);
 });
 
-test("the subsystem doctor scanner layer has build counts 1, 2, 3", async () => {
+test("the subsystem doctor scanner layer builds once per runtime", async () => {
   await characterizeBuilds(DefaultSubsystemDoctorLayer, UrlScanner);
 });
 
-test("the global-app doctor layer has build counts 1, 2, 3", async () => {
+test("the global-app doctor layer builds once per runtime", async () => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = DefaultGlobalAppDoctorLayer.pipe(
     Layer.provide(
@@ -66,6 +65,6 @@ test("the global-app doctor layer has build counts 1, 2, 3", async () => {
   await characterizeBuilds(layer, GlobalAppService);
 });
 
-test("the MCP doctor redaction layer has build counts 1, 2, 3", async () => {
+test("the MCP doctor redaction layer builds once per runtime", async () => {
   await characterizeBuilds(DefaultMcpDoctorLayer, RedactionService);
 });

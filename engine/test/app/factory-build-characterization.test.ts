@@ -21,18 +21,18 @@ const characterizeBuilds = async <R, S, E>(
       expect(yield* read).toBe(outer);
       expect(builds()).toBe(1);
       const nested = yield* read.pipe(Effect.provide(graph));
-      expect(builds()).toBe(2);
-      expect(nested).not.toBe(outer);
+      expect(builds()).toBe(1);
+      expect(nested).toBe(outer);
       expect(yield* read).toBe(outer);
       return outer;
     }).pipe(Effect.provide(graph)),
   );
   const fresh = await Effect.runPromise(read.pipe(Effect.provide(graph)));
-  expect(builds()).toBe(3);
+  expect(builds()).toBe(2);
   expect(fresh).not.toBe(outer);
 };
 
-test("the real lifecycle factory constructs at counts 1, 2, 3 behind a test-only layer", async () => {
+test("the real lifecycle factory constructs once per runtime behind a test-only layer", async () => {
   // Given: lifecycle is a factory, not a production Layer; the adapter supplies its owning scope.
   const instances: AppLifecycle[] = [];
   const layer = Layer.effect(
@@ -47,12 +47,12 @@ test("the real lifecycle factory constructs at counts 1, 2, 3 behind a test-only
   // When: memoization boundaries drive the actual constructor through the adapter.
   await characterizeBuilds(layer, Lifecycle, () => instances.length);
 
-  // Then: one construction per graph, another for nested provide, another for the fresh run.
-  expect(instances).toHaveLength(3);
-  expect(new Set(instances).size).toBe(3);
+  // Then: one construction per run; the nested provide reuses the parent's build.
+  expect(instances).toHaveLength(2);
+  expect(new Set(instances).size).toBe(2);
 });
 
-test("the real handle factory constructs at counts 1, 2, 3 behind a test-only layer", async () => {
+test("the real handle factory constructs once per runtime behind a test-only layer", async () => {
   // Given: only the handle's pure plan surface is used, so its captured runtime needs no services.
   const runtime = Context.makeUnsafe<AppHandleRuntimeServices>(new Map());
   const plan: AppPlan = {
@@ -100,6 +100,6 @@ test("the real handle factory constructs at counts 1, 2, 3 behind a test-only la
   await characterizeBuilds(layer, read, () => instances.length);
 
   // Then: count actual makeAppHandle results, not adapter evaluations or fake handle objects.
-  expect(instances).toHaveLength(3);
-  expect(new Set(instances).size).toBe(3);
+  expect(instances).toHaveLength(2);
+  expect(new Set(instances).size).toBe(2);
 });

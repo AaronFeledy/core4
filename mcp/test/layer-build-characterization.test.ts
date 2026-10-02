@@ -5,7 +5,7 @@ import { Context, Effect, Layer } from "effect";
 import { McpRuntimeConfig, McpService, McpServiceLive } from "../src/service.ts";
 import { TestMcpCommandExecutor } from "./executor.ts";
 
-test("MCP builds once per graph, twice with nested provide, and freshly in a new run", async () => {
+test("MCP builds once per runtime, reuses it for nested provide, and builds freshly in a new run", async () => {
   // Given: the real MCP layer with the package's executor seam and an empty command catalog.
   const instances: Context.Service.Shape<typeof McpService>[] = [];
   const layer = McpServiceLive.pipe(
@@ -32,12 +32,12 @@ test("MCP builds once per graph, twice with nested provide, and freshly in a new
     Effect.gen(function* () {
       const outer = yield* McpService;
       expect(yield* McpService).toBe(outer);
-      expect(instances).toHaveLength(1);
+      expect(new Set(instances).size).toBe(1);
       const catalog = yield* outer.catalog();
       const nested = yield* McpService.pipe(Effect.provide(graph));
-      expect(instances).toHaveLength(2);
-      expect(nested).not.toBe(outer);
-      expect(yield* nested.catalog()).not.toBe(catalog);
+      expect(new Set(instances).size).toBe(1);
+      expect(nested).toBe(outer);
+      expect(yield* nested.catalog()).toBe(catalog);
       expect(yield* outer.catalog()).toBe(catalog);
       expect(yield* McpService).toBe(outer);
       return outer;
@@ -45,8 +45,7 @@ test("MCP builds once per graph, twice with nested provide, and freshly in a new
   );
   const fresh = await Effect.runPromise(McpService.pipe(Effect.provide(graph)));
 
-  // Then: each memo-map boundary gets its own service and catalog cache.
-  expect(instances).toHaveLength(3);
-  expect(new Set(instances).size).toBe(3);
+  // Then: each runtime gets its own service and catalog cache.
+  expect(new Set(instances).size).toBe(2);
   expect(fresh).not.toBe(outer);
 });
