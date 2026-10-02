@@ -22,6 +22,8 @@ lando init --recipe lamp --name=my-lamp-app --yes \
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling, Apache PHP, and database hosts, see [Run the LAMP recipe](/guides/recipes/lamp-workflow/).
+
 ## 1. scaffold
 
 ```bash
