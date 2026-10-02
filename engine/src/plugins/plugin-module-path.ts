@@ -9,9 +9,10 @@
  * discovery layers raise.
  */
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isPathWithin } from "@lando/paths";
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 
 export const pluginManifestError = (message: string, cause: unknown): PluginManifestError =>
@@ -40,8 +41,7 @@ export const resolvePluginModulePath = async (
       ? modulePath
       : resolve(root, modulePath);
   const resolved = resolve(candidate);
-  const relativePath = relative(root, resolved);
-  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+  if (!isPathWithin(root, resolved)) {
     throw pluginLoadError(
       pluginName,
       `Plugin module ${modulePath} resolves outside the plugin package root ${root}.`,
@@ -50,8 +50,7 @@ export const resolvePluginModulePath = async (
 
   const realRoot = await realPathOrResolved(root);
   const realResolved = await realPathOrResolved(resolved);
-  const realRelativePath = relative(realRoot, realResolved);
-  if (realRelativePath.startsWith("..") || isAbsolute(realRelativePath)) {
+  if (!isPathWithin(realRoot, realResolved)) {
     throw pluginLoadError(
       pluginName,
       `Plugin module ${modulePath} resolves through symlink outside the plugin package root ${root}.`,
