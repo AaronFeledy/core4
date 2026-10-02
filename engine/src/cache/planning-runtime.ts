@@ -4,6 +4,7 @@ import { dirname, join, relative, sep } from "node:path";
 
 import { sha256Hex } from "@lando/sdk/digest";
 import { CORE_VERSION } from "../version.ts";
+import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 
 declare const __LANDO_CORE_VERSION__: string | undefined;
 
@@ -18,22 +19,6 @@ interface BundledSourceEntry {
   readonly path: string;
   readonly sha256: string;
 }
-
-const stable = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "bigint") return value.toString();
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, child]) => [key, stable(child)]),
-    );
-  }
-  return value;
-};
-
-const stableStringify = (value: unknown): string => JSON.stringify(stable(value));
 
 const compiledVersionDefined = (): boolean =>
   typeof __LANDO_CORE_VERSION__ === "string" && __LANDO_CORE_VERSION__.length > 0;
@@ -116,9 +101,11 @@ const bundledSourceDigest = (): string | undefined => {
   }
   if (entries.length === 0) return undefined;
   return sha256Hex(
-    stableStringify(
+    canonicalCacheJson(
       entries.sort(
-        (left, right) => left.package.localeCompare(right.package) || left.path.localeCompare(right.path),
+        (left, right) =>
+          compareFingerprintText(left.package, right.package) ||
+          compareFingerprintText(left.path, right.path),
       ),
     ),
   );
@@ -135,7 +122,7 @@ export const computePlanningRuntimeParts = (): PlanningRuntimeParts => {
 };
 
 export const fingerprintPlanningRuntimeParts = (parts: PlanningRuntimeParts): string =>
-  sha256Hex(stableStringify(parts));
+  sha256Hex(canonicalCacheJson(parts));
 
 export const computePlanningRuntimeIdentity = (): string =>
   fingerprintPlanningRuntimeParts(computePlanningRuntimeParts());

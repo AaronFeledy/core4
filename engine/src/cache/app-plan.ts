@@ -29,13 +29,14 @@ import {
 import { sha256Hex } from "@lando/sdk/digest";
 import { routerEnabled } from "../config/router-config.ts";
 import { CORE_VERSION } from "../version.ts";
+import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 import { appPlanCachePath } from "./paths.ts";
 import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 17n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 18n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -68,22 +69,6 @@ export interface AppPlanSourceFingerprint {
 }
 
 const sha256 = (payload: Uint8Array | string): Buffer => createHash("sha256").update(payload).digest();
-
-const stable = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === "bigint") return value.toString();
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, child]) => [key, stable(child)]),
-    );
-  }
-  return value;
-};
-
-const stableStringify = (value: unknown): string => JSON.stringify(stable(value));
 
 const readOptionalHash = (path: string): Promise<string | null> =>
   readFile(path).then(
@@ -152,13 +137,14 @@ const normalizeManifest = (manifest: PluginManifest) => ({
 const compareManifests = (
   a: ReturnType<typeof normalizeManifest>,
   b: ReturnType<typeof normalizeManifest>,
-): number => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api;
+): number =>
+  compareFingerprintText(a.name, b.name) || compareFingerprintText(a.version, b.version) || a.api - b.api;
 
 export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
   // Keep registry list order out of the cache key for equivalent manifests.
   const sortedManifests = input.pluginManifests.map(normalizeManifest).sort(compareManifests);
   return sha256(
-    stableStringify({
+    canonicalCacheJson({
       cache: "app-plan",
       schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
       landoVersion: CORE_VERSION,
@@ -174,7 +160,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
               includedFragmentShas: input.sourceFingerprint.includedFragmentShas,
               referencedFiles: input.sourceFingerprint.referencedFiles
                 .map(({ absolutePath, size, sha256 }) => ({ absolutePath, size, sha256 }))
-                .sort((left, right) => left.absolutePath.localeCompare(right.absolutePath)),
+                .sort((left, right) => compareFingerprintText(left.absolutePath, right.absolutePath)),
               includeSources: input.sourceFingerprint.includeSources ?? [],
             },
       includedFragmentShas: [
