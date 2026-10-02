@@ -99,7 +99,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
       landoPlugin: manifest,
       dependencies: {
         "@lando/sdk": "^4.0.0",
-        effect: "^3.21.2",
+        effect: "4.0.0",
       },
       devDependencies: {
         "@types/bun": "^1.4.0",
@@ -157,7 +157,7 @@ const renderIndexTs = (input: PluginScaffoldInput): string => {
 };
 
 const renderConfigTs = (): string =>
-  `import { Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),\n});\n\nexport type Config = typeof Config.Type;\n`;
+  `import { Effect, Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),\n});\n\nexport type Config = typeof Config.Type;\n`;
 
 const renderTest = (name: string): string =>
   `import { describe, expect, test } from "bun:test";\n\nimport { manifest } from "../src/index.ts";\n\ndescribe(${JSON.stringify(name)}, () => {\n  test("exports a Lando v4 plugin manifest", () => {\n    expect(manifest.name).toBe(${JSON.stringify(name)});\n    expect(manifest.api).toBe(4);\n    expect(manifest.requires?.["@lando/core"]).toBe("^4.0.0");\n  });\n});\n`;
