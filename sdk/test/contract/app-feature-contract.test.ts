@@ -18,7 +18,8 @@ const expectAppFeatureFailure = async (
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
   expect(result.cause.reasons).toHaveLength(1);
-  const reason = result.cause.reasons[0]!;
+  const reason = result.cause.reasons[0];
+  if (reason === undefined) throw new Error("expected a failure reason");
   expect(Cause.isFailReason(reason)).toBe(true);
   if (!Cause.isFailReason(reason)) return;
   expect(reason.error).toBeInstanceOf(ContractFailure);

@@ -30,7 +30,8 @@ const failureOf = (
   if (cause.reasons.length !== 1) {
     throw new Error(`expected a single failure reason, got ${cause.reasons.length}`);
   }
-  const reason = cause.reasons[0]!;
+  const reason = cause.reasons[0];
+  if (reason === undefined) throw new Error("expected a failure reason");
   if (!Cause.isFailReason(reason)) {
     throw new Error(`expected a typed failure, got ${reason?._tag ?? "undefined"}`);
   }
