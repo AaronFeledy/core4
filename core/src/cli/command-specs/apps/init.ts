@@ -54,6 +54,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
     answer: stringArrayFlag(values, "answer"),
     option: stringArrayFlag(values, "option"),
     full: booleanFlag(values, "full"),
+    "agent-skills": booleanFlag(values, "agent-skills"),
     yes: booleanFlag(values, "yes"),
     interactive: booleanFlag(values, "interactive"),
     "no-interactive": booleanFlag(values, "no-interactive"),
