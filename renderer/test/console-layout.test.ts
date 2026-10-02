@@ -433,6 +433,26 @@ describe("linkKnownHttpUrls", () => {
     expect(stripAnsi(out)).toBe(line);
   });
 
+  test("leaves a multi-break wrapped head plain when the first line equals a shorter endpoint", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080/very/long/extra/path";
+    const label = "endpoints";
+    const width = shortUrl.length + label.length + 3;
+    const lines = wrapFieldToWidth(label, longUrl, label.length, width);
+    expect(lines[0]?.endsWith(shortUrl)).toBe(true);
+    expect(lines.length).toBeGreaterThan(2);
+    const text = lines.join("\n");
+    const suffix = longUrl.slice(shortUrl.length);
+    const afterHead = text.indexOf(shortUrl) + shortUrl.length;
+    let rest = afterHead;
+    while (rest < text.length && text.charCodeAt(rest) <= 0x20) rest += 1;
+    expect(text.slice(rest).startsWith(suffix)).toBe(false);
+    expect(text.slice(rest)).toContain("\n");
+    const out = linkKnownHttpUrls(text, [shortUrl, longUrl]);
+    expect(out).toBe(text);
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
   test("copies a BEL-terminated OSC 8 span whole instead of re-linking its label", () => {
     const url = "http://localhost:8080";
     const already = `${ESC}]8;;${url}${BEL}${url}${ESC}]8;;${BEL}`;

@@ -135,10 +135,27 @@ const isSoftBoundary = (ch: string | undefined): boolean => {
 };
 
 /**
+ * Walk `suffix` against `text` from `start`, skipping wrap soft runs (newlines
+ * and indent spaces) between suffix bytes. True when every suffix byte is found
+ * in order and the next character is a token boundary or the end of `text`.
+ */
+const matchesWrappedSuffix = (text: string, start: number, suffix: string): boolean => {
+  let index = start;
+  let taken = 0;
+  while (taken < suffix.length) {
+    while (index < text.length && isSoftBoundary(text[index])) index += 1;
+    if (index >= text.length || text[index] !== suffix[taken]) return false;
+    index += 1;
+    taken += 1;
+  }
+  return isUrlTokenBoundary(text[index]);
+};
+
+/**
  * True when `url` matched at `index` is the head of a longer known endpoint that
- * a hard wrap cut after it: a soft boundary follows, and the bytes after that
- * run are that longer candidate's remaining suffix. A newline before a different
- * whole endpoint is not a wrap.
+ * a hard wrap cut after it: a soft boundary follows, and walking the longer
+ * candidate's remaining suffix across later wrap breaks consumes that suffix.
+ * A newline before a different whole endpoint is not a wrap.
  */
 const isWrappedPrefixOfCandidate = (
   text: string,
@@ -148,12 +165,9 @@ const isWrappedPrefixOfCandidate = (
 ): boolean => {
   const after = index + url.length;
   if (!isSoftBoundary(text[after])) return false;
-  let rest = after + 1;
-  while (rest < text.length && isSoftBoundary(text[rest])) rest += 1;
-  const continuation = text.slice(rest);
   return candidates.some((candidate) => {
     if (candidate.length <= url.length || !candidate.startsWith(url)) return false;
-    return continuation.startsWith(candidate.slice(url.length));
+    return matchesWrappedSuffix(text, after, candidate.slice(url.length));
   });
 };
 
