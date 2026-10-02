@@ -164,7 +164,7 @@ test("a later option change still emits a complete recipe object", async () => {
       id: "wordpress",
       version: "1.0.0",
       producer: { recipeId: "wordpress", sourceKind: "bundled" },
-      options: { php: "8.3", redis: false },
+      options: { php: "8.4", redis: false },
     },
   });
 });
