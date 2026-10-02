@@ -51,6 +51,6 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
     };
     return prune ? listServicesWithPrune(options) : listServices(options);
   },
-  render: (result, input?: unknown) =>
-    renderAppsListResult(result as ListServicesResult, extractFormat(input)),
+  render: (result, input, ctx) =>
+    renderAppsListResult(result as ListServicesResult, extractFormat(input), ctx),
 };
