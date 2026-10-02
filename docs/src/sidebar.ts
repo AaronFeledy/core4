@@ -67,6 +67,7 @@ export const sidebar = [
           { label: "Run the Jekyll recipe", slug: "guides/recipes/jekyll-workflow" },
           { label: "Run the Backdrop recipe", slug: "guides/recipes/backdrop-workflow" },
           { label: "Run the WordPress recipe", slug: "guides/recipes/wordpress-workflow" },
+          { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },

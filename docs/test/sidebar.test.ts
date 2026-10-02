@@ -145,6 +145,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/jekyll-workflow");
     expect(slugs).toContain("guides/recipes/backdrop-workflow");
     expect(slugs).toContain("guides/recipes/wordpress-workflow");
+    expect(slugs).toContain("guides/recipes/drupal-workflow");
     expect(slugs).toContain("guides/recipes/drupal-cms-workflow");
     expect(slugs).toContain("guides/recipes/joomla-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
