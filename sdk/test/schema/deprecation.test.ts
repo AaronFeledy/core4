@@ -71,12 +71,7 @@ describe("DeprecationNotice", () => {
   test("publishes JSON Schema through the registry", () => {
     expect(AST.resolveTitle(DeprecationNotice.ast)).toBe("Deprecation Notice");
     expect(JSON.stringify(getJsonSchemaWithDeprecations(DeprecationNotice))).toContain("Deprecation Notice");
-    expect(
-      JSON.stringify(
-        (getJsonSchemaWithDeprecations(DeprecationNotice) as { definitions?: Record<string, unknown> })
-          .definitions,
-      ),
-    ).not.toContain('"$ref"');
+    expect(JSON.stringify(getJsonSchemaWithDeprecations(DeprecationNotice))).not.toContain('"$ref"');
     const jsonSchema = getJsonSchema("DeprecationNotice") as Record<string, unknown>;
     expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(JSON.stringify(jsonSchema)).toContain("Deprecation Notice");
@@ -84,6 +79,23 @@ describe("DeprecationNotice", () => {
 });
 
 describe("DeprecationUse", () => {
+  test.each(["callsite", "app", "plugin"])("rejects null for optional %s metadata", (key) => {
+    // Given optional metadata whose wire form is absent or a string.
+    const input = {
+      kind: "command",
+      id: "app:start",
+      notice: { since: "4.1.0", note: "Use app:up instead." },
+      timestamp: "2026-06-11T16:00:00.000Z",
+    };
+    // When a JSON null is supplied instead of omitting that metadata.
+    const result = Schema.decodeUnknownResult(DeprecationUse)({ ...input, [key]: null });
+    // Then decoding rejects the value and the artifact retains the string contract.
+    expect(Result.isFailure(result)).toBe(true);
+    expect(getJsonSchemaWithDeprecations(DeprecationUse)).toHaveProperty(`properties.${key}`, {
+      type: "string",
+    });
+  });
+
   test("decodes a runtime deprecation use with timestamp metadata", () => {
     const decoded = Schema.decodeUnknownResult(DeprecationUse)({
       kind: "command",
@@ -277,7 +289,7 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.anyOf?.[1]?.properties?.newField?.deprecated).toBeUndefined();
   });
 
-  test("propagates deprecations through top-level and property refs into $defs", () => {
+  test("propagates deprecations through property refs into definitions", () => {
     const ReferencedChild = Schema.Struct({
       oldField: deprecateField(Schema.String, notice),
       newField: Schema.String,
@@ -286,7 +298,7 @@ describe("schema deprecation annotations", () => {
       identifier: "ReferencedDeprecatedParent",
     });
     const jsonSchema = getJsonSchemaWithDeprecations(ReferencedParent) as {
-      readonly $ref?: string;
+      readonly properties?: Record<string, { readonly $ref?: string }>;
       readonly definitions?: Record<
         string,
         {
@@ -298,7 +310,7 @@ describe("schema deprecation annotations", () => {
       >;
     };
 
-    expect(jsonSchema.$ref).toBe("#/definitions/ReferencedDeprecatedParent");
+    expect(jsonSchema.properties?.child?.$ref).toBe("#/definitions/ReferencedDeprecatedChild");
     expect(jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.oldField?.deprecated).toBe(true);
     expect(
       jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.oldField?.["x-deprecation"],

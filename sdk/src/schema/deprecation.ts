@@ -237,9 +237,9 @@ export const DeprecationUse = Schema.Struct({
   kind: DeprecationSurfaceKind,
   id: Schema.String,
   notice: DeprecationNotice,
-  callsite: Schema.optional(Schema.String),
-  app: Schema.optional(Schema.String),
-  plugin: Schema.optional(Schema.String),
+  callsite: Schema.optionalKey(Schema.String),
+  app: Schema.optionalKey(Schema.String),
+  plugin: Schema.optionalKey(Schema.String),
   timestamp: Schema.DateTimeUtcFromString,
 }).annotate({
   identifier: "DeprecationUse",

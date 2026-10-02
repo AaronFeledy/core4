@@ -134,7 +134,7 @@ const useDeprecation = (kind: DeprecationSurfaceKind, id: string, notice = depre
       id,
       notice,
       app: "doctor-app",
-      plugin: kind === "plugin" || kind === "manifest-contribution" ? "legacy-plugin" : undefined,
+      ...(kind === "plugin" || kind === "manifest-contribution" ? { plugin: "legacy-plugin" } : {}),
       timestamp: DateTime.makeUnsafe("2026-06-13T00:00:00.000Z"),
     });
   });
