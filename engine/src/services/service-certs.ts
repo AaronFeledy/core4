@@ -50,7 +50,7 @@ interface ResolveCertsFeatureInput {
         NoCertificateAuthorityError | AmbiguousCertificateAuthoritiesError | PluginLoadError
       >
     | undefined;
-  readonly fileSystem?: Pick<Context.Tag.Service<typeof FileSystem>, "stat" | "readFile"> | undefined;
+  readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
 }
 
 const validationError = (input: ResolveCertsFeatureInput, message: string): LandofileValidationError =>

@@ -67,7 +67,7 @@ const commandIdFromArgv = (argv: ReadonlyArray<string>): string => {
   return head;
 };
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 const redactedRequestSummary = (
   request: HostProxyRunLandoRequest,

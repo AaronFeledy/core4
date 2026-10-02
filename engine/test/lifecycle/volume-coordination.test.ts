@@ -12,7 +12,7 @@ import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordinat
 
 const coordinationKey = (name: string) => JSON.stringify(["endpoint:test", name]);
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-14T00:00:00Z"),
   source: "volume-coordination.test",
   runtime: 4 as const,
 };
@@ -86,19 +86,19 @@ describe("physical volume lifecycle coordination", () => {
           Effect.sync(() => {
             mutated = true;
           }),
-      }).pipe(Effect.either),
+      }).pipe(Effect.result),
     );
 
     // Then it refuses mutation with the store, both roots, and actionable recovery.
     expect(mutated).toBe(false);
-    if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
-    expect(result.left).toMatchObject({ _tag: "VolumeOperationError", store: "zeta" });
-    expect(result.left.message).toContain("app_zeta (store zeta)");
-    expect(result.left.message).toContain(ownerRoot);
-    expect(result.left.message).toContain(plan.root);
-    expect(result.left.remediation).toContain(`lando destroy --root ${ownerRoot} --volumes`);
-    expect(result.left.remediation).toContain("name:");
-    expect(result.left.remediation).toContain("lando doctor");
+    if (result._tag !== "Failure") throw new TypeError("expected ownership refusal");
+    expect(result.failure).toMatchObject({ _tag: "VolumeOperationError", store: "zeta" });
+    expect(result.failure.message).toContain("app_zeta (store zeta)");
+    expect(result.failure.message).toContain(ownerRoot);
+    expect(result.failure.message).toContain(plan.root);
+    expect(result.failure.remediation).toContain(`lando destroy --root ${ownerRoot} --volumes`);
+    expect(result.failure.remediation).toContain("name:");
+    expect(result.failure.remediation).toContain("lando doctor");
   });
 
   test("sorts and deduplicates provider locators before acquiring advisory locks", async () => {
@@ -108,7 +108,7 @@ describe("physical volume lifecycle coordination", () => {
     const store: StateStoreShape = {
       ...live,
       withLock: (key, body) =>
-        live.withLock(key, Effect.sync(() => acquired.push(key)).pipe(Effect.zipRight(body))),
+        live.withLock(key, Effect.sync(() => acquired.push(key)).pipe(Effect.andThen(body))),
     };
     const provider = {
       id: "test",
@@ -144,7 +144,7 @@ describe("physical volume lifecycle coordination", () => {
     const sql = Effect.runFork(
       store.withLock(
         physicalVolumeLockKey(coordinationKey("alpha")),
-        Deferred.succeed(sqlEntered, undefined).pipe(Effect.zipRight(Deferred.await(releaseSql))),
+        Deferred.succeed(sqlEntered, undefined).pipe(Effect.andThen(Deferred.await(releaseSql))),
       ),
     );
     await Effect.runPromise(Deferred.await(sqlEntered));
@@ -195,7 +195,7 @@ describe("physical volume lifecycle coordination", () => {
     const blocker = Effect.runFork(
       store.withLock(
         physicalVolumeLockKey(coordinationKey("alpha")),
-        Deferred.succeed(lockEntered, undefined).pipe(Effect.zipRight(Deferred.await(releaseLock))),
+        Deferred.succeed(lockEntered, undefined).pipe(Effect.andThen(Deferred.await(releaseLock))),
       ),
     );
     await Effect.runPromise(Deferred.await(lockEntered));

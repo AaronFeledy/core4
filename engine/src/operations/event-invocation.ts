@@ -4,7 +4,7 @@ import {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 import type { AppPlan, LandofileEventName } from "@lando/sdk/schema";
-import { Effect, FiberRef, Option } from "effect";
+import { Context, Effect, Option } from "effect";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
 
@@ -18,11 +18,16 @@ interface ActiveEventFrame {
   readonly index?: number;
 }
 
-const activeEventFrames = FiberRef.unsafeMake<ReadonlyArray<ActiveEventFrame>>([]);
+const ActiveEventFrames = Context.Reference<ReadonlyArray<ActiveEventFrame>>(
+  "@lando/engine/ActiveEventFrames",
+  {
+    defaultValue: (): ReadonlyArray<ActiveEventFrame> => [],
+  },
+);
 
 export const withinEventInvocation = <A, E, R>(frame: ActiveEventFrame, work: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
-    const active = yield* FiberRef.get(activeEventFrames);
+    const active = yield* ActiveEventFrames;
     const chain = [
       ...active.flatMap((entry) =>
         entry.command === undefined ? [entry.event] : [entry.event, entry.command],
@@ -54,7 +59,7 @@ export const withinEventInvocation = <A, E, R>(frame: ActiveEventFrame, work: Ef
         }),
       );
     }
-    return yield* work.pipe(Effect.locally(activeEventFrames, [...active, frame]));
+    return yield* work.pipe(Effect.provideService(ActiveEventFrames, [...active, frame]));
   });
 
 export const runCanonicalCommand = (
@@ -73,7 +78,7 @@ export const runCanonicalCommand = (
         }),
       );
     }
-    const active = yield* FiberRef.get(activeEventFrames);
+    const active = yield* ActiveEventFrames;
     const invokingFrames = active.map((frame, index) =>
       index === active.length - 1 ? { ...frame, command: leaf.command, index: leaf.authoredIndex } : frame,
     );
@@ -88,6 +93,6 @@ export const runCanonicalCommand = (
         plan,
         redactionTokens,
       })
-      .pipe(Effect.locally(activeEventFrames, invokingFrames));
+      .pipe(Effect.provideService(ActiveEventFrames, invokingFrames));
     return { ...result, tool: leaf.command, service: ":lando" };
   });

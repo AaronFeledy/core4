@@ -63,7 +63,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "start-progress-topology.test",
   runtime: 4 as const,
 };
@@ -204,14 +204,14 @@ export const makeHarness = (
                   : {
                       rollback: Effect.sync(() => {
                         options.onFileSyncRollback?.();
-                      }).pipe(Effect.zipRight(options.fileSyncRollbackEffect ?? Effect.void)),
+                      }).pipe(Effect.andThen(options.fileSyncRollbackEffect ?? Effect.void)),
                     }),
               };
             }),
         }),
     apply: (appliedPlan, applyOptions) =>
       Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
-        Effect.zipRight(options.applyEffect ?? Effect.succeed({ changed: true })),
+        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
       ),
     inspect: (target) =>
       Effect.succeed<ServiceRuntimeInfo>({
@@ -224,7 +224,7 @@ export const makeHarness = (
       }),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
-        Effect.zipRight(options.destroyEffect ?? Effect.void),
+        Effect.andThen(options.destroyEffect ?? Effect.void),
         Effect.as({ kind: "destroyed" as const }),
       ),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
@@ -257,7 +257,7 @@ export const makeHarness = (
       ...stateStore.service,
       withLock: (key, body) =>
         Effect.sync(() => options.onVolumeLock?.(key)).pipe(
-          Effect.zipRight(stateStore.service.withLock(key, body)),
+          Effect.andThen(stateStore.service.withLock(key, body)),
         ),
     }),
     NoopTransactionGuardLive,
@@ -273,7 +273,7 @@ export const makeHarness = (
               if (event._tag === "task.tree.start" && event.parentId === applyTreeId(String(plannedApp.id))) {
                 signalApplyTreeStart();
               }
-            }).pipe(Effect.zipRight(options.onPublish?.(event) ?? Effect.void))
+            }).pipe(Effect.andThen(options.onPublish?.(event) ?? Effect.void))
           : Effect.die(new TypeError(`Unexpected event in start progress topology test: ${event._tag}`)),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
@@ -304,7 +304,7 @@ export const makeHarness = (
         ),
       removeRoutes: (app) =>
         Effect.sync(() => options.onRemoveRoutes?.()).pipe(
-          Effect.zipRight(TestRouterService.removeRoutes(app)),
+          Effect.andThen(TestRouterService.removeRoutes(app)),
         ),
     }),
     makeShellRunnerLive(() => {

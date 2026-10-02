@@ -23,7 +23,7 @@ import { type AppBuildInput, runAppBuildStep } from "./build-app-step-runner.ts"
 import { findCompleteBuildResult, openAppBuildResults, recordBuildResult } from "./build-results.ts";
 import { makeBuildTranscriptPath } from "./build-transcript.ts";
 
-const timestamp = () => DateTime.unsafeNow();
+const timestamp = () => DateTime.nowUnsafe();
 
 const cacheError = (providerId: string, cause: unknown) =>
   new ProviderInternalError({
@@ -85,7 +85,7 @@ const runGate = (
         .run(healthcheck, input.plan.id, service)
         .pipe(
           Effect.map((result): ScheduleOutcome => (result.healthy ? "succeeded" : "failed")),
-          Effect.catchAll(() => Effect.succeed<ScheduleOutcome>("failed")),
+          Effect.catch(() => Effect.succeed<ScheduleOutcome>("failed")),
         );
     }
     case "service_completed_successfully":
@@ -96,7 +96,7 @@ const runGate = (
         ),
       ).pipe(
         Effect.map((result): ScheduleOutcome => (result.exitCode === 0 ? "succeeded" : "failed")),
-        Effect.catchAll(() => Effect.succeed<ScheduleOutcome>("failed")),
+        Effect.catch(() => Effect.succeed<ScheduleOutcome>("failed")),
       );
   }
 };
@@ -281,7 +281,7 @@ export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {})
         ? execution
         : Effect.raceFirst(
             execution,
-            Effect.async<void>((resume) => {
+            Effect.callback<void>((resume) => {
               const signal = options.signal;
               if (signal === undefined) return;
               if (signal.aborted) {
@@ -296,7 +296,7 @@ export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {})
     yield* interruptOnAbort.pipe(
       Effect.onExit((exit) => {
         if (Exit.isSuccess(exit) || treeSettled) return Effect.void;
-        const summary = Cause.isInterruptedOnly(exit.cause) ? "interrupted" : "failed";
+        const summary = Cause.hasInterruptsOnly(exit.cause) ? "interrupted" : "failed";
         return Effect.uninterruptible(
           Effect.exit(
             Effect.gen(function* () {

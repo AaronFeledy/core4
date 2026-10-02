@@ -11,7 +11,7 @@ export const runAllAndMergeFailures = <E, R>(
     }
     const first = causes[0];
     if (first === undefined) return;
-    yield* Effect.failCause(causes.slice(1).reduce(Cause.parallel, first));
+    yield* Effect.failCause(causes.slice(1).reduce(Cause.combine, first));
   });
 
 export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(
@@ -22,13 +22,13 @@ export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(
   Effect.matchCauseEffect(effect, {
     onSuccess: Effect.succeed,
     onFailure: (failureCause) => {
-      const failed = Cause.failureOption(failureCause);
+      const failed = Cause.findErrorOption(failureCause);
       if (Option.isSome(failed) && skip(failed.value)) {
         return Effect.failCause(failureCause);
       }
       return Effect.matchCauseEffect(cleanup, {
         onSuccess: () => Effect.failCause(failureCause),
-        onFailure: (cleanupCause) => Effect.failCause(Cause.parallel(failureCause, cleanupCause)),
+        onFailure: (cleanupCause) => Effect.failCause(Cause.combine(failureCause, cleanupCause)),
       });
     },
   });

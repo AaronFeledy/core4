@@ -36,7 +36,7 @@ import { EventServiceLive } from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-12T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
   source: "tooling-events.test",
   runtime: 4 as const,
 } as const;
@@ -160,7 +160,7 @@ const harness = (input: {
     executed,
     selections,
     plan,
-    run: (name: string) => Effect.runPromise(runTooling({ name }).pipe(Effect.provide(layer), Effect.either)),
+    run: (name: string) => Effect.runPromise(runTooling({ name }).pipe(Effect.provide(layer), Effect.result)),
   };
 };
 
@@ -240,16 +240,16 @@ test("a failing post bracket is fatal and carries the redacted output tail", asy
   // Then the whole run fails rather than reporting the body's success
   expect(h.executed).toEqual(["echo body", "echo after"]);
   expect(result._tag).toBe("Left");
-  if (result._tag !== "Left") throw new Error("expected post-build failure");
-  if (result.left._tag !== "LandofileEventStepFailedError") {
-    throw new Error(`expected LandofileEventStepFailedError, got ${result.left._tag}`);
+  if (result._tag !== "Failure") throw new Error("expected post-build failure");
+  if (result.failure._tag !== "LandofileEventStepFailedError") {
+    throw new Error(`expected LandofileEventStepFailedError, got ${result.failure._tag}`);
   }
-  expect(result.left).toMatchObject({
+  expect(result.failure).toMatchObject({
     event: "post-build",
     exitCode: 7,
   });
-  expect(result.left.outputTail).toContain("[redacted]");
-  expect(result.left.outputTail).not.toContain(secret);
+  expect(result.failure.outputTail).toContain("[redacted]");
+  expect(result.failure.outputTail).not.toContain(secret);
 });
 
 test("runs an unbracketed task without requiring the event runtime", async () => {

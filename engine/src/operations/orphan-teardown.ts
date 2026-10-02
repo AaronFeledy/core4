@@ -39,7 +39,7 @@ export type OrphanTeardownError =
   | AppLockTimeoutError
   | StateStoreError;
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 /**
  * `RuntimeProviderRegistry.select` resolves a provider from `plan.provider` alone, and the app

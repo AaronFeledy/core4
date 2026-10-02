@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { type InstallRecord, decodeInstallRecord, installRecordOwnsDestination } from "./record";
@@ -36,19 +36,9 @@ const INSTALL_OWNERSHIP_REMEDIATION =
 export class InstallOwnershipError extends Schema.TaggedError<InstallOwnershipError>()(
   "InstallOwnershipError",
   {
-    reason: Schema.Literal(
-      "no-record",
-      "record-unreadable",
-      "record-invalid",
-      "foreign-basename",
-      "path-mismatch",
-      "not-regular-file",
-      "digest-mismatch",
-      "size-mismatch",
-      "destination-unreadable",
-    ),
+    reason: Schema.Literals(["no-record", "record-unreadable", "record-invalid", "foreign-basename", "path-mismatch", "not-regular-file", "digest-mismatch", "size-mismatch", "destination-unreadable"]),
     recordFile: Schema.String,
-    destination: Schema.optional(Schema.String),
+    destination: Schema.optionalKey(Schema.String),
     message: Schema.String,
     remediation: Schema.String,
   },
@@ -82,41 +72,41 @@ export interface ResolveOwnedExecutableOptions {
   readonly destination?: string;
 }
 
-const readRecord = (recordFile: string): Either.Either<InstallRecord, InstallOwnershipError> => {
+const readRecord = (recordFile: string): Result.Result<InstallRecord, InstallOwnershipError> => {
   const recordStat = lstatSync(recordFile, { throwIfNoEntry: false });
   if (recordStat === undefined)
-    return Either.left(refuse("no-record", recordFile, "Lando 4 has no install record."));
+    return Result.fail(refuse("no-record", recordFile, "Lando 4 has no install record."));
   if (!recordStat.isFile() || recordStat.isSymbolicLink() || recordStat.isDirectory())
-    return Either.left(refuse("record-invalid", recordFile, "Install record must be a regular file."));
+    return Result.fail(refuse("record-invalid", recordFile, "Install record must be a regular file."));
   let json: string;
   try {
     json = readFileSync(recordFile, "utf8");
   } catch {
-    return Either.left(refuse("record-unreadable", recordFile, "Cannot read the install record."));
+    return Result.fail(refuse("record-unreadable", recordFile, "Cannot read the install record."));
   }
-  const decoded = Effect.runSync(Effect.either(decodeInstallRecord(json, recordFile)));
-  return Either.isLeft(decoded)
-    ? Either.left(refuse("record-invalid", recordFile, decoded.left.detail))
-    : Either.right(decoded.right);
+  const decoded = Effect.runSync(Effect.result(decodeInstallRecord(json, recordFile)));
+  return Result.isFailure(decoded)
+    ? Result.fail(refuse("record-invalid", recordFile, decoded.failure.detail))
+    : Result.succeed(decoded.success);
 };
 
-const hashFile = (path: string): Either.Either<string, "unreadable"> => {
+const hashFile = (path: string): Result.Result<string, "unreadable"> => {
   try {
-    return Either.right(createHash("sha256").update(readFileSync(path)).digest("hex"));
+    return Result.succeed(createHash("sha256").update(readFileSync(path)).digest("hex"));
   } catch {
-    return Either.left("unreadable");
+    return Result.fail("unreadable");
   }
 };
 
 const inspect = (
   options: ResolveOwnedExecutableOptions,
-): Either.Either<OwnedExecutable, InstallOwnershipError> => {
+): Result.Result<OwnedExecutable, InstallOwnershipError> => {
   const { recordFile, platform } = options;
   const record = readRecord(recordFile);
-  if (Either.isLeft(record)) return Either.left(record.left);
-  const destination = record.right.data.executable.path;
+  if (Result.isFailure(record)) return Result.fail(record.failure);
+  const destination = record.success.data.executable.path;
   if (options.destination !== undefined && resolve(options.destination) !== resolve(destination)) {
-    return Either.left(
+    return Result.fail(
       refuse(
         "path-mismatch",
         recordFile,
@@ -126,7 +116,7 @@ const inspect = (
     );
   }
   if (!isLando4ExecutableName(destination, platform)) {
-    return Either.left(
+    return Result.fail(
       refuse(
         "foreign-basename",
         recordFile,
@@ -137,16 +127,16 @@ const inspect = (
   }
   const stat = lstatSync(destination, { throwIfNoEntry: false });
   if (stat === undefined)
-    return Either.left(
+    return Result.fail(
       refuse("destination-unreadable", recordFile, `${destination} no longer exists.`, destination),
     );
-  const digest = stat.isFile() && !stat.isSymbolicLink() ? hashFile(destination) : Either.right("");
-  if (Either.isLeft(digest))
-    return Either.left(
+  const digest = stat.isFile() && !stat.isSymbolicLink() ? hashFile(destination) : Result.succeed("");
+  if (Result.isFailure(digest))
+    return Result.fail(
       refuse("destination-unreadable", recordFile, `Cannot read ${destination}.`, destination),
     );
   const ownership = installRecordOwnsDestination(
-    record.right,
+    record.success,
     destination,
     {
       isFile: stat.isFile(),
@@ -154,10 +144,10 @@ const inspect = (
       isDirectory: stat.isDirectory(),
       size: stat.size,
     },
-    digest.right,
+    digest.success,
   );
   if (!ownership.owned) {
-    return Either.left(
+    return Result.fail(
       refuse(
         ownership.reason === "no-record" ? "record-invalid" : ownership.reason,
         recordFile,
@@ -166,10 +156,10 @@ const inspect = (
       ),
     );
   }
-  return Either.right({
+  return Result.succeed({
     path: destination,
-    record: record.right,
-    sha256: digest.right,
+    record: record.success,
+    sha256: digest.success,
     size: stat.size,
   });
 };
@@ -185,7 +175,7 @@ export const resolveOwnedExecutable = (
 ): Effect.Effect<OwnedExecutable, InstallOwnershipError> =>
   Effect.suspend(() => {
     const verdict = inspect(options);
-    return Either.isLeft(verdict) ? Effect.fail(verdict.left) : Effect.succeed(verdict.right);
+    return Result.isFailure(verdict) ? Effect.fail(verdict.failure) : Effect.succeed(verdict.success);
   });
 
 export interface RefreshInstallRecordOptions {

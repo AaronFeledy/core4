@@ -40,7 +40,7 @@ export interface WorkerExitDetails {
 }
 
 export interface DetachedWorkerOptions<Ready, Encoded> {
-  readonly readySchema: Schema.Schema<Ready, Encoded>;
+  readonly readySchema: Schema.Codec<Ready, Encoded>;
   readonly logLabel: string;
   readonly readyTimeoutMs?: number;
   readonly payloadTimeoutMs?: number;

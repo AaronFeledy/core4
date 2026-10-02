@@ -32,7 +32,7 @@ const service = (input: Partial<ServicePlan> = {}): ServicePlan => ({
   dependsOn: [],
   hostAliases: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00.000Z"),
     source: "build-key.test",
     runtime: 4,
   },

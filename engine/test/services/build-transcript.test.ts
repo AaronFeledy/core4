@@ -67,12 +67,12 @@ describe("openBuildTranscript", () => {
       try {
         // When
         const result = await Effect.runPromise(
-          Effect.scoped(openBuildTranscript("test-provider", path, userDataRoot)).pipe(Effect.either),
+          Effect.scoped(openBuildTranscript("test-provider", path, userDataRoot)).pipe(Effect.result),
         );
 
         // Then
         expect(result._tag).toBe("Left");
-        if (result._tag === "Left") expect(result.left).toBeInstanceOf(ProviderInternalError);
+        if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderInternalError);
         expect(await Bun.file(escapeTarget).exists()).toBe(false);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -125,12 +125,12 @@ describe("openBuildTranscript", () => {
       try {
         // When
         const result = await Effect.runPromise(
-          Effect.scoped(openBuildTranscript("test-provider", path, root)).pipe(Effect.either),
+          Effect.scoped(openBuildTranscript("test-provider", path, root)).pipe(Effect.result),
         );
 
         // Then
         expect(result._tag).toBe("Left");
-        if (result._tag === "Left") expect(result.left).toBeInstanceOf(ProviderInternalError);
+        if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderInternalError);
         expect(await readFile(target, "utf8")).toBe("preserve me");
       } finally {
         await rm(root, { recursive: true, force: true });

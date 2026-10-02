@@ -47,7 +47,7 @@ const discoverScriptsForCwd = (cwd: string): Effect.Effect<ReadonlyArray<Discove
     const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
     if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
     return yield* discoverBunShellScripts({ appRoot }).pipe(
-      Effect.catchAll(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
+      Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
     );
   });
 
@@ -83,7 +83,7 @@ export const CommandRegistryLive = Layer.effect(
     return {
       list: Effect.gen(function* () {
         const cached = yield* readFreshAppCommandCacheForCwd().pipe(
-          Effect.catchAll(() => Effect.succeed(null)),
+          Effect.catch(() => Effect.succeed(null)),
         );
         if (cached !== null) return toRegisteredCommands(cached.entries);
 
@@ -91,7 +91,7 @@ export const CommandRegistryLive = Layer.effect(
         const scripts = yield* discoverScriptsForCwd(process.cwd());
         const pluginManifests =
           pluginRegistryOption._tag === "Some"
-            ? yield* pluginRegistryOption.value.list.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+            ? yield* pluginRegistryOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))
             : undefined;
         const hasServices = Object.keys(landofile.services ?? {}).length > 0;
         if (hasServices) {
@@ -102,7 +102,7 @@ export const CommandRegistryLive = Layer.effect(
         yield* writeCachesForLandofile(landofile, entries, pluginManifests);
         return toRegisteredCommands(entries);
       }).pipe(
-        Effect.catchAllCause(() =>
+        Effect.catchCause(() =>
           writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
         ),
       ),

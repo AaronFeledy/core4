@@ -105,7 +105,7 @@ const runWithLogger = (effect: Effect.Effect<void, unknown, Logger>, options: Lo
     effect.pipe(Effect.provide(LoggerLive({ writeLine: writeStderrLine, stderrIsTTY: true, ...options }))),
   );
 
-const logProgram = (run: (logger: Context.Tag.Service<typeof Logger>) => Effect.Effect<void, unknown>) =>
+const logProgram = (run: (logger: Context.Service.Shape<typeof Logger>) => Effect.Effect<void, unknown>) =>
   Effect.flatMap(Logger, run);
 
 describe("LoggerLive characterization", () => {

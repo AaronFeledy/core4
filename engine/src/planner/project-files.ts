@@ -22,7 +22,7 @@ interface ProjectFileRequest {
   readonly serviceName: string;
   readonly packageRoot: string;
   readonly declarations: ReadonlyArray<ServiceTypeProjectFileDeclaration>;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 }
 
 const validationError = (input: ProjectFileRequest, message: string) =>
@@ -53,7 +53,7 @@ const containedPath = (
 // and shares the check/read race. Concurrent mutation of the user's own working
 // tree is outside the threat model: its writer can already edit inference inputs.
 const assertNoSymlinkComponents = (
-  input: ProjectFileRequest & { readonly fileSystem: Context.Tag.Service<typeof FileSystem> },
+  input: ProjectFileRequest & { readonly fileSystem: Context.Service.Shape<typeof FileSystem> },
   absolute: string,
   allowMissing: boolean,
 ): Effect.Effect<boolean, LandofileValidationError> =>
@@ -92,7 +92,7 @@ const assertNoSymlinkComponents = (
   });
 
 const readTextBounded = (
-  input: ProjectFileRequest & { readonly fileSystem: Context.Tag.Service<typeof FileSystem> },
+  input: ProjectFileRequest & { readonly fileSystem: Context.Service.Shape<typeof FileSystem> },
   absolute: string,
   limit: number,
 ): Effect.Effect<{ readonly text: string; readonly sha256: string }, LandofileValidationError> =>

@@ -11,7 +11,7 @@ import type { FileSystem } from "@lando/sdk/services";
 type EnvFileInput = {
   readonly appRoot: string;
   readonly envFiles: ReadonlyArray<string>;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly owner: string;
   readonly readContext: string;
   readonly issuePath: string;
@@ -68,7 +68,7 @@ const loadEnvFiles = (input: EnvFileInput): Effect.Effect<LoadedEnvFiles, Landof
 export const loadTopLevelEnvFiles = (input: {
   readonly appRoot: string;
   readonly envFiles: ReadonlyArray<string>;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.Effect<LoadedEnvFiles, LandofileValidationError> =>
   loadEnvFiles({
     ...input,
@@ -81,7 +81,7 @@ export const loadServiceEnvFiles = (input: {
   readonly appRoot: string;
   readonly serviceName: string;
   readonly service: ServiceConfig;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.Effect<
   {
     readonly environment: Readonly<Record<string, string>> | undefined;

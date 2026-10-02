@@ -20,7 +20,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Either, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Result, Layer, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
@@ -35,7 +35,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   }[] = [];
   const selections: number[] = [];
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
     source: "tooling.test",
     runtime: 4 as const,
   };
@@ -121,7 +121,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     plan,
     run: (options: Omit<RunToolingOptions, "name"> = {}) =>
       Effect.runPromise(
-        runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.either),
+        runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.result),
       ),
   };
 };
@@ -147,7 +147,7 @@ test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchang
   // When invoked
   const result = await f.run({ args });
   // Then raw tokens reach the provider
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.command.slice(-args.length)).toEqual(args);
 });
 
@@ -190,7 +190,7 @@ test("resolves a service from its validated flag alias", async () => {
   // When the alias supplies the service
   const result = await f.run({ args: ["-s", "worker"] });
   // Then the provider receives the resolved service
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.service).toBe("worker");
 });
 
@@ -200,7 +200,7 @@ test("never selects a provider for all-host tooling", async () => {
   // When invoked with raw argv
   const result = await f.run({ args: ["a b"] });
   // Then host steps run without provider selection and only the last receives argv
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.selections).toHaveLength(0);
   expect(f.calls.map((call) => call.command)).toEqual([["echo first"], ["echo last", "a b"]]);
 });
@@ -217,7 +217,7 @@ test("selects once and executes mixed steps in authored order", async () => {
   // When invoked
   const result = await f.run();
   // Then no grouping or reordering occurs
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.selections).toHaveLength(1);
   expect(f.calls.map((call) => call.service)).toEqual(["worker", ":host", "worker"]);
 });

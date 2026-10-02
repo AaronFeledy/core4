@@ -39,7 +39,7 @@ const appPlan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
     source: "runtime-provider-registry.test",
     runtime: 4,
   },
@@ -55,8 +55,8 @@ const registryLayer = (
   defaultProviderId: "lando" | "docker" | "missing",
   options: {
     userDataRoot?: string;
-    eventService?: Context.Tag.Service<typeof EventService>;
-    downloader?: Context.Tag.Service<typeof Downloader>;
+    eventService?: Context.Service.Shape<typeof EventService>;
+    downloader?: Context.Service.Shape<typeof Downloader>;
   } = {},
 ) => {
   const userDataRoot =
@@ -67,7 +67,7 @@ const registryLayer = (
     ...(userDataRoot === undefined ? {} : { userDataRoot }),
   });
   const load = Effect.succeed(config);
-  const configService: Context.Tag.Service<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = {
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
   };
@@ -124,7 +124,7 @@ describe("RuntimeProviderRegistryLive", () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-registry-progress-"));
     try {
       const events: LandoEvent[] = [];
-      const eventService: Context.Tag.Service<typeof EventService> = {
+      const eventService: Context.Service.Shape<typeof EventService> = {
         publish: (event) =>
           Effect.sync(() => {
             events.push(event);
@@ -135,7 +135,7 @@ describe("RuntimeProviderRegistryLive", () => {
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       };
-      const downloader: Context.Tag.Service<typeof Downloader> = {
+      const downloader: Context.Service.Shape<typeof Downloader> = {
         id: "test-downloader",
         capabilities: {
           schemes: ["https"],
@@ -212,7 +212,7 @@ describe("RuntimeProviderRegistryLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(NoProviderInstalledError);

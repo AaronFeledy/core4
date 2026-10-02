@@ -64,7 +64,7 @@ export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 
 export const DestroyAppResultSchema = Schema.Struct({
   app: Schema.String,
-  outcome: Schema.optional(Schema.Literal("destroyed", "unchanged")),
+  outcome: Schema.optionalKey(Schema.Literals(["destroyed", "unchanged"])),
   servicesDestroyed: Schema.Array(Schema.String),
   volumesRemoved: Schema.Boolean,
 });
@@ -79,7 +79,7 @@ type DestroyAppServices =
   | RuntimeProviderRegistry;
 type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
@@ -106,7 +106,7 @@ const removeStrayAppContainers = (provider: RuntimeProviderShape, plan: AppPlan)
     // Listing is best effort; provider.destroy below reports runtime failures.
     const observed = yield* provider
       .list({ app: plan.id, includeUnplanned: true })
-      .pipe(Effect.catchAll(() => Effect.succeed([])));
+      .pipe(Effect.catch(() => Effect.succeed([])));
     for (const service of observed) {
       if (
         service.containerId !== undefined &&
@@ -242,8 +242,8 @@ const destroyAppForTargetUncoordinated = (
 
           yield* tree.startTask("provider");
           const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
-            Effect.zipRight(removeStrayAppContainers(provider, plan)),
-            Effect.zipRight(
+            Effect.andThen(removeStrayAppContainers(provider, plan)),
+            Effect.andThen(
               provider.destroy(
                 { app: plan.id, plan },
                 {
@@ -269,7 +269,7 @@ const destroyAppForTargetUncoordinated = (
           );
           if (proxy._tag === "Some") {
             const removeRoutes = tree.startTask("routes").pipe(
-              Effect.zipRight(proxy.value.removeRoutes(plan.id)),
+              Effect.andThen(proxy.value.removeRoutes(plan.id)),
               Effect.tap(() => tree.completeTask("routes")),
               Effect.tapError(() => tree.failTask("routes")),
             );
@@ -377,7 +377,7 @@ const destroyDesiredOrUnchanged = (
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
   resolveDesiredTarget.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error),
     ),
     Effect.flatMap((desired) =>

@@ -58,7 +58,7 @@ interface LoadedServiceType {
 }
 
 export const loadServiceTypeWithVersion = (
-  pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
+  pluginRegistry: Context.Service.Shape<typeof PluginRegistry>,
   reference: string,
 ): Effect.Effect<LoadedServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError> =>
   pluginRegistry.loadServiceType(reference).pipe(
@@ -68,7 +68,7 @@ export const loadServiceTypeWithVersion = (
         lastColon > 0 && serviceType.versions !== undefined ? reference.slice(lastColon + 1) : undefined;
       return { serviceType, version };
     }),
-    Effect.catchAll((error) => {
+    Effect.catch((error) => {
       if (error instanceof ServiceTypeCollisionError) return Effect.fail(error);
       const lastColon = reference.lastIndexOf(":");
       if (lastColon <= 0) return Effect.fail(error);

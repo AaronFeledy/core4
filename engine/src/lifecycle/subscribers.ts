@@ -102,7 +102,7 @@ type DispatchEntry = {
   readonly event: LandoEvent;
   readonly subscriber: IndexedSubscriber;
   readonly getHandler: Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>;
-  readonly logger: Context.Tag.Service<typeof Logger>;
+  readonly logger: Context.Service.Shape<typeof Logger>;
 };
 
 const subscriberEventError = (
@@ -124,18 +124,18 @@ const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> =>
   if (input.event._tag.startsWith("post-") && input.subscriber.entry.abortOnError) return run;
   if (input.event._tag.startsWith("cli-")) {
     return run.pipe(
-      Effect.catchAll((cause) =>
+      Effect.catch((cause) =>
         input.logger
           .debug("CLI lifecycle subscriber failed.", { subscriber: input.subscriber.entry.id, cause })
-          .pipe(Effect.catchAll(() => Effect.void)),
+          .pipe(Effect.catch(() => Effect.void)),
       ),
     );
   }
   return run.pipe(
-    Effect.catchAll((cause) =>
+    Effect.catch((cause) =>
       input.logger
         .warn("Lifecycle subscriber failed.", { subscriber: input.subscriber.entry.id, cause })
-        .pipe(Effect.catchAll(() => Effect.void)),
+        .pipe(Effect.catch(() => Effect.void)),
     ),
   );
 };
@@ -145,7 +145,7 @@ export const makeSubscriberRuntimeLive = (
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
 ) =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const plugins = yield* PluginRegistry;
       const globalPlugins = yield* GlobalPluginManifests;
@@ -175,7 +175,7 @@ export const makeSubscriberRuntimeLive = (
       for (const entries of index.values()) {
         for (const subscriber of entries) {
           if (handlers.has(subscriber)) continue;
-          const pluginStateRoot = yield* Schema.decodeUnknown(AbsolutePath)(
+          const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
             paths.pluginStateDir(subscriber.pluginName),
           );
           const context = makeLandoPluginContext({
@@ -224,7 +224,7 @@ export const makeSubscriberRuntimeWithPrivateFileAccessLive = (
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
 ) =>
-  Layer.unwrapEffect(
+  Layer.unwrap(
     Effect.map(PrivateFileAccessService, (privateFileAccess) =>
       makeSubscriberRuntimeLive(privateFileAccess, modules, builtIns),
     ),

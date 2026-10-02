@@ -30,7 +30,7 @@ const captureEventsLayer = (events: LandoEvent[]) =>
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies Context.Tag.Service<typeof EventService>);
+  } satisfies Context.Service.Shape<typeof EventService>);
 
 const execShell = (command: string, options?: ShellCommandOptions) =>
   Effect.runPromise(
@@ -93,7 +93,7 @@ describe("makeShellRunnerLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ShellExecError);
@@ -111,7 +111,7 @@ describe("makeShellRunnerLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ShellExecError);
@@ -135,7 +135,7 @@ describe("makeShellRunnerLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ShellExecError);

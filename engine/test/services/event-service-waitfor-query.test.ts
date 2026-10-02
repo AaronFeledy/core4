@@ -1,6 +1,7 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream, TestClock, TestContext } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService, SecretStore } from "@lando/sdk/services";
@@ -44,7 +45,7 @@ describe("EventService waitFor", () => {
         Effect.gen(function* () {
           const waiter = yield* events
             .waitFor("download-progress", { filter: (event) => event.bytesDownloaded >= 2 })
-            .pipe(Effect.fork);
+            .pipe(Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* events.publish(canonicalProgress(1));
           yield* events.publish(canonicalProgress(2));
@@ -62,16 +63,16 @@ describe("EventService waitFor", () => {
         Effect.gen(function* () {
           const waiter = yield* events
             .waitFor("download-progress", { timeout: "1 second" })
-            .pipe(Effect.exit, Effect.fork);
+            .pipe(Effect.exit, Effect.forkChild);
           yield* TestClock.adjust("2 seconds");
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       expect(error._tag).toBe("Some");
       if (error._tag === "Some") {
         expect(error.value._tag).toBe("EventError");
@@ -84,13 +85,13 @@ describe("EventService waitFor", () => {
     const exit = await Effect.runPromise(
       Effect.flatMap(EventService, (events) =>
         Effect.gen(function* () {
-          const waiter = yield* events.waitFor("download-progress").pipe(Effect.fork);
+          const waiter = yield* events.waitFor("download-progress").pipe(Effect.forkChild);
           yield* TestClock.adjust("1 hour");
-          const poll = yield* Fiber.poll(waiter);
+          const poll = yield* waiter.pollUnsafe();
           yield* Fiber.interrupt(waiter);
           return poll;
         }),
-      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(exit._tag).toBe("None");
@@ -104,7 +105,7 @@ describe("EventService waitForAny", () => {
         Effect.gen(function* () {
           const waiter = yield* events
             .waitForAny([{ name: "pre-download" }, { name: "download-progress" }])
-            .pipe(Effect.fork);
+            .pipe(Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* events.publish(canonicalProgress(7));
           return yield* Fiber.join(waiter);
@@ -121,11 +122,11 @@ describe("EventService waitForAny", () => {
         Effect.gen(function* () {
           const waiter = yield* events
             .waitForAny([{ name: "pre-download" }], { timeout: "1 second" })
-            .pipe(Effect.exit, Effect.fork);
+            .pipe(Effect.exit, Effect.forkChild);
           yield* TestClock.adjust("2 seconds");
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestContext.TestContext)),
+      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -288,6 +289,6 @@ describe("EventService regression", () => {
       ).pipe(Effect.provide(EventServiceLive)),
     );
 
-    expect(Exit.isInterrupted(exit)).toBe(true);
+    expect(Exit.hasInterrupts(exit)).toBe(true);
   });
 });

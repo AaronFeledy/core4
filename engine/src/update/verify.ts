@@ -97,7 +97,7 @@ const verifyCosignBlob = ({
       }),
     (root) =>
       Effect.promise(() => rm(root, { recursive: true, force: true })).pipe(
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
       ),
   );
 

@@ -118,8 +118,7 @@ const makeAttempt = (
 ): Effect.Effect<ProbeOutcome> =>
   Effect.gen(function* () {
     const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
-    const completed = yield* Effect.timeoutTo(
-      Effect.either(
+    const completed = yield* Effect.timeoutOrElse(Effect.map(Effect.result(
         Effect.scoped(
           deps
             .stream({
@@ -131,26 +130,20 @@ const makeAttempt = (
             })
             .pipe(Effect.map((response) => response.status)),
         ),
-      ),
-      {
-        duration: Duration.millis(timeoutMs),
-        onSuccess: (result) => result,
-        onTimeout: () => "timeout" as const,
-      },
-    );
+      ), (result) => result), { duration: Duration.millis(timeoutMs), orElse: () => Effect.succeed((() => "timeout" as const)()) });
 
     if (completed === "timeout") {
       yield* Ref.set(status, { _tag: "timeout" });
       return "red";
     }
 
-    if (completed._tag === "Left") {
-      yield* Ref.set(status, { _tag: "transport", message: completed.left.message });
+    if (completed._tag === "Failure") {
+      yield* Ref.set(status, { _tag: "transport", message: completed.failure.message });
       return "red";
     }
 
-    yield* Ref.set(status, { _tag: "response", status: completed.right });
-    return isAccepted(completed.right, config.okCodes) ? "green" : "yellow";
+    yield* Ref.set(status, { _tag: "response", status: completed.success });
+    return isAccepted(completed.success, config.okCodes) ? "green" : "yellow";
   });
 
 const probeRunError = (url: string, cause: unknown, redactor: Redactor): ScannerError =>

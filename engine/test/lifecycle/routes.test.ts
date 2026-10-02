@@ -28,7 +28,7 @@ const cachedPlan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00.000Z"),
     source: "routes.test",
     runtime: 4,
   },
@@ -72,10 +72,10 @@ describe("applyAppRoutes", () => {
       const proxy: RouterServiceShape = {
         ...base,
         setup: (config) =>
-          Effect.sync(() => void calls.push("setup")).pipe(Effect.zipRight(base.setup(config))),
+          Effect.sync(() => void calls.push("setup")).pipe(Effect.andThen(base.setup(config))),
         applyRoutes: (routes, app) =>
           Effect.sync(() => void calls.push("applyRoutes")).pipe(
-            Effect.zipRight(base.applyRoutes(routes, app)),
+            Effect.andThen(base.applyRoutes(routes, app)),
           ),
       };
 

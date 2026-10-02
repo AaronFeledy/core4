@@ -81,7 +81,7 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
   }
 };
 
-const configService: Context.Tag.Service<typeof ConfigService> = {
+const configService: Context.Service.Shape<typeof ConfigService> = {
   load: Effect.tryPromise({
     try: async (): Promise<GlobalConfig> => loadGlobalConfigSync(),
     catch: (cause) =>
@@ -97,7 +97,7 @@ export const ConfigServiceLive = Layer.succeed(ConfigService, configService);
 export const loadGlobalConfigView = Effect.gen(function* () {
   const service = yield* ConfigService;
   const loaded = yield* service.load;
-  return yield* Schema.encode(GlobalConfigView)(loaded).pipe(
+  return yield* Schema.encodeEffect(GlobalConfigView)(loaded).pipe(
     Effect.mapError((cause) => configError("", "Failed to project public global config.", cause)),
   );
 });

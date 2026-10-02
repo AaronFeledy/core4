@@ -18,7 +18,7 @@ const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)({
   eventName: "pre-app-start",
   appRef: { kind: "user", id: "myapp", root: "/srv/apps/myapp" },
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 });
 const invalidKnownEvent = { _tag: "download-progress", bytes: 1 };
 const unknownTagEvent = { _tag: "not-a-real-lando-event", value: 1 };
@@ -40,7 +40,7 @@ describe("EventServiceLive publish contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure)).toBe(true);
       if (Option.isSome(failure)) expect(failure.value).toBeInstanceOf(EventError);
     }
@@ -55,7 +55,7 @@ describe("EventServiceLive publish contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure)).toBe(true);
       if (Option.isSome(failure)) expect(failure.value).toBeInstanceOf(EventError);
     }
@@ -185,7 +185,7 @@ describe("EventServiceLive publish contract", () => {
       Effect.flatMap(EventService, (events) =>
         Effect.gen(function* () {
           const scope = yield* Scope.make();
-          yield* events.subscribeQueue.pipe(Scope.extend(scope));
+          yield* events.subscribeQueue.pipe(Scope.provide(scope));
           const whileActive = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);
           yield* Scope.close(scope, Exit.void);
           const afterRelease = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);

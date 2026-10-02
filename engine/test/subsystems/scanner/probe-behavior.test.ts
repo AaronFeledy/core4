@@ -1,5 +1,6 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Option, TestClock, TestContext } from "effect";
+import { Effect, Exit, Fiber, Option } from "effect";
 
 import { AppId as AppIdSchema, ServiceName } from "@lando/sdk/schema";
 import { runScannerContract } from "@lando/sdk/test";
@@ -112,16 +113,16 @@ describe("makeUrlScanner probe behavior", () => {
 
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(scanner.scan(appId));
+        const fiber = yield* Effect.forkChild(scanner.scan(appId));
         yield* TestClock.adjust("19 seconds");
-        const early = yield* Fiber.poll(fiber);
+        const early = yield* fiber.pollUnsafe();
         expect(Option.isNone(early)).toBe(true);
         yield* TestClock.adjust("1 second");
         const result = yield* Fiber.join(fiber);
         expect(result.endpoints[0]?.outcome).toBe("red");
         expect(result.endpoints[0]?.reachable).toBe(false);
         expect(http.requests).toHaveLength(3);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
   });
 

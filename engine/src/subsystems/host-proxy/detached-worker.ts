@@ -109,7 +109,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
                 },
                 options.privateFileAccess,
               ).pipe(
-                Effect.zipLeft(Ref.set(keepWorker, true)),
+                Effect.tap(Ref.set(keepWorker, true)),
                 Effect.as({
                   appId: ready.appId,
                   sessionId: ready.sessionId,
@@ -137,7 +137,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
     }),
     options.privateFileAccess,
   ).pipe(
-    Effect.catchAll((cause) =>
+    Effect.catch((cause) =>
       Effect.fail(
         cause instanceof HostProxyTransportUnavailableError
           ? cause

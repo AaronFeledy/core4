@@ -4,7 +4,7 @@ import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProcessRunner } from "@lando/sdk/services";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import {
   type GpgAgentDiscoveryOptions,
   discoverHostGpgAgent,
@@ -53,7 +53,7 @@ test("reports gpg-missing when gpgconf is unavailable", async () => {
   };
   // When
   const result = await Effect.runPromise(
-    Effect.either(discoverHostGpgAgent({ runner, launch: true, ...restricted })),
+    Effect.result(discoverHostGpgAgent({ runner, launch: true, ...restricted })),
   );
   // Then
   expect(result).toMatchObject({
@@ -67,7 +67,7 @@ test("launches once then fails socket-missing when the socket remains absent", a
   const calls: ReadonlyArray<string>[] = [];
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostGpgAgent({
         runner: recordingRunner(calls),
         launch: true,
@@ -89,7 +89,7 @@ test("never launches gpg-agent when launch is false", async () => {
   const calls: ReadonlyArray<string>[] = [];
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostGpgAgent({
         runner: recordingRunner(calls),
         launch: false,
@@ -115,7 +115,7 @@ test("rejects a symlink or regular file at the socket path without launching", a
     for (const path of [regular, link]) {
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           discoverHostGpgAgent({
             runner: recordingRunner(calls),
             explicitSocket: path,
@@ -154,7 +154,7 @@ test.each([
   try {
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         discoverHostGpgAgent({
           runner: recordingRunner(calls, `${path}\n`),
           launch: true,
@@ -164,7 +164,7 @@ test.each([
     );
     // Then
     if (failure === undefined) {
-      expect(Either.isRight(result) ? result.right : result).toEqual({ _tag: "unix", path, source });
+      expect(Result.isSuccess(result) ? result.success : result).toEqual({ _tag: "unix", path, source });
     } else {
       expect(result).toMatchObject({
         _tag: "Left",
@@ -188,7 +188,7 @@ test("a socket nobody answers fails socket-missing", async () => {
   const calls: ReadonlyArray<string>[] = [];
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostGpgAgent({
         runner: recordingRunner(calls),
         launch: true,

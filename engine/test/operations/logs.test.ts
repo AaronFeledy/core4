@@ -21,7 +21,7 @@ const web = ServiceName.make("web");
 const database = ServiceName.make("database");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-21T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-21T00:00:00Z"),
   source: "logs-test",
   runtime: 4 as const,
 };

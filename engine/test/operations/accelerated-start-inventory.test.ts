@@ -31,7 +31,7 @@ test.each(["ENOTDIR", "EIO", "EPERM"])(
       expect(result).toEqual(Exit.succeed([]));
     } else {
       expect(Exit.isFailure(result)).toBe(true);
-      if (Exit.isFailure(result)) expect(Option.getOrThrow(Cause.failureOption(result.cause))).toBe(failure);
+      if (Exit.isFailure(result)) expect(Option.getOrThrow(Cause.findErrorOption(result.cause))).toBe(failure);
     }
   },
 );

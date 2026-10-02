@@ -87,7 +87,7 @@ describe("lando base composition", () => {
     expect(
       Schema.decodeUnknownSync(
         Schema.Struct({
-          buildSteps: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+          buildSteps: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String) }))),
         }),
       )(plan.extensions["@lando/core/service-features"]).buildSteps ?? [],
     ).not.toContainEqual({ id: "lando.security:trust-store" });

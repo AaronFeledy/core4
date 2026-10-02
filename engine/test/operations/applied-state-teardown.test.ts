@@ -53,7 +53,7 @@ const planAt = (root: string): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-15T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-15T00:00:00.000Z"),
     source: "applied-state",
     runtime: 4,
   },
@@ -121,7 +121,7 @@ const makeLayer = (input: {
       Effect.sync(() => {
         listFilters.push(filter);
       }).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           input.listFailure === undefined
             ? Effect.succeed(input.observed ?? [])
             : Effect.fail(input.listFailure),
@@ -141,7 +141,7 @@ const makeLayer = (input: {
           volumes: options.volumes === true,
         });
       }).pipe(
-        Effect.zipRight(input.destroy?.() ?? Effect.void),
+        Effect.andThen(input.destroy?.() ?? Effect.void),
         Effect.tap(() =>
           options.removeState === false
             ? Effect.void
@@ -352,7 +352,7 @@ describe("applied-state teardown", () => {
         removalFailure: failure,
       });
       const result = await Effect.runPromise(
-        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.either),
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.result),
       );
       expect(result).toMatchObject({ _tag: "Left", left: failure });
       expect(harness.destroyCalls).toEqual([]);
@@ -396,10 +396,10 @@ describe("applied-state teardown", () => {
       const root = join(parent, "gone");
       const harness = makeLayer({ appliedPlan: mutate(planAt(root)) });
       const result = await Effect.runPromise(
-        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
-      expect(result.left).toMatchObject({ _tag: "AppResolveError", reason: "mismatch", detail });
+      if (result._tag !== "Failure") throw new TypeError("expected ownership refusal");
+      expect(result.failure).toMatchObject({ _tag: "AppResolveError", reason: "mismatch", detail });
       expect(harness.destroyCalls).toEqual([]);
     });
   });
@@ -408,10 +408,10 @@ describe("applied-state teardown", () => {
     await withTempRoot(async (root) => {
       const harness = makeLayer({ appliedPlan: planAt(root) });
       const result = await Effect.runPromise(
-        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
-      expect(result.left).toMatchObject({
+      if (result._tag !== "Failure") throw new TypeError("expected existing-root refusal");
+      expect(result.failure).toMatchObject({
         _tag: "AppResolveError",
         reason: "mismatch",
         detail: "root-exists",
@@ -431,10 +431,10 @@ describe("applied-state teardown", () => {
         const root = join(broken, "gone");
         const harness = makeLayer({});
         const result = await Effect.runPromise(
-          destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+          destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.result),
         );
-        if (result._tag !== "Left") throw new TypeError("expected unresolvable-root refusal");
-        expect(result.left).toMatchObject({
+        if (result._tag !== "Failure") throw new TypeError("expected unresolvable-root refusal");
+        expect(result.failure).toMatchObject({
           _tag: "AppResolveError",
           reason: "missing-root",
           detail: "unresolvable-root",

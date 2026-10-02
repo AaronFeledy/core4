@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Either, Exit } from "effect";
+import { Cause, Effect, Result, Exit } from "effect";
 
 import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { SecretStore } from "@lando/sdk/services";
@@ -28,7 +28,7 @@ describe("env-backed SecretStoreLive", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(SecretNotFoundError);
@@ -47,16 +47,16 @@ describe("env-backed SecretStoreLive", () => {
       const env = { [`LANDO_SECRET_${reference}`]: "must-not-resolve" };
       // When
       const result = await run(
-        Effect.flatMap(SecretStore, (store) => Effect.either(store.get(reference))),
+        Effect.flatMap(SecretStore, (store) => Effect.result(store.get(reference))),
         env,
       );
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(SecretReferenceInvalidError);
-        expect(result.left._tag).toBe("SecretReferenceInvalidError");
-        if (result.left._tag === "SecretReferenceInvalidError") {
-          expect(result.left.reference).toBe(reference);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(SecretReferenceInvalidError);
+        expect(result.failure._tag).toBe("SecretReferenceInvalidError");
+        if (result.failure._tag === "SecretReferenceInvalidError") {
+          expect(result.failure.reference).toBe(reference);
         }
       }
     },

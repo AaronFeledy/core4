@@ -1,3 +1,4 @@
+import { Context } from "effect";
 import { Effect, type Runtime, Stream } from "effect";
 
 import type {
@@ -55,7 +56,7 @@ export type AppHandleRuntimeServices =
  */
 export const makeAppHandle = (
   target: ResolvedAppTarget,
-  runtime: Runtime.Runtime<AppHandleRuntimeServices>,
+  runtime: Context.Context<AppHandleRuntimeServices>,
   ops: AppOperations,
   lifecycle: AppLifecycle,
 ): App => {

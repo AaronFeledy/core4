@@ -1,4 +1,4 @@
-import { type Context, Effect, Either } from "effect";
+import { type Context, Effect, Result } from "effect";
 
 import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
 import { LandofileValidationError, type RouteInputError } from "@lando/sdk/errors";
@@ -113,16 +113,16 @@ export const normalizeAuthoredRoutes = (input: {
   const serviceRoutes = normalizeRoutes(input.service.routes ?? [], {
     keyPath: `services.${input.name}.routes`,
   });
-  if (Either.isLeft(serviceRoutes)) return Effect.fail(serviceRoutes.left);
+  if (Result.isFailure(serviceRoutes)) return Effect.fail(serviceRoutes.failure);
   const proxyRoutes = normalizeRoutes(input.landofile.proxy?.[ServiceName.make(input.name)] ?? [], {
     keyPath: `proxy.${input.name}`,
   });
-  if (Either.isLeft(proxyRoutes)) return Effect.fail(proxyRoutes.left);
-  return Effect.succeed([...serviceRoutes.right, ...proxyRoutes.right]);
+  if (Result.isFailure(proxyRoutes)) return Effect.fail(proxyRoutes.failure);
+  return Effect.succeed([...serviceRoutes.success, ...proxyRoutes.success]);
 };
 
 export const planServiceDrafts = (input: {
-  readonly pluginRegistry: Context.Tag.Service<typeof PluginRegistry>;
+  readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
   readonly provider: ProviderId;
   readonly appName: string;

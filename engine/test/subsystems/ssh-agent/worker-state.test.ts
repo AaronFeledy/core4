@@ -85,7 +85,7 @@ test("does not signal a reused PID when worker identity differs", async () => {
     await Effect.runPromise(writeAgentRelayWorkerRecord(app, options, record));
     // When
     const outcome = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         replaceExistingAgentRelayWorker(app, {
           ...options,
           identify: async () => ({ ...record, sessionId: "another" }),

@@ -95,7 +95,7 @@ export const probeWorker = (record: HostProxyControlRecord): Effect.Effect<Probe
     identifyWorker(record),
   ).pipe(
     Effect.map((result) => (result.outcome === "green" ? "live" : "dead")),
-    Effect.catchAll(() => Effect.succeed("dead" as const)),
+    Effect.catch(() => Effect.succeed("dead" as const)),
   );
 
 const shutdownWorker = (record: HostProxyControlRecord) =>
@@ -108,7 +108,7 @@ const shutdownWorker = (record: HostProxyControlRecord) =>
       });
     },
     catch: () => undefined,
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 const defaultTerminateProcess = async (pid: number, signal: NodeJS.Signals): Promise<void> => {
   try {
@@ -129,7 +129,7 @@ const awaitWorkerDisconnect = (record: HostProxyControlRecord): Effect.Effect<bo
     identifyWorker(record),
   ).pipe(
     Effect.map((result) => result.outcome === "green"),
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.catch(() => Effect.succeed(false)),
   );
 
 const workerProcessAlive = (pid: number): boolean => {
@@ -151,7 +151,7 @@ const awaitWorkerProcessExit = (record: HostProxyControlRecord): Effect.Effect<b
     Effect.sync(() => workerProcessAlive(record.pid)),
   ).pipe(
     Effect.map((result) => result.outcome === "green"),
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.catch(() => Effect.succeed(false)),
   );
 
 const terminateWorkerProcess = (
@@ -180,10 +180,10 @@ export const terminateControlRecord = (
       status === "dead"
         ? removeDir
         : shutdownWorker(record).pipe(
-            Effect.zipRight(awaitWorkerDisconnect(record)),
-            Effect.zipRight(awaitWorkerProcessExit(record)),
+            Effect.andThen(awaitWorkerDisconnect(record)),
+            Effect.andThen(awaitWorkerProcessExit(record)),
             Effect.flatMap((stopped) => (stopped ? Effect.void : terminateWorkerProcess(record, options))),
-            Effect.zipRight(removeDir),
+            Effect.andThen(removeDir),
           ),
     ),
   );

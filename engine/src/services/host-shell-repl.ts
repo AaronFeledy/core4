@@ -153,7 +153,7 @@ export const runHostShellRepl = (
             const exitCode = parseExit(line, lastStatus);
             if (exitCode !== undefined) return { exitCode };
             const resolution = await Effect.runPromise(
-              Effect.either(
+              Effect.result(
                 resolveSecrets(line, (reference) =>
                   spec.resolveSecret(reference).pipe(
                     Effect.tap((value) =>
@@ -166,12 +166,12 @@ export const runHostShellRepl = (
                 ),
               ),
             );
-            if (resolution._tag === "Left") {
-              io.writeStderr(`${baseRedactor.redactString(resolution.left.message)}\n`);
+            if (resolution._tag === "Failure") {
+              io.writeStderr(`${baseRedactor.redactString(resolution.failure.message)}\n`);
               io.prompt?.();
               continue;
             }
-            const resolved = resolution.right;
+            const resolved = resolution.success;
             const redactor = await Effect.runPromise(redactorFor(resolved.values));
             const command = redactor.redactString(
               resolved.fragments.reduce(

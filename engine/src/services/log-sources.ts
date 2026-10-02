@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LogSource, type LogSource as LogSourceType } from "@lando/sdk/schema";
@@ -73,14 +73,14 @@ const validateUniqueSources = (
 
 export const mergeLogSources = (
   input: MergeLogSourcesInput,
-): Either.Either<ReadonlyArray<LogSourceType>, LandofileValidationError> => {
+): Result.Result<ReadonlyArray<LogSourceType>, LandofileValidationError> => {
   const typeIssue = `${issuePath(input.serviceName)}.serviceType`;
   const userIssue = issuePath(input.serviceName);
   const typeError = validateUniqueSources(input, input.typeSources, typeIssue);
-  if (typeError !== undefined) return Either.left(typeError);
+  if (typeError !== undefined) return Result.fail(typeError);
 
   const userError = validateUniqueSources(input, input.userSources, userIssue);
-  if (userError !== undefined) return Either.left(userError);
+  if (userError !== undefined) return Result.fail(userError);
 
   const typeSources = input.typeSources.map((entry) => Schema.decodeUnknownSync(LogSource)(entry));
   const userSources = input.userSources.map((entry) => Schema.decodeUnknownSync(LogSource)(entry));
@@ -88,7 +88,7 @@ export const mergeLogSources = (
   if (input.base !== "lando") {
     const typeRedirect = typeSources.find((source) => source.strategy === "redirect");
     if (typeRedirect !== undefined) {
-      return Either.left(
+      return Result.fail(
         validationError(
           input,
           `Service ${input.serviceName} log source ${String(typeRedirect.id)} uses strategy: redirect, but base: ${input.base} does not give Lando a build phase to redirect daemon logs. Use strategy: follow for BYO services.`,
@@ -98,7 +98,7 @@ export const mergeLogSources = (
     }
     const userRedirect = userSources.find((source) => source.strategy === "redirect");
     if (userRedirect !== undefined) {
-      return Either.left(
+      return Result.fail(
         validationError(
           input,
           `Service ${input.serviceName} log source ${String(userRedirect.id)} uses strategy: redirect, but base: ${input.base} does not give Lando a build phase to redirect daemon logs. Use strategy: follow for BYO services.`,
@@ -115,5 +115,5 @@ export const mergeLogSources = (
   for (const source of userSources) {
     merged.set(String(source.id), source);
   }
-  return Either.right([...merged.values()]);
+  return Result.succeed([...merged.values()]);
 };

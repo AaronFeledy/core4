@@ -5,13 +5,10 @@ import { type AppPlan, DependencyPlan, HealthcheckPlan } from "@lando/sdk/schema
 
 const DependencyServicePlan = Schema.Struct({
   dependsOn: Schema.Array(DependencyPlan),
-  healthcheck: Schema.optional(HealthcheckPlan),
+  healthcheck: Schema.optionalKey(HealthcheckPlan),
 });
 
-const DependencyServicePlans = Schema.Record({
-  key: Schema.String,
-  value: DependencyServicePlan,
-});
+const DependencyServicePlans = Schema.Record(Schema.String, DependencyServicePlan);
 
 type DependencyCycle = {
   readonly dependentName: string;

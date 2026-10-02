@@ -76,5 +76,5 @@ export const PrivilegeServiceLive = Layer.succeed(PrivilegeService, {
     Effect.tryPromise({
       try: () => runElevated(command),
       catch: (cause) => resultFromFailure(command, cause),
-    }).pipe(Effect.catchAll((result) => Effect.succeed(result))),
+    }).pipe(Effect.catch((result) => Effect.succeed(result))),
 });

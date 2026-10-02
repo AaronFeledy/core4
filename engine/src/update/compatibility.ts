@@ -55,7 +55,7 @@ export const guardCoreReplacement = <A, E, R>(
   withPluginMutationLock(
     input.pluginsRoot,
     "meta:update",
-    checkCoreReplacement(input).pipe(Effect.zipRight(body)),
+    checkCoreReplacement(input).pipe(Effect.andThen(body)),
   ).pipe(
     Effect.mapError((error) =>
       error instanceof NotImplementedError

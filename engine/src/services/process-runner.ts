@@ -369,7 +369,7 @@ async function* streamProcess(
 }
 
 const scopedProcessStream = (input: ProcessSpawnOptions, includeExitCode: boolean) =>
-  Stream.unwrapScoped(
+  Stream.unwrap(
     Effect.acquireRelease(
       Effect.sync(() => new AbortController()),
       (controller) => Effect.sync(() => controller.abort()),
@@ -394,7 +394,7 @@ const scopedProcessStream = (input: ProcessSpawnOptions, includeExitCode: boolea
     ),
   );
 
-const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
+const processRunnerService: Context.Service.Shape<typeof ProcessRunner> = {
   run: (input) =>
     Effect.gen(function* () {
       yield* publishRedactedProcessEvent(input, {
@@ -417,7 +417,7 @@ const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
             await childExit?.catch(() => undefined);
           }),
         ),
-        Effect.catchAll((error) => Effect.flatMap(redactProcessError(input, error), Effect.fail)),
+        Effect.catch((error) => Effect.flatMap(redactProcessError(input, error), Effect.fail)),
       );
       yield* publishRedactedProcessEvent(input, {
         _tag: "post-process-exec",
@@ -431,13 +431,13 @@ const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
   stream: (input) =>
     scopedProcessStream(input, false).pipe(
       Stream.filter((event): event is ProcessStreamChunk => "kind" in event),
-      Stream.catchAll((error) =>
+      Stream.catch((error) =>
         Stream.fromEffect(redactProcessError(input, error).pipe(Effect.flatMap(Effect.fail))),
       ),
     ),
   streamWithExit: (input) =>
     scopedProcessStream(input, true).pipe(
-      Stream.catchAll((error) =>
+      Stream.catch((error) =>
         Stream.fromEffect(redactProcessError(input, error).pipe(Effect.flatMap(Effect.fail))),
       ),
     ),

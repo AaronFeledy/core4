@@ -152,7 +152,7 @@ const remove = async (path: string): Promise<void> => {
   }
 };
 
-const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
+const fileSystemService: Context.Service.Shape<typeof FileSystem> = {
   read: (path) => Stream.fromAsyncIterable(readChunks(path), mapFileError(path, `Failed to read ${path}`)),
   readText: (path) =>
     Effect.tryPromise({

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Result, Layer, Schema } from "effect";
 
 import { RouteInputError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
@@ -81,13 +81,13 @@ test("rejects conflicting proxy and service declarations with authored source ke
     proxy: { web: [{ hostname: "same.test", filters: [{ type: "addPrefix", prefix: "/new" }] }] },
   };
   // When
-  const result = await Effect.runPromise(Effect.either(plan(input)));
+  const result = await Effect.runPromise(Effect.result(plan(input)));
   // Then
-  if (Either.isRight(result)) throw new Error("expected conflict");
-  expect(result.left).toBeInstanceOf(RouteInputError);
-  expect(result.left).toMatchObject({ key: "proxy.web[0]" });
-  expect(result.left.message).toContain("services.web.routes[0]");
-  expect(result.left).not.toHaveProperty("file");
+  if (Result.isSuccess(result)) throw new Error("expected conflict");
+  expect(result.failure).toBeInstanceOf(RouteInputError);
+  expect(result.failure).toMatchObject({ key: "proxy.web[0]" });
+  expect(result.failure.message).toContain("services.web.routes[0]");
+  expect(result.failure).not.toHaveProperty("file");
 });
 
 test("dedupes equivalent proxy and service declarations without duplicate service refs", async () => {
@@ -136,12 +136,12 @@ test("rejects invalid route shorthand with RouteInputError before any provider a
     services: { web: { type: "nginx", routes: ["ftp://bad.example.test"] } },
   };
   // When
-  const result = await Effect.runPromise(Effect.either(plan(input)));
+  const result = await Effect.runPromise(Effect.result(plan(input)));
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isRight(result)) throw new Error("expected route rejection");
-  expect(result.left).toBeInstanceOf(RouteInputError);
-  expect(result.left).toMatchObject({ key: "services.web.routes[0]" });
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) throw new Error("expected route rejection");
+  expect(result.failure).toBeInstanceOf(RouteInputError);
+  expect(result.failure).toMatchObject({ key: "services.web.routes[0]" });
 });
 
 test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
@@ -152,10 +152,10 @@ test("keys top-level proxy routes as proxy.<svc>[i]", async () => {
     proxy: { web: ["alias.example.test", "ftp://bad.example.test"] },
   };
   // When
-  const result = await Effect.runPromise(Effect.either(plan(input)));
+  const result = await Effect.runPromise(Effect.result(plan(input)));
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isRight(result)) throw new Error("expected route rejection");
-  expect(result.left).toBeInstanceOf(RouteInputError);
-  expect(result.left).toMatchObject({ key: "proxy.web[1]" });
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) throw new Error("expected route rejection");
+  expect(result.failure).toBeInstanceOf(RouteInputError);
+  expect(result.failure).toMatchObject({ key: "proxy.web[1]" });
 });

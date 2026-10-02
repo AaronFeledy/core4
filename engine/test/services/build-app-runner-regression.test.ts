@@ -135,11 +135,11 @@ test("settles started app tasks when the build fiber is interrupted", async () =
           const eventService = yield* EventService;
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
-          const fiber = yield* Effect.fork(orchestrator.buildApp(plan));
+          const fiber = yield* Effect.forkChild(orchestrator.buildApp(plan));
           yield* eventService.waitFor("task.start");
           const exit = yield* Fiber.interrupt(fiber);
           expect(Exit.isFailure(exit)).toBe(true);
-          if (Exit.isFailure(exit)) expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+          if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
           else throw new TypeError("interrupted build unexpectedly succeeded");
           return [...(yield* Queue.takeAll(queue))];
         }),
@@ -181,7 +181,7 @@ test("reports an already-aborted build signal as interruption", async () => {
 
     // Then
     expect(Exit.isFailure(result.exit)).toBe(true);
-    if (Exit.isFailure(result.exit)) expect(Cause.isInterruptedOnly(result.exit.cause)).toBe(true);
+    if (Exit.isFailure(result.exit)) expect(Cause.hasInterruptsOnly(result.exit.cause)).toBe(true);
     else throw new TypeError("aborted build unexpectedly succeeded");
     expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
       summary: "App dependency build interrupted",

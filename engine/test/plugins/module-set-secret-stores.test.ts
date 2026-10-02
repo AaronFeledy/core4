@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { SecretStore } from "@lando/sdk/services";
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Result, Layer, Schema } from "effect";
 import { makePluginCapabilityIndex } from "../../src/plugins/module-set.ts";
 
 const module: LandoPluginModule = {
@@ -30,12 +30,12 @@ test("indexes secretStores contributions", () => {
   // Given / When
   const result = makePluginCapabilityIndex([module]);
   // Then
-  expect(Either.getOrThrow(result).secretStores.get("vault")).toBe(module.secretStores?.get("vault"));
+  expect(Result.getOrThrow(result).secretStores.get("vault")).toBe(module.secretStores?.get("vault"));
 });
 
 test("rejects a manifest id the module does not export", () => {
   // Given / When
   const result = makePluginCapabilityIndex([{ ...module, secretStores: new Map() }]);
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("PluginDescriptorMismatchError");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("PluginDescriptorMismatchError");
 });

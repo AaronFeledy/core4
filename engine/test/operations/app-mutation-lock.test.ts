@@ -86,7 +86,7 @@ describe("per-app mutation lock", () => {
     const release = await Deferred.make<void>().pipe(Effect.runPromise);
     const harness = makeHarness({
       applyEffect: Deferred.succeed(held, undefined).pipe(
-        Effect.zipRight(Deferred.await(release)),
+        Effect.andThen(Deferred.await(release)),
         Effect.as({ changed: true }),
       ),
     });
@@ -216,7 +216,7 @@ describe("per-app mutation lock", () => {
       const first = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(held, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+          Deferred.succeed(held, undefined).pipe(Effect.andThen(Deferred.await(release))),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(held));
@@ -315,14 +315,14 @@ describe("per-app mutation lock", () => {
       const fiber = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(acquired, undefined).pipe(Effect.zipRight(Effect.never)),
+          Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const path = lockPathFor(isolated.userDataRoot, app.id, app.root);
       expect(await exists(path)).toBe(true);
       const exit = await Effect.runPromise(Fiber.interrupt(fiber));
-      expect(Exit.isInterrupted(exit)).toBe(true);
+      expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(await exists(path)).toBe(false);
     } finally {
       await rm(isolated.userDataRoot, { recursive: true, force: true });
@@ -340,21 +340,21 @@ describe("per-app mutation lock", () => {
       const holder = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(acquired, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+          Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Deferred.await(release))),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const started = Date.now();
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           withAppMutationLock(app, Effect.succeed("should-not-run")).pipe(Effect.provide(isolated.layer)),
         ),
       );
       expect(Date.now() - started).toBeGreaterThanOrEqual(300);
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left).toBeInstanceOf(AppLockTimeoutError);
-        expect(result.left.message).toBe(APP_LOCK_WAIT_MESSAGE);
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(AppLockTimeoutError);
+        expect(result.failure.message).toBe(APP_LOCK_WAIT_MESSAGE);
       }
       expect(
         isolated.events.some(
@@ -388,15 +388,15 @@ describe("per-app mutation lock", () => {
         withAppMutationLock(
           app,
           enter.pipe(
-            Effect.zipRight(Deferred.succeed(acquired, undefined)),
-            Effect.zipRight(Deferred.await(release)),
-            Effect.zipRight(leave),
+            Effect.andThen(Deferred.succeed(acquired, undefined)),
+            Effect.andThen(Deferred.await(release)),
+            Effect.andThen(leave),
           ),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const waiter = Effect.runFork(
-        withAppMutationLock(app, enter.pipe(Effect.as("second"), Effect.zipLeft(leave))).pipe(
+        withAppMutationLock(app, enter.pipe(Effect.as("second"), Effect.tap(leave))).pipe(
           Effect.provide(isolated.layer),
         ),
       );

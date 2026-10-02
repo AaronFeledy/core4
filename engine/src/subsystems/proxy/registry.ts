@@ -1,4 +1,4 @@
-import { Context, Effect, Either, Layer, Schema } from "effect";
+import { Context, Effect, Result, Layer, Schema } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -50,10 +50,7 @@ interface RouterServiceRegistryShape {
   ) => Effect.Effect<RouterServiceRegistration, ProxyError>;
 }
 
-export class RouterServiceRegistry extends Context.Tag("@lando/core/RouterServiceRegistry")<
-  RouterServiceRegistry,
-  RouterServiceRegistryShape
->() {}
+export class RouterServiceRegistry extends Context.Service<RouterServiceRegistry, RouterServiceRegistryShape>()("@lando/core/RouterServiceRegistry") {}
 
 interface MakeRouterServiceRegistryOptions {
   readonly registrations: ReadonlyArray<RouterServiceRegistration>;
@@ -115,18 +112,18 @@ const descriptorError = (cause: unknown): ProxyError =>
 const registrationsFromModules = (
   modules: ReadonlyArray<LandoPluginModule>,
   dependencies: {
-    readonly paths: Context.Tag.Service<typeof PathsService>;
-    readonly managedFileService: Context.Tag.Service<typeof ManagedFileService>;
-    readonly stateStore: Context.Tag.Service<typeof StateStore>;
-    readonly privateFileAccess: Context.Tag.Service<typeof PrivateFileAccessService>;
-    readonly eventService?: Context.Tag.Service<typeof EventService>;
-    readonly redaction?: Context.Tag.Service<typeof RedactionService>;
+    readonly paths: Context.Service.Shape<typeof PathsService>;
+    readonly managedFileService: Context.Service.Shape<typeof ManagedFileService>;
+    readonly stateStore: Context.Service.Shape<typeof StateStore>;
+    readonly privateFileAccess: Context.Service.Shape<typeof PrivateFileAccessService>;
+    readonly eventService?: Context.Service.Shape<typeof EventService>;
+    readonly redaction?: Context.Service.Shape<typeof RedactionService>;
   },
 ): Effect.Effect<ReadonlyArray<RouterServiceRegistration>, ProxyError> =>
   Effect.gen(function* () {
     const indexResult = makePluginCapabilityIndex(modules);
-    if (Either.isLeft(indexResult)) return yield* Effect.fail(descriptorError(indexResult.left));
-    const index = indexResult.right;
+    if (Result.isFailure(indexResult)) return yield* Effect.fail(descriptorError(indexResult.failure));
+    const index = indexResult.success;
     const contributions = index.manifests.flatMap((manifest) =>
       (manifest.contributes?.routerServices ?? []).map((contribution) => ({ contribution, manifest })),
     );
@@ -146,7 +143,7 @@ const registrationsFromModules = (
           }),
         );
       }
-      return Schema.decodeUnknown(AbsolutePath)(dependencies.paths.pluginStateDir(module.name)).pipe(
+      return Schema.decodeUnknownEffect(AbsolutePath)(dependencies.paths.pluginStateDir(module.name)).pipe(
         Effect.mapError(descriptorError),
         Effect.map((pluginStateRoot) => {
           const publishRender =
@@ -205,7 +202,7 @@ export const RouterServiceRegistryLive = Layer.suspend(() =>
   makeRouterServiceRegistryLive(bundledPluginModules()),
 );
 
-export const SelectedRouterServiceLive = Layer.unwrapEffect(
+export const SelectedRouterServiceLive = Layer.unwrap(
   Effect.flatMap(RouterServiceRegistry, (registry) =>
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0

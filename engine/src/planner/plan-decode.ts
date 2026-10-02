@@ -1,15 +1,15 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { AppPlan } from "@lando/sdk/schema";
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { Effect, Result, Schema, SchemaIssue } from "effect";
 
 export const decodeAppPlan = (
   appRoot: string,
   plan: unknown,
 ): Effect.Effect<AppPlan, LandofileValidationError> => {
-  const decoded = Schema.decodeUnknownEither(AppPlan)(plan);
-  if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
-  const issues = ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map((issue) =>
-    issue.path.length === 0 ? issue.message : issue.path.join("."),
+  const decoded = Schema.decodeUnknownResult(AppPlan)(plan);
+  if (Result.isSuccess(decoded)) return Effect.succeed(decoded.success);
+  const issues = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues.map((issue) =>
+    (issue.path ?? []).length === 0 ? issue.message : `${issue.path?.join(".")}: ${issue.message}`,
   );
   return Effect.fail(
     new LandofileValidationError({

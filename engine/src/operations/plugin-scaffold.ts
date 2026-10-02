@@ -29,16 +29,7 @@ export interface PluginNewResult {
 export const PluginNewResultSchema = Schema.Struct({
   name: Schema.String,
   destination: Schema.String,
-  template: Schema.Literal(
-    "service-type",
-    "provider",
-    "tooling-engine",
-    "template-engine",
-    "route-filter",
-    "config-translator",
-    "recipe",
-    "bare",
-  ),
+  template: Schema.Literals(["service-type", "provider", "tooling-engine", "template-engine", "route-filter", "config-translator", "recipe", "bare"]),
   cspace: Schema.String,
   files: Schema.Array(Schema.String),
 });
@@ -157,7 +148,7 @@ const renderIndexTs = (input: PluginScaffoldInput): string => {
 };
 
 const renderConfigTs = (): string =>
-  `import { Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.optionalWith(Schema.Boolean, { default: () => true }),\n});\n\nexport type Config = typeof Config.Type;\n`;
+  `import { Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),\n});\n\nexport type Config = typeof Config.Type;\n`;
 
 const renderTest = (name: string): string =>
   `import { describe, expect, test } from "bun:test";\n\nimport { manifest } from "../src/index.ts";\n\ndescribe(${JSON.stringify(name)}, () => {\n  test("exports a Lando v4 plugin manifest", () => {\n    expect(manifest.name).toBe(${JSON.stringify(name)});\n    expect(manifest.api).toBe(4);\n    expect(manifest.requires?.["@lando/core"]).toBe("^4.0.0");\n  });\n});\n`;

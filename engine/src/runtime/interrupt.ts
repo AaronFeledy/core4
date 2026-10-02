@@ -13,7 +13,7 @@
 import { Effect, Fiber, type Scope } from "effect";
 
 export interface InstallSignalHandlersOptions {
-  readonly fiber: Fiber.RuntimeFiber<unknown, unknown>;
+  readonly fiber: Fiber.Fiber<unknown, unknown>;
   /**
    * Signals to handle. Defaults to the CLI signal set.
    */

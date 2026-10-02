@@ -29,7 +29,7 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
         dependsOn: [],
         hostAliases: [],
         metadata: {
-          resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+          resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
           source: "build-app-plan.test",
           runtime: 4,
         },
@@ -41,7 +41,7 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
     stores: [],
     fileSync: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
       source: "build-app-plan.test",
       runtime: 4,
     },

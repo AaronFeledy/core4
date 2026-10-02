@@ -62,7 +62,7 @@ const warnConstraintSkipped = (
     const renderer = yield* Effect.serviceOption(Renderer);
     const machineOutput = yield* commandWarningsUseMachineOutput;
     if (!machineOutput && Option.isSome(renderer)) {
-      yield* renderer.value.message.warn(message).pipe(Effect.catchAll(() => Effect.void));
+      yield* renderer.value.message.warn(message).pipe(Effect.catch(() => Effect.void));
     }
   });
 };

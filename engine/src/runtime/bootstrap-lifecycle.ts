@@ -78,7 +78,7 @@ const timestampedEvent = (tag: BootstrapEventTag, timestamp: DateTime.Utc): Land
 
 const publishTimestamped = (events: EventServiceShape, tag: BootstrapEventTag) =>
   Clock.currentTimeMillis.pipe(
-    Effect.flatMap((now) => events.publish(timestampedEvent(tag, DateTime.unsafeMake(now)))),
+    Effect.flatMap((now) => events.publish(timestampedEvent(tag, DateTime.makeUnsafe(now)))),
   );
 
 const publishCompletedLevels = (
@@ -89,7 +89,7 @@ const publishCompletedLevels = (
     levels,
     (level) =>
       publishTimestamped(events, `pre-bootstrap-${level}`).pipe(
-        Effect.zipRight(publishTimestamped(events, `post-bootstrap-${level}`)),
+        Effect.andThen(publishTimestamped(events, `post-bootstrap-${level}`)),
       ),
     { discard: true },
   );
@@ -100,7 +100,7 @@ const publishBeforeExit = (events: EventServiceShape, exitCode: number) =>
       events.publish({
         _tag: "before-exit",
         exitCode,
-        timestamp: DateTime.unsafeMake(now),
+        timestamp: DateTime.makeUnsafe(now),
       }),
     ),
   );
@@ -109,8 +109,8 @@ const publishBootstrapFailure = (tracker: BootstrapLifecycleTracker): Effect.Eff
   const events = tracker.eventService();
   if (events === undefined) return Effect.void;
   return publishCompletedLevels(events, tracker.completedLevels()).pipe(
-    Effect.catchAllCause(() => Effect.void),
-    Effect.zipRight(publishBeforeExit(events, 1).pipe(Effect.catchAllCause(() => Effect.void))),
+    Effect.catchCause(() => Effect.void),
+    Effect.andThen(publishBeforeExit(events, 1).pipe(Effect.catchCause(() => Effect.void))),
   );
 };
 
@@ -118,7 +118,7 @@ export const superviseBootstrapLayer = <A, E, R>(
   layer: Layer.Layer<A, E, R>,
   tracker: BootstrapLifecycleTracker,
 ): Layer.Layer<A, E | LandoRuntimeBootstrapError, R> =>
-  Layer.unwrapScoped(
+  Layer.unwrap(
     Effect.gen(function* () {
       const runtimeScope = yield* Scope.make();
       const runtimeExit = yield* Layer.buildWithScope(Layer.extendScope(layer), runtimeScope).pipe(
@@ -144,13 +144,13 @@ export const superviseBootstrapLayer = <A, E, R>(
           events,
           publicationFailed ? 1 : typeof process.exitCode === "number" ? process.exitCode : 0,
         ).pipe(
-          Effect.catchAll(() => Effect.void),
+          Effect.catch(() => Effect.void),
           Effect.ensuring(Scope.close(runtimeScope, scopeExit)),
         ),
       );
       yield* publishCompletedLevels(events, tracker.completedLevels()).pipe(
-        Effect.zipRight(publishTimestamped(events, "post-bootstrap")),
-        Effect.zipRight(publishTimestamped(events, "ready")),
+        Effect.andThen(publishTimestamped(events, "post-bootstrap")),
+        Effect.andThen(publishTimestamped(events, "ready")),
         Effect.tapError(() =>
           Effect.sync(() => {
             publicationFailed = true;

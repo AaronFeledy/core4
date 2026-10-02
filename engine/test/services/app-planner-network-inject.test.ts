@@ -84,7 +84,7 @@ const expectProjectCaRejection = async (input: {
 
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-  const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+  const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
   expect(failure).toBeInstanceOf(LandofileValidationError);
   expect(String(failure)).toContain("security.ca");
   expect(String(failure)).toContain(input.remediation);
@@ -253,7 +253,7 @@ test("fails planning when a configured global CA is unreadable", async () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure).toBeInstanceOf(LandofileValidationError);
     expect(String(failure)).toContain(missingPath);
     expect(String(failure)).toContain("LANDO_NETWORK_CA_CERTS");

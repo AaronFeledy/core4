@@ -119,10 +119,10 @@ const registerSchemaDeprecations = Effect.gen(function* () {
   }
 });
 
-export const DeprecationPluginRegistryLive = Layer.scopedDiscard(
+export const DeprecationPluginRegistryLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const plugins = yield* PluginRegistry;
-    const manifests = yield* plugins.list.pipe(Effect.catchAll(() => Effect.succeed([])));
+    const manifests = yield* plugins.list.pipe(Effect.catch(() => Effect.succeed([])));
     const deprecations = yield* DeprecationService;
     const collision = findSetupFlagCollision(
       SETUP_BUILTIN_FLAG_NAMES,

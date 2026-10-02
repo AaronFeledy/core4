@@ -61,7 +61,7 @@ const planFailure = async (appRoot: string, landofile: LandofileShape) => {
   const exit = await Effect.runPromiseExit(planEffect(appRoot, landofile));
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected failure");
-  return Option.getOrThrow(Cause.failureOption(exit.cause));
+  return Option.getOrThrow(Cause.findErrorOption(exit.cause));
 };
 
 const landofile = (services: Record<string, unknown>): LandofileShape =>

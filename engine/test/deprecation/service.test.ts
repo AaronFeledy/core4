@@ -35,7 +35,7 @@ const eventUseId = (event: unknown): unknown => {
   return typeof use === "object" && use !== null && "id" in use ? use.id : undefined;
 };
 
-const timestamp = DateTime.unsafeMake("2026-06-11T16:00:00.000Z");
+const timestamp = DateTime.makeUnsafe("2026-06-11T16:00:00.000Z");
 const DeprecationServiceWithEventsLive = DeprecationServiceLive.pipe(Layer.provide(EventServiceLive));
 
 describe("DeprecationServiceLive", () => {
@@ -133,7 +133,7 @@ describe("DeprecationServiceLive", () => {
           const events = yield* EventService;
           yield* events.subscribe("deprecation-used").pipe(
             Stream.runForEach(() => Effect.fail(new Error("subscriber failed"))),
-            Effect.fork,
+            Effect.forkChild,
           );
           yield* deprecations.use({ kind: "command", id: "app:start", notice: warningNotice, timestamp });
           return yield* deprecations.summary();
@@ -153,7 +153,7 @@ describe("DeprecationServiceLive", () => {
       record: (event: string, data: Readonly<Record<string, unknown>>) =>
         Effect.sync(() => {
           recorded.push({ event, data });
-        }).pipe(Effect.zipRight(Deferred.succeed(recordedOnce, undefined))),
+        }).pipe(Effect.andThen(Deferred.succeed(recordedOnce, undefined))),
     };
     const telemetryDeps = Layer.mergeAll(EventServiceLive, Layer.succeed(Telemetry, telemetry));
 

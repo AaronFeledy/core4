@@ -19,7 +19,7 @@ export interface BootstrapLayerPluginDiscovery {
 }
 
 export interface BootstrapLayerInputs {
-  readonly runtimeLayerFactory: Context.Tag.Service<typeof RuntimeLayerFactory>;
+  readonly runtimeLayerFactory: Context.Service.Shape<typeof RuntimeLayerFactory>;
   readonly lifecycle: BootstrapLifecycleTracker;
   readonly loggerMode: LoggerMode;
   readonly logLevel: LogLevel | undefined;
@@ -74,7 +74,7 @@ const unsupportedProviderOperation = (operation: string) =>
     message: `runtime provider stub cannot ${operation}`,
   });
 
-export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
+export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvider> = {
   id: "stub",
   displayName: "Stub Runtime Provider",
   version: "0.0.0",
@@ -113,7 +113,7 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   importArtifact: () => Effect.die("runtime provider stub cannot import artifacts"),
 };
 
-export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Tag.Service<typeof Renderer> => ({
+export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Service.Shape<typeof Renderer> => ({
   id,
   capabilities: {
     color: false,

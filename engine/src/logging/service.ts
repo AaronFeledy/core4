@@ -11,7 +11,7 @@
  *
  * `--debug` raises the floor to `debug`. `--verbose` only changes Renderer.
  */
-import { type Context, Effect, Logger as EffectLogger, Layer, LogLevel, Option, absurd } from "effect";
+import { type Context, Effect, Logger as EffectLogger, Layer, Option, absurd } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
@@ -35,18 +35,18 @@ export interface LoggerLiveOptions {
   readonly writeLine?: DiagnosticLineWriter;
 }
 
-const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): LogLevel.LogLevel => {
+const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): "LogLevel" => {
   switch (level) {
     case "error":
-      return LogLevel.Error;
+      return "Error";
     case "warn":
-      return LogLevel.Warning;
+      return "Warning";
     case "info":
-      return LogLevel.Info;
+      return "Info";
     case "debug":
-      return LogLevel.Debug;
+      return "Debug";
     case "trace":
-      return LogLevel.Trace;
+      return "Trace";
     default:
       return absurd<never>(level);
   }
@@ -97,7 +97,7 @@ const log = (
     ),
   );
 
-const makeLoggerService = (): Context.Tag.Service<typeof Logger> => ({
+const makeLoggerService = (): Context.Service.Shape<typeof Logger> => ({
   debug: (message, data) => log(Effect.logDebug, message, data),
   info: (message, data) => log(Effect.logInfo, message, data),
   warn: (message, data) => log(Effect.logWarning, message, data),

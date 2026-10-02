@@ -38,7 +38,7 @@ const providerRealizesConfigs = (capabilities: ProviderCapabilities): boolean =>
 export const loadComposeConfigFiles = (input: {
   readonly appRoot: string;
   readonly landofile: LandofileShape;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly capabilities: ProviderCapabilities;
 }): Effect.Effect<ReadonlyArray<ComposeConfigFileInput>, LandofileValidationError> =>
   Effect.gen(function* () {

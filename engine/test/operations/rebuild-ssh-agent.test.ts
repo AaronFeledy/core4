@@ -145,7 +145,7 @@ test.each(["sidecar", "host"] as const)(
             app: { kind: "user", id: selected.id, root: selected.root },
             landofile: { name: selected.name, services: {}, sshAgent: { sidecar: mode === "sidecar" } },
           },
-        ).pipe(Effect.either, Effect.provide(harness.layer)),
+        ).pipe(Effect.result, Effect.provide(harness.layer)),
       );
       // Then
       if (mode === "host") {

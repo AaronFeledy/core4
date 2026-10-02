@@ -16,13 +16,5 @@ export const CacheHeader = Schema.Struct({
 });
 export type CacheHeader = typeof CacheHeader.Type;
 
-export const CacheKind = Schema.Literal(
-  "command",
-  "plugin",
-  "app-plan",
-  "service-info",
-  "provider",
-  "command-registry-manifest",
-  "update",
-);
+export const CacheKind = Schema.Literals(["command", "plugin", "app-plan", "service-info", "provider", "command-registry-manifest", "update"]);
 export type CacheKind = typeof CacheKind.Type;

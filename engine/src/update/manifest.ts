@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Result, Layer, Schema } from "effect";
 
 import { DownloaderLive } from "@lando/http-client/downloader";
 import { HttpClientLive } from "@lando/http-client/live";
@@ -32,14 +32,14 @@ export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
 import { CoreUpdateFailureSchema } from "./errors.ts";
 
 export const UpdateResultSchema = Schema.Struct({
-  coreReplacementPending: Schema.optional(Schema.Boolean),
-  coreFailure: Schema.optional(CoreUpdateFailureSchema),
+  coreReplacementPending: Schema.optionalKey(Schema.Boolean),
+  coreFailure: Schema.optionalKey(CoreUpdateFailureSchema),
   updatedCore: Schema.Boolean,
   updatedPlugins: Schema.Array(Schema.String),
-  pluginResults: Schema.optional(Schema.Array(PluginUpdatePlanRowSchema)),
-  hasFailures: Schema.optional(Schema.Boolean),
-  coreBlocked: Schema.optional(Schema.Boolean),
-  coreUpdateAvailable: Schema.optional(Schema.Boolean),
+  pluginResults: Schema.optionalKey(Schema.Array(PluginUpdatePlanRowSchema)),
+  hasFailures: Schema.optionalKey(Schema.Boolean),
+  coreBlocked: Schema.optionalKey(Schema.Boolean),
+  coreUpdateAvailable: Schema.optionalKey(Schema.Boolean),
 });
 
 const UPDATE_BASE_URL = "https://update.lando.dev/v4";
@@ -146,14 +146,14 @@ export const decodeManifest = (
   input: unknown,
   url: string,
 ): Effect.Effect<UpdateManifest, UpdateNetworkError> => {
-  const decoded = Schema.decodeUnknownEither(UpdateManifestSchema)(input, { onExcessProperty: "error" });
-  return Either.isRight(decoded)
-    ? Effect.succeed(decoded.right)
+  const decoded = Schema.decodeUnknownResult(UpdateManifestSchema)(input, { onExcessProperty: "error" });
+  return Result.isSuccess(decoded)
+    ? Effect.succeed(decoded.success)
     : Effect.fail(
         new UpdateNetworkError({
           message: `Update manifest at ${url} failed schema validation.`,
           url,
-          cause: decoded.left,
+          cause: decoded.failure,
         }),
       );
 };
@@ -275,12 +275,7 @@ export const enforceNoDowngrade = (
         }),
       );
 
-const UpdateFailureCategorySchema = Schema.Literal(
-  "signature_failure",
-  "launch_probe_failure",
-  "permission_failure",
-  "network_failure",
-);
+const UpdateFailureCategorySchema = Schema.Literals(["signature_failure", "launch_probe_failure", "permission_failure", "network_failure"]);
 type UpdateFailureCategory = typeof UpdateFailureCategorySchema.Type;
 
 interface UpdateManifestStateEntry {
@@ -295,19 +290,14 @@ interface UpdateManifestStateEntry {
 }
 
 const UpdateManifestStateSchema = Schema.partial(
-  Schema.Record({
-    key: UpdateChannelSchema,
-    value: Schema.Struct({
+  Schema.Record(UpdateChannelSchema, Schema.Struct({
       latest: Schema.String,
-      lastFailure: Schema.optional(
-        Schema.Struct({
+      lastFailure: Schema.optionalKey(Schema.Struct({
           category: UpdateFailureCategorySchema,
           targetVersion: Schema.String,
           platform: Schema.String,
-        }),
-      ),
-    }),
-  }),
+        })),
+    })),
 );
 type DecodedUpdateManifestState = typeof UpdateManifestStateSchema.Type;
 type UpdateManifestState = Partial<Record<UpdateChannel, UpdateManifestStateEntry>>;
@@ -341,16 +331,16 @@ export const readUpdateManifestState = (
   }).pipe(
     Effect.flatMap((raw) => {
       if (raw === null) return Effect.succeed({});
-      const decoded = Schema.decodeUnknownEither(UpdateManifestStateSchema)(raw, {
+      const decoded = Schema.decodeUnknownResult(UpdateManifestStateSchema)(raw, {
         onExcessProperty: "error",
       });
-      return Either.isRight(decoded)
-        ? Effect.succeed(normalizeUpdateManifestState(decoded.right))
+      return Result.isSuccess(decoded)
+        ? Effect.succeed(normalizeUpdateManifestState(decoded.success))
         : Effect.fail(
             new UpdateNetworkError({
               message: `Update manifest freshness state at ${path} failed schema validation.`,
               url: path,
-              cause: decoded.left,
+              cause: decoded.failure,
             }),
           );
     }),
@@ -385,7 +375,7 @@ export const writeUpdateFailureState = ({
 }): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const state = yield* readUpdateManifestState(path).pipe(
-      Effect.catchAll(() => Effect.succeed(emptyUpdateManifestState)),
+      Effect.catch(() => Effect.succeed(emptyUpdateManifestState)),
     );
     const current = state[channel];
     yield* writeUpdateManifestState(path, {
@@ -394,7 +384,7 @@ export const writeUpdateFailureState = ({
         latest: current?.latest ?? targetVersion,
         lastFailure: { category, targetVersion, platform },
       },
-    }).pipe(Effect.catchAll(() => Effect.void));
+    }).pipe(Effect.catch(() => Effect.void));
   });
 
 export const failureOutcomeFromError = (

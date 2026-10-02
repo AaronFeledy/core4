@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 export interface InstalledPluginRegistryEntry {
   readonly name: string;
@@ -34,9 +34,9 @@ const InstalledPluginRegistryEntryShape = Schema.Struct({
   name: Schema.String,
   version: Schema.String,
   path: Schema.String,
-  requestedSelector: Schema.optional(Schema.String),
-  source: Schema.optional(Schema.Literal("installed", "linked")),
-  linkedPath: Schema.optional(Schema.String),
+  requestedSelector: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literals(["installed", "linked"])),
+  linkedPath: Schema.optionalKey(Schema.String),
 });
 
 const installedPluginRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
@@ -96,17 +96,17 @@ export const inspectInstalledPluginRegistry = async (
   const registry: Record<string, InstalledPluginRegistryEntry> = {};
   const failures: InstalledPluginRegistryFailure[] = [];
   for (const [name, entry] of Object.entries(raw)) {
-    const decoded = Schema.decodeUnknownEither(InstalledPluginRegistryEntryShape)(entry, {
+    const decoded = Schema.decodeUnknownResult(InstalledPluginRegistryEntryShape)(entry, {
       onExcessProperty: "error",
     });
-    if (Either.isRight(decoded)) {
-      registry[name] = decoded.right;
+    if (Result.isSuccess(decoded)) {
+      registry[name] = decoded.success;
     } else {
       failures.push({
         pluginId: name,
         pluginPath: isRecord(entry) && typeof entry.path === "string" ? entry.path : pluginsRoot,
         metadataPath,
-        cause: decoded.left,
+        cause: decoded.failure,
       });
     }
   }

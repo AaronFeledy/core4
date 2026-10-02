@@ -5,7 +5,7 @@ import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "@lando/sdk/events
 import type { AppRef } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 export const makeHostProxyCallId = (): string => `hp-${Date.now()}-${randomBytes(4).toString("hex")}`;
 

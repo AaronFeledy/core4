@@ -39,7 +39,7 @@ export { destroyTreeId };
 const providerId = ProviderId.make("lando");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "destroy-progress-topology.test",
   runtime: 4 as const,
 };

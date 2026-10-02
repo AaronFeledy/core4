@@ -597,7 +597,7 @@ describe("host-proxy runLando physical transport", () => {
           maxRunning = Math.max(maxRunning, running);
           accept?.();
         }).pipe(
-          Effect.zipRight(Effect.promise(() => blocker)),
+          Effect.andThen(Effect.promise(() => blocker)),
           Effect.ensuring(
             Effect.sync(() => {
               running -= 1;
@@ -700,7 +700,7 @@ describe("host-proxy runLando physical transport", () => {
             maxRunning = Math.max(maxRunning, running);
             accepted?.();
           }).pipe(
-            Effect.zipRight(Effect.never),
+            Effect.andThen(Effect.never),
             Effect.ensuring(
               Effect.sync(() => {
                 running -= 1;
@@ -747,7 +747,7 @@ describe("host-proxy runLando physical transport", () => {
     const session = await sessionFor(
       () =>
         Effect.sync(() => accepted?.()).pipe(
-          Effect.zipRight(Effect.never),
+          Effect.andThen(Effect.never),
           Effect.ensuring(
             Effect.sync(() => {
               interrupted = true;

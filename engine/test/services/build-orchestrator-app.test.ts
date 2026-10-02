@@ -34,7 +34,7 @@ import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const providerId = ProviderId.make("test");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
   source: "build-orchestrator-app.test",
   runtime: 4 as const,
 };
@@ -137,18 +137,15 @@ describe("BuildOrchestrator app phase", () => {
           target: { readonly service: ServiceName },
           command: { readonly command: ReadonlyArray<string> },
         ) =>
-          Stream.acquireRelease(
-            Effect.sync(() => {
+          Stream.scoped(Stream.fromEffect(Effect.acquireRelease(Effect.sync(() => {
               calls += 1;
               active += 1;
               maxActive = Math.max(maxActive, active);
               return String(target.service);
-            }),
-            () =>
+            }), () =>
               Effect.sync(() => {
                 active -= 1;
-              }),
-          ).pipe(Stream.flatMap((name) => outputStream(name, Number(command.command[1] ?? "0"), 0))),
+              })))).pipe(Stream.flatMap((name) => outputStream(name, Number(command.command[1] ?? "0"), 0))),
       } satisfies RuntimeProviderShape;
 
       // When
@@ -165,7 +162,7 @@ describe("BuildOrchestrator app phase", () => {
                   detailDuringWork ||= active > 0;
                 }),
               ),
-              Effect.fork,
+              Effect.forkChild,
             );
             yield* Effect.sleep("1 millis");
             yield* orchestrator.buildApp(plan);
@@ -288,7 +285,7 @@ describe("BuildOrchestrator artifact phase", () => {
       buildArtifact: (spec: ArtifactBuildSpec) => {
         calls.push(String(spec.service));
         if (spec.service === ServiceName.make("appserver")) {
-          return Effect.sleep("20 millis").pipe(Effect.zipRight(Effect.fail(failure)));
+          return Effect.sleep("20 millis").pipe(Effect.andThen(Effect.fail(failure)));
         }
         return Effect.never.pipe(
           Effect.onInterrupt(() =>

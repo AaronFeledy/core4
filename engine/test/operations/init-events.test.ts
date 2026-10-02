@@ -29,7 +29,7 @@ const eventPlan = (): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"),
     source: "test",
     runtime: 4,
   },
@@ -136,7 +136,7 @@ describe("app initialization lifecycle events", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected post-init failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure).toMatchObject({
       _tag: "Some",
       value: {

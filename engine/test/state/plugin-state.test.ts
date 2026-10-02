@@ -76,17 +76,17 @@ describe("LandoPluginContext stateStore scoping", () => {
         const firstEntered = yield* Deferred.make<void>();
         const releaseFirst = yield* Deferred.make<void>();
         const secondEntered = yield* Deferred.make<void>();
-        const first = yield* Effect.fork(
+        const first = yield* Effect.forkChild(
           plugin.stateStore.withLock(
             "runtime-launch",
-            Deferred.succeed(firstEntered, undefined).pipe(Effect.zipRight(Deferred.await(releaseFirst))),
+            Deferred.succeed(firstEntered, undefined).pipe(Effect.andThen(Deferred.await(releaseFirst))),
           ),
         );
         yield* Deferred.await(firstEntered);
-        const second = yield* Effect.fork(
+        const second = yield* Effect.forkChild(
           plugin.stateStore.withLock("runtime-launch", Deferred.succeed(secondEntered, undefined)),
         );
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         const observed = yield* Deferred.poll(secondEntered);
         yield* Deferred.succeed(releaseFirst, undefined);
         yield* Fiber.join(first);

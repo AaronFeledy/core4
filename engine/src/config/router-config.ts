@@ -104,7 +104,7 @@ const resolveGlobalRouter: Effect.Effect<RouterConfig | undefined> = Effect.gen(
   if (configOpt._tag === "None") return undefined;
   return yield* configOpt.value.load.pipe(
     Effect.map((config) => config.router),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 });
 

@@ -80,7 +80,7 @@ test("win32 does not select a named pipe that refuses the identities probe", asy
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostSshAgent({
         platform: "win32",
         home: "C:\\Users\\test",
@@ -101,7 +101,7 @@ test("fails host-agent-not-found with remediation", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given / When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostSshAgent({ platform: "linux", home: "/home/test", env: {}, exists: async () => false }),
     ),
   );
@@ -120,7 +120,7 @@ test("missing explicit socket fails without falling back", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given / When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostSshAgent({
         platform: "linux",
         home: "/home/test",
@@ -210,7 +210,7 @@ test("explicit symlink is socket-missing and does not fall through", async () =>
   try {
     // When the explicit socket is that symlink.
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         discoverHostSshAgent({
           platform: "linux",
           home: root,
@@ -248,7 +248,7 @@ test("explicit socket probe failure does not fall through", async () => {
   try {
     // When the explicit socket does not answer the identities probe.
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         discoverHostSshAgent({
           platform: "linux",
           home: root,

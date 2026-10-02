@@ -10,10 +10,7 @@ export const eventError = (event: string, message: string, cause?: unknown): Eve
 export const timeoutEventError = (event: string): EventError =>
   new EventError({ message: `Timed out waiting for event: ${event}`, event, reason: "timeout" });
 
-const DeliverableEventSchema = Schema.Union(
-  Schema.encodedSchema(LandoEventSchema),
-  Schema.typeSchema(LandoEventSchema),
-);
+const DeliverableEventSchema = Schema.Union([Schema.toEncoded(LandoEventSchema), Schema.toType(LandoEventSchema)]);
 
 export const readEventName = (event: LandoEvent): Effect.Effect<string, EventError> =>
   Effect.try({
@@ -31,10 +28,10 @@ export const decodeDeliverableEvent = (
   event: LandoEvent,
   eventName: string,
 ): Effect.Effect<LandoEvent, EventError> =>
-  Schema.decodeUnknown(DeliverableEventSchema)(event, { onExcessProperty: "error" }).pipe(
+  Schema.decodeUnknownEffect(DeliverableEventSchema)(event, { onExcessProperty: "error" }).pipe(
     Effect.mapError((cause) => eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
-    Effect.catchSomeCause((cause) =>
-      Cause.isDie(cause)
+    Effect.catchCauseFilter((cause) =>
+      Cause.hasDies(cause)
         ? Option.some(
             Effect.fail(eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
           )

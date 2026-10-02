@@ -1,4 +1,4 @@
-import { Either, Layer } from "effect";
+import { Result, Layer } from "effect";
 
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -9,9 +9,7 @@ import { makePluginCapabilityIndex } from "./module-set.ts";
 const BUNDLED_FILE_SYNC_ENGINE_ID = "mutagen";
 
 export const makeBundledFileSyncEngineLive = (modules: ReadonlyArray<LandoPluginModule>) =>
-  Either.match(makePluginCapabilityIndex(modules), {
-    onLeft: Layer.fail,
-    onRight: (index) =>
+  Result.match(makePluginCapabilityIndex(modules), { onFailure: Layer.fail, onSuccess: (index) =>
       index.fileSyncEngines.get(BUNDLED_FILE_SYNC_ENGINE_ID) ??
       Layer.fail(
         new PluginDescriptorMismatchError({
@@ -22,8 +20,7 @@ export const makeBundledFileSyncEngineLive = (modules: ReadonlyArray<LandoPlugin
           message: `Bundled file-sync engine ${BUNDLED_FILE_SYNC_ENGINE_ID} is unavailable.`,
           remediation: `Add ${BUNDLED_FILE_SYNC_ENGINE_ID} to the bundled plugin descriptor map.`,
         }),
-      ),
-  });
+      ) });
 
 export const BundledFileSyncEngineLive = Layer.suspend(() =>
   makeBundledFileSyncEngineLive(bundledPluginModules()),

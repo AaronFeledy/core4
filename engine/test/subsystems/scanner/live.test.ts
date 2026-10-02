@@ -21,7 +21,7 @@ const planWithScanner = (scanner: ScanPlan): AppPlan => ({
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake(0), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
   extensions: {},
   services: {
     [web]: {
@@ -36,7 +36,7 @@ const planWithScanner = (scanner: ScanPlan): AppPlan => ({
       routes: [],
       dependsOn: [],
       hostAliases: [],
-      metadata: { resolvedAt: DateTime.unsafeMake(0), source: "test", runtime: 4 },
+      metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
       extensions: {},
       scanner,
     },

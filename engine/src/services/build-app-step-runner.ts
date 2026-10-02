@@ -11,15 +11,15 @@ import { type AppStep, providerCommand } from "./build-app-plan.ts";
 import { openBuildTranscript } from "./build-transcript.ts";
 
 export interface AppBuildInput {
-  readonly events: Context.Tag.Service<typeof EventService>;
-  readonly paths: Context.Tag.Service<typeof PathsService>;
+  readonly events: Context.Service.Shape<typeof EventService>;
+  readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
   readonly redactor: Pick<Redactor, "redactString">;
-  readonly stateStore: Context.Tag.Service<typeof StateStore>;
+  readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }
 
-const timestamp = () => DateTime.unsafeNow();
+const timestamp = () => DateTime.nowUnsafe();
 
 const publishDetailLines = (
   input: Pick<AppBuildInput, "events" | "redactor">,
@@ -76,7 +76,7 @@ export const runAppBuildStep = (input: AppBuildInput, appStep: AppStep, transcri
             providerCommand(command),
           )
           .pipe(
-            Stream.catchAll(() => Stream.make({ exitCode: 1 })),
+            Stream.catch(() => Stream.make({ exitCode: 1 })),
             Stream.runForEach((chunk) => {
               if ("exitCode" in chunk) {
                 exitCode = chunk.exitCode;
@@ -92,7 +92,7 @@ export const runAppBuildStep = (input: AppBuildInput, appStep: AppStep, transcri
                 : chunk.chunk;
               return transcript
                 .append(persisted)
-                .pipe(Effect.zipRight(publishDetailLines(input, step, chunk.kind, lines)));
+                .pipe(Effect.andThen(publishDetailLines(input, step, chunk.kind, lines)));
             }),
           );
         for (const stream of ["stdout", "stderr"] as const) {

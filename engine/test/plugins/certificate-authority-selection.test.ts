@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { AmbiguousCertificateAuthoritiesError, NoCertificateAuthorityError } from "@lando/sdk/errors";
 
@@ -29,8 +29,8 @@ describe("selectCertificateAuthorityCandidate", () => {
     const result = selectCertificateAuthorityCandidate(candidates, "linux");
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(NoCertificateAuthorityError);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(NoCertificateAuthorityError);
   });
 
   test("selects the sole candidate when no defaultFor matcher applies", () => {
@@ -41,8 +41,8 @@ describe("selectCertificateAuthorityCandidate", () => {
     const result = selectCertificateAuthorityCandidate([only], "linux");
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe(only);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe(only);
   });
 
   test("selects the unique platform default over raw and non-default manifest candidates", () => {
@@ -55,8 +55,8 @@ describe("selectCertificateAuthorityCandidate", () => {
     const result = selectCertificateAuthorityCandidate([raw, fallback, selected], "linux");
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe(selected);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe(selected);
   });
 
   test("selects the Linux platform default for a WSL host", () => {
@@ -68,8 +68,8 @@ describe("selectCertificateAuthorityCandidate", () => {
     const result = selectCertificateAuthorityCandidate([other, linuxDefault], "wsl");
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe(linuxDefault);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe(linuxDefault);
   });
 
   test("returns tagged ambiguity for multiple platform defaults", () => {
@@ -80,10 +80,10 @@ describe("selectCertificateAuthorityCandidate", () => {
     const result = selectCertificateAuthorityCandidate(candidates, "linux");
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(AmbiguousCertificateAuthoritiesError);
-      expect(result.left.candidates.map(({ id }) => id)).toEqual(["first", "second"]);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(AmbiguousCertificateAuthoritiesError);
+      expect(result.failure.candidates.map(({ id }) => id)).toEqual(["first", "second"]);
     }
   });
 
@@ -95,7 +95,7 @@ describe("selectCertificateAuthorityCandidate", () => {
     const result = selectCertificateAuthorityCandidate(candidates, "linux");
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(AmbiguousCertificateAuthoritiesError);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(AmbiguousCertificateAuthoritiesError);
   });
 });

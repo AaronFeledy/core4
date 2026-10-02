@@ -20,7 +20,7 @@ const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationE
 
 export const resolveAppIdentity = (
   appRoot: string,
-  processRunner?: Context.Tag.Service<typeof ProcessRunner>,
+  processRunner?: Context.Service.Shape<typeof ProcessRunner>,
 ): Effect.Effect<AppIdentity, LandofileValidationError> =>
   Effect.gen(function* () {
     const canonicalAppRoot = yield* canonicalPath(appRoot);
@@ -39,7 +39,7 @@ export const resolveAppIdentity = (
                   ? canonicalPath(result.stdout.trim())
                   : Effect.succeed(undefined),
               ),
-              Effect.catchAll(() => Effect.succeed(undefined)),
+              Effect.catch(() => Effect.succeed(undefined)),
             );
     return {
       appRoot: AbsolutePath.make(canonicalAppRoot),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { plugin as mkcertPlugin } from "@lando/ca-mkcert";
 import { ConfigTranslatorConflictError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
@@ -34,13 +34,13 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex(modules);
 
     // Then: all capabilities and manifests are preserved in module order.
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect([...result.right.subscriberFactoryLoaders.keys()]).toEqual([
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect([...result.success.subscriberFactoryLoaders.keys()]).toEqual([
         "first-subscriber",
         "second-subscriber",
       ]);
-      expect(result.right.manifests).toEqual(modules.map((module) => module.manifest));
+      expect(result.success.manifests).toEqual(modules.map((module) => module.manifest));
     }
   });
 
@@ -55,13 +55,13 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex(modules);
 
     // Then: the duplicate is a typed descriptor mismatch.
-    expect(Either.isLeft(result)).toBe(true);
-    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
-    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
-      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
-      expect(result.left.pluginName).toBe("@lando/second");
-      expect(result.left.kind).toBe("subscribers");
-      expect(result.left.provided).toEqual(["shared-subscriber"]);
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError) {
+      expect(result.failure).toBeInstanceOf(PluginDescriptorMismatchError);
+      expect(result.failure.pluginName).toBe("@lando/second");
+      expect(result.failure.kind).toBe("subscribers");
+      expect(result.failure.provided).toEqual(["shared-subscriber"]);
     }
   });
 
@@ -86,24 +86,24 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex([module]);
 
     // Then: the declared and provided ids are reported with remediation.
-    expect(Either.isLeft(result)).toBe(true);
-    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
-    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
-      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
-      expect(result.left.pluginName).toBe("@lando/mismatch");
-      expect(result.left.kind).toBe("templateEngines");
-      expect(result.left.declared).toEqual(["declared-engine"]);
-      expect(result.left.provided).toEqual(["provided-engine"]);
-      expect(result.left.remediation.length).toBeGreaterThan(0);
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError) {
+      expect(result.failure).toBeInstanceOf(PluginDescriptorMismatchError);
+      expect(result.failure.pluginName).toBe("@lando/mismatch");
+      expect(result.failure.kind).toBe("templateEngines");
+      expect(result.failure.declared).toEqual(["declared-engine"]);
+      expect(result.failure.provided).toEqual(["provided-engine"]);
+      expect(result.failure.remediation.length).toBeGreaterThan(0);
     }
   });
 
   test("indexes certificate authority contribution layers", () => {
     const result = makePluginCapabilityIndex([mkcertPlugin]);
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right.certificateAuthorities.get("mkcert")).toBe(
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.certificateAuthorities.get("mkcert")).toBe(
         mkcertPlugin.certificateAuthorities?.get("mkcert"),
       );
     }
@@ -127,13 +127,13 @@ describe("makePluginCapabilityIndex", () => {
 
     const result = makePluginCapabilityIndex([module]);
 
-    expect(Either.isLeft(result)).toBe(true);
-    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
-    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
-      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
-      expect(result.left.kind).toBe("certificateAuthorities");
-      expect(result.left.declared).toEqual(["declared-ca"]);
-      expect(result.left.provided).toEqual(["provided-ca"]);
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError) {
+      expect(result.failure).toBeInstanceOf(PluginDescriptorMismatchError);
+      expect(result.failure.kind).toBe("certificateAuthorities");
+      expect(result.failure.declared).toEqual(["declared-ca"]);
+      expect(result.failure.provided).toEqual(["provided-ca"]);
     }
   });
 
@@ -153,12 +153,12 @@ describe("makePluginCapabilityIndex", () => {
 
     const result = makePluginCapabilityIndex([makeModule("@lando/ca-first"), makeModule("@lando/ca-second")]);
 
-    expect(Either.isLeft(result)).toBe(true);
-    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
-    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
-      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
-      expect(result.left.kind).toBe("certificateAuthorities");
-      expect(result.left.pluginName).toBe("@lando/ca-second");
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError) {
+      expect(result.failure).toBeInstanceOf(PluginDescriptorMismatchError);
+      expect(result.failure.kind).toBe("certificateAuthorities");
+      expect(result.failure.pluginName).toBe("@lando/ca-second");
     }
   });
 
@@ -176,12 +176,12 @@ describe("makePluginCapabilityIndex", () => {
     const result = makePluginCapabilityIndex([module]);
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    expect(Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError).toBe(true);
-    if (Either.isLeft(result) && result.left instanceof PluginDescriptorMismatchError) {
-      expect(result.left.kind).toBe("commands");
-      expect(result.left.declared).toEqual(["meta:declared"]);
-      expect(result.left.provided).toEqual([]);
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError).toBe(true);
+    if (Result.isFailure(result) && result.failure instanceof PluginDescriptorMismatchError) {
+      expect(result.failure.kind).toBe("commands");
+      expect(result.failure.declared).toEqual(["meta:declared"]);
+      expect(result.failure.provided).toEqual([]);
     }
   });
 });
@@ -216,9 +216,9 @@ describe("makePluginCapabilityIndex config translators", () => {
     const result = makePluginCapabilityIndex(modules);
 
     // Then: the loaders are indexed by id in module order and never called.
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect([...result.right.configTranslators.keys()]).toEqual(["first-translator", "second-translator"]);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect([...result.success.configTranslators.keys()]).toEqual(["first-translator", "second-translator"]);
     }
   });
 
@@ -233,12 +233,12 @@ describe("makePluginCapabilityIndex config translators", () => {
     const result = makePluginCapabilityIndex(modules);
 
     // Then: the collision is tagged and names both producing plugins.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(ConfigTranslatorConflictError);
-      if (result.left instanceof ConfigTranslatorConflictError) {
-        expect(result.left.id).toBe("lando3");
-        expect(result.left.translators).toEqual(["@lando/first", "@lando/second"]);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(ConfigTranslatorConflictError);
+      if (result.failure instanceof ConfigTranslatorConflictError) {
+        expect(result.failure.id).toBe("lando3");
+        expect(result.failure.translators).toEqual(["@lando/first", "@lando/second"]);
       }
     }
   });
@@ -255,13 +255,13 @@ describe("makePluginCapabilityIndex config translators", () => {
     const result = makePluginCapabilityIndex([module]);
 
     // Then: the mismatch is a typed descriptor error for configTranslators.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
-      if (result.left instanceof PluginDescriptorMismatchError) {
-        expect(result.left.kind).toBe("configTranslators");
-        expect(result.left.declared).toEqual(["declared"]);
-        expect(result.left.provided).toEqual(["provided"]);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(PluginDescriptorMismatchError);
+      if (result.failure instanceof PluginDescriptorMismatchError) {
+        expect(result.failure.kind).toBe("configTranslators");
+        expect(result.failure.declared).toEqual(["declared"]);
+        expect(result.failure.provided).toEqual(["provided"]);
       }
     }
   });

@@ -206,7 +206,7 @@ export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
           ),
         ),
         Effect.flatMap((value) =>
-          Schema.decodeUnknown(ServiceConfig)(value).pipe(
+          Schema.decodeUnknownEffect(ServiceConfig)(value).pipe(
             Effect.mapError((cause) =>
               loaderError(
                 `Global service ${entry.contribution.id} module ${moduleSpecifier} did not return a valid ServiceConfig.`,

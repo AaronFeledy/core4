@@ -1,4 +1,6 @@
-import { Effect, ParseResult } from "effect";
+import { SchemaIssue } from "effect";
+import { Schema } from "effect";
+import { Effect } from "effect";
 
 import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
@@ -42,8 +44,8 @@ export type LoadGlobalPlanError =
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
+  if (Schema.isSchemaError(cause)) {
+    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
       issue.path.length === 0 ? issue.message : issue.path.join("."),
     );
   }

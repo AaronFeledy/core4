@@ -20,7 +20,7 @@ export interface RedactedBuildContext {
   readonly providerId: string;
 }
 
-const timestamp = () => DateTime.unsafeNow();
+const timestamp = () => DateTime.nowUnsafe();
 
 export const redactedBuildContext = (
   redactor: Pick<Redactor, "redactString">,
@@ -39,7 +39,7 @@ export const redactedBuildContext = (
 };
 
 export const publishArtifactBuildStepSkip = (
-  events: Context.Tag.Service<typeof EventService>,
+  events: Context.Service.Shape<typeof EventService>,
   context: RedactedBuildContext,
   step: ArtifactBuildStep,
   reason: "up-to-date" | "phase-aborted" = "up-to-date",

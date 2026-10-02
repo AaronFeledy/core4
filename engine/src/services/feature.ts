@@ -1,4 +1,5 @@
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import {
@@ -61,12 +62,12 @@ const decodeFeatureConfig = (
   const rawConfig = feature.config ?? {};
   if (feature.definition.schema === undefined) return Effect.succeed(sortRecord(rawConfig));
 
-  const decoded = Schema.decodeUnknownEither(feature.definition.schema)(rawConfig, {
+  const decoded = Schema.decodeUnknownResult(feature.definition.schema)(rawConfig, {
     onExcessProperty: "error",
   });
-  if (Either.isRight(decoded)) return recordConfig(decoded.right, feature.id);
+  if (Result.isSuccess(decoded)) return recordConfig(decoded.success, feature.id);
 
-  const details = ParseResult.ArrayFormatter.formatErrorSync(decoded.left)
+  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues
     .map((issue) => issue.message)
     .join("; ");
   return Effect.fail(
@@ -74,7 +75,7 @@ const decodeFeatureConfig = (
       message:
         details.length > 0 ? `Invalid service feature config: ${details}` : "Invalid service feature config",
       feature: feature.id,
-      cause: decoded.left,
+      cause: decoded.failure,
     }),
   );
 };

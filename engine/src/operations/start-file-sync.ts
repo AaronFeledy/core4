@@ -17,7 +17,7 @@ import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import { startFileSyncTreeId } from "./start-progress.ts";
 
 export interface StartManagedScope {
-  readonly scope: Scope.CloseableScope;
+  readonly scope: Scope.Closeable;
   readonly onStopped?: Effect.Effect<void>;
   readonly onFailedStart?: Effect.Effect<void>;
   readonly onScopeClosedByStartApp?: Effect.Effect<void>;
@@ -30,9 +30,9 @@ export interface PreparedFileSyncSessions {
   readonly rollbackTargets: boolean;
 }
 
-const managedFileSyncRefs = new WeakMap<Scope.CloseableScope, Set<FileSyncSessionRef>>();
+const managedFileSyncRefs = new WeakMap<Scope.Closeable, Set<FileSyncSessionRef>>();
 
-const managedRefsFor = (scope: Scope.CloseableScope): Set<FileSyncSessionRef> => {
+const managedRefsFor = (scope: Scope.Closeable): Set<FileSyncSessionRef> => {
   const refs = managedFileSyncRefs.get(scope);
   if (refs !== undefined) return refs;
   const fresh = new Set<FileSyncSessionRef>();
@@ -85,7 +85,7 @@ const setupFailureDetail = (error: FileSyncError, redact: (value: string) => str
   );
 };
 
-const runFileSyncSetup = (engine: Context.Tag.Service<typeof FileSyncEngine>, tree: TaskTreeController) =>
+const runFileSyncSetup = (engine: Context.Service.Shape<typeof FileSyncEngine>, tree: TaskTreeController) =>
   Effect.gen(function* () {
     yield* tree.startTask("setup");
     yield* tree.detail("setup", "stdout", "Completing deferred file-sync setup for accelerated mounts.");
@@ -94,28 +94,28 @@ const runFileSyncSetup = (engine: Context.Tag.Service<typeof FileSyncEngine>, tr
       redaction._tag === "Some"
         ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
         : createStandaloneRedactor("secrets", { sourceEnv: process.env });
-    const setup = yield* Effect.either(Effect.scoped(engine.setup({ force: false })));
-    if (setup._tag === "Left") {
-      yield* tree.detail("setup", "stderr", setupFailureDetail(setup.left, redactor.redactString));
+    const setup = yield* Effect.result(Effect.scoped(engine.setup({ force: false })));
+    if (setup._tag === "Failure") {
+      yield* tree.detail("setup", "stderr", setupFailureDetail(setup.failure, redactor.redactString));
       yield* tree.failTask("setup", "File-sync setup failed", {
-        ...(setup.left.remediation === undefined
+        ...(setup.failure.remediation === undefined
           ? {}
-          : { remediation: redactor.redactString(setup.left.remediation) }),
+          : { remediation: redactor.redactString(setup.failure.remediation) }),
       });
-      return yield* Effect.fail(setup.left);
+      return yield* Effect.fail(setup.failure);
     }
 
-    const availability = yield* Effect.either(engine.isAvailable);
-    if (availability._tag === "Left") {
-      yield* tree.detail("setup", "stderr", setupFailureDetail(availability.left, redactor.redactString));
+    const availability = yield* Effect.result(engine.isAvailable);
+    if (availability._tag === "Failure") {
+      yield* tree.detail("setup", "stderr", setupFailureDetail(availability.failure, redactor.redactString));
       yield* tree.failTask("setup", "File-sync adapter unavailable", {
-        ...(availability.left.remediation === undefined
+        ...(availability.failure.remediation === undefined
           ? {}
-          : { remediation: redactor.redactString(availability.left.remediation) }),
+          : { remediation: redactor.redactString(availability.failure.remediation) }),
       });
-      return yield* Effect.fail(availability.left);
+      return yield* Effect.fail(availability.failure);
     }
-    if (!availability.right) {
+    if (!availability.success) {
       const remediation = "Enable a live file-sync adapter or use passthrough mounts before retrying start.";
       const unavailable = new FileSyncStartError({
         engineId: engine.id,
@@ -164,7 +164,7 @@ export const startFileSyncSessions = (
         }),
       );
     }
-    const needsSetup = !(yield* engine.isAvailable.pipe(Effect.catchAll(() => Effect.succeed(false))));
+    const needsSetup = !(yield* engine.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))));
     const taskIdFor = (service: string, mountKey: string): string => `${service}/${mountKey}`;
     const sessionChildren = plan.fileSync.map((entry) => ({
       id: taskIdFor(entry.session.service, entry.session.mountKey),
@@ -334,11 +334,11 @@ export const startFileSyncSessions = (
                 cleanupCause =
                   cleanupCause === undefined
                     ? cleanupExit.cause
-                    : Cause.sequential(cleanupCause, cleanupExit.cause);
+                    : Cause.combine(cleanupCause, cleanupExit.cause);
               }
             }
             if (cleanupCause !== undefined) {
-              return yield* Effect.failCause(Cause.sequential(exit.cause, cleanupCause));
+              return yield* Effect.failCause(Cause.combine(exit.cause, cleanupCause));
             }
             const app = plan.fileSync[0]?.session.app;
             if (
@@ -349,7 +349,7 @@ export const startFileSyncSessions = (
             ) {
               const remaining = yield* engine.listSessions({ app }).pipe(
                 Effect.map((sessions) => sessions.length),
-                Effect.catchAll(() => Effect.succeed(-1)),
+                Effect.catch(() => Effect.succeed(-1)),
               );
               if (remaining === 0) yield* Ref.set(safeToRollbackTargets, true);
             }

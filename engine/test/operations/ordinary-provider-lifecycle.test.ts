@@ -50,8 +50,8 @@ const operations: ReadonlyArray<{
   readonly name: string;
   readonly run: Effect.Effect<
     void,
-    Effect.Effect.Error<LifecycleOperation>,
-    Effect.Effect.Context<LifecycleOperation>
+    Effect.Error<LifecycleOperation>,
+    Effect.Services<LifecycleOperation>
   >;
   readonly applies: number;
   readonly removeState: boolean;
@@ -120,12 +120,12 @@ for (const operation of operations.slice(0, 2)) {
     try {
       // When: teardown is attempted without trustworthy applied-state evidence.
       const result = await Effect.runPromise(
-        operation.run.pipe(Effect.either, Effect.provide(harness.layer)),
+        operation.run.pipe(Effect.result, Effect.provide(harness.layer)),
       );
 
       // Then: fail closed before touching the provider.
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") expect(result.left._tag).toBe("FileSyncStopError");
+      if (result._tag === "Failure") expect(result.failure._tag).toBe("FileSyncStopError");
       expect(destroys).toBe(0);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });

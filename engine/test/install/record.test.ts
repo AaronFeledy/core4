@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Effect, Either, Option, Schema } from "effect";
+import { Effect, Result, Option, Schema } from "effect";
 import {
   InstallRecord,
   decodeInstallRecord,
@@ -73,19 +73,19 @@ describe("install record decoding", () => {
   ];
   test.each(cases)("rejects $name", ({ value, reason }) => {
     // Given / When
-    const result = Effect.runSync(Effect.either(decodeInstallRecord(JSON.stringify(value), "record.json")));
+    const result = Effect.runSync(Effect.result(decodeInstallRecord(JSON.stringify(value), "record.json")));
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result))
-      expect(result.left).toMatchObject({ _tag: "InstallRecordError", reason, file: "record.json" });
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure).toMatchObject({ _tag: "InstallRecordError", reason, file: "record.json" });
   });
   test("rejects non-JSON text", () => {
     // Given / When
-    const result = Effect.runSync(Effect.either(decodeInstallRecord("not json", "record.json")));
+    const result = Effect.runSync(Effect.result(decodeInstallRecord("not json", "record.json")));
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result))
-      expect(result.left).toMatchObject({ _tag: "InstallRecordError", reason: "invalid-json" });
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result))
+      expect(result.failure).toMatchObject({ _tag: "InstallRecordError", reason: "invalid-json" });
   });
 });
 
@@ -183,15 +183,15 @@ describe("install record filesystem integration", () => {
         }
         // When
         const result = await Effect.runPromise(
-          readInstallRecord(file).pipe(Effect.either, Effect.provide(FileSystemLive)),
+          readInstallRecord(file).pipe(Effect.result, Effect.provide(FileSystemLive)),
         );
         // Then
         if (kind === "absent" || kind === "regular") {
-          expect(result).toEqual(Either.right(kind === "absent" ? Option.none() : Option.some(record)));
+          expect(result).toEqual(Result.succeed(kind === "absent" ? Option.none() : Option.some(record)));
         } else {
-          expect(Either.isLeft(result)).toBe(true);
-          if (Either.isLeft(result))
-            expect(result.left).toMatchObject({
+          expect(Result.isFailure(result)).toBe(true);
+          if (Result.isFailure(result))
+            expect(result.failure).toMatchObject({
               _tag: "InstallRecordError",
               reason: kind === "corrupt" ? "invalid-json" : "not-regular-file",
             });

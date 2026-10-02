@@ -9,7 +9,7 @@ const isDeprecationUsedEvent = (event: unknown): event is DeprecationUsedEvent =
   event !== null &&
   (event as { readonly _tag?: unknown })._tag === "deprecation-used";
 
-export const DeprecationTelemetryLive = Layer.scopedDiscard(
+export const DeprecationTelemetryLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const telemetry = yield* Telemetry;
     if (!telemetry.enabled) return;
@@ -21,7 +21,7 @@ export const DeprecationTelemetryLive = Layer.scopedDiscard(
       Stream.runForEach((event) =>
         telemetry.record("deprecation-used", deprecationUsedTelemetryData(event.use)),
       ),
-      Effect.catchAll(() => Effect.void),
+      Effect.catch(() => Effect.void),
       Effect.forkScoped,
     );
   }),

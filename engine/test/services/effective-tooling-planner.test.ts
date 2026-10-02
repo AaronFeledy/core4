@@ -274,7 +274,7 @@ const expectAliasConflict = (
 ): void => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) return;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") return;
   expect(failure.value).toBeInstanceOf(CommandAliasConflictError);

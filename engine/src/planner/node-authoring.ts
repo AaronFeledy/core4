@@ -16,7 +16,7 @@ export type AuthorizedProjectFileRequest = {
   readonly version: string | undefined;
   readonly pinnedService: ServiceConfig;
   readonly registeredServiceTypeIds: ReadonlyArray<string>;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 };
 
 export const loadAuthorizedServiceProjectFiles = (

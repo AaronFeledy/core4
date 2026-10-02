@@ -393,7 +393,7 @@ describe("runToolingStepProgram deferred finalization", () => {
 
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["cleanup"]);
-    expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
   });
 
   test("preserves interruption and runs finalizers without sleeps", async () => {
@@ -404,7 +404,7 @@ describe("runToolingStepProgram deferred finalization", () => {
       ...tools.runners,
       runCmd: (leaf, context) =>
         leaf.command === "wait"
-          ? Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.never))
+          ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
           : tools.runners.runCmd(leaf, context),
     };
     const program = await Effect.runPromise(compileEventStepProgram([{ defer: "cleanup" }, "wait"]));
@@ -416,6 +416,6 @@ describe("runToolingStepProgram deferred finalization", () => {
 
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["cleanup"]);
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   });
 });

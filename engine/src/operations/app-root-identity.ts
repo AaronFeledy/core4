@@ -5,15 +5,9 @@ import { Context, Effect, Layer, Option } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
 
-export class AppRootIdentity extends Context.Tag("@lando/engine/AppRootIdentity")<
-  AppRootIdentity,
-  { readonly canonicalRoot: (root: string) => Effect.Effect<string, StateStoreError> }
->() {}
+export class AppRootIdentity extends Context.Service<AppRootIdentity, { readonly canonicalRoot: (root: string) => Effect.Effect<string, StateStoreError> }>()("@lando/engine/AppRootIdentity") {}
 
-export class PinnedAppRoot extends Context.Tag("@lando/engine/PinnedAppRoot")<
-  PinnedAppRoot,
-  { readonly requestedRoot: string; readonly canonicalRoot: string }
->() {}
+export class PinnedAppRoot extends Context.Service<PinnedAppRoot, { readonly requestedRoot: string; readonly canonicalRoot: string }>()("@lando/engine/PinnedAppRoot") {}
 
 export const AppRootIdentityLive = Layer.succeed(AppRootIdentity, {
   canonicalRoot: (root: string) =>

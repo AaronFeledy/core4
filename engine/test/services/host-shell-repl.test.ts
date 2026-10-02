@@ -419,7 +419,7 @@ test("Effect interruption aborts the active child and closes terminal IO", async
   await Effect.runPromise(
     Effect.gen(function* () {
       const ready = yield* Deferred.make<void>();
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         runHostShellRepl({
           resolveSecret: () => Effect.die("secret not expected"),
           io: replIo([{ _tag: "line", line: "printf ready; sleep 5" }], {

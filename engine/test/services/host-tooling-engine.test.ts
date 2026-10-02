@@ -40,7 +40,7 @@ const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
 const providerId = ProviderId.make("lando");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
   source: "host-tooling-engine.test",
   runtime: 4 as const,
 };
@@ -150,11 +150,11 @@ type ShellExecCall = {
 };
 
 const makeRecordingShell = (): {
-  readonly shell: Context.Tag.Service<typeof ShellRunner>;
+  readonly shell: Context.Service.Shape<typeof ShellRunner>;
   readonly calls: () => ReadonlyArray<ShellExecCall>;
 } => {
   const calls: ShellExecCall[] = [];
-  const shell: Context.Tag.Service<typeof ShellRunner> = {
+  const shell: Context.Service.Shape<typeof ShellRunner> = {
     exec: (source: string, options?: ShellCommandOptions) =>
       Effect.sync(() => {
         calls.push({ source, argv: options?.argv ?? [] });
@@ -271,7 +271,7 @@ describe("HostToolingEngineLive", () => {
     const exit = await Effect.runPromiseExit(runEngine(invocation, plan));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");
@@ -319,7 +319,7 @@ describe("HostToolingEngineLive", () => {
     // Then positional rejection fires (proves we did not strip to bare `echo`) and shell is never invoked
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingCompileError");
@@ -378,7 +378,7 @@ describe("HostToolingEngineLive", () => {
     // Then compile fails closed and shell is never invoked
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingCompileError");
@@ -408,7 +408,7 @@ describe("HostToolingEngineLive", () => {
     // Then compile rejects positional shell binding
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingCompileError");
       }
@@ -446,7 +446,7 @@ describe("HostToolingEngineLive", () => {
     const result = await Effect.runPromiseExit(runEngine(invocation, plan));
 
     if (Exit.isFailure(result)) {
-      const failure = Cause.failureOption(result.cause);
+      const failure = Cause.findErrorOption(result.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");
@@ -485,7 +485,7 @@ describe("resolveScriptPath", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value._tag).toBe("ShellScriptOutsideRootError");
@@ -513,7 +513,7 @@ describe("resolveScriptPath", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value._tag).toBe("ShellScriptOutsideRootError");
@@ -534,7 +534,7 @@ describe("resolveScriptPath", () => {
       const exit = await Effect.runPromiseExit(resolveScriptPath(scriptPath, []));
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         if (failure._tag === "Some") {
           expect(failure.value._tag).toBe("ShellScriptOutsideRootError");
         }
@@ -571,7 +571,7 @@ describe("runHostScript", () => {
       const exit = await Effect.runPromiseExit(runHostScript(evilScript, [base]));
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         if (failure._tag === "Some") {
           expect(failure.value._tag).toBe("ShellScriptOutsideRootError");
         }
@@ -604,7 +604,7 @@ describe("evaluateHostVar", () => {
     const exit = await Effect.runPromiseExit(evaluateHostVar("printf 'oh-no' 1>&2; exit 9"));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ShellExecError");
         expect(failure.value.exitCode).toBe(9);

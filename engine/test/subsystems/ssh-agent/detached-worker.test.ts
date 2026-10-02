@@ -97,7 +97,7 @@ test.each(["readiness", "identity"] as const)("terminates a worker when %s fails
   try {
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         startDetachedAgentRelayWorker({
           app,
           plan: { id: AppId.make(app.id), provider: ProviderId.make("lando") },

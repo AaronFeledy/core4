@@ -18,8 +18,8 @@ import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
 export interface ServiceSeedInput {
   readonly landofile: LandofileShape;
-  readonly pluginRegistry: Context.Tag.Service<typeof PluginRegistry>;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly appRoot: string;
   readonly appName: string;
   readonly appDefaults: UserAppDefaults;
@@ -128,6 +128,6 @@ export const resolveServiceSeeds = (input: ServiceSeedInput) =>
     return { services, topLevelEnvFiles };
   });
 
-export type ResolvedServiceSeed = Effect.Effect.Success<
+export type ResolvedServiceSeed = Effect.Success<
   ReturnType<typeof resolveServiceSeeds>
 >["services"][number];

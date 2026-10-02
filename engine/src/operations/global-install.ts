@@ -32,7 +32,7 @@ const GlobalAppPathsResultSchema = Schema.Struct({
 
 const GlobalDistResultSchema = Schema.Struct({
   path: Schema.String,
-  status: Schema.Literal("created", "updated", "unchanged"),
+  status: Schema.Literals(["created", "updated", "unchanged"]),
   serviceIds: Schema.Array(Schema.String),
 });
 

@@ -1,4 +1,4 @@
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Result, Layer, Schema } from "effect";
 
 import {
   NoProviderInstalledError,
@@ -141,8 +141,8 @@ export const makeRuntimeProviderRegistry = (
             );
           }
 
-          if (Either.isLeft(capabilityIndex)) return yield* Effect.die(capabilityIndex.left);
-          const contribution = capabilityIndex.right.runtimeProviders.get(providerId);
+          if (Result.isFailure(capabilityIndex)) return yield* Effect.die(capabilityIndex.failure);
+          const contribution = capabilityIndex.success.runtimeProviders.get(providerId);
           const module = modules.find(
             (candidate) => candidate.runtimeProviders?.get(providerId) === contribution,
           );
@@ -160,7 +160,7 @@ export const makeRuntimeProviderRegistry = (
             );
           }
 
-          const pluginStateRoot = yield* Schema.decodeUnknown(AbsolutePath)(
+          const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
             paths.pluginStateDir(module.name),
           ).pipe(
             Effect.mapError(
@@ -189,7 +189,7 @@ export const makeRuntimeProviderRegistry = (
           return { contribution, context };
         });
 
-      const makeProvider = (descriptor: Effect.Effect.Success<ReturnType<typeof contributionFor>>) => {
+      const makeProvider = (descriptor: Effect.Success<ReturnType<typeof contributionFor>>) => {
         const { contribution, context } = descriptor;
         const provider = contribution
           .make(context)
@@ -232,7 +232,7 @@ export const makeRuntimeProviderRegistry = (
                     ),
                   ),
                 ),
-                Effect.catchAll(() => Effect.succeed(false)),
+                Effect.catch(() => Effect.succeed(false)),
               ),
               list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
               listVolumes: (filter) =>
@@ -263,7 +263,7 @@ export const makeRuntimeProviderRegistry = (
 };
 
 export const makeRuntimeProviderRegistryWithPrivateFileAccess = (modules: ReadonlyArray<LandoPluginModule>) =>
-  Layer.unwrapEffect(
+  Layer.unwrap(
     Effect.map(PrivateFileAccessService, (privateFileAccess) =>
       makeRuntimeProviderRegistry(modules, privateFileAccess),
     ),

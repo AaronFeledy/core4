@@ -19,7 +19,7 @@ const preAppStartInput: unknown = {
   eventName: "pre-app-start",
   appRef: appRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const postAppStartInput: unknown = {
@@ -27,7 +27,7 @@ const postAppStartInput: unknown = {
   eventName: "post-app-start",
   appRef: appRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)(preAppStartInput);
@@ -40,7 +40,7 @@ describe("EventServiceLive", () => {
         Effect.gen(function* () {
           const subscriber = yield* eventService
             .subscribe("*")
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(preAppStartEvent);
           yield* eventService.publish(postAppStartEvent);
@@ -58,10 +58,10 @@ describe("EventServiceLive", () => {
         Effect.gen(function* () {
           const firstSubscriber = yield* eventService
             .subscribe("pre-app-start")
-            .pipe(Stream.take(1), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
           const secondSubscriber = yield* eventService
             .subscribe("pre-app-start")
-            .pipe(Stream.take(1), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(preAppStartEvent);
           return [yield* Fiber.join(firstSubscriber), yield* Fiber.join(secondSubscriber)] as const;
@@ -81,11 +81,11 @@ describe("EventServiceLive", () => {
             Stream.take(1),
             Stream.runForEach(() => Effect.fail(new EventError({ message: "subscriber failed" }))),
             Effect.exit,
-            Effect.fork,
+            Effect.forkChild,
           );
           const healthySubscriber = yield* eventService
             .subscribe("pre-app-start")
-            .pipe(Stream.take(1), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(preAppStartEvent);
           return {
@@ -106,7 +106,7 @@ describe("EventServiceLive", () => {
         Effect.gen(function* () {
           const waiter = yield* eventService
             .waitFor("pre-app-start", { filter: (event) => event._tag === "pre-app-start" })
-            .pipe(Effect.fork);
+            .pipe(Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(postAppStartEvent);
           yield* eventService.publish(preAppStartEvent);
@@ -133,7 +133,7 @@ describe("EventServiceLive", () => {
       ).pipe(Effect.provide(EventServiceLive)),
     );
 
-    expect(Exit.isInterrupted(exit)).toBe(true);
+    expect(Exit.hasInterrupts(exit)).toBe(true);
   });
 
   test("awaits the dispatcher attached to the same event-service instance", async () => {

@@ -19,7 +19,7 @@ const SECRET_VALUE = "supersecret-canary-value";
 const providerId = ProviderId.make("test");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
   source: "info-creds-test",
   runtime: 4 as const,
 };

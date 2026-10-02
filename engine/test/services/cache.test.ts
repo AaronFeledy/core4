@@ -1,3 +1,4 @@
+import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -5,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
-import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, TestClock, TestContext } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import {
@@ -52,7 +53,7 @@ const runWithCache = <A>(effect: Effect.Effect<A, CacheError, CacheService>) =>
 const expectExitFailure = <A, E>(exit: Exit.Exit<A, E>) => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected effect to fail");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(failure)).toBe(true);
   if (!Option.isSome(failure)) throw new Error("expected effect to fail with a typed failure");
   return failure.value;
@@ -70,7 +71,7 @@ const appPlanFixture: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-20T00:00:00Z"),
     source: "/workspace/cache-plan/.lando.yml",
     runtime: 4,
   },
@@ -195,7 +196,7 @@ describe("CacheServiceLive", () => {
           const expired = yield* cache.read("short-lived", CachedValue);
           return { expired, missing };
         }),
-      ).pipe(Effect.provide(CacheServiceLive), Effect.provide(TestContext.TestContext)),
+      ).pipe(Effect.provide(CacheServiceLive), Effect.provide(TestClock.layer())),
     );
 
     expect(values).toEqual({ expired: null, missing: null });

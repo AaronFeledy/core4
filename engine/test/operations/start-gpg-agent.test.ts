@@ -45,7 +45,7 @@ test("gpg capability-missing fails before apply", async () => {
   let applied = false;
   // When
   const result = await run(
-    Effect.either(
+    Effect.result(
       withStartedGpgAgent(
         plan,
         app,
@@ -85,7 +85,7 @@ test("gpg overlays eligible services and closes the session on use failure", asy
   };
   // When
   await run(
-    Effect.either(
+    Effect.result(
       withStartedGpgAgent(
         plan,
         app,
@@ -190,13 +190,13 @@ for (const exitCode of [0, 1]) {
           Effect.sync(() => {
             calls.push("apply");
           }).pipe(
-            Effect.zipRight(prepareGpgHome),
+            Effect.andThen(prepareGpgHome),
             Effect.tap(() => Effect.sync(() => calls.push("routes"))),
           ),
       },
     );
     // When
-    const results = await run(Effect.all([Effect.either(start), Effect.either(start)]));
+    const results = await run(Effect.all([Effect.result(start), Effect.result(start)]));
     // Then
     if (exitCode === 0) {
       expect(calls).toEqual([
@@ -311,7 +311,7 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
   try {
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         startGpgAgentSession(
           plan,
           app,
@@ -383,7 +383,7 @@ for (const prepareExit of [0, 1]) {
     try {
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           startApp(
             {},
             {

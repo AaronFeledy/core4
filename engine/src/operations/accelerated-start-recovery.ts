@@ -93,7 +93,7 @@ export const reseedRetainedTargets = (
             if (Exit.isFailure(flushed))
               return yield* Effect.failCause(
                 Exit.isFailure(terminated)
-                  ? Cause.sequential(flushed.cause, terminated.cause)
+                  ? Cause.combine(flushed.cause, terminated.cause)
                   : flushed.cause,
               );
             if (Exit.isFailure(terminated)) return yield* Effect.failCause(terminated.cause);

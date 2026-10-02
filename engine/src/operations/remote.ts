@@ -117,7 +117,7 @@ interface LoadedRemoteLandofile {
   readonly landofile: typeof LandofileShape.Type;
 }
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 
 const unavailable = (requested?: string): RemoteProviderUnavailableError =>
   new RemoteProviderUnavailableError({
@@ -177,18 +177,18 @@ const loadRemoteLandofile = (
     });
     const parsed = yield* parseLandofile({ file, content, cwd: root });
     const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Left") {
+    if (decoded._tag === "Failure") {
       return yield* Effect.fail(
         new LandofileParseError({
-          message: `Landofile ${file} is not valid: ${String(decoded.left)}`,
+          message: `Landofile ${file} is not valid: ${String(decoded.failure)}`,
           filePath: file,
           line: undefined,
           column: undefined,
-          cause: decoded.left,
+          cause: decoded.failure,
         }),
       );
     }
-    return { file, root, landofile: decoded.right };
+    return { file, root, landofile: decoded.success };
   });
 
 const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>

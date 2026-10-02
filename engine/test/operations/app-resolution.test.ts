@@ -21,8 +21,8 @@ const TestStateStoreLive = makeTestStateStore().layer;
 const landofile = (name?: string): LandofileShape =>
   (name === undefined ? {} : { name }) as unknown as LandofileShape;
 
-const fakeLandofileService = (shape: LandofileShape): Context.Tag.Service<typeof LandofileService> =>
-  ({ discover: Effect.succeed(shape) }) as Context.Tag.Service<typeof LandofileService>;
+const fakeLandofileService = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> =>
+  ({ discover: Effect.succeed(shape) }) as Context.Service.Shape<typeof LandofileService>;
 
 describe("user-app reserved-id guard", () => {
   test("assertUserAppIdNotReserved fails for the reserved id global", async () => {
@@ -158,7 +158,7 @@ describe("loadUserLandofileAt root-aware seam", () => {
           observedCwd = process.cwd();
           return landofile("at-root");
         }),
-      } as Context.Tag.Service<typeof LandofileService>;
+      } as Context.Service.Shape<typeof LandofileService>;
 
       const result = await Effect.runPromise(loadUserLandofileAt(service, right));
 
@@ -215,14 +215,14 @@ describe("loadUserLandofileAt root-aware seam", () => {
           await firstCanRestore;
           return landofile("first");
         }),
-      } as Context.Tag.Service<typeof LandofileService>;
+      } as Context.Service.Shape<typeof LandofileService>;
       const secondService = {
         discover: Effect.promise(async () => {
           await secondMayObserve;
           secondObserved = process.cwd();
           return landofile("second");
         }),
-      } as Context.Tag.Service<typeof LandofileService>;
+      } as Context.Service.Shape<typeof LandofileService>;
 
       first = Effect.runPromise(loadUserLandofileAt(firstService, right));
       await firstInDiscover;

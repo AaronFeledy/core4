@@ -204,7 +204,7 @@ export const withStartedSshAgent = <A, E, R>(
     const acquire = (
       options.startSession?.() ?? startSshAgentSession(plan, app, capabilities, intent, options)
     ).pipe(
-      Effect.catchAll((error) => {
+      Effect.catch((error) => {
         switch (intent.mode) {
           case "host":
             return Effect.fail(error);
@@ -215,10 +215,10 @@ export const withStartedSshAgent = <A, E, R>(
                 .publish(
                   MessageWarnEvent.make({
                     body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
-                    timestamp: DateTime.unsafeNow(),
+                    timestamp: DateTime.nowUnsafe(),
                   }),
                 )
-                .pipe(Effect.catchAll(() => Effect.void));
+                .pipe(Effect.catch(() => Effect.void));
               return undefined;
             });
           default:

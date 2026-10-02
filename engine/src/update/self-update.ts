@@ -131,7 +131,7 @@ export const renameForUpdate = (
 
 export const cleanupUpdateTempDir = (tempDir: string): Effect.Effect<void> =>
   Effect.promise(() => rm(tempDir, { recursive: true, force: true })).pipe(
-    Effect.catchAll(() => Effect.void),
+    Effect.catch(() => Effect.void),
   );
 
 export const reexecUserArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {

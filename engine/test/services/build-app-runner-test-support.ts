@@ -26,7 +26,7 @@ import { EventServiceLive } from "../../src/services/event-service.ts";
 export const providerId = ProviderId.make("test");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
   source: "build-app-runner-regression.test",
   runtime: 4 as const,
 };

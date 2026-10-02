@@ -109,7 +109,7 @@ export const restartApp = (
               app: mysqlResolvedTarget.app,
               plan,
               triggeredBy: "app:restart",
-              timestamp: DateTime.unsafeNow(),
+              timestamp: DateTime.nowUnsafe(),
             });
             yield* events.publish(preRestart);
             yield* runAppEvent(plan, "pre-restart", preRestart);
@@ -133,7 +133,7 @@ export const restartApp = (
               scope: "app",
               app: mysqlResolvedTarget.app,
               plan,
-              timestamp: DateTime.unsafeNow(),
+              timestamp: DateTime.nowUnsafe(),
             });
             yield* events.publish(postRestart);
             yield* runAppEvent(plan, "post-restart", postRestart);

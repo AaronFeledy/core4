@@ -7,7 +7,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import * as cache from "../../src/cache/app-plan.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
@@ -65,14 +65,14 @@ test("rejects an escaping config source before provider action", () =>
       const result = await Effect.runPromise(
         plan({ server: "../outside.conf" }).pipe(
           Effect.tap((app) => TestRuntimeProvider.start({ app: app.id, service: ServiceName.make("db") })),
-          Effect.either,
+          Effect.result,
         ),
       );
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(LandofileValidationError);
-        expect(result.left).toMatchObject({ issues: ["services.db.config.server"] });
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(LandofileValidationError);
+        expect(result.failure).toMatchObject({ issues: ["services.db.config.server"] });
       }
       expect(start).not.toHaveBeenCalled();
     } finally {

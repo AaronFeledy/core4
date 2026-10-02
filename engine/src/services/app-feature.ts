@@ -1,3 +1,4 @@
+import { SchemaIssue } from "effect";
 /**
  * App-scoped feature composition engine (stage 4 of the composition pipeline).
  * Where the service-feature engine (`feature.ts`) mutates a single service draft, an
@@ -11,7 +12,7 @@
  * can fold it into the app plan. Provider realization stays out of the
  * app-feature context.
  */
-import { Cause, Effect, Either, ParseResult, Schema } from "effect";
+import { Cause, Effect, Result, Schema } from "effect";
 
 import {
   AppFeatureCycleError,
@@ -137,7 +138,7 @@ const selectFromConfig = (
   }
 
   const parsed = parseExpressionEither(expression, { filePath: "<app-feature-selector>" });
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     return Effect.fail(
       new AppFeatureSelectorMatchedNothingError({
         message: `fromConfig selector failed to parse: ${expression}`,
@@ -158,8 +159,8 @@ const selectFromConfig = (
     vars: feature.config ?? {},
   };
 
-  const evaluated = evaluateTemplateEither(parsed.right, context);
-  if (Either.isLeft(evaluated)) {
+  const evaluated = evaluateTemplateEither(parsed.success, context);
+  if (Result.isFailure(evaluated)) {
     return Effect.fail(
       new AppFeatureSelectorMatchedNothingError({
         message: `fromConfig selector failed to evaluate: ${expression}`,
@@ -169,7 +170,7 @@ const selectFromConfig = (
     );
   }
 
-  const value = evaluated.right;
+  const value = evaluated.success;
   if (!Array.isArray(value) || !value.every((entry): entry is string => typeof entry === "string")) {
     return Effect.fail(
       new AppFeatureSelectorMatchedNothingError({
@@ -216,18 +217,18 @@ const decodeFeatureConfig = (
   const rawConfig = feature.config ?? {};
   if (feature.definition.schema === undefined) return Effect.succeed(rawConfig);
 
-  const decoded = Schema.decodeUnknownEither(feature.definition.schema)(rawConfig, {
+  const decoded = Schema.decodeUnknownResult(feature.definition.schema)(rawConfig, {
     onExcessProperty: "error",
   });
-  if (Either.isRight(decoded)) {
-    const value = decoded.right;
+  if (Result.isSuccess(decoded)) {
+    const value = decoded.success;
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       return Effect.succeed(value as Readonly<Record<string, unknown>>);
     }
     return Effect.succeed(rawConfig);
   }
 
-  const details = ParseResult.ArrayFormatter.formatErrorSync(decoded.left)
+  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues
     .map((issue) => issue.message)
     .join("; ");
   return Effect.fail(
@@ -241,11 +242,11 @@ const decodeFeatureConfig = (
 const conflictFromCause = (
   cause: Cause.Cause<AppFeatureError>,
 ): AppFeatureMutationConflictError | undefined => {
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (failure._tag === "Some" && failure.value instanceof AppFeatureMutationConflictError) {
     return failure.value;
   }
-  const defect = Cause.dieOption(cause);
+  const defect = Result.getSuccess(Cause.findDefect(cause));
   if (defect._tag === "Some" && defect.value instanceof AppFeatureMutationConflictError) {
     return defect.value;
   }

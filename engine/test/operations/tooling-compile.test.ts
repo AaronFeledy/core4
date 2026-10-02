@@ -206,7 +206,7 @@ describe("compileToolingInvocations", () => {
 
     // When
     const result = Effect.runSync(
-      compileToolingInvocations({ name: "off", lookupKey: "off", task, source }).pipe(Effect.either),
+      compileToolingInvocations({ name: "off", lookupKey: "off", task, source }).pipe(Effect.result),
     );
 
     // Then
@@ -216,7 +216,7 @@ describe("compileToolingInvocations", () => {
   test("fails rather than throws when a task defines no steps", () => {
     // When
     const result = Effect.runSync(
-      compileToolingInvocations({ name: "empty", lookupKey: "empty", task: {}, source }).pipe(Effect.either),
+      compileToolingInvocations({ name: "empty", lookupKey: "empty", task: {}, source }).pipe(Effect.result),
     );
 
     // Then

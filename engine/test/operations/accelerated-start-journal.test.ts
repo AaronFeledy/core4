@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import type { AppPlan } from "@lando/sdk/schema";
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
@@ -60,36 +60,36 @@ test("pending accelerated start blocks changed ordinary plan before every lifecy
       "start",
       (harness: ReturnType<typeof makeHarness>) =>
         Effect.runPromise(
-          startAppForTarget(undefined, target).pipe(Effect.provide(harness.layer), Effect.either),
-        ).then(Either.isLeft),
+          startAppForTarget(undefined, target).pipe(Effect.provide(harness.layer), Effect.result),
+        ).then(Result.isFailure),
     ],
     [
       "restart",
       (harness: ReturnType<typeof makeHarness>) =>
-        Effect.runPromise(restartApp({}, target).pipe(Effect.provide(harness.layer), Effect.either)).then(
-          Either.isLeft,
+        Effect.runPromise(restartApp({}, target).pipe(Effect.provide(harness.layer), Effect.result)).then(
+          Result.isFailure,
         ),
     ],
     [
       "rebuild",
       (harness: ReturnType<typeof makeHarness>) =>
-        Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer), Effect.either)).then(
-          Either.isLeft,
+        Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer), Effect.result)).then(
+          Result.isFailure,
         ),
     ],
     [
       "stop",
       (harness: ReturnType<typeof makeHarness>) =>
         Effect.runPromise(
-          stopAppForTarget({}, target).pipe(Effect.provide(harness.layer), Effect.either),
-        ).then(Either.isLeft),
+          stopAppForTarget({}, target).pipe(Effect.provide(harness.layer), Effect.result),
+        ).then(Result.isFailure),
     ],
     [
       "destroy",
       (harness: ReturnType<typeof makeHarness>) =>
         Effect.runPromise(
-          destroyAppForTarget({}, target).pipe(Effect.provide(harness.layer), Effect.either),
-        ).then(Either.isLeft),
+          destroyAppForTarget({}, target).pipe(Effect.provide(harness.layer), Effect.result),
+        ).then(Result.isFailure),
     ],
   ] as const) {
     const actions: string[] = [];
@@ -123,13 +123,13 @@ test("atomic completed tombstone permits a fresh attempt while stale owners cann
   );
   expect(second.attemptId).not.toBe(first.attemptId);
   const stale = await Effect.runPromise(
-    first.phase("apply-intent").pipe(Effect.provide(stateStore.layer), Effect.either),
+    first.phase("apply-intent").pipe(Effect.provide(stateStore.layer), Effect.result),
   );
-  expect(Either.isLeft(stale)).toBe(true);
+  expect(Result.isFailure(stale)).toBe(true);
   const stillPending = await Effect.runPromise(
-    requireNoPendingAcceleratedStart(target.app).pipe(Effect.provide(stateStore.layer), Effect.either),
+    requireNoPendingAcceleratedStart(target.app).pipe(Effect.provide(stateStore.layer), Effect.result),
   );
-  expect(Either.isLeft(stillPending)).toBe(true);
+  expect(Result.isFailure(stillPending)).toBe(true);
 });
 
 test("a pending attempt for one root does not block another app with the same ID", async () => {
@@ -156,9 +156,9 @@ test("a pending attempt for one root does not block another app with the same ID
   );
   expect(otherAttempt.attemptId).not.toBe(pending.attemptId);
   const originalPending = await Effect.runPromise(
-    requireNoPendingAcceleratedStart(target.app).pipe(Effect.provide(stateStore.layer), Effect.either),
+    requireNoPendingAcceleratedStart(target.app).pipe(Effect.provide(stateStore.layer), Effect.result),
   );
-  expect(Either.isLeft(originalPending)).toBe(true);
+  expect(Result.isFailure(originalPending)).toBe(true);
 });
 
 test("rejects a mismatched session app before creating a journal under either identity", async () => {
@@ -171,9 +171,9 @@ test("rejects a mismatched session app before creating a journal under either id
     fileSync: [{ ...entry, session: { ...entry.session, app: otherApp } }],
   };
   const rejected = await Effect.runPromise(
-    beginAcceleratedStart(mismatchedPlan, target.app).pipe(Effect.provide(stateStore.layer), Effect.either),
+    beginAcceleratedStart(mismatchedPlan, target.app).pipe(Effect.provide(stateStore.layer), Effect.result),
   );
-  expect(Either.isLeft(rejected)).toBe(true);
+  expect(Result.isFailure(rejected)).toBe(true);
   await Effect.runPromise(
     requireNoPendingAcceleratedStart(target.app).pipe(Effect.provide(stateStore.layer)),
   );
@@ -189,26 +189,26 @@ test("a mismatched resolved target cannot bypass a pending plan journal", async 
   const result = await Effect.runPromise(
     requireNoPendingAcceleratedStart(wrongRef, acceleratedPlan).pipe(
       Effect.provide(stateStore.layer),
-      Effect.either,
+      Effect.result,
     ),
   );
-  expect(Either.isLeft(result)).toBe(true);
+  expect(Result.isFailure(result)).toBe(true);
   const harness = makeHarness({ stateStore });
   const operation = await Effect.runPromise(
     startAppForTarget(undefined, { ...target, app: wrongRef }).pipe(
       Effect.provide(harness.layer),
-      Effect.either,
+      Effect.result,
     ),
   );
-  expect(Either.isLeft(operation)).toBe(true);
+  expect(Result.isFailure(operation)).toBe(true);
   expect(harness.events).toEqual([]);
   const original = await Effect.runPromise(
     requireNoPendingAcceleratedStart(target.app, acceleratedPlan).pipe(
       Effect.provide(stateStore.layer),
-      Effect.either,
+      Effect.result,
     ),
   );
-  expect(Either.isLeft(original)).toBe(true);
+  expect(Result.isFailure(original)).toBe(true);
   expect(pending.attemptId).toBeTruthy();
 });
 
@@ -228,17 +228,17 @@ test("accelerated scratch journal belongs to the captured scratch ref", async ()
   const scratchPending = await Effect.runPromise(
     requireNoPendingAcceleratedStart(scratchRef, scratchPlan).pipe(
       Effect.provide(stateStore.layer),
-      Effect.either,
+      Effect.result,
     ),
   );
-  expect(Either.isLeft(scratchPending)).toBe(true);
+  expect(Result.isFailure(scratchPending)).toBe(true);
   await Effect.runPromise(
     requireNoPendingAcceleratedStart(target.app, acceleratedPlan).pipe(Effect.provide(stateStore.layer)),
   );
   const wrongKind = await Effect.runPromise(
-    beginAcceleratedStart(scratchPlan, target.app).pipe(Effect.provide(stateStore.layer), Effect.either),
+    beginAcceleratedStart(scratchPlan, target.app).pipe(Effect.provide(stateStore.layer), Effect.result),
   );
-  expect(Either.isLeft(wrongKind)).toBe(true);
+  expect(Result.isFailure(wrongKind)).toBe(true);
   expect(pending.attemptId).toBeTruthy();
 });
 
@@ -264,9 +264,9 @@ test("pending journal follows a physical root through alias and changed app ID",
     );
     const changed = { ...original, id: AppId.make("renamed"), root: aliasRoot };
     const blocked = await Effect.runPromise(
-      requireNoPendingAcceleratedStart(changed).pipe(Effect.provide(stateStore.layer), Effect.either),
+      requireNoPendingAcceleratedStart(changed).pipe(Effect.provide(stateStore.layer), Effect.result),
     );
-    expect(Either.isLeft(blocked)).toBe(true);
+    expect(Result.isFailure(blocked)).toBe(true);
     expect(pending.attemptId).toBeTruthy();
   } finally {
     await rm(base, { recursive: true, force: true });

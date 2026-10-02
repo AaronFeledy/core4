@@ -27,10 +27,7 @@ export interface ScratchResourceScannerService {
   readonly pruneScratch: (id: string) => Effect.Effect<void, ScratchAppError>;
 }
 
-export class ScratchResourceScanner extends Context.Tag("@lando/core/ScratchResourceScanner")<
-  ScratchResourceScanner,
-  ScratchResourceScannerService
->() {}
+export class ScratchResourceScanner extends Context.Service<ScratchResourceScanner, ScratchResourceScannerService>()("@lando/core/ScratchResourceScanner") {}
 
 export const ScratchResourceScannerLive = Layer.effect(
   ScratchResourceScanner,
@@ -71,7 +68,7 @@ export const ScratchResourceScannerLive = Layer.effect(
           }
           return [...ids].sort();
         }),
-        Effect.catchAll(() => Effect.succeed([])),
+        Effect.catch(() => Effect.succeed([])),
       ),
       pruneScratch: (id) =>
         Effect.gen(function* () {

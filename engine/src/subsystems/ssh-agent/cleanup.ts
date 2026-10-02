@@ -16,4 +16,4 @@ export const cleanupAgentRelayState = (
       privateFileAccess,
       ...(paths === undefined ? {} : { paths }),
     });
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));

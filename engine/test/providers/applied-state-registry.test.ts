@@ -45,7 +45,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   extensions: {},
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
 };
 const unavailable = (providerId: string, operation: string) =>
   new ProviderUnavailableError({
@@ -119,7 +119,7 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
           verify: async () => undefined,
         }).pipe(Layer.provide(dependencies)),
       ),
-      Effect.either,
+      Effect.result,
     ),
   );
 };

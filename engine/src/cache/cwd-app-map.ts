@@ -125,7 +125,7 @@ export const writeCwdAppMapEntry = (input: {
   readonly maxEntries?: number;
 }): Effect.Effect<void, CacheError> =>
   Effect.gen(function* () {
-    const existing = yield* readCwdAppMap(input.cacheRoot).pipe(Effect.catchAll(() => Effect.succeed(null)));
+    const existing = yield* readCwdAppMap(input.cacheRoot).pipe(Effect.catch(() => Effect.succeed(null)));
     const entry: CwdAppMapEntry = {
       ...input.entry,
       lastUsedAt: input.entry.lastUsedAt ?? Date.now(),

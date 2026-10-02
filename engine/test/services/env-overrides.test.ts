@@ -263,7 +263,7 @@ describe("notify environment overrides", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
       }
@@ -355,7 +355,7 @@ describe("router environment overrides", () => {
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
       }
@@ -423,7 +423,7 @@ describe("network inject environment overrides", () => {
 
         expect(Exit.isFailure(exit)).toBe(true);
         if (Exit.isFailure(exit)) {
-          const failure = Cause.failureOption(exit.cause);
+          const failure = Cause.findErrorOption(exit.cause);
           expect(failure._tag).toBe("Some");
           if (failure._tag === "Some") {
             expect(failure.value).toBeInstanceOf(ConfigError);

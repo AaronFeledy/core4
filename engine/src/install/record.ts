@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { FileSystem } from "@lando/sdk/services";
 import { Effect, Option, Schema, Stream } from "effect";
 
-const Sha256 = Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/));
+const Sha256 = Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/)));
 
 export const InstallRecord = Schema.Struct({
   version: Schema.Literal(1),
@@ -10,10 +10,10 @@ export const InstallRecord = Schema.Struct({
     executable: Schema.Struct({
       path: Schema.String,
       sha256: Sha256,
-      size: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+      size: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
       channel: Schema.String,
       platform: Schema.String,
-      releaseVersion: Schema.optional(Schema.String),
+      releaseVersion: Schema.optionalKey(Schema.String),
     }),
     shellProfiles: Schema.Array(Schema.Struct({ path: Schema.String, blockSha256: Sha256 })),
   }),
@@ -21,7 +21,7 @@ export const InstallRecord = Schema.Struct({
 export type InstallRecord = typeof InstallRecord.Type;
 
 export class InstallRecordError extends Schema.TaggedError<InstallRecordError>()("InstallRecordError", {
-  reason: Schema.Literal("invalid-json", "schema", "unsupported-version", "not-regular-file", "io"),
+  reason: Schema.Literals(["invalid-json", "schema", "unsupported-version", "not-regular-file", "io"]),
   file: Schema.String,
   detail: Schema.String,
   remediation: Schema.String,
@@ -45,13 +45,13 @@ export const decodeInstallRecord = (
   file: string,
 ): Effect.Effect<InstallRecord, InstallRecordError> =>
   Effect.gen(function* () {
-    const value: unknown = yield* Schema.decodeUnknown(Schema.parseJson())(json).pipe(
+    const value: unknown = yield* Schema.decodeUnknownEffect(Schema.fromJsonString)(json).pipe(
       Effect.mapError(() => recordError("invalid-json", file, "Install record is not valid JSON.")),
     );
     if (typeof value === "object" && value !== null && "version" in value && value.version !== 1) {
       return yield* recordError("unsupported-version", file, "Only install record version 1 is supported.");
     }
-    return yield* Schema.decodeUnknown(InstallRecord)(value, { onExcessProperty: "error" }).pipe(
+    return yield* Schema.decodeUnknownEffect(InstallRecord)(value, { onExcessProperty: "error" }).pipe(
       Effect.mapError(() =>
         recordError("schema", file, "Install record does not match the version 1 schema."),
       ),

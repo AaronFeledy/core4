@@ -42,7 +42,7 @@ const appId = AppId.make("myapp");
 const appRoot = AbsolutePath.make("/srv/apps/myapp");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "build-orchestrator.test",
   runtime: 4 as const,
 };
@@ -294,7 +294,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(6), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(6), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
             Effect.map(orchestrator.build(concurrentPlan), (builtPlan) => {
@@ -654,7 +654,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
           return yield* Fiber.join(subscriber);
@@ -702,7 +702,7 @@ describe("BuildOrchestratorLive", () => {
       registerValues: registerRedactionValues,
       forProfile: (_profile, options) =>
         Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
-    } satisfies Context.Tag.Service<typeof RedactionService>);
+    } satisfies Context.Service.Shape<typeof RedactionService>);
 
     try {
       const events = await Effect.runPromise(
@@ -711,7 +711,7 @@ describe("BuildOrchestratorLive", () => {
             const subscriber = yield* eventService
               .subscribe("*")
               .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-              .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+              .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
             yield* Effect.sleep("10 millis");
             yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
             return yield* Fiber.join(subscriber);
@@ -762,7 +762,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* orchestrator.build(secretPlan);
           return yield* Fiber.join(subscriber);
@@ -1173,7 +1173,7 @@ describe("BuildOrchestratorLive", () => {
       await Effect.runPromise(
         Effect.flatMap(BuildOrchestrator, (orchestrator) =>
           Effect.gen(function* () {
-            yield* Effect.either(orchestrator.build(planWithRedirect("/logs/failure.log")));
+            yield* Effect.result(orchestrator.build(planWithRedirect("/logs/failure.log")));
             yield* orchestrator.build(planWithRedirect("/logs/failure.log"));
           }),
         ).pipe(Effect.provide(layer(failingProvider))),

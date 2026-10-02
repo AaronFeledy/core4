@@ -139,7 +139,7 @@ export const runTooling = (
 
     const planResult =
       target === undefined
-        ? yield* Effect.either(resolveToolingPlan({ landofile, appRoot }))
+        ? yield* Effect.result(resolveToolingPlan({ landofile, appRoot }))
         : ({ _tag: "Right", right: target.plan } as const);
     if (planResult._tag === "Left") {
       if (appRoot !== undefined) {
@@ -211,7 +211,7 @@ export const runTooling = (
     if (liveTree !== undefined) yield* liveTree.start;
 
     const startedAt = Date.now();
-    const exit = yield* Effect.either(
+    const exit = yield* Effect.result(
       runBracketedInvocations({
         plan,
         tool: options.name,
@@ -223,11 +223,11 @@ export const runTooling = (
     );
     const durationMs = Date.now() - startedAt;
     if (liveTree !== undefined) {
-      const exitCode = exit._tag === "Right" ? exit.right.exitCode : 1;
+      const exitCode = exit._tag === "Success" ? exit.success.exitCode : 1;
       yield* liveTree.finish(exitCode, durationMs);
     }
-    if (exit._tag === "Left") return yield* Effect.fail(exit.left);
-    const result = exit.right;
+    if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
+    const result = exit.success;
 
     if (progressEvents !== undefined && !streamedLive) {
       const redaction = yield* Effect.serviceOption(RedactionService);

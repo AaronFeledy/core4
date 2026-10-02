@@ -20,8 +20,8 @@ const deprecationKey = (kind: DeprecationSurfaceKind, id: string): DeprecationKe
 
 const makeDeprecationService = (
   state: Ref.Ref<DeprecationState>,
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
-): Context.Tag.Service<typeof DeprecationService> => ({
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
+): Context.Service.Shape<typeof DeprecationService> => ({
   use: (use) =>
     Ref.update(state, (current) => {
       const key = deprecationKey(use.kind, use.id);
@@ -37,7 +37,7 @@ const makeDeprecationService = (
         Option.match(eventService, {
           onNone: () => Effect.void,
           onSome: (events) =>
-            events.publish({ _tag: "deprecation-used", use }).pipe(Effect.catchAll(() => Effect.void)),
+            events.publish({ _tag: "deprecation-used", use }).pipe(Effect.catch(() => Effect.void)),
         }),
       ),
       Effect.flatMap(() =>
@@ -56,7 +56,7 @@ const makeDeprecationService = (
     ),
   lookup: (kind, id) =>
     Ref.get(state).pipe(
-      Effect.map((current) => Option.fromNullable(current.registry.get(deprecationKey(kind, id)))),
+      Effect.map((current) => Option.fromNullishOr(current.registry.get(deprecationKey(kind, id)))),
     ),
   register: (_source, kind, id, notice) =>
     Ref.update(state, (current) => {

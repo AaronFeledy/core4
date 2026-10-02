@@ -96,7 +96,7 @@ const dispatchProgram = (
     const body = yield* Effect.tryPromise({
       try: () => bodyText(request, options.bodyReadTimeoutMs),
       catch: (cause) => cause,
-    }).pipe(Effect.catchAll(() => Effect.succeed<string | null>(null)));
+    }).pipe(Effect.catch(() => Effect.succeed<string | null>(null)));
     if (body === null) return { _tag: "invalid" as const };
     let parsed: unknown;
     try {
@@ -104,9 +104,9 @@ const dispatchProgram = (
     } catch {
       return { _tag: "invalid" as const };
     }
-    const decodedRequest = Schema.decodeUnknownEither(HostProxyRunLandoRequest)(parsed);
-    if (decodedRequest._tag === "Left") return { _tag: "invalid" as const };
-    const wire = { ...headers, request: decodedRequest.right };
+    const decodedRequest = Schema.decodeUnknownResult(HostProxyRunLandoRequest)(parsed);
+    if (decodedRequest._tag === "Failure") return { _tag: "invalid" as const };
+    const wire = { ...headers, request: decodedRequest.success };
     yield* validateWireRequest(wire, options.session, options.maxDepth, 0, options.concurrency);
     const deps: DispatchRunLandoDeps = {
       executor: options.executor,
@@ -154,7 +154,7 @@ const respondToRunLando = (
       writeTransportResponse(response, 200, exit.value);
       return;
     }
-    if (Cause.isInterruptedOnly(exit.cause)) {
+    if (Cause.hasInterruptsOnly(exit.cause)) {
       response.destroy();
       return;
     }

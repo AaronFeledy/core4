@@ -11,7 +11,7 @@ import { makeLandoPaths } from "@lando/paths";
 
 const TunnelRegistryEntry = Schema.Struct({
   session: TunnelSessionSchema,
-  pid: Schema.Number.pipe(Schema.int()),
+  pid: Schema.Number.pipe(Schema.check(Schema.isInt())),
   updatedAt: Schema.String,
 });
 

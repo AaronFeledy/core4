@@ -36,7 +36,7 @@ export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
 
 export const StopAppResultSchema = Schema.Struct({
   app: Schema.String,
-  outcome: Schema.optional(Schema.Literal("stopped", "unchanged")),
+  outcome: Schema.optionalKey(Schema.Literals(["stopped", "unchanged"])),
   servicesStopped: Schema.Array(Schema.String),
 });
 
@@ -168,7 +168,7 @@ const stopDesiredOrUnchanged = (
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
   resolveDesiredTarget.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error),
     ),
     Effect.flatMap((desired) =>

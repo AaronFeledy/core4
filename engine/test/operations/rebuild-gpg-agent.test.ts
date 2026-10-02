@@ -68,7 +68,7 @@ for (const prepareExit of [0, 1]) {
     try {
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           Effect.scoped(
             Effect.gen(function* () {
               const scope = yield* Effect.acquireRelease(Scope.make(), (scopeHandle) =>

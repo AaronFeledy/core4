@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
@@ -40,16 +40,16 @@ export const readWorkerRecordStateAt = (path: string): Effect.Effect<HostProxyWo
       const file = Bun.file(path);
       if (!(await file.exists())) return { _tag: "absent" };
       const value = await file.json();
-      const current = Schema.decodeUnknownEither(HostProxyWorkerRecord)(value);
-      if (Either.isRight(current)) return { _tag: "current", record: current.right };
+      const current = Schema.decodeUnknownResult(HostProxyWorkerRecord)(value);
+      if (Result.isSuccess(current)) return { _tag: "current", record: current.success };
       if (
         typeof value === "object" &&
         value !== null &&
         CURRENT_WORKER_RECORD_KEYS.some((key) => Object.hasOwn(value, key))
       )
         return { _tag: "malformed" };
-      const legacy = Schema.decodeUnknownEither(LegacyHostProxyWorkerRecord)(value);
-      return Either.isRight(legacy) ? { _tag: "legacy", record: legacy.right } : { _tag: "malformed" };
+      const legacy = Schema.decodeUnknownResult(LegacyHostProxyWorkerRecord)(value);
+      return Result.isSuccess(legacy) ? { _tag: "legacy", record: legacy.success } : { _tag: "malformed" };
     } catch {
       return { _tag: "malformed" };
     }
@@ -64,14 +64,14 @@ export const readWorkerRecord = (app: Pick<AppRef, "id" | "root">, paths?: RootO
 
 export const readWorkerRecordAt = (path: string): Effect.Effect<HostProxyWorkerRecord | undefined, never> =>
   readDetachedWorkerRecord(path, HostProxyWorkerRecord).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 export const readLegacyWorkerRecordAt = (
   path: string,
 ): Effect.Effect<LegacyHostProxyWorkerRecord | undefined, never> =>
   readDetachedWorkerRecord(path, LegacyHostProxyWorkerRecord).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 export const writeWorkerRecord = (

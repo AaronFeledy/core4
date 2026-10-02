@@ -27,7 +27,7 @@ type EventServiceConfig = {
   readonly history: Ref.Ref<ReadonlyArray<LandoEvent>>;
   readonly historyCap: number;
   readonly droppedEvents: Ref.Ref<number>;
-  readonly redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>;
+  readonly redaction: Option.Option<Context.Service.Shape<typeof RedactionService>>;
   readonly instrumentation: EventServiceInstrumentation;
 };
 
@@ -42,10 +42,7 @@ export interface EventDeliveryMetricsSnapshot {
   readonly droppedEvents: number;
 }
 
-export class EventDeliveryMetrics extends Context.Tag("@lando/core/EventDeliveryMetrics")<
-  EventDeliveryMetrics,
-  { readonly snapshot: Effect.Effect<EventDeliveryMetricsSnapshot> }
->() {}
+export class EventDeliveryMetrics extends Context.Service<EventDeliveryMetrics, { readonly snapshot: Effect.Effect<EventDeliveryMetricsSnapshot> }>()("@lando/core/EventDeliveryMetrics") {}
 
 export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
 export type EventDispatchRegistration = {
@@ -53,17 +50,14 @@ export type EventDispatchRegistration = {
   readonly dispatch: EventDispatcher;
 };
 
-export class EventDispatchControl extends Context.Tag("@lando/core/EventDispatchControl")<
-  EventDispatchControl,
-  { readonly install: (registration: EventDispatchRegistration) => Effect.Effect<void> }
->() {}
+export class EventDispatchControl extends Context.Service<EventDispatchControl, { readonly install: (registration: EventDispatchRegistration) => Effect.Effect<void> }>()("@lando/core/EventDispatchControl") {}
 
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
 const historyRedactionOptions = (): RedactionForProfileOptions => ({ sourceEnv: process.env });
 
 const redactForHistory = (
-  redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>,
+  redaction: Option.Option<Context.Service.Shape<typeof RedactionService>>,
   event: LandoEvent,
 ): Effect.Effect<LandoEvent> => {
   const options = historyRedactionOptions();
@@ -82,7 +76,7 @@ const redactForHistory = (
 const makeEventService = (
   config: EventServiceConfig,
   getDispatch: () => EventDispatchRegistration,
-): Context.Tag.Service<typeof EventService> => {
+): Context.Service.Shape<typeof EventService> => {
   const {
     subscribers,
     deliveryQueueCapacity,
@@ -103,7 +97,7 @@ const makeEventService = (
       () =>
         Effect.sync(() => {
           subscribers.delete(pubsub);
-        }).pipe(Effect.zipRight(PubSub.shutdown(pubsub))),
+        }).pipe(Effect.andThen(PubSub.shutdown(pubsub))),
     );
     return queue;
   });
@@ -137,7 +131,7 @@ const makeEventService = (
   const waitForMatch = <A>(
     label: string,
     predicate: (event: LandoEvent) => boolean,
-    timeout: Duration.DurationInput | undefined,
+    timeout: Duration.Input | undefined,
   ): Effect.Effect<A, EventError> =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -156,12 +150,12 @@ const makeEventService = (
         return yield* timeout === undefined
           ? awaited
           : awaited.pipe(
-              Effect.timeoutFail({ duration: timeout, onTimeout: () => timeoutEventError(label) }),
+              Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.fail((() => timeoutEventError(label))()) }),
             );
       }),
     );
 
-  const service: Context.Tag.Service<typeof EventService> = {
+  const service: Context.Service.Shape<typeof EventService> = {
     publish: (event) =>
       readEventName(event).pipe(
         Effect.flatMap((eventName) =>
@@ -170,17 +164,17 @@ const makeEventService = (
             const hasManifest = registration.hasSubscribers(eventName);
             if (!hasManifest && subscribers.size === 0) return appendHistory(event);
             return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
-              Effect.zipRight(decodeDeliverableEvent(event, eventName)),
+              Effect.andThen(decodeDeliverableEvent(event, eventName)),
               Effect.flatMap((decoded) =>
                 publishToBus(decoded).pipe(
-                  Effect.zipRight(appendHistory(decoded)),
-                  Effect.zipRight(hasManifest ? registration.dispatch(decoded) : Effect.void),
+                  Effect.andThen(appendHistory(decoded)),
+                  Effect.andThen(hasManifest ? registration.dispatch(decoded) : Effect.void),
                 ),
               ),
             );
           }).pipe(
-            Effect.catchSomeCause((cause) =>
-              Cause.isDie(cause)
+            Effect.catchCauseFilter((cause) =>
+              Cause.hasDies(cause)
                 ? Option.some(
                     Effect.fail(eventError(eventName, `Failed to publish event: ${eventName}`, cause)),
                   )
@@ -191,7 +185,7 @@ const makeEventService = (
         Effect.asVoid,
       ),
     subscribe: <Name extends string>(name: Name) =>
-      Stream.unwrapScoped(
+      Stream.unwrap(
         Effect.map(trackedSubscribe, (queue) =>
           Stream.fromQueue(queue).pipe(
             Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
@@ -230,7 +224,7 @@ export const makeEventServiceLive = (
   instrumentation: EventServiceInstrumentation = {},
   deliveryQueueCapacity = DEFAULT_DELIVERY_QUEUE_CAPACITY,
 ): Layer.Layer<EventService | EventDispatchControl | EventDeliveryMetrics, never, never> =>
-  Layer.unwrapScoped(
+  Layer.unwrap(
     Effect.gen(function* () {
       let registration: EventDispatchRegistration = {
         hasSubscribers: () => false,
@@ -279,7 +273,7 @@ export const makeEventServiceLive = (
 export const makeEventRuntimeLive = (
   deliveryQueueCapacity?: number,
 ): Layer.Layer<EventService | EventDispatchControl | EventDeliveryMetrics, never, ConfigService> =>
-  Layer.unwrapScoped(
+  Layer.unwrap(
     Effect.gen(function* () {
       const config = yield* ConfigService;
       const eventConfig = yield* config.get("events").pipe(Effect.orElseSucceed(() => undefined));

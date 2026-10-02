@@ -19,7 +19,7 @@ const progressEvent = (bytesDownloaded: number): DownloadProgressEvent =>
     eventName: "download-progress",
     urlOrigin: "https://example.com",
     bytesDownloaded,
-    timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-07-19T20:00:00Z")),
+    timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-07-19T20:00:00Z")),
   });
 
 describe("EventService bounded delivery", () => {
@@ -27,7 +27,7 @@ describe("EventService bounded delivery", () => {
     const loaded = Schema.decodeUnknownSync(GlobalConfig)({
       events: { deliveryQueueCapacity: 1 },
     });
-    const configService: Context.Tag.Service<typeof ConfigService> = {
+    const configService: Context.Service.Shape<typeof ConfigService> = {
       load: Effect.succeed(loaded),
       get: (key) => Effect.succeed(loaded[key]),
     };
@@ -61,9 +61,9 @@ describe("EventService bounded delivery", () => {
             const queue = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             yield* events.publish(progressEvent(2));
-            const publishFiber = yield* events.publish(progressEvent(3)).pipe(Effect.fork);
-            yield* Effect.yieldNow();
-            const publishExit = yield* Fiber.poll(publishFiber);
+            const publishFiber = yield* events.publish(progressEvent(3)).pipe(Effect.forkChild);
+            yield* Effect.yieldNow;
+            const publishExit = yield* publishFiber.pollUnsafe();
             const delivered = Chunk.toReadonlyArray(yield* Queue.takeAll(queue));
             const snapshot = yield* metrics.snapshot;
             return { publishExit, delivered, snapshot };
@@ -109,10 +109,10 @@ describe("EventService bounded delivery", () => {
             const draining = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             const first = yield* Queue.take(draining);
-            const secondTake = yield* Queue.take(draining).pipe(Effect.fork);
+            const secondTake = yield* Queue.take(draining).pipe(Effect.forkChild);
             yield* events.publish(progressEvent(2));
-            yield* Effect.yieldNow();
-            return { first, second: yield* Fiber.poll(secondTake) };
+            yield* Effect.yieldNow;
+            return { first, second: yield* secondTake.pollUnsafe() };
           }),
         );
       }).pipe(Effect.provide(makeEventServiceLive(0, {}, 1))),

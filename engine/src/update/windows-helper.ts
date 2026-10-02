@@ -2,7 +2,7 @@ import { readFile, rename } from "node:fs/promises";
 import { runProbe } from "@lando/sdk/probe";
 import { StateStore } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
-import { Duration, Effect, Either, Schema } from "effect";
+import { Duration, Effect, Result, Schema } from "effect";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
 import { CoreReplacementPreconditionSchema, guardCoreReplacement } from "./compatibility.ts";
 import { UpdatePermissionError } from "./errors.ts";
@@ -17,12 +17,9 @@ const WindowsReplacementSchema = Schema.Struct({
   token: Schema.String,
   precondition: CoreReplacementPreconditionSchema,
 });
-const RequestSchema = Schema.extend(
-  WindowsReplacementSchema,
-  Schema.Struct({
-    parentPid: Schema.Int.pipe(Schema.between(1, 2_147_483_647)),
-  }),
-);
+const RequestSchema = WindowsReplacementSchema.pipe(Schema.fieldsAssign({
+    parentPid: Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 }))),
+  }));
 
 const swapError = () =>
   new UpdatePermissionError({
@@ -37,7 +34,7 @@ export const runWindowsReplacement = (
   move: (from: string, to: string) => Promise<void> = rename,
 ) =>
   Effect.gen(function* () {
-    const outcome = yield* Effect.either(
+    const outcome = yield* Effect.result(
       guardCoreReplacement(
         input.precondition,
         Effect.gen(function* () {
@@ -77,12 +74,12 @@ export const runWindowsReplacement = (
         }),
       ),
     );
-    const failure = Either.isLeft(outcome)
+    const failure = Result.isFailure(outcome)
       ? {
-          tag: outcome.left._tag,
-          message: outcome.left.message,
+          tag: outcome.failure._tag,
+          message: outcome.failure.message,
           remediation:
-            outcome.left.remediation ?? "Resolve the plugin mutation conflict and re-run lando update.",
+            outcome.failure.remediation ?? "Resolve the plugin mutation conflict and re-run lando update.",
         }
       : undefined;
     yield* handoff.finishDeferred(input.token, failure);
@@ -91,11 +88,11 @@ export const runWindowsReplacement = (
 
 export const runWindowsReplacementProcess = (requestPath: string, token: string) =>
   Effect.gen(function* () {
-    yield* Schema.decodeUnknown(Schema.UUID)(token);
+    yield* Schema.decodeUnknownEffect(Schema.String.check(Schema.isUUID()))(token);
     const handoff = makeUpdateHandoff(yield* StateStore);
     return yield* Effect.gen(function* () {
       const request = yield* Effect.tryPromise(() => readFile(requestPath, "utf8")).pipe(
-        Effect.flatMap(Schema.decodeUnknown(Schema.parseJson(RequestSchema))),
+        Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(RequestSchema))),
       );
       if (request.token !== token) return yield* Effect.fail(swapError());
       const parentExited = yield* runProbe(
@@ -124,7 +121,7 @@ export const runWindowsReplacementProcess = (requestPath: string, token: string)
       }
       return yield* runWindowsReplacement(request, handoff);
     }).pipe(
-      Effect.catchAll(() =>
+      Effect.catch(() =>
         handoff
           .finishDeferred(token, {
             tag: "UpdatePermissionError",
