@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Scope } from "effect";
 
+import type { ManagedFileError } from "@lando/sdk/errors";
 import { ManagedFileService } from "@lando/sdk/services";
 
 import {
@@ -151,7 +152,9 @@ describe("agent skill pack ownership", () => {
       const prior = { ...declared, content: { kind: "text" as const, value: "prior skill body\n" } };
       const skillPath = join(dir, AGENT_SKILLS_SKILL_PATH);
       const cwd = process.cwd();
-      const againstApp = <A, E>(effect: Effect.Effect<A, E, ManagedFileService>): Effect.Effect<A, E> =>
+      const againstApp = <A, E>(
+        effect: Effect.Effect<A, E, ManagedFileService>,
+      ): Effect.Effect<A, E | ManagedFileError> =>
         Effect.gen(function* () {
           const factory = yield* ManagedFileServiceFactory;
           const managed = yield* factory.forBase(dir);
