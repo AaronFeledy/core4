@@ -64,6 +64,8 @@ export const makeUrlScanner = (
                   : [];
               })
             : options.urls.flatMap((supplied) => {
+                const protocol = URL.parse(supplied.url)?.protocol;
+                if (protocol !== undefined && protocol !== "http:" && protocol !== "https:") return [];
                 const scan = options.plan?.services[supplied.service]?.scanner;
                 const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
                 return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
