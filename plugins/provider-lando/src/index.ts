@@ -9,6 +9,7 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import {
   type PullImageOptions,
   buildImagePullRequest,
@@ -1308,7 +1309,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
           const result = yield* runtimeBringUp(physicalPlan, {
-            ...(podmanApi === undefined ? {} : { api: podmanApi }),
+            ...(podmanApi === undefined
+              ? {}
+              : {
+                  api: podmanApi,
+                  ensureImage: makeEnsureImage(podmanApi, {
+                    ctx: LANDO_CTX,
+                    dialect: libpodPullDialect,
+                  }),
+                }),
             ctx: LANDO_CTX,
             startFailureRemediation: makeLandoStartFailureRemediation(platform),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
