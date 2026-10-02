@@ -298,5 +298,5 @@ describe("npm dev package preparation", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 });

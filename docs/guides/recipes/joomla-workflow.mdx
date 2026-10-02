@@ -1,0 +1,218 @@
+---
+id: joomla-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, joomla, php, mariadb]
+---
+
+# Run the Joomla recipe
+
+```sh
+lando init --recipe joomla --name=joomla-demo --yes
+cd joomla-demo
+lando start
+```
+
+The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
+
+If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: joomla`, Apache on port `80`, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando joomla`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead.
+
+For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
+
+`lando joomla` is `php cli/joomla.php`. That file arrives with the CMS package, not with init. Run it from the app root; a subdirectory changes the relative path.
+
+## Download and install Joomla
+
+Pin a published full package. This path used Joomla 5.4.8 from the GitHub release assets and checked the SHA-1 digest published on downloads.joomla.org for that tarball:
+
+```sh
+lando exec appserver -- sh -lc '
+  set -eu
+  curl -fsSL -o /tmp/joomla.tgz \
+    https://github.com/joomla/joomla-cms/releases/download/5.4.8/Joomla_5.4.8-Stable-Full_Package.tar.gz
+  echo "bdb3752f735cf19a498bf3c8bcfc7535a65acdf7  /tmp/joomla.tgz" | sha1sum -c -
+  tar -xzf /tmp/joomla.tgz -C /app
+  rm -f /tmp/joomla.tgz
+'
+```
+
+A digest mismatch fails before extract. Generate an admin password locally, then run the installer. The generated value is printed once so you can save it. It stays out of shell history, but it's on the command line, so process lists can see it while the install runs.
+
+```sh
+JOOMLA_ADMIN_PASSWORD="$(openssl rand -base64 24)"
+printf 'Save this Joomla admin password: %s\n' "$JOOMLA_ADMIN_PASSWORD"
+lando php installation/joomla.php install \
+  --site-name='Joomla Demo' \
+  --admin-user=Admin \
+  --admin-username=admin \
+  --admin-password="$JOOMLA_ADMIN_PASSWORD" \
+  --admin-email=admin@example.com \
+  --db-type=mysql \
+  --db-host=database \
+  --db-user=lando \
+  --db-pass=lando \
+  --db-name=joomla-demo \
+  --db-prefix=jos_ \
+  --db-encryption=0 \
+  -n
+unset JOOMLA_ADMIN_PASSWORD
+```
+
+Match `--db-name` to the app name (here `joomla-demo`). `--db-type=mysql` uses PDO, which the PHP image already has. If you want Joomla's MySQLi driver instead, add a root `build.artifact` step with `docker-php-ext-install mysqli` on `appserver`, then run `lando rebuild`.
+
+The download and the installer ran as root. Give the web user only the directories Joomla writes to, so your editor keeps the code:
+
+```sh
+lando exec appserver -- chown -R www-data:www-data \
+  /app/administrator/cache /app/administrator/logs /app/cache /app/images /app/tmp
+```
+
+Add `/app/configuration.php` to that list if you save Global Configuration from the admin. Don't chown all of `/app`. That reowns the app root, `.lando.yml`, and your code, so your editor and host `lando` commands lose write access.
+
+Then confirm the day-to-day tools:
+
+```sh
+lando joomla --version
+lando composer --version
+lando mariadb -e 'SHOW TABLES FROM `joomla-demo`;'
+```
+
+Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
+
+## Open the administrator
+
+```sh
+lando open --print
+```
+
+Add `/administrator/` to the URL it prints and sign in as `admin` with the password you saved. If the proxy picked a fallback port, use the URL from `lando info` instead; it includes the port.
+
+## Connect Joomla to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `joomla-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the site.
+
+## Import and export the database
+
+```sh
+lando db:export joomla.sql.gz
+lando db:import joomla.sql.gz --yes
+lando mariadb -e 'SHOW TABLES;'
+```
+
+The app has one database service, so neither command needs `--service`. `.gz` dumps compress and decompress on the way through. Importing into a non-empty database asks first; `--yes` skips the prompt.
+
+Take a snapshot before an extension install or a core update:
+
+```sh
+lando db:snapshot --label before-update
+lando db:snapshots
+lando db:restore <snapshot-id> --yes
+```
+
+`db:restore` wants the snapshot id that `lando db:snapshots` lists, not the label. It asks before it replaces data; `--yes` skips the prompt.
+
+Want a browser UI too? Add a `type: phpmyadmin` service. See [Add phpMyAdmin](../services/phpmyadmin.mdx).
+
+## Step-debug with Xdebug
+
+Turn Xdebug on for `appserver`:
+
+```yaml
+services:
+  appserver:
+    xdebug: true
+```
+
+Rebuild, then check that it loaded:
+
+```sh
+lando rebuild
+lando xdebug status
+```
+
+`xdebug: true` uses mode `debug` and connects to your IDE on port `9003`. Map `/app` to your project root in the IDE. `lando xdebug off` and `lando xdebug on` toggle it without another rebuild. Xdebug isn't available on `php:8.6`. PhpStorm setup lives in [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx).
+
+## Catch outgoing mail
+
+Add a Mailpit service next to `appserver` and `database`:
+
+```yaml
+services:
+  mail:
+    type: mailpit
+```
+
+Rebuild, send a test message, then open the inbox URL `lando info` prints:
+
+```sh
+lando rebuild
+lando php -r 'mail("you@example.test", "Mailpit check", "Hello from Joomla");'
+lando info
+```
+
+Lando points PHP's `mail()` on `appserver` at Mailpit, so Joomla's default PHP Mail mailer lands there too. If you switch Joomla to its SMTP mailer, use host `mail` and port `1025`.
+
+## Check the recipe defaults
+
+`lando app:config --format=json` shows the defaults from the table above. This run checks them, starts the app, and tears it down:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="joomla-demo" display="joomla-demo" />
+      <Run command="lando init --recipe joomla --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"joomla\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"joomla\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Joomla recipe](/recipes/joomla/)
+- [Add PHP](../services/php.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
+- [Customize PHP](../services/php-customization.mdx) for `php.ini` tuning

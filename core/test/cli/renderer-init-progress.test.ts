@@ -47,7 +47,7 @@ describe("renderer.init-progress fixture", () => {
     const io = createBufferedRendererIO();
     renderPlain(io, rawEvents);
     const lines = io.stdoutLines();
-    expect(lines[0]).toBe("▼ Initialize mvp (2 services)");
+    expect(lines[0]).toBe("▼ Initialize mvp (2 steps)");
     expect(lines[1]).toContain("[render] start: Render recipe files (4)");
     expect(lines[2]).toContain("[render] ✓ complete: Rendered 4 files");
     expect(lines[3]).toContain("[postinit] start: Run post-init actions (2)");

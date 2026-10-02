@@ -13,6 +13,11 @@ import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cm
 import { drupalCmsDecomposer } from "../../src/recipes/builtin/drupal-cms/decomposer.ts";
 import { drupalCmsRecipeYaml } from "../../src/recipes/builtin/drupal-cms/manifest.ts";
 import {
+  DRUPAL_CMS_PHP_INI,
+  DRUPAL_CMS_PHP_INI_PATH,
+  DRUPAL_CMS_PHP_INI_TARGET,
+} from "../../src/recipes/builtin/drupal-cms/php-config.ts";
+import {
   DRUPAL_CMS_CONTENT_DIGEST,
   DRUPAL_CMS_MYSQL_INSTALL_COMMAND,
   DRUPAL_CMS_PGSQL_INSTALL_COMMAND,
@@ -20,6 +25,7 @@ import {
   drupalCmsProducer,
   drupalCmsSnapshot,
 } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
+import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 
 const defaults = { ...drupalCmsDefaults };
 const alternatives = {
@@ -72,12 +78,16 @@ describe("drupal-cms decomposition", () => {
       services: {
         appserver: {
           type: "php:{{ recipe.php }}",
+          primary: true,
           framework: "drupal",
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
           port: 80,
           dependsOn: ["database"],
+          mounts: [
+            { source: `./${DRUPAL_CMS_PHP_INI_PATH}`, target: DRUPAL_CMS_PHP_INI_TARGET, readOnly: true },
+          ],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "{{ recipe.database }}", database: "{{ app.name }}" },
@@ -86,7 +96,7 @@ describe("drupal-cms decomposition", () => {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
-          cmds: ["vendor/bin/drush"],
+          cmds: [DRUSH_TOOLING_COMMAND],
         },
         composer: {
           service: "appserver",
@@ -115,11 +125,65 @@ describe("drupal-cms decomposition", () => {
       tooling: { "drupal-cms-install": { cmd: string } };
     };
     expect(Object.keys(authoring.services)).toEqual(["appserver", "edge", "database"]);
+    expect(authoring.services.appserver).toMatchObject({ primary: true, via: "fpm" });
+    expect(authoring.services.edge).not.toHaveProperty("primary");
+    expect(authoring.services.edge).toHaveProperty("routes");
     expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_PGSQL_INSTALL_COMMAND);
     expect(authoring.tooling["drupal-cms-install"].cmd).toContain('--db-url="pgsql://lando:');
     expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ app.name }}");
   });
 
+  test("includes an editable PHP memory limit asset and mount for Apache and FPM", () => {
+    expect(DRUPAL_CMS_PHP_INI).toBe("memory_limit = 512M\n");
+    expect(DRUPAL_CMS_PHP_INI_TARGET < "/usr/local/etc/php/conf.d/zz-custom.ini").toBe(true);
+    expect(manifest.files).toContainEqual({
+      src: "assets/drupal-cms.ini",
+      dest: DRUPAL_CMS_PHP_INI_PATH,
+      template: false,
+    });
+
+    for (const options of [defaults, alternatives]) {
+      const authoring = authoringOf(options) as {
+        services: {
+          appserver: {
+            primary?: boolean;
+            routes?: ReadonlyArray<unknown>;
+            mounts: ReadonlyArray<{ source: string; target: string; readOnly: boolean }>;
+          };
+          edge?: { primary?: boolean; routes?: ReadonlyArray<unknown> };
+        };
+      };
+      expect(authoring.services.appserver.mounts).toContainEqual({
+        source: `./${DRUPAL_CMS_PHP_INI_PATH}`,
+        target: DRUPAL_CMS_PHP_INI_TARGET,
+        readOnly: true,
+      });
+      expect(authoring.services.appserver.primary).toBe(true);
+      if (options.webserver === "nginx") {
+        expect(authoring.services.appserver.routes).toBeUndefined();
+        expect(authoring.services.edge?.primary).toBeUndefined();
+        expect(authoring.services.edge?.routes).toEqual([
+          { hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" },
+        ]);
+      } else {
+        expect(authoring.services.appserver.routes).toHaveLength(1);
+        expect(authoring.services.edge).toBeUndefined();
+      }
+    }
+  });
+
+  test("prepares and verifies Drupal public files protection during install", () => {
+    const authoring = authoringOf(defaults) as {
+      tooling: { "drupal-cms-install": { cmd: string } };
+    };
+    const command = authoring.tooling["drupal-cms-install"].cmd;
+
+    expect(command).toBe(DRUPAL_CMS_MYSQL_INSTALL_COMMAND);
+    expect(command).toStartWith("mkdir -p web/sites/default/files && vendor/bin/drush site:install");
+    expect(command).toContain(
+      'php:eval \'if (!\\Drupal::service("file.htaccess_writer")->write("public://", FALSE))',
+    );
+  });
   test("keeps the multiline scaffold command intact through snapshot encoding", () => {
     const rendered = Either.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
       tooling: { "drupal-cms-scaffold": { cmd: string } };
@@ -149,12 +213,13 @@ describe("drupal-cms decomposition", () => {
     }
   });
 
-  test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
+  test("publishes the PHP ini asset with declared files and postInit", () => {
     expect(manifest.files).toEqual([
       { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
+      { src: "assets/drupal-cms.ini", dest: DRUPAL_CMS_PHP_INI_PATH, template: false },
     ]);
     expect(manifest.postInit).toHaveLength(1);
-    expect(manifest.snapshot?.assets).toEqual([]);
+    expect(manifest.snapshot?.assets).toEqual(drupalCmsSnapshot.assets);
   });
 
   test("publishes a self-consistent migratable snapshot with a matching content identity", () => {

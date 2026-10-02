@@ -517,6 +517,57 @@ console.log(JSON.stringify({
     }
   });
 
+  test("shuts down a bridged Windows worker through its TCP control listener", async () => {
+    const root = await tempRoot();
+    const base = workerRecord(root);
+    let shutdowns = 0;
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== base.controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      const pathname = new URL(request.url ?? "", "http://control.invalid").pathname;
+      if (pathname === "/_lando/host-proxy/identify") {
+        response.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            appId: base.appId,
+            sessionId: "session-1",
+            transport: "tcp-host-gateway",
+            protocolVersion: base.protocolVersion,
+            pid: base.pid,
+          }),
+        );
+        return;
+      }
+      if (pathname === "/_lando/host-proxy/shutdown") {
+        shutdowns += 1;
+        response.writeHead(202).end();
+        setImmediate(() => server.close());
+        return;
+      }
+      response.writeHead(404).end();
+    });
+    try {
+      await new Promise<void>((resolveListen, rejectListen) => {
+        server.once("error", rejectListen);
+        server.listen(0, "127.0.0.1", resolveListen);
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("Expected TCP control port.");
+      const bridgedRecord = { ...base, url: `http://127.0.0.1:${address.port}` };
+      await Effect.runPromise(writeWorkerRecord(app, { userDataRoot: root }, bridgedRecord));
+      expect(await Effect.runPromise(probeWorker(bridgedRecord))).toBe("live");
+      expect(
+        await Effect.runPromise(terminateOwnedHostProxyWorker(app, { paths: { userDataRoot: root } })),
+      ).toBe("terminated");
+      expect(shutdowns).toBe(1);
+      expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
+    } finally {
+      server.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("rejects control identity when the worker pid does not match persisted state", async () => {
     const root = await tempRoot();
     const { record, server } = await listenControlServer(root);
@@ -710,7 +761,6 @@ console.log(JSON.stringify({
       if (record === undefined) throw new Error("Expected worker record after startup.");
 
       await Effect.runPromise(terminateOwnedHostProxyWorker(app, { paths: { userDataRoot: root } }));
-      await waitForPidExit(record.pid);
 
       expect(pidIsAlive(record.pid)).toBe(false);
     } finally {

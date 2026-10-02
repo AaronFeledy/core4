@@ -42,7 +42,7 @@ PTY allocation and host-terminal detection are separate. `lando exec`, `lando ss
 
 Host mode reads one line at a time and evaluates it as a Bun Shell template. Each accepted line composes with pipes, redirection, globs, command substitution, and built-ins (`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank line re-prompts without evaluating anything.
 
-A `${secret:<id>}` reference resolves only when that line runs. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
+A `${secret:<id>}` or `${secret:<scheme>://path}` reference (for example `${secret:DB_PASSWORD}` from `LANDO_SECRET_DB_PASSWORD`, or `${secret:op://Vault/Item/field}` from 1Password) resolves only when that line runs, through the same routed secret stores as `lando start`. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 
 Host-mode history persists per accepted line to a per-app history file under the user cache root. `--no-history` disables history for the session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
 
@@ -55,7 +55,7 @@ Ctrl+D at an empty prompt ends the REPL with the exit status of the last execute
 `lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected invocation never opens the REPL. The command fails fast with tagged `ShellRequiresTtyError` instead of hanging. The error points at the scriptable equivalent:
 
 ```sh
-app:exec --interactive --tty -- <command>
+lando exec <service> -- <command>
 ```
 
 <Guide>

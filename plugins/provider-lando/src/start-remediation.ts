@@ -1,4 +1,6 @@
 import { APPLY_REMEDIATION, type StartFailureRemediation } from "@lando/container-runtime/podman/bring-up";
+import { normalizeHostPlatform } from "@lando/paths";
+import type { HostPlatform } from "@lando/sdk/schema";
 
 import {
   LEFTOVER_PROXY_PORT_REMEDIATION,
@@ -25,15 +27,24 @@ export const startFailureRemediation = (
   details?: unknown,
   ports?: LeftoverProxyPortPair,
   serviceName?: string,
+  platform: HostPlatform = "linux",
 ): string => {
   const haystack = `${message}\n${detailBody(details)}`;
   if (isManagedNftMissingMessage(haystack)) return NFT_REMEDIATION;
   const leftoverForService = serviceName === undefined || serviceName === "traefik";
   if (leftoverForService && isLeftoverProxyPortBindMessage(haystack, ports)) {
+    if (platform === "win32") {
+      const selected = ports === undefined ? "" : ` (HTTP ${ports.httpPort}, HTTPS ${ports.httpsPort})`;
+      return `The managed Windows Podman machine could not publish Traefik's loopback ports${selected}. Run \`lando global:stop\`, then retry \`lando start\`. If the conflict remains, inspect the selected ports with \`lando doctor\` and configure available router ports.`;
+    }
     return ports === undefined ? LEFTOVER_PROXY_PORT_REMEDIATION : leftoverProxyPortRemediation(ports);
   }
   return APPLY_REMEDIATION;
 };
 
-export const landoStartFailureRemediation: StartFailureRemediation = ({ service, message, details }) =>
-  startFailureRemediation(message, details, readPersistedTraefikPublishPair(), service);
+export const makeLandoStartFailureRemediation =
+  (platform: HostPlatform): StartFailureRemediation =>
+  ({ service, message, details }) =>
+    startFailureRemediation(message, details, readPersistedTraefikPublishPair(), service, platform);
+
+export const landoStartFailureRemediation = makeLandoStartFailureRemediation(normalizeHostPlatform());

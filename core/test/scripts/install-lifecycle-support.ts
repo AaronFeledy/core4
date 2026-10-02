@@ -126,6 +126,9 @@ export const noopProcessRunner = {
   stream: () => {
     throw new Error("stream is not used by update manifest tests");
   },
+  streamWithExit: () => {
+    throw new Error("streamWithExit is not used by update manifest tests");
+  },
 } satisfies typeof ProcessRunner.Service;
 const manifestFor = (channel: UpdateChannel) => ({
   channel,

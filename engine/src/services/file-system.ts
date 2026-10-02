@@ -4,6 +4,7 @@ import { type Context, Effect, Layer, Stream } from "effect";
 
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
 import { type FileStat, FileSystem, type FileSystemError } from "@lando/sdk/services";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 const permissionCodes = new Set(["EACCES", "EPERM"]);
 
@@ -81,21 +82,7 @@ export const writeAtomicFile = async (
   path: string,
   content: string | Uint8Array,
   replace: AtomicReplace = rename,
-): Promise<void> => {
-  const tempPath = `${path}.tmp-${crypto.randomUUID()}`;
-  try {
-    await Bun.write(tempPath, content);
-    await replace(tempPath, path);
-  } finally {
-    try {
-      if (await Bun.file(tempPath).exists()) {
-        await Bun.file(tempPath).delete();
-      }
-    } catch {
-      // Cleanup failure must not mask the write or replace failure.
-    }
-  }
-};
+): Promise<void> => writeFileAtomic(path, content, { renameFile: replace });
 
 const stat = async (path: string): Promise<FileStat> => {
   // Bun.file(path).exists() returns false for directories, so stat directly.

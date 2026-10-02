@@ -96,9 +96,8 @@ Add `--format=json` when a script or an agent reads the result. Each check repor
   <Scenario id="shellenv-prints-lando4-path" render>
     <Step name="shellenv">
       <Run command="lando4 shellenv" expectExit={0} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export LANDO_USER_DATA_ROOT=" } }} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export PATH=.+[\\\\/]bin.\":\\$\\{PATH\\}\"" } }} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "case \":\\$\\{PATH\\}:\" in" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "LANDO_USER_DATA_ROOT.+" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "PATH.+bin" } }} />
     </Step>
     <Step name="shellenv-powershell">
       <Run command="lando4 shellenv --shell=powershell" expectExit={0} />

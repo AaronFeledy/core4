@@ -16,7 +16,7 @@ This PRD records the normative spec changes the rest of the wave implements. The
 
 ### US-561: Spec contract for the Lando 3 parity wave
 
-**Description:** As a maintainer, the spec authorizes every implementation story in this wave: the amended service catalog, PHP depth options, recipe composition and option parity, the reconciled recipe bundle, and the pulled-forward `@lando/sql` plugin — without weakening any recorded rejection (SSH mounts, hosters, staged recipes).
+**Description:** As a maintainer, the spec authorizes every implementation story in this wave: the amended service catalog, PHP depth options, recipe composition and option parity, the reconciled recipe bundle, and the pulled-forward `@lando/sql` plugin — without weakening any recorded rejection (hosters, staged recipes) or taking ownership of host agent forwarding (§10.4).
 
 **Acceptance Criteria:**
 
@@ -27,5 +27,5 @@ This PRD records the normative spec changes the rest of the wave implements. The
 - [ ] §8.8.16 defines option parity floors for `drupal`, `drupal-cms`, `lamp`.
 - [ ] §10.7 names bundled `@lando/sql` as the reference SQL-helper plugin built on `DataMover` (§10.11) with its command surface.
 - [ ] ROADMAP Phase 5 carries the lando3-parity concurrent-wave note; Phase 9 `@lando/sql` and recipe lines are marked superseded.
-- [ ] No change to §10.4 SSH rejection, §10.12 RemoteSource freeze, or §7.4 Compose rejected-key list.
+- [ ] No change to §10.4 (host agent forwarding is owned by the host-agent-forwarding wave), §10.12 RemoteSource freeze, or §7.4 Compose rejected-key list.
 - [ ] Tests pass; typecheck passes; lint passes (spec-only change; gates prove no accidental source drift).

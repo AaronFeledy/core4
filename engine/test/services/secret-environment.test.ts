@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { DateTime, Effect, Layer } from "effect";
 
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { SecretNotFoundError, SecretStoreUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -64,6 +65,40 @@ const store = (secrets: Readonly<Record<string, string>>): SecretStoreShape => (
 });
 
 describe("resolveServiceEnvironmentSecrets", () => {
+  test("registers resolved values with the redactor before returning", async () => {
+    // Given
+    const secrets = { ...store({ API_TOKEN: "environment-registration-canary" }), list: Effect.succeed([]) };
+    const redaction = makeRedactionService(secrets);
+    const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
+    // When
+    const output = await Effect.runPromise(
+      resolveServiceEnvironmentSecrets(plan).pipe(
+        Effect.map((environment) => redactor.redactString(environment[serviceName]?.TOKEN ?? "")),
+        Effect.provide(
+          Layer.mergeAll(Layer.succeed(SecretStore, secrets), Layer.succeed(RedactionService, redaction)),
+        ),
+      ),
+    );
+    // Then
+    expect(output).toBe("[redacted]");
+  });
+
+  test("propagates SecretStoreUnavailableError untouched", async () => {
+    // Given
+    const failure = new SecretStoreUnavailableError({
+      message: "Locked",
+      storeId: "vault",
+      reason: "locked",
+      remediation: "Unlock vault.",
+    });
+    const secrets = { ...store({}), get: () => Effect.fail(failure) };
+    // When
+    const error = await Effect.runPromise(
+      resolveServiceEnvironmentSecrets(plan).pipe(Effect.flip, Effect.provideService(SecretStore, secrets)),
+    );
+    // Then
+    expect(error).toBe(failure);
+  });
   test("resolves only exact references without mutating the durable plan", async () => {
     // Given
     const original = structuredClone(plan.services[serviceName]?.environment);

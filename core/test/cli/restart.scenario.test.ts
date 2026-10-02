@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -26,7 +27,6 @@ import {
   StateStore,
   ToolingEngine,
 } from "@lando/core/services";
-import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type {
   AppSelector,
   DestroyOptions,
@@ -35,6 +35,7 @@ import type {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { makeTestStateStore } from "@lando/core/testing";
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import {
   attachEffectiveEvents,
@@ -45,7 +46,11 @@ import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
@@ -123,11 +128,14 @@ const servicePlan = (name: "web"): ServicePlan => ({
 });
 
 const web = servicePlan("web");
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-restart-app-root-"));
+afterAll(() => rmSync(testAppRoot, { recursive: true, force: true }));
+
 const plan: AppPlan = {
   id: AppId.make("test-restart"),
   name: "test-restart",
   slug: "test-restart",
-  root: AbsolutePath.make("/tmp/test-restart"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
@@ -179,6 +187,7 @@ const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
       loadAppFeature: () => Effect.die("not used"),
     }),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(RouterService, proxy),
@@ -233,6 +242,7 @@ const makeRestartLayer = (
         events: effectiveEventsForPlan(plannedApp),
       }),
     }),
+    makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(BuildOrchestrator, {

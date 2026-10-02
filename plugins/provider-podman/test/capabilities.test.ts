@@ -16,7 +16,7 @@ import {
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "agentSocket"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -32,7 +32,9 @@ describe("provider-podman capabilities", () => {
     const macos = podmanCapabilitiesForPlatform("darwin");
     const windows = podmanCapabilitiesForPlatform("win32");
 
-    expect(Object.keys(linux).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(Object.keys(linux).sort()).toEqual(
+      [...EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY, "agentSocket"].sort(),
+    );
     expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
     expect(Object.keys(windows).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
     expect(linux.sharedCrossAppNetwork).toBe(true);
@@ -282,6 +284,47 @@ describe("provider-podman RuntimeProvider layer", () => {
     ...responsiveApi,
     info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch } }),
   });
+
+  test("linux advertises bind-directory", async () => {
+    // Given a native Podman runtime.
+    const options = { platform: "linux", env: {}, podmanApi: podmanApiForArch("x64") } as const;
+    // When its capabilities are resolved.
+    const provider = await Effect.runPromise(makeRuntimeProvider(options));
+    // Then no guest bridge is required.
+    expect(provider.capabilities.agentSocket).toEqual({ delivery: "bind-directory" });
+  });
+
+  for (const platform of ["darwin", "win32"] as const) {
+    for (const hasDefault of [true, false]) {
+      test(`${platform} ${hasDefault ? "with a default machine advertises guest-bridge" : "without one omits agentSocket"}`, async () => {
+        // Given machine discovery with or without an explicitly selected default.
+        const agentBridgeHost = {
+          which: (name: string) => name,
+          run: async () => ({
+            exitCode: 0,
+            stdout: JSON.stringify([{ Name: "user-machine", Default: hasDefault }]),
+            stderr: "",
+          }),
+          start: () => {
+            throw new Error("Discovery must not open SSH");
+          },
+        };
+        // When the provider resolves capabilities.
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            platform,
+            env: {},
+            podmanApi: podmanApiForArch("arm64"),
+            agentBridgeHost,
+          }),
+        );
+        // Then only a discovered default enables forwarding.
+        expect(provider.capabilities.agentSocket).toEqual(
+          hasDefault ? { delivery: "guest-bridge" } : undefined,
+        );
+      });
+    }
+  }
 
   test("introspects platform-specific capabilities", async () => {
     const linuxProvider = await Effect.runPromise(

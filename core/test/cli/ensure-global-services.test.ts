@@ -321,6 +321,25 @@ describe("ensureGlobalServicesRunning", () => {
     });
   });
 
+  test("subset starts retain the complete global plan for later poweroff", async () => {
+    await withHarness(
+      async (harness) => {
+        // Given two independently started global services, ensure only the router.
+        await Effect.runPromise(
+          ensureGlobalServicesRunning({ services: ["traefik"] }).pipe(Effect.provide(harness.layer)),
+        );
+        // Then apply only the router, but retain both services for app-wide teardown.
+        const call = harness.applyCalls[0];
+        expect(Object.keys(call?.plan.services ?? {})).toEqual(["traefik"]);
+        expect(Object.keys(call?.options.recordedPlan?.services ?? {}).sort()).toEqual([
+          "ssh-agent",
+          "traefik",
+        ]);
+      },
+      ["traefik", "ssh-agent"],
+    );
+  });
+
   test("missing requested services publish pre-global-start and fail without post-global-start", async () => {
     await withHarness(async (harness) => {
       const exit = await Effect.runPromiseExit(

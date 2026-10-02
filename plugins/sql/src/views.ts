@@ -3,6 +3,7 @@ import type { SqlCreds } from "./creds.ts";
 export type SqlLandofileService = {
   readonly type?: string;
   readonly creds?: Partial<SqlCreds>;
+  readonly environment?: Readonly<Record<string, string>>;
 };
 
 export type SqlLandofile = {
@@ -57,9 +58,17 @@ export const toSqlLandofile = (value: unknown): SqlLandofile => {
     if (!isRecord(service)) continue;
     const type = asString(service.type);
     const creds = isRecord(service.creds) ? authoredCreds(service.creds) : undefined;
+    const environment = isRecord(service.environment)
+      ? Object.fromEntries(
+          Object.entries(service.environment).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : undefined;
     mapped[serviceName] = {
       ...(type === undefined ? {} : { type }),
       ...(creds === undefined ? {} : { creds }),
+      ...(environment === undefined ? {} : { environment }),
     };
   }
   return {

@@ -1,6 +1,7 @@
 import { DateTime, Effect } from "effect";
 
 import {
+  GlobalAppError,
   ProxySetupError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
@@ -27,7 +28,10 @@ export const mapSetupError = (
   return new ProxySetupError({
     message: "Traefik ingress setup failed.",
     proxyId: TRAEFIK_PROXY_ID,
-    remediation: "Run `lando meta:global:start traefik` and resolve the reported global-app failure.",
+    remediation:
+      cause instanceof GlobalAppError && cause.remediation !== undefined
+        ? cause.remediation
+        : "Run `lando meta:global:start --service=traefik` and resolve the reported global-app failure.",
     cause,
   });
 };
@@ -51,7 +55,7 @@ export const publishFallbackWarn = (
         MessageWarnEvent.make({
           _tag: "message.warn",
           body,
-          timestamp: DateTime.unsafeMake(new Date().toISOString()),
+          timestamp: DateTime.unsafeNow(),
         }),
       )
       .pipe(Effect.catchAll(() => Effect.void));
@@ -74,7 +78,7 @@ export const assertAdvertisedForward = (
         MessageWarnEvent.make({
           _tag: "message.warn",
           body: `Advertised proxy ports ${String(advertised.http)}/${String(advertised.https)} did not answer HTTP. Run \`lando doctor\`, then \`lando global:restart\`.`,
-          timestamp: DateTime.unsafeMake(new Date().toISOString()),
+          timestamp: DateTime.unsafeNow(),
         }),
       )
       .pipe(Effect.catchAll(() => Effect.void));

@@ -8,9 +8,12 @@ export class UnknownCommandError extends Schema.TaggedError<UnknownCommandError>
   remediation: Schema.String,
 }) {}
 
-export const unknownCommandError = (commandToken: string): UnknownCommandError =>
+export const unknownCommandError = (commandToken: string, suggestedCommandId?: string): UnknownCommandError =>
   new UnknownCommandError({
     message: `Command ${escapeDiagnosticText(commandToken)} not found`,
     commandToken,
-    remediation: "Run `lando help --all` to list commands.",
+    remediation:
+      suggestedCommandId === undefined
+        ? "Run `lando help --all` to list commands."
+        : `Run \`lando ${escapeDiagnosticText(suggestedCommandId)}\` instead.`,
   });

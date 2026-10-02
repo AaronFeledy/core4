@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, relative, sep } from "node:path";
 
+import { sha256Hex } from "@lando/sdk/digest";
 import { CORE_VERSION } from "../version.ts";
 
 declare const __LANDO_CORE_VERSION__: string | undefined;
@@ -18,9 +18,6 @@ interface BundledSourceEntry {
   readonly path: string;
   readonly sha256: string;
 }
-
-const sha256Hex = (payload: Uint8Array | string): string =>
-  createHash("sha256").update(payload).digest("hex");
 
 const stable = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stable);

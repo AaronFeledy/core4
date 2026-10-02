@@ -42,6 +42,9 @@ const noopProcessRunner = {
   stream: () => {
     throw new Error("stream is not used by update manifest tests");
   },
+  streamWithExit: () => {
+    throw new Error("streamWithExit is not used by update manifest tests");
+  },
 } satisfies typeof ProcessRunner.Service;
 
 const hex = "a".repeat(64);
@@ -678,6 +681,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
     const stateStore = makeTestStateStore();
     const handoff = makeUpdateHandoff(stateStore.service);
@@ -828,6 +832,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const result = await Effect.runPromise(
@@ -1013,6 +1018,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const tag = await failureTag(
@@ -1059,6 +1065,7 @@ describe("update signed manifest", () => {
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const tag = await failureTag(
@@ -1197,6 +1204,7 @@ describe("update signed manifest", () => {
               };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const failure = await failureValue(
@@ -1280,6 +1288,7 @@ describe("update signed manifest", () => {
             : { exitCode: 126, stdout: "", stderr: "broken loader" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const failure = await failureValue(
@@ -1340,6 +1349,7 @@ describe("update signed manifest", () => {
             : { exitCode: 126, stdout: "", stderr: "broken loader" };
         }),
       stream: noopProcessRunner.stream,
+      streamWithExit: noopProcessRunner.streamWithExit,
     } satisfies typeof ProcessRunner.Service;
 
     const failure = await failureValue(

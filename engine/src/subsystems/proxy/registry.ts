@@ -1,18 +1,26 @@
-import { Context, Effect, Either, Layer } from "effect";
+import { Context, Effect, Either, Layer, Schema } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { AbsolutePath, type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import {
   type CertificateAuthority,
   ConfigService,
+  EventService,
   type FileSystem,
   type GlobalAppService,
+  ManagedFileService,
   PathsService,
   type RouterService,
+  StateStore,
 } from "@lando/sdk/services";
 
+import { RedactionService } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+
 import { bundledPluginModules } from "../../composition.ts";
+import { makePublishRender } from "../../lifecycle/publish-render.ts";
+import { makeLandoPluginContext } from "../../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import { RouterServiceUnavailableLive } from "./api.ts";
 import { DeferredCertificateAuthorityLive } from "./deferred-certificate-authority.ts";
@@ -106,28 +114,60 @@ const descriptorError = (cause: unknown): ProxyError =>
 
 const registrationsFromModules = (
   modules: ReadonlyArray<LandoPluginModule>,
+  dependencies: {
+    readonly paths: Context.Tag.Service<typeof PathsService>;
+    readonly managedFileService: Context.Tag.Service<typeof ManagedFileService>;
+    readonly stateStore: Context.Tag.Service<typeof StateStore>;
+    readonly privateFileAccess: Context.Tag.Service<typeof PrivateFileAccessService>;
+    readonly eventService?: Context.Tag.Service<typeof EventService>;
+    readonly redaction?: Context.Tag.Service<typeof RedactionService>;
+  },
 ): Effect.Effect<ReadonlyArray<RouterServiceRegistration>, ProxyError> =>
   Effect.gen(function* () {
     const indexResult = makePluginCapabilityIndex(modules);
     if (Either.isLeft(indexResult)) return yield* Effect.fail(descriptorError(indexResult.left));
     const index = indexResult.right;
-    const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.routerServices ?? []);
-    return yield* Effect.forEach(contributions, (contribution) => {
-      const layer = index.routerServices.get(contribution.id);
-      return layer === undefined
-        ? Effect.fail(
-            new ProxyError({
-              message: `Router service descriptor does not export ${contribution.id}.`,
-              proxyId: contribution.id,
-              remediation:
-                "Repair the plugin routerServices map and regenerate the BUNDLED_PLUGIN_MODULES descriptor table.",
-            }),
-          )
-        : Effect.succeed({
-            id: contribution.id,
-            layer,
-            ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
+    const contributions = index.manifests.flatMap((manifest) =>
+      (manifest.contributes?.routerServices ?? []).map((contribution) => ({ contribution, manifest })),
+    );
+    return yield* Effect.forEach(contributions, ({ contribution, manifest }) => {
+      const provided = index.routerServices.get(contribution.id);
+      const module = modules.find((candidate) => String(candidate.manifest.name) === String(manifest.name));
+      if (
+        provided === undefined ||
+        module === undefined ||
+        module.routerServices?.get(contribution.id) !== provided
+      ) {
+        return Effect.fail(
+          new ProxyError({
+            message: `Router service descriptor does not export ${contribution.id}.`,
+            proxyId: contribution.id,
+            remediation: "Repair invalid plugin descriptors and regenerate the bundled plugin table.",
+          }),
+        );
+      }
+      return Schema.decodeUnknown(AbsolutePath)(dependencies.paths.pluginStateDir(module.name)).pipe(
+        Effect.mapError(descriptorError),
+        Effect.map((pluginStateRoot) => {
+          const publishRender =
+            dependencies.eventService !== undefined && dependencies.redaction !== undefined
+              ? makePublishRender(dependencies.eventService, dependencies.redaction)
+              : undefined;
+          const context = makeLandoPluginContext({
+            id: module.name,
+            managedFileService: dependencies.managedFileService,
+            stateStore: dependencies.stateStore,
+            privateFileAccess: dependencies.privateFileAccess,
+            pluginStateRoot,
+            ...(publishRender === undefined ? {} : { publishRender }),
           });
+          return {
+            id: contribution.id,
+            layer: provided.make(context),
+            ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
+          };
+        }),
+      );
     });
   });
 
@@ -137,7 +177,19 @@ export const makeRouterServiceRegistryLive = (modules: ReadonlyArray<LandoPlugin
     Effect.gen(function* () {
       const config = yield* ConfigService;
       const paths = yield* PathsService;
-      const registrations = yield* registrationsFromModules(modules);
+      const managedFileService = yield* ManagedFileService;
+      const stateStore = yield* StateStore;
+      const privateFileAccess = yield* PrivateFileAccessService;
+      const eventService = yield* Effect.serviceOption(EventService);
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const registrations = yield* registrationsFromModules(modules, {
+        paths,
+        managedFileService,
+        stateStore,
+        privateFileAccess,
+        ...(eventService._tag === "Some" ? { eventService: eventService.value } : {}),
+        ...(redaction._tag === "Some" ? { redaction: redaction.value } : {}),
+      });
       const configured = config
         .get("defaultRouterService")
         .pipe(

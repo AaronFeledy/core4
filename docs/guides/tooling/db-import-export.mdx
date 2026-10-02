@@ -31,7 +31,7 @@ MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses
 
 ## Snapshots
 
-Snapshots land in Lando's snapshot store, not next to your dump files.
+Snapshots land in Lando's snapshot store, not next to your dump files. Lando briefly stops a running database before copying or restoring its volume, then starts it and waits until it accepts a SQL command. A database that was already stopped stays stopped.
 
 ```sh
 lando db:snapshot --label before-change

@@ -28,6 +28,6 @@ services:
 
 See [Exclude paths from file sync](./file-sync-excludes.mdx).
 
-`lando setup --skip-file-sync` exists for those future slow hosts. It defers Mutagen download to the first accelerated `lando start`. Do not use it to switch providers. `--yes` is consent, not a provider switch.
+`lando setup --skip-file-sync` skips the Mutagen download on slow-mount hosts. Run `lando setup` without the flag later if you want the pinned tools installed. The tools do not enable accelerated mounts in this build. Do not use the flag to switch providers. `--yes` is consent, not a provider switch.
 
 When a slow-mount host is supported, `lando doctor` will run the `file-sync` check only if `bindMountPerformance` is `slow`. Native Linux Docker or Podman skips that check.

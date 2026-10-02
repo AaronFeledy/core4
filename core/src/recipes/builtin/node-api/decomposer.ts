@@ -48,6 +48,7 @@ export const nodeApiDecomposer = ((ports) => ({
           services: {
             api: {
               type: "node:{{ recipe.node }}",
+              primary: true,
               port: 3000,
               environment: { API_FRAMEWORK: "{{ recipe.framework }}" },
               routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],

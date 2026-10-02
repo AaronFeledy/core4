@@ -82,9 +82,57 @@ const waitForTermination = async (pids: ReadonlyArray<number>): Promise<void> =>
   }
 };
 
+const terminateWindowsRuntimeBinProcesses = async (binDir: string): Promise<void> => {
+  // Query executable paths, rather than process names: other Podman installations
+  // can have helpers with the same name.
+  const script = `
+$ErrorActionPreference = 'Stop'
+$bin = [IO.Path]::GetFullPath($env:LANDO_RUNTIME_BIN_DIR).TrimEnd('\\') + '\\'
+$matches = @(Get-CimInstance Win32_Process | Where-Object {
+  $_.ExecutablePath -and $_.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase)
+})
+foreach ($item in $matches) {
+  $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($item.ProcessId)"
+  if ($current -and $current.ExecutablePath -and $current.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase)) {
+    try { Stop-Process -Id $item.ProcessId -ErrorAction Stop }
+    catch {
+      $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($item.ProcessId)"
+      if ($current -and $current.ExecutablePath -and $current.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase)) { throw }
+    }
+  }
+}
+foreach ($item in $matches) {
+  $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($item.ProcessId)"
+  if ($current -and $current.ExecutablePath -and $current.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase)) {
+    try { Wait-Process -Id $item.ProcessId -Timeout 2 -ErrorAction Stop }
+    catch {
+      $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($item.ProcessId)"
+      if ($current -and $current.ExecutablePath -and $current.ExecutablePath.StartsWith($bin, [StringComparison]::OrdinalIgnoreCase)) { throw }
+    }
+  }
+}
+`;
+  const proc = Bun.spawn(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: spawnEnv({ LANDO_RUNTIME_BIN_DIR: binDir }),
+  });
+  const [, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      `Could not stop Lando-managed runtime processes (${stderr.trim() || `exit ${exitCode}`}).`,
+    );
+  }
+};
+
 export const defaultTerminateRuntimeBinProcesses = async (runtimeDir: string): Promise<void> => {
-  if (process.platform !== "linux") return;
   const binDir = join(runtimeDir, "bin");
+  if (process.platform === "win32") return terminateWindowsRuntimeBinProcesses(binDir);
+  if (process.platform !== "linux") return;
   const selfPid = process.pid;
   const matches: number[] = [];
   for (const pid of await listNumericPids()) {

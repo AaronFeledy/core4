@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -17,6 +17,10 @@ test("global diagnostic contribution prepares assets before the service can star
     const directory = join(root, "global/proxy-traefik/diagnostic");
     expect(await readFile(join(directory, "nginx.conf"), "utf8")).toBe(renderTraefikDiagnosticNginxConfig());
     expect(await readFile(join(directory, "404.html"), "utf8")).toBe(renderTraefikDiagnosticHtml());
+    if (process.platform !== "win32") {
+      expect((await stat(join(directory, "nginx.conf"))).mode & 0o777).toBe(0o644);
+      expect((await stat(join(directory, "404.html"))).mode & 0o777).toBe(0o644);
+    }
     expect(config.healthcheck).toMatchObject({ kind: "command" });
     expect(config.home).toBe(false);
     expect(buildTraefikServiceConfig({ http: 8080, https: 8443 }).dependsOn).toEqual([

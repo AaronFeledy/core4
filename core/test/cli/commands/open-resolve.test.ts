@@ -73,6 +73,18 @@ describe("buildOpenTarget", () => {
     });
   });
 
+  test("uses acquired proxy ports for route URLs", () => {
+    const selected = route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" });
+    const authorities = [
+      { hostname: "web.myapp.lndo.site", scheme: "http" as const, port: 8888 },
+      { hostname: "web.myapp.lndo.site", scheme: "https" as const, port: 4433 },
+    ];
+    expect(buildOpenTarget(selected, authorities).url).toBe("https://web.myapp.lndo.site:4433");
+    expect(
+      resolveOpenTargets(plan([selected], ["web"]), {}, authorities).map((target) => target.url),
+    ).toEqual(["https://web.myapp.lndo.site:4433"]);
+  });
+
   test("preserves http scheme and appends pathPrefix", () => {
     const target = buildOpenTarget(
       route({ hostname: "api.myapp.lndo.site", scheme: "http", service: "api", pathPrefix: "/v1" }),

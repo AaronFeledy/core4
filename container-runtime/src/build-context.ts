@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, readlink } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
+import { TAR_BLOCK_SIZE, type UstarHeaderInput, encodeUstarHeader, endOfArchive, padToBlock } from "./tar.ts";
 
 const textEncoder = new TextEncoder();
-const zeroBlock = new Uint8Array(512);
 
 export type BuildContextEntry =
+  | {
+      readonly kind: "directory";
+      readonly name: string;
+      readonly mode: number;
+    }
   | {
       readonly kind: "file";
       readonly name: string;
@@ -125,46 +130,36 @@ const walkContext = async (
   return entries.flat().sort((left, right) => left.name.localeCompare(right.name));
 };
 
-const writeOctal = (header: Uint8Array, offset: number, length: number, value: number): void => {
-  const encoded = value
-    .toString(8)
-    .padStart(length - 1, "0")
-    .slice(-(length - 1));
-  header.set(textEncoder.encode(encoded), offset);
-  header[offset + length - 1] = 0;
-};
-
-const writeString = (header: Uint8Array, offset: number, length: number, value: string): void => {
-  header.set(textEncoder.encode(value.slice(0, length)), offset);
-};
-
 const tarEntry = (entry: BuildContextEntry): Uint8Array => {
-  const content = entry.kind === "file" ? entry.content : new Uint8Array();
-  const header = new Uint8Array(512);
-  writeString(header, 0, 100, entry.name);
-  writeOctal(header, 100, 8, entry.mode);
-  writeOctal(header, 108, 8, 0);
-  writeOctal(header, 116, 8, 0);
-  writeOctal(header, 124, 12, content.byteLength);
-  writeOctal(header, 136, 12, 0);
-  header.fill(32, 148, 156);
-  header[156] = (entry.kind === "symlink" ? "2" : "0").charCodeAt(0);
-  if (entry.kind === "symlink") writeString(header, 157, 100, entry.linkName);
-  writeString(header, 257, 6, "ustar");
-  writeString(header, 263, 2, "00");
-  const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  writeOctal(header, 148, 8, checksum);
-  const padding = (512 - (content.byteLength % 512)) % 512;
-  const output = new Uint8Array(512 + content.byteLength + padding);
+  let content: Uint8Array = new Uint8Array();
+  let input: UstarHeaderInput;
+  switch (entry.kind) {
+    case "file":
+      content = entry.content;
+      input = { name: entry.name, mode: entry.mode, size: content.byteLength, typeflag: "0" };
+      break;
+    case "symlink":
+      input = { name: entry.name, mode: entry.mode, size: 0, typeflag: "2", linkName: entry.linkName };
+      break;
+    case "directory":
+      input = { name: entry.name, mode: entry.mode, size: 0, typeflag: "5" };
+      break;
+    default: {
+      const exhaustive: never = entry;
+      return exhaustive;
+    }
+  }
+  // Persisted build keys and image tags hash this stream, so the pre-codec checksum form stays.
+  const header = encodeUstarHeader(input, { checksumForm: "nul-terminated", longNames: "ustar-prefix" });
+  const output = new Uint8Array(TAR_BLOCK_SIZE + content.byteLength + padToBlock(content.byteLength));
   output.set(header, 0);
-  output.set(content, 512);
+  output.set(content, TAR_BLOCK_SIZE);
   return output;
 };
 
 export async function* tarStream(entries: ReadonlyArray<BuildContextEntry>): AsyncGenerator<Uint8Array> {
   for (const entry of entries) yield tarEntry(entry);
-  yield zeroBlock;
-  yield zeroBlock;
+  yield endOfArchive();
 }
 
 export const contextContentDigest = async (entries: ReadonlyArray<BuildContextEntry>): Promise<string> => {

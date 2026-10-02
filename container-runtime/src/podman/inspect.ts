@@ -1,7 +1,8 @@
 import { Effect } from "effect";
+import { serviceContainerName } from "../plan.ts";
 
-import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
+import type { AppPlan, EndpointPlan, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type {
@@ -10,7 +11,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi } from "../engine-errors.ts";
+import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import { withApiReason } from "../redact.ts";
 
 interface ContainerInspect {
@@ -30,6 +31,7 @@ interface ContainerInspect {
 
 export const publishedEndpointsFromInspect = (
   inspect: unknown,
+  plannedEndpoints: ReadonlyArray<EndpointPlan> = [],
 ): NonNullable<ServiceRuntimeInfo["endpoints"]> => {
   if (typeof inspect !== "object" || inspect === null) return [];
   const ports = (inspect as ContainerInspect).NetworkSettings?.Ports;
@@ -41,19 +43,31 @@ export const publishedEndpointsFromInspect = (
     const [portNum, protocol] = containerPort.split("/");
     const port = Number.parseInt(portNum ?? "0", 10);
     if (port <= 0) continue;
+    const transport = protocol === "udp" ? "udp" : "tcp";
+    const planned = plannedEndpoints.find(
+      (endpoint): endpoint is PublishedEndpoint =>
+        endpoint._tag === "published" &&
+        endpoint.port === port &&
+        (endpoint.protocol === "udp" ? "udp" : "tcp") === transport,
+    );
     for (const binding of bindings) {
       if (typeof binding !== "object" || binding === null) continue;
       const hostPort = Number.parseInt(typeof binding.HostPort === "string" ? binding.HostPort : "0", 10);
       if (hostPort <= 0) continue;
+      const materialization = {
+        bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
+        hostPort,
+      };
+      if (planned !== undefined) {
+        endpoints.push({ ...planned, materialization });
+        continue;
+      }
       endpoints.push({
         _tag: "published" as const,
         port,
-        protocol: protocol === "udp" ? ("udp" as const) : ("http" as const),
+        protocol: transport,
         name: containerPort,
-        publication: {
-          bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
-          hostPort,
-        },
+        publication: materialization,
       });
     }
   }
@@ -65,8 +79,7 @@ export interface InspectOptions {
   readonly ctx: ProviderErrorContext;
 }
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const apiRequired = (ctx: ProviderErrorContext, operation: string): ProviderUnavailableError =>
   missingApi(ctx, operation, `provider-${ctx.providerId} ${operation} requires an engine API client.`);
@@ -85,21 +98,6 @@ const request = (
   operation: string,
 ): Effect.Effect<EngineHttpResponse, ProviderError> =>
   deps.api.request === undefined ? Effect.fail(apiRequired(deps.ctx, operation)) : deps.api.request(input);
-
-const parseJson = (
-  ctx: ProviderErrorContext,
-  response: EngineHttpResponse,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: ctx.providerId,
-        operation: "inspect",
-        message: `provider-${ctx.providerId} API returned invalid JSON.`,
-        cause,
-      }),
-  });
 
 const statusFromInspect = (inspect: ContainerInspect): string => {
   if (inspect.State?.Running === true || inspect.State?.Status === "running") {
@@ -179,11 +177,11 @@ export const inspect = (
       );
     }
 
-    const decoded = (yield* parseJson(ctx, response)) as ContainerInspect;
+    const decoded = (yield* parseEngineJson(response, ctx, "inspect")) as ContainerInspect;
     const status = statusFromInspect(decoded);
     const health = healthFromInspect(decoded);
     const startedAt = lastStartedAt(decoded);
-    const materialized = publishedEndpointsFromInspect(decoded);
+    const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
     return {
       app: plan.id,
       appRoot: plan.root,

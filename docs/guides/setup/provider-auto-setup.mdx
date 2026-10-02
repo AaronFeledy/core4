@@ -26,7 +26,7 @@ lando doctor
 
 `lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config. `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
-Default setup may fail on Alpha. Host prerequisites can block the managed runtime, and the committed runtime-bundle manifest may still be placeholders. If setup names a host prerequisite, fix it and rerun `lando setup`.
+Host prerequisites can block the managed runtime. If setup names one, fix it and rerun `lando setup`.
 
 ## Fall back to Docker
 

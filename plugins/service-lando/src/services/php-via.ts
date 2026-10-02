@@ -35,6 +35,38 @@ export const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   },
 ];
 
+export const PHP_APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
+  {
+    id: LogSourceId.make("access"),
+    label: "Apache access log",
+    path: AbsolutePath.make("/var/log/apache2/access.log"),
+    stream: "stdout",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+  {
+    id: LogSourceId.make("error"),
+    label: "Apache error log",
+    path: AbsolutePath.make("/var/log/apache2/error.log"),
+    stream: "stderr",
+    strategy: "redirect",
+    required: false,
+    timestamps: false,
+  },
+];
+
+export const phpLogSources = (via: PhpVia): ReadonlyArray<LogSource> => {
+  switch (via) {
+    case "apache":
+      return PHP_APACHE_LOG_SOURCES;
+    case "fpm":
+      return PHP_FPM_LOG_SOURCES;
+    case "cli":
+      return [];
+  }
+};
+
 const VIA_REMEDIATION = "Set via: apache, via: fpm, or via: cli.";
 
 const isPhpVia = (value: string): value is PhpVia => (PHP_VIA_MODES as ReadonlyArray<string>).includes(value);
@@ -107,6 +139,32 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
 });
 
 /**
+ * Shell prelude that, on a Windows host, re-maps `www-data` to the uid:gid
+ * owning the project mount so the PHP worker can write bind-mounted files.
+ * `preserveExplicitApacheIdentity` leaves an authored
+ * `APACHE_RUN_USER`/`APACHE_RUN_GROUP` alone.
+ */
+export const windowsBindWorkerIdentity = (
+  fallbackMount: string,
+  preserveExplicitApacheIdentity = false,
+): ReadonlyArray<string> => [
+  `if test "\${LANDO_HOST_OS:-}" = win32${preserveExplicitApacheIdentity ? ' && test "${APACHE_RUN_USER:-www-data}" = www-data && test "${APACHE_RUN_GROUP:-www-data}" = www-data' : ""}; then`,
+  `  lando_mount_owner=$(stat -c '%u:%g' -- "\${LANDO_PROJECT_MOUNT:-${fallbackMount}}")`,
+  "  lando_mount_uid=${lando_mount_owner%%:*}",
+  "  lando_mount_gid=${lando_mount_owner#*:}",
+  '  case "$lando_mount_owner" in *[!0-9:]*|:*|*:|*:*:*) echo "Windows project mount must have numeric uid:gid ownership; got $lando_mount_owner." >&2; exit 1;; esac',
+  '  if test "$lando_mount_uid" -ne 0 && test "$lando_mount_gid" -ne 0; then',
+  '    lando_uid_owner=$(getent passwd "$lando_mount_uid" | cut -d: -f1 || true)',
+  '    lando_gid_owner=$(getent group "$lando_mount_gid" | cut -d: -f1 || true)',
+  '    test -z "$lando_uid_owner" || test "$lando_uid_owner" = www-data || { echo "Windows project mount uid $lando_mount_uid is already owned by $lando_uid_owner." >&2; exit 1; }',
+  '    test -z "$lando_gid_owner" || test "$lando_gid_owner" = www-data || { echo "Windows project mount gid $lando_mount_gid is already owned by $lando_gid_owner." >&2; exit 1; }',
+  '    if test "$(id -g www-data)" != "$lando_mount_gid"; then groupmod --gid "$lando_mount_gid" www-data; fi',
+  '    if test "$(id -u www-data)" != "$lando_mount_uid" || test "$(id -g www-data)" != "$lando_mount_gid"; then usermod --uid "$lando_mount_uid" --gid "$lando_mount_gid" www-data; fi',
+  "  fi",
+  "fi",
+];
+
+/**
  * The launcher for an Apache-served PHP service whose author declared no
  * `command` or `entrypoint`.
  *
@@ -116,18 +174,20 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
  * reads them as consecutive lines of one synthetic configuration stream — a
  * `<Directory>` section spans the arguments exactly as it spanned the file's
  * lines. Emitting them directly is what removes the write: the command mutates
- * no filesystem path, needs no shell, and therefore runs unchanged as the
- * planned service user rather than only as root.
+ * no filesystem path. For the default image user, a shell prelude maps the
+ * www-data worker to the Windows project mount owner before it execs Apache.
+ * An authored non-root service user runs the same directives directly.
  *
  * An authored `port:` moves the site into a virtual host bound to that port and
  * declares the matching listener, still in the same directive stream. The
  * default shape stays on the main server, so a service that authored no port
- * keeps the launcher it has today.
+ * keeps the main-server listener.
  */
 export const apacheStartCommand = (
   webroot: string,
   allowOverride: boolean,
   listenPort: number | undefined,
+  mapWindowsWorker = true,
 ): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
   const site = [
@@ -139,11 +199,21 @@ export const apacheStartCommand = (
     "</Directory>",
     ...apacheErrorPageDirectives(),
   ];
-  const directives =
-    listenPort === undefined
+  const directives = [
+    "ServerName localhost",
+    ...(listenPort === undefined
       ? site
-      : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"];
-  return ["apache2-foreground", ...directives.flatMap((directive) => ["-c", directive])];
+      : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"]),
+  ];
+  const flags = directives.flatMap((directive) => ["-c", directive]);
+  if (!mapWindowsWorker) return ["apache2-foreground", ...flags];
+  return [
+    "sh",
+    "-c",
+    ["set -eu", ...windowsBindWorkerIdentity("/app", true), 'exec apache2-foreground "$@"'].join("\n"),
+    "lando-apache",
+    ...flags,
+  ];
 };
 
 /** Where an FPM launcher writes its pool override; `/tmp` is mode `1777`. */
@@ -161,11 +231,12 @@ export const PHP_FPM_CONFIG_PATH = "/tmp/lando-php-fpm.conf" as const;
  * setting; re-opening `[www]` merges into the pool the bundled files already
  * declare three times over, and the later `listen` wins.
  */
-export const fpmStartCommand = (port: number): ReadonlyArray<string> => [
+export const fpmStartCommand = (port: number, mapWindowsWorker = true): ReadonlyArray<string> => [
   "sh",
   "-c",
   [
     "set -eu",
+    ...(mapWindowsWorker ? windowsBindWorkerIdentity("/app") : []),
     `printf 'include=/usr/local/etc/php-fpm.conf\\n[www]\\nlisten = ${String(port)}\\n' > ${PHP_FPM_CONFIG_PATH}`,
     `exec php-fpm -y ${PHP_FPM_CONFIG_PATH}`,
   ].join("\n"),

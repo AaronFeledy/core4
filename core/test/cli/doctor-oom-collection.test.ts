@@ -85,6 +85,19 @@ describe("doctor collection of oom died events", () => {
     expect(`${text}\n${ndjson}`).not.toContain("s3cr3t");
   });
 
+  test("a stalled event-history request does not discard provider checks", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      getContainerDiedEvents: Effect.never,
+    };
+    const result = await Effect.runPromise(
+      doctor({ env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } }).pipe(Effect.provide(buildLayers(provider))),
+    );
+
+    expect(result.checks.some((check) => check.providerId === "lando")).toBe(true);
+    expect(result.selfChecks?.some((check) => check.context.section === "container-died-events")).toBe(true);
+  });
   test("doctor consumes provider died-event payloads when the provider exposes them", async () => {
     const provider = {
       ...TestRuntimeProvider,

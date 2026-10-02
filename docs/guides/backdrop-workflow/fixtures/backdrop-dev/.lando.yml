@@ -1,0 +1,44 @@
+name: backdrop-dev
+runtime: 4
+services:
+  appserver:
+    type: php:8.3
+    framework: backdrop
+    webroot: /app
+    composer: "2"
+    allowOverride: true
+    port: 80
+    dependsOn:
+      - database
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+    xdebug: true
+    build:
+      artifact:
+        - run: a2enmod rewrite
+          user: root
+        - run: ln -sf /usr/bin/mariadb /usr/local/bin/mysql && ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump
+          user: root
+        - run: curl -fsSL -o /usr/local/bin/bee https://github.com/backdrop-contrib/bee/releases/download/1.x-1.2.0/bee.phar && echo "9c7aaced21b0fe1e78bb34d8476e328b04da81beae4c422a065b483c1430937e  /usr/local/bin/bee" | sha256sum -c - && chmod 0755 /usr/local/bin/bee
+          user: root
+  database:
+    type: mariadb:11.4
+  mail:
+    type: mailpit
+tooling:
+  bee:
+    service: appserver
+    description: Run Bee inside the appserver service.
+    cmds:
+      - bee
+  composer:
+    service: appserver
+    description: Run Composer inside the appserver service.
+    cmds:
+      - composer
+  php:
+    service: appserver
+    description: Run the PHP CLI inside the appserver service.
+    cmds:
+      - php

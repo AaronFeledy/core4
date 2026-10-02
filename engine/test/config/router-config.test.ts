@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+
+import type { GlobalConfig, RouterConfig } from "@lando/sdk/schema";
+import { ConfigService } from "@lando/sdk/services";
 
 import {
   extractRouterPins,
@@ -7,8 +10,16 @@ import {
   resolveRouterConfigForApp,
 } from "../../src/config/router-config.ts";
 
-const DEFAULT_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 38080] as const;
-const DEFAULT_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
+const DEFAULT_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 18080, 28080, 38080] as const;
+const DEFAULT_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 18443, 28443, 38443] as const;
+
+const globalRouterLayer = (router: RouterConfig) => {
+  const load = Effect.succeed({ router } as GlobalConfig);
+  return Layer.succeed(ConfigService, {
+    load,
+    get: <K extends keyof GlobalConfig>(key: K) => Effect.map(load, (config): GlobalConfig[K] => config[key]),
+  });
+};
 
 describe("mergeRouterConfig", () => {
   test("returns compiled HTTP and HTTPS lists when both overlays are omitted", () => {
@@ -27,7 +38,7 @@ describe("mergeRouterConfig", () => {
     // When
     const merged = mergeRouterConfig(globalRouter, undefined);
     // Then
-    expect(merged.httpPorts).toEqual([9080, 8080, 8000, 8888, 8008, 38080]);
+    expect(merged.httpPorts).toEqual([9080, 8080, 8000, 8888, 8008, 18080, 28080, 38080]);
     expect(merged.httpsPorts).toEqual([...DEFAULT_HTTPS_PORTS]);
   });
 
@@ -111,11 +122,7 @@ describe("resolveRouterConfigForApp", () => {
     // When
     const result = await Effect.runPromise(resolveRouterConfigForApp());
     // Then
-    expect(result.router.httpPort).toBe(80);
-    expect(result.router.httpFallbacks).toEqual([8080, 8000, 8888, 8008, 38080]);
-    expect(result.router.httpsPort).toBe(443);
-    expect(result.router.httpsFallbacks).toEqual([8443, 4443, 4433, 4444, 444, 38443]);
-    expect(result.router.bindAddress).toBe("127.0.0.1");
+    expect(result.router).toEqual({ enabled: true, bindAddress: "127.0.0.1" });
     expect(result.routerPin).toEqual({});
   });
 
@@ -126,8 +133,57 @@ describe("resolveRouterConfigForApp", () => {
     const result = await Effect.runPromise(resolveRouterConfigForApp(landofileRouter));
     // Then
     expect(result.router.httpPort).toBe(9090);
-    expect(result.router.httpFallbacks).toEqual([8080, 8000, 8888, 8008, 38080]);
+    expect(result.router.httpFallbacks).toBeUndefined();
     expect(result.router.httpsPort).toBe(9443);
+    expect(result.router.httpsFallbacks).toBeUndefined();
     expect(result.routerPin).toEqual({ httpPort: 9090, httpsPort: 9443 });
+  });
+
+  test("preserves explicit global defaults and an explicit preferred port", async () => {
+    const globalRouter = {
+      httpPort: 80,
+      httpFallbacks: [...DEFAULT_HTTP_PORTS.slice(1)],
+      httpsPort: 443,
+      httpsFallbacks: [...DEFAULT_HTTPS_PORTS.slice(1)],
+    };
+    const result = await Effect.runPromise(
+      resolveRouterConfigForApp().pipe(Effect.provide(globalRouterLayer(globalRouter))),
+    );
+    expect(result.router).toEqual({ enabled: true, bindAddress: "127.0.0.1", ...globalRouter });
+    expect(result.routerPin).toEqual({});
+
+    const preferredOnly = await Effect.runPromise(
+      resolveRouterConfigForApp().pipe(Effect.provide(globalRouterLayer({ httpPort: 80 }))),
+    );
+    expect(preferredOnly.router).toEqual({ enabled: true, bindAddress: "127.0.0.1", httpPort: 80 });
+    expect(preferredOnly.routerPin).toEqual({});
+  });
+
+  test("records Landofile router disablement while retaining explicit port settings", async () => {
+    const result = await Effect.runPromise(
+      resolveRouterConfigForApp({ enabled: false, httpPort: 9090 }).pipe(
+        Effect.provide(globalRouterLayer({ enabled: true, httpPort: 8080 })),
+      ),
+    );
+    expect(result.enabled).toBe(false);
+    expect(result.router).toEqual({ enabled: false, bindAddress: "127.0.0.1", httpPort: 9090 });
+    expect(result.routerPin).toEqual({ httpPort: 9090 });
+  });
+
+  test("keeps per-field global and Landofile precedence without inventing omitted fields", async () => {
+    const result = await Effect.runPromise(
+      resolveRouterConfigForApp({ httpPort: 9090, httpsFallbacks: [] }).pipe(
+        Effect.provide(globalRouterLayer({ httpPort: 80, httpFallbacks: [9000], httpsPort: 443 })),
+      ),
+    );
+    expect(result.router).toEqual({
+      enabled: true,
+      bindAddress: "127.0.0.1",
+      httpPort: 9090,
+      httpFallbacks: [9000],
+      httpsPort: 443,
+      httpsFallbacks: [],
+    });
+    expect(result.routerPin).toEqual({ httpPort: 9090 });
   });
 });

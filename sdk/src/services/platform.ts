@@ -1,4 +1,5 @@
 import { Context, type Effect, type Scope } from "effect";
+import type { AppId } from "../schema/primitives.ts";
 
 import type {
   CaError,
@@ -13,12 +14,12 @@ import type {
   RouterPortsExhausted,
   RouterWatcherError,
   ScannerError,
-  SecretNotFoundError,
+  SecretStoreError,
+  SecretStoreUnavailableError,
   SshError,
 } from "../errors/index.ts";
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
-  AppId,
   AppPlan,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -61,8 +62,13 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
 export interface RouterServiceShape {
   readonly id: string;
   readonly capabilities: ProxyCapabilities;
+  /** Resolve and persist route publication ports before starting required global services. */
+  readonly prepare?: (
+    config: ProxyConfig,
+  ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
   readonly setup: (
     config: ProxyConfig,
+    options?: { readonly autoApprove?: boolean },
   ) => Effect.Effect<
     void,
     ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
@@ -95,6 +101,7 @@ export interface SshSetupOptions {
 export interface SshAgentSocket {
   readonly socketPath: string;
   readonly appId: AppId;
+  readonly runtimeVolume?: string;
 }
 
 export interface SshServiceShape {
@@ -245,14 +252,17 @@ export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
  *
  * Default: env-var store. Pluggable via the `secretStores:` contribution
  * surface (Vault, 1Password CLI, AWS SM, …). `get` fails with
- * `SecretNotFoundError` (carrying the secret id) when a secret is absent; `has`
- * and `list` are total. Resolved values MUST be redacted from log/event output
+ * `SecretNotFoundError` when absent, `SecretReferenceInvalidError` for invalid
+ * references, or `SecretStoreUnavailableError` for backend failures. `has`
+ * propagates unavailability rather than reporting absence. `list` is total;
+ * CLI stores list references resolved in this process. Values MUST be redacted from log/event output
  * (see `@lando/sdk/secrets`).
  */
 export interface SecretStoreShape {
   readonly id: string;
-  readonly get: (secret: string) => Effect.Effect<string, SecretNotFoundError>;
-  readonly has: (secret: string) => Effect.Effect<boolean>;
+  readonly schemes?: ReadonlyArray<string>;
+  readonly get: (secret: string) => Effect.Effect<string, SecretStoreError>;
+  readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
   readonly list: Effect.Effect<ReadonlyArray<string>>;
 }
 

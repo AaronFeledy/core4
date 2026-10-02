@@ -178,6 +178,8 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
       features: [{ id: MYSQL_FEATURE_ID }],
       tooling: {
         mysql: {
+          description: "Open the MySQL client for this service.",
+          dir: PortablePath.make("/"),
           service: input.name,
           cmd: ["mysql", "-h", "127.0.0.1", "-u", creds.user, creds.database],
           env: { MYSQL_PWD: creds.password },

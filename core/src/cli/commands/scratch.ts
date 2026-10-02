@@ -26,6 +26,8 @@ import {
 } from "@lando/renderer/summary";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
+import { extractSpecAbortSignal } from "../spec/command-base";
+import { formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;
@@ -161,22 +163,6 @@ type ScratchStartError =
   | LandofileVersionConstraintError;
 type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError | ScratchAppError;
 
-const flagsFromInput = (input: unknown): Record<string, unknown> => {
-  if (typeof input !== "object" || input === null) return {};
-  return (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
-};
-
-const argsFromInput = (input: unknown): Record<string, unknown> => {
-  if (typeof input !== "object" || input === null) return {};
-  return (input as { readonly args?: Record<string, unknown> }).args ?? {};
-};
-
-const signalFromInput = (input: unknown): AbortSignal | undefined => {
-  if (typeof input !== "object" || input === null) return undefined;
-  const signal = (input as { readonly signal?: unknown }).signal;
-  return signal instanceof AbortSignal ? signal : undefined;
-};
-
 export const waitForAbortSignal = (signal: AbortSignal | undefined): Effect.Effect<void> => {
   if (signal === undefined) return Effect.never;
   return Effect.async<void>((resume) => {
@@ -196,13 +182,13 @@ const stringArrayFlag = (flags: Record<string, unknown>, key: string): ReadonlyA
 };
 
 export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOptions => {
-  const flags = flagsFromInput(input);
+  const flags = specFlagsOf(input);
   const answers = parseAnswerFlags(
     mergeAnswerSources(stringArrayFlag(flags, "answer"), stringArrayFlag(flags, "option")),
   );
   const isolate = asIsolateMode(flags.isolate);
   const mountCwd = mountCwdFromValue(flags["mount-cwd"]);
-  const signal = signalFromInput(input);
+  const signal = extractSpecAbortSignal(input);
   const excludes = stringArrayFlag(flags, "exclude");
   const hostnames = stringArrayFlag(flags, "hostname");
   return {
@@ -230,16 +216,10 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
   };
 };
 
-export const scratchIdFromInput = (input: unknown): string => {
-  const id = argsFromInput(input).id;
-  return typeof id === "string" ? id : "";
-};
+export const scratchIdFromInput = (input: unknown): string => stringFlag(specArgsOf(input), "id") ?? "";
 
-export const scratchListFormatFromInput = (input: unknown): ScratchListFormat => {
-  const flags = flagsFromInput(input);
-  if (flags.format === "json") return "json";
-  return "table";
-};
+export const scratchListFormatFromInput = (input: unknown): ScratchListFormat =>
+  formatFlag(specFlagsOf(input), ["json", "table"], "table");
 
 const unresolvedSource = (message: string, source: string): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({

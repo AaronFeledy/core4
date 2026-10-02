@@ -8,9 +8,10 @@ import {
   envArrayFromRecord,
   fingerprintInspectPublishPorts,
   fingerprintPlannedPublishPorts,
+  mergeAppliedPlan,
   mountSuffix,
 } from "@lando/container-runtime/plan";
-import { AbsolutePath, type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
 const plan = {
   id: "app-id",
@@ -54,6 +55,31 @@ const service = {
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
+  test("delivers a read-only named volume at a simple container target", () => {
+    // Given a borrowed volume, not an app-owned store.
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "volume",
+          source: "lando-ssh-agent",
+          target: PortablePath.make("/run/lando/ssh-agent"),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
+      storage: [],
+    };
+    // When
+    const host = containerHostConfigFragment(plan, mounted);
+    // Then
+    expect(host.Mounts).toContainEqual({
+      Type: "volume",
+      Source: "lando-ssh-agent",
+      Target: "/run/lando/ssh-agent",
+      ReadOnly: true,
+    });
+  });
   test.each(["passthrough", "accelerated"] as const)(
     "preserves colon targets in API Mounts when %s",
     (realization) => {
@@ -140,6 +166,22 @@ describe("container plan helpers", () => {
     const hostConfig = containerHostConfigFragment(plan, withAliases);
     // Then
     expect(hostConfig.ExtraHosts).toEqual(expected);
+  });
+
+  test("retains prior services only for a non-reconciling partial apply", () => {
+    const oldService = { ...service, name: "database" } as ServicePlan;
+    const changedService = { ...service, environment: { UPDATED: "yes" } } as ServicePlan;
+    const previous = { ...plan, services: { database: oldService, web: service } } as AppPlan;
+    const incoming = { ...plan, services: { web: changedService } } as AppPlan;
+
+    expect(mergeAppliedPlan(previous, incoming, false).services).toEqual({
+      [ServiceName.make("database")]: oldService,
+      [ServiceName.make("web")]: changedService,
+    });
+    expect(mergeAppliedPlan(previous, incoming, true).services).toEqual({
+      [ServiceName.make("web")]: changedService,
+    });
+    expect(mergeAppliedPlan(undefined, incoming, false)).toBe(incoming);
   });
 
   test("converts env records and mount read-only suffixes", () => {

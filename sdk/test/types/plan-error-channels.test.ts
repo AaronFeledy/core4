@@ -28,6 +28,8 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  GpgAgentTransportError,
+  GpgAgentUnavailableError,
   HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
@@ -65,8 +67,13 @@ import type {
   RouterPortsExhausted,
   RouterWatcherError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreError,
+  SecretStoreUnavailableError,
   ShellExecError,
   ShellScriptOutsideRootError,
+  SshAgentTransportError,
+  SshAgentUnavailableError,
   StateStoreError,
   ToolingCompileError,
   ToolingDisabledError,
@@ -86,6 +93,8 @@ import type {
   ProviderError,
   ProviderSelectionError,
   RuntimeProviderRegistry,
+  SecretStoreShape,
+  ShellInteractiveSpec,
   UserLandofileError,
 } from "@lando/sdk/services";
 
@@ -181,6 +190,12 @@ type LegacyStartAppError =
   | PublicationUnsupportedError
   | GlobalAutoStartError
   | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError
+  | SshAgentUnavailableError
+  | SshAgentTransportError
+  | GpgAgentUnavailableError
+  | GpgAgentTransportError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
@@ -459,6 +474,17 @@ describe("SDK plan-carrying error channels", () => {
 });
 
 describe("SDK named error channels", () => {
+  test("secret store and interactive shell preserve typed secret failures", () => {
+    // Given: the public secret error union and service shapes.
+    // When: extract their failure channels. Then: require exact type equality.
+    expect(assertType<Equal<ErrOf<ReturnType<SecretStoreShape["get"]>>, SecretStoreError>>(true)).toBe(true);
+    expect(
+      assertType<Equal<ErrOf<ReturnType<SecretStoreShape["has"]>>, SecretStoreUnavailableError>>(true),
+    ).toBe(true);
+    expect(
+      assertType<Equal<ErrOf<ReturnType<ShellInteractiveSpec["resolveSecret"]>>, SecretStoreError>>(true),
+    ).toBe(true);
+  });
   // Given: public aliases and independent legacy channels above.
   // When: compare each alias. Then: require exact equality under tsc.
   test("LandofileServiceError retains the discover members", () => {

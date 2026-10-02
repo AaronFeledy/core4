@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+import { composeTopLevelDispositions, mergeValues } from "@lando/sdk/landofile";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -15,7 +16,6 @@ import {
   type ConfigLintViolation,
   LandofileShape,
 } from "@lando/sdk/schema";
-import { composeTopLevelDispositions } from "./compose/dispositions.ts";
 import {
   type ComposeRejectionMatch,
   analyzeComposeRejections,
@@ -23,7 +23,6 @@ import {
 } from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
 import { presentLandofileLayers } from "./layers.ts";
-import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
 import type { TemplateEngineInputs } from "./ports.ts";
 import { normalizeRoutes } from "./route-normalize.ts";
@@ -84,17 +83,13 @@ const composeSuggestedFix = (issue: LintIssue): string | undefined => {
   return undefined;
 };
 
-const sshAgentSuggestedFix = (issue: LintIssue): string | undefined => {
-  if (issue._tag !== "Type" || issue.path.map(String).join(".") !== "sshAgent.sidecar") return undefined;
-  if (issue.message !== "Expected true, actual false") return undefined;
-  return "The `sshAgent.sidecar: false` direct host SSH-agent socket mount is reserved and rejected. Use the supported sidecar path (`sshAgent.sidecar: true`, the default) instead.";
-};
-
 const violationFromIssue = (issue: LintIssue): ConfigLintViolation => {
   const path = issue.path.map(String).join(".");
   const key = lastKey(issue.path);
   const suggestedFix =
-    sshAgentSuggestedFix(issue) ??
+    (issue._tag === "Type" && path === "sshAgent.socket"
+      ? "Set sshAgent.socket to a string containing the host SSH-agent socket path, or omit it for automatic discovery."
+      : undefined) ??
     composeSuggestedFix(issue) ??
     (issue._tag === "Unexpected"
       ? `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`
@@ -151,7 +146,11 @@ const appNameOf = (parsed: unknown): string => {
 const singleViolationResult = (
   file: string,
   message: string,
-  location: { readonly line: number | undefined; readonly column: number | undefined } = {
+  details: {
+    readonly line: number | undefined;
+    readonly column: number | undefined;
+    readonly suggestedFix?: string | undefined;
+  } = {
     line: undefined,
     column: undefined,
   },
@@ -163,8 +162,9 @@ const singleViolationResult = (
     {
       path: "",
       message,
-      ...(location.line === undefined ? {} : { line: location.line }),
-      ...(location.column === undefined ? {} : { column: location.column }),
+      ...(details.line === undefined ? {} : { line: details.line }),
+      ...(details.column === undefined ? {} : { column: details.column }),
+      ...(details.suggestedFix === undefined ? {} : { suggestedFix: details.suggestedFix }),
     },
   ],
 });
@@ -264,6 +264,7 @@ export const lintLandofile = (
         return singleViolationResult(layer.filePath, error.message, {
           line: error.line,
           column: error.column,
+          suggestedFix: error.remediation,
         });
       }
       parsedLayers.push(parsedEither.right);

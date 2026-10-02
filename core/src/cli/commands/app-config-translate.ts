@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 import type { TransactionOptions } from "@lando/managed-file/transaction";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 import { Effect, Option } from "effect";
 
@@ -196,10 +196,7 @@ export const appConfigTranslate = (
           { outputs, currentLowerV4Fragments },
           target.encode,
         );
-    const service = yield* Effect.serviceOption(RedactionService);
-    const redactor = Option.isSome(service)
-      ? yield* service.value.forProfile("secrets")
-      : createStandaloneRedactor("secrets");
+    const { redactor } = yield* resolveSecretsRedactor();
     const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
     const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
     const diagnostics = [...encodingDiagnostics, ...includeDiagnostics].map((diagnostic) => ({

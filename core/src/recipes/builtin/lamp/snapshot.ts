@@ -1,11 +1,11 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-
 import { PHP_VERSIONS } from "../php-stack.ts";
+import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LAMP_RECIPE_VERSION = "0.1.0";
-export const LAMP_CONTENT_DIGEST = "sha256:9afda4d9f6ee1b8af319c37c89e8afe76f25a911b9b4d2eb66b033b0fbb1689d";
+export const LAMP_CONTENT_DIGEST = "sha256:8296b2b6dad5128b2f6eea6eb489e1c45cdf19e26695800ad2e3aea7747a2989";
 export const lampProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lamp",
@@ -13,42 +13,9 @@ export const lampProducer: RecipeProducer = {
   manifestVersion: LAMP_RECIPE_VERSION,
   contentDigest: LAMP_CONTENT_DIGEST,
 };
-
-export const lampDefaults = {
-  php: "8.3",
-  database: "mariadb:11.4",
-  composer: "2",
-  webroot: "/app",
-} as const;
-
-const composerEnabled: ExpressionNode = {
-  kind: "Call",
-  callee: "ne",
-  args: [
-    { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] },
-    { kind: "Literal", value: "false" },
-  ],
-};
-const phpTool: ExpressionNode = {
-  kind: "ObjectLiteral",
-  entries: [
-    { key: "service", value: { kind: "Literal", value: "appserver" } },
-    {
-      key: "description",
-      value: { kind: "Literal", value: "Run the PHP CLI inside the appserver service." },
-    },
-    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "php" }] } },
-  ],
-};
-const composerTool: ExpressionNode = {
-  kind: "ObjectLiteral",
-  entries: [
-    { key: "service", value: { kind: "Literal", value: "appserver" } },
-    { key: "description", value: { kind: "Literal", value: "Run Composer inside the appserver service." } },
-    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "composer" }] } },
-  ],
-};
-
+export const lampDefaults = { php: "8.3", database: "mariadb:11.4", composer: "2", webroot: "/app" } as const;
+const composerEnabled = (): ExpressionNode =>
+  call("ne", { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] }, lit("false"));
 export const lampSnapshot: RecipeSnapshot = {
   identity: lampProducer,
   optionTypes: {
@@ -59,115 +26,40 @@ export const lampSnapshot: RecipeSnapshot = {
   },
   defaults: lampDefaults,
   template: {
-    expression: {
-      kind: "ObjectLiteral",
-      entries: [
-        { key: "runtime", value: { kind: "Literal", value: 4 } },
-        {
-          key: "services",
-          value: {
-            kind: "ObjectLiteral",
-            entries: [
-              {
-                key: "appserver",
-                value: {
-                  kind: "ObjectLiteral",
-                  entries: [
-                    { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
-                    { key: "framework", value: { kind: "Literal", value: "none" } },
-                    { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-                    {
-                      key: "composer",
-                      value: {
-                        kind: "Conditional",
-                        test: composerEnabled,
-                        consequent: { kind: "Literal", value: "{{ recipe.composer }}" },
-                        alternate: { kind: "Literal", value: false },
-                      },
-                    },
-                    { key: "port", value: { kind: "Literal", value: 80 } },
-                    {
-                      key: "dependsOn",
-                      value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] },
-                    },
-                    {
-                      key: "routes",
-                      value: {
-                        kind: "ArrayLiteral",
-                        elements: [
-                          {
-                            kind: "ObjectLiteral",
-                            entries: [
-                              {
-                                key: "hostname",
-                                value: { kind: "Literal", value: "{{ app.name }}.{{ proxy.defaultDomain }}" },
-                              },
-                              { key: "scheme", value: { kind: "Literal", value: "both" } },
-                            ],
-                          },
-                        ],
-                      },
-                    },
-                  ],
-                },
-              },
-              {
-                key: "database",
-                value: {
-                  kind: "ObjectLiteral",
-                  entries: [{ key: "type", value: { kind: "Literal", value: "{{ recipe.database }}" } }],
-                },
-              },
-            ],
-          },
-        },
-        {
-          key: "tooling",
-          value: {
-            kind: "Conditional",
-            test: {
-              kind: "Call",
-              callee: "ne",
-              args: [
-                { kind: "Path", head: "options", segments: [{ type: "prop", name: "composer" }] },
-                { kind: "Literal", value: "false" },
-              ],
-            },
-            consequent: {
-              kind: "ObjectLiteral",
-              entries: [
-                { key: "composer", value: composerTool },
-                { key: "php", value: phpTool },
-              ],
-            },
-            alternate: {
-              kind: "ObjectLiteral",
-              entries: [
-                {
-                  key: "php",
-                  value: {
-                    kind: "ObjectLiteral",
-                    entries: [
-                      { key: "service", value: { kind: "Literal", value: "appserver" } },
-                      {
-                        key: "description",
-                        value: { kind: "Literal", value: "Run the PHP CLI inside the appserver service." },
-                      },
-                      {
-                        key: "cmds",
-                        value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "php" }] },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        },
+    expression: obj([
+      ["runtime", lit(4)],
+      [
+        "services",
+        obj([
+          [
+            "appserver",
+            obj([
+              ["type", lit("php:{{ recipe.php }}")],
+              ["primary", lit(true)],
+              ["framework", lit("none")],
+              ["webroot", lit("{{ recipe.webroot }}")],
+              ["composer", cond(composerEnabled(), lit("{{ recipe.composer }}"), lit(false))],
+              ["port", lit(80)],
+              ["dependsOn", arr(lit("database"))],
+              ["routes", arr(defaultRoute())],
+            ]),
+          ],
+          ["database", obj([["type", lit("{{ recipe.database }}")]])],
+        ]),
       ],
-    },
+      [
+        "tooling",
+        cond(
+          composerEnabled(),
+          obj([
+            ["composer", toolNode("appserver", "Run Composer inside the appserver service.", "composer")],
+            ["php", toolNode("appserver", "Run the PHP CLI inside the appserver service.", "php")],
+          ]),
+          obj([["php", toolNode("appserver", "Run the PHP CLI inside the appserver service.", "php")]]),
+        ),
+      ],
+    ]),
   },
   assets: [],
 };
-
 export const lampSnapshotYaml = recipeSnapshotYaml(lampSnapshot);

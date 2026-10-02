@@ -1,3 +1,4 @@
+import { VOLUME_OWNER_LABEL } from "@lando/container-runtime/labels";
 import { Effect } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
@@ -146,7 +147,7 @@ export const resolvePhysicalTarget = (input: SqlPhysicalContextInput) =>
         ),
       );
     }
-    const observedOwner = volume.labels?.["dev.lando.volume-owner"];
+    const observedOwner = volume.labels?.[VOLUME_OWNER_LABEL];
     if (observedOwner !== undefined && observedOwner !== canonicalAppRoot(input.plan)) {
       return yield* Effect.fail(
         recoveryUnavailable(

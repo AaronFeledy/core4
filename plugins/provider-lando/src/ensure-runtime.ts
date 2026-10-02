@@ -1,12 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import { Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
@@ -71,6 +68,12 @@ const defaultRuntimeReadinessPolicy: RetryPolicy = {
   timeout: Duration.seconds(45),
 };
 
+const healthyMachinePolicy: RetryPolicy = {
+  maxAttempts: 1,
+  delay: Duration.millis(0),
+  timeout: Duration.seconds(2),
+};
+
 const missingMachineRunnerError = (platform: "darwin" | "win32") =>
   new ProviderUnavailableError({
     providerId: "lando",
@@ -81,16 +84,7 @@ const missingMachineRunnerError = (platform: "darwin" | "win32") =>
 
 const writePidFile = (pidPath: string, pid: number): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.tryPromise({
-    try: async () => {
-      const tempPath = `${pidPath}.tmp-${process.pid}-${randomUUID()}`;
-      await mkdir(dirname(pidPath), { recursive: true });
-      try {
-        await writeFile(tempPath, String(pid), { mode: 0o600 });
-        await rename(tempPath, pidPath);
-      } finally {
-        await rm(tempPath, { force: true });
-      }
-    },
+    try: () => writeFileAtomic(pidPath, String(pid), { mode: 0o600, ownerOnly: "best-effort" }),
     catch: (cause) =>
       new ProviderUnavailableError({
         providerId: "lando",
@@ -273,14 +267,39 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
 
 const ensureMachineRuntime = (
   deps: EnsureRuntimeDeps,
+  machine: PodmanMachineRunner,
   launchMachine: Effect.Effect<void, ProviderUnavailableError>,
 ): Effect.Effect<void, ProviderUnavailableError> => {
+  const healthy = runProbe(
+    { id: "provider-lando-machine-healthy", policy: healthyMachinePolicy },
+    hostPlatformFamily(deps.platform) === "win32"
+      ? deps.podmanApi.ping.pipe(Effect.andThen(deps.podmanApi.info), Effect.asVoid)
+      : deps.podmanApi.ping,
+  ).pipe(
+    Effect.flatMap((result) =>
+      result.outcome === "green"
+        ? machine.inspect.pipe(Effect.map((status) => status === "running"))
+        : Effect.succeed(false),
+    ),
+    Effect.catchAll(() => Effect.succeed(false)),
+  );
+  const completeProgress = Effect.gen(function* () {
+    yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
+    yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
+  });
   const launchAndReadiness = Effect.gen(function* () {
+    if (yield* healthy) {
+      yield* completeProgress;
+      return;
+    }
     yield* deps.setupProgress?.launch(launchMachine) ?? launchMachine;
     const readiness = verifyRuntimeReachable(deps);
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
-  return (deps.withLaunchLock?.(launchAndReadiness) ?? launchAndReadiness).pipe(
+  return healthy.pipe(
+    Effect.flatMap((ready) =>
+      ready ? completeProgress : (deps.withLaunchLock?.(launchAndReadiness) ?? launchAndReadiness),
+    ),
     Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
   );
 };
@@ -292,13 +311,21 @@ export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Prov
     if (family === "darwin") {
       return yield* deps.machineRunner === undefined
         ? Effect.fail(missingMachineRunnerError("darwin"))
-        : ensureMachineRuntime(deps, ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
+        : ensureMachineRuntime(
+            deps,
+            deps.machineRunner,
+            ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
+          );
     }
 
     if (family === "win32") {
       return yield* deps.machineRunner === undefined
         ? Effect.fail(missingMachineRunnerError("win32"))
-        : ensureMachineRuntime(deps, ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
+        : ensureMachineRuntime(
+            deps,
+            deps.machineRunner,
+            ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
+          );
     }
 
     return yield* ensureLinuxRuntime(deps);

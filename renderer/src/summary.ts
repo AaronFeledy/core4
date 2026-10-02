@@ -9,25 +9,28 @@
  */
 
 import {
+  REMEDY_ARROW,
   type SummaryTone,
   boxBody,
   boxBottom,
   boxSeparator,
   boxTop,
   dimText,
-  displayWidth,
+  fieldLabelWidth,
   hyperlink,
-  padEndToWidth,
   paintTone,
+  resolveSummaryWidth,
   styleBoxBottom,
   styleBoxFooter,
   styleBoxSeparator,
   styleBoxTop,
   toneChip,
+  wrapFieldToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
 
 import { formatPreparedQuietSummary } from "./summary-quiet.ts";
+import { formatPreparedRailSummary } from "./summary-rail.ts";
 
 export type { SummaryTone };
 
@@ -50,6 +53,8 @@ export interface SummaryRow {
   readonly tone?: SummaryTone;
   readonly value?: string;
   readonly detail?: string;
+  /** Suggested fix, painted as a hanging `↳` line after fields and detail. */
+  readonly remedy?: string;
   readonly fields?: ReadonlyArray<SummaryField>;
   readonly href?: string;
   readonly muted?: boolean;
@@ -93,6 +98,7 @@ export const redactSummaryDocument = (
       ...(row.tone === undefined ? {} : { tone: row.tone }),
       ...(row.value === undefined ? {} : { value: redact(row.value) }),
       ...(row.detail === undefined ? {} : { detail: redact(row.detail) }),
+      ...(row.remedy === undefined ? {} : { remedy: redact(row.remedy) }),
       ...(row.href === undefined ? {} : { href: redact(row.href) }),
       ...(row.muted === undefined ? {} : { muted: row.muted }),
       ...(row.fields === undefined
@@ -109,12 +115,6 @@ export const redactSummaryDocument = (
   ...(doc.nextSteps === undefined ? {} : { nextSteps: doc.nextSteps.map(redact) }),
   ...(doc.footer === undefined ? {} : { footer: redact(doc.footer) }),
 });
-
-const MIN_SUMMARY_WIDTH = 24;
-const DEFAULT_SUMMARY_WIDTH = 80;
-
-const resolveWidth = (columns: number | undefined): number =>
-  Math.max(MIN_SUMMARY_WIDTH, columns ?? DEFAULT_SUMMARY_WIDTH);
 
 const headerTitle = (doc: SummaryDocument): string => {
   const chip = doc.tone === undefined ? "" : ` ${toneChip(doc.tone)}`;
@@ -145,7 +145,7 @@ const composeRowStyle = (row: SummaryRow): ((line: string) => string) | undefine
 
 export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
-  const width = resolveWidth(options.columns);
+  const width = resolveSummaryWidth(options.columns);
   const innerWidth = width - 4;
   const lines: string[] = [];
 
@@ -162,15 +162,25 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     lines.push(styleBoxSeparator(boxSeparator(sectionTitle(section), width)));
     if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0))
       pushBody("(none)", 2, undefined);
+    const labelWidth = fieldLabelWidth(
+      section.rows.flatMap((row) => row.fields?.map((field) => field.label) ?? []),
+      innerWidth - 2,
+    );
     for (const row of section.rows) {
       pushBody(rowHead(row), 0, composeRowStyle(row));
       if (row.fields !== undefined && row.fields.length > 0) {
-        const labelWidth = Math.max(...row.fields.map((field) => displayWidth(field.label)));
         for (const field of row.fields) {
-          pushBody(`${padEndToWidth(field.label, labelWidth)} : ${field.value}`, 2, styleBoxBottom);
+          for (const segment of wrapFieldToWidth(field.label, field.value, labelWidth, innerWidth - 2)) {
+            lines.push(boxBody(`  ${segment}`, width, styleBoxBottom));
+          }
         }
       }
       if (row.detail !== undefined) pushBody(row.detail, 2, styleBoxBottom);
+      if (row.remedy !== undefined) {
+        const [first, ...rest] = wrapToWidth(row.remedy, Math.max(1, innerWidth - 2 - REMEDY_ARROW.length));
+        pushBody(`${REMEDY_ARROW}${first ?? ""}`, 2, styleBoxBottom);
+        for (const segment of rest) pushBody(segment, 2 + REMEDY_ARROW.length, styleBoxBottom);
+      }
     }
     if (section.notes !== undefined) {
       for (const note of section.notes) pushBody(`• ${note}`, 2, styleBoxBottom);
@@ -189,4 +199,10 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
 export const formatQuietSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
   return formatPreparedQuietSummary(prepared, options.columns);
+};
+
+/** Task-tree rail framing for a static report printed under a live tree. */
+export const formatRailSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
+  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  return formatPreparedRailSummary(prepared, options.columns);
 };

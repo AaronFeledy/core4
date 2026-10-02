@@ -28,7 +28,6 @@ import { EventService, Renderer } from "@lando/sdk/services";
 import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { runAppInitEvents } from "../operations/events.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
@@ -61,8 +60,6 @@ export const makeAppHandle = (
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
-  const runInitEvents =
-    target.landofile === undefined ? Effect.void : runAppInitEvents(plan).pipe(Effect.provide(runtime));
   const implementation = {
     id: plan.id,
     ref,
@@ -71,7 +68,6 @@ export const makeAppHandle = (
     start: (options?: StartAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
-          yield* runInitEvents;
           const current = yield* lifecycle.current;
           if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
             return yield* ops
@@ -81,30 +77,30 @@ export const makeAppHandle = (
               })
               .pipe(Effect.provide(runtime));
           }
-          yield* lifecycle.closeCurrent;
           if (options?.detached === true) {
-            return yield* ops.startApp(options, target).pipe(Effect.provide(runtime));
+            return yield* ops
+              .startApp(options, target, undefined, { beforeStart: lifecycle.closeCurrent })
+              .pipe(Effect.provide(runtime));
           }
-          const scope = yield* lifecycle.installFresh;
+          const scope = yield* lifecycle.stageFresh;
           return yield* ops
-            .startApp(options, target, {
-              scope,
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
+            .startApp(
+              options,
+              target,
+              { scope, onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope) },
+              {
+                beforeStart: lifecycle.replaceCurrent(scope),
+                onFailedStart: lifecycle.discardIfCurrent(scope),
+              },
+            )
             .pipe(
               Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discardIfCurrent(scope)),
+              Effect.onError(() => lifecycle.discard(scope)),
             );
         }),
       ),
     stop: (options?: StopAppOptions) =>
-      lifecycle.serialize(
-        runInitEvents.pipe(
-          Effect.zipRight(ops.stopApp(options, target)),
-          Effect.provide(runtime),
-          Effect.ensuring(lifecycle.closeCurrent),
-        ),
-      ),
+      lifecycle.serialize(ops.stopApp(options, target, lifecycle.closeCurrent).pipe(Effect.provide(runtime))),
     restart: (options?: RestartAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
@@ -113,6 +109,7 @@ export const makeAppHandle = (
             .restartApp(options, target, {
               scope,
               onStopped: lifecycle.replaceCurrent(scope),
+              onFailedStart: lifecycle.discard(scope),
               onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
             })
             .pipe(
@@ -132,6 +129,7 @@ export const makeAppHandle = (
             .rebuildApp(options, target, {
               scope,
               onStopped: lifecycle.replaceCurrent(scope),
+              onFailedStart: lifecycle.discard(scope),
               onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
             })
             .pipe(
@@ -142,11 +140,7 @@ export const makeAppHandle = (
       ),
     destroy: (options?: DestroyAppOptions) =>
       lifecycle.serialize(
-        runInitEvents.pipe(
-          Effect.zipRight(ops.destroyApp(options, target)),
-          Effect.provide(runtime),
-          Effect.ensuring(lifecycle.closeCurrent),
-        ),
+        ops.destroyApp(options, target, lifecycle.closeCurrent).pipe(Effect.provide(runtime)),
       ),
     info: (options?: InfoAppOptions) => ops.infoApp(options, target).pipe(Effect.provide(runtime)),
     exec: (options: ExecAppOptions) =>

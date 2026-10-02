@@ -1,0 +1,13 @@
+name: "@lando/secret-store-1password"
+version: "0.0.0"
+api: 4
+requires:
+  "@lando/core": "^4.0.0"
+description: "1Password CLI-backed secret store."
+enabled: true
+entry: "./src/index.ts"
+contributes:
+  secretStores:
+    - id: "1password"
+      module: "./src/store.ts"
+      schemes: ["op"]

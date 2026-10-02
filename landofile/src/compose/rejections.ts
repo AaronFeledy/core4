@@ -1,14 +1,14 @@
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
-import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "./dispositions.ts";
+} from "@lando/sdk/landofile";
+import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import { type DispositionTrieNode, compileDispositionTrie, matchDispositionChild } from "./rejection-trie.ts";
 
 export interface ComposeRejectionMatch {
@@ -37,9 +37,6 @@ class ComposeRejectionMatrixInvariantError extends Error {
 }
 
 let serviceDispositionTrie: DispositionTrieNode | undefined;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const rejectedEntry = (
   entry: ComposeDispositionEntry,
@@ -114,7 +111,7 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
     }
     return;
   }
-  if (!isRecord(value)) return;
+  if (!Predicate.isRecord(value)) return;
   if (node.matrixPath === "build" && ("artifact" in value || "app" in value)) return;
 
   for (const key of Object.keys(value)) {
@@ -144,7 +141,7 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
 };
 
 const walkServices = (value: unknown, matches: ComposeDispositionMatch[]): void => {
-  if (!isRecord(value)) return;
+  if (!Predicate.isRecord(value)) return;
   serviceDispositionTrie ??= compileDispositionTrie(composeServiceDispositions);
   for (const service of Object.keys(value)) {
     walkValue(value[service], serviceDispositionTrie, {
@@ -156,7 +153,7 @@ const walkServices = (value: unknown, matches: ComposeDispositionMatch[]): void 
 };
 
 export const analyzeComposeDispositions = (parsed: unknown): ReadonlyArray<ComposeDispositionMatch> => {
-  if (!isRecord(parsed)) return [];
+  if (!Predicate.isRecord(parsed)) return [];
   const matches: ComposeDispositionMatch[] = [];
   for (const key of Object.keys(parsed)) {
     const matrixPath = key.startsWith("x-") ? "x-*" : key;

@@ -23,7 +23,7 @@ import { type AppBuildInput, runAppBuildStep } from "./build-app-step-runner.ts"
 import { findCompleteBuildResult, openAppBuildResults, recordBuildResult } from "./build-results.ts";
 import { makeBuildTranscriptPath } from "./build-transcript.ts";
 
-const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+const timestamp = () => DateTime.unsafeNow();
 
 const cacheError = (providerId: string, cause: unknown) =>
   new ProviderInternalError({

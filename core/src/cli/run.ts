@@ -10,10 +10,12 @@ import {
 
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
+import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import {
   isReservedNamespaceHead,
   notImplementedErrorForCommand,
   resolveBuiltInCommand,
+  suggestBuiltInCommandForSuffix,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
 import { type HelpTopic, isHelpTopic, renderColdAllHelp, renderColdTopicHelp } from "./cold-path-output";
@@ -82,10 +84,10 @@ export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
 
-const failUnknownCommand = (token: string) =>
+const failUnknownCommand = (token: string, suggestCanonicalId = true) =>
   renderPreCommandFailure({
     commandId: "cli:unknown-command",
-    error: unknownCommandError(token),
+    error: unknownCommandError(token, suggestCanonicalId ? suggestBuiltInCommandForSuffix(token) : undefined),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
   });
@@ -198,6 +200,12 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+  if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
+    setActiveLogLevel("none");
+    const { runAgentRelayWorkerProcess } = await import("./agent-relay/worker-runtime");
+    await runAgentRelayWorkerProcess();
+    return;
+  }
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
     setActiveLogLevel("none");
     await runHostProxyWorkerProcess();
@@ -353,7 +361,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       argv = [route.commandId, ...argvTail];
     } else if (route._tag === "alias-disabled") {
       setActiveCommandId("cli:unknown-command");
-      await failUnknownCommand(route.token);
+      await failUnknownCommand(route.token, false);
       return;
     } else if (toolingHelpRequested(route, argvTail)) {
       await dispatchHelpTarget(route.commandId);

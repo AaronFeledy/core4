@@ -274,7 +274,7 @@ export const makeDownloaderService = (
         urlOrigin: origin,
         ...(callerId === undefined ? {} : { callerId: redact(callerId) }),
         ...(request.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: request.expectedSizeBytes }),
-        timestamp: DateTime.unsafeMake(Date.now()),
+        timestamp: DateTime.unsafeNow(),
       });
 
     const progressEvent = (bytesDownloaded: number): LandoEvent =>
@@ -284,7 +284,7 @@ export const makeDownloaderService = (
         ...(callerId === undefined ? {} : { callerId: redact(callerId) }),
         bytesDownloaded,
         ...(request.expectedSizeBytes === undefined ? {} : { totalBytes: request.expectedSizeBytes }),
-        timestamp: DateTime.unsafeMake(Date.now()),
+        timestamp: DateTime.unsafeNow(),
       });
 
     const postEvent = (input: PostEventInput): LandoEvent =>
@@ -298,7 +298,7 @@ export const makeDownloaderService = (
         durationMs: input.durationMs,
         outcome: input.outcome,
         ...(input.failureDetail === undefined ? {} : { failureDetail: input.redact(input.failureDetail) }),
-        timestamp: DateTime.unsafeMake(Date.now()),
+        timestamp: DateTime.unsafeNow(),
       });
 
     return Effect.gen(function* () {

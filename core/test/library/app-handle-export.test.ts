@@ -174,7 +174,7 @@ describe("@lando/core App-handle entry export", () => {
 
   test("keeps bound start and general share-stop channels exact", async () => {
     // Given: the bound start and general share operation syntax trees.
-    const start = await sourceFile(join(repoRoot, "engine/src/operations/start.ts"));
+    const start = await sourceFile(join(repoRoot, "engine/src/operations/start-internal.ts"));
     const share = await sourceFile(join(repoRoot, "engine/src/operations/share.ts"));
 
     // When: their declared requirement and error channels are resolved.

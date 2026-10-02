@@ -618,7 +618,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
   {
     pattern: ["services", "*", "overrides", "ports", "*", "mode"],
     disposition: "unsupported",
-    owner: "compose-dispositions",
+    owner: "compose-disposition-of",
     golden: [
       diagnostic(
         service("type: node:22, overrides: {ports: [{target: 80, published: 8080, mode: host}]}"),
@@ -630,7 +630,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
   {
     pattern: ["services", "*", "services", "links"],
     disposition: "unsupported",
-    owner: "compose-dispositions",
+    owner: "compose-disposition-of",
     golden: [
       diagnostic(service("type: lando, services: {image: nginx, links: [other]}"), "unsupported", [
         "services",

@@ -37,13 +37,16 @@ describe("legacy mode leaves the v4 parser restrictions alone", () => {
     }
   });
 
-  test("v4 still rejects populated flow maps, block scalars, and unquoted expressions", () => {
-    const rejected = ["a:\n  b: {c: d}\n", "a: |\n  line\n", "a: ${SOME_VAR}\n"];
+  test("v4 accepts block scalars while still rejecting flow maps and unquoted expressions", () => {
+    const rejected = ["a:\n  b: {c: d}\n", "a: ${SOME_VAR}\n"];
 
     for (const content of rejected) {
       expect(Exit.isFailure(parseV4(content))).toBe(true);
       expect(Exit.isSuccess(parseLegacy(content))).toBe(true);
     }
+    const blockScalar = "a: |\n  line\n";
+    expect(Exit.isSuccess(parseV4(blockScalar))).toBe(true);
+    expect(Exit.isSuccess(parseLegacy(blockScalar))).toBe(true);
   });
 
   test("legacy mode keeps a tag pointing at a missing file as data instead of reading it", () => {

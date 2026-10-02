@@ -7,7 +7,7 @@ import { Effect, Layer, Schema, Stream } from "effect";
 import { DataMoverLive } from "@lando/data-mover/service";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -28,6 +28,7 @@ const silentEvents = Layer.succeed(EventService, {
 });
 
 const passthroughRedaction = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () =>
     Effect.succeed({
       redactString: (input: string) => input,

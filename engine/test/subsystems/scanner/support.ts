@@ -18,7 +18,11 @@ import { AppId, type HttpRequest, type PublishedEndpoint, type ServiceName } fro
 import type { Redactor } from "@lando/sdk/secrets";
 
 import type { HttpClientShape } from "@lando/http-client/service";
-import { RedactionService, type RedactionServiceShape } from "@lando/redaction/service";
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
@@ -179,6 +183,7 @@ const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fa
 
 const fakeRedactionService = {
   forProfile: () => Effect.succeed(fakeRedactor),
+  registerValues: registerRedactionValues,
 } satisfies RedactionServiceShape;
 
 export const withFakeRedaction = <A, E>(effect: Effect.Effect<A, E, never>): Effect.Effect<A, E, never> =>

@@ -2,22 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
-import { PLUGIN_NAME, globalServices, manifest, proxy, routerServices } from "../src/index.ts";
+import { PLUGIN_NAME, globalServices, manifest, routerServices } from "../src/index.ts";
 
 describe("@lando/proxy-traefik plugin exports", () => {
   test("PLUGIN_NAME is the package name", () => {
     expect(PLUGIN_NAME).toBe("@lando/proxy-traefik");
   });
 
-  test("proxy is a Layer", () => {
-    expect(Layer.isLayer(proxy)).toBe(true);
-  });
-
-  test("manifest declares the Traefik and diagnostic globalServices contributions", () => {
+  test("manifest declares the traefik globalServices contribution", () => {
     expect(String(manifest.name)).toBe("@lando/proxy-traefik");
     expect(manifest.api).toBe(4);
     const contributions = manifest.contributes?.globalServices ?? [];
@@ -45,7 +41,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
         defaultFor: { platform: ["darwin", "linux", "win32"] },
       },
     ]);
-    expect(routerServices.get("traefik")).toBe(proxy);
+    expect(typeof routerServices.get("traefik")?.make).toBe("function");
   });
 
   test("globalServices map yields the Traefik and diagnostic ServiceConfig effects", async () => {

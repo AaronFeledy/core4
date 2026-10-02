@@ -51,7 +51,7 @@ lando restart
 lando info
 ```
 
-Open the `builder` URL from `lando info`. It points at the Hugo `server` process, which rebuilds and reloads as you work.
+Open the `builder` URL from `lando info`. It points at the Hugo `server` process, which rebuilds and reloads as you work. The app hostname URL (`web`) serves `public/` through nginx once `lando hugo build` has written it.
 
 For install, scaffold, build, browse, and cleanup steps, see [Run the Hugo recipe](/guides/recipes/hugo-workflow/).
 

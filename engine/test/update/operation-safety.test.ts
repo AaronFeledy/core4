@@ -32,6 +32,9 @@ const run = (options: UpdateOptions) =>
         stream: () => {
           throw new Error("unused stream");
         },
+        streamWithExit: () => {
+          throw new Error("unused streamWithExit");
+        },
       }),
     ),
   );
@@ -70,6 +73,9 @@ test.each([
         run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
         stream: () => {
           throw new Error("unused");
+        },
+        streamWithExit: () => {
+          throw new Error("unused streamWithExit");
         },
       }),
     ),
@@ -257,6 +263,9 @@ test.each(["post-swap-probe", "record-refresh"] as const)(
               }),
             stream: () => {
               throw new Error("unused stream");
+            },
+            streamWithExit: () => {
+              throw new Error("unused streamWithExit");
             },
           }),
           Effect.either,

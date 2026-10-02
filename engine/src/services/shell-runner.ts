@@ -11,7 +11,6 @@ import { $ } from "bun";
 import { type Context, Effect, FiberRef, Layer } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
-import type { Redactor } from "@lando/sdk/secrets";
 import {
   EventService,
   type LandoEvent,
@@ -22,6 +21,7 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { identityRedactor } from "@lando/sdk/command-result";
 import {
   type PrivateFileAccess,
   PrivateFileAccessLive,
@@ -63,10 +63,6 @@ const toProcessResult = (output: ShellOutput): ProcessResult => ({
 
 const isShellExecError = (cause: unknown): cause is ShellExecError =>
   typeof cause === "object" && cause !== null && "_tag" in cause && cause._tag === "ShellExecError";
-
-type RuntimeRedactor = Pick<Redactor, "redactString" | "redactValue">;
-
-const identityRedactor: RuntimeRedactor = { redactString: (text) => text, redactValue: (value) => value };
 
 const redactorForOptions = (options: ShellCommandOptions | undefined) =>
   Effect.gen(function* () {

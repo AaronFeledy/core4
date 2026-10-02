@@ -1,4 +1,6 @@
-export type SqlFamily = "mysql" | "mariadb" | "postgres" | "mongodb" | "mssql";
+import type { DatabaseFamily } from "@lando/sdk/database-creds";
+
+export type SqlFamily = DatabaseFamily;
 
 export type SqlCommandCreds = {
   readonly user: string;

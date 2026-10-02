@@ -44,6 +44,7 @@ export const ensureTlsFiles = (
     readonly defaultDomain: string;
     readonly hostnames: ReadonlyArray<string>;
     readonly refreshAppCertificate: boolean;
+    readonly refreshDefaultCertificate: boolean;
   },
 ): Effect.Effect<TraefikTlsFiles, unknown> =>
   Effect.gen(function* () {
@@ -54,7 +55,7 @@ export const ensureTlsFiles = (
     const hasDefaultCertificate =
       (yield* dependencies.fileSystem.exists(defaultFiles.cert)) &&
       (yield* dependencies.fileSystem.exists(defaultFiles.key));
-    if (!hasDefaultCertificate) {
+    if (input.refreshDefaultCertificate || !hasDefaultCertificate) {
       const issued = yield* dependencies.certificateAuthority.issueCert({
         cn: `*.${input.defaultDomain}`,
         sans: [`*.${input.defaultDomain}`, input.defaultDomain, "traefik.lndo.site"],

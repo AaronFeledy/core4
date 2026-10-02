@@ -165,7 +165,7 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
           kind: "dropped",
           message: "Lando 3 SSH key selection has no Lando 4 target.",
           remediation:
-            "Add the keys to your host SSH agent; Lando 4 forwards the SSH agent instead of loading key files.",
+            "Lando 4 loads your default ~/.ssh keys through the SSH agent sidecar; for hardware-backed or 1Password keys, forward your host agent with sshAgent: { sidecar: false }.",
         });
         break;
       case "env_file":

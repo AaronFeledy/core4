@@ -194,6 +194,7 @@ export const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as Reado
   keyof typeof ProviderCapabilities.fields
 >;
 export const OPTIONAL_CAPABILITY_KEYS = new Set<keyof typeof ProviderCapabilities.fields>([
+  "agentSocket",
   "composeProjectFields",
   "composePreservedPaths",
   "composeServiceFields",

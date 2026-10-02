@@ -229,7 +229,7 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
 
   const assertInfoTextSentinel = (text: string): void => {
     expect(text).toContain(`password=${REDACTED}`);
-    expect(text).toContain("rootPassword=");
+    expect(text).toContain("root-password=");
     expect(text).toContain(REDACTED);
     expect(text).not.toContain("[redacted]]");
     expect(text).not.toContain("[[redacted]]");

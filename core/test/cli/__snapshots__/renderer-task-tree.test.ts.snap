@@ -1,7 +1,7 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`snapshot: renderer.task-tree.concurrent.ndjson plain renderer preserves event arrival order (snapshot) 1`] = `
-"▼ Building app dependencies (3 services)
+"▼ Building app dependencies (3 steps)
 [appserver] start: composer install
 [node] start: npm ci
 [queue] start: queue:warmup

@@ -67,13 +67,23 @@ export interface DataStoreOwnershipIntent {
   readonly seededOwners: ReadonlyArray<string>;
 }
 
+/** Image directories created without executing image binaries or changing its user. */
+export const ServiceBuildDirectoryCommand = Schema.Struct({
+  directories: Schema.NonEmptyArray(
+    Schema.String.pipe(
+      Schema.pattern(/^\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*)(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/u),
+    ),
+  ),
+});
+export type ServiceBuildDirectoryCommand = typeof ServiceBuildDirectoryCommand.Type;
+
 export interface ServiceBuildStepIntent {
   /** Optional stable id for ordering/dedup by the build orchestrator. */
   readonly id?: string;
   /** Build phase the step belongs to (e.g. `"prebuild"`, `"build"`, `"postbuild"`). */
   readonly phase: string;
   /** The command(s) to run for this step. */
-  readonly command: CommandSpec;
+  readonly command: CommandSpec | ServiceBuildDirectoryCommand;
   /**
    * Container identity this step runs as. Planning fills an omitted value with
    * the service's planned user when that user exists. Artifact realization still

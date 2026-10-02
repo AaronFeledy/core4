@@ -50,6 +50,14 @@ describe("listSelectableResultKeys", () => {
     expect(keys).toEqual(["name", "age"]);
   });
 
+  test("does not offer internal redaction metadata as a result key", () => {
+    const keys = listSelectableResultKeys(
+      Schema.Struct({ stdout: Schema.String, redactionTokens: Schema.Array(Schema.String) }),
+    );
+
+    expect(keys).toEqual(["stdout"]);
+  });
+
   test("returns an empty list when the schema has no fields", () => {
     expect(listSelectableResultKeys(Schema.String)).toEqual([]);
     expect(listSelectableResultKeys(Schema.Array(Schema.String))).toEqual([]);

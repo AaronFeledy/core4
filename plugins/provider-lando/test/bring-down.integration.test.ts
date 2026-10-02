@@ -247,6 +247,35 @@ describe("provider-lando bringDown", () => {
     ]);
   });
 
+  test("global stop failures suggest global cleanup without claiming app volume flags", async () => {
+    const globalPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("global"),
+      slug: "global",
+      services: { [ServiceName.make("node")]: servicePlan("node") },
+      stores: [],
+    };
+    const failedStopApi: PodmanApiClient = {
+      info: Effect.succeed({}),
+      ping: Effect.succeed(undefined),
+      request: () => Effect.succeed({ status: 500, body: "stop failed" }),
+    };
+
+    const globalError = await Effect.runPromise(
+      bringDown(globalPlan, { api: failedStopApi }).pipe(Effect.flip),
+    );
+    expect(globalError._tag).toBe("ProviderUnavailableError");
+    expect(globalError.remediation).toContain("lando global:stop");
+    expect(globalError.remediation).toContain("lando global:destroy");
+    expect(globalError.remediation).toContain("--purge");
+    expect(globalError.remediation).not.toContain("lando destroy");
+    expect(globalError.remediation).not.toContain("--volumes");
+
+    const appError = await Effect.runPromise(bringDown(plan, { api: failedStopApi }).pipe(Effect.flip));
+    expect(appError.remediation).toContain("lando destroy");
+    expect(appError.remediation).toContain("--volumes");
+  });
+
   test("purgeCaches removes cache volumes without removing app data volumes", async () => {
     const fake = makeFakeApi();
 

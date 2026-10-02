@@ -1,6 +1,5 @@
 import { Args, Flags } from "../../../spec/metadata";
 
-import type { ValueType } from "@lando/engine/config-write/write-core";
 import {
   type GlobalConfigOptions,
   type GlobalConfigResult,
@@ -9,46 +8,15 @@ import {
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { formatFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { configWriteOptionsFromInput } from "../../config-write-input";
 
-const isValueType = (s: unknown): s is ValueType =>
-  s === "string" || s === "number" || s === "boolean" || s === "json" || s === "yaml";
-
-export const globalConfigFormatFromInput = (input: unknown): "json" | "table" => {
-  if (typeof input !== "object" || input === null) return "table";
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  return flags.format === "json" ? "json" : "table";
-};
+export const globalConfigFormatFromInput = (input: unknown): "json" | "table" =>
+  formatFlag(specFlagsOf(input), ["json", "table"], "table");
 
 export const globalConfigOptionsFromInput = (input: unknown): GlobalConfigOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const i = input as { args?: Record<string, unknown>; flags?: Record<string, unknown> };
-  const opts: {
-    // Widened to `string` (not `GlobalConfigSubcommand`) so an unrecognized
-    // verb reaches `globalConfig()` and fails there, instead of being
-    // dropped here and silently defaulting to the view path.
-    subcommand?: string;
-    key?: string;
-    value?: string;
-    type?: ValueType;
-    format?: "json" | "table";
-    path?: string;
-    dryRun?: boolean;
-    editor?: string;
-  } = {};
-  const subcommand = i.args?.subcommand;
-  const key = i.args?.key;
-  const value = i.args?.value;
-  const type = i.flags?.type;
-  const path = i.flags?.path;
-  const editor = i.flags?.editor;
-  if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
-  if (typeof key === "string") opts.key = key;
-  if (typeof value === "string") opts.value = value;
-  if (isValueType(type)) opts.type = type;
-  opts.format = globalConfigFormatFromInput(input);
-  if (typeof path === "string") opts.path = path;
-  if (i.flags?.["dry-run"] === true) opts.dryRun = true;
-  if (typeof editor === "string") opts.editor = editor;
+  const opts = configWriteOptionsFromInput(input, { formats: ["json", "table"], defaultFormat: "table" });
   return opts as GlobalConfigOptions;
 };
 

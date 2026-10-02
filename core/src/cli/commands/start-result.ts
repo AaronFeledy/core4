@@ -59,7 +59,10 @@ const endpointText = (endpoints: ReadonlyArray<string>): string =>
 
 const serviceNoun = (count: number): string => (count === 1 ? "service" : "services");
 
-export const buildStartSummary = (result: StartAppResult): SummaryDocument => {
+export const buildStartSummary = (
+  result: StartAppResult,
+  action: "start" | "rebuild" = "start",
+): SummaryDocument => {
   const urls = uniqueEndpoints(result.servicesStarted);
   const httpsRests = new Set(
     urls.flatMap((url) => (url.startsWith("https://") ? [url.slice("https://".length)] : [])),
@@ -74,7 +77,7 @@ export const buildStartSummary = (result: StartAppResult): SummaryDocument => {
   const ready = isStartAppReady(result);
   const noun = serviceNoun(total);
   return {
-    title: ready ? "Started" : "Not fully ready",
+    title: ready ? (action === "rebuild" ? "Rebuilt" : "Started") : "Not fully ready",
     tone: ready ? "ok" : worstSummaryTone(rows.map((row) => row.tone)),
     subtitle: ready ? `${result.app} is ready` : `${result.app} is not fully ready`,
     sections: [
@@ -97,7 +100,9 @@ export const buildStartSummary = (result: StartAppResult): SummaryDocument => {
         ...(rows.length === 0 ? { notes: ["No services were started."] } : {}),
       },
     ],
-    nextSteps: ready ? ["lando info", "lando logs", "lando exec -- <cmd>"] : ["lando info", "lando logs"],
+    nextSteps: ready
+      ? ["lando info", "lando logs", "lando exec <service> -- <command>"]
+      : ["lando info", "lando logs"],
     footer: ready ? `${total} ${noun} ready` : `${readyCount} of ${total} ${noun} ready`,
   };
 };

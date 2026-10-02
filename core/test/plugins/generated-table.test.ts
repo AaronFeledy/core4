@@ -17,6 +17,7 @@ const EXPECTED_PLUGIN_NAMES = [
   "@lando/ca-mkcert",
   "@lando/proxy-traefik",
   "@lando/ssh-agent",
+  "@lando/secret-store-1password",
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
@@ -34,7 +35,7 @@ describe("generated bundled plugin descriptor tables", () => {
     const manifestNames = BUNDLED_PLUGIN_MODULES.map((module) => String(module.manifest.name));
 
     // Then: both projections match the stable ship list.
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(15);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(16);
     expect(names).toEqual(EXPECTED_PLUGIN_NAMES);
     expect(manifestNames).toEqual(EXPECTED_PLUGIN_NAMES);
   });

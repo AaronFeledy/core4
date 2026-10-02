@@ -13,8 +13,7 @@ export const landoBootFeature: ServiceFeatureDefinition = {
       ctx.addBuildStep({
         id: "lando.boot:scaffold",
         phase: "build",
-        command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
-        user: "root",
+        command: { directories: ["/etc/lando", "/etc/lando/env.d", "/etc/lando/certs"] },
       });
     }),
 };

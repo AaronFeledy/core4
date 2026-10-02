@@ -3,6 +3,7 @@ import { Effect, Fiber, Stream } from "effect";
 
 import { type AppPlan, FileSyncSessionRef, type FileSyncSessionSpec, PortablePath } from "@lando/sdk/schema";
 import { startChildTaskId } from "@lando/sdk/task-progress";
+import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import {
   applyTreeId,
@@ -19,6 +20,37 @@ import {
   startOwnedParentIds,
   web,
 } from "./start-progress-topology-support.ts";
+
+const planWithFileSync: AppPlan = {
+  ...plan,
+  services: {
+    [web.name]: {
+      ...web,
+      appMount: {
+        source: plan.root,
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "accelerated",
+        excludes: [],
+        includes: [],
+      },
+    },
+  },
+  fileSync: [
+    {
+      engineId: "mutagen",
+      session: {
+        app: { kind: "user", id: plan.id, root: plan.root },
+        service: web.name,
+        mountKey: "app-mount",
+        source: plan.root,
+        target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
+        mode: "two-way-safe",
+        excludes: [],
+      },
+    },
+  ],
+};
 
 describe("start progress topology", () => {
   test("passes resolved service secrets only through transient provider options", async () => {
@@ -39,7 +71,7 @@ describe("start progress topology", () => {
         list: Effect.succeed(["API_TOKEN"]),
       },
       onApply: (appliedPlan, options) => {
-        applied = { plan: appliedPlan, environment: options.serviceEnvironment };
+        applied = { plan: appliedPlan, environment: options?.serviceEnvironment };
       },
     });
 
@@ -104,24 +136,8 @@ describe("start progress topology", () => {
   });
 
   test("owns file-sync detail with matching tree and task ids", async () => {
-    const planWithFileSync: AppPlan = {
-      ...plan,
-      fileSync: [
-        {
-          engineId: "mutagen",
-          session: {
-            app: { kind: "user", id: plan.id, root: plan.root },
-            service: web.name,
-            mountKey: "app-mount",
-            source: plan.root,
-            target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
-            mode: "two-way-safe",
-            excludes: [],
-          },
-        },
-      ],
-    };
     let setupComplete = false;
+    let availabilityChecks = 0;
     const harness = makeHarness({
       plannedApp: planWithFileSync,
       fileSync: {
@@ -134,13 +150,14 @@ describe("start progress topology", () => {
           conflictReporting: true,
           progressReporting: true,
         },
-        isAvailable: Effect.sync(() => setupComplete),
+        isAvailable: Effect.sync(() => ++availabilityChecks === 1 || setupComplete),
         setup: () =>
           Effect.sync(() => {
             setupComplete = true;
           }),
         createSession: (spec: FileSyncSessionSpec) =>
           Effect.succeed(FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`)),
+        flushSession: () => Effect.void,
         pauseSession: () => Effect.void,
         resumeSession: () => Effect.void,
         terminateSession: () => Effect.void,
@@ -175,6 +192,48 @@ describe("start progress topology", () => {
     expect(treeComplete).toBeGreaterThan(taskComplete);
     expect(tags.filter((tag) => tag === "task.tree.start").length).toBeGreaterThan(1);
     expect(startOwnedParentIds(harness.events).every((id) => id === parentId)).toBe(true);
+  });
+
+  test("fails before apply when the live adapter becomes unavailable", async () => {
+    let availabilityChecks = 0;
+    let applied = false;
+    const harness = makeHarness({
+      plannedApp: planWithFileSync,
+      onApply: () => {
+        applied = true;
+      },
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        displayName: "Mutagen",
+        isAvailable: Effect.sync(() => ++availabilityChecks === 1),
+        setup: () => Effect.void,
+        createSession: () => Effect.die("unavailable adapter must not create a session"),
+      },
+    });
+    await expect(runStart(harness, planWithFileSync)).rejects.toThrow(
+      "Mutagen setup completed, but its live session adapter is unavailable",
+    );
+    expect(applied).toBe(false);
+    const setupId = startChildTaskId(startFileSyncTreeId(String(plan.id)), "setup");
+    const detail = byTag(harness.events, "task.detail").find(
+      (event) => event.taskId === setupId && event.stream === "stderr",
+    );
+    expect(detail?.line).toContain("FileSyncStartError: Mutagen setup completed");
+    expect(detail?.line).toContain("live session adapter is unavailable");
+    expect(detail?.line).toContain("use passthrough mounts before retrying start");
+    expect(byTag(harness.events, "task.fail").find((event) => event.taskId === setupId)).toMatchObject({
+      summary: "File-sync adapter unavailable",
+      remediation: "Enable a live file-sync adapter or use passthrough mounts before retrying start.",
+    });
+    expect(
+      byTag(harness.events, "task.tree.complete").find(
+        (event) => event.parentId === startFileSyncTreeId(String(plan.id)),
+      ),
+    ).toMatchObject({
+      summary: "test-start file-sync failed",
+      failed: 2,
+    });
   });
 
   test("does not emit a host-proxy tree when no service is eligible", async () => {

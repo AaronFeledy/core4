@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Either, Predicate, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
-import { ServiceCaFileDescriptor } from "@lando/sdk/services";
+import { ServiceBuildDirectoryCommand, ServiceCaFileDescriptor } from "@lando/sdk/services";
 
 import type { BuildContextEntry } from "./build-context.ts";
 import { validateDockerfileUser } from "./image-build-user.ts";
 
 export interface PreparedBuildStep {
-  readonly command: string | ReadonlyArray<string>;
+  readonly command: string | ReadonlyArray<string> | ServiceBuildDirectoryCommand;
   readonly phase: string;
   readonly user?: string;
   readonly caFiles: ReadonlyArray<ServiceCaFileDescriptor>;
@@ -21,9 +21,6 @@ export interface PreparedDerivedBuild {
   readonly steps: ReadonlyArray<PreparedBuildStep>;
   readonly caEntries: ReadonlyArray<BuildContextEntry>;
 }
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const internalError = (providerId: string, message: string, cause?: unknown): ProviderInternalError =>
   new ProviderInternalError({
@@ -49,19 +46,27 @@ const parseStep = (
   value: unknown,
   providerId: string,
 ): Effect.Effect<PreparedBuildStep | undefined, ProviderInternalError> => {
-  if (!isRecord(value)) return Effect.succeed(undefined);
+  if (!Predicate.isRecord(value)) return Effect.succeed(undefined);
   if (value.phase !== "build") return Effect.succeed(undefined);
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
   return Effect.gen(function* () {
     const user =
       "user" in value ? yield* validateDockerfileUser(value.user, "build step user", providerId) : undefined;
     const files = yield* caFiles;
-    let command: string | ReadonlyArray<string>;
+    let command: PreparedBuildStep["command"];
     if (typeof value.command === "string") {
       command = value.command;
     } else if (Array.isArray(value.command)) {
       command = value.command.filter((part): part is string => typeof part === "string");
       if (command.length !== value.command.length) return undefined;
+    } else if (Predicate.isRecord(value.command) && "directories" in value.command) {
+      const decoded = Schema.decodeUnknownEither(ServiceBuildDirectoryCommand)(value.command);
+      if (Either.isLeft(decoded)) {
+        return yield* Effect.fail(
+          internalError(providerId, "Invalid image directory build command.", decoded.left),
+        );
+      }
+      command = decoded.right;
     } else {
       return undefined;
     }
@@ -117,7 +122,8 @@ export const prepareDerivedBuild = (
   providerId: string,
 ): Effect.Effect<PreparedDerivedBuild, ProviderInternalError> => {
   const extension = service.extensions["@lando/core/service-features"];
-  const rawSteps = isRecord(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
+  const rawSteps =
+    Predicate.isRecord(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
   return Effect.gen(function* () {
     const parsed = yield* Effect.forEach(rawSteps, (step) => parseStep(step, providerId));
     const steps = parsed.filter((step) => step !== undefined);
@@ -129,7 +135,12 @@ export const prepareDerivedBuild = (
         concurrency: "unbounded",
       },
     );
-    return { steps, caEntries };
+    const directoryEntries: ReadonlyArray<BuildContextEntry> = steps.some(
+      (step) => typeof step.command === "object" && "directories" in step.command,
+    )
+      ? [{ kind: "directory", name: ".lando-empty/", mode: 0o755 }]
+      : [];
+    return { steps, caEntries: [...caEntries, ...directoryEntries] };
   });
 };
 

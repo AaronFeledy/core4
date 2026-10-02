@@ -142,6 +142,8 @@ export const postgresServiceType: ServiceType = {
       features: [{ id: POSTGRES_FEATURE_ID }],
       tooling: {
         psql: {
+          description: "Open the PostgreSQL client for this service.",
+          dir: PortablePath.make("/"),
           service: input.name,
           cmd: ["psql", "-U", creds.user, "-d", creds.database],
           env: { PGPASSWORD: creds.password },

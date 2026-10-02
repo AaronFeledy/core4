@@ -309,3 +309,39 @@ describe("@lando/sdk/task-progress controller", () => {
     expect(byTag(publisher.events, "task.fail")).toHaveLength(0);
   });
 });
+
+describe("@lando/sdk/task-progress warnTask", () => {
+  test("publishes task.complete with a warn outcome and counts it as succeeded", async () => {
+    const publisher = collectPublisher();
+    const tree = makeTaskTree(publisher, {
+      parentId: "doctor",
+      label: "doctor",
+      children: [{ id: "provider", label: "provider" }],
+    });
+
+    await Effect.runPromise(
+      runWithTaskTree(
+        tree,
+        (active) =>
+          Effect.gen(function* () {
+            yield* active.startTask("provider");
+            yield* active.warnTask("provider", "provider · 2 warnings");
+          }),
+        { success: "doctor done", failure: "doctor failed", interrupt: "doctor interrupted" },
+      ),
+    );
+
+    expect(tags(publisher.events)).toEqual([
+      "task.tree.start",
+      "task.start",
+      "task.complete",
+      "task.tree.complete",
+    ]);
+    expect(byTag(publisher.events, "task.complete")[0]).toMatchObject({
+      taskId: "provider",
+      summary: "provider · 2 warnings",
+      outcome: "warn",
+    });
+    expect(byTag(publisher.events, "task.tree.complete")[0]).toMatchObject({ succeeded: 1, failed: 0 });
+  });
+});

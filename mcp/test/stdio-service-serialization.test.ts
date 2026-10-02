@@ -8,7 +8,7 @@ import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
 import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
 import { McpTransport } from "@lando/mcp/transport";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { TestMcpCommandExecutor } from "./executor";
 
 const encoder = new TextEncoder();
@@ -64,6 +64,7 @@ describe("MCP service stdio serialization", () => {
         Layer.mergeAll(
           Layer.succeed(McpRuntimeConfig, config),
           Layer.succeed(RedactionService, {
+            registerValues: registerRedactionValues,
             forProfile: () => Effect.succeed(createRedactor("secrets", { values: [secret] })),
           }),
           TestMcpCommandExecutor,

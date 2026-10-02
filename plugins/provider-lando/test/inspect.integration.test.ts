@@ -216,8 +216,9 @@ describe("provider-lando inspect", () => {
             _tag: "published",
             port: 31082,
             protocol: "http",
-            name: "31082/tcp",
+            name: "http",
             publication: { bindAddress: "127.0.0.1", hostPort: 31082 },
+            materialization: { bindAddress: "127.0.0.1", hostPort: 31082 },
           },
         ]);
       } finally {

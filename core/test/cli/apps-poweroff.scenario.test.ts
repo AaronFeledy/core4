@@ -46,7 +46,14 @@ beforeAll(async () => {
   await mkdir(appsDir, { recursive: true });
   await writeFile(join(appsDir, "user.json"), JSON.stringify(makePlan("user-app", "user-app", ["web"])));
   await writeFile(join(appsDir, "global.json"), JSON.stringify(makePlan("global", "global", ["proxy"])));
-  await writeFile(join(appsDir, "scratch.json"), JSON.stringify(makePlan("scratch-1", "scratch-1", ["web"])));
+  const scratch = makePlan("scratch-1", "scratch-1", ["web"]);
+  await writeFile(
+    join(appsDir, "scratch.json"),
+    JSON.stringify({
+      ...scratch,
+      plan: { ...scratch.plan, extensions: { "@lando/core/scratch": {} } },
+    }),
+  );
   await Effect.runPromise(
     writeCwdAppMapEntry({
       cacheRoot: userCacheRoot,
@@ -171,7 +178,9 @@ describe("apps:poweroff command", () => {
 
     // When: poweroff uses its default runtime teardown seam.
     const result = await Effect.runPromise(
-      poweroff({ userDataRoot, userCacheRoot, stopApp: async () => {} }).pipe(Effect.provide(services)),
+      poweroff({ userDataRoot, userCacheRoot, discoverContainers: noDiscover, stopApp: async () => {} }).pipe(
+        Effect.provide(services),
+      ),
     );
 
     // Then: the maintainer receives canonical paths and drives the command result.
@@ -186,7 +195,7 @@ describe("apps:poweroff command", () => {
 
     // When: poweroff uses its default runtime teardown seam without a registry.
     const result = await Effect.runPromise(
-      poweroff({ userDataRoot, userCacheRoot, stopApp: async () => {} }).pipe(
+      poweroff({ userDataRoot, userCacheRoot, discoverContainers: noDiscover, stopApp: async () => {} }).pipe(
         Effect.provide(fakeConfigService(userDataRoot)),
       ),
     );

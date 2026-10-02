@@ -8,23 +8,20 @@
  */
 
 import {
+  REMEDY_ARROW,
   dimText,
-  displayWidth,
+  fieldLabelWidth,
   hyperlink,
-  padEndToWidth,
   paintTone,
+  resolveSummaryWidth,
   toneChip,
+  wrapFieldToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
 import type { SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
 
-const MIN_SUMMARY_WIDTH = 24;
-const DEFAULT_SUMMARY_WIDTH = 80;
 const BODY_INDENT = 2;
 const FIELD_INDENT = 4;
-
-const resolveWidth = (columns: number | undefined): number =>
-  Math.max(MIN_SUMMARY_WIDTH, columns ?? DEFAULT_SUMMARY_WIDTH);
 
 const isOkTone = (tone: SummaryRow["tone"]): boolean => tone === "ok";
 
@@ -60,27 +57,35 @@ const pushWrapped = (
   }
 };
 
+/** `↳ fix` with a hanging indent so a wrapped remedy reads as one thought. */
+const pushRemedy = (lines: string[], remedy: string, width: number): void => {
+  const [first, ...rest] = wrapToWidth(remedy, Math.max(1, width - FIELD_INDENT - REMEDY_ARROW.length));
+  pushWrapped(lines, `${REMEDY_ARROW}${first ?? ""}`, FIELD_INDENT, width, undefined);
+  for (const segment of rest)
+    pushWrapped(lines, segment, FIELD_INDENT + REMEDY_ARROW.length, width, undefined);
+};
+
 const renderSection = (section: SummarySection, width: number): ReadonlyArray<string> => {
   const lines: string[] = [];
   pushWrapped(lines, section.title, 0, width, dimText);
   if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0)) {
     pushWrapped(lines, "(none)", BODY_INDENT, width, undefined);
   }
+  const labelWidth = fieldLabelWidth(
+    section.rows.flatMap((row) => row.fields?.map((field) => field.label) ?? []),
+    width - FIELD_INDENT,
+  );
   for (const row of section.rows) {
     pushWrapped(lines, quietRowHead(row), BODY_INDENT, width, composeQuietRowStyle(row));
     if (row.fields !== undefined && row.fields.length > 0) {
-      const labelWidth = Math.max(...row.fields.map((field) => displayWidth(field.label)));
       for (const field of row.fields) {
-        pushWrapped(
-          lines,
-          `${padEndToWidth(field.label, labelWidth)} : ${field.value}`,
-          FIELD_INDENT,
-          width,
-          undefined,
-        );
+        for (const segment of wrapFieldToWidth(field.label, field.value, labelWidth, width - FIELD_INDENT)) {
+          lines.push(`${" ".repeat(FIELD_INDENT)}${segment}`);
+        }
       }
     }
     if (row.detail !== undefined) pushWrapped(lines, row.detail, FIELD_INDENT, width, undefined);
+    if (row.remedy !== undefined) pushRemedy(lines, row.remedy, width);
   }
   if (section.notes !== undefined) {
     for (const note of section.notes) pushWrapped(lines, note, BODY_INDENT, width, undefined);
@@ -89,7 +94,7 @@ const renderSection = (section: SummarySection, width: number): ReadonlyArray<st
 };
 
 export const formatPreparedQuietSummary = (doc: SummaryDocument, columns?: number | undefined): string => {
-  const width = resolveWidth(columns);
+  const width = resolveSummaryWidth(columns);
   const groups: Array<ReadonlyArray<string>> = [];
 
   const header: string[] = [];

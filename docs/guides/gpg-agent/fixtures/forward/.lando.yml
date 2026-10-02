@@ -1,0 +1,7 @@
+name: gpg-forward
+gpgAgent:
+  forward: true
+services:
+  app:
+    type: "node:22"
+    primary: true

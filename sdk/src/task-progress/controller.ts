@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import type { AbsolutePath } from "../schema/primitives.ts";
 import {
   type ProgressEmitter,
+  type TaskOutcome,
   publishTaskComplete,
   publishTaskDetail,
   publishTaskFail,
@@ -40,6 +41,8 @@ export interface TaskTreeController {
   readonly start: Effect.Effect<void>;
   readonly startTask: (localId: string, options?: TaskStartOptions) => Effect.Effect<void>;
   readonly completeTask: (localId: string, summary?: string, durationMs?: number) => Effect.Effect<void>;
+  /** Settle a child as complete-with-warnings: counted as succeeded, painted as a warning. */
+  readonly warnTask: (localId: string, summary?: string, durationMs?: number) => Effect.Effect<void>;
   readonly failTask: (localId: string, summary?: string, options?: TaskFailOptions) => Effect.Effect<void>;
   readonly detail: (localId: string, stream: "stdout" | "stderr", line: string) => Effect.Effect<void>;
   readonly settleSuccess: (summary: string, durationMs?: number) => Effect.Effect<void>;
@@ -79,7 +82,7 @@ export const makeTaskTree = (
     localId: string,
     outcome: "complete" | "fail",
     summary?: string,
-    options?: TaskFailOptions,
+    options?: TaskFailOptions & { readonly outcome?: TaskOutcome },
   ): Effect.Effect<void> => {
     if (succeeded.has(localId) || failed.has(localId)) return Effect.void;
     const taskId = childId(localId);
@@ -91,6 +94,7 @@ export const makeTaskTree = (
         return publishTaskComplete(events, {
           taskId,
           ...(summary === undefined ? {} : { summary }),
+          ...(options?.outcome === undefined ? {} : { outcome: options.outcome }),
           durationMs,
         });
       case "fail":
@@ -165,6 +169,11 @@ export const makeTaskTree = (
     startTask: startDeclared,
     completeTask: (localId, summary, durationMs) =>
       settleChild(localId, "complete", summary, durationMs === undefined ? undefined : { durationMs }),
+    warnTask: (localId, summary, durationMs) =>
+      settleChild(localId, "complete", summary, {
+        outcome: "warn",
+        ...(durationMs === undefined ? {} : { durationMs }),
+      }),
     failTask: (localId, summary, options) => settleChild(localId, "fail", summary, options),
     detail: (localId, stream, line) => publishTaskDetail(events, { taskId: childId(localId), stream, line }),
     settleSuccess: (summary, durationMs) =>

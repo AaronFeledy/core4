@@ -1,7 +1,18 @@
+import type { SecretReferenceInvalidError } from "@lando/sdk/errors";
+import { type ParsedSecretReference, parseSecretReference } from "@lando/sdk/secrets";
+import { Either } from "effect";
+
 const EXACT_SECRET_REFERENCE = /^\$\{secret:([^}]+)\}$/u;
 
 export const exactSecretReferenceId = (value: string): string | undefined =>
   EXACT_SECRET_REFERENCE.exec(value)?.[1];
+
+export const exactSecretReference = (
+  value: string,
+): ParsedSecretReference | SecretReferenceInvalidError | undefined => {
+  const raw = exactSecretReferenceId(value);
+  return raw === undefined ? undefined : Either.merge(parseSecretReference(raw));
+};
 
 export const withoutSecretReferences = (value: string): string =>
   value.replace(/\$\{secret:[^}\r\n]+\}/gu, "");

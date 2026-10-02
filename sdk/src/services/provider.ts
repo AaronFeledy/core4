@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type {
   AppResolveError,
+  ArtifactBuildError,
   ArtifactTransferError,
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -21,16 +22,23 @@ import type {
 import type { EndpointInfo } from "../schema/endpoint.ts";
 import type {
   AbsolutePath,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
   AppId,
   AppPlan,
   DataStoreMountPlan,
   DoctorResourceNameQuery,
+  FileSyncSessionSpec,
   HostPlatform,
+  HostProxyBridgeInput,
+  HostProxyBridgeResult,
   LogSource,
   LogSourceId,
   MountPlan,
   NetworkConfig,
+  PortNumber,
   PortablePath,
+  PreparedFileSyncTarget,
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
@@ -49,6 +57,7 @@ import type {
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
+  | ArtifactBuildError
   | ProviderCapabilityError
   | ProviderConfigError
   | ProviderInternalError
@@ -228,6 +237,9 @@ export interface ServiceRuntimeIdentity {
 export interface ListFilter {
   readonly app?: AppId;
   readonly includeScratch?: boolean;
+  /** Also report Lando-labeled containers no applied plan accounts for. Used by teardown evidence
+   * and host-wide observation; providers that already discover by label may ignore this flag. */
+  readonly includeUnplanned?: boolean;
 }
 
 /** Runtime resources owned by one app root that no applied plan accounts for. */
@@ -244,6 +256,15 @@ export type AppliedTeardownEvidence =
   | { readonly kind: "orphans"; readonly groups: ReadonlyArray<AppliedOrphanGroup> }
   | { readonly kind: "absent" };
 
+/** Read-only host-wide evidence; an unobserved runtime contributes only applied plans. */
+export interface ProviderRuntimeSnapshot {
+  readonly providerId: ProviderId;
+  readonly runtimeObserved: boolean;
+  readonly appliedPlans: ReadonlyArray<AppPlan>;
+  readonly services: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly volumes: ReadonlyArray<VolumeInfo>;
+}
+
 export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
   RuntimeProviderRegistry,
   {
@@ -256,9 +277,20 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
     readonly resolveTeardownEvidence?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly observeRuntime?: Effect.Effect<
+      ReadonlyArray<ProviderRuntimeSnapshot>,
+      AppResolveError | ProviderError | NoProviderInstalledError
+    >;
   }
 >() {}
 
+export type AppliedFileSyncInspection =
+  | { readonly status: "missing" | "ordinary" | "unknown" }
+  | {
+      readonly status: "accelerated";
+      readonly engineId: string;
+      readonly sessions: ReadonlyArray<FileSyncSessionSpec>;
+    };
 export interface RuntimeProviderShape {
   readonly id: string;
   readonly displayName: string;
@@ -275,12 +307,45 @@ export interface RuntimeProviderShape {
     plan: ProviderSetupPlan,
     options: ProviderSetupOptions,
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+  readonly ensureReady?: Effect.Effect<void, ProviderError>;
   readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
   readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+  readonly occupiedPublishPorts?: (
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+
+  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+  readonly matchingPublishPorts?: (
+    containerId: string,
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+  readonly openHostProxyBridge?: (
+    input: HostProxyBridgeInput,
+  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+  /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
+  readonly openAgentSocketBridge?: (
+    input: AgentSocketBridgeInput,
+  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
   readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
   readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
   readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+
+  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+  readonly inspectAppliedFileSync?: (
+    plan: AppPlan,
+  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. Rollback is available only when the provider can safely reverse preparation; otherwise startup retains its recovery journal on failure. */
+  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+    {
+      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+      readonly rollback?: Effect.Effect<void, ProviderError>;
+    },
+    ProviderError
+  >;
 
   readonly apply: (
     plan: AppPlan,
@@ -313,6 +378,8 @@ export interface RuntimeProviderShape {
   readonly removeObservedService: (
     observed: ServiceRuntimeInfo,
   ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (
