@@ -63,8 +63,8 @@ export class LandofileExpressionParseError extends Schema.TaggedError<LandofileE
   {
     message: Schema.String,
     filePath: Schema.String,
-    line: Schema.UndefinedOr(Schema.Number),
-    column: Schema.UndefinedOr(Schema.Number),
+    line: Schema.optional(Schema.Number),
+    column: Schema.optional(Schema.Number),
     expression: Schema.optional(Schema.String),
     remediation: Schema.String,
     cause: Schema.optional(Schema.Unknown),
