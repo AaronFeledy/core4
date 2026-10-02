@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { type Context, DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -493,13 +493,16 @@ describe("BuildOrchestratorLive", () => {
       message: "build failed",
     });
     const calls: string[] = [];
+    const siblingStarted = Deferred.makeUnsafe<void>();
     const provider = {
       ...TestRuntimeProvider,
       buildArtifact: (spec: ArtifactBuildSpec) => {
         calls.push(String(spec.service));
         return spec.service === ServiceName.make("web")
-          ? Effect.fail(failure)
-          : Effect.succeed({ providerId, ref: `${spec.service}:test` });
+          ? Deferred.await(siblingStarted).pipe(Effect.andThen(Effect.fail(failure)))
+          : Deferred.succeed(siblingStarted, undefined).pipe(
+              Effect.as({ providerId, ref: `${spec.service}:test` }),
+            );
       },
     };
 
