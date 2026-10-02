@@ -1,0 +1,165 @@
+{
+  "project": "Lando v4 Effect 4 upgrade",
+  "branchName": "main",
+  "description": "Move every workspace package from effect@3.21.2 to effect@4.0.0 with no Effect 3 form, shim, or still-compiling old idiom left (US-662..US-670). Each story is one complete PR against main that passes the full gate: one switch PR led by characterization tests, one Effect 4 idiom pass per area (with Effect's HttpClient and an MCP server on effect/ai), then one definition of a valid Landofile across Lando, editors, and Standard Schema tools, command tracing with opt-in OTLP export and embedding hooks, and measured decoder compilation. spec-effect-v4.md is normative.",
+  "userStories": [
+    {
+      "id": "US-662",
+      "title": "Run Lando on Effect 4.0.0",
+      "description": "As a user, Lando runs on Effect 4 with the same behavior and at least the same speed, and nothing in the repo still uses an Effect 3 API.",
+      "acceptanceCriteria": [
+        "On the base commit, record the spec §12 baseline in `progress.txt`. Then commit characterization tests for every applicable spec §8 row, passing on Effect 3, in the owning packages' test trees: build counts for each stateful layer; resource lifetime in `bootstrap-lifecycle.ts`; text and JSON failure output from both shells for a tagged failure, a defect, an interrupt, and combined failures; shell exit codes; `runProbe` attempts and virtual time under `TestClock`; telemetry drain, MCP queue shutdown, log-follow and renderer stream completion; JSON log keys; process exit with a hanging telemetry sink; equality-sensitive collection results, or a recorded zero.",
+        "Root `package.json` uses the object `workspaces` form with `catalog.effect` set to exactly `4.0.0`. Every workspace that imports `effect` declares `\"effect\": \"catalog:\"`, and the TypeScript devDependency is `^5.9.0`. A test under `core/test/build/` fails on any other `effect` specifier or any `@effect/*` dependency.",
+        "Every spec §4.1 to §4.5 and §7 row is applied across all packages, tests, scripts, generator templates (with regenerated outputs), docs code samples, and agent instructions. This includes: the eight `FiberRef`s (seven files; `volume-coordination.ts` holds two) become `Context.Reference`s, with tests for lock and volume re-entrancy, the event depth guard, redaction tokens in child fibers, provider selection under concurrency, nested invocation ids, and cwd ownership; the CLI and library shells use `runPromiseExit` and render the `Cause`; the schema AST walkers and JSON Schema pipeline (`sdk/src/schema/json-schema*.ts`, `landofile-authoring*.ts`, `deprecation.ts`, `plugins/lando3/src/model.ts`, `engine/src/lifecycle/subscriber-index.ts`) work on Effect 4 `SchemaAST`; decode failures format through `SchemaIssue` with the current `\"<path>: <message>\"` template; authored-input schemas use `optionalKey`; the scaffolded plugin source compiles and its tests pass.",
+        "Characterization tests pass, or each intended difference is recorded with its reason. Tests that asserted Effect 3 stock issue wording move to Effect 4 wording and are listed. Custom messages are unchanged.",
+        "Artifacts stay draft-07 through `JsonSchema.toDocumentDraft07`. The `scripts/schema-compatibility/` classifier compares meaning and normalizes generator representation (definitions location, `$ref` naming, generated check descriptions, key order), with fixture tests. `check:schema-compatibility` against the base reports no unexplained semantic change. A test fails when any authored-input artifact property accepts `null`.",
+        "`sdk/test/fixtures/sdk-mvp-surface.json` is regenerated. `sdk/API_COMPATIBILITY.md` records the Effect 4 contract move. The spec §11 amendments for US-662 are applied.",
+        "`bun run gate:pr` and the full `bun run test` pass. Nightly-tier suites pass when run by path. Live provider suites pass when `LANDO_TEST_PODMAN_SOCKET` connects. `docs:check`, `docs:test`, `lint:guides`, `check:guide-coverage`, `check:public-transcripts`, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` pass. `bun run dev:guides <guide> --once` passes with a positive count for each guide in the US-662 Guide Coverage row. The compiled binary builds and passes the relocated-binary smoke.",
+        "`progress.txt` records the post-switch measurements next to the baseline. Any regression names its cause and owning story."
+      ],
+      "dependsOn": [],
+      "priority": 75,
+      "passes": false,
+      "notes": "Target main. Commit order is in spec §3. Forms that still compile on Effect 4 are left for the idiom passes, which rewrite each area once. Class: switch."
+    },
+    {
+      "id": "US-663",
+      "title": "Write the SDK and primitive packages in Effect 4 idiom, with Effect's HttpClient",
+      "description": "As a plugin author, the SDK contracts and primitive packages read like current Effect documentation, and HTTP calls go through Effect's standard `HttpClient` with Lando's network trust built in.",
+      "acceptanceCriteria": [
+        "The idiom pass is complete for `sdk`, `state-store`, `redaction`, `http-client`, `managed-file`, `telemetry`, `landofile`, and `container-runtime`.",
+        "`@lando/http-client` provides Effect's `effect/http` `HttpClient`, built with `HttpClient.make` over the existing Bun fetch egress, with trust still resolved per request from `ConfigService`. The SDK's own `@lando/core/HttpClient` contract is removed. Every consumer migrates, including `engine/src/services/json-fetch.ts`, `Downloader` (which keeps its contract and checksum verification), healthcheck, scanner, and plugins. `LandoPluginContext` exposes the client.",
+        "The `network` boundary rule also flags `effect/http` `FetchHttpClient` imports outside `http-client/src/**`, with fixtures. Each request is a span with method and redacted URL attributes. A private-CA fixture server test passes.",
+        "Secret-carrying values from `@lando/sdk/secrets` and `@lando/redaction` implement `Redactable`. A test logs and inspects one through Effect and asserts the redacted form.",
+        "The CLI composition provides `References.TracerEnabled` as `false`, proven by a test that a span created during a command is not recorded.",
+        "`sdk/AGENTS.md` and `core/AGENTS.md` state the three service shapes, layer naming, and tracing policy as durable rules. The spec §11 amendments for US-663 are applied.",
+        "`@lando/sdk/test` contract kits accept the new layer names, and `core/test/contract/plugin-abstraction-coverage.test.ts` passes. `sdk/API_COMPATIBILITY.md` records renamed and removed exports.",
+        "Add `docs/guides/plugins/http-requests.mdx`. The standard `sdk` and `user` gates pass."
+      ],
+      "dependsOn": ["US-662"],
+      "priority": 76,
+      "passes": false,
+      "notes": "Target main. Class: sdk plus user."
+    },
+    {
+      "id": "US-664",
+      "title": "Write the engine in Effect 4 idiom",
+      "description": "As an operator reading a trace, every planner phase, app operation, lifecycle step, and provider call appears as a named span, and the engine reads like current Effect documentation.",
+      "acceptanceCriteria": [
+        "The idiom pass is complete for all of `engine/src` and `engine/test`, including the `@lando/engine/testing/*` doubles.",
+        "`scripts/build-bootstrap-layers.ts` and `scripts/bootstrap-layer-renderers.ts` emit namespace-imported `layer` names, and the generated layers are regenerated.",
+        "The hand-rolled ordering and cycle detection move to `Graph`: build-step batching and its `Cycle` result in `engine/src/services/build-app-plan.ts` (consumed by `build-app-graph.ts`), service `dependsOn` cycles in `engine/src/services/dependency-validation.ts`, and feature activation cycles (`detectCycle`) in `engine/src/services/app-feature.ts`. Error tags and messages, including the reported cycle path and edges, are unchanged.",
+        "Planner phases are spans named `AppPlanner.<phase>`. Operations (`start`, `stop`, `rebuild`, `destroy`, and the rest) are spans with provider calls nested under them. A test runs one operation against the test provider with an in-memory `Tracer` and asserts the span tree shape.",
+        "A focused test drives a time-dependent engine path with `TestClock`.",
+        "Standard `main` gates pass."
+      ],
+      "dependsOn": ["US-663"],
+      "priority": 77,
+      "passes": false,
+      "notes": "Target main. Class: main."
+    },
+    {
+      "id": "US-665",
+      "title": "Serve MCP through Effect's MCP server",
+      "description": "As an agent, `lando mcp` speaks MCP 2025-06-18 with structured results, asks the person in my client before risky calls, and serves Lando state and schemas as resources, with the same safety limits as before.",
+      "acceptanceCriteria": [
+        "`lando mcp` uses `McpServer.layerStdio` with protocols 2025-06-18, 2025-03-26, and 2024-11-05. `@lando/renderer` implements Effect's `Stdio` contract over Bun stdin and stdout, so it stays the only terminal writer. The current inbound frame limit and its failure behavior are kept, proven by the existing oversize test.",
+        "Tools are registered from the existing catalog projection with `addTool`, after the allowlist is applied. Input schemas come from the catalog. `outputSchema` comes from the command result JSON Schemas. Results carry `structuredContent` with the redacted, bounded `CommandResultEnvelope`, plus a text fallback.",
+        "Confirmation through elicitation: When the client advertises elicitation and a call lacks `yes: true`, `requireConfirmation` asks through `McpServer.elicit` with a `{ confirm: boolean }` schema and a message naming the app and the consequence. Accept proceeds. Decline, cancel, or no answer within 120 seconds fails with `CommandConfirmationError` reason `declined`. Clients without elicitation keep the current `non-interactive` failure, and `yes: true` behaves as today. Elicitation never lifts a deny, and `app:destroy` stays forbidden by default.",
+        "Resources: `lando://app/config`, `lando://app/info`, `lando://apps`, `lando://doctor`, and the template `lando://schemas/{name}` with name completion from the public registry. Payloads reuse the existing result schemas and are redacted and bounded. App-scoped resources resolve through `resolveApp`/`AppSelector` and fail with the existing tagged errors.",
+        "Existing behavior keeps its tests green: the concurrency limit of 4, cancellation through `notifications/cancelled`, progress notifications, `pre-mcp-call` and `post-mcp-call` events, redaction, and bounds. New tests cover elicitation (accept, decline, timeout, no capability) and resources (listing, reading, completion, and redaction of a planted secret).",
+        "The hand-written JSON-RPC transport, reader, writer, and framing in `mcp/src` are deleted. The rest of the `mcp` package passes the idiom pass.",
+        "Update `docs/guides/agent-native/mcp.mdx`. The spec §11 amendments for US-665 are applied.",
+        "Standard `main` gates pass, plus guide gates."
+      ],
+      "dependsOn": ["US-664"],
+      "priority": 78,
+      "passes": false,
+      "notes": "Target main. `effect/ai` is unstable; the exact catalog pin covers it. Class: user."
+    },
+    {
+      "id": "US-666",
+      "title": "Write the renderer, data mover, and core in Effect 4 idiom",
+      "description": "As an operator, every command runs under one named span with its lifecycle stages as children, and core composition reads like current Effect documentation.",
+      "acceptanceCriteria": [
+        "The idiom pass is complete for `renderer`, `data-mover`, and `core`, including `core/src/cli/**`, `core/src/runtime/**`, the library API, `core/src/testing/**`, and their tests.",
+        "Each dispatched command runs under one root span named `lando <command-id>`, with init, run, and render stages as children. Attributes carry the command id and invocation id only. Renderer per-frame paths use `Effect.fnUntraced`.",
+        "Public `@lando/core/testing` renames are recorded in `sdk/API_COMPATIBILITY.md`.",
+        "Standard `main` gates pass."
+      ],
+      "dependsOn": ["US-665"],
+      "priority": 79,
+      "passes": false,
+      "notes": "Target main. Class: main."
+    },
+    {
+      "id": "US-667",
+      "title": "Write bundled plugins and the plugin scaffold in Effect 4 idiom, and keep old forms out",
+      "description": "As a plugin author, `lando plugin:new` and every bundled plugin show current Effect idiom. As a maintainer, old forms cannot creep back.",
+      "acceptanceCriteria": [
+        "The idiom pass is complete for every bundled plugin under `plugins/*`.",
+        "`engine/src/operations/plugin-scaffold.ts` emits the spec §5 shapes and `Effect.fn`. A test scaffolds a plugin, then builds and tests it. `docs/guides/plugins/authoring-new-plugin.mdx` matches the scaffold, and its scenario passes with a positive count.",
+        "A new `effect-idioms` boundary rule scans the shared shipped-runtime tier and bans: `Data.TaggedError` and `Data.Error`; `Date.now()` and `new Date(` in modules that import `effect`; named functions or methods whose body only returns `Effect.gen(...)`; local definitions named `isRecord`, `isPlainObject`, or `isObject`; exports named `*Live`; imports from `@effect/*`. It has fixtures and tests, a seam-impossibility justification in `scripts/boundary/registry.ts`, and a `scripts/boundary/README.md` row. It passes on the whole repo.",
+        "The spec §11 amendment for US-667 is applied.",
+        "Standard `main` gates pass, plus guide gates."
+      ],
+      "dependsOn": ["US-666"],
+      "priority": 80,
+      "passes": false,
+      "notes": "Target main. Class: user."
+    },
+    {
+      "id": "US-668",
+      "title": "Give Lando, editors, and other tools one definition of a valid Landofile",
+      "description": "As a Landofile author, agent, or tool builder, one run reports every problem with its path and a fix hint. My editor flags the same problems as I type, and any Standard Schema consumer flags them too.",
+      "acceptanceCriteria": [
+        "Diagnostics: Authored-file decoders run with `errors: \"all\"`, so one Landofile with three independent problems reports all three. `LandofileValidationError.issues`, and the matching recipe-manifest and include errors, become arrays of `{ path: Array<string | number>, message: string, suggestion?: string }`. `ConfigLintViolation` uses the same path form. Unknown keys get a `suggestion` naming the closest allowed key within edit distance 2, for example `imgae` suggests `image`. The text renderer prints one line per issue as `services.web.port: <message>`. The `--format=json` envelope and MCP results carry the structured `issues`.",
+        "Editor validation: Public artifacts under `dist/schemas/**` become draft 2020-12 documents. Editor artifacts `landofile.schema.json` and `global-config.schema.json` are emitted in draft-07 through `JsonSchema.toDocumentDraft07`, with `onExcessProperty: \"error\"` and `generateDescriptions: true`. One exported constant in `@lando/sdk/schema` holds the editor schema URL. The docs build publishes the artifact at that path, and a test asserts they agree. New Landofiles written by `lando init` and `lando app:config:translate` start with a `# yaml-language-server: $schema=<url>` line. Existing files are never rewritten for it.",
+        "Standard Schema: a tree-shakeable `@lando/sdk/schema/standard` subpath exports Standard Schema V1 plus Standard JSON Schema V1 views of the Landofile input, global config, plugin manifest, and recipe manifest schemas.",
+        "One parity test holds all three surfaces to Lando's decoder. The fixtures are every valid Landofile fixture under `docs/guides/**/fixtures` and `recipes/**`, plus a curated invalid set covering unknown keys, wrong types, out-of-range ports, and `null` for an optional key. The published documents, loaded with `SchemaRepresentation.fromJsonSchemaDocument`, and the Standard Schema views must agree with the decoder on accept or reject, at a positive count. Standard Schema issues match Lando's `issues` paths and messages. Checks JSON Schema cannot express are listed with a reason.",
+        "Update the SDK error schemas, `sdk/API_COMPATIBILITY.md`, snapshots, and compatibility exceptions. The spec §11 amendments for US-668 are applied.",
+        "Guides: Update `docs/guides/landofile/config-lint.mdx`, `docs/guides/scripting-with-json.mdx`, and `docs/guides/schemas/json-schema-artifacts.mdx`. Add `docs/guides/landofile/editor-validation.mdx` and `docs/guides/schemas/standard-schema.mdx`. Scenarios assert `issues[0].path` and its suggestion, the modeline in an `init` result, and a `~standard.validate` call from a Bun script.",
+        "Standard `sdk` and `user` gates pass."
+      ],
+      "dependsOn": ["US-663"],
+      "priority": 81,
+      "passes": false,
+      "notes": "Target main. Class: sdk plus user."
+    },
+    {
+      "id": "US-669",
+      "title": "Show where a command spends its time, locally or in your own tracing stack",
+      "description": "As a user or agent chasing a slow command, `--trace` shows a timing tree. As a team with an observability stack, I can send traces to my collector. As an embedding host, Lando's spans, logs, and defects flow into my tooling. Lando never sends traces anywhere I did not configure.",
+      "acceptanceCriteria": [
+        "`--trace`: A global `--trace` flag (and `LANDO_TRACE=1` through the env helper) enables the tracer on dispatcher-routed commands. The level-`none` fast path is untouched. A Lando `Tracer` keeps finished spans in a bounded buffer of 10,000 spans and counts the overflow. The text renderer prints a timing tree after the result, collapsing spans under 1% of total. `--format=json` adds a `trace` field typed by a new public `CommandTrace` schema with name, parent, start offset, duration, status, and attributes. The schema is registered in `JSON_SCHEMA_REGISTRY` with a contract fixture.",
+        "OTLP export: Global config gains `tracing.otlp.endpoint` and `tracing.otlp.headers`, with header values treated as secrets in config views. When unset, `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` are read through the env helper. When configured, commands export spans with `OtlpTracer` and `OtlpSerialization.layerJson` over Lando's `HttpClient`, with resource attributes `service.name=lando`, `service.version`, OS, and architecture. Export is fire-and-forget. A failure never changes the exit status. The flush runs after the completion line and is bounded to 1 second. Nothing is exported when neither setting is present.",
+        "Embedding hosts: `openLandoRuntime` and `makeLandoRuntime` never override a host-provided `Tracer`, `References.CurrentLoggers`, `References.MinimumLogLevel`, or `ErrorReporter`. Spans from `runtime.run` and app handles parent to the host's current span. Operation boundaries use `Effect.withErrorReporting`, so defects (not tagged failures) reach the host reporter. The CLI shell installs a reporter that feeds the existing bug-report rendering, so both shells share one path.",
+        "Span attributes pass through `RedactionService` before retention or export.",
+        "Tests cover: a secret planted in env and flags reaching neither text, JSON, nor the exporter; a local `Bun.serve` OTLP receiver getting the spans; an unreachable endpoint leaving exit status and completion timing unchanged; an in-memory host tracer, logger, and reporter.",
+        "Without tracing, `bench:tooling-hot-path` stays within spec §12. With `--trace`, overhead is recorded.",
+        "Update the config schema, snapshots, and SDK compatibility. The spec §11 amendments for US-669 are applied.",
+        "Add `docs/guides/cli/trace-a-command.mdx`, `docs/guides/cli/export-traces.mdx`, and `docs/guides/library/embedding-observability.mdx`, linked from `verbosity-and-debug.mdx` and `embedding-runtime.mdx`. Scenarios assert `trace.spans` in JSON output and a host span parenting a Lando span.",
+        "Standard `main` gates pass, plus guide gates."
+      ],
+      "dependsOn": ["US-667"],
+      "priority": 82,
+      "passes": false,
+      "notes": "Target main. Class: user."
+    },
+    {
+      "id": "US-670",
+      "title": "Compile hot-path schema decoders when it measurably helps",
+      "description": "As a user, tooling commands that decode cached plans and Landofiles get faster when ahead-of-time compiled decoders measurably help, and nothing changes when they do not.",
+      "acceptanceCriteria": [
+        "Measure decode time of the app-plan cache, the command cache, and Landofile decode on the tooling hot path, first with the interpreter and then with `SchemaAOTCompiler` output. Record both in `progress.txt`.",
+        "Adopt AOT output only if `bench:tooling-hot-path` p95 improves by at least 5 ms or 10%. The compiled decoders become a `derived` codegen catalog entry, never committed. A test proves compiled and interpreted decoders agree on the US-668 valid and invalid fixture sets. The compiled binary still builds.",
+        "If the bar is not met, ship no code change. Record the numbers and the decision.",
+        "Standard `main` gates pass."
+      ],
+      "dependsOn": ["US-668"],
+      "priority": 83,
+      "passes": false,
+      "notes": "Target main. Class: baseline."
+    }
+  ]
+}

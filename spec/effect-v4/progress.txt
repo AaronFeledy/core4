@@ -1,0 +1,56 @@
+# Effect 4 upgrade progress
+
+Append one entry per step. This file is the narrative record; `git log` is the
+file-level record. An entry says what changed about the **product** and what it
+**cost**, never which files were touched, and never a restatement of the entry
+above it.
+
+**Belongs here:** measurements (baseline and after, per spec §12); spec §8
+findings with their tests and any intended difference; defects the work exposed;
+work deliberately deferred, with the reason; anything a future agent would
+otherwise rediscover.
+
+**Does not belong here:** file lists, line counts, formatting-only changes, or a
+gate reporting that it skipped.
+
+Entry shapes: Build (what shipped, verification, learnings), Measure (benchmark
+numbers against the baseline), Review (blockers fixed, deferrals with reasons).
+
+## Codebase Patterns
+
+Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
+`effect@4.0.0` (`dist/*.d.ts`, runtime exports, shipped `AGENTS.md`).
+
+- Effect 3 and Effect 4 types cannot coexist across `@lando/sdk`, so US-662 switches every package in one PR. Old forms that still compile on Effect 4 are left to the per-area idiom passes (US-663, US-664, US-666, US-667) so each area is rewritten once.
+- Same name, different meaning:
+  - Effect 3 `Effect.catch` takes a discriminator (`Effect.catch("_tag", { failure, onFailure })`); Effect 4 `Effect.catch` is catch-all.
+  - Effect 3 `Predicate.isRecord` (plain objects only) maps to Effect 4 `Predicate.isObject`. Effect 3 `Predicate.isObject` also accepts arrays and functions.
+  - Never rename either by name alone.
+- Removed modules in Effect 4: `Either` (use `Result`), `ParseResult` (`SchemaIssue`, `SchemaParser`), `JSONSchema` (`JsonSchema` plus `Schema.toJsonSchemaDocument`), `FiberRef` (`Context.Reference`, `References`), root-level `TestClock`/`TestContext` (`effect/testing` `TestClock`; `TestClock.layer()`), `FastCheck` (`effect/Arbitrary`), `ExecutionStrategy`, and `FiberId` (fiber ids are numbers).
+- Also removed, though they look present by analogy:
+  - `Layer`: `scoped`, `scopedDiscard`, `unwrapEffect`, `unwrapScoped`, `mapError`, `fail`, `extendScope`, `memoize`;
+  - `Effect`: `either`, `zipRight`, `zipLeft`, `async`, `timeoutFail`, `timeoutTo`, `dieMessage`, `tapErrorCause`, `fork`, `runtime`, `iterate`, `orElse`, `whenEffect`, `makeSemaphore`, `makeLatch`;
+  - `Stream`: `async`, `catchAll`, `repeatEffect`, `acquireRelease`, `unwrapScoped`;
+  - `Fiber.poll` (use the `pollUnsafe()` method);
+  - `Scope.extend` and `Scope.CloseableScope` (use `Scope.Closeable`);
+  - `Option.fromNullable` (use `fromNullishOr`);
+  - `Duration.decode` (use `fromInputUnsafe`).
+- `Context.Reference` keeps the same shape across versions, and Effect 3 Context.Tag classes already have `of`, so the `FiberRef` and `X.of` rewrites need no intermediate form.
+- Effect 4 `Schema.Struct` takes one argument. An index-signature extension record moves to `Schema.StructWithRest(Struct(fields), [record])`, which keeps `.fields`, so `landofile/src/service.ts` can still build its key allowlist from it.
+- Effect 4 emits `Schema.optional(X)` into JSON Schema as `anyOf [X, null]` while the decoder rejects `null`. `Schema.optionalKey(X)` emits a plain optional property, so authored input uses `optionalKey`.
+- `Schema.toJsonSchemaDocument(schema, { onExcessProperty: "error" })` emits `additionalProperties: false`. `generateDescriptions: true` adds descriptions such as "a value between 1 and 65535". Documents are draft 2020-12 (`{ dialect, schema, definitions }`). `JsonSchema.toDocumentDraft07` converts and throws on unrepresentable keywords.
+- `SchemaRepresentation.fromJsonSchemaDocument(doc)` returns a decodable `Schema`, which lets US-668 test editor parity without a JSON Schema validator dependency.
+- `Schema.decodeUnknownResult(S)(input, { onExcessProperty: "error", errors: "all" })` reports every issue. `SchemaIssue.makeFormatterStandardSchemaV1()(error.issue)` yields `{ issues: [{ path: ["services","web","port"], message }] }`.
+- Effect 4 has no `SchemaTransformation.transformOrFail`. Fallible transformations use `SchemaTransformation.transformEffect({ decode, encode })`, whose callbacks get `(input, options)` and return `Effect.succeed(value)` or `Effect.fail(new SchemaIssue.InvalidValue({ message }, input, options))`. `ParseResult.isParseError` becomes `Schema.isSchemaError`.
+- Effect 4 filters are `Schema.is*` checks: `isPattern`, `isInt`, `isMinLength`, `isMaxLength`, `isBetween`, `isGreaterThan`, `isGreaterThanOrEqualTo`, `isLessThanOrEqualTo`, `isStartingWith`, `isUUID`, `isNonEmpty`, `isTrimmed`. There is no `isPositive`, `isNonNegative`, `isMinItems`, `isMaxItems`, or `isStartsWith`.
+- Layer memoization in Effect 4: a nested `Effect.provide` forks the parent memo map (`Layer.CurrentMemoMap.forkOrCreate`), reusing layers the parent already built and keeping new allocations in the child. Each top-level `Effect.runPromise` starts a fresh map, so test isolation between runs holds.
+- `effect/ai` `McpServer` registers tools at runtime with `addTool({ tool, annotations, handle })`, and `Tool.dynamic` accepts raw JSON Schema parameters. `McpServer.layerStdio` needs an Effect `Stdio` service. `McpServer.elicit` and `clientCapabilities` exist. Protocols: 2024-11-05, 2025-03-26, 2025-06-18.
+- `@effect/platform-bun@4.0.0` re-exports `@effect/platform-node-shared`, whose spawner uses `node:child_process` and which depends on `ws`. Not adopted (spec §10).
+- `effect/observability` OTLP layers need an `HttpClient` service and an `OtlpSerialization` layer (`layerJson` or `layerProtobuf`). They read `OTEL_*` env vars only when built with `layerFromConfig`.
+- Biome is 1.9.4, which has no GritQL plugins, so the US-667 idiom guard is a boundary rule.
+- Main-tree sizes at 3.21.2:
+  - about 575 named functions in shipped code that only return `Effect.gen` (engine 205, core 168, plugins 118, others about 85);
+  - 104 `*Live` exports and 31 `make*Live` factories;
+  - 133 `Context.Tag` service classes in source;
+  - 8 `FiberRef`s in 7 files (`volume-coordination.ts` holds two), all bound with `Effect.locally` and read with `FiberRef.get`, never `set`;
+  - `Either` 1,981 and `Effect.either` 1,070 references, mostly in tests.
