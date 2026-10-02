@@ -138,8 +138,10 @@ describe("opt-in Windows Mutagen composition", () => {
   });
 
   test("rejects duplicate planned sessions and missing accelerated mounts before alias preparation", async () => {
+    const plannedSync = plan.fileSync[0];
+    if (plannedSync === undefined) throw new Error("Expected a planned sync session");
     for (const invalidPlan of [
-      { ...plan, fileSync: [plan.fileSync[0]!, plan.fileSync[0]!] },
+      { ...plan, fileSync: [plannedSync, plannedSync] },
       {
         ...plan,
         services: {
