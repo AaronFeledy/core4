@@ -19,8 +19,8 @@ describe("canonicalJson", () => {
   });
 
   test("orders keys by UTF-16 code unit, not locale", () => {
-    expect(canonicalJson({ a: 2, B: 1, 日本: 3, é: 4, z: null })).toBe(
-      '{"B":1,"a":2,"z":null,"é":4,"日本":3}',
+    expect(canonicalJson({ a: 2, B: 1, 日本: 3, é: 4, z: null, "2": "two", "10": "ten" })).toBe(
+      '{"10":"ten","2":"two","B":1,"a":2,"z":null,"é":4,"日本":3}',
     );
   });
 
@@ -30,5 +30,14 @@ describe("canonicalJson", () => {
 
   test("is the same function the recipes surface re-exports", () => {
     expect(recipeCanonicalJson).toBe(canonicalJson);
+  });
+
+  test("nulls sparse slots when an array has holes and explicit undefined values", () => {
+    const values: unknown[] = Array(4);
+    values[1] = undefined;
+    values[3] = "last";
+    const text = canonicalJson(values);
+    expect(text).toBe('[null,null,null,"last"]');
+    expect(JSON.parse(text)).toEqual([null, null, null, "last"]);
   });
 });
