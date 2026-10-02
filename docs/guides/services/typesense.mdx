@@ -27,7 +27,7 @@ services:
       TYPESENSE_ENABLE_CORS: "true"
 ```
 
-`appMount: false` keeps Typesense off your app tree. Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx). Create the host data directory, then start:
+`appMount: false` keeps Typesense off your app tree. Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/). Create the host data directory, then start:
 
 ```sh
 mkdir -p typesense-data
@@ -153,8 +153,8 @@ Keep the data directory and API key the same across bumps unless that release's 
 
 ## Next
 
-- [Add a Compose service](./compose-passthrough.mdx)
-- [Add Meilisearch](./meilisearch.mdx)
-- [Add Solr](./solr.mdx)
-- [How services find each other](../subsystems/service-dns.mdx)
-- [Keep a service home across rebuilds and reach your host](./home-and-host.mdx)
+- [Add a Compose service](../compose-passthrough/)
+- [Add Meilisearch](../meilisearch/)
+- [Add Solr](../solr/)
+- [How services find each other](../../subsystems/service-dns/)
+- [Keep a service home across rebuilds and reach your host](../home-and-host/)
