@@ -33,6 +33,11 @@ export const normalizeStructure = (schema: JsonSchema): JsonSchema => {
   for (const key of ["additionalProperties", "additionalItems", "items"]) {
     if (emptySchema(result[key])) Reflect.deleteProperty(result, key);
   }
+  const names = result.propertyNames;
+  // JSON object keys are always strings, so this adds no restriction.
+  if (emptySchema(names) || (isJsonObject(names) && jsonEquals(names, { type: "string" }))) {
+    Reflect.deleteProperty(result, "propertyNames");
+  }
   if (typeof result.pattern === "string") {
     // JSON Schema patterns are strings, not slash-delimited regex literals.
     const pattern = result.pattern;

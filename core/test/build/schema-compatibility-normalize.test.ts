@@ -106,6 +106,16 @@ describe("meaning-preserving schema normalization", () => {
     ],
     ["escaped regex delimiter", { type: "string", pattern: "^/" }, { type: "string", pattern: "^\\/" }],
     [
+      "string-only property names",
+      { type: "object", additionalProperties: { type: "string" } },
+      {
+        type: "object",
+        propertyNames: { type: "string" },
+        additionalProperties: { type: "string" },
+      },
+    ],
+    ["unconstrained property names", { type: "object" }, { type: "object", propertyNames: {} }],
+    [
       "universal record pattern",
       { type: "object", additionalProperties: { type: "string" } },
       {
@@ -150,6 +160,11 @@ describe("meaning-preserving schema normalization", () => {
   test.each([
     ["removed pattern", { type: "string", pattern: "^x-" }, { type: "string" }],
     ["removed format", { type: "string", format: "ip" }, { type: "string" }],
+    [
+      "removed property name constraint",
+      { type: "object", propertyNames: { type: "string", pattern: "^x-" } },
+      { type: "object", propertyNames: { type: "string" } },
+    ],
     ["closed object", { type: "object", additionalProperties: false }, { type: "object" }],
     [
       "changed check",
