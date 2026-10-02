@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
 import { HttpRequestError } from "@lando/sdk/errors";
-import { Effect, Either, Stream } from "effect";
+import { Effect, Result, Stream } from "effect";
 import { makeHttpClientLive } from "../src/live.ts";
 import { NetworkTrust } from "../src/network-trust.ts";
 import { HttpClient } from "../src/service.ts";
@@ -95,16 +95,16 @@ for (const bytes of [new Uint8Array(), new Uint8Array([255, 255, 255, 255])]) {
               const client = yield* HttpClient;
               const response = yield* client.stream({ url: server.url.href, timeoutMs: 1000 });
               return yield* Stream.runCollect(response.body);
-            }).pipe(Effect.provide(makeHttpClientLive()), Effect.either),
+            }).pipe(Effect.provide(makeHttpClientLive()), Effect.result),
           ),
         );
         // Then completion/failure matches fetch, and decoder errors retain the typed channel.
-        expect(Either.isRight(result)).toBe(baseline.ok);
-        if (Either.isRight(result))
-          expect(Array.from(result.right).flatMap((chunk) => [...chunk])).toEqual(baseline.bytes);
+        expect(Result.isSuccess(result)).toBe(baseline.ok);
+        if (Result.isSuccess(result))
+          expect(Array.from(result.success).flatMap((chunk) => [...chunk])).toEqual(baseline.bytes);
         else {
-          expect(result.left).toBeInstanceOf(HttpRequestError);
-          expect(result.left.message).not.toContain("exceeded timeoutMs");
+          expect(result.failure).toBeInstanceOf(HttpRequestError);
+          expect(result.failure.message).not.toContain("exceeded timeoutMs");
         }
       } finally {
         server.stop(true);

@@ -28,10 +28,7 @@ export const applyHttpTimeout = <A, R>(
   if (timeoutMs === undefined || timeoutMs <= 0) return effect;
   if (remainingMs === undefined || remainingMs <= 0)
     return Effect.fail(httpTimeoutError(request.url, timeoutMs));
-  return Effect.timeoutFail(effect, {
-    duration: Duration.millis(remainingMs),
-    onTimeout: () => httpTimeoutError(request.url, timeoutMs),
-  });
+  return Effect.timeoutOrElse(effect, { duration: Duration.millis(remainingMs), orElse: () => Effect.fail((() => httpTimeoutError(request.url, timeoutMs))()) });
 };
 
 export const applyHttpStreamTimeout = <A, R>(

@@ -148,7 +148,7 @@ describe("persistVerifiedStream", () => {
       const body = Stream.concat(Stream.fromIterable([bytes("chunk")]), Stream.never);
 
       const program = Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(persistVerifiedStream({ body, destinationPath: target })),
         );
         // wait until the temp file appears

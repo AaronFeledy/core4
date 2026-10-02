@@ -131,7 +131,7 @@ const readWebBodyChunk = ({
   response,
   reader,
   startedAt,
-}: ReadWebBodyChunkInput): Effect.Effect<Uint8Array, Option.Option<HttpRequestError>> =>
+}: ReadWebBodyChunkInput): Effect.Effect<Uint8Array, HttpRequestError | Cause.Done> =>
   applyHttpTimeout(
     request,
     Effect.tryPromise({
@@ -141,9 +141,8 @@ const readWebBodyChunk = ({
     }),
     remainingHttpTimeoutMs(request, startedAt),
   ).pipe(
-    Effect.mapError(Option.some),
     Effect.flatMap((chunk) =>
-      chunk.done || chunk.value === undefined ? Effect.fail(Option.none()) : Effect.succeed(chunk.value),
+      chunk.done || chunk.value === undefined ? Cause.done() : Effect.succeed(chunk.value),
     ),
   );
 
@@ -170,7 +169,7 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpReq
     const config = yield* Effect.serviceOption(ConfigService);
     if (Option.isNone(config)) return undefined;
 
-    const globalConfig = yield* config.value.load.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
     const plan = yield* Effect.try({
       try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
       catch: (cause) =>
@@ -200,12 +199,12 @@ interface HttpCallEvents {
 }
 
 const makeHttpCallEvents = (
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
   request: HttpRequest | HttpUploadRequest,
 ): HttpCallEvents => {
   const redact = createRedactor("secrets", { values: request.redactionTokens ?? [] }).redactString;
   const publish: HttpCallEvents["publish"] = Option.isSome(eventService)
-    ? (event) => eventService.value.publish(event).pipe(Effect.catchAllCause(() => Effect.void))
+    ? (event) => eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
     : () => Effect.void;
   return { redact, publish };
 };
@@ -221,7 +220,7 @@ const preEvent = (
     ...(request.method === undefined ? {} : { method: request.method }),
     ...(request.callerId === undefined ? {} : { callerId: redact(request.callerId) }),
     ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-    timestamp: DateTime.unsafeNow(),
+    timestamp: DateTime.nowUnsafe(),
   });
 
 interface PostEventInput {
@@ -245,7 +244,7 @@ const postEvent = (input: PostEventInput): LandoEvent =>
     outcome: input.outcome,
     durationMs: input.durationMs,
     ...(input.failureDetail === undefined ? {} : { failureDetail: input.redact(input.failureDetail) }),
-    timestamp: DateTime.unsafeNow(),
+    timestamp: DateTime.nowUnsafe(),
   });
 
 interface FetchOutcome {
@@ -291,15 +290,15 @@ const responseBodyStream = (
       Effect.sync(() => responseBody.getReader() as unknown as WebBodyReader),
       releaseWebReader,
     ),
-    (reader) => Stream.repeatEffectOption(readWebBodyChunk({ request, response, reader, startedAt })),
+    (reader) => Stream.fromEffectRepeat(readWebBodyChunk({ request, response, reader, startedAt })),
   );
 };
 
 const bodyFailureDetail = (exit: Exit.Exit<unknown, unknown>): string => {
   if (!("cause" in exit)) return "body-read-failed";
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (Option.isSome(failure)) return messageFromCause(failure.value, "body-read-failed");
-  return Cause.isInterruptedOnly(exit.cause) ? "body-read-interrupted" : "body-read-failed";
+  return Cause.hasInterruptsOnly(exit.cause) ? "body-read-interrupted" : "body-read-failed";
 };
 
 const filePathFromUrl = (url: URL): Effect.Effect<string, HttpRequestError> =>
@@ -363,7 +362,7 @@ const makeStream =
   (
     transports: HttpTransports,
     systemCaPems: SystemCaProvider,
-    eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+    eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
   ): HttpClientShape["stream"] =>
   (request) =>
     Effect.gen(function* () {
@@ -380,29 +379,29 @@ const makeStream =
       const startedAt = Date.now();
       yield* events.publish(preEvent(request, origin, events.redact));
 
-      const result = yield* Effect.either(
+      const result = yield* Effect.result(
         applyHttpTimeout(
           request,
           openConnection(transports, systemCaPems, request),
           remainingHttpTimeoutMs(request, startedAt),
         ),
       );
-      if (result._tag === "Left") {
+      if (result._tag === "Failure") {
         yield* events.publish(
           postEvent({
             request,
             origin,
             outcome: "failure",
-            status: result.left.status,
+            status: result.failure.status,
             durationMs: Date.now() - startedAt,
-            failureDetail: result.left.message,
+            failureDetail: result.failure.message,
             redact: events.redact,
           }),
         );
-        return yield* Effect.fail(result.left);
+        return yield* Effect.fail(result.failure);
       }
 
-      const { response } = result.right;
+      const { response } = result.success;
       let postPublished = false;
       const publishPost = (outcome: "success" | "failure", failureDetail: string | undefined) =>
         Effect.suspend(() => {
@@ -429,7 +428,7 @@ const makeStream =
       );
       const bodyWithTelemetry = body.pipe(
         (stream) => applyHttpStreamTimeout(request, stream, remainingHttpTimeoutMs(request, startedAt)),
-        Stream.ensuringWith((exit) =>
+        Stream.onExit((exit) =>
           Exit.isSuccess(exit)
             ? publishPost("success", undefined)
             : publishPost("failure", bodyFailureDetail(exit)),
@@ -442,7 +441,7 @@ const makeRequest =
   (
     transports: HttpTransports,
     systemCaPems: SystemCaProvider,
-    eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+    eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
   ): HttpClientShape["request"] =>
   (request) =>
     Effect.gen(function* () {

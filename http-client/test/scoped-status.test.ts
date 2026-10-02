@@ -160,7 +160,7 @@ test("aborts and pairs events when a header-only scope is interrupted", async ()
         }).pipe(
           Effect.provide(makeHttpClientLive(fetchImpl, () => [], fetchImpl).pipe(Layer.provide(eventLayer))),
         ),
-      ).pipe(Effect.fork);
+      ).pipe(Effect.forkChild);
       yield* Deferred.await(ready);
       yield* Fiber.interrupt(fiber);
     }),
