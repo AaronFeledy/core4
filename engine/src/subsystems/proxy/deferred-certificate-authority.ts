@@ -25,10 +25,10 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const resolver = yield* CertificateAuthorityResolver;
     const resolve = yield* Effect.cached(resolver.resolve.pipe(Effect.mapError(resolutionError)));
-    return {
+    return CertificateAuthority.of({
       id: "deferred",
       setup: (options) => Effect.flatMap(resolve, (authority) => authority.setup(options)),
       issueCert: (spec) => Effect.flatMap(resolve, (authority) => authority.issueCert(spec)),
-    };
+    });
   }),
 );

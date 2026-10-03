@@ -4,12 +4,13 @@ import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import type {
-  ExecTarget,
-  HealthcheckRunnerShape,
-  CommandSpec as ProviderCommandSpec,
-  ProviderError,
-  RuntimeProviderShape,
+import {
+  type ExecTarget,
+  HealthcheckRunner,
+  type HealthcheckRunnerShape,
+  type CommandSpec as ProviderCommandSpec,
+  type ProviderError,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -121,85 +122,86 @@ const timeoutError = (context: TimeoutContext): HealthcheckTimeoutError => {
 export const makeHealthcheckRunner: (deps: {
   readonly exec: RuntimeProviderShape["exec"];
   readonly signal?: AbortSignal;
-}) => HealthcheckRunnerShape = (deps) => ({
-  id: "provider-exec",
-  run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service) {
-    switch (plan.kind) {
-      case "none":
-        return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
-      case "http":
-      case "tcp":
-        return yield* Effect.fail(providerExecUnsupported(plan, service));
-      case "command":
-        break;
-    }
+}) => HealthcheckRunnerShape = (deps) =>
+  HealthcheckRunner.of({
+    id: "provider-exec",
+    run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service) {
+      switch (plan.kind) {
+        case "none":
+          return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
+        case "http":
+        case "tcp":
+          return yield* Effect.fail(providerExecUnsupported(plan, service));
+        case "command":
+          break;
+      }
 
-    if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
+      if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
 
-    const normalized = normalizeCommand(plan.command);
-    const command = {
-      ...normalized.provider,
-      ...(deps.signal === undefined ? {} : { signal: deps.signal }),
-    };
-    const rendered = normalized.rendered;
-    const target: ExecTarget = { app: appId, service };
-    const status = yield* Ref.make<AttemptStatus>({
-      _tag: "provider",
-      message: "Healthcheck command did not run",
-    });
-    const redactor = yield* resolveRedactor;
+      const normalized = normalizeCommand(plan.command);
+      const command = {
+        ...normalized.provider,
+        ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+      };
+      const rendered = normalized.rendered;
+      const target: ExecTarget = { app: appId, service };
+      const status = yield* Ref.make<AttemptStatus>({
+        _tag: "provider",
+        message: "Healthcheck command did not run",
+      });
+      const redactor = yield* resolveRedactor;
 
-    if (plan.startPeriodSeconds !== undefined && plan.startPeriodSeconds > 0) {
-      yield* Effect.sleep(Duration.seconds(plan.startPeriodSeconds));
-    }
+      if (plan.startPeriodSeconds !== undefined && plan.startPeriodSeconds > 0) {
+        yield* Effect.sleep(Duration.seconds(plan.startPeriodSeconds));
+      }
 
-    const result = yield* runProbe(
-      {
-        id: `healthcheck:${service}`,
-        policy: {
-          maxAttempts: Math.max(1, plan.retries),
-          delay: Duration.seconds(plan.intervalSeconds),
-          backoff: "fixed",
+      const result = yield* runProbe(
+        {
+          id: `healthcheck:${service}`,
+          policy: {
+            maxAttempts: Math.max(1, plan.retries),
+            delay: Duration.seconds(plan.intervalSeconds),
+            backoff: "fixed",
+          },
+          classify: {
+            success: (value) => (value === "green" ? "green" : "red"),
+            failure: () => "red",
+          },
         },
-        classify: {
-          success: (value) => (value === "green" ? "green" : "red"),
-          failure: () => "red",
-        },
-      },
-      makeAttempt({ deps, target, command, timeoutSeconds: plan.timeoutSeconds, status }),
-    ).pipe(Effect.mapError((cause) => toProbeError(service, cause)));
-    const finalStatus = yield* Ref.get(status);
+        makeAttempt({ deps, target, command, timeoutSeconds: plan.timeoutSeconds, status }),
+      ).pipe(Effect.mapError((cause) => toProbeError(service, cause)));
+      const finalStatus = yield* Ref.get(status);
 
-    if (result.outcome === "green")
-      return { healthy: true, service, attempts: result.attempts, lastStatus: "ok" };
+      if (result.outcome === "green")
+        return { healthy: true, service, attempts: result.attempts, lastStatus: "ok" };
 
-    switch (finalStatus._tag) {
-      case "timeout":
-        return yield* Effect.fail(
-          timeoutError({
+      switch (finalStatus._tag) {
+        case "timeout":
+          return yield* Effect.fail(
+            timeoutError({
+              service,
+              renderedCommand: rendered,
+              timeoutSeconds: plan.timeoutSeconds,
+              result,
+              redactor,
+            }),
+          );
+        case "exit":
+          return {
+            healthy: false,
             service,
-            renderedCommand: rendered,
-            timeoutSeconds: plan.timeoutSeconds,
-            result,
-            redactor,
-          }),
-        );
-      case "exit":
-        return {
-          healthy: false,
-          service,
-          attempts: result.attempts,
-          lastStatus: redactor.redactString(`exit ${finalStatus.code}`),
-        };
-      case "provider":
-        return {
-          healthy: false,
-          service,
-          attempts: result.attempts,
-          lastStatus: redactor.redactString(finalStatus.message),
-        };
-      case "ok":
-        return { healthy: false, service, attempts: result.attempts, lastStatus: "ok" };
-    }
-  }),
-});
+            attempts: result.attempts,
+            lastStatus: redactor.redactString(`exit ${finalStatus.code}`),
+          };
+        case "provider":
+          return {
+            healthy: false,
+            service,
+            attempts: result.attempts,
+            lastStatus: redactor.redactString(finalStatus.message),
+          };
+        case "ok":
+          return { healthy: false, service, attempts: result.attempts, lastStatus: "ok" };
+      }
+    }),
+  });

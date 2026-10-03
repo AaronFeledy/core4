@@ -147,7 +147,7 @@ export const layer = Layer.effect(
       if (store === undefined) return yield* Effect.fail(invalidReference(raw));
       return yield* store;
     });
-    return {
+    return SecretStore.of({
       id: "routed",
       schemes: [...owners.keys()],
       get: Effect.fn("SecretStore.get")((reference) =>
@@ -165,6 +165,6 @@ export const layer = Layer.effect(
           Effect.catchTag("SecretStoreUnavailableError", () => Effect.succeed([])),
         ),
       ).pipe(Effect.map((lists) => [...new Set(lists.flat())].sort())),
-    } satisfies SecretStoreShape;
+    });
   }),
 );

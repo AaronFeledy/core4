@@ -257,7 +257,7 @@ export const layer = Layer.effect(
     const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
 
-    return {
+    return BuildOrchestrator.of({
       build: Effect.fn("BuildOrchestrator.build")(function* (plan) {
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const servicePlans = Object.values(plan.services);
@@ -313,6 +313,6 @@ export const layer = Layer.effect(
             : identityRedactor;
         yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore }, options);
       }),
-    };
+    });
   }),
 );

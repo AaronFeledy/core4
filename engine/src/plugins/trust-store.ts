@@ -85,7 +85,7 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
       catch: (cause) => configError(path, "Failed to write plugin trust store.", cause),
     });
 
-  return {
+  return PluginTrustStore.of({
     read: readState,
     isPluginTrusted: (name) => readState.pipe(Effect.map((state) => state.trustedPlugins.includes(name))),
     trustPlugin: (name) =>
@@ -113,7 +113,7 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
           }),
         ),
       ),
-  };
+  });
 };
 
 export const layer = Layer.effect(

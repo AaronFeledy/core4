@@ -46,7 +46,7 @@ export const makeUrlScanner = (
   overrides: Partial<UrlScanConfig> = {},
 ): UrlScannerShape => {
   const config: UrlScanConfig = { ...defaultUrlScanConfig, ...overrides };
-  return {
+  return UrlScanner.of({
     id: SCANNER_ID,
     scan: Effect.fn("UrlScanner.scan")(function* (appId, options) {
       if (options?.plan === undefined && options?.urls === undefined && !config.enabled) {
@@ -93,7 +93,7 @@ export const makeUrlScanner = (
       }
       return collisions;
     }),
-  };
+  });
 };
 
 const providerListError = (error: ProviderError, redactor: Redactor): ScannerError =>

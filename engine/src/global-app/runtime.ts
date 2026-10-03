@@ -30,7 +30,7 @@ export const layer = Layer.effect(
       Context.add(PluginRegistry, yield* PluginRegistry),
       Context.add(RuntimeProviderRegistry, yield* RuntimeProviderRegistry),
     );
-    return {
+    return GlobalAppService.of({
       ...globalApp,
       ensureProviderReady: registry.select(MANAGED_PROVIDER_SELECT_PLAN).pipe(
         Effect.flatMap((provider) => provider.ensureReady ?? Effect.void),
@@ -150,6 +150,6 @@ export const layer = Layer.effect(
               }),
           ),
         ),
-    };
+    });
   }),
 );

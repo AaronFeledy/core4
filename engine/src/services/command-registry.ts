@@ -81,7 +81,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
-    return {
+    return CommandRegistry.of({
       list: Effect.gen(function* () {
         const cached = yield* readFreshAppCommandCacheForCwd().pipe(Effect.catch(() => Effect.succeed(null)));
         if (cached !== null) return toRegisteredCommands(cached.entries);
@@ -105,6 +105,6 @@ export const layer = Layer.effect(
           writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
         ),
       ),
-    };
+    });
   }),
 );

@@ -314,3 +314,9 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): Bugbot reported no bugs. Host `Date.now` in runtime-process polling and plugin-link temp names stays; those are host clocks, not Effect time. Anonymous `Effect.gen` callbacks and reusable `Effect.gen` values are not named generator-only wrappers. Bootstrap generators still name core and data-mover `*Live` layers; those packages are US-666. `EventCommandExecutor` stays a tag without an engine layer because core still owns the implementation.
 - Verification: `gate:pr` passed (typecheck, lint, codegen drift, boundaries, guide drift against `origin/main`). Guide lint, coverage, and public transcripts passed. Spot checks passed: operation and planner spans, scratch `TestClock`, cache, deprecation, global app, secret-store registry, build orchestrator, host-proxy transport, and the host-proxy redaction guard (116 tests).
 ---
+
+## 2026-10-03 08:48 CDT - US-664 Review
+- The remaining engine service values that reached a layer as plain objects now go through `Tag.of`: the global-app runtime override, plugin trust store, log-file helper assets, provider registry, build orchestrator, command registry, routed secret store, deferred certificate authority, URL scanner, and healthcheck runner.
+- Review notes (deferred/rejected): the three `runtime-provider-registry` Docker-selection cases still time out at 5s on this host; the prior build entry already recorded the same timeouts on unchanged `origin/main`. Router registry values are wrapped with `RouterServiceRegistry.of` at the layer call, so the factory return stays a plain shape.
+- Verification: `gate:pr` passed again. Spot checks passed aside from those three known timeouts (139 pass in the touched service, scanner, healthcheck, proxy, and plugin files).
+---

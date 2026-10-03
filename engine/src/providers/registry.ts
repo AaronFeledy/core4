@@ -252,7 +252,7 @@ export const makeRuntimeProviderRegistry = (
           appliedStateProviders.pipe(Effect.flatMap((providers) => resolveTeardownEvidence(root, providers))),
       );
 
-      return {
+      return RuntimeProviderRegistry.of({
         list: providerIds,
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: Effect.fn("RuntimeProviderRegistry.select")(function* (plan?: AppPlan) {
@@ -261,7 +261,7 @@ export const makeRuntimeProviderRegistry = (
         resolveAppliedPlan,
         resolveTeardownEvidence: resolveTeardown,
         observeRuntime: appliedStateProviders.pipe(Effect.flatMap(observeProviderRuntime)),
-      };
+      });
     }),
   );
 };

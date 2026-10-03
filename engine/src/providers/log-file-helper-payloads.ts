@@ -64,5 +64,7 @@ export const loadLogFileHelperPayloads = Effect.fnUntraced(function* (
 
 export const layer = Layer.effect(
   LogFileHelperAssets,
-  Effect.cached(loadLogFileHelperPayloads()).pipe(Effect.map((payloads) => ({ payloads }))),
+  Effect.cached(loadLogFileHelperPayloads()).pipe(
+    Effect.map((payloads) => LogFileHelperAssets.of({ payloads })),
+  ),
 );
