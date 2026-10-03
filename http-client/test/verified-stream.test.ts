@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Data, Effect, Fiber, Stream } from "effect";
+import { Effect, Fiber, Schema, Stream } from "effect";
 
 import {
   VerifiedStreamError,
@@ -27,7 +27,9 @@ const concat = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
 
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-class FakeBodyError extends Data.TaggedError("FakeBodyError")<{ readonly message: string }> {}
+class FakeBodyError extends Schema.TaggedError<FakeBodyError>()("FakeBodyError", {
+  message: Schema.String,
+}) {}
 
 const tempFiles = async (dir: string, target: string): Promise<ReadonlyArray<string>> => {
   const prefix = `${basename(target)}.tmp-`;
