@@ -3,6 +3,7 @@ import type { PromptAnswers } from "../prompts/runtime";
 export const WEBROOT_PATTERN = /^\/[A-Za-z0-9._/-]*$/u;
 
 export const PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
+export const PHP_DEFAULT = "8.4" as const;
 export const COMPOSER_OPTIONS = ["2", "2.7.7", "false"] as const;
 export const DRUPAL_COMPOSER_OPTIONS = ["2", "2.7.7"] as const;
 export const DRUPAL_DATABASES = ["mariadb:11.4", "mysql:8.0", "postgres:16"] as const;
@@ -31,7 +32,7 @@ const yamlChoices = (values: ReadonlyArray<string>): string =>
 export const phpPromptYaml = `  - name: php
     type: select
     message: PHP version
-    default: '8.3'
+    default: '${PHP_DEFAULT}'
     choices:
 ${yamlChoices(PHP_VERSIONS)}`;
 

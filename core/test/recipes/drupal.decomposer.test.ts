@@ -23,7 +23,7 @@ import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.t
 const defaults = { ...drupalDefaults };
 const alternatives = {
   drupal: "10",
-  php: "8.4",
+  php: "8.1",
   webserver: "nginx",
   database: "postgres:16",
   composer: "2.7.7",

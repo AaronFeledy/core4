@@ -1,7 +1,7 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { recipeAssetDigest } from "../snapshot-asset.ts";
 import {
   arr,
@@ -19,7 +19,7 @@ import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET 
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:80c5365d904ad3bc105b1eea8c00e7702f42a7173c9218567850e1992a5e117c";
+  "sha256:a879da095dbc92b8486d0149241c6ba49c07e05f8242c6112448cae05e0b8206";
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-drupal-cms",
@@ -28,7 +28,7 @@ export const drupalCmsProducer: RecipeProducer = {
   contentDigest: DRUPAL_CMS_CONTENT_DIGEST,
 };
 export const drupalCmsDefaults = {
-  php: "8.3",
+  php: PHP_DEFAULT,
   webserver: "apache",
   database: "mariadb:11.4",
   composer: "2",
