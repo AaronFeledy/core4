@@ -67,8 +67,8 @@ export const volumeObservationFailure = (providerId: string, operation = "observ
       "Inspect the existing container and its mounts; do not mutate a volume inferred from the app name.",
   });
 
-export const volumeCoordinationKey = (provider: VolumeObservationProvider, name: string) =>
-  Effect.gen(function* () {
+export const volumeCoordinationKey = Effect.fnUntraced(
+  function* (provider: VolumeObservationProvider, name: string) {
     if (provider.endpointNamespace) return JSON.stringify([`endpoint:${provider.endpointNamespace}`, name]);
     const request = provider.api.request;
     if (request) {
@@ -81,15 +81,17 @@ export const volumeCoordinationKey = (provider: VolumeObservationProvider, name:
       }
     }
     return undefined;
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
-const runWitness = (
-  provider: VolumeObservationProvider,
-  volume: NativeVolume,
-  witnessTarget: WitnessTarget,
-  ownerRoot?: AbsolutePath,
-) =>
-  Effect.gen(function* () {
+const runWitness = Effect.fnUntraced(
+  function* (
+    provider: VolumeObservationProvider,
+    volume: NativeVolume,
+    witnessTarget: WitnessTarget,
+    ownerRoot?: AbsolutePath,
+  ) {
     const command = volumeWitnessCommand({
       root: witnessTarget._tag === "mounted" ? witnessTarget.target.destination : VOLUME_WITNESS_MOUNT,
       ...(ownerRoot === undefined
@@ -106,17 +108,15 @@ const runWitness = (
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     }
     return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.NullOr(Witness)))(result.stdout);
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
 const supportsWitness = (volume: NativeVolume) =>
   volume.Driver === "local" && Object.keys(volume.Options ?? {}).length === 0;
 
-export const resolveNativeVolumeIdentity = (
-  provider: VolumeObservationProvider,
-  volume: NativeVolume,
-  witnessTarget?: WitnessTarget,
-): Effect.Effect<NativeVolumeIdentityResolution, VolumeOperationError> =>
-  Effect.gen(function* () {
+export const resolveNativeVolumeIdentity = Effect.fn("RuntimeProvider.resolveNativeVolumeIdentity")(
+  function* (provider: VolumeObservationProvider, volume: NativeVolume, witnessTarget?: WitnessTarget) {
     const generation = volume.Labels?.[VOLUME_INSTANCE_LABEL];
     const ownerRoot = volume.Labels?.[VOLUME_OWNER_LABEL];
     if (generation !== undefined && ownerRoot !== undefined) {
@@ -162,7 +162,9 @@ export const resolveNativeVolumeIdentity = (
             }),
           }),
     };
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
 export const adoptNativeVolumeWitness = (
   provider: VolumeObservationProvider,

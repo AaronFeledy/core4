@@ -5,7 +5,7 @@ import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
 import { StreamFrame } from "@lando/sdk/schema";
 
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { type DoctorNdjsonCheck, renderDoctorChecksAsNdjson } from "../../src/cli/commands/doctor-ndjson.ts";
 
 interface LeakyCheck extends DoctorNdjsonCheck {
@@ -36,7 +36,7 @@ const secretStoreLayer = (values: Record<string, string>) =>
 const secretsRedactor = (values: Record<string, string>) =>
   Effect.runPromise(
     Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")).pipe(
-      Effect.provide(RedactionServiceLive),
+      Effect.provide(RedactionService.layer),
       Effect.provide(secretStoreLayer(values)),
     ),
   );

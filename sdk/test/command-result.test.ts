@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import {
   buildCommandResultEnvelope,
@@ -28,8 +28,7 @@ const PersonResultSchema = Schema.Struct({
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object";
+const isRecord = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const findProjectionError = (
   value: unknown,

@@ -6,7 +6,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { resolveStatePath } from "@lando/state-store/paths";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Fiber, Layer } from "effect";
 import { appMutationLockIdentity, withAppMutationLock } from "../../src/operations/app-mutation-lock.ts";
 
@@ -15,7 +15,7 @@ test("forked app-lock children reuse the parent's lock, while a later unbound ac
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-app-lock-fiber-")));
   const app = { id: "fiber-local-app", root };
   const dependencies = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root })),
   );
   try {

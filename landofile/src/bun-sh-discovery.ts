@@ -192,110 +192,109 @@ export const canonicalIdFromRelativePath = (relativePath: string): { name: strin
   return { name, id: `app:${name}` };
 };
 
-const parseScriptFile = (
+const parseScriptFile = Effect.fnUntraced(function* (
   scriptPath: string,
   relativePath: string,
-): Effect.Effect<DiscoveredBunShellScript, BunShellScriptDiscoveryError> =>
-  Effect.gen(function* () {
-    const content = yield* Effect.tryPromise({
-      try: () => readFile(scriptPath, "utf-8"),
-      catch: (cause) =>
-        new BunShellScriptFrontMatterError({
-          message: `Failed to read .bun.sh script at ${scriptPath}: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
-          path: scriptPath,
-          remediation: FRONT_MATTER_REMEDIATION,
-          cause,
-        }),
-    });
-
-    if (content.trim() === "") {
-      return yield* Effect.fail(
-        new BunShellScriptEmptyError({
-          message: `.bun.sh script at ${scriptPath} is empty.`,
-          path: scriptPath,
-          remediation: "Add a `# ---` front-matter block and a script body, or delete the file.",
-        }),
-      );
-    }
-
-    const lines = content.split(/\r?\n/);
-    const { region, reason } = findFrontMatterRegion(lines);
-    if (region === undefined) {
-      return yield* Effect.fail(
-        new BunShellScriptFrontMatterError({
-          message:
-            reason === "missing"
-              ? `.bun.sh script at ${scriptPath} is missing the front-matter block.`
-              : `.bun.sh script at ${scriptPath} has a malformed front-matter block.`,
-          path: scriptPath,
-          remediation: FRONT_MATTER_REMEDIATION,
-        }),
-      );
-    }
-
-    const unsupportedFromBody = detectUnsupportedKeyFromBody(region.body);
-    if (unsupportedFromBody !== undefined) {
-      return yield* Effect.fail(
-        new NotImplementedError({
-          message: `.bun.sh front-matter field "${unsupportedFromBody.key}:" at ${scriptPath} is not supported yet.`,
-          commandId: "landofile.parse",
-          remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
-        }),
-      );
-    }
-
-    const { parsed, malformedLine } = parseFrontMatterBody(region.body);
-    if (malformedLine !== undefined) {
-      return yield* Effect.fail(
-        new BunShellScriptFrontMatterError({
-          message: `.bun.sh front-matter at ${scriptPath} has a malformed YAML line.`,
-          path: scriptPath,
-          issues: [`line ${malformedLine + 1}: expected "key: value"`],
-          remediation: FRONT_MATTER_REMEDIATION,
-        }),
-      );
-    }
-
-    const unsupportedKey = detectUnsupportedKey(parsed);
-    if (unsupportedKey !== undefined) {
-      return yield* Effect.fail(
-        new NotImplementedError({
-          message: `.bun.sh front-matter field "${unsupportedKey.key}:" at ${scriptPath} is not supported yet.`,
-          commandId: "landofile.parse",
-          remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
-        }),
-      );
-    }
-
-    const frontMatter = yield* decodeFrontMatter(scriptPath, parsed);
-
-    const canonical = canonicalIdFromRelativePath(relativePath);
-    if (canonical === null) {
-      return yield* Effect.fail(
-        new BunShellScriptFrontMatterError({
-          message: `.bun.sh script at ${scriptPath} has no usable canonical name (relative path "${relativePath}").`,
-          path: scriptPath,
-          remediation:
-            "Rename the file or directory so each path segment matches [a-z0-9_-]+ after lower-casing.",
-        }),
-      );
-    }
-
-    const service = frontMatter.service ?? HOST_SERVICE;
-    const summary = frontMatter.description ?? frontMatter.desc ?? frontMatter.summary ?? "";
-
-    return {
-      id: canonical.id,
-      name: canonical.name,
-      path: scriptPath,
-      relativePath,
-      service,
-      summary,
-      frontMatter,
-    } satisfies DiscoveredBunShellScript;
+): Effect.fn.Return<DiscoveredBunShellScript, BunShellScriptDiscoveryError> {
+  const content = yield* Effect.tryPromise({
+    try: () => readFile(scriptPath, "utf-8"),
+    catch: (cause) =>
+      new BunShellScriptFrontMatterError({
+        message: `Failed to read .bun.sh script at ${scriptPath}: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+        path: scriptPath,
+        remediation: FRONT_MATTER_REMEDIATION,
+        cause,
+      }),
   });
+
+  if (content.trim() === "") {
+    return yield* Effect.fail(
+      new BunShellScriptEmptyError({
+        message: `.bun.sh script at ${scriptPath} is empty.`,
+        path: scriptPath,
+        remediation: "Add a `# ---` front-matter block and a script body, or delete the file.",
+      }),
+    );
+  }
+
+  const lines = content.split(/\r?\n/);
+  const { region, reason } = findFrontMatterRegion(lines);
+  if (region === undefined) {
+    return yield* Effect.fail(
+      new BunShellScriptFrontMatterError({
+        message:
+          reason === "missing"
+            ? `.bun.sh script at ${scriptPath} is missing the front-matter block.`
+            : `.bun.sh script at ${scriptPath} has a malformed front-matter block.`,
+        path: scriptPath,
+        remediation: FRONT_MATTER_REMEDIATION,
+      }),
+    );
+  }
+
+  const unsupportedFromBody = detectUnsupportedKeyFromBody(region.body);
+  if (unsupportedFromBody !== undefined) {
+    return yield* Effect.fail(
+      new NotImplementedError({
+        message: `.bun.sh front-matter field "${unsupportedFromBody.key}:" at ${scriptPath} is not supported yet.`,
+        commandId: "landofile.parse",
+        remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
+      }),
+    );
+  }
+
+  const { parsed, malformedLine } = parseFrontMatterBody(region.body);
+  if (malformedLine !== undefined) {
+    return yield* Effect.fail(
+      new BunShellScriptFrontMatterError({
+        message: `.bun.sh front-matter at ${scriptPath} has a malformed YAML line.`,
+        path: scriptPath,
+        issues: [`line ${malformedLine + 1}: expected "key: value"`],
+        remediation: FRONT_MATTER_REMEDIATION,
+      }),
+    );
+  }
+
+  const unsupportedKey = detectUnsupportedKey(parsed);
+  if (unsupportedKey !== undefined) {
+    return yield* Effect.fail(
+      new NotImplementedError({
+        message: `.bun.sh front-matter field "${unsupportedKey.key}:" at ${scriptPath} is not supported yet.`,
+        commandId: "landofile.parse",
+        remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
+      }),
+    );
+  }
+
+  const frontMatter = yield* decodeFrontMatter(scriptPath, parsed);
+
+  const canonical = canonicalIdFromRelativePath(relativePath);
+  if (canonical === null) {
+    return yield* Effect.fail(
+      new BunShellScriptFrontMatterError({
+        message: `.bun.sh script at ${scriptPath} has no usable canonical name (relative path "${relativePath}").`,
+        path: scriptPath,
+        remediation:
+          "Rename the file or directory so each path segment matches [a-z0-9_-]+ after lower-casing.",
+      }),
+    );
+  }
+
+  const service = frontMatter.service ?? HOST_SERVICE;
+  const summary = frontMatter.description ?? frontMatter.desc ?? frontMatter.summary ?? "";
+
+  return {
+    id: canonical.id,
+    name: canonical.name,
+    path: scriptPath,
+    relativePath,
+    service,
+    summary,
+    frontMatter,
+  } satisfies DiscoveredBunShellScript;
+});
 
 interface WalkEntry {
   readonly absolutePath: string;
@@ -333,45 +332,44 @@ export interface DiscoverBunShellScriptsOptions {
   readonly appRoot: string;
 }
 
-export const discoverBunShellScripts = (
+export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScripts")(function* (
   options: DiscoverBunShellScriptsOptions,
-): Effect.Effect<ReadonlyArray<DiscoveredBunShellScript>, BunShellScriptDiscoveryError> =>
-  Effect.gen(function* () {
-    const scriptsDir = join(options.appRoot, SCRIPTS_DIRNAME);
-    const exists = yield* Effect.promise(() => scriptsDirExists(scriptsDir));
-    if (!exists) return [] as ReadonlyArray<DiscoveredBunShellScript>;
+): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, BunShellScriptDiscoveryError> {
+  const scriptsDir = join(options.appRoot, SCRIPTS_DIRNAME);
+  const exists = yield* Effect.promise(() => scriptsDirExists(scriptsDir));
+  if (!exists) return [] as ReadonlyArray<DiscoveredBunShellScript>;
 
-    const entries = yield* Effect.tryPromise({
-      try: () => walkScriptsDir(scriptsDir),
-      catch: (cause) =>
-        new BunShellScriptFrontMatterError({
-          message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
-          path: scriptsDir,
-          remediation: "Ensure the directory is readable by the current user.",
-          cause,
-        }),
-    });
-
-    const seen = new Map<string, string>();
-    const out: DiscoveredBunShellScript[] = [];
-    for (const entry of entries) {
-      const script = yield* parseScriptFile(entry.absolutePath, entry.relativePath);
-      const previous = seen.get(script.id);
-      if (previous !== undefined) {
-        return yield* Effect.fail(
-          new BunShellScriptFrontMatterError({
-            message: `.bun.sh scripts at ${previous} and ${entry.absolutePath} resolve to the same canonical id ${script.id}.`,
-            path: entry.absolutePath,
-            remediation:
-              "Rename one of the conflicting scripts so each canonical id (app:<segments>) is unique.",
-          }),
-        );
-      }
-      seen.set(script.id, entry.absolutePath);
-      out.push(script);
-    }
-
-    return out.sort((a, b) => a.id.localeCompare(b.id));
+  const entries = yield* Effect.tryPromise({
+    try: () => walkScriptsDir(scriptsDir),
+    catch: (cause) =>
+      new BunShellScriptFrontMatterError({
+        message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+        path: scriptsDir,
+        remediation: "Ensure the directory is readable by the current user.",
+        cause,
+      }),
   });
+
+  const seen = new Map<string, string>();
+  const out: DiscoveredBunShellScript[] = [];
+  for (const entry of entries) {
+    const script = yield* parseScriptFile(entry.absolutePath, entry.relativePath);
+    const previous = seen.get(script.id);
+    if (previous !== undefined) {
+      return yield* Effect.fail(
+        new BunShellScriptFrontMatterError({
+          message: `.bun.sh scripts at ${previous} and ${entry.absolutePath} resolve to the same canonical id ${script.id}.`,
+          path: entry.absolutePath,
+          remediation:
+            "Rename one of the conflicting scripts so each canonical id (app:<segments>) is unique.",
+        }),
+      );
+    }
+    seen.set(script.id, entry.absolutePath);
+    out.push(script);
+  }
+
+  return out.sort((a, b) => a.id.localeCompare(b.id));
+});

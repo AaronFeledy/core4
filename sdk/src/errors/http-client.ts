@@ -7,23 +7,11 @@ const HttpTrustErrorKind = Schema.Literals([
   "blocked-endpoint",
 ]);
 
-export class HttpRequestError extends Schema.TaggedError<HttpRequestError>()("HttpRequestError", {
-  message: Schema.String,
-  urlOrigin: Schema.String,
-  status: Schema.optional(Schema.Number),
-  trustCause: Schema.optional(HttpTrustErrorKind),
-  remediation: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Unknown),
-}) {}
-
-export class HttpUploadError extends Schema.TaggedError<HttpUploadError>()("HttpUploadError", {
-  message: Schema.String,
-  urlOrigin: Schema.String,
-  status: Schema.optional(Schema.Number),
-  remediation: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Unknown),
-}) {}
-
+/**
+ * Network-trust failure used as an Effect HTTP transport cause (for example
+ * TLS/CA/proxy rejection). Kept after the SDK-owned HttpClient contract was
+ * replaced by Effect's `effect/http` `HttpClient`.
+ */
 export class HttpTrustError extends Schema.TaggedError<HttpTrustError>()("HttpTrustError", {
   message: Schema.String,
   urlOrigin: Schema.String,
@@ -31,12 +19,3 @@ export class HttpTrustError extends Schema.TaggedError<HttpTrustError>()("HttpTr
   remediation: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}
-
-export class HttpClientUnavailableError extends Schema.TaggedError<HttpClientUnavailableError>()(
-  "HttpClientUnavailableError",
-  {
-    message: Schema.String,
-    httpClientId: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
-  },
-) {}

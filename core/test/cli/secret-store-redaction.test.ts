@@ -8,7 +8,7 @@ import {
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -92,7 +92,7 @@ test.each([false, true])(
     const store = RoutedSecretStoreLive.pipe(
       Layer.provide(Layer.mergeAll(base.layer, paths, makeSecretStoreRegistryLive([plugin]))),
     );
-    const redaction = RedactionServiceLive.pipe(Layer.provide(store));
+    const redaction = RedactionService.layer.pipe(Layer.provide(store));
     const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
     const plan = Schema.decodeUnknownSync(AppPlan)({
       id: "cli-secrets",

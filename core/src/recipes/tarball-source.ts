@@ -25,8 +25,8 @@ import { ConfigService, Downloader } from "@lando/sdk/services";
 
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClientLive } from "@lando/http-client/live";
+import { layer as downloaderLayer } from "@lando/http-client/downloader";
+import { layer as httpClientLayer } from "@lando/http-client/live";
 import { sha256Hex } from "@lando/sdk/digest";
 import { publish } from "./git-source";
 import type { ResolvedRecipe } from "./source";
@@ -133,7 +133,7 @@ export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              DownloaderLive.pipe(Layer.provide(HttpClientLive.pipe(Layer.provide(EventServiceLive)))),
+              downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(EventServiceLive)))),
               ConfigServiceLive,
             ),
           ),

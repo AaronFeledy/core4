@@ -75,7 +75,7 @@ describe("Landofile package seam", () => {
     expect(isJsonObject(packageModule)).toBe(true);
     if (!isJsonObject(packageModule))
       throw new TypeError("Expected the Landofile entry point to be a module");
-    expect(typeof packageModule.makeLandofileServiceLive).toBe("function");
+    expect(typeof packageModule.layer).toBe("function");
     expect(stringRecord(packageManifest.exports)).toMatchObject({
       ".": "./src/index.ts",
       "./includes": "./src/includes.ts",

@@ -44,9 +44,9 @@ const plantStaleLock = (file: AbsolutePathType): Effect.Effect<void> =>
   });
 
 describe("StateStore contract suite", () => {
-  test("StateStoreLive satisfies the StateStore contract", async () => {
+  test("StateStore disk implementation satisfies the StateStore contract", async () => {
     const harness: StateStoreContractHarness = {
-      name: "StateStoreLive",
+      name: "StateStore disk layer",
       store: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       root,
       readRaw,

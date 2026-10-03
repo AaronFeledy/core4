@@ -10,8 +10,8 @@ import { ConfigService, PathsService } from "@lando/sdk/services";
 
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { StateStoreLive } from "@lando/state-store/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import * as StateStoreLayer from "@lando/state-store/service";
 
 import {
   type AppsListEntry,
@@ -72,8 +72,8 @@ const runList = (
               systemPluginRoot: userDataRoot,
             }),
           ),
-          PrivateFileAccessLive,
-          StateStoreLive,
+          PrivateFileAccessService.layer,
+          StateStoreLayer.layer,
           FileSystemLive,
         ),
       ),

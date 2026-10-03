@@ -8,7 +8,7 @@ import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { EventService, PathsService, SshService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect } from "effect";
 import * as operation from "../../src/operations/start-ssh-agent.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
@@ -64,7 +64,7 @@ const run = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(EventServiceLive),
-      Effect.provide(PrivateFileAccessLive),
+      Effect.provide(PrivateFileAccessService.layer),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
     ),
   );

@@ -1,8 +1,6 @@
+import { type VolumeInfo, VolumeLocator, type VolumeRef } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { VOLUME_INSTANCE_LABEL, VOLUME_OWNER_LABEL } from "./labels.ts";
-
-import type { VolumeOperationError } from "@lando/sdk/errors";
-import { type VolumeInfo, VolumeLocator, type VolumeRef } from "@lando/sdk/schema";
 
 import {
   type MountedVolumeTarget,
@@ -29,8 +27,8 @@ const Mount = Schema.Struct({
   Name: Schema.optionalKey(Schema.String),
 });
 const Container = Schema.Struct({ Mounts: Schema.Array(Mount) });
-const resolveMountedVolume = (provider: VolumeObservationProvider, target: MountedVolumeTarget) =>
-  Effect.gen(function* () {
+const resolveMountedVolume = Effect.fnUntraced(
+  function* (provider: VolumeObservationProvider, target: MountedVolumeTarget) {
     const request = provider.api.request;
     if (request === undefined) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     const containerResponse = yield* request({
@@ -54,13 +52,12 @@ const resolveMountedVolume = (provider: VolumeObservationProvider, target: Mount
     );
     if (volume.Name !== mount.Name) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     return volume;
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
-export const locateVolume = (
-  provider: VolumeObservationProvider,
-  ref: VolumeRef,
-): Effect.Effect<typeof VolumeLocator.Type, VolumeOperationError> =>
-  Effect.gen(function* () {
+export const locateVolume = Effect.fn("RuntimeProvider.locateVolume")(
+  function* (provider: VolumeObservationProvider, ref: VolumeRef) {
     const endpointNamespace = provider.endpointNamespace;
     const request = provider.api.request;
     if (endpointNamespace === undefined || request === undefined) {
@@ -87,7 +84,10 @@ export const locateVolume = (
       nativeName: volume.Name,
       ...(resolution.identity === undefined ? {} : { identity: resolution.identity }),
     });
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId, "locateVolume")));
+  },
+  (effect, provider) =>
+    Effect.mapError(effect, () => volumeObservationFailure(provider.providerId, "locateVolume")),
+);
 
 export const volumeInfo = (target: MountedVolumeTarget, volume: NativeVolume): VolumeInfo => {
   const instanceId = volume.Labels?.[VOLUME_INSTANCE_LABEL];
@@ -98,22 +98,18 @@ export const volumeInfo = (target: MountedVolumeTarget, volume: NativeVolume): V
   };
 };
 
-export const observeMountedVolume = (
-  provider: VolumeObservationProvider,
-  target: MountedVolumeTarget,
-): Effect.Effect<VolumeInfo, VolumeOperationError> =>
-  Effect.gen(function* () {
+export const observeMountedVolume = Effect.fn("RuntimeProvider.observeMountedVolume")(
+  function* (provider: VolumeObservationProvider, target: MountedVolumeTarget) {
     const volume = yield* resolveMountedVolume(provider, target);
     const base = volumeInfo(target, volume);
     const resolution = yield* resolveNativeVolumeIdentity(provider, volume, { _tag: "mounted", target });
     return resolution.identity === undefined ? base : { ...base, identity: resolution.identity };
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
-export const adoptMountedVolume = (
-  provider: VolumeObservationProvider,
-  target: VolumeAdoptionTarget,
-): Effect.Effect<VolumeInfo, VolumeOperationError> =>
-  Effect.gen(function* () {
+export const adoptMountedVolume = Effect.fn("RuntimeProvider.adoptMountedVolume")(
+  function* (provider: VolumeObservationProvider, target: VolumeAdoptionTarget) {
     const volume = yield* resolveMountedVolume(provider, target);
     if (volume.Driver !== "local" || Object.keys(volume.Options ?? {}).length !== 0)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
@@ -157,4 +153,7 @@ export const adoptMountedVolume = (
       ...volumeInfo(target, current),
       identity,
     };
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId, "adoptVolume")));
+  },
+  (effect, provider) =>
+    Effect.mapError(effect, () => volumeObservationFailure(provider.providerId, "adoptVolume")),
+);

@@ -10,14 +10,11 @@ import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/se
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
-import {
-  ManagedFileServiceLive as ManagedFileServiceUnprovided,
-  makeDiskBackend,
-  makeManagedFileService,
-} from "@lando/managed-file/service";
+import * as ManagedFileLayer from "@lando/managed-file/service";
+import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-const ManagedFileServiceLive = ManagedFileServiceUnprovided.pipe(Layer.provide(ProcessRunnerLive));
-import { RedactionServiceLive } from "@lando/redaction/service";
+const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+import { RedactionService } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
@@ -156,7 +153,7 @@ describe("ManagedFile lifecycle events", () => {
 });
 
 describe("ManagedFile lifecycle events (real EventService wiring)", () => {
-  test("ManagedFileServiceLive publishes redacted events that omit secret content", async () => {
+  test("ManagedFileService publishes redacted events that omit secret content", async () => {
     const base = await realpath(await mkdtemp(join(tmpdir(), "lando-mfe-base-")));
     const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-mfe-data-")));
     const previous = process.env.LANDO_USER_DATA_ROOT;
@@ -164,10 +161,7 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
     const secret = "integration-secret-7Q2x";
 
     try {
-      const layer = Layer.mergeAll(
-        EventServiceLive,
-        ManagedFileServiceLive.pipe(Layer.provide(EventServiceLive)),
-      );
+      const layer = Layer.mergeAll(EventServiceLive, managedFileLayer.pipe(Layer.provide(EventServiceLive)));
 
       const collected = await Effect.runPromise(
         Effect.scoped(
@@ -217,12 +211,12 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
     // must mask it out of the emitted event's `owner` field.
     const secret = "owner-token-9f3a-SHHH";
     const secretStore = makeTestSecretStore({ secrets: { OWNER_TOKEN: secret } });
-    const redactionLive = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+    const redactionLive = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
 
     try {
       const layer = Layer.mergeAll(
         EventServiceLive,
-        ManagedFileServiceLive.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, redactionLive))),
+        managedFileLayer.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, redactionLive))),
       );
 
       const collected = await Effect.runPromise(

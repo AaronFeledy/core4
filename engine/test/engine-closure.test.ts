@@ -180,7 +180,7 @@ describe("Engine closure", () => {
 
   test("engine runtime services operate using engine-only layers", async () => {
     // Given
-    const [{ EventServiceLive }, { RedactionServiceLive }] = await Promise.all([
+    const [{ EventServiceLive }, { RedactionService }] = await Promise.all([
       import("@lando/engine/services/event-service"),
       import("@lando/redaction/service"),
     ]);
@@ -190,7 +190,7 @@ describe("Engine closure", () => {
       has: () => Effect.succeed(false),
       list: Effect.succeed([]),
     });
-    const redaction = RedactionServiceLive.pipe(Layer.provide(secretStore));
+    const redaction = RedactionService.layer.pipe(Layer.provide(secretStore));
     const layer = EventServiceLive.pipe(Layer.provide(redaction));
 
     // When

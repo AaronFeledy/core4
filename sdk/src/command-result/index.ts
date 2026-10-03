@@ -101,32 +101,33 @@ const encodeResult = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
 
 const isJsonProjectionError = (error: unknown): boolean => asRecord(error)?._tag === "JsonProjectionError";
 
-const encodeCommandEnvelope = (options: EncodeCommandResultOptions): Effect.Effect<unknown, unknown> =>
-  Effect.gen(function* () {
-    const base = {
-      apiVersion: "v4" as const,
-      command: options.command,
-      warnings: [...(options.warnings ?? [])],
-      deprecations: [...(options.deprecations ?? [])],
-    };
-    const envelope =
-      options.outcome._tag === "success"
-        ? {
-            ...base,
-            ok: true,
-            result: applyProjectResultKeys(
-              options.resultSchema,
-              yield* encodeResult(options.resultSchema, options.outcome.value),
-              options.projectResultKeys,
-            ),
-          }
-        : {
-            ...base,
-            ok: false,
-            error: taggedErrorJson(options.outcome.error),
-          };
-    return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
-  });
+const encodeCommandEnvelope = Effect.fnUntraced(function* (
+  options: EncodeCommandResultOptions,
+): Effect.fn.Return<unknown, unknown> {
+  const base = {
+    apiVersion: "v4" as const,
+    command: options.command,
+    warnings: [...(options.warnings ?? [])],
+    deprecations: [...(options.deprecations ?? [])],
+  };
+  const envelope =
+    options.outcome._tag === "success"
+      ? {
+          ...base,
+          ok: true,
+          result: applyProjectResultKeys(
+            options.resultSchema,
+            yield* encodeResult(options.resultSchema, options.outcome.value),
+            options.projectResultKeys,
+          ),
+        }
+      : {
+          ...base,
+          ok: false,
+          error: taggedErrorJson(options.outcome.error),
+        };
+  return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
+});
 
 const fallbackEnvelope = (command: string): unknown => ({
   apiVersion: "v4",

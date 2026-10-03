@@ -7,7 +7,7 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/cor
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
@@ -267,7 +267,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
       }),
     };
     const secretStore = makeTestSecretStore({ secrets: { DUPLICATE_DOCTOR_TOKEN: secret } });
-    const redactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+    const redactionLayer = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
     const layers = Layer.merge(layersFor(statusRegistry(TestRuntimeProvider.getStatus)), redactionLayer);
 
     // When

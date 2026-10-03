@@ -1,4 +1,4 @@
-import { Stream } from "effect";
+import { DateTime, Option, Stream } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
 import { type ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
@@ -41,12 +41,17 @@ const parseLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: 
     return { service: service.name, stream: streamName, line };
   }
 
-  const timestamp = new Date(match[1] ?? "");
-  if (Number.isNaN(timestamp.getTime())) {
+  const parsed = DateTime.make(match[1] ?? "");
+  if (Option.isNone(parsed)) {
     return { service: service.name, stream: streamName, line };
   }
 
-  return { service: service.name, stream: streamName, line: match[2] ?? "", timestamp };
+  return {
+    service: service.name,
+    stream: streamName,
+    line: match[2] ?? "",
+    timestamp: DateTime.toDate(parsed.value),
+  };
 };
 
 const makeLogsDecoder = (service: ServicePlan) =>
@@ -56,8 +61,8 @@ const fileSourceSince = (value: string | undefined): number | undefined => {
   if (value === undefined) return undefined;
   const numeric = Number(value);
   if (Number.isFinite(numeric)) return numeric;
-  const timestamp = new Date(value).getTime();
-  return Number.isNaN(timestamp) ? undefined : Math.floor(timestamp / 1000);
+  const parsed = DateTime.make(value);
+  return Option.isNone(parsed) ? undefined : Math.floor(DateTime.toEpochMillis(parsed.value) / 1000);
 };
 
 export const logs = (
@@ -65,60 +70,61 @@ export const logs = (
   target: LogTarget,
   options: Partial<LogOptions>,
   runtime: LogsOptions,
-): Stream.Stream<LogChunk, ProviderError> => {
-  const ctx = runtime.ctx;
-  const service = plan.services[target.service];
-  if (service === undefined) {
-    return Stream.fail(missingService(ctx, target));
-  }
-  if (runtime.api === undefined) {
-    return Stream.fail(apiRequired(ctx));
-  }
-
-  const query = new URLSearchParams({
-    stdout: "true",
-    stderr: "true",
-    follow: String(options.follow ?? true),
-    timestamps: "true",
-  });
-  if (options.tail !== undefined) {
-    query.set("tail", String(options.tail));
-  }
-  if (options.since !== undefined) {
-    query.set("since", options.since);
-  }
-
-  const deps = { api: runtime.api, ctx };
-  const logFileAccess = runtime.logFileAccess;
-  const logSources = options.sources ?? service.logSources ?? [];
-  const since = fileSourceSince(options.since);
-
-  return Stream.suspend(() => {
-    const fileStream =
-      logFileAccess === undefined || !logSources.some((source) => source.strategy === "follow")
-        ? Stream.empty
-        : logFollowLineChunks(
-            followLogSources({
-              service: service.name,
-              sources: logSources,
-              follow: options.follow ?? true,
-              access: logFileAccess,
-              ...(options.tail === undefined ? {} : { tail: options.tail }),
-              ...(since === undefined ? {} : { since }),
-              ...(options.source === undefined ? {} : { source: options.source }),
-            }),
-          );
-
-    if (options.source !== undefined) {
-      return fileStream;
+): Stream.Stream<LogChunk, ProviderError> =>
+  Stream.suspend(() => {
+    const ctx = runtime.ctx;
+    const service = plan.services[target.service];
+    if (service === undefined) {
+      return Stream.fail(missingService(ctx, target));
+    }
+    if (runtime.api === undefined) {
+      return Stream.fail(apiRequired(ctx));
     }
 
-    const decodeChunk = makeLogsDecoder(service);
-    const consoleStream = stream(deps, {
-      method: "GET",
-      path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
-    }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+    const query = new URLSearchParams({
+      stdout: "true",
+      stderr: "true",
+      follow: String(options.follow ?? true),
+      timestamps: "true",
+    });
+    if (options.tail !== undefined) {
+      query.set("tail", String(options.tail));
+    }
+    if (options.since !== undefined) {
+      query.set("since", options.since);
+    }
 
-    return Stream.merge(consoleStream, fileStream);
-  });
-};
+    const deps = { api: runtime.api, ctx };
+    const logFileAccess = runtime.logFileAccess;
+    const logSources = options.sources ?? service.logSources ?? [];
+    const since = fileSourceSince(options.since);
+
+    return Stream.suspend(() => {
+      const fileStream =
+        logFileAccess === undefined || !logSources.some((source) => source.strategy === "follow")
+          ? Stream.empty
+          : logFollowLineChunks(
+              followLogSources({
+                service: service.name,
+                sources: logSources,
+                follow: options.follow ?? true,
+                access: logFileAccess,
+                ...(options.tail === undefined ? {} : { tail: options.tail }),
+                ...(since === undefined ? {} : { since }),
+                ...(options.source === undefined ? {} : { source: options.source }),
+              }),
+            );
+
+      if (options.source !== undefined) {
+        return fileStream;
+      }
+
+      const decodeChunk = makeLogsDecoder(service);
+      const consoleStream = stream(deps, {
+        method: "GET",
+        path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
+      }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+
+      return Stream.merge(consoleStream, fileStream);
+    });
+  }).pipe(Stream.withSpan("RuntimeProvider.logs"));

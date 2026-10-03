@@ -16,14 +16,14 @@ import {
   type StateStoreShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { DataMoverLive } from "../src/service.ts";
 
 test("the live shared port reads engine creation state and does not expose a creation writer", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-mover-initialization-"));
   try {
-    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
     const store: StateStoreShape = {
       ...live,
       open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),

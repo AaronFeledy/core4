@@ -76,7 +76,7 @@ export type PromptMode = "auto" | "interactive" | "non-interactive";
 /**
  * Answer-source and interactivity options threaded into a prompt batch.
  *
- * Type-only: the default `InteractionServiceLive` implementation resolves the answer
+ * Type-only: the default interaction-service implementation resolves the answer
  * precedence (explicit answer → default when non-interactive → interactive
  * prompt → `InteractionRequiredError`).
  */

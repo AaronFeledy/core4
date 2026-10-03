@@ -27,7 +27,7 @@ import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpDispatchDeps, type McpRunInput, dispatchTool } from "@lando/mcp/dispatch";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry } from "@lando/mcp/registry";
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
 import type { LandoCommandSpec } from "../spec/command-base";
 import { renderSolution } from "./doctor";
@@ -200,7 +200,7 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
  * Default layer for {@link mcpDoctor}: provides `RedactionService` from the
  * env-backed `SecretStore`, so the check needs no ambient services beyond it.
  */
-export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionServiceLive.pipe(
+export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionService.layer.pipe(
   Layer.provide(SecretStoreLive),
 );
 

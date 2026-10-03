@@ -19,7 +19,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
@@ -83,7 +83,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     ProviderExecToolingEngineLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),

@@ -19,10 +19,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./service": "./src/service.ts",
     "./live": "./src/live.ts",
     "./network-trust": "./src/network-trust.ts",
-    "./timeout": "./src/timeout.ts",
     "./downloader": "./src/downloader.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

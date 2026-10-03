@@ -3,7 +3,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { EventService, PathsService, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import {
   resolveSshAgentUpstream,
@@ -82,7 +82,7 @@ test("managed sidecar uses the plugin volume without host probing or worker serv
       Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "darwin" })),
       Effect.provide(EventServiceLive),
-      Effect.provide(PrivateFileAccessLive),
+      Effect.provide(PrivateFileAccessService.layer),
     ),
   );
   // Then
@@ -113,7 +113,7 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
       Effect.provide(EventServiceLive),
-      Effect.provide(PrivateFileAccessLive),
+      Effect.provide(PrivateFileAccessService.layer),
     ),
   );
   // Then

@@ -10,7 +10,7 @@ import { makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError } from "@lando/sdk/errors";
 
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import {
@@ -250,7 +250,7 @@ describe("isolateDoctorSection", () => {
     const secret = "registered-secret-ABCDEF-987654321";
     const failureMessage = `${"x".repeat(1_990)}${secret}${"y".repeat(2_000)}`;
     const secretStore = makeTestSecretStore({ secrets: { DOCTOR_TOKEN: secret } });
-    const redactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+    const redactionLayer = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
 
     // When
     const outcome = await Effect.runPromise(

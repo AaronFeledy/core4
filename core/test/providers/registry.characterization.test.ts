@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 
 import { type Context, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import { GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
@@ -51,6 +53,7 @@ const buildDependencyLayer = (
   | ManagedFileService
   | PathsService
   | StateStore
+  | HttpClient.HttpClient
 > => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({
     telemetry: { enabled: false },
@@ -75,11 +78,15 @@ const buildDependencyLayer = (
   const stateStoreHandle = makeTestStateStore();
   const landoPaths = makeLandoPaths({ userDataRoot: "/tmp/registry-characterization" });
 
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
   return Layer.mergeAll(
     Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
     Layer.succeed(ConfigService, configService),
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(Downloader, downloaderHandle.service),
+    Layer.succeed(HttpClient.HttpClient, httpClient),
     Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
     Layer.succeed(ManagedFileService, managedFileHandle.service),
     Layer.succeed(PathsService, landoPaths),

@@ -7,10 +7,11 @@ test("a source-mode command exits after interrupting a hanging telemetry sink", 
   const script = String.raw`
     import { Deferred, Effect, Layer } from "effect";
     import { Telemetry } from "@lando/sdk/services";
-    import { makeTelemetryLayer, TelemetrySinks } from "@lando/telemetry/service";
+    import * as TelemetryLayer from "@lando/telemetry/service";
+    import { TelemetrySinks } from "@lando/telemetry/service";
     import { runWithRendererHandling } from "./core/src/cli/renderer-boundary.ts";
     const started = Effect.runSync(Deferred.make());
-    const runtime = makeTelemetryLayer(true, { flushBudgetMillis: 50 }).pipe(
+    const runtime = TelemetryLayer.layer(true, { flushBudgetMillis: 50 }).pipe(
       Layer.provide(Layer.succeed(TelemetrySinks, [{
         id: "hanging-characterization-sink",
         record: () => Deferred.succeed(started, undefined).pipe(

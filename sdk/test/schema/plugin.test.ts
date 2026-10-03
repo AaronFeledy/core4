@@ -71,13 +71,6 @@ describe("PluginManifest", () => {
           {
             id: "legacy-http-client",
             module: "./http-client.ts",
-            capabilities: {
-              schemes: ["https"],
-              streaming: true,
-              upload: true,
-              customCa: true,
-              proxyAware: true,
-            },
             enabledByDefault: true,
             summary: "Legacy HTTP client.",
             deprecated: notice,

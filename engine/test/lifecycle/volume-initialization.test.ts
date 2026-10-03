@@ -14,7 +14,7 @@ import {
   type VolumeIdentity,
 } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../../src/lifecycle/volume-initialization.ts";
@@ -69,7 +69,7 @@ test.each(["created", "existing", "adopted", "replaced"] as const)(
   async (kind) => {
     const root = await mkdtemp(join(tmpdir(), "lando-creation-test-"));
     try {
-      const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+      const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
       const store: StateStoreShape = {
         open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),
         withLock: (_key, body) => body,
@@ -109,7 +109,7 @@ test.each(["created", "existing", "adopted", "replaced"] as const)(
 test("created-volume persistence reuses the active lifecycle volume lock", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-creation-lock-test-"));
   try {
-    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
     let lockCalls = 0;
     const store: StateStoreShape = {
       open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),

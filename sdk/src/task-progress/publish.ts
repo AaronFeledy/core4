@@ -20,8 +20,6 @@ import type { EventServiceShape } from "../services/events.ts";
 
 export type ProgressEmitter = Pick<EventServiceShape, "publish">;
 
-const nowUtc = () => DateTime.nowUnsafe();
-
 const publishEvent = (
   events: ProgressEmitter | undefined,
   event: Parameters<ProgressEmitter["publish"]>[0],
@@ -34,17 +32,22 @@ export interface TreeStartArgs {
   readonly mode?: "list" | "grid";
 }
 
-export const publishTreeStart = (events: ProgressEmitter | undefined, args: TreeStartArgs) =>
-  publishEvent(
+export const publishTreeStart = Effect.fnUntraced(function* (
+  events: ProgressEmitter | undefined,
+  args: TreeStartArgs,
+) {
+  const timestamp = yield* DateTime.now;
+  return yield* publishEvent(
     events,
     TaskTreeStartEvent.make({
       parentId: args.parentId,
       label: args.label,
       children: args.children,
       ...(args.mode === undefined ? {} : { mode: args.mode }),
-      timestamp: nowUtc(),
+      timestamp,
     }),
   );
+});
 
 export interface TaskStartArgs {
   readonly taskId: string;
@@ -53,17 +56,22 @@ export interface TaskStartArgs {
   readonly transcriptPath?: AbsolutePath;
 }
 
-export const publishTaskStart = (events: ProgressEmitter | undefined, args: TaskStartArgs) =>
-  publishEvent(
+export const publishTaskStart = Effect.fnUntraced(function* (
+  events: ProgressEmitter | undefined,
+  args: TaskStartArgs,
+) {
+  const timestamp = yield* DateTime.now;
+  return yield* publishEvent(
     events,
     TaskStartEvent.make({
       taskId: args.taskId,
       ...(args.parentId === undefined ? {} : { parentId: args.parentId }),
       label: args.label,
       ...(args.transcriptPath === undefined ? {} : { transcriptPath: args.transcriptPath }),
-      timestamp: nowUtc(),
+      timestamp,
     }),
   );
+});
 
 export interface TaskDetailArgs {
   readonly taskId: string;
@@ -71,16 +79,21 @@ export interface TaskDetailArgs {
   readonly line: string;
 }
 
-export const publishTaskDetail = (events: ProgressEmitter | undefined, args: TaskDetailArgs) =>
-  publishEvent(
+export const publishTaskDetail = Effect.fnUntraced(function* (
+  events: ProgressEmitter | undefined,
+  args: TaskDetailArgs,
+) {
+  const timestamp = yield* DateTime.now;
+  return yield* publishEvent(
     events,
     TaskDetailEvent.make({
       taskId: args.taskId,
       stream: args.stream,
       line: args.line,
-      timestamp: nowUtc(),
+      timestamp,
     }),
   );
+});
 
 export type TaskOutcome = "ok" | "warn";
 
@@ -91,17 +104,22 @@ export interface TaskCompleteArgs {
   readonly durationMs?: number;
 }
 
-export const publishTaskComplete = (events: ProgressEmitter | undefined, args: TaskCompleteArgs) =>
-  publishEvent(
+export const publishTaskComplete = Effect.fnUntraced(function* (
+  events: ProgressEmitter | undefined,
+  args: TaskCompleteArgs,
+) {
+  const timestamp = yield* DateTime.now;
+  return yield* publishEvent(
     events,
     TaskCompleteEvent.make({
       taskId: args.taskId,
       ...(args.summary === undefined ? {} : { summary: args.summary }),
       ...(args.outcome === undefined ? {} : { outcome: args.outcome }),
       ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
-      timestamp: nowUtc(),
+      timestamp,
     }),
   );
+});
 
 export interface TaskFailArgs {
   readonly taskId: string;
@@ -111,8 +129,12 @@ export interface TaskFailArgs {
   readonly durationMs?: number;
 }
 
-export const publishTaskFail = (events: ProgressEmitter | undefined, args: TaskFailArgs) =>
-  publishEvent(
+export const publishTaskFail = Effect.fnUntraced(function* (
+  events: ProgressEmitter | undefined,
+  args: TaskFailArgs,
+) {
+  const timestamp = yield* DateTime.now;
+  return yield* publishEvent(
     events,
     TaskFailEvent.make({
       taskId: args.taskId,
@@ -120,9 +142,10 @@ export const publishTaskFail = (events: ProgressEmitter | undefined, args: TaskF
       ...(args.exitCode === undefined ? {} : { exitCode: args.exitCode }),
       ...(args.remediation === undefined ? {} : { remediation: args.remediation }),
       ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
-      timestamp: nowUtc(),
+      timestamp,
     }),
   );
+});
 
 export interface TreeCompleteArgs {
   readonly parentId: string;
@@ -132,8 +155,12 @@ export interface TreeCompleteArgs {
   readonly durationMs?: number;
 }
 
-export const publishTreeComplete = (events: ProgressEmitter | undefined, args: TreeCompleteArgs) =>
-  publishEvent(
+export const publishTreeComplete = Effect.fnUntraced(function* (
+  events: ProgressEmitter | undefined,
+  args: TreeCompleteArgs,
+) {
+  const timestamp = yield* DateTime.now;
+  return yield* publishEvent(
     events,
     TaskTreeCompleteEvent.make({
       parentId: args.parentId,
@@ -141,6 +168,7 @@ export const publishTreeComplete = (events: ProgressEmitter | undefined, args: T
       succeeded: args.succeeded,
       failed: args.failed,
       ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
-      timestamp: nowUtc(),
+      timestamp,
     }),
   );
+});

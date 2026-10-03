@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
@@ -13,17 +15,16 @@ import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import {
   type DownloaderEvents,
+  makeDownloaderEvents,
   makeDownloaderService,
-  makeLiveDownloaderEvents,
 } from "@lando/http-client/downloader";
-import type { HttpClientShape } from "@lando/http-client/service";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 
 /**
  * These assertions target each surface's shipped redaction point:
- * ShellRunner and BunSelfRunner redact emitted events through RedactionServiceLive;
+ * ShellRunner and BunSelfRunner redact emitted events through RedactionService.layer;
  * ShellRunner also redacts ShellExecError fields before failing; Downloader
  * redacts lifecycle events at its DownloaderEvents seam; HostProxyServiceDisabled
  * emits only static status fields while host-proxy diagnostics use the CLI
@@ -51,7 +52,7 @@ const secretStoreLayer = Layer.succeed(SecretStore, {
   list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
 } satisfies Context.Service.Shape<typeof SecretStore>);
 
-const realRedactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer));
+const realRedactionLayer = RedactionService.layer.pipe(Layer.provide(secretStoreLayer));
 const shellRunnerLive = makeShellRunnerLive(() => {
   throw new TypeError("Interactive shell IO is not used by redaction service tests.");
 });
@@ -79,29 +80,15 @@ const capturingDownloaderEvents = (): {
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   } satisfies Context.Service.Shape<typeof EventService>;
-  return { events: makeLiveDownloaderEvents(Option.some(eventService)), captured };
+  return { events: makeDownloaderEvents(Option.some(eventService)), captured };
 };
 
-const fakeHttpClient = (url: string, payload: string): HttpClientShape => ({
-  id: "redaction-proof-http",
-  capabilities: {
-    schemes: ["https"],
-    streaming: true,
-    upload: false,
-    customCa: false,
-    proxyAware: false,
-  },
-  request: () => Effect.die("request not used"),
-  stream: (request) =>
+const fakeHttpClient = (url: string, payload: string): HttpClient.HttpClient =>
+  HttpClient.make((request) =>
     request.url === url
-      ? Effect.succeed({
-          status: 200,
-          headers: [],
-          body: Stream.fromIterable([new TextEncoder().encode(payload)]),
-        })
+      ? Effect.succeed(HttpClientResponse.fromWeb(request, new Response(payload)))
       : Effect.die(new Error(`unexpected download URL ${request.url}`)),
-  upload: () => Effect.die("upload not used"),
-});
+  );
 
 const shellSingleQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -120,7 +107,7 @@ const assertPatternSecretsGone = (serialized: string): void =>
   assertCanonicalRedaction(serialized, [REGISTERED_SECRET, UNREGISTERED_BEARER]);
 
 describe("audited services compose canonical redaction", () => {
-  test("ShellRunner redacts shell events and ShellExecError fields through RedactionServiceLive", async () => {
+  test("ShellRunner redacts shell events and ShellExecError fields through RedactionService.layer", async () => {
     const events: LandoEvent[] = [];
     const cwd = await mkdtemp(join(tmpdir(), `lando-redaction-${REGISTERED_SECRET}-`));
     try {
@@ -164,7 +151,7 @@ describe("audited services compose canonical redaction", () => {
     }
   });
 
-  test("BunSelfRunner redacts published event fields through RedactionServiceLive", async () => {
+  test("BunSelfRunner redacts published event fields through RedactionService.layer", async () => {
     const events: LandoEvent[] = [];
     const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
 

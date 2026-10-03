@@ -1,12 +1,12 @@
 import { Semaphore } from "effect";
-// In-memory `StateStore` test double. Mirrors `StateStoreLive` semantics (codec
+// In-memory `StateStore` test double. Mirrors the disk layer's semantics (codec
 // framing, version mismatch, corruption policy, path containment, advisory
 // serialization) against a `Map` of absolute paths to bytes so
 // `runStateStoreContract` can run without disk IO.
 
 import { basename, dirname, resolve } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Clock, Effect, Layer } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
@@ -74,12 +74,16 @@ const buildInMemoryBucket = <A, I>(
     return bytes === undefined ? null : new Uint8Array(bytes);
   });
 
-  const quarantine = Effect.sync(() => {
-    const bytes = files.get(file);
-    if (bytes === undefined) return;
-    files.delete(file);
-    files.set(`${file}.corrupt-${Date.now()}`, new Uint8Array(bytes));
-  });
+  const quarantine = Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      Effect.sync(() => {
+        const bytes = files.get(file);
+        if (bytes === undefined) return;
+        files.delete(file);
+        files.set(`${file}.corrupt-${now}`, new Uint8Array(bytes));
+      }),
+    ),
+  );
 
   const handleCorrupt = (cause: unknown): Effect.Effect<A | null, StateStoreError> => {
     if (onCorrupt === "fail") return Effect.fail(decodeError("get", file, cause));
@@ -121,6 +125,7 @@ const buildInMemoryBucket = <A, I>(
       }
       return decodeValue(frame.payload);
     }),
+    Effect.withSpan("StateBucket.get"),
   );
 
   const writeValue = (value: A): Effect.Effect<void, StateStoreError> => {
@@ -150,43 +155,61 @@ const buildInMemoryBucket = <A, I>(
   const lock = <B, E>(effect: Effect.Effect<B, E>): Effect.Effect<B, E> =>
     lockMode === "advisory" ? withInMemoryAdvisoryLock(file, effect) : effect;
 
-  const modify = <B>(f: (cur: A | null) => readonly [B, A]): Effect.Effect<B, StateStoreError> =>
-    lock(
-      get.pipe(
-        Effect.flatMap((current) => {
-          const [result, next] = f(current);
-          return writeValue(next).pipe(Effect.as(result));
-        }),
+  const modify = Effect.fn("StateBucket.modify")(
+    <B>(f: (cur: A | null) => readonly [B, A]): Effect.Effect<B, StateStoreError> =>
+      lock(
+        get.pipe(
+          Effect.flatMap((current) => {
+            const [result, next] = f(current);
+            return writeValue(next).pipe(Effect.as(result));
+          }),
+        ),
       ),
-    );
+  );
 
-  const update = (f: (cur: A | null) => A): Effect.Effect<A, StateStoreError> =>
-    lock(
-      get.pipe(
-        Effect.flatMap((current) => {
-          const next = f(current);
-          return writeValue(next).pipe(Effect.as(next));
-        }),
+  const update = Effect.fn("StateBucket.update")(
+    (f: (cur: A | null) => A): Effect.Effect<A, StateStoreError> =>
+      lock(
+        get.pipe(
+          Effect.flatMap((current) => {
+            const next = f(current);
+            return writeValue(next).pipe(Effect.as(next));
+          }),
+        ),
       ),
-    );
+  );
 
-  const set = (value: A): Effect.Effect<void, StateStoreError> => lock(writeValue(value));
+  const set = Effect.fn("StateBucket.set")(
+    (value: A): Effect.Effect<void, StateStoreError> => lock(writeValue(value)),
+  );
 
   const remove: Effect.Effect<void, StateStoreError> = lock(Effect.sync(() => void files.delete(file)));
 
   const exists: Effect.Effect<boolean, StateStoreError> = Effect.sync(() => files.has(file));
 
-  return { path, get, set, update, modify, remove, exists } satisfies StateBucket<A>;
+  return {
+    path,
+    get,
+    set,
+    update,
+    modify,
+    remove: remove.pipe(Effect.withSpan("StateBucket.remove")),
+    exists: exists.pipe(Effect.withSpan("StateBucket.exists")),
+  } satisfies StateBucket<A>;
 };
 
-const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape => ({
-  open: <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
-    resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
-      Effect.map((resolved) => buildInMemoryBucket(spec, resolved.file, files)),
+const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape =>
+  StateStore.of({
+    open: Effect.fn("StateStore.open")(
+      <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
+        resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
+          Effect.map((resolved) => buildInMemoryBucket(spec, resolved.file, files)),
+        ),
     ),
-  withLock: <A, E>(key: string, body: Effect.Effect<A, E>) =>
-    withInMemoryAdvisoryLock(`operation-locks/${key}`, body),
-});
+    withLock: Effect.fn("StateStore.withLock")(<A, E>(key: string, body: Effect.Effect<A, E>) =>
+      withInMemoryAdvisoryLock(`operation-locks/${key}`, body),
+    ),
+  });
 
 export interface TestStateStore {
   readonly service: StateStoreShape;

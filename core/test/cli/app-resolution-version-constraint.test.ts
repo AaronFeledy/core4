@@ -14,7 +14,7 @@ import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live"
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 
@@ -226,7 +226,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
 
       const error = await Effect.runPromise(
         Effect.flatMap(LandofileService, (service) => Effect.flip(loadUserLandofile(service))).pipe(
-          Effect.provide(LandofileServiceLive),
+          Effect.provide(TestLandofileServiceLayer.layer),
         ),
       );
 

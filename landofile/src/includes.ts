@@ -1,9 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { SchemaIssue } from "effect";
-
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Predicate, Schema, SchemaIssue } from "effect";
+import { hasIncludeCycle } from "./include-graph.ts";
 
 import {
   type ComposeKeyRejectedError,
@@ -634,9 +633,7 @@ const parseFragment = (
           ).pipe(Effect.asVoid);
     }),
     Effect.map(({ value, dependencies }) =>
-      typeof value === "object" && value !== null
-        ? rememberLandofileReferencedFiles(value, dependencies)
-        : value,
+      Predicate.isObjectOrArray(value) ? rememberLandofileReferencedFiles(value, dependencies) : value,
     ),
     Effect.flatMap((parsed) => rejectComposeKeys(fragment.authoredSource, parsed)),
     Effect.flatMap((parsed) => {
@@ -715,7 +712,7 @@ const ownVersionConstraintEntries = (
 ): ReadonlyArray<VersionConstraintEntry> =>
   landofile.lando === undefined ? [] : [{ range: landofile.lando, source, layer, order }];
 
-const resolveTree = (
+const resolveTree = Effect.fnUntraced(function* (
   landofile: LandofileShape,
   ctx: ResolveContext,
   depth: number,
@@ -723,145 +720,141 @@ const resolveTree = (
   source: string,
   layer: VersionConstraintEntry["layer"],
   order: VersionConstraintEntry["order"],
-): Effect.Effect<LandofileShape, ResolveIncludesError> =>
-  Effect.gen(function* () {
-    if (depth > ctx.maxDepth) {
+): Effect.fn.Return<LandofileShape, ResolveIncludesError> {
+  if (depth > ctx.maxDepth) {
+    return yield* Effect.fail(
+      includeError({
+        message: `Landofile includes exceed the maximum depth of ${ctx.maxDepth}.`,
+        source: stack.at(-1) ?? "includes",
+        kind: "max-depth",
+      }),
+    );
+  }
+  const incompatible = assertCompatibleIncludeFields(landofile);
+  if (incompatible !== undefined) return yield* Effect.fail(incompatible);
+  const sourced = rememberLandofileReferencedFiles(
+    resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
+    getLandofileReferencedFiles(landofile),
+  );
+  const includes = authoredIncludeEntries(sourced);
+  if (includes.length === 0)
+    return rememberLandofileIncludeSources(
+      rememberLocalIncludePaths(
+        rememberVersionConstraintEntries(sourced, ownVersionConstraintEntries(sourced, source, layer, order)),
+        getLocalIncludePaths(landofile),
+      ),
+      getLandofileIncludeSources(landofile),
+    );
+
+  const fragments: LandofileShape[] = [];
+  const fragmentRecords: Record<string, unknown>[] = [];
+  const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
+  const includeSources = [...getLandofileIncludeSources(landofile)];
+  for (const rawEntry of includes) {
+    const entry = normalizeInclude(rawEntry);
+    const fragment = yield* Effect.tryPromise({
+      try: async () => {
+        const kind = classify(entry.source);
+        if (ctx.userOwned && (kind === "git" || kind === "npm")) {
+          throw includeError({
+            message: `User Landofile profile ${source} must not declare remote include ${entry.source}.`,
+            source: entry.source,
+            kind: "source-unresolved",
+            remediation: "Use relative or user: YAML includes inside the user includes directory.",
+          });
+        }
+        if (kind === "local") return fetchLocal(entry, ctx);
+        if (kind === "user") return fetchUser(entry, ctx);
+        if (kind === "git") return fetchGit(entry, ctx);
+        return fetchNpm(entry, ctx);
+      },
+      catch: (cause) =>
+        cause instanceof LandofileIncludeError
+          ? cause
+          : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
+    });
+    if (hasIncludeCycle(stack, fragment.sourceId)) {
       return yield* Effect.fail(
         includeError({
-          message: `Landofile includes exceed the maximum depth of ${ctx.maxDepth}.`,
-          source: stack.at(-1) ?? "includes",
-          kind: "max-depth",
+          message: `Landofile include cycle detected at ${entry.source}.`,
+          source: entry.source,
+          kind: "cycle",
         }),
       );
     }
-    const incompatible = assertCompatibleIncludeFields(landofile);
-    if (incompatible !== undefined) return yield* Effect.fail(incompatible);
-    const sourced = rememberLandofileReferencedFiles(
-      resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
-      getLandofileReferencedFiles(landofile),
+    const parsed = yield* parseFragment(fragment, ctx, layer);
+    const nested = yield* resolveTree(
+      parsed as LandofileShape,
+      { ...ctx, sourceRoot: fragment.root, userOwned: fragment.userOwned },
+      depth + 1,
+      [...stack, fragment.sourceId],
+      fragment.sourceId,
+      layer,
+      order,
     );
-    const includes = authoredIncludeEntries(sourced);
-    if (includes.length === 0)
-      return rememberLandofileIncludeSources(
-        rememberLocalIncludePaths(
-          rememberVersionConstraintEntries(
-            sourced,
-            ownVersionConstraintEntries(sourced, source, layer, order),
-          ),
-          getLocalIncludePaths(landofile),
-        ),
-        getLandofileIncludeSources(landofile),
-      );
-
-    const fragments: LandofileShape[] = [];
-    const fragmentRecords: Record<string, unknown>[] = [];
-    const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
-    const includeSources = [...getLandofileIncludeSources(landofile)];
-    for (const rawEntry of includes) {
-      const entry = normalizeInclude(rawEntry);
-      const fragment = yield* Effect.tryPromise({
-        try: async () => {
-          const kind = classify(entry.source);
-          if (ctx.userOwned && (kind === "git" || kind === "npm")) {
-            throw includeError({
-              message: `User Landofile profile ${source} must not declare remote include ${entry.source}.`,
-              source: entry.source,
-              kind: "source-unresolved",
-              remediation: "Use relative or user: YAML includes inside the user includes directory.",
-            });
+    fragments.push(nested);
+    fragmentRecords.push(nested as Record<string, unknown>);
+    localIncludePaths.push(...getLocalIncludePaths(nested));
+    includeSources.push(...getLandofileIncludeSources(nested), {
+      id: fragment.inventoryId,
+      sha256: sha256(fragment.content),
+    });
+    if (!fragment.locked) localIncludePaths.push(fragment.filePath);
+    if (fragment.locked && fragment.resolved !== undefined) {
+      const actual = sha256(fragment.content);
+      if (ctx.mode === "refresh") {
+        ctx.stagedLocks.set(fragment.sourceId, {
+          source: fragment.sourceId,
+          resolved: fragment.resolved,
+          checksum: actual,
+        });
+      } else {
+        const locked = ctx.lockEntries.get(fragment.sourceId);
+        if (locked !== undefined) {
+          if (locked.checksum !== actual || locked.resolved !== fragment.resolved) {
+            return yield* Effect.fail(
+              new LandofileLockMismatchError({
+                message: `Landofile include lock mismatch for ${fragment.sourceId}.`,
+                lockfile: ctx.lockfilePath,
+                source: fragment.sourceId,
+                expected: `${locked.resolved}:${locked.checksum}`,
+                actual: `${fragment.resolved}:${actual}`,
+                remediation: LOCK_REMEDIATION,
+              }),
+            );
           }
-          if (kind === "local") return fetchLocal(entry, ctx);
-          if (kind === "user") return fetchUser(entry, ctx);
-          if (kind === "git") return fetchGit(entry, ctx);
-          return fetchNpm(entry, ctx);
-        },
-        catch: (cause) =>
-          cause instanceof LandofileIncludeError
-            ? cause
-            : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
-      });
-      if (stack.includes(fragment.sourceId)) {
-        return yield* Effect.fail(
-          includeError({
-            message: `Landofile include cycle detected at ${entry.source}.`,
-            source: entry.source,
-            kind: "cycle",
-          }),
-        );
-      }
-      const parsed = yield* parseFragment(fragment, ctx, layer);
-      const nested = yield* resolveTree(
-        parsed as LandofileShape,
-        { ...ctx, sourceRoot: fragment.root, userOwned: fragment.userOwned },
-        depth + 1,
-        [...stack, fragment.sourceId],
-        fragment.sourceId,
-        layer,
-        order,
-      );
-      fragments.push(nested);
-      fragmentRecords.push(nested as Record<string, unknown>);
-      localIncludePaths.push(...getLocalIncludePaths(nested));
-      includeSources.push(...getLandofileIncludeSources(nested), {
-        id: fragment.inventoryId,
-        sha256: sha256(fragment.content),
-      });
-      if (!fragment.locked) localIncludePaths.push(fragment.filePath);
-      if (fragment.locked && fragment.resolved !== undefined) {
-        const actual = sha256(fragment.content);
-        if (ctx.mode === "refresh") {
+        } else {
           ctx.stagedLocks.set(fragment.sourceId, {
             source: fragment.sourceId,
             resolved: fragment.resolved,
             checksum: actual,
           });
-        } else {
-          const locked = ctx.lockEntries.get(fragment.sourceId);
-          if (locked !== undefined) {
-            if (locked.checksum !== actual || locked.resolved !== fragment.resolved) {
-              return yield* Effect.fail(
-                new LandofileLockMismatchError({
-                  message: `Landofile include lock mismatch for ${fragment.sourceId}.`,
-                  lockfile: ctx.lockfilePath,
-                  source: fragment.sourceId,
-                  expected: `${locked.resolved}:${locked.checksum}`,
-                  actual: `${fragment.resolved}:${actual}`,
-                  remediation: LOCK_REMEDIATION,
-                }),
-              );
-            }
-          } else {
-            ctx.stagedLocks.set(fragment.sourceId, {
-              source: fragment.sourceId,
-              resolved: fragment.resolved,
-              checksum: actual,
-            });
-          }
         }
       }
     }
+  }
 
-    const toolingIncludes = composeToolingIncludeEntries([...fragments, sourced]);
-    const merged = mergeLandofiles([
-      ...fragmentRecords.map((fragment) => withoutIncludeArrays(fragment)),
-      withoutIncludeArrays(sourced as Record<string, unknown>),
-      ...(toolingIncludes.length === 0 ? [] : [{ includes: toolingIncludes }]),
-    ]);
-    const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
-    return rememberLandofileReferencedFiles(
-      rememberLandofileIncludeSources(
-        rememberLocalIncludePaths(
-          rememberVersionConstraintEntries(decoded, [
-            ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-            ...ownVersionConstraintEntries(sourced, source, layer, order),
-          ]),
-          [...localIncludePaths],
-        ),
-        includeSources,
+  const toolingIncludes = composeToolingIncludeEntries([...fragments, sourced]);
+  const merged = mergeLandofiles([
+    ...fragmentRecords.map((fragment) => withoutIncludeArrays(fragment)),
+    withoutIncludeArrays(sourced as Record<string, unknown>),
+    ...(toolingIncludes.length === 0 ? [] : [{ includes: toolingIncludes }]),
+  ]);
+  const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
+  return rememberLandofileReferencedFiles(
+    rememberLandofileIncludeSources(
+      rememberLocalIncludePaths(
+        rememberVersionConstraintEntries(decoded, [
+          ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
+          ...ownVersionConstraintEntries(sourced, source, layer, order),
+        ]),
+        [...localIncludePaths],
       ),
-      [...getLandofileReferencedFiles(sourced), ...fragments.flatMap(getLandofileReferencedFiles)],
-    );
-  });
+      includeSources,
+    ),
+    [...getLandofileReferencedFiles(sourced), ...fragments.flatMap(getLandofileReferencedFiles)],
+  );
+});
 
 const lockScalar = (value: unknown): string | undefined => {
   if (typeof value === "string") return value;
@@ -1070,96 +1063,88 @@ const authoredVersionConstraintEntries = (
     ? getVersionConstraintEntries(options.landofile, sourcePath)
     : ownVersionConstraintEntries(options.landofile, sourcePath, options.layer, options.order);
 
-export const resolveLandofileIncludes = (
+export const resolveLandofileIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
   options: ResolveLandofileIncludesOptions,
-): Effect.Effect<LandofileShape, ResolveIncludesError, never> => {
+): Effect.fn.Return<LandofileShape, ResolveIncludesError> {
   if (!hasResolvableIncludes(options.landofile)) {
-    return Effect.succeed(
-      rememberLandofileAppRoot(
-        rememberVersionConstraintEntries(
-          options.landofile,
-          authoredVersionConstraintEntries(
-            options,
-            options.sourcePath ?? join(options.appRoot, ".lando.yml"),
-          ),
-        ),
-        options.appRoot,
-      ),
-    );
-  }
-
-  return Effect.gen(function* () {
-    const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
-    const ctx: ResolveContext = {
-      appRoot: options.appRoot,
-      sourceRoot: options.appRoot,
-      userOwned: false,
-      cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
-      lockfilePath,
-      deps: options.deps ?? {},
-      maxDepth: options.maxDepth ?? 8,
-      mode: "pin",
-      lockEntries: yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath),
-      stagedLocks: new Map(),
-      noNetwork: false,
-      loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
-      ...(options.ports === undefined ? {} : { ports: options.ports }),
-      stateStore: options.stateStore,
-      ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
-    };
-    const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
-    const existingLocalIncludePaths = getLocalIncludePaths(options.landofile);
-    const existingVersionConstraints = authoredVersionConstraintEntries(options, sourcePath);
-    const unresolved = yield* resolveTree(
-      options.landofile,
-      ctx,
-      0,
-      [options.appRoot],
-      sourcePath,
-      options.layer ?? "canonical",
-      options.order ?? 3,
-    );
-    yield* writeLockfileIfNeeded(ctx);
-    if (options.resolveTooling === false) return rememberLandofileAppRoot(unresolved, options.appRoot);
-
-    const tooling = yield* resolveToolingIncludes({
-      landofile: unresolved,
-      appRoot: options.appRoot,
-      sourceRoot: options.appRoot,
-      ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
-    });
-    const decoded = yield* decodeMerged(
-      withResolvedTooling(unresolved as Record<string, unknown>, tooling.tooling),
-      lockfilePath,
-    );
-    const versionConstraints =
-      authoredIncludeEntries(options.landofile).length === 0
-        ? existingVersionConstraints
-        : getVersionConstraintEntries(unresolved, sourcePath);
     return rememberLandofileAppRoot(
       rememberVersionConstraintEntries(
-        rememberInternalToolingTasks(
-          rememberLandofileIncludeSources(
-            rememberLocalIncludePaths(decoded, [
-              ...new Set([
-                ...existingLocalIncludePaths,
-                ...getLocalIncludePaths(unresolved),
-                ...tooling.localFragmentPaths,
-              ]),
-            ]),
-            getLandofileIncludeSources(unresolved),
-          ),
-          winningInternalToolingTasks([
-            { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
-            { tooling: unresolved.tooling, internalTaskIds: getInternalToolingTasks(unresolved) },
-          ]),
-        ),
-        versionConstraints,
+        options.landofile,
+        authoredVersionConstraintEntries(options, options.sourcePath ?? join(options.appRoot, ".lando.yml")),
       ),
       options.appRoot,
     );
+  }
+  const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
+  const ctx: ResolveContext = {
+    appRoot: options.appRoot,
+    sourceRoot: options.appRoot,
+    userOwned: false,
+    cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
+    lockfilePath,
+    deps: options.deps ?? {},
+    maxDepth: options.maxDepth ?? 8,
+    mode: "pin",
+    lockEntries: yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath),
+    stagedLocks: new Map(),
+    noNetwork: false,
+    loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
+    ...(options.ports === undefined ? {} : { ports: options.ports }),
+    stateStore: options.stateStore,
+    ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
+  };
+  const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
+  const existingLocalIncludePaths = getLocalIncludePaths(options.landofile);
+  const existingVersionConstraints = authoredVersionConstraintEntries(options, sourcePath);
+  const unresolved = yield* resolveTree(
+    options.landofile,
+    ctx,
+    0,
+    [options.appRoot],
+    sourcePath,
+    options.layer ?? "canonical",
+    options.order ?? 3,
+  );
+  yield* writeLockfileIfNeeded(ctx);
+  if (options.resolveTooling === false) return rememberLandofileAppRoot(unresolved, options.appRoot);
+
+  const tooling = yield* resolveToolingIncludes({
+    landofile: unresolved,
+    appRoot: options.appRoot,
+    sourceRoot: options.appRoot,
+    ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
   });
-};
+  const decoded = yield* decodeMerged(
+    withResolvedTooling(unresolved as Record<string, unknown>, tooling.tooling),
+    lockfilePath,
+  );
+  const versionConstraints =
+    authoredIncludeEntries(options.landofile).length === 0
+      ? existingVersionConstraints
+      : getVersionConstraintEntries(unresolved, sourcePath);
+  return rememberLandofileAppRoot(
+    rememberVersionConstraintEntries(
+      rememberInternalToolingTasks(
+        rememberLandofileIncludeSources(
+          rememberLocalIncludePaths(decoded, [
+            ...new Set([
+              ...existingLocalIncludePaths,
+              ...getLocalIncludePaths(unresolved),
+              ...tooling.localFragmentPaths,
+            ]),
+          ]),
+          getLandofileIncludeSources(unresolved),
+        ),
+        winningInternalToolingTasks([
+          { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
+          { tooling: unresolved.tooling, internalTaskIds: getInternalToolingTasks(unresolved) },
+        ]),
+      ),
+      versionConstraints,
+    ),
+    options.appRoot,
+  );
+});
 
 export type IncludeUpdateStatus = "added" | "updated" | "unchanged";
 
@@ -1197,101 +1182,100 @@ export interface UpdateLandofileIncludesOptions {
 
 const byCodepointString = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
-export const updateLandofileIncludes = (
+export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(function* (
   options: UpdateLandofileIncludesOptions,
-): Effect.Effect<IncludeUpdateReport, ResolveIncludesError, never> =>
-  Effect.gen(function* () {
-    const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
-    const checkMode = options.check === true;
-    const noNetwork = options.noNetwork === true;
-    const requestedSources = options.sources ?? [];
-    const scoped = requestedSources.length > 0;
-    const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
-    const allIncludes = authoredIncludeEntries(options.landofile);
+): Effect.fn.Return<IncludeUpdateReport, ResolveIncludesError> {
+  const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
+  const checkMode = options.check === true;
+  const noNetwork = options.noNetwork === true;
+  const requestedSources = options.sources ?? [];
+  const scoped = requestedSources.length > 0;
+  const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
+  const allIncludes = authoredIncludeEntries(options.landofile);
 
-    if (scoped) {
-      const known = new Set(allIncludes.map((entry) => normalizeInclude(entry).source));
-      const unknown = requestedSources.filter((source) => !known.has(source));
-      if (unknown.length > 0) {
-        const knownList = [...known].sort(byCodepointString).join(", ") || "(none)";
-        return yield* Effect.fail(
-          includeError({
-            message: `Unknown include source${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}. Known sources: ${knownList}.`,
-            source: unknown.join(", "),
-            kind: "source-unresolved",
-            remediation:
-              "Pass a known include source, or run lando app:includes:update with no source to refresh every include.",
-          }),
-        );
-      }
-    }
-
-    const requested = new Set(requestedSources);
-    const includes = scoped
-      ? allIncludes.filter((entry) => requested.has(normalizeInclude(entry).source))
-      : allIncludes;
-    const { include: _include, ...landofileWithoutComposeIncludes } = options.landofile;
-    const landofile: LandofileShape = scoped
-      ? { ...landofileWithoutComposeIncludes, includes }
-      : options.landofile;
-
-    const ctx: ResolveContext = {
-      appRoot: options.appRoot,
-      sourceRoot: options.appRoot,
-      userOwned: false,
-      cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
-      lockfilePath,
-      deps: options.deps ?? {},
-      maxDepth: options.maxDepth ?? 8,
-      mode: "refresh",
-      lockEntries: existing,
-      stagedLocks: new Map(),
-      noNetwork,
-      loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
-      ...(options.ports === undefined ? {} : { ports: options.ports }),
-      stateStore: options.stateStore,
-    };
-
-    if (includes.length > 0) {
-      yield* resolveTree(
-        landofile,
-        ctx,
-        0,
-        [options.appRoot],
-        join(options.appRoot, ".lando.yml"),
-        "canonical",
-        3,
+  if (scoped) {
+    const known = new Set(allIncludes.map((entry) => normalizeInclude(entry).source));
+    const unknown = requestedSources.filter((source) => !known.has(source));
+    if (unknown.length > 0) {
+      const knownList = [...known].sort(byCodepointString).join(", ") || "(none)";
+      return yield* Effect.fail(
+        includeError({
+          message: `Unknown include source${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}. Known sources: ${knownList}.`,
+          source: unknown.join(", "),
+          kind: "source-unresolved",
+          remediation:
+            "Pass a known include source, or run lando app:includes:update with no source to refresh every include.",
+        }),
       );
     }
+  }
 
-    const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
-      .sort((left, right) => byCodepointString(left.source, right.source))
-      .map((entry) => {
-        const prev = existing.get(entry.source);
-        const status: IncludeUpdateStatus =
-          prev === undefined
-            ? "added"
-            : prev.resolved !== entry.resolved || prev.checksum !== entry.checksum
-              ? "updated"
-              : "unchanged";
-        return { source: entry.source, resolved: entry.resolved, checksum: entry.checksum, status };
-      });
-    const removed = scoped
-      ? []
-      : [...existing.keys()].filter((source) => !ctx.stagedLocks.has(source)).sort(byCodepointString);
-    const drift = entries.some((entry) => entry.status !== "unchanged") || removed.length > 0;
+  const requested = new Set(requestedSources);
+  const includes = scoped
+    ? allIncludes.filter((entry) => requested.has(normalizeInclude(entry).source))
+    : allIncludes;
+  const { include: _include, ...landofileWithoutComposeIncludes } = options.landofile;
+  const landofile: LandofileShape = scoped
+    ? { ...landofileWithoutComposeIncludes, includes }
+    : options.landofile;
 
-    let wrote = false;
-    if (!checkMode && drift) {
-      const finalEntries = scoped
-        ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
-        : [...ctx.stagedLocks.values()];
-      yield* writeLockEntries(options.stateStore, options.appRoot, lockfilePath, finalEntries);
-      wrote = true;
-    }
+  const ctx: ResolveContext = {
+    appRoot: options.appRoot,
+    sourceRoot: options.appRoot,
+    userOwned: false,
+    cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
+    lockfilePath,
+    deps: options.deps ?? {},
+    maxDepth: options.maxDepth ?? 8,
+    mode: "refresh",
+    lockEntries: existing,
+    stagedLocks: new Map(),
+    noNetwork,
+    loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    ...(options.ports === undefined ? {} : { ports: options.ports }),
+    stateStore: options.stateStore,
+  };
 
-    return { lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources };
-  });
+  if (includes.length > 0) {
+    yield* resolveTree(
+      landofile,
+      ctx,
+      0,
+      [options.appRoot],
+      join(options.appRoot, ".lando.yml"),
+      "canonical",
+      3,
+    );
+  }
+
+  const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
+    .sort((left, right) => byCodepointString(left.source, right.source))
+    .map((entry) => {
+      const prev = existing.get(entry.source);
+      const status: IncludeUpdateStatus =
+        prev === undefined
+          ? "added"
+          : prev.resolved !== entry.resolved || prev.checksum !== entry.checksum
+            ? "updated"
+            : "unchanged";
+      return { source: entry.source, resolved: entry.resolved, checksum: entry.checksum, status };
+    });
+  const removed = scoped
+    ? []
+    : [...existing.keys()].filter((source) => !ctx.stagedLocks.has(source)).sort(byCodepointString);
+  const drift = entries.some((entry) => entry.status !== "unchanged") || removed.length > 0;
+
+  let wrote = false;
+  if (!checkMode && drift) {
+    const finalEntries = scoped
+      ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
+      : [...ctx.stagedLocks.values()];
+    yield* writeLockEntries(options.stateStore, options.appRoot, lockfilePath, finalEntries);
+    wrote = true;
+  }
+
+  return { lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources };
+});
 
 export type IncludeVerifyStatus = "ok" | "mismatch" | "missing" | "stale";
 
@@ -1349,77 +1333,76 @@ const verifyMismatchMessage = (source: string, status: IncludeVerifyStatus): str
  * status (and any mismatch, in the `LandofileLockMismatchError` schema) is
  * returned as data so callers can render the full picture and gate on exit code.
  */
-export const verifyLandofileIncludes = (
+export const verifyLandofileIncludes = Effect.fn("Landofile.verifyIncludes")(function* (
   options: VerifyLandofileIncludesOptions,
-): Effect.Effect<IncludeVerifyReport, ResolveIncludesError, never> =>
-  Effect.gen(function* () {
-    const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
-    const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
-    const includes = authoredIncludeEntries(options.landofile);
+): Effect.fn.Return<IncludeVerifyReport, ResolveIncludesError> {
+  const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
+  const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
+  const includes = authoredIncludeEntries(options.landofile);
 
-    const ctx: ResolveContext = {
-      appRoot: options.appRoot,
-      sourceRoot: options.appRoot,
-      userOwned: false,
-      cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
-      lockfilePath,
-      deps: options.deps ?? {},
-      maxDepth: options.maxDepth ?? 8,
-      mode: "refresh",
-      lockEntries: existing,
-      stagedLocks: new Map(),
-      noNetwork: false,
-      loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
-      ...(options.ports === undefined ? {} : { ports: options.ports }),
-      stateStore: options.stateStore,
-    };
+  const ctx: ResolveContext = {
+    appRoot: options.appRoot,
+    sourceRoot: options.appRoot,
+    userOwned: false,
+    cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
+    lockfilePath,
+    deps: options.deps ?? {},
+    maxDepth: options.maxDepth ?? 8,
+    mode: "refresh",
+    lockEntries: existing,
+    stagedLocks: new Map(),
+    noNetwork: false,
+    loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    ...(options.ports === undefined ? {} : { ports: options.ports }),
+    stateStore: options.stateStore,
+  };
 
-    if (includes.length > 0) {
-      yield* resolveTree(
-        options.landofile,
-        ctx,
-        0,
-        [options.appRoot],
-        join(options.appRoot, ".lando.yml"),
-        "canonical",
-        3,
+  if (includes.length > 0) {
+    yield* resolveTree(
+      options.landofile,
+      ctx,
+      0,
+      [options.appRoot],
+      join(options.appRoot, ".lando.yml"),
+      "canonical",
+      3,
+    );
+  }
+
+  const staged = ctx.stagedLocks;
+  const sources = [...new Set([...existing.keys(), ...staged.keys()])].sort(byCodepointString);
+
+  const entries: IncludeVerifyEntry[] = [];
+  const mismatches: IncludeVerifyMismatch[] = [];
+  for (const source of sources) {
+    const lock = existing.get(source);
+    const fresh = staged.get(source);
+    const expected = lock === undefined ? null : lockValue(lock);
+    const actual = fresh === undefined ? null : lockValue(fresh);
+    const status: IncludeVerifyStatus =
+      lock !== undefined && fresh !== undefined
+        ? lock.resolved === fresh.resolved && lock.checksum === fresh.checksum
+          ? "ok"
+          : "mismatch"
+        : fresh !== undefined
+          ? "missing"
+          : "stale";
+    entries.push({ source, status, expected, actual });
+    if (status !== "ok") {
+      mismatches.push(
+        encodeLockMismatch(
+          new LandofileLockMismatchError({
+            message: verifyMismatchMessage(source, status),
+            lockfile: lockfilePath,
+            source,
+            expected: expected ?? MISSING_LOCK_VALUE,
+            actual: actual ?? MISSING_LOCK_VALUE,
+            remediation: LOCK_REMEDIATION,
+          }),
+        ),
       );
     }
+  }
 
-    const staged = ctx.stagedLocks;
-    const sources = [...new Set([...existing.keys(), ...staged.keys()])].sort(byCodepointString);
-
-    const entries: IncludeVerifyEntry[] = [];
-    const mismatches: IncludeVerifyMismatch[] = [];
-    for (const source of sources) {
-      const lock = existing.get(source);
-      const fresh = staged.get(source);
-      const expected = lock === undefined ? null : lockValue(lock);
-      const actual = fresh === undefined ? null : lockValue(fresh);
-      const status: IncludeVerifyStatus =
-        lock !== undefined && fresh !== undefined
-          ? lock.resolved === fresh.resolved && lock.checksum === fresh.checksum
-            ? "ok"
-            : "mismatch"
-          : fresh !== undefined
-            ? "missing"
-            : "stale";
-      entries.push({ source, status, expected, actual });
-      if (status !== "ok") {
-        mismatches.push(
-          encodeLockMismatch(
-            new LandofileLockMismatchError({
-              message: verifyMismatchMessage(source, status),
-              lockfile: lockfilePath,
-              source,
-              expected: expected ?? MISSING_LOCK_VALUE,
-              actual: actual ?? MISSING_LOCK_VALUE,
-              remediation: LOCK_REMEDIATION,
-            }),
-          ),
-        );
-      }
-    }
-
-    return { lockfilePath, entries, mismatches, ok: mismatches.length === 0 };
-  });
+  return { lockfilePath, entries, mismatches, ok: mismatches.length === 0 };
+});

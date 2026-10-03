@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import {
   ConfigError,
@@ -19,6 +21,11 @@ import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+
+const stubHttpClient = (): HttpClient.HttpClient =>
+  HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
 
 const manifest = (subscribers: ReadonlyArray<Record<string, unknown>>) =>
   Schema.decodeUnknownSync(PluginManifest)({
@@ -440,6 +447,7 @@ describe("subscriber runtime", () => {
       stateStore: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       privateFileAccess: ownerOnlyFileAccess,
       pluginStateRoot: Schema.decodeUnknownSync(AbsolutePath)("/tmp/lando-subscriber-test"),
+      httpClient: stubHttpClient(),
       publishRender: () => Effect.void,
     });
     const event = Schema.decodeUnknownSync(MessageInfoEvent)({

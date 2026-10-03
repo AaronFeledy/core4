@@ -12,8 +12,8 @@ import { DataTransferError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 
@@ -57,7 +57,7 @@ describe("byteStreamFromHost missing files", () => {
             DataMoverLive.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  StateStoreLive,
+                  stateStoreLayer,
                   Layer.succeed(PathsService, makeLandoPaths()),
                   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
                   silentEvents,

@@ -6,7 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileService } from "@lando/core/services";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (directory: string) => Promise<T>): Promise<T> => {
   const directory = await mkdtemp(join(tmpdir(), "lando-service-extension-keys-"));
@@ -21,7 +21,9 @@ const withTempCwd = async <T>(run: (directory: string) => Promise<T>): Promise<T
 };
 
 const discover = () =>
-  Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(LandofileServiceLive));
+  Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+    Effect.provide(TestLandofileServiceLayer.layer),
+  );
 
 describe("LandofileService authored service extension keys", () => {
   test("Given a raw YAML service x-* key, when loaded, then discovery succeeds", async () => {

@@ -24,7 +24,7 @@ import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } f
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
@@ -96,7 +96,7 @@ const buildSetupLayers = (
     Layer.succeed(ConfigService, makeConfigService(configOverrides)),
     Layer.succeed(Downloader, testDownloader.service),
     Layer.succeed(InteractionService, testInteraction.service),
-    makeHttpClientLive(httpFetch),
+    httpClientLayerWith({ fetch: httpFetch }),
   );
 
 const testRuntimeProviderRegistry = {
@@ -1822,7 +1822,7 @@ describe("meta:setup command", () => {
       defaultSetupNetworkTrustProbe({
         proxy: { https: "http://proxy.example:8080", noProxy: [], injectIntoServices: false },
         ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
-      }).pipe(Effect.provide(makeHttpClientLive(probeFetch))),
+      }).pipe(Effect.provide(httpClientLayerWith({ fetch: probeFetch }))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -1844,7 +1844,7 @@ describe("meta:setup command", () => {
       defaultSetupNetworkTrustProbe({
         proxy: { noProxy: [], injectIntoServices: false },
         ca: { trustHost: false, certs: [], loadedCerts: [], injectIntoServices: true },
-      }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
+      }).pipe(Effect.provide(httpClientLayerWith({ fetch: probeFetch, systemCaPems: () => [] }))),
     );
 
     expect(probeCalls).toBe(1);
@@ -1861,7 +1861,7 @@ describe("meta:setup command", () => {
       defaultSetupNetworkTrustProbe({
         proxy: { noProxy: [], injectIntoServices: false },
         ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
-      }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
+      }).pipe(Effect.provide(httpClientLayerWith({ fetch: probeFetch, systemCaPems: () => [] }))),
     );
 
     expect(probeCalls).toBe(0);
@@ -2684,7 +2684,7 @@ describe("meta:setup command", () => {
                   ),
                   Layer.succeed(Downloader, testDownloader.service),
                   Layer.succeed(InteractionService, recorder.prompter),
-                  makeHttpClientLive(okProbeFetch),
+                  httpClientLayerWith({ fetch: okProbeFetch }),
                 ),
               ),
             ),

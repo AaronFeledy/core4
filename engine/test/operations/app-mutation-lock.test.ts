@@ -9,7 +9,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { AppLockTimeoutError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { EventService, PathsService } from "@lando/sdk/services";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   APP_LOCK_HOLDERS_ENV,
@@ -41,7 +41,7 @@ const isolate = async () => {
   const appRoot = await mkdtemp(join(tmpdir(), "lando-app-root-"));
   const events: LandoEvent[] = [];
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
     Layer.succeed(EventService, {
       publish: (event) =>
@@ -272,7 +272,7 @@ describe("per-app mutation lock", () => {
               import { Effect, Layer } from ${JSON.stringify(import.meta.resolve("effect"))};
               import { PathsService } from ${JSON.stringify(import.meta.resolve("@lando/sdk/services"))};
               import { makeLandoPaths } from ${JSON.stringify(import.meta.resolve("@lando/paths"))};
-              import { PrivateFileAccessLive } from ${JSON.stringify(import.meta.resolve("@lando/state-store/private-file-access"))};
+              import { PrivateFileAccessService } from ${JSON.stringify(import.meta.resolve("@lando/state-store/private-file-access"))};
               import { withAppMutationLock } from ${JSON.stringify(import.meta.resolve("../../src/operations/app-mutation-lock.ts"))};
               const userDataRoot = ${JSON.stringify(isolated.userDataRoot)};
               const app = { id: "child-reentry", root: ${JSON.stringify(isolated.appRoot)} };
@@ -280,7 +280,7 @@ describe("per-app mutation lock", () => {
               await Effect.runPromise(
                 withAppMutationLock(app, Effect.succeed("ok")).pipe(
                   Effect.provide(Layer.mergeAll(
-                    PrivateFileAccessLive,
+                    PrivateFileAccessService.layer,
                     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
                   )),
                 ),

@@ -3,9 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClientLive } from "@lando/http-client/live";
+import * as VerifiedDownloader from "@lando/http-client/downloader";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { NoProviderInstalledError } from "@lando/sdk/errors";
@@ -21,9 +22,9 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 import { PluginRegistryLive } from "../../src/plugins/registry";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry";
 
@@ -73,6 +74,12 @@ const registryLayer = (
   };
   const managedFiles = Effect.runSync(makeTestManagedFileStore());
 
+  const httpClientLayer = Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+    ),
+  );
   return RuntimeProviderRegistryLive.pipe(
     Layer.provideMerge(Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan })),
     Layer.provideMerge(Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) })),
@@ -80,10 +87,12 @@ const registryLayer = (
     Layer.provideMerge(PluginRegistryLive),
     Layer.provideMerge(
       options.downloader === undefined
-        ? DownloaderLive.pipe(Layer.provide(HttpClientLive))
+        ? VerifiedDownloader.layer.pipe(Layer.provide(httpClientLayer))
         : Layer.succeed(Downloader, options.downloader),
     ),
-    Layer.provideMerge(StateStoreLive),
+    // Plugin context construction requires HttpClient on the outer layer too.
+    Layer.provideMerge(httpClientLayer),
+    Layer.provideMerge(stateStoreLayer),
     Layer.provideMerge(
       Layer.succeed(
         PathsService,

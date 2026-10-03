@@ -14,71 +14,70 @@ const Volumes = Schema.Struct({
 });
 const Containers = Schema.Array(Schema.Struct({ Names: Schema.Array(Schema.String), Labels }));
 
-export const inspectEngineResourceNames = (
+export const inspectEngineResourceNames = Effect.fn("RuntimeProvider.inspectResourceNames")(function* (
   api: EngineHttpApi,
   query: DoctorResourceNameQuery,
   ctx: ProviderErrorContext,
-) =>
-  Effect.gen(function* () {
-    const errorFields = { ...ctx, operation: "inspectResourceNames" };
-    const checked = yield* Schema.decodeUnknownEffect(DoctorResourceNameQuery)(query).pipe(
-      Effect.mapError(
-        () => new ProviderInternalError({ ...errorFields, message: "Invalid resource name query." }),
-      ),
+) {
+  const errorFields = { ...ctx, operation: "inspectResourceNames" };
+  const checked = yield* Schema.decodeUnknownEffect(DoctorResourceNameQuery)(query).pipe(
+    Effect.mapError(
+      () => new ProviderInternalError({ ...errorFields, message: "Invalid resource name query." }),
+    ),
+  );
+  if (api.request === undefined) {
+    return yield* Effect.fail(
+      new ProviderUnavailableError({ ...errorFields, message: "Engine request transport is unavailable." }),
     );
-    if (api.request === undefined) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({ ...errorFields, message: "Engine request transport is unavailable." }),
-      );
-    }
-    const filters = encodeURIComponent(
-      JSON.stringify({
-        ...(checked.namePrefix === undefined ? {} : { name: [checked.namePrefix] }),
-        ...(checked.label === undefined ? {} : { label: [`${checked.label.key}=${checked.label.value}`] }),
+  }
+  const filters = encodeURIComponent(
+    JSON.stringify({
+      ...(checked.namePrefix === undefined ? {} : { name: [checked.namePrefix] }),
+      ...(checked.label === undefined ? {} : { label: [`${checked.label.key}=${checked.label.value}`] }),
+    }),
+  );
+  const paths = {
+    volume: `/volumes?filters=${filters}`,
+    container: `/containers/json?all=true&filters=${filters}`,
+  } as const;
+  const request: EngineHttpRequest = { method: "GET", path: paths[checked.kind] };
+  const response = yield* api.request(request);
+  if (!isSuccessStatus(response.status)) {
+    return yield* Effect.fail(
+      new ProviderUnavailableError({
+        ...errorFields,
+        message: `Engine resource inspection returned HTTP ${response.status}.`,
       }),
     );
-    const paths = {
-      volume: `/volumes?filters=${filters}`,
-      container: `/containers/json?all=true&filters=${filters}`,
-    } as const;
-    const request: EngineHttpRequest = { method: "GET", path: paths[checked.kind] };
-    const response = yield* api.request(request);
-    if (!isSuccessStatus(response.status)) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          ...errorFields,
-          message: `Engine resource inspection returned HTTP ${response.status}.`,
-        }),
-      );
-    }
-    const malformed = () =>
-      new ProviderInternalError({
-        ...errorFields,
-        message: "Engine resource inspection returned malformed JSON data.",
-      });
-    const resources = yield* (
-      checked.kind === "volume"
-        ? Schema.decodeUnknownEffect(Schema.fromJsonString(Volumes))(response.body).pipe(
-            Effect.map((body) =>
-              (body.Volumes ?? []).map((volume) => ({ names: [volume.Name], labels: volume.Labels ?? {} })),
-            ),
-          )
-        : Schema.decodeUnknownEffect(Schema.fromJsonString(Containers))(response.body).pipe(
-            Effect.map((body) =>
-              body.map((container) => ({
-                names: container.Names.map((name) => name.replace(/^\//u, "")),
-                labels: container.Labels ?? {},
-              })),
-            ),
-          )
-    ).pipe(Effect.mapError(malformed));
-    const names = resources
-      .filter(
-        ({ labels }) =>
-          !Object.keys(labels).some((key) => key.startsWith("dev.lando.")) &&
-          (checked.label === undefined || labels[checked.label.key] === checked.label.value),
-      )
-      .flatMap((resource) => resource.names)
-      .filter((name) => checked.namePrefix === undefined || name.startsWith(checked.namePrefix));
-    return [...new Set(names)].sort().slice(0, checked.limit);
-  });
+  }
+  const malformed = () =>
+    new ProviderInternalError({
+      ...errorFields,
+      message: "Engine resource inspection returned malformed JSON data.",
+    });
+  const resources = yield* (
+    checked.kind === "volume"
+      ? Schema.decodeUnknownEffect(Schema.fromJsonString(Volumes))(response.body).pipe(
+          Effect.map((body) =>
+            (body.Volumes ?? []).map((volume) => ({ names: [volume.Name], labels: volume.Labels ?? {} })),
+          ),
+        )
+      : Schema.decodeUnknownEffect(Schema.fromJsonString(Containers))(response.body).pipe(
+          Effect.map((body) =>
+            body.map((container) => ({
+              names: container.Names.map((name) => name.replace(/^\//u, "")),
+              labels: container.Labels ?? {},
+            })),
+          ),
+        )
+  ).pipe(Effect.mapError(malformed));
+  const names = resources
+    .filter(
+      ({ labels }) =>
+        !Object.keys(labels).some((key) => key.startsWith("dev.lando.")) &&
+        (checked.label === undefined || labels[checked.label.key] === checked.label.value),
+    )
+    .flatMap((resource) => resource.names)
+    .filter((name) => checked.namePrefix === undefined || name.startsWith(checked.namePrefix));
+  return [...new Set(names)].sort().slice(0, checked.limit);
+});

@@ -28,9 +28,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
@@ -110,7 +110,7 @@ const registryLayer = (provider = TestRuntimeProvider) =>
     select: () => Effect.succeed(provider),
   });
 
-const layer = (provider = TestRuntimeProvider, stateStoreLive = StateStoreLive) => {
+const layer = (provider = TestRuntimeProvider, stateStoreLive = stateStoreLayer) => {
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), stateStoreLive);
   return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
@@ -122,7 +122,7 @@ const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Lay
     EventServiceLive,
     pathsLive,
     registryLayer(provider),
-    StateStoreLive,
+    stateStoreLayer,
     redaction,
   );
   return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));

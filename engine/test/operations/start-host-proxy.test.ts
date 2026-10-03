@@ -18,7 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   RedactionService,
@@ -116,7 +116,7 @@ const capabilitiesFor = (
 });
 
 const runtimeLayer = Layer.mergeAll(
-  PrivateFileAccessLive,
+  PrivateFileAccessService.layer,
   EventServiceLive,
   Layer.succeed(RedactionService, {
     registerValues: registerRedactionValues,

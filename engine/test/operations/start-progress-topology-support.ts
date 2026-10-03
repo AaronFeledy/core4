@@ -34,7 +34,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import {
@@ -252,7 +252,7 @@ export const makeHarness = (
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     Layer.succeed(StateStore, {
       ...stateStore.service,
       withLock: (key, body) =>

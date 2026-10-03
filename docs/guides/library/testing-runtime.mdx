@@ -213,7 +213,7 @@ GlobalConfig sets the positive per-subscriber delivery queue capacity; a full su
 
 makeTestStateStore returns a Layer hosts can merge into provideTestRuntime or custom test stacks (`Layer.succeed(StateStore)`).
 
-The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as StateStoreLive.
+The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as the disk-backed StateStore layer.
 
 list(dir) reports stored file basenames under the resolved directory so Windows and POSIX paths stay portable in contract tests.
 

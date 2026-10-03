@@ -14,7 +14,7 @@ import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Result } from "effect";
 import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
@@ -199,7 +199,7 @@ for (const scenario of cases) {
         return { targetHash, tag: outcome.failure._tag, probes, restored: restored.stdout.trim() };
       }).pipe(
         Effect.provide(ProcessRunnerLive),
-        Effect.provide(StateStoreLive),
+        Effect.provide(StateStoreLayer.layer),
         Effect.provideService(Telemetry, { enabled: false, record: () => Effect.void }),
       ),
     );

@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import {
   LandofileExpressionEvalError,
@@ -127,7 +127,7 @@ const invalidImportRefPath = (
   value: unknown,
   path: ReadonlyArray<string | number>,
 ): ReadonlyArray<string | number> | undefined => {
-  if (typeof value !== "object" || value === null) return undefined;
+  if (!Predicate.isObjectOrArray(value)) return undefined;
   if ("_tag" in value && value._tag === "ImportRef") return acceptsImportRef(path) ? undefined : path;
   for (const [key, entry] of Object.entries(value)) {
     const nestedPath = invalidImportRefPath(entry, [...path, Array.isArray(value) ? Number(key) : key]);
@@ -200,7 +200,7 @@ export const resolveLandofileLoadExpressions = (
           return result;
         }
         if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
-        if (typeof value !== "object" || value === null) return value;
+        if (!Predicate.isObject(value)) return value;
         return Object.fromEntries(
           Object.entries(value).map(([key, entry]) => [key, visit(entry, [...path, key])]),
         );

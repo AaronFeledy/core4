@@ -3,14 +3,14 @@
  *
  * The proxy/CA application logic (`shouldBypassProxy`, `fetchInitForNetwork`)
  * and the resolved-trust shape (`ResolvedNetworkTrust`) are now the canonical
- * pure `@lando/sdk/network-trust` module, consumed by both `HttpClientLive` and
+ * pure `@lando/sdk/network-trust` module, consumed by both the HTTP client and
  * `lando setup` preflight. This module re-exports them for core-internal
  * callers and owns core's PEM-loading, service-inject resolution, and ambient
  * `NetworkTrust` context seams.
  *
  * Trust is carried as an already-resolved, already-loaded object through the
  * `NetworkTrust` tag. A caller that has computed trust (e.g. `lando setup`'s
- * network preflight) provides the tag around its egress effect; `HttpClientLive`
+ * network preflight) provides the tag around its egress effect; the HTTP client
  * reads it via `Effect.serviceOption` and applies Bun `fetch` `proxy`/`tls.ca`
  * options. When the tag is absent the client self-resolves from config/env or
  * stays a bare request.
@@ -171,7 +171,7 @@ export const withWindowsHostTrust = (
 /**
  * Core-private ambient context tag carrying an already-resolved network-trust
  * object. Provided by callers that resolved trust (setup preflight); consumed
- * by `HttpClientLive`.
+ * by the HTTP client layer.
  */
 export class NetworkTrust extends Context.Service<NetworkTrust, ResolvedNetworkTrust>()(
   "@lando/core/NetworkTrust",

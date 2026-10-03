@@ -1,9 +1,9 @@
 import { realpath, stat } from "node:fs/promises";
 import { basename, join, posix, win32 } from "node:path";
 import { isLando4ExecutableName } from "@lando/engine/install/owned-executable";
-import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import * as EngineLandofileServiceLayer from "@lando/engine/services/landofile-live";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { ManagedFileTransactionGuardLive } from "@lando/managed-file/transaction";
+import * as ManagedFileTransactionGuardLayer from "@lando/managed-file/transaction-guard";
 import type { DoctorExecutableLocator, DoctorResourceInspector } from "@lando/sdk/plugins";
 import {
   type DoctorAppIdentity,
@@ -12,13 +12,13 @@ import {
   DoctorResourceNameQuery,
 } from "@lando/sdk/schema";
 import { LandofileService, type RuntimeProviderShape } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Layer, Option, Schema } from "effect";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { describeDoctorCause, redactDoctorMessage } from "./doctor-self.ts";
 
-const DoctorLandofileLive = LandofileServiceLive.pipe(
-  Layer.provide(Layer.merge(StateStoreLive, ManagedFileTransactionGuardLive)),
+const DoctorLandofileLayer = EngineLandofileServiceLayer.layerDefault.pipe(
+  Layer.provide(Layer.merge(StateStoreLayer.layer, ManagedFileTransactionGuardLayer.layer)),
 );
 
 export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | undefined> =>
@@ -26,7 +26,7 @@ export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | un
     const available = yield* Effect.serviceOption(LandofileService);
     const service = Option.isSome(available)
       ? available.value
-      : yield* LandofileService.pipe(Effect.provide(DoctorLandofileLive));
+      : yield* LandofileService.pipe(Effect.provide(DoctorLandofileLayer));
     const landofile = yield* loadUserLandofile(service);
     const root = getLandofileAppRoot(landofile);
     if (root === undefined || landofile.name === undefined) return undefined;

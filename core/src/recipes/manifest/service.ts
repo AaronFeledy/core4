@@ -4,7 +4,7 @@ import { Schema } from "effect";
  * `RecipeManifestService` live layer.
  *
  * Pipeline: pre-decode rejection, strict Effect Schema decode, and
- * tagged error preservation. Mirrors `LandofileServiceLive`.
+ * tagged error preservation. Mirrors `@lando/landofile` `layer(options)`.
  *
  * Post-decode semantic validation enforces:
  *   - prompt `name` uniqueness within a recipe

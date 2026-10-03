@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -119,6 +120,7 @@ const registrationsFromModules = (
     readonly managedFileService: Context.Service.Shape<typeof ManagedFileService>;
     readonly stateStore: Context.Service.Shape<typeof StateStore>;
     readonly privateFileAccess: Context.Service.Shape<typeof PrivateFileAccessService>;
+    readonly httpClient: HttpClient.HttpClient;
     readonly eventService?: Context.Service.Shape<typeof EventService>;
     readonly redaction?: Context.Service.Shape<typeof RedactionService>;
   },
@@ -159,6 +161,7 @@ const registrationsFromModules = (
             stateStore: dependencies.stateStore,
             privateFileAccess: dependencies.privateFileAccess,
             pluginStateRoot,
+            httpClient: dependencies.httpClient,
             ...(publishRender === undefined ? {} : { publishRender }),
           });
           return {
@@ -180,6 +183,7 @@ export const makeRouterServiceRegistryLive = (modules: ReadonlyArray<LandoPlugin
       const managedFileService = yield* ManagedFileService;
       const stateStore = yield* StateStore;
       const privateFileAccess = yield* PrivateFileAccessService;
+      const httpClient = yield* HttpClient.HttpClient;
       const eventService = yield* Effect.serviceOption(EventService);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const registrations = yield* registrationsFromModules(modules, {
@@ -187,6 +191,7 @@ export const makeRouterServiceRegistryLive = (modules: ReadonlyArray<LandoPlugin
         managedFileService,
         stateStore,
         privateFileAccess,
+        httpClient,
         ...(eventService._tag === "Some" ? { eventService: eventService.value } : {}),
         ...(redaction._tag === "Some" ? { redaction: redaction.value } : {}),
       });

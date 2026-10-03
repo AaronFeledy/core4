@@ -19,11 +19,7 @@ import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { encodeFrame } from "@lando/state-store/codec";
 import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 
 const REGISTRY_VERSION = 1 as const;
@@ -282,5 +278,5 @@ export const ScratchRegistryWithPrivateFileAccessLive: Layer.Layer<
 > = Layer.effect(ScratchRegistry, Effect.map(PrivateFileAccessService, makeScratchRegistry));
 
 export const ScratchRegistryLive = ScratchRegistryWithPrivateFileAccessLive.pipe(
-  Layer.provide(PrivateFileAccessLive),
+  Layer.provide(PrivateFileAccessService.layer),
 );

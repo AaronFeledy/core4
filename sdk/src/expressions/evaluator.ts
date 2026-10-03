@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import {
   LandofileExpressionEvalError,
@@ -141,8 +141,7 @@ const BASE64_LOOKUP = new Map([...BASE64_ALPHABET].map((char, index) => [char, i
 
 const isMissing = (value: ResolvedValue): value is MissingValue => value === MISSING;
 const isUnavailable = (value: ResolvedValue): boolean => isMissing(value) || value === undefined;
-const isRecordLike = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const isRecordLike = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const optionalFilePath = (options: EvaluateExpressionOptions): { readonly filePath?: string } =>
   options.filePath === undefined ? {} : { filePath: options.filePath };

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Result, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 
 import {
   LandofileShape,
@@ -30,8 +30,7 @@ const decodeAuthored = (service: Record<string, unknown>): ServiceConfig => {
 const reservedKeyRecord = (value: unknown): Record<string, unknown> =>
   Object.fromEntries([["__proto__", value]]);
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = Predicate.isObject;
 
 const expectReservedKeyRejection = (result: Result.Result<unknown, unknown>): void => {
   expect(Result.isFailure(result)).toBe(true);

@@ -1,90 +1,100 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Duration, Effect, Layer, Stream } from "effect";
+import { DateTime, Duration, Effect, Layer, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
-import { type HttpClientContractHarness, runHttpClientContract } from "@lando/sdk/test";
+import {
+  type HttpClientContractHarness,
+  type HttpClientContractRequestPolicy,
+  runHttpClientContract,
+} from "@lando/sdk/test";
 
-import { makeHttpClientLive } from "@lando/http-client/live";
+import { RequestPolicy, layerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
-import { HttpClient, type HttpClientShape } from "@lando/http-client/service";
-import { makeTestHttpClient } from "../../src/testing/http-client.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
-const CONTRIBUTED_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
-
 const SYSTEM_CA_SAMPLE = "-----BEGIN CERTIFICATE-----\nSYSTEM-ROOT-SAMPLE\n-----END CERTIFICATE-----";
 
+const withPolicy = <A, E, R>(
+  policy: HttpClientContractRequestPolicy,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> => effect.pipe(Effect.provideService(RequestPolicy, policy));
+
+const originOf = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    return parsed.host.length > 0 ? `${parsed.protocol}//${parsed.host}` : parsed.protocol;
+  } catch {
+    return "unknown";
+  }
+};
+
+/** Minimal in-memory Effect HttpClient for the contract suite. */
+const makeMemoryHttpClient = (options: {
+  readonly sources: Map<string, Uint8Array>;
+  readonly events: LandoEvent[];
+  readonly corruptStream?: boolean;
+  readonly leakSecret?: boolean;
+}): HttpClient.HttpClient =>
+  HttpClient.make((request, url) =>
+    Effect.gen(function* () {
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return yield* Effect.fail(
+          new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({ request, cause: "unsupported scheme" }),
+          }),
+        );
+      }
+
+      const href = url.href;
+      const body = options.sources.get(href);
+      const status = body === undefined ? 404 : 200;
+      const timestamp = yield* DateTime.now;
+      options.events.push({
+        _tag: "pre-http-call",
+        eventName: "pre-http-call",
+        urlOrigin: originOf(href),
+        timestamp,
+      } as unknown as LandoEvent);
+      options.events.push({
+        _tag: "post-http-call",
+        eventName: "post-http-call",
+        urlOrigin: originOf(href),
+        status,
+        outcome: "success",
+        durationMs: 0,
+        timestamp,
+        ...(options.leakSecret === true ? { leaked: "ULW-HTTP-SECRET-9f8e7d6c5b4a3" } : {}),
+      } as unknown as LandoEvent);
+
+      const bytes =
+        options.corruptStream === true ? new TextEncoder().encode("corrupted") : (body ?? new Uint8Array());
+      return HttpClientResponse.fromWeb(
+        request,
+        new Response(bytes, { status, headers: { "content-type": "application/octet-stream" } }),
+      );
+    }),
+  );
+
 describe("HttpClient contract suite", () => {
-  test("TestHttpClient (in-memory) satisfies the contract", async () => {
-    const handle = makeTestHttpClient({ systemCaPems: [SYSTEM_CA_SAMPLE] });
-    const harness: HttpClientContractHarness<ResolvedNetworkTrust> = {
-      name: "TestHttpClient",
-      service: handle.service,
-      serveSource: (url, bytes) => Effect.sync(() => handle.serve(url, bytes)),
-      events: () => Effect.sync(() => handle.events()),
-      trust: {
-        make: (input) => ({
-          proxy: input.proxy,
-          caPems: input.caPems,
-          trustHost: input.trustHost ?? true,
-        }),
-        withTrust: (trust, effect) => handle.withTrust(trust, effect),
-        lastInit: () => Effect.sync(() => handle.lastInit()),
-        systemCaSample: SYSTEM_CA_SAMPLE,
-      },
-      offline: {
-        withOffline: (effect) => handle.withOffline(effect),
-        connectCount: () => Effect.sync(() => handle.connectCount()),
-      },
-      timeout: {
-        run: (timeoutMs) => {
-          const url = "https://contract.test/hang.bin";
-          handle.serveHang(url);
-          return handle.service.request({ url, timeoutMs });
-        },
-        reaped: () => Effect.sync(() => handle.pendingHangs() === 0),
-      },
+  test("in-memory Effect HttpClient satisfies the contract", async () => {
+    const sources = new Map<string, Uint8Array>();
+    const events: LandoEvent[] = [];
+    const service = makeMemoryHttpClient({ sources, events });
+    const harness: HttpClientContractHarness = {
+      name: "MemoryHttpClient",
+      service,
+      serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
+      events: () => Effect.sync(() => [...events]),
     };
     const result = await run(runHttpClientContract(harness));
     expect(result).toBeUndefined();
   });
 
-  test("TestHttpClient times out while draining a streaming body", async () => {
-    const handle = makeTestHttpClient();
-    const url = "https://contract.test/body-hang.bin";
-    handle.serveBodyHang(url);
-
-    const exit = await Effect.runPromiseExit(
-      Effect.scoped(
-        Effect.timeoutOrElse(
-          Effect.flatMap(handle.service.stream({ url, timeoutMs: 10 }), (response) =>
-            Stream.runDrain(response.body),
-          ),
-          {
-            duration: Duration.millis(100),
-            orElse: () => Effect.fail((() => new Error("test body did not time out"))()),
-          },
-        ),
-      ),
-    );
-
-    expect(exit._tag).toBe("Failure");
-    const failure = exit._tag === "Failure" ? Cause.findErrorOption(exit.cause) : undefined;
-    expect(failure?._tag).toBe("Some");
-    const error = failure?._tag === "Some" ? (failure.value as { readonly message?: string }) : undefined;
-    expect(error?.message).toBe("request exceeded timeoutMs=10");
-  });
-
-  test("HttpClientLive (injected fetch + NetworkTrust) satisfies the contract", async () => {
+  test("HttpClient layer (injected fetch + NetworkTrust) satisfies the contract", async () => {
     const sources = new Map<string, Uint8Array>();
     const events: LandoEvent[] = [];
     let lastInit: { url: string; proxy?: string; tls?: { ca?: ReadonlyArray<string> } } | undefined;
@@ -143,33 +153,37 @@ describe("HttpClient contract suite", () => {
       query: () => Effect.succeed([]),
     } as never);
 
-    const layer = makeHttpClientLive(
-      fetchImpl,
-      () => [SYSTEM_CA_SAMPLE],
-      (url, init) =>
-        fetchImpl(url.href, {
-          method: init.method,
-          headers: init.headers,
-          signal: init.signal,
+    const layer = layerWith({
+      fetch: fetchImpl,
+      systemCaPems: () => [SYSTEM_CA_SAMPLE],
+      // NO_PROXY / loopback hosts use the direct transport; mirror fetch capture.
+      direct: (url, init) => {
+        lastInit = {
+          url: url.href,
           ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
-        }),
-    ).pipe(Layer.provide(eventLayer));
+        };
+        connectCount += 1;
+        const body = sources.get(url.href);
+        if (body === undefined) return Promise.resolve(new Response("missing", { status: 404 }));
+        return Promise.resolve(new Response(body, { status: 200 }));
+      },
+    }).pipe(Layer.provide(eventLayer));
+
     const service = await run(
-      Effect.scoped(
-        Effect.provide(
-          Effect.gen(function* () {
-            return yield* HttpClient;
-          }),
-          layer,
-        ),
-      ) as Effect.Effect<HttpClientShape, never, never>,
+      Effect.provide(
+        Effect.gen(function* () {
+          return yield* HttpClient.HttpClient;
+        }),
+        layer,
+      ) as Effect.Effect<HttpClient.HttpClient, never, never>,
     );
 
     const harness: HttpClientContractHarness<ResolvedNetworkTrust> = {
-      name: "HttpClientLive",
+      name: "HttpClientLayer",
       service,
       serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
       events: () => Effect.sync(() => [...events]),
+      withPolicy,
       trust: {
         make: (input) => ({
           proxy: input.proxy,
@@ -196,17 +210,18 @@ describe("HttpClient contract suite", () => {
       },
       interruption: {
         run: () =>
-          Effect.flatMap(service.stream({ url: "https://contract.test/interrupt.bin" }), (response) =>
-            Stream.runDrain(response.body),
-          ),
+          Effect.gen(function* () {
+            const response = yield* service.get("https://contract.test/interrupt.bin");
+            return yield* Stream.runDrain(response.stream);
+          }),
         finalized: () => Effect.sync(() => interruptSignal?.aborted === true && interruptAborted),
       },
       timeout: {
         run: (timeoutMs) =>
-          Effect.flatMap(
-            service.stream({ url: "https://contract.test/timeout-hang.bin", timeoutMs }),
-            (response) => Stream.runDrain(response.body),
-          ),
+          Effect.gen(function* () {
+            const response = yield* service.get("https://contract.test/timeout-hang.bin");
+            return yield* Stream.runDrain(response.stream).pipe(Effect.timeout(Duration.millis(timeoutMs)));
+          }),
         reaped: () => Effect.sync(() => timeoutSignal?.aborted === true && timeoutAborted),
       },
     };
@@ -214,65 +229,13 @@ describe("HttpClient contract suite", () => {
     expect(result).toBeUndefined();
   });
 
-  test("a contributed HttpClient implementation satisfies the contract", async () => {
+  test("a contributed Effect HttpClient implementation satisfies the contract", async () => {
     const sources = new Map<string, Uint8Array>();
     const events: LandoEvent[] = [];
-    const httpScheme = (url: string): boolean => /^https?:$/u.test(new URL(url).protocol);
-    const origin = (url: string): string => {
-      const parsed = new URL(url);
-      return `${parsed.protocol}//${parsed.host}`;
-    };
-    const emitEvents = (request: HttpRequest, status: number) => {
-      events.push({
-        _tag: "pre-http-call",
-        eventName: "pre-http-call",
-        urlOrigin: origin(request.url),
-        timestamp: DateTime.makeUnsafe(Date.now()),
-      } as unknown as LandoEvent);
-      events.push({
-        _tag: "post-http-call",
-        eventName: "post-http-call",
-        urlOrigin: origin(request.url),
-        status,
-        outcome: "success",
-        durationMs: 0,
-        timestamp: DateTime.makeUnsafe(Date.now()),
-      } as unknown as LandoEvent);
-    };
-    const contributed: HttpClientShape = {
-      id: "contributed-http",
-      capabilities: CONTRIBUTED_CAPABILITIES,
-      request: (request) =>
-        Effect.gen(function* () {
-          if (!httpScheme(request.url)) {
-            return yield* Effect.fail(
-              new HttpRequestError({ message: "unsupported scheme", urlOrigin: request.url }),
-            );
-          }
-          const body = sources.get(request.url);
-          emitEvents(request, body === undefined ? 404 : 200);
-          return { status: body === undefined ? 404 : 200, headers: [], contentLength: body?.length ?? 0 };
-        }),
-      stream: (request) =>
-        Effect.gen(function* () {
-          if (!httpScheme(request.url)) {
-            return yield* Effect.fail(
-              new HttpRequestError({ message: "unsupported scheme", urlOrigin: request.url }),
-            );
-          }
-          const body = sources.get(request.url) ?? new Uint8Array();
-          emitEvents(request, sources.has(request.url) ? 200 : 404);
-          return {
-            status: sources.has(request.url) ? 200 : 404,
-            headers: [],
-            body: Stream.fromIterable([body]),
-          };
-        }),
-      upload: (request) => Effect.fail(new HttpUploadError({ message: "no upload", urlOrigin: request.url })),
-    };
+    const service = makeMemoryHttpClient({ sources, events });
     const harness: HttpClientContractHarness = {
       name: "ContributedHttpClient",
-      service: contributed,
+      service,
       serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
       events: () => Effect.sync(() => [...events]),
     };
@@ -284,21 +247,11 @@ describe("HttpClient contract suite", () => {
 describe("HttpClient contract rejects weakened implementations", () => {
   test("an implementation that streams the wrong bytes fails the contract", async () => {
     const sources = new Map<string, Uint8Array>();
-    const rogue: HttpClientShape = {
-      id: "rogue-bytes",
-      capabilities: CONTRIBUTED_CAPABILITIES,
-      request: (_request) => Effect.sync(() => ({ status: 200, headers: [], contentLength: 0 })),
-      stream: () =>
-        Effect.sync(() => ({
-          status: 200,
-          headers: [],
-          body: Stream.fromIterable([new TextEncoder().encode("corrupted")]),
-        })),
-      upload: (request) => Effect.fail(new HttpUploadError({ message: "no upload", urlOrigin: request.url })),
-    };
+    const events: LandoEvent[] = [];
+    const service = makeMemoryHttpClient({ sources, events, corruptStream: true });
     const harness: HttpClientContractHarness = {
       name: "RogueHttpClient",
-      service: rogue,
+      service,
       serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
       events: () => Effect.succeed([]),
     };
@@ -308,40 +261,13 @@ describe("HttpClient contract rejects weakened implementations", () => {
 
   test("an implementation that leaks a secret into an event fails the contract", async () => {
     const sources = new Map<string, Uint8Array>();
-    const leaked: LandoEvent[] = [];
-    const rogue: HttpClientShape = {
-      id: "rogue-redaction",
-      capabilities: CONTRIBUTED_CAPABILITIES,
-      request: (request) =>
-        Effect.sync(() => {
-          if (request.redactionTokens !== undefined && request.redactionTokens.length > 0) {
-            leaked.push({
-              _tag: "post-http-call",
-              eventName: "post-http-call",
-              urlOrigin: "https://x.test",
-              outcome: "success",
-              leaked: request.redactionTokens[0],
-            } as unknown as LandoEvent);
-          }
-          const body = sources.get(request.url);
-          return { status: body === undefined ? 404 : 200, headers: [], contentLength: body?.length ?? 0 };
-        }),
-      stream: (request) =>
-        Effect.sync(() => {
-          const body = sources.get(request.url) ?? new Uint8Array();
-          return {
-            status: sources.has(request.url) ? 200 : 404,
-            headers: [],
-            body: Stream.fromIterable([body]),
-          };
-        }),
-      upload: (request) => Effect.fail(new HttpUploadError({ message: "no upload", urlOrigin: request.url })),
-    };
+    const events: LandoEvent[] = [];
+    const service = makeMemoryHttpClient({ sources, events, leakSecret: true });
     const harness: HttpClientContractHarness = {
       name: "RogueRedaction",
-      service: rogue,
+      service,
       serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
-      events: () => Effect.sync(() => [...leaked]),
+      events: () => Effect.sync(() => [...events]),
     };
     const exit = await Effect.runPromiseExit(runHttpClientContract(harness));
     expect(exit._tag).toBe("Failure");

@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-compose-spellings-"));
@@ -23,13 +23,13 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
 const write = (dir: string, body: string) => writeFile(join(dir, ".lando.yml"), body);
 
-describe("LandofileServiceLive — Compose service spellings", () => {
+describe("LandofileService layer — Compose service spellings", () => {
   test("canonicalizes working_dir, depends_on map, environment list, and labels list", async () => {
     await withTempCwd(async (dir) => {
       await write(

@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService, SecretStore } from "@lando/sdk/services";
 
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { EventServiceLive, makeEventServiceLive } from "../../src/services/event-service.ts";
 
 const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
@@ -170,7 +170,7 @@ describe("EventService history buffer and query", () => {
 
   test("redacts payloads before buffering so query never observes a raw secret", async () => {
     const token = "s3cr3t-token-abc123";
-    const redaction = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer([token])));
+    const redaction = RedactionService.layer.pipe(Layer.provide(secretStoreLayer([token])));
     const eventLayer = makeEventServiceLive(8).pipe(Layer.provide(redaction));
 
     const snapshot = await Effect.runPromise(
@@ -193,7 +193,7 @@ describe("EventService history buffer and query", () => {
     const previous = process.env[envKey];
     delete process.env[envKey];
     try {
-      const redaction = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer([])));
+      const redaction = RedactionService.layer.pipe(Layer.provide(secretStoreLayer([])));
       const eventLayer = makeEventServiceLive(8).pipe(Layer.provide(redaction));
       process.env[envKey] = token;
 

@@ -202,109 +202,109 @@ const pullFailureFromTransport = (
     : pullFailure(input);
 };
 
-export const pullImage = <E = never>(
+export const pullImage = Effect.fn("RuntimeProvider.pull")(function* <E = never>(
   api: EngineHttpApi,
   reference: string,
   options: PullImageOptions<E>,
-): Effect.Effect<PulledImage, ProviderUnavailableError | ProviderInternalError | E> =>
-  Effect.gen(function* () {
-    const emitFrame = (line: string): Effect.Effect<void, ProviderUnavailableError | E> => {
-      const frame = parseImagePullFrame(line, options.dialect);
-      switch (frame.kind) {
-        case "ignore":
-          return Effect.void;
-        case "error":
-          return Effect.fail(
-            pullFailure({
-              ctx: options.ctx,
-              reference,
-              message: frame.message,
-              source: frame.source,
-              signature: frame.signature,
-            }),
-          );
-        case "progress":
-          return options.publish === undefined
-            ? Effect.void
-            : options.publish(
-                ImagePullProgressEvent.make({
-                  eventName: "image-pull-progress" as const,
-                  reference: redactString(reference),
-                  ...(frame.stream === undefined ? {} : { stream: redactString(frame.stream) }),
-                  ...(frame.current === undefined ? {} : { current: frame.current }),
-                  ...(frame.total === undefined ? {} : { total: frame.total }),
-                  timestamp: DateTime.nowUnsafe(),
-                }),
-              );
-      }
-    };
-
-    if (api.stream !== undefined) {
-      const decoder = new TextDecoder();
-      const buffer = yield* Ref.make("");
-      yield* api.stream(buildImagePullRequest(reference, options.dialect, options)).pipe(
-        Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error)),
-        Stream.runForEach((chunk) =>
-          Effect.gen(function* () {
-            const text = (yield* Ref.get(buffer)) + decoder.decode(chunk, { stream: true });
-            const segments = text.split("\n");
-            const remainder = segments.pop() ?? "";
-            yield* Ref.set(buffer, remainder);
-            yield* Effect.forEach(segments, emitFrame, { discard: true });
-          }),
-        ),
-      );
-      yield* emitFrame((yield* Ref.get(buffer)) + decoder.decode());
-    } else if (api.request !== undefined) {
-      const response = yield* api.request(buildImagePullRequest(reference, options.dialect, options));
-      if (response.status < 200 || response.status >= 300) {
+): Effect.fn.Return<PulledImage, ProviderUnavailableError | ProviderInternalError | E> {
+  const emitFrame = Effect.fnUntraced(function* (
+    line: string,
+  ): Effect.fn.Return<void, ProviderUnavailableError | E> {
+    const frame = parseImagePullFrame(line, options.dialect);
+    switch (frame.kind) {
+      case "ignore":
+        return;
+      case "error":
         return yield* Effect.fail(
           pullFailure({
             ctx: options.ctx,
             reference,
-            message: withApiReason(`HTTP ${response.status}.`, response),
-            details: response,
+            message: frame.message,
+            source: frame.source,
+            signature: frame.signature,
           }),
         );
-      }
-      yield* Effect.forEach(response.body.split("\n"), emitFrame, { discard: true });
-    } else {
-      return yield* Effect.fail(
-        missingApi(
-          options.ctx,
-          "pullArtifact",
-          `provider-${options.ctx.providerId} pullArtifact requires a container engine API client.`,
-        ),
-      );
+      case "progress":
+        if (options.publish === undefined) return;
+        return yield* options.publish(
+          ImagePullProgressEvent.make({
+            eventName: "image-pull-progress" as const,
+            reference: redactString(reference),
+            ...(frame.stream === undefined ? {} : { stream: redactString(frame.stream) }),
+            ...(frame.current === undefined ? {} : { current: frame.current }),
+            ...(frame.total === undefined ? {} : { total: frame.total }),
+            timestamp: yield* DateTime.now,
+          }),
+        );
     }
+  });
 
-    const inspect = options.dialect.inspect;
-    if (inspect === undefined) return { ref: reference };
-    const request = api.request;
-    if (request === undefined) {
-      return yield* Effect.fail(
-        missingApi(
-          options.ctx,
-          "pullArtifact",
-          `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
-        ),
-      );
-    }
-    const response = yield* request(inspect.request(reference));
-    if (response.status !== 200) {
+  if (api.stream !== undefined) {
+    const decoder = new TextDecoder();
+    const buffer = yield* Ref.make("");
+    yield* api.stream(buildImagePullRequest(reference, options.dialect, options)).pipe(
+      Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error)),
+      Stream.runForEach(
+        Effect.fnUntraced(function* (chunk) {
+          const text = (yield* Ref.get(buffer)) + decoder.decode(chunk, { stream: true });
+          const segments = text.split("\n");
+          const remainder = segments.pop() ?? "";
+          yield* Ref.set(buffer, remainder);
+          yield* Effect.forEach(segments, emitFrame, { discard: true });
+        }),
+      ),
+    );
+    yield* emitFrame((yield* Ref.get(buffer)) + decoder.decode());
+  } else if (api.request !== undefined) {
+    const response = yield* api.request(buildImagePullRequest(reference, options.dialect, options));
+    if (response.status < 200 || response.status >= 300) {
       return yield* Effect.fail(
         pullFailure({
           ctx: options.ctx,
           reference,
-          message: `post-pull inspect HTTP ${response.status}.`,
+          message: withApiReason(`HTTP ${response.status}.`, response),
           details: response,
         }),
       );
     }
-    const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
-      message: "Container engine API returned malformed JSON.",
-      details: redactDetails(response),
-    });
-    const digest = inspect.decodeDigest(decoded);
-    return { ref: reference, ...(digest === undefined ? {} : { digest }) };
+    yield* Effect.forEach(response.body.split("\n"), emitFrame, { discard: true });
+  } else {
+    return yield* Effect.fail(
+      missingApi(
+        options.ctx,
+        "pullArtifact",
+        `provider-${options.ctx.providerId} pullArtifact requires a container engine API client.`,
+      ),
+    );
+  }
+
+  const inspect = options.dialect.inspect;
+  if (inspect === undefined) return { ref: reference };
+  const request = api.request;
+  if (request === undefined) {
+    return yield* Effect.fail(
+      missingApi(
+        options.ctx,
+        "pullArtifact",
+        `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
+      ),
+    );
+  }
+  const response = yield* request(inspect.request(reference));
+  if (response.status !== 200) {
+    return yield* Effect.fail(
+      pullFailure({
+        ctx: options.ctx,
+        reference,
+        message: `post-pull inspect HTTP ${response.status}.`,
+        details: response,
+      }),
+    );
+  }
+  const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
+    message: "Container engine API returned malformed JSON.",
+    details: redactDetails(response),
   });
+  const digest = inspect.decodeDigest(decoded);
+  return { ref: reference, ...(digest === undefined ? {} : { digest }) };
+});

@@ -156,22 +156,24 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
     }
     return { dir: AbsolutePath.make(dir), socket: AbsolutePath.make(socket), release };
   };
-  const open = (operation: "host-proxy-bridge" | "agent-socket-bridge", target: () => BridgeTarget) =>
-    Effect.gen(function* () {
-      const processRunner = yield* Effect.serviceOption(ProcessRunner);
-      const host: MachineSshBridgeHost = options.host ?? {
-        ...defaultHost,
-        run: async (command, args) => {
-          if (Option.isNone(processRunner))
-            throw new BridgeCommandError("ProcessRunner is unavailable for the Podman machine SSH bridge.");
-          return Effect.runPromise(processRunner.value.run({ cmd: command, args, timeoutMs: 15_000 }));
-        },
-      };
-      return yield* Effect.acquireRelease(
-        Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure(operation) }),
-        ({ release }) => Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(Effect.orDie),
-      );
-    });
+  const open = Effect.fn("RuntimeProvider.openMachineSshBridge")(function* (
+    operation: "host-proxy-bridge" | "agent-socket-bridge",
+    target: () => BridgeTarget,
+  ) {
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const host: MachineSshBridgeHost = options.host ?? {
+      ...defaultHost,
+      run: async (command, args) => {
+        if (Option.isNone(processRunner))
+          throw new BridgeCommandError("ProcessRunner is unavailable for the Podman machine SSH bridge.");
+        return Effect.runPromise(processRunner.value.run({ cmd: command, args, timeoutMs: 15_000 }));
+      },
+    };
+    return yield* Effect.acquireRelease(
+      Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure(operation) }),
+      ({ release }) => Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(Effect.orDie),
+    );
+  });
   return {
     openHostProxyBridge: (input: HostProxyBridgeInput): BridgeEffect<HostProxyBridgeResult> =>
       open("host-proxy-bridge", () => {

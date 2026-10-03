@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import type { update } from "@lando/engine/operations/update";
 import type { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 
 type UpdateOptions = NonNullable<Parameters<typeof update>[0]>;
@@ -219,7 +219,7 @@ export const fetcherForSelfUpdate =
     throw new Error(`unexpected fetch: ${url}`);
   };
 export const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
-  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
 export const sandboxUninstallIo = (root: string) => ({
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),

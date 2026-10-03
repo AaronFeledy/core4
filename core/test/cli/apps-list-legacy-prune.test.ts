@@ -9,7 +9,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { StateStoreError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
@@ -74,7 +74,7 @@ const fixture = async (provider: string) => {
                 ),
             }),
             FileSystemLive,
-            PrivateFileAccessLive,
+            PrivateFileAccessService.layer,
           ),
         ),
         Effect.result,

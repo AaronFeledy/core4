@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { ScannerError } from "@lando/sdk/errors";
 import type { AppId, ServiceName } from "@lando/sdk/schema";
@@ -12,7 +13,6 @@ import {
   type UrlScannerShape,
 } from "@lando/sdk/services";
 
-import { HttpClient } from "@lando/http-client/service";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   SCANNER_ID,
@@ -124,16 +124,17 @@ const listEndpointsFromProvider =
       );
     });
 
-export const UrlScannerLive: Layer.Layer<UrlScanner, never, RuntimeProvider | HttpClient> = Layer.effect(
-  UrlScanner,
-  Effect.gen(function* () {
-    const provider = yield* RuntimeProvider;
-    const http = yield* HttpClient;
-    return makeUrlScanner({
-      stream: http.stream,
-      listEndpoints: listEndpointsFromProvider(provider),
-    });
-  }),
-);
+export const UrlScannerLive: Layer.Layer<UrlScanner, never, RuntimeProvider | HttpClient.HttpClient> =
+  Layer.effect(
+    UrlScanner,
+    Effect.gen(function* () {
+      const provider = yield* RuntimeProvider;
+      const http = yield* HttpClient.HttpClient;
+      return makeUrlScanner({
+        http,
+        listEndpoints: listEndpointsFromProvider(provider),
+      });
+    }),
+  );
 
 export const UrlScannerDefaultLayer = UrlScannerLive;

@@ -14,8 +14,8 @@ export interface TestManagedFileStore {
   readonly ledger: () => ReadonlyArray<LedgerEntry>;
 }
 
-export const makeTestManagedFileStore = (): Effect.Effect<TestManagedFileStore> =>
-  Effect.gen(function* () {
+export const makeTestManagedFileStore = Effect.fnUntraced(
+  function* (): Effect.fn.Return<TestManagedFileStore> {
     const base = "/lando-managed-file-test/app";
     const files = new Map<string, string>();
     let entries: ReadonlyArray<LedgerEntry> = [];
@@ -70,4 +70,5 @@ export const makeTestManagedFileStore = (): Effect.Effect<TestManagedFileStore> 
       },
       ledger: () => entries,
     } satisfies TestManagedFileStore;
-  });
+  },
+);

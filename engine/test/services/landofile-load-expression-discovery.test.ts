@@ -10,7 +10,7 @@ import { LandofileLoadOutsideRootError, NotImplementedError } from "@lando/sdk/e
 import { GlobalConfig, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
 
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 import { PEM, discover, discoverFailure, withApp } from "./landofile-load-expression-support.ts";
 
 test("discovers load and import CA expressions", async () => {
@@ -243,7 +243,7 @@ test("allows and logs an opted-in outside-root load", async () => {
     process.chdir(appRoot);
     const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
     const layer = Layer.mergeAll(
-      LandofileServiceLive,
+      TestLandofileServiceLayer.layer,
       Layer.succeed(ConfigService, {
         load: Effect.succeed(config),
         get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
@@ -298,7 +298,7 @@ test("logs an opted-in outside-root load from an include fragment", async () => 
     process.chdir(appRoot);
     const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
     const layer = Layer.mergeAll(
-      LandofileServiceLive,
+      TestLandofileServiceLayer.layer,
       Layer.succeed(ConfigService, {
         load: Effect.succeed(config),
         get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),

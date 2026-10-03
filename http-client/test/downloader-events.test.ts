@@ -5,52 +5,36 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer, Queue, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { Downloader, EventService, type LandoEvent } from "@lando/sdk/services";
 
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
-
-import { DownloaderLive } from "../src/downloader.ts";
-import { HttpClient, type HttpClientShape } from "../src/service.ts";
-
-const FAKE_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
+import { layer as DownloaderLayer } from "../src/downloader.ts";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
-const makeFakeHttpClient = (bodies: Record<string, () => Stream.Stream<Uint8Array, HttpRequestError>>) => {
-  const calls: HttpRequest[] = [];
-  const service: HttpClientShape = {
-    id: "fake-http",
-    capabilities: FAKE_HTTP_CAPABILITIES,
-    request: (request) =>
-      Effect.fail(new HttpRequestError({ message: "request unsupported in fake", urlOrigin: request.url })),
-    stream: (request) =>
-      Effect.suspend(() => {
-        calls.push(request);
-        const factory = bodies[request.url];
-        if (factory === undefined) {
-          return Effect.fail(
-            new HttpRequestError({ message: "no fake response", urlOrigin: request.url, status: 404 }),
-          );
-        }
-        return Effect.succeed({
-          status: 200,
-          headers: [],
-          body: factory(),
-        });
-      }),
-    upload: (request) =>
-      Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
-  };
-  return { layer: Layer.succeed(HttpClient, service), calls };
+const makeFakeHttpClient = (bodies: Record<string, Uint8Array | "fail">) => {
+  const client = HttpClient.make((request, url) =>
+    Effect.gen(function* () {
+      const body = bodies[url.href] ?? bodies[request.url];
+      if (body === undefined || body === "fail") {
+        return yield* Effect.fail(
+          new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({
+              request,
+              cause: body === "fail" ? `boom ${url.href}` : "no fake response",
+              description: "request failed",
+            }),
+          }),
+        );
+      }
+      return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+    }),
+  );
+  return { layer: Layer.succeed(HttpClient.HttpClient, client) };
 };
 
 const makeCapturingEventService = () => {
@@ -75,12 +59,12 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
   }
 };
 
-describe("DownloaderLive event publication + redaction", () => {
+describe("Downloader layer event publication + redaction", () => {
   test("a successful download emits pre-download, download-progress, and post-download", async () => {
     await withTempDir(async (dir) => {
       const payload = bytes("verified artifact contents");
       const url = "https://artifacts.test/path/secret-bin?token=SIGNED-QUERY-SECRET";
-      const fake = makeFakeHttpClient({ [url]: () => Stream.fromIterable([payload]) });
+      const fake = makeFakeHttpClient({ [url]: payload });
       const capture = makeCapturingEventService();
 
       await Effect.runPromise(
@@ -94,7 +78,9 @@ describe("DownloaderLive event publication + redaction", () => {
               callerId: "provider-lando",
             });
           }),
-        ).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(Layer.mergeAll(fake.layer, capture.layer))))),
+        ).pipe(
+          Effect.provide(DownloaderLayer.pipe(Layer.provide(Layer.mergeAll(fake.layer, capture.layer)))),
+        ),
       );
 
       const events = capture.events();
@@ -114,7 +100,7 @@ describe("DownloaderLive event publication + redaction", () => {
       const secretToken = "ULW-DL-SECRET-d41d8cd9f00b2";
       const payload = bytes("payload");
       const url = `https://user:p4ss@artifacts.test/x?token=${secretToken}`;
-      const fake = makeFakeHttpClient({ [url]: () => Stream.fromIterable([payload]) });
+      const fake = makeFakeHttpClient({ [url]: payload });
       const capture = makeCapturingEventService();
 
       await Effect.runPromise(
@@ -129,7 +115,9 @@ describe("DownloaderLive event publication + redaction", () => {
               redactionTokens: [secretToken, "p4ss"],
             });
           }),
-        ).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(Layer.mergeAll(fake.layer, capture.layer))))),
+        ).pipe(
+          Effect.provide(DownloaderLayer.pipe(Layer.provide(Layer.mergeAll(fake.layer, capture.layer)))),
+        ),
       );
 
       const serialized = JSON.stringify(capture.events());
@@ -144,9 +132,7 @@ describe("DownloaderLive event publication + redaction", () => {
   test("a failed download emits post-download with a controlled, content-free failureDetail", async () => {
     const secretToken = "ULW-FAIL-SECRET-abc123";
     const url = `https://artifacts.test/x?token=${secretToken}`;
-    const fake = makeFakeHttpClient({
-      [url]: () => Stream.fail(new HttpRequestError({ message: `boom ${url}`, urlOrigin: url, status: 500 })),
-    });
+    const fake = makeFakeHttpClient({ [url]: "fail" });
     const capture = makeCapturingEventService();
 
     const exit = await Effect.runPromiseExit(
@@ -159,7 +145,7 @@ describe("DownloaderLive event publication + redaction", () => {
             redactionTokens: [secretToken],
           });
         }),
-      ).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(Layer.mergeAll(fake.layer, capture.layer))))),
+      ).pipe(Effect.provide(DownloaderLayer.pipe(Layer.provide(Layer.mergeAll(fake.layer, capture.layer))))),
     );
 
     expect(exit._tag).toBe("Failure");

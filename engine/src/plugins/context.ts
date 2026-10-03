@@ -3,12 +3,15 @@
 // Plugin writes always record `owner: <plugin-id>`; a plugin cannot see, remove,
 // or adopt files owned by another plugin or by core. `stateStore` is likewise
 // pre-rooted to `<userDataRoot>/plugins/<plugin-id>/` by the host; plugin code
-// cannot select another durable-state root.
+// cannot select another durable-state root. `httpClient` is the host-owned
+// Effect HttpClient for outbound HTTP; construction sites must supply the
+// real runtime client with no silent fake fallback.
 
 import { posix as pathPosix } from "node:path";
 
 import { Effect } from "effect";
 import type { Context, Scope } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import { EventError, ManagedFileError } from "@lando/sdk/errors";
 import type { RenderEvent } from "@lando/sdk/events";
@@ -214,6 +217,11 @@ export interface LandoPluginContext {
   readonly id: string;
   readonly managedFiles: PluginManagedFiles;
   readonly stateStore: PluginStateStore;
+  /**
+   * Host-owned Effect `HttpClient` for outbound HTTP. Supplied by the host
+   * context builder from the real runtime client — never an inert stub.
+   */
+  readonly httpClient: HttpClient.HttpClient;
   readonly events: {
     /**
      * Closed publish-only seam for `RenderEvent` values. Core implementations
@@ -241,11 +249,13 @@ export const makeLandoPluginContext = (input: {
   readonly stateStore: StateStoreShape;
   readonly pluginStateRoot: AbsolutePath;
   readonly privateFileAccess: import("@lando/state-store/private-file-access").PrivateFileAccess;
+  readonly httpClient: HttpClient.HttpClient;
   readonly publishRender?: LandoPluginContext["events"]["publishRender"];
 }): LandoPluginContext => ({
   id: input.id,
   managedFiles: makePluginManagedFiles(input.id, input.managedFileService),
   stateStore: makePluginStateStore(input.stateStore, input.pluginStateRoot, input.privateFileAccess),
+  httpClient: input.httpClient,
   events: {
     publishRender: input.publishRender ?? publishRenderNotWired,
   },

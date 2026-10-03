@@ -49,7 +49,7 @@ import {
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
@@ -330,7 +330,7 @@ const emptyPluginRegistry = {
 };
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
-  PrivateFileAccessLive,
+  PrivateFileAccessService.layer,
   NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
@@ -509,7 +509,7 @@ const makeStartLayer = (
   };
 
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     TestStateStoreLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
@@ -780,7 +780,7 @@ const makeAutoStartLayer = async (options: {
   const plannedGlobal = globalPlan(options.globalServiceIds);
   const layer = Layer.mergeAll(
     TestStateStoreLive,
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
@@ -2071,7 +2071,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,
@@ -2210,7 +2210,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,
@@ -2340,7 +2340,7 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,
@@ -2481,7 +2481,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,
@@ -2627,7 +2627,7 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,
@@ -2808,7 +2808,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,
@@ -2969,7 +2969,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       makeTestStateStore().layer,

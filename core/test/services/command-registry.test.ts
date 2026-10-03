@@ -31,7 +31,7 @@ import {
 } from "@lando/engine/cache/paths";
 import { CommandRegistryLive } from "@lando/engine/services/command-registry";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const writeScript = async (appRoot: string, relativePath: string, contents: string): Promise<void> => {
   const target = join(appRoot, ".lando", "scripts", relativePath);
@@ -64,7 +64,7 @@ const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Pro
   }
 };
 
-const registryLayer = Layer.provide(CommandRegistryLive, LandofileServiceLive);
+const registryLayer = Layer.provide(CommandRegistryLive, TestLandofileServiceLayer.layer);
 
 const listFromLive = () =>
   Effect.runPromise(

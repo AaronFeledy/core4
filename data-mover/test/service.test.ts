@@ -58,9 +58,9 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
@@ -161,7 +161,7 @@ const verifyingPullArtifact: Context.Service.Shape<typeof RuntimeProvider>["pull
 
 const providerLayer = (overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {}) =>
   Layer.mergeAll(
-    StateStoreLive,
+    stateStoreLayer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(RuntimeProvider, {
       ...TestRuntimeProvider,
@@ -757,7 +757,7 @@ describe("DataMoverLive", () => {
         Effect.provide(DataMoverLive),
         Effect.provide(
           Layer.mergeAll(
-            StateStoreLive,
+            stateStoreLayer,
             Layer.succeed(PathsService, paths),
             Layer.succeed(RuntimeProvider, {
               ...TestRuntimeProvider,
@@ -2130,7 +2130,7 @@ describe("DataMoverLive", () => {
       const testStore = Context.get(
         await Effect.runPromise(
           Effect.scoped(
-            Layer.build(StateStoreLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+            Layer.build(stateStoreLayer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
           ),
         ),
         StateStore,
@@ -2364,7 +2364,7 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
           DataMoverLive.pipe(
             Layer.provide(
               Layer.mergeAll(
-                StateStoreLive,
+                stateStoreLayer,
                 Layer.succeed(PathsService, { ...makeLandoPaths(), scratchDir }),
                 countingProviderLayer(counters),
                 captureEvents().layer,

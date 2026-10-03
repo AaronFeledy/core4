@@ -4,64 +4,78 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Result, Stream } from "effect";
+import { Effect, Fiber, Layer, Result } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader } from "@lando/sdk/services";
 
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
-
-import { DownloaderLive } from "../src/downloader.ts";
-import { HttpClient, type HttpClientShape } from "../src/service.ts";
-
-const FAKE_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
+import { layer as DownloaderLayer } from "../src/downloader.ts";
+import { RequestPolicy, type RequestPolicyShape } from "../src/policy.ts";
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
+type BodyFactory =
+  | { readonly kind: "bytes"; readonly data: Uint8Array }
+  | { readonly kind: "fail-open"; readonly cause?: unknown; readonly remediation?: string }
+  | { readonly kind: "fail-body"; readonly prefix: Uint8Array; readonly message: string };
+
 interface FakeOptions {
-  readonly bodies?: Record<string, () => Stream.Stream<Uint8Array, HttpRequestError>>;
+  readonly bodies?: Record<string, BodyFactory>;
   readonly status?: number;
 }
 
 const makeFakeHttpClient = (options: FakeOptions = {}) => {
-  const calls: HttpRequest[] = [];
-  const service: HttpClientShape = {
-    id: "fake-http",
-    capabilities: FAKE_HTTP_CAPABILITIES,
-    request: (request) =>
-      Effect.fail(new HttpRequestError({ message: "request unsupported in fake", urlOrigin: request.url })),
-    stream: (request) =>
-      Effect.suspend(() => {
-        calls.push(request);
-        const factory = options.bodies?.[request.url];
-        if (factory === undefined) {
-          return Effect.fail(
-            new HttpRequestError({ message: "no fake response", urlOrigin: request.url, status: 404 }),
-          );
-        }
-        return Effect.succeed({
-          status: options.status ?? 200,
-          headers: [],
-          body: factory(),
+  const calls: Array<{ url: string; policy: RequestPolicyShape }> = [];
+  const client = HttpClient.make((request, url, _signal, fiber) =>
+    Effect.gen(function* () {
+      const policy = fiber.getRef(RequestPolicy);
+      calls.push({ url: url.href, policy });
+      const factory = options.bodies?.[url.href] ?? options.bodies?.[request.url];
+      if (factory === undefined || factory.kind === "fail-open") {
+        const cause =
+          factory?.kind === "fail-open"
+            ? (factory.cause ??
+              (factory.remediation === undefined
+                ? "no fake response"
+                : { remediation: factory.remediation, message: "trust failed" }))
+            : "no fake response";
+        return yield* Effect.fail(
+          new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({
+              request,
+              cause,
+              description: typeof cause === "string" ? cause : "request failed",
+            }),
+          }),
+        );
+      }
+      if (factory.kind === "fail-body") {
+        const prefix = factory.prefix;
+        const message = factory.message;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(prefix);
+            controller.error(new Error(message));
+          },
         });
-      }),
-    upload: (request) =>
-      Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
-  };
-  return { layer: Layer.succeed(HttpClient, service), calls };
+        return HttpClientResponse.fromWeb(request, new Response(body, { status: options.status ?? 200 }));
+      }
+      return HttpClientResponse.fromWeb(
+        request,
+        new Response(factory.data, { status: options.status ?? 200 }),
+      );
+    }),
+  );
+  return { layer: Layer.succeed(HttpClient.HttpClient, client), calls };
 };
 
 const download = (
   request: DownloadRequest,
-  fake: Layer.Layer<HttpClient>,
+  fake: Layer.Layer<HttpClient.HttpClient>,
 ): Promise<Result.Result<DownloadResult, unknown>> =>
   Effect.runPromise(
     Effect.scoped(
@@ -69,7 +83,7 @@ const download = (
         const downloader = yield* Downloader;
         return yield* downloader.download(request);
       }),
-    ).pipe(Effect.result, Effect.provide(DownloaderLive.pipe(Layer.provide(fake)))),
+    ).pipe(Effect.result, Effect.provide(DownloaderLayer.pipe(Layer.provide(fake)))),
   );
 
 const expectRight = <A>(either: Result.Result<A, unknown>): A => {
@@ -78,10 +92,17 @@ const expectRight = <A>(either: Result.Result<A, unknown>): A => {
   return either.success;
 };
 
-const expectLeft = (either: Result.Result<unknown, unknown>): { _tag?: string; reason?: string } => {
+const expectLeft = (
+  either: Result.Result<unknown, unknown>,
+): {
+  _tag?: string;
+  reason?: string;
+  cause?: unknown;
+  remediation?: string;
+} => {
   if (Result.isSuccess(either))
     throw new Error(`expected error, got success: ${JSON.stringify(either.success)}`);
-  return either.failure as { _tag?: string; reason?: string };
+  return either.failure as { _tag?: string; reason?: string; cause?: unknown; remediation?: string };
 };
 
 const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
@@ -93,12 +114,12 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
   }
 };
 
-describe("DownloaderLive", () => {
+describe("Downloader layer", () => {
   test("S1 file success: streams to destination, returns sha256+size, fromCache:false, no temp", async () => {
     await withTempDir(async (dir) => {
       const payload = bytes("verified artifact contents");
       const url = "https://example.test/artifact.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([payload]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: payload } } });
 
       const result = expectRight(
         await download(
@@ -118,6 +139,7 @@ describe("DownloaderLive", () => {
       expect(result.sizeBytes).toBe(payload.length);
       expect(result.path).toBe(join(dir, "artifact.bin"));
       expect(fake.calls.length).toBe(1);
+      expect(fake.calls[0]?.policy.onBehalfOf).toBe("downloader");
       expect(Array.from(await readFile(join(dir, "artifact.bin")))).toEqual(Array.from(payload));
       expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
     });
@@ -129,7 +151,7 @@ describe("DownloaderLive", () => {
       await writeFile(join(dir, "cached.bin"), payload);
       const url = "https://example.test/cached.bin";
       const fake = makeFakeHttpClient({
-        bodies: { [url]: () => Stream.fromIterable([bytes("SHOULD NOT FETCH")]) },
+        bodies: { [url]: { kind: "bytes", data: bytes("SHOULD NOT FETCH") } },
       });
 
       const result = expectRight(
@@ -153,7 +175,7 @@ describe("DownloaderLive", () => {
   test("S3 offline cache miss: fails before opening a connection", async () => {
     await withTempDir(async (dir) => {
       const url = "https://example.test/missing.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([bytes("x")]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: bytes("x") } } });
 
       const error = expectLeft(
         await download(
@@ -174,9 +196,8 @@ describe("DownloaderLive", () => {
 
   test("S4 scheme gating: http rejected, file gated, allowed file flows through", async () => {
     await withTempDir(async (dir) => {
-      // http:// rejected (reason: scheme), no network
       const httpUrl = "http://example.test/insecure.bin";
-      const fakeHttp = makeFakeHttpClient({ bodies: { [httpUrl]: () => Stream.fromIterable([bytes("x")]) } });
+      const fakeHttp = makeFakeHttpClient({ bodies: { [httpUrl]: { kind: "bytes", data: bytes("x") } } });
       const httpError = expectLeft(
         await download(
           { url: httpUrl, destination: { kind: "file", directory: dir, filename: "insecure.bin" } },
@@ -187,9 +208,8 @@ describe("DownloaderLive", () => {
       expect(httpError.reason).toBe("scheme");
       expect(fakeHttp.calls.length).toBe(0);
 
-      // file:// without allowFileSource (reason: file-source), no network
       const fileUrl = "file:///tmp/local-artifact.bin";
-      const fakeFile = makeFakeHttpClient({ bodies: { [fileUrl]: () => Stream.fromIterable([bytes("x")]) } });
+      const fakeFile = makeFakeHttpClient({ bodies: { [fileUrl]: { kind: "bytes", data: bytes("x") } } });
       const fileError = expectLeft(
         await download(
           { url: fileUrl, destination: { kind: "file", directory: dir, filename: "local.bin" } },
@@ -200,9 +220,8 @@ describe("DownloaderLive", () => {
       expect(fileError.reason).toBe("file-source");
       expect(fakeFile.calls.length).toBe(0);
 
-      // file:// with allowFileSource flows through HttpClient.stream
       const payload = bytes("local allowed bytes");
-      const fakeAllowed = makeFakeHttpClient({ bodies: { [fileUrl]: () => Stream.fromIterable([payload]) } });
+      const fakeAllowed = makeFakeHttpClient({ bodies: { [fileUrl]: { kind: "bytes", data: payload } } });
       const result = expectRight(
         await download(
           {
@@ -216,7 +235,7 @@ describe("DownloaderLive", () => {
       );
       expect(result.fromCache).toBe(false);
       expect(fakeAllowed.calls.length).toBe(1);
-      expect(fakeAllowed.calls[0]?.allowFileSource).toBe(true);
+      expect(fakeAllowed.calls[0]?.policy.allowFileSource).toBe(true);
       expect(Array.from(await readFile(join(dir, "allowed.bin")))).toEqual(Array.from(payload));
     });
   });
@@ -226,7 +245,7 @@ describe("DownloaderLive", () => {
       await writeFile(join(dir, "out.bin"), bytes("pre-existing"));
       const url = "https://example.test/out.bin";
       const fake = makeFakeHttpClient({
-        bodies: { [url]: () => Stream.fromIterable([bytes("wrong bytes")]) },
+        bodies: { [url]: { kind: "bytes", data: bytes("wrong bytes") } },
       });
 
       const error = expectLeft(
@@ -249,7 +268,7 @@ describe("DownloaderLive", () => {
   test("S6 size mismatch: error, no temp", async () => {
     await withTempDir(async (dir) => {
       const url = "https://example.test/sized.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([bytes("12345")]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: bytes("12345") } } });
 
       const error = expectLeft(
         await download(
@@ -272,11 +291,7 @@ describe("DownloaderLive", () => {
       const url = "https://example.test/broken.bin";
       const fake = makeFakeHttpClient({
         bodies: {
-          [url]: () =>
-            Stream.concat(
-              Stream.fromIterable([bytes("partial")]),
-              Stream.fail(new HttpRequestError({ message: "connection reset", urlOrigin: url })),
-            ),
+          [url]: { kind: "fail-body", prefix: bytes("partial"), message: "connection reset" },
         },
       });
 
@@ -295,7 +310,7 @@ describe("DownloaderLive", () => {
   test("S7b stream-open failure maps to DownloadFetchError", async () => {
     await withTempDir(async (dir) => {
       const url = "https://example.test/unknown.bin";
-      const fake = makeFakeHttpClient(); // no body registered -> stream() fails
+      const fake = makeFakeHttpClient();
 
       const error = expectLeft(
         await download(
@@ -310,9 +325,19 @@ describe("DownloaderLive", () => {
   test("S8 interrupt mid-stream removes the temp file", async () => {
     await withTempDir(async (dir) => {
       const url = "https://example.test/blocking.bin";
-      const fake = makeFakeHttpClient({
-        bodies: { [url]: () => Stream.concat(Stream.fromIterable([bytes("chunk")]), Stream.never) },
-      });
+      let streamCalls = 0;
+      const hanging = HttpClient.make((request) =>
+        Effect.sync(() => {
+          streamCalls += 1;
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(bytes("chunk"));
+            },
+          });
+          return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+        }),
+      );
+      const fakeLayer = Layer.succeed(HttpClient.HttpClient, hanging);
 
       const program = Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(
@@ -324,7 +349,7 @@ describe("DownloaderLive", () => {
                 destination: { kind: "file", directory: dir, filename: "blocking.bin" },
               });
             }),
-          ).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(fake.layer)))),
+          ).pipe(Effect.provide(DownloaderLayer.pipe(Layer.provide(fakeLayer)))),
         );
         let attempts = 0;
         yield* Effect.whileLoop({
@@ -346,6 +371,7 @@ describe("DownloaderLive", () => {
       await Effect.runPromise(program);
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(await readdir(dir)).toEqual([]);
+      expect(streamCalls).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -353,7 +379,7 @@ describe("DownloaderLive", () => {
     await withTempDir(async (dir) => {
       const payload = bytes("memory-only payload");
       const url = "https://example.test/mem.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([payload]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: payload } } });
 
       const result = expectRight(
         await download(
@@ -382,7 +408,7 @@ describe("DownloaderLive", () => {
       const url = "https://example.test/notfound.bin";
       const fake = makeFakeHttpClient({
         status: 404,
-        bodies: { [url]: () => Stream.fromIterable([bytes("<html>404 Not Found</html>")]) },
+        bodies: { [url]: { kind: "bytes", data: bytes("<html>404 Not Found</html>") } },
       });
 
       const error = expectLeft(
@@ -402,7 +428,7 @@ describe("DownloaderLive", () => {
       const url = "https://example.test/notfound-mem.bin";
       const fake = makeFakeHttpClient({
         status: 500,
-        bodies: { [url]: () => Stream.fromIterable([bytes("oops")]) },
+        bodies: { [url]: { kind: "bytes", data: bytes("oops") } },
       });
 
       const error = expectLeft(await download({ url, destination: { kind: "memory" } }, fake.layer));
@@ -414,7 +440,7 @@ describe("DownloaderLive", () => {
   test("S11 path containment: traversing filename rejected before any network", async () => {
     await withTempDir(async (dir) => {
       const url = "https://example.test/evil.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([bytes("x")]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: bytes("x") } } });
 
       const error = expectLeft(
         await download(
@@ -434,7 +460,7 @@ describe("DownloaderLive", () => {
       await writeFile(join(dir, "stale.bin"), bytes("stale contents"));
       const payload = bytes("fresh verified contents");
       const url = "https://example.test/stale.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([payload]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: payload } } });
 
       const result = expectRight(
         await download(
@@ -456,10 +482,9 @@ describe("DownloaderLive", () => {
 
   test("S13 persistence failure: rename onto a directory yields DownloadPersistError, no temp", async () => {
     await withTempDir(async (dir) => {
-      // Pre-create a directory at the destination path so the final rename fails.
       await mkdir(join(dir, "busy.bin"));
       const url = "https://example.test/busy.bin";
-      const fake = makeFakeHttpClient({ bodies: { [url]: () => Stream.fromIterable([bytes("payload")]) } });
+      const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: bytes("payload") } } });
 
       const error = expectLeft(
         await download(
@@ -479,11 +504,26 @@ describe("DownloaderLive", () => {
       Effect.gen(function* () {
         const downloader = yield* Downloader;
         return downloader.capabilities;
-      }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(fake.layer)))),
+      }).pipe(Effect.provide(DownloaderLayer.pipe(Layer.provide(fake.layer)))),
     );
     expect(caps.schemes).toContain("https");
     expect(caps.memoryDownload).toBe(true);
     expect(caps.cacheAware).toBe(true);
     expect(caps.offline).toBe(true);
+  });
+
+  test("HttpClientError cause and remediation are preserved on DownloadFetchError", async () => {
+    const url = "https://example.test/trust.bin";
+    const trustCause = {
+      message: "TLS trust verification failed",
+      remediation: "Supply the issuer CA through network.ca.certs.",
+    };
+    const fake = makeFakeHttpClient({
+      bodies: { [url]: { kind: "fail-open", cause: trustCause } },
+    });
+    const error = expectLeft(await download({ url, destination: { kind: "memory" } }, fake.layer));
+    expect(error._tag).toBe("DownloadFetchError");
+    expect(error.cause).toEqual(trustCause);
+    expect(error.remediation).toBe("Supply the issuer CA through network.ca.certs.");
   });
 });

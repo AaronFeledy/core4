@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { uninstall } from "@lando/engine/operations/uninstall";
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { renderUninstallResult } from "../../src/cli/commands/uninstall.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -31,7 +31,7 @@ describe("uninstall output flows through the renderer seam", () => {
     try {
       const io = createBufferedRendererIO();
       await runWithRendererHandling(uninstall({ dryRun: true, ...isolatedOptions(root) }), {
-        runtime: PrivateFileAccessLive,
+        runtime: PrivateFileAccessService.layer,
         rendererMode: "lando",
         io,
         render: renderUninstallResult,
@@ -52,7 +52,7 @@ describe("uninstall output flows through the renderer seam", () => {
       const io = createBufferedRendererIO();
       let exitCode: number | undefined;
       await runWithRendererHandling(uninstall(isolatedOptions(root)), {
-        runtime: PrivateFileAccessLive,
+        runtime: PrivateFileAccessService.layer,
         rendererMode: "lando",
         io,
         render: (result, ctx) =>
@@ -75,7 +75,7 @@ describe("uninstall output flows through the renderer seam", () => {
     try {
       const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
       await runWithRendererHandling(uninstall({ dryRun: true, ...isolatedOptions(root) }), {
-        runtime: PrivateFileAccessLive,
+        runtime: PrivateFileAccessService.layer,
         rendererMode: "lando",
         io,
         render: renderUninstallResult,
@@ -102,7 +102,7 @@ describe("uninstall output flows through the renderer seam", () => {
     try {
       const io = createBufferedRendererIO({ isTTY: false, terminalColumns: 80 });
       await runWithRendererHandling(uninstall({ dryRun: true, ...isolatedOptions(root) }), {
-        runtime: PrivateFileAccessLive,
+        runtime: PrivateFileAccessService.layer,
         rendererMode: "lando",
         io,
         render: renderUninstallResult,

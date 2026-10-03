@@ -3,8 +3,9 @@ import { Effect, Layer } from "effect";
 
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { ProviderId, ServiceName } from "@lando/sdk/schema";
-import { HttpClient, RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
+import { RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { UrlScannerDefaultLayer, UrlScannerLive } from "../../../src/subsystems/scanner/live.ts";
 import { appId, asHttpClient, drive, driveExit, failureOf, httpStatus, requestSequence } from "./support.ts";
@@ -18,7 +19,7 @@ const provideScanner = (provider: RuntimeProviderShape, http: ReturnType<typeof 
   }).pipe(
     Effect.provide(UrlScannerLive),
     Effect.provide(Layer.succeed(RuntimeProvider, provider)),
-    Effect.provide(Layer.succeed(HttpClient, asHttpClient(http))),
+    Effect.provide(Layer.succeed(HttpClient.HttpClient, asHttpClient(http))),
   );
 
 describe("UrlScannerLive", () => {

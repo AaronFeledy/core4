@@ -1,4 +1,5 @@
 import { Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import {
   NoProviderInstalledError,
@@ -23,11 +24,7 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
@@ -106,6 +103,7 @@ export const makeRuntimeProviderRegistry = (
       const redaction = yield* Effect.serviceOption(RedactionService);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
+      const httpClient = yield* HttpClient.HttpClient;
 
       const providerManifests = pluginRegistry.list.pipe(Effect.mapError(toProviderUnavailable));
       const providerIds = providerManifests.pipe(
@@ -184,6 +182,7 @@ export const makeRuntimeProviderRegistry = (
             stateStore,
             pluginStateRoot,
             privateFileAccess,
+            httpClient,
             ...(publishRender === undefined ? {} : { publishRender }),
           });
           return { contribution, context };
@@ -273,6 +272,6 @@ export { RuntimeProviderRegistry };
 
 export const RuntimeProviderRegistryLive = Layer.suspend(() =>
   makeRuntimeProviderRegistryWithPrivateFileAccess(bundledPluginModules()).pipe(
-    Layer.provide(PrivateFileAccessLive),
+    Layer.provide(PrivateFileAccessService.layer),
   ),
 );

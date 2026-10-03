@@ -14,7 +14,7 @@ import {
   renderLandofileTemplate,
 } from "@lando/engine/services/landofile-live";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({
   bootstrapLevel: "minimal",
@@ -170,7 +170,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 

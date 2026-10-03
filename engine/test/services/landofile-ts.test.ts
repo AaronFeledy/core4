@@ -16,7 +16,7 @@ import { ServiceName, defineLandofile } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { TS_TIMEOUT_ENV } from "@lando/landofile/ts-loader";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(
   run: (dir: string) => Promise<T>,
@@ -56,14 +56,14 @@ const withEnv = async <T>(
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
@@ -73,7 +73,7 @@ const failureFromExit = <A, E>(exit: Exit.Exit<A, E>): E | undefined => {
   return failure._tag === "Some" ? failure.value : undefined;
 };
 
-describe("LandofileServiceLive — TS form value export", () => {
+describe("LandofileService layer — TS form value export", () => {
   test("loads a `.lando.ts` value-form export and matches an equivalent YAML Landofile", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -217,7 +217,7 @@ describe("LandofileServiceLive — TS form value export", () => {
   });
 });
 
-describe("LandofileServiceLive — TS form sandbox violations", () => {
+describe("LandofileService layer — TS form sandbox violations", () => {
   const assertSandboxRejection = (error: unknown, violationFragment: string): void => {
     expect(error).toBeInstanceOf(LandofileSandboxError);
     if (!(error instanceof LandofileSandboxError)) return;
@@ -346,7 +346,7 @@ describe("LandofileServiceLive — TS form sandbox violations", () => {
   });
 });
 
-describe("LandofileServiceLive — TS form schema validation", () => {
+describe("LandofileService layer — TS form schema validation", () => {
   test("returned value with wrong-typed field surfaces LandofileValidationError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -388,7 +388,7 @@ describe("LandofileServiceLive — TS form schema validation", () => {
   });
 });
 
-describe("LandofileServiceLive — TS form timeout", () => {
+describe("LandofileService layer — TS form timeout", () => {
   test("function form that never resolves fails with LandofileTimeoutError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -409,7 +409,7 @@ describe("LandofileServiceLive — TS form timeout", () => {
   });
 });
 
-describe("LandofileServiceLive — TS form discovery edge cases", () => {
+describe("LandofileService layer — TS form discovery edge cases", () => {
   test("having both `.lando.yml` and `.lando.ts` in the same directory fails with LandofileFormConflictError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -456,7 +456,7 @@ describe("defineLandofile identity helper", () => {
   });
 });
 
-describe("LandofileServiceLive — TS form appRoot boundary (PR #106 regression)", () => {
+describe("LandofileService layer — TS form appRoot boundary (PR #106 regression)", () => {
   test('`.lando.ts` at appRoot importing "." is allowed (resolves exactly to appRoot)', async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, "index.ts"), "export const x = 1;\n");
@@ -537,7 +537,7 @@ describe("LandofileServiceLive — TS form appRoot boundary (PR #106 regression)
   });
 });
 
-describe("LandofileServiceLive — TS form unsupported-field rejection parity", () => {
+describe("LandofileService layer — TS form unsupported-field rejection parity", () => {
   test("TS export with top-level `includes:` resolves its fragments during discovery", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, "fragment.yml"), "services:\n  cache:\n    image: redis:7\n");
@@ -586,7 +586,7 @@ describe("LandofileServiceLive — TS form unsupported-field rejection parity", 
   });
 });
 
-describe("LandofileServiceLive — TS form sandbox tightening for require() variants", () => {
+describe("LandofileService layer — TS form sandbox tightening for require() variants", () => {
   test("rejects template-literal `require(`node:fs`)` with LandofileSandboxError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -649,7 +649,7 @@ describe("LandofileServiceLive — TS form sandbox tightening for require() vari
   });
 });
 
-describe("LandofileServiceLive — TS form Effect-return support", () => {
+describe("LandofileService layer — TS form Effect-return support", () => {
   test("function form returning an Effect.succeed value resolves to a parsed Landofile", async () => {
     // Use project-relative baseDir so Bun can resolve workspace deps (e.g. "effect")
     // from node_modules when the temp file is dynamically imported in CI.

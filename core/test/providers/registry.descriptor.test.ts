@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Result } from "effect";
 
 import { Cause, type Context, DateTime, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { PluginDescriptorMismatchError, PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -69,10 +71,14 @@ const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
   const managedFiles = Effect.runSync(makeTestManagedFileStore());
   const stateStore = makeTestStateStore();
 
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
   return Layer.mergeAll(
     Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
     Layer.succeed(ConfigService, configService),
     Layer.succeed(Downloader, downloader.service),
+    Layer.succeed(HttpClient.HttpClient, httpClient),
     Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
     Layer.succeed(ManagedFileService, managedFiles.service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/descriptor-registry-test" })),

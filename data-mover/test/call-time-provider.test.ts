@@ -11,8 +11,8 @@ import { RedactionService, registerRedactionValues } from "@lando/redaction/serv
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
@@ -70,7 +70,7 @@ describe("DataMoverLive call-time provider", () => {
             DataMoverLive.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  StateStoreLive,
+                  stateStoreLayer,
                   Layer.succeed(PathsService, makeLandoPaths()),
                   Layer.succeed(RuntimeProvider, stub),
                   silentEvents,

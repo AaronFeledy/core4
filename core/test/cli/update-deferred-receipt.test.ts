@@ -7,7 +7,7 @@ import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
 import { makeUpdateHandoff } from "@lando/engine/operations/update";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Result, Schema } from "effect";
 
 const roots: string[] = [];
@@ -24,7 +24,7 @@ test("detached helper persists an abort which the next real invocation surfaces 
   const root = await mkdtemp(join(tmpdir(), "lando-deferred-receipt-"));
   roots.push(root);
   const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
-  const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+  const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
   const isolated = isolatedStore(live, cache);
   const handoff = makeUpdateHandoff(isolated);
   const token = await Effect.runPromise(
@@ -109,7 +109,7 @@ test("the next CLI run surfaces the helper's canonical ownership refusal", async
   const root = await mkdtemp(join(tmpdir(), "lando-deferred-ownership-"));
   roots.push(root);
   const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
-  const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+  const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
   const handoff = makeUpdateHandoff(isolatedStore(live, cache));
   const token = await Effect.runPromise(handoff.saveDeferred({ updatedCore: false, updatedPlugins: [] }));
   const executablePath = join(root, "lando.exe");
@@ -187,7 +187,7 @@ test.each(["json", "yaml", "ndjson"])(
     const root = await mkdtemp(join(tmpdir(), "lando-deferred-format-"));
     roots.push(root);
     const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
-    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
     const handoff = makeUpdateHandoff(isolatedStore(live, cache));
     const token = await Effect.runPromise(
       handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
@@ -259,7 +259,7 @@ test.each(["missing", "malformed", "invalid-schema"])(
     const root = await mkdtemp(join(tmpdir(), "lando-deferred-early-failure-"));
     roots.push(root);
     const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
-    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
     const handoff = makeUpdateHandoff(isolatedStore(live, cache));
     const token = await Effect.runPromise(
       handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),

@@ -11,7 +11,7 @@ import {
   buildUninstallPlan,
   uninstall as uninstallEffect,
 } from "@lando/engine/operations/uninstall";
-import { PrivateFileAccessLive, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
   metaUninstallSpec as declarativeUninstallSpec,
   uninstallOptionsFromInput,
@@ -19,7 +19,7 @@ import {
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
-  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
 
 const seedInstall = (userDataRoot: string, binary: string, profiles: readonly string[] = []) => {
   mkdirSync(dirname(binary), { recursive: true });
@@ -63,7 +63,8 @@ const seedInstall = (userDataRoot: string, binary: string, profiles: readonly st
 
 const metaUninstallSpec = {
   ...declarativeUninstallSpec,
-  run: (input: unknown) => declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessLive)),
+  run: (input: unknown) =>
+    declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessService.layer)),
 };
 
 const makeRoots = () => {

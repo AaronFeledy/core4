@@ -1,8 +1,4 @@
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { type AppConfigMigrateOptions, appConfigMigrate } from "../../src/cli/commands/app-config-migrate.ts";
 import {
@@ -16,7 +12,7 @@ export const ownerOnlyFileAccess: PrivateFileAccess = {
     Effect.runPromise(
       Effect.scoped(
         Effect.flatMap(PrivateFileAccessService, (access) => Effect.promise(() => access.enforce(path))).pipe(
-          Effect.provide(PrivateFileAccessLive),
+          Effect.provide(PrivateFileAccessService.layer),
         ),
       ),
     ),
@@ -24,7 +20,7 @@ export const ownerOnlyFileAccess: PrivateFileAccess = {
     Effect.runPromise(
       Effect.scoped(
         Effect.flatMap(PrivateFileAccessService, (access) => Effect.promise(() => access.verify(path))).pipe(
-          Effect.provide(PrivateFileAccessLive),
+          Effect.provide(PrivateFileAccessService.layer),
         ),
       ),
     ),
@@ -40,4 +36,4 @@ export const appConfigMigrateWithOwnerOnlyFileAccess = (options: AppConfigMigrat
 export const appConfigTranslateWithOwnerOnlyFileAccess = (options: AppConfigTranslateOptions = {}) =>
   appConfigTranslate({ ...options, privateFileAccess: ownerOnlyFileAccess });
 
-export { PrivateFileAccessLive as privateFileAccessLive };
+export const privateFileAccessLayer = PrivateFileAccessService.layer;

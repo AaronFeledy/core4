@@ -35,7 +35,7 @@ import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-prox
 import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
 import { UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
 import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
-import { HttpClientLive } from "@lando/http-client/live";
+import * as LandoHttpClient from "@lando/http-client/live";
 import { renderSolution } from "./doctor";
 import {
   type CertsDoctorStatus,
@@ -89,7 +89,7 @@ const DoctorRuntimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProvider
 const HealthcheckRunnerDoctorLive = HealthcheckRunnerLive.pipe(Layer.provide(DoctorRuntimeProviderLive));
 
 const UrlScannerDoctorLive = UrlScannerLive.pipe(
-  Layer.provide(Layer.mergeAll(DoctorRuntimeProviderLive, HttpClientLive)),
+  Layer.provide(Layer.mergeAll(DoctorRuntimeProviderLive, LandoHttpClient.layer)),
 );
 
 export const DefaultSubsystemDoctorLayer: Layer.Layer<

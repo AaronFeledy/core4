@@ -40,7 +40,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { appConfig } from "../../src/cli/commands/app-config.ts";
 
@@ -127,7 +127,7 @@ test.each([
       FileSystemLive,
       PluginRegistryLive,
       EventServiceLive,
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       Layer.succeed(PathsService, paths),
       Layer.succeed(StateStore, store),
       Layer.succeed(ManagedFileTransactionGuard, {
