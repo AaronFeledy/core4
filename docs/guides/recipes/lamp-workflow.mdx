@@ -1,0 +1,168 @@
+---
+id: lamp-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, lamp, php, apache, mariadb]
+---
+
+# Run the LAMP recipe
+
+```sh
+lando init --recipe lamp --name=lamp-demo --yes
+cd lamp-demo
+lando start
+```
+
+The named init creates `lamp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache serves PHP on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open a URL from `lando info`.
+
+If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. Prefer those printed endpoints over `lando open --print` when a fallback port is in play.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: none`, port `80`, webroot `/app`, Composer 2, HTTP and HTTPS routes, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead. Other init answers: `database=mysql:8.0`, `composer=2.7.7` or `composer=false`, and `webroot=/app/public`.
+
+`appserver` is Apache plus PHP in one service. That is the LAMP shape: no separate nginx front. A request that hits PHP reports `sapi=apache2handler`, not `cli`.
+
+## Serve a simple PHP page
+
+Put `index.php` in the app root (`/app`):
+
+```php
+<?php
+header('Content-Type: text/plain; charset=utf-8');
+echo 'lamp-ok php=' . PHP_VERSION . ' sapi=' . PHP_SAPI . "\n";
+```
+
+Then:
+
+```sh
+lando info
+```
+
+Open an `appserver` URL from that table (include the port when `lando info` prints one). Curl works too. A working Apache path reports `sapi=apache2handler`.
+
+## Run Composer, PHP, and MariaDB
+
+```sh
+lando composer --version
+lando php -v
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+`lando composer` and `lando php` run on `appserver`. `lando mariadb` opens the client on `database` with the app credentials already set. If you init with `--answer=database=mysql:8.0`, use `lando mysql` instead of `lando mariadb`.
+
+## Connect PHP to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `lamp-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; `lando info` redacts it, and you do not need it for the app user.
+
+PDO example that hits MariaDB from Apache:
+
+```php
+<?php
+header('Content-Type: text/plain; charset=utf-8');
+echo 'lamp-ok php=' . PHP_VERSION . ' sapi=' . PHP_SAPI . "\n";
+$pdo = new PDO('mysql:host=database;dbname=lamp-demo', 'lando', 'lando');
+$row = $pdo->query('SELECT 1 AS ok')->fetch(PDO::FETCH_ASSOC);
+echo 'pdo-ok=' . ($row['ok'] ?? 'missing') . "\n";
+```
+
+The stock PHP image already has `pdo_mysql`.
+
+## Import and export the database
+
+Paths must stay under the app root:
+
+```sh
+lando db:export dump.sql.gz
+lando db:import dump.sql.gz --yes
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+The recipe has one database service, so neither command needs `--service`. A `.gz` name gzips on export and gunzips on import. Importing into a non-empty database asks first; `--yes` skips the prompt.
+
+## Change PHP, database, or webroot later
+
+Init answers set the first Landofile. After that, edit `.lando.yml` and rebuild. See [Change a LAMP stack after init](../lamp-stack-variants/) for MariaDB to MySQL or PostgreSQL swaps and related rebuild notes.
+
+## Check the config and tear down
+
+`lando app:config --format=json` prints the planned config without touching containers. Full loop, init to destroy:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="lamp-demo" display="lamp-demo" />
+      <Run command="lando init --recipe lamp --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*80" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"php\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php82" render={false} reason="Regression: php=8.2 answer plans php:8.2 with Apache port 80">
+    <Step name="init">
+      <Variable name="appName" value="lamp-php82" display="lamp-php82" />
+      <Run command="lando init --recipe lamp --name={{appName}} --yes --answer=php=8.2" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*80" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mysql80" render={false} reason="Regression: database=mysql:8.0 answer plans mysql:8.0">
+    <Step name="init">
+      <Variable name="appName" value="lamp-mysql" display="lamp-mysql" />
+      <Run command="lando init --recipe lamp --name={{appName}} --yes --answer=database=mysql:8.0" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mysql:8\\.0\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+`lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [LAMP recipe](../../../recipes/lamp/)
+- [Change a LAMP stack after init](../lamp-stack-variants/)
+- [Add PHP](../../services/php/)
+- [Add Apache](../../services/apache/)
+- [Add MariaDB](../../services/mariadb/)
+- [Install an extra PHP extension](../../services/php-customization/)
+- [Import and export app databases](../../tooling/db-import-export/)

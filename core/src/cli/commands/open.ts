@@ -34,6 +34,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
 import type { RenderContext } from "../renderer-boundary";
+import { appendTerminalQr } from "../terminal-qr";
 
 export const OpenTargetSchema = Schema.Struct({
   service: Schema.String,
@@ -170,6 +171,7 @@ export interface OpenAppOptions {
   readonly route?: string;
   readonly all?: boolean;
   readonly print?: boolean;
+  readonly qr?: boolean;
   readonly json?: boolean;
   readonly ttyPresent?: boolean;
   readonly platform?: NodeJS.Platform;
@@ -181,6 +183,7 @@ interface OpenFlags {
   readonly route?: string;
   readonly all?: boolean;
   readonly print?: boolean;
+  readonly qr?: boolean;
   readonly format?: string;
 }
 
@@ -194,6 +197,7 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
     ...(flags.route === undefined ? {} : { route: flags.route }),
     ...(flags.all === undefined ? {} : { all: flags.all }),
     ...(flags.print === undefined ? {} : { print: flags.print }),
+    ...(flags.qr === true ? { qr: true } : {}),
     json: isEnvelopeResultFormat(flags.format),
     ttyPresent: process.stdout.isTTY === true,
   };
@@ -278,7 +282,8 @@ export const openForPlan = (
       }
     }
 
-    if (options.print === true) return { app: plan.name, targets, launch: "printed" as const };
+    if (options.print === true || options.qr === true)
+      return { app: plan.name, targets, launch: "printed" as const };
 
     const platform = options.platform ?? process.platform;
     const env = options.env ?? process.env;
@@ -337,7 +342,11 @@ export const openApp = (
     return yield* openForPlan(plan, options, status.authorities);
   });
 
-export const renderOpenAppResult = (result: OpenAppResult, _ctx?: RenderContext): string => {
+export const renderOpenAppResult = (
+  result: OpenAppResult,
+  ctx?: RenderContext,
+  options: Pick<OpenAppOptions, "qr"> = {},
+): string => {
   if (result.targets.length === 0) return `${result.app}\n(no openable targets)\n`;
   const heading =
     result.launch === "opened"
@@ -346,5 +355,16 @@ export const renderOpenAppResult = (result: OpenAppResult, _ctx?: RenderContext)
         ? (result.note ?? "Resolved:")
         : "Resolved:";
   const lines = result.targets.map((target) => `${target.service}\t${target.url}`);
-  return `${[heading, ...lines].join("\n")}\n`;
+  const text = `${[heading, ...lines].join("\n")}\n`;
+  if (options.qr !== true) return text;
+  return result.targets.reduce(
+    (output, target) =>
+      appendTerminalQr(output, {
+        url: target.url,
+        isTTY: ctx?.isTTY === true,
+        ...(ctx?.format === undefined ? {} : { format: ctx.format }),
+        force: true,
+      }),
+    text,
+  );
 };

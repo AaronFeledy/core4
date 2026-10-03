@@ -52,6 +52,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the LAMP recipe", slug: "guides/recipes/lamp-workflow" },
           { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
@@ -67,6 +68,7 @@ export const sidebar = [
           { label: "Run the Jekyll recipe", slug: "guides/recipes/jekyll-workflow" },
           { label: "Run the Backdrop recipe", slug: "guides/recipes/backdrop-workflow" },
           { label: "Run the WordPress recipe", slug: "guides/recipes/wordpress-workflow" },
+          { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },

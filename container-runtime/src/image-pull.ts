@@ -61,6 +61,7 @@ export type ImagePullFrame =
 export interface PullImageOptions<E = never> {
   readonly ctx: ProviderErrorContext;
   readonly dialect: PullDialect;
+  readonly platform?: string;
   readonly publish?: (event: ImagePullProgressEvent) => Effect.Effect<void, E>;
 }
 
@@ -81,7 +82,11 @@ export const classifyPullFailure = (message: string): PullFailureKind => {
 export const classifyPullFailureSignature = (message: string): PullFailureSignature =>
   PULL_FAILURE_SIGNATURES.find(([, pattern]) => pattern.test(message))?.[0] ?? "unknown";
 
-export const buildImagePullRequest = (reference: string, dialect: PullDialect) => dialect.request(reference);
+export const buildImagePullRequest = (
+  reference: string,
+  dialect: PullDialect,
+  options?: { readonly platform?: string },
+) => dialect.request(reference, options);
 
 const textOrUndefined = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
@@ -237,7 +242,7 @@ export const pullImage = <E = never>(
     if (api.stream !== undefined) {
       const decoder = new TextDecoder();
       const buffer = yield* Ref.make("");
-      yield* api.stream(buildImagePullRequest(reference, options.dialect)).pipe(
+      yield* api.stream(buildImagePullRequest(reference, options.dialect, options)).pipe(
         Stream.mapError((error) => pullFailureFromTransport(options.ctx, reference, error)),
         Stream.runForEach((chunk) =>
           Effect.gen(function* () {
@@ -251,7 +256,7 @@ export const pullImage = <E = never>(
       );
       yield* emitFrame((yield* Ref.get(buffer)) + decoder.decode());
     } else if (api.request !== undefined) {
-      const response = yield* api.request(buildImagePullRequest(reference, options.dialect));
+      const response = yield* api.request(buildImagePullRequest(reference, options.dialect, options));
       if (response.status < 200 || response.status >= 300) {
         return yield* Effect.fail(
           pullFailure({

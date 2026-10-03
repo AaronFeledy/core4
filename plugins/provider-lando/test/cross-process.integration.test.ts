@@ -241,6 +241,16 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
 
+        if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Os: "linux",
+              Architecture: "amd64",
+              RepoDigests: ["img@sha256:test"],
+            }),
+          };
+        }
         if (request.path === "/networks/create") {
           const requested = (request.body as { Name?: string }).Name ?? "";
           networks.add(requested);

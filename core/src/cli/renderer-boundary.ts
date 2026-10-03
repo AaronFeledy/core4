@@ -7,6 +7,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
 import { type RendererIO, createStdioRendererIO, onStdioBrokenPipe } from "@lando/renderer/io";
 import {
   makeRendererEventConsumerLiveForMode,
@@ -48,6 +49,8 @@ export interface RenderContext {
   readonly format: ResultFormat;
   readonly columns: number | undefined;
   readonly isTTY: boolean;
+  /** Host env snapshot used for OSC 8 capability (TERM, NO_COLOR). */
+  readonly env?: Readonly<Record<string, string | undefined>>;
   /** Exact-value redactor for summary fields; apply before paint, never after. */
   readonly redact?: (text: string) => string;
 }
@@ -55,6 +58,19 @@ export interface RenderContext {
 /** Decorated grouped summaries apply only in the default `lando` renderer on a TTY. */
 export const isDecoratedContext = (ctx?: RenderContext): boolean =>
   ctx?.mode === "lando" && ctx.isTTY === true;
+
+/**
+ * OSC 8 wraps existing labels only where decorated output already goes: the
+ * default `lando` renderer on a TTY, with TERM not dumb and NO_COLOR unset.
+ * `--renderer=plain` advertises `color: false`, so it stays escape-free.
+ */
+export const contextAllowsHyperlinks = (ctx?: RenderContext): boolean =>
+  ctx !== undefined &&
+  isDecoratedContext(ctx) &&
+  shouldEmitHyperlinks({
+    isTTY: ctx.isTTY,
+    ...(ctx.env === undefined ? {} : { env: ctx.env }),
+  });
 
 /** Columns + before-paint redactor for {@link formatSummary}. */
 export const summaryPaintOptions = (ctx?: RenderContext): FormatSummaryOptions => ({
@@ -123,6 +139,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
     columns: io.terminalColumns,
     isTTY: io.isTTY === true,
+    env: process.env,
   };
   const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, landoRenderer, io);
   const envelopeFormat = isEnvelopeResultFormat(renderContext.format);

@@ -130,6 +130,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/posix-installer");
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
+    expect(slugs).toContain("guides/recipes/lamp-workflow");
     expect(slugs).toContain("guides/recipes/rails-workflow");
     expect(slugs).toContain("guides/recipes/astro-workflow");
     expect(slugs).toContain("guides/recipes/django-workflow");
@@ -145,6 +146,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/jekyll-workflow");
     expect(slugs).toContain("guides/recipes/backdrop-workflow");
     expect(slugs).toContain("guides/recipes/wordpress-workflow");
+    expect(slugs).toContain("guides/recipes/drupal-workflow");
     expect(slugs).toContain("guides/recipes/drupal-cms-workflow");
     expect(slugs).toContain("guides/recipes/joomla-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");

@@ -5,8 +5,18 @@ export interface WaitDialect {
   readonly decodeExitCode: (json: unknown) => number | undefined;
 }
 
+export interface PullRequestOptions {
+  readonly platform?: string;
+}
+
+export interface ImagePlatform {
+  readonly os: string;
+  readonly architecture: string;
+  readonly variant?: string;
+}
+
 export interface PullDialect {
-  readonly request: (reference: string) => EngineHttpRequest;
+  readonly request: (reference: string, options?: PullRequestOptions) => EngineHttpRequest;
   readonly frameError: (frame: unknown) => string | undefined;
   readonly inspect?: {
     readonly request: (reference: string) => EngineHttpRequest;
@@ -30,6 +40,40 @@ export interface LifecycleDialect {
    */
   readonly volumePrune?: { readonly enabled: true };
 }
+
+export const parseImagePlatform = (platform: string): ImagePlatform | undefined => {
+  const parts = platform.split("/");
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => part.length === 0)) return undefined;
+  const [os, architecture, variant] = parts;
+  if (os === undefined || architecture === undefined) return undefined;
+  return {
+    os,
+    architecture,
+    ...(variant === undefined ? {} : { variant }),
+  };
+};
+
+const appendQuery = (path: `/${string}`, params: ReadonlyArray<readonly [string, string]>): `/${string}` => {
+  if (params.length === 0) return path;
+  const extra = params
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+  return `${path}${path.includes("?") ? "&" : "?"}${extra}`;
+};
+
+const dockerPlatformQuery = (platform: string | undefined): ReadonlyArray<readonly [string, string]> =>
+  platform === undefined || platform.length === 0 ? [] : [["platform", platform]];
+
+const libpodPlatformQuery = (platform: string | undefined): ReadonlyArray<readonly [string, string]> => {
+  if (platform === undefined || platform.length === 0) return [];
+  const parsed = parseImagePlatform(platform);
+  if (parsed === undefined) return [];
+  return [
+    ["OS", parsed.os],
+    ["Arch", parsed.architecture],
+    ...(parsed.variant === undefined ? [] : ([["Variant", parsed.variant]] as const)),
+  ];
+};
 
 export const parseImageReference = (
   reference: string,
@@ -90,11 +134,14 @@ export const dockerLifecycleDialect: LifecycleDialect = {
 };
 
 export const dockerPullDialect: PullDialect = {
-  request: (reference) => {
+  request: (reference, options) => {
     const parsed = parseImageReference(reference);
     return {
       method: "POST",
-      path: `/images/create?fromImage=${encodeURIComponent(parsed.fromImage)}&tag=${encodeURIComponent(parsed.tag)}`,
+      path: appendQuery(
+        `/images/create?fromImage=${encodeURIComponent(parsed.fromImage)}&tag=${encodeURIComponent(parsed.tag)}`,
+        dockerPlatformQuery(options?.platform),
+      ),
     };
   },
   frameError: (frame) => {
@@ -120,9 +167,12 @@ export const dockerPullDialect: PullDialect = {
 };
 
 export const libpodPullDialect: PullDialect = {
-  request: (reference) => ({
+  request: (reference, options) => ({
     method: "POST",
-    path: `/libpod/images/pull?reference=${encodeURIComponent(reference)}&pullProgress=true`,
+    path: appendQuery(
+      `/libpod/images/pull?reference=${encodeURIComponent(reference)}&pullProgress=true`,
+      libpodPlatformQuery(options?.platform),
+    ),
   }),
   frameError: (frame) => objectString(frame, "error"),
 };
