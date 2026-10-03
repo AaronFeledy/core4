@@ -432,7 +432,7 @@ describe("network inject environment overrides", () => {
                 `Invalid ${name} value. Expected "true" or "false"; set it to one of those values or unset it.`,
               );
               expect(failure.value.path).toBe(join(dir, "config.yml"));
-              expect(failure.value.cause).toMatchObject({ _tag: "ParseError" });
+              expect(failure.value.cause).toMatchObject({ _tag: "SchemaError" });
             }
           }
         }
