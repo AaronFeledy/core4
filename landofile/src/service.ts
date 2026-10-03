@@ -184,11 +184,13 @@ const ensureConsistentRoot = (appRoot: string, inputs?: LandofileRuntimeInputs) 
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (Schema.isSchemaError(cause)) {
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      (issue.path ?? []).length === 0 || issue.message.startsWith("Landofile service")
-        ? issue.message
-        : (issue.path ?? []).join("."),
-    );
+    // A "Landofile service" remediation keeps its own issue next to its path so
+    // the user learns both what is wrong and where.
+    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.flatMap((issue) => {
+      const path = (issue.path ?? []).join(".");
+      if (path === "") return [issue.message];
+      return issue.message.startsWith("Landofile service") ? [path, issue.message] : [path];
+    });
   }
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
 };
