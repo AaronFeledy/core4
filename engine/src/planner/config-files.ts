@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Predicate } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
-
-import { isRecord } from "./extensions.ts";
 
 type ComposeConfigFileInput = {
   readonly name: string;
@@ -72,7 +70,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
 
   const inputs: Array<ComposeConfigFileInput> = [];
   for (const [name, definition] of Object.entries(definitions)) {
-    if (!isRecord(definition)) continue;
+    if (!Predicate.isObject(definition)) continue;
     if (definition.external === true) {
       return yield* Effect.fail(
         new LandofileValidationError({

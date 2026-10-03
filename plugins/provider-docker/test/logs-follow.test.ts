@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { type DockerApiClient, type DockerHttpRequest, makeProviderLayer } from "@lando/provider-docker";
+import {
+  type DockerApiClient,
+  type DockerHttpRequest,
+  layer as makeProviderLayer,
+} from "@lando/provider-docker";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,

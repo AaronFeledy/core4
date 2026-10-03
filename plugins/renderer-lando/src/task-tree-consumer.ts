@@ -24,7 +24,7 @@ const taskIdOf = (event: LandoEvent): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
-export const makeTaskTreeConsumerLive = (
+export const layer = (
   io: RendererIO,
   stdout: NodeJS.WriteStream,
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
@@ -104,62 +104,63 @@ export const makeTaskTreeConsumerLive = (
         });
         const input = new TaskTreeInputController(viewModel);
         const publishedByInput = new WeakSet<LandoEvent>();
-        const transition = (event: LandoEvent, preferredInternalId?: string): Effect.Effect<boolean> =>
-          Effect.gen(function* () {
-            const taskId = taskIdOf(event);
-            if (taskId === undefined) return false;
-            if (event._tag === "task.detail.expand") {
-              const previousTaskId = viewModel.expandedTaskId;
-              const targetId = preferredInternalId ?? taskId;
-              if (previousTaskId !== targetId) viewModel.expandTask(targetId);
-              const occurrenceId = viewModel.expandedTaskId;
-              if (occurrenceId === undefined) return false;
-              const opened = yield* transcriptTail.open(occurrenceId);
-              if (!opened) {
-                viewModel.collapse();
-                return false;
-              }
-              const entered = yield* Effect.tryPromise({
-                try: () => Promise.resolve(controller.enterFullTail()),
-                catch: (cause) => recordOpenTuiSubstrateFailure(cause),
-              }).pipe(Effect.option);
-              if (Option.isNone(entered)) {
-                yield* transcriptTail.close;
-                if (previousTaskId === undefined) viewModel.collapse();
-                else viewModel.expandTask(previousTaskId);
-                renderFooter();
-                return false;
-              }
-              renderFooter();
-              return true;
-            }
-            if (event._tag !== "task.detail.collapse") return false;
-            const exited = yield* Effect.tryPromise({
-              try: () => controller.exitFullTail(),
-              catch: (cause) => recordOpenTuiSubstrateFailure(cause),
-            }).pipe(Effect.option);
-            if (Option.isNone(exited)) {
-              viewModel.expandTask(preferredInternalId ?? viewModel.expandedTaskId ?? taskId);
-              yield* transcriptTail.refresh;
+        const transition = Effect.fnUntraced(function* (
+          event: LandoEvent,
+          preferredInternalId?: string,
+        ): Effect.fn.Return<boolean> {
+          const taskId = taskIdOf(event);
+          if (taskId === undefined) return false;
+          if (event._tag === "task.detail.expand") {
+            const previousTaskId = viewModel.expandedTaskId;
+            const targetId = preferredInternalId ?? taskId;
+            if (previousTaskId !== targetId) viewModel.expandTask(targetId);
+            const occurrenceId = viewModel.expandedTaskId;
+            if (occurrenceId === undefined) return false;
+            const opened = yield* transcriptTail.open(occurrenceId);
+            if (!opened) {
+              viewModel.collapse();
               return false;
             }
-            yield* transcriptTail.close;
-            viewModel.collapse();
+            const entered = yield* Effect.tryPromise({
+              try: () => Promise.resolve(controller.enterFullTail()),
+              catch: (cause) => recordOpenTuiSubstrateFailure(cause),
+            }).pipe(Effect.option);
+            if (Option.isNone(entered)) {
+              yield* transcriptTail.close;
+              if (previousTaskId === undefined) viewModel.collapse();
+              else viewModel.expandTask(previousTaskId);
+              renderFooter();
+              return false;
+            }
             renderFooter();
             return true;
-          });
-        const consume = (event: LandoEvent): Effect.Effect<void> =>
-          Effect.gen(function* () {
-            if (publishedByInput.delete(event)) return;
-            if (event._tag === "task.detail.expand" || event._tag === "task.detail.collapse") {
-              yield* transition(event);
-              return;
-            }
-            yield* Effect.tryPromise({
-              try: () => consumeRenderable(event),
-              catch: (cause) => recordOpenTuiSubstrateFailure(cause),
-            }).pipe(Effect.ignore);
-          });
+          }
+          if (event._tag !== "task.detail.collapse") return false;
+          const exited = yield* Effect.tryPromise({
+            try: () => controller.exitFullTail(),
+            catch: (cause) => recordOpenTuiSubstrateFailure(cause),
+          }).pipe(Effect.option);
+          if (Option.isNone(exited)) {
+            viewModel.expandTask(preferredInternalId ?? viewModel.expandedTaskId ?? taskId);
+            yield* transcriptTail.refresh;
+            return false;
+          }
+          yield* transcriptTail.close;
+          viewModel.collapse();
+          renderFooter();
+          return true;
+        });
+        const consume = Effect.fnUntraced(function* (event: LandoEvent): Effect.fn.Return<void> {
+          if (publishedByInput.delete(event)) return;
+          if (event._tag === "task.detail.expand" || event._tag === "task.detail.collapse") {
+            yield* transition(event);
+            return;
+          }
+          yield* Effect.tryPromise({
+            try: () => consumeRenderable(event),
+            catch: (cause) => recordOpenTuiSubstrateFailure(cause),
+          }).pipe(Effect.ignore);
+        });
         handleResize = (width, height) => {
           resize(width, height);
           runInScope(transcriptTail.refresh);
@@ -206,21 +207,20 @@ export const makeTaskTreeConsumerLive = (
         return active;
       });
 
-      const consume = (event: LandoEvent): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          if (/^cli-.+-init$/.test(event._tag) && Reflect.get(event, "parentInvocationId") === undefined)
-            prefetchLiveRegion();
-          if (yield* toolingStatus.consume(event, acquire)) return;
-          const routed = yield* routeSessionEvent(
-            event,
-            session,
-            active,
-            acquire,
-            line,
-            recordOpenTuiSubstrateFailure,
-          );
-          session = routed.session;
-        });
+      const consume = Effect.fnUntraced(function* (event: LandoEvent): Effect.fn.Return<void> {
+        if (/^cli-.+-init$/.test(event._tag) && Reflect.get(event, "parentInvocationId") === undefined)
+          prefetchLiveRegion();
+        if (yield* toolingStatus.consume(event, acquire)) return;
+        const routed = yield* routeSessionEvent(
+          event,
+          session,
+          active,
+          acquire,
+          line,
+          recordOpenTuiSubstrateFailure,
+        );
+        session = routed.session;
+      });
       const fiber = yield* Effect.forkScoped(
         Effect.gen(function* () {
           while (true) yield* serialized(consume(yield* Queue.take(queue)));

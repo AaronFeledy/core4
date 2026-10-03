@@ -30,7 +30,7 @@ const OWNER_EXCLUDING_RULES: ReadonlyMap<string, string> = new Map([
   ["state-store", "state-store/src"],
 ]);
 
-const CORE_AND_PLUGIN_RULE_IDS = ["machine-output", "probe"] as const;
+const CORE_AND_PLUGIN_RULE_IDS = ["effect-idioms", "machine-output", "probe"] as const;
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 

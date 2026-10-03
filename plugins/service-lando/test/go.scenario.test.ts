@@ -140,17 +140,26 @@ const makeToolingLayer = (options: {
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
-  const landofileLayer = Layer.succeed(LandofileService, {
-    discover: Effect.succeed(options.landofile),
-  });
-  const plannerLayer = Layer.succeed(AppPlanner, {
-    plan: () => Effect.succeed(options.plan),
-  });
-  const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(options.provider),
-  });
+  const landofileLayer = Layer.succeed(
+    LandofileService,
+    LandofileService.of({
+      discover: Effect.succeed(options.landofile),
+    }),
+  );
+  const plannerLayer = Layer.succeed(
+    AppPlanner,
+    AppPlanner.of({
+      plan: () => Effect.succeed(options.plan),
+    }),
+  );
+  const registryLayer = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(options.provider),
+    }),
+  );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
     landofileLayer,

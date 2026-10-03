@@ -75,10 +75,10 @@ describe("provider-lando plugin descriptor", () => {
       events: { publishRender: () => Effect.void },
     };
     const services = Layer.mergeAll(
-      Layer.succeed(PathsService, paths),
-      Layer.succeed(Downloader, downloader),
-      Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
-      Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
+      Layer.succeed(PathsService, PathsService.of(paths)),
+      Layer.succeed(Downloader, Downloader.of(downloader)),
+      Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+      Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     );
     const runtimeProvider = plugin.runtimeProviders?.values().next().value;
     if (runtimeProvider === undefined) throw new Error("expected provider-lando runtime contribution");

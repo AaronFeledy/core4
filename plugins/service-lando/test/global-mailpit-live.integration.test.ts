@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
@@ -133,9 +133,9 @@ const sendMailFromService = async (
 };
 
 const fetchMailpitMessages = async (timeoutMs: number): Promise<unknown> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${MAILPIT_WEB_PORT}/api/v1/messages`);
       if (response.ok) return await response.json();
@@ -160,9 +160,9 @@ const messageMatches = (body: unknown): boolean => {
 };
 
 const waitForCapturedMessage = async (timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastBody: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     lastBody = await fetchMailpitMessages(10_000);
     if (messageMatches(lastBody)) return;
     await new Promise((resolve) => setTimeout(resolve, 500));

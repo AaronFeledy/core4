@@ -8,7 +8,11 @@ import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
+import {
+  type PodmanApiClient,
+  makePodmanApiClient,
+  layer as makeProviderLayer,
+} from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
 import {
   AbsolutePath,

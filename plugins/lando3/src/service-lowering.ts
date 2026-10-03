@@ -20,7 +20,7 @@ import {
   type ServiceLoweringContext,
   type V4Wire,
   asStringArray,
-  isPlainObject,
+  hasPlainObjectPrototype,
   mergePatches,
 } from "./lowering-contract.ts";
 import { makeReport } from "./lowering-report.ts";
@@ -51,7 +51,7 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
     ...(typeof service.meUser === "string" ? { meUser: service.meUser } : {}),
     hasComposeBuild:
       overrides.patch.build !== undefined ||
-      (isPlainObject(nested.patch) && nested.patch.build !== undefined),
+      (hasPlainObjectPrototype(nested.patch) && nested.patch.build !== undefined),
   });
   if (service.api === 4) return mergePatches(lowerApi4Service(service, ctx), hooks, overrides);
   if (raw) {
@@ -67,7 +67,7 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
     }
     const health = lowerApi4Service({ healthcheck: service.healthcheck }, ctx);
     const { type: _type, ...healthPatch } = health.patch;
-    for (const key of Object.keys(isPlainObject(service.config) ? service.config : {})) {
+    for (const key of Object.keys(hasPlainObjectPrototype(service.config) ? service.config : {})) {
       diagnostics.push(
         unsupportedServiceKey({
           ctx,
@@ -79,7 +79,9 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
       );
     }
     const topLevel = Object.fromEntries(
-      ["volumes", "networks"].flatMap((key) => (isPlainObject(service[key]) ? [[key, service[key]]] : [])),
+      ["volumes", "networks"].flatMap((key) =>
+        hasPlainObjectPrototype(service[key]) ? [[key, service[key]]] : [],
+      ),
     );
     return mergePatches(
       common,
@@ -106,7 +108,7 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
       const diagnostics = common.diagnostics.filter(
         ({ keyPath }) => !(keyPath.length === ctx.keyPath.length + 1 && keyPath.at(-1) === "type"),
       );
-      const image = isPlainObject(service.overrides) ? service.overrides.image : undefined;
+      const image = hasPlainObjectPrototype(service.overrides) ? service.overrides.image : undefined;
       if (typeof image !== "string" || image.length === 0) {
         return mergePatches(
           { patch: {}, blocked: true, diagnostics: [...diagnostics, missingImage({ ctx })] },
@@ -165,7 +167,7 @@ export const lowerServiceViews = (
   for (const view of folded) {
     const doc = mergedToPlain(view.merged);
     const fallbackSourceId = view.sourceIds.at(-1);
-    if (!isPlainObject(doc) || fallbackSourceId === undefined) continue;
+    if (!hasPlainObjectPrototype(doc) || fallbackSourceId === undefined) continue;
     const top = lowerTopLevel(doc, {
       fallbackSourceId,
       occurrenceAt: (relative) => occurrencesAt(view.merged, relative).at(-1),
@@ -188,7 +190,7 @@ export const lowerServiceViews = (
       },
       report,
     );
-    const authored = isPlainObject(doc.services) ? doc.services : {};
+    const authored = hasPlainObjectPrototype(doc.services) ? doc.services : {};
     const services = new Map<string, V4Wire>();
     for (const [serviceName, service] of Object.entries(authored)) {
       if (service === false || service === null || service === undefined) continue;
@@ -199,7 +201,7 @@ export const lowerServiceViews = (
         occurrenceAt: (relative) => occurrencesAt(view.merged, ["services", serviceName, ...relative]).at(-1),
         topLevel: { excludes: top.appMountExcludes, includes: top.appMountIncludes },
       };
-      if (!isPlainObject(service) || isLegacyTagged(service)) {
+      if (!hasPlainObjectPrototype(service) || isLegacyTagged(service)) {
         diagnostics.push(
           unsupportedServiceKey({
             ctx,
@@ -219,7 +221,7 @@ export const lowerServiceViews = (
         mountsAppByDefault(patch.type) &&
         (top.appMountExcludes.length > 0 || top.appMountIncludes.length > 0)
       ) {
-        const app = isPlainObject(patch.appMount) ? patch.appMount : {};
+        const app = hasPlainObjectPrototype(patch.appMount) ? patch.appMount : {};
         patch = {
           ...patch,
           appMount: {

@@ -34,14 +34,13 @@ const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent
     timestamp: ts,
   });
 
-const waitForPaint = (ready: () => boolean): Effect.Effect<void, Error> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      if (ready()) return;
-      yield* Effect.sleep("5 millis");
-    }
-    return yield* Effect.fail(new Error("Renderer consumer did not paint the live region."));
-  });
+const waitForPaint = Effect.fnUntraced(function* (ready: () => boolean): Effect.fn.Return<void, Error> {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    if (ready()) return;
+    yield* Effect.sleep("5 millis");
+  }
+  return yield* Effect.fail(new Error("Renderer consumer did not paint the live region."));
+});
 
 describe("TTY task tree live-region placement", () => {
   test("paints the rail inline without jumping to the terminal footer", async () => {

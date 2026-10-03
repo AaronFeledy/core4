@@ -10,7 +10,7 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { Lando3Path } from "./contract.ts";
 import { lowerFlags, lowerPositionals } from "./lower-tooling-input.ts";
-import { type V4Wire, asStringArray, isPlainObject } from "./lowering-contract.ts";
+import { type V4Wire, asStringArray, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
 /** What the events lowerer needs to know about one converted task. */
@@ -40,7 +40,7 @@ const lowerCommands = (value: unknown, path: Lando3Path, report: Report): Readon
   let failed = false;
   items.forEach((item, index) => {
     const itemPath = Array.isArray(value) ? [...path, index] : path;
-    if (isPlainObject(item) && !isLegacyTagged(item)) {
+    if (hasPlainObjectPrototype(item) && !isLegacyTagged(item)) {
       const [service, command, ...extra] = Object.entries(item).flat();
       const cmd = lowerText(command, [...itemPath, String(service)], report);
       if (typeof service !== "string" || typeof cmd !== "string") {
@@ -94,7 +94,7 @@ const lowerCommands = (value: unknown, path: Lando3Path, report: Report): Readon
 };
 
 const lowerEnv = (value: unknown, path: Lando3Path, report: Report): V4Wire | undefined => {
-  const entries: Array<readonly [string, unknown]> = isPlainObject(value)
+  const entries: Array<readonly [string, unknown]> = hasPlainObjectPrototype(value)
     ? Object.entries(value)
     : (asStringArray(value) ?? []).map((pair) => {
         const equals = pair.indexOf("=");
@@ -155,13 +155,13 @@ const lowerTask = (
   report: Report,
 ): { readonly task: V4Wire; readonly facts: LoweredTask } | undefined => {
   const task: Record<string, unknown> = {};
-  const options = isPlainObject(entry.options) ? entry.options : {};
+  const options = hasPlainObjectPrototype(entry.options) ? entry.options : {};
   let service: string | undefined;
   let serviceFlag: { readonly source: string; readonly target: string } | undefined;
   if (typeof entry.service === "string" && entry.service.startsWith(":")) {
     const flag = entry.service.slice(1);
     const option = options[flag];
-    if (!isPlainObject(option) || option.boolean === true || option.type === "boolean") {
+    if (!hasPlainObjectPrototype(option) || option.boolean === true || option.type === "boolean") {
       report(
         "unsupported",
         [...path, "service"],
@@ -254,7 +254,7 @@ const lowerTask = (
 export const lowerTooling = (value: unknown, report: Report): LoweredTooling => {
   const tooling: Record<string, V4Wire> = {};
   const tasks = new Map<string, LoweredTask>();
-  if (!isPlainObject(value)) return { tooling, tasks };
+  if (!hasPlainObjectPrototype(value)) return { tooling, tasks };
   for (const [key, entry] of Object.entries(value)) {
     const path = ["tooling", key];
     const match = TASK_NAME.exec(key);
@@ -277,7 +277,7 @@ export const lowerTooling = (value: unknown, report: Report): LoweredTooling => 
       );
       continue;
     }
-    if (!isPlainObject(entry)) {
+    if (!hasPlainObjectPrototype(entry)) {
       tooling[name] = { disabled: true };
       tasks.set(name, { service: undefined });
       report(

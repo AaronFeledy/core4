@@ -104,34 +104,33 @@ const livePidNamespace = Effect.tryPromise({
   catch: (cause) => cause,
 });
 
-export const readLinuxRuntimeGenerationState = (
+export const readLinuxRuntimeGenerationState = Effect.fnUntraced(function* (
   deps: LinuxRuntimeGenerationDeps,
-): Effect.Effect<LinuxRuntimeGenerationState, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    const bootId = yield* readGenerationPart(
-      deps.bootIdReader?.() ??
-        Effect.tryPromise({
-          try: () => readFile("/proc/sys/kernel/random/boot_id", "utf8"),
-          catch: (cause) => cause,
-        }),
-      "/proc/sys/kernel/random/boot_id",
-    );
-    const pidNamespace = yield* readGenerationPart(
-      deps.pidNamespaceReader?.() ?? livePidNamespace,
-      "/proc/self/ns/pid",
-    );
-    const generation = `${bootId}\n${pidNamespace}`;
-    const marker = yield* deps.generationStore.get.pipe(
-      Effect.mapError((cause) =>
-        generationError("Failed to read the Lando runtime generation marker.", {}, cause),
-      ),
-    );
-    const filesystem = deps.filesystem ?? liveFilesystem;
-    if (marker === null) return { kind: "missing", generation, filesystem };
-    return marker === generation
-      ? { kind: "current", generation, filesystem }
-      : { kind: "changed", generation, previous: marker, filesystem };
-  });
+): Effect.fn.Return<LinuxRuntimeGenerationState, ProviderUnavailableError> {
+  const bootId = yield* readGenerationPart(
+    deps.bootIdReader?.() ??
+      Effect.tryPromise({
+        try: () => readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+        catch: (cause) => cause,
+      }),
+    "/proc/sys/kernel/random/boot_id",
+  );
+  const pidNamespace = yield* readGenerationPart(
+    deps.pidNamespaceReader?.() ?? livePidNamespace,
+    "/proc/self/ns/pid",
+  );
+  const generation = `${bootId}\n${pidNamespace}`;
+  const marker = yield* deps.generationStore.get.pipe(
+    Effect.mapError((cause) =>
+      generationError("Failed to read the Lando runtime generation marker.", {}, cause),
+    ),
+  );
+  const filesystem = deps.filesystem ?? liveFilesystem;
+  if (marker === null) return { kind: "missing", generation, filesystem };
+  return marker === generation
+    ? { kind: "current", generation, filesystem }
+    : { kind: "changed", generation, previous: marker, filesystem };
+});
 
 export const adoptHealthyRuntimeGeneration = (
   deps: LinuxRuntimeGenerationDeps,

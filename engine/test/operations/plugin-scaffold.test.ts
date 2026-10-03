@@ -17,7 +17,7 @@ describe("plugin scaffold", () => {
       const destination = await mkdtemp(join(fixtureParent, "plugin-scaffold-"));
       try {
         // When
-        await materializePluginScaffold({
+        const result = await materializePluginScaffold({
           name: "@lando/test-scaffold",
           destination,
           template,
@@ -28,6 +28,34 @@ describe("plugin scaffold", () => {
         // Then: compile and execute the generated plugin, not a source-text approximation.
         const packageJson = await Bun.file(join(destination, "package.json")).json();
         expect(packageJson.dependencies.effect).toBe(rootManifest.workspaces.catalog.effect);
+        const sources = (
+          await Promise.all(
+            result.files
+              .filter((path) => path.startsWith("src/") && path.endsWith(".ts"))
+              .map((path) => Bun.file(join(destination, path)).text()),
+          )
+        ).join("\n");
+        for (const shape of [
+          "extends Context.Service<",
+          "static readonly layer = Layer.effect(",
+          ".of(",
+          'Effect.fn("',
+        ]) {
+          expect(sources).toContain(shape);
+        }
+        for (const banned of [
+          /export\s+(?:const|class|function)\s+\w*Live\b/,
+          /Data\.TaggedError/,
+          /Date\.now\s*\(/,
+          /new Date\s*\(/,
+          /@effect\//,
+          /function\s+\w+\s*\([^)]*\)[^{]*\{\s*return\s+Effect\.gen\s*\(/,
+          /Layer\.succeed\s*\([^,]+,\s*\{/,
+          /\bisRecord\b/,
+        ]) {
+          expect(sources).not.toMatch(banned);
+        }
+        expect(packageJson.devDependencies.typescript).toBe("^5.9.0");
         const compiler = Bun.spawn(
           [process.execPath, join(repositoryRoot, "node_modules/typescript/bin/tsc"), "-p", "tsconfig.json"],
           { cwd: destination, stdout: "pipe", stderr: "pipe" },
@@ -53,7 +81,7 @@ describe("plugin scaffold", () => {
           new Response(runner.stderr).text(),
         ]);
         expect({ code: testCode, output: `${testOutput}${testErrors}` }).toMatchObject({ code: 0 });
-        expect(`${testOutput}${testErrors}`).toContain("1 pass");
+        expect(`${testOutput}${testErrors}`).toContain("2 pass");
       } finally {
         await rm(destination, { recursive: true, force: true });
       }

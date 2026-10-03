@@ -25,35 +25,33 @@ const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDeci
   fingerprint: defaultAcquisitionFingerprint(),
 });
 
-const consentToInstall = (
+const consentToInstall = Effect.fnUntraced(function* (
   socketProxy: SocketProxyDependencies,
   alreadyInstalled: boolean,
-): Effect.Effect<boolean> => {
-  if (alreadyInstalled || socketProxy.autoApprove === true) return Effect.succeed(true);
+): Effect.fn.Return<boolean> {
+  if (alreadyInstalled || socketProxy.autoApprove === true) return true;
   const interaction = socketProxy.interaction;
-  if (interaction === undefined) return Effect.succeed(true);
-  return Effect.gen(function* () {
-    const tty = yield* interaction.isInteractive;
-    if (!tty) return true;
-    return yield* Effect.scoped(
-      interaction.confirm({
-        name: "install-socket-proxy",
-        message: "Install a systemd socket proxy so Lando can serve http://*.lndo.site on ports 80 and 443?",
-        default: true,
-      }),
-    ).pipe(Effect.catch(() => Effect.succeed(true)));
-  });
-};
+  if (interaction === undefined) return true;
+  const tty = yield* interaction.isInteractive;
+  if (!tty) return true;
+  return yield* Effect.scoped(
+    interaction.confirm({
+      name: "install-socket-proxy",
+      message: "Install a systemd socket proxy so Lando can serve http://*.lndo.site on ports 80 and 443?",
+      default: true,
+    }),
+  ).pipe(Effect.catch(() => Effect.succeed(true)));
+});
 
-export const resolveNeedsHelper = (
-  socketProxy: SocketProxyDependencies,
-  hops: HelperHopTargets,
-): Effect.Effect<{
-  readonly decision: AcquisitionDecision;
-  readonly helperInstalled: boolean;
-  readonly socketsActive: boolean;
-}> =>
-  Effect.gen(function* () {
+export const resolveNeedsHelper = Effect.fnUntraced(
+  function* (
+    socketProxy: SocketProxyDependencies,
+    hops: HelperHopTargets,
+  ): Effect.fn.Return<{
+    readonly decision: AcquisitionDecision;
+    readonly helperInstalled: boolean;
+    readonly socketsActive: boolean;
+  }> {
     if (!socketProxy.hasHostSystemd()) {
       return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
     }
@@ -89,15 +87,15 @@ export const resolveNeedsHelper = (
       return { decision: helperDecision("socket-helper"), helperInstalled: true, socketsActive: true };
     }
     return { decision: helperDecision("needs-helper"), helperInstalled: true, socketsActive: false };
-  }).pipe(
-    Effect.catch(() =>
-      Effect.succeed({
-        decision: helperDecision("needs-helper"),
-        helperInstalled: false,
-        socketsActive: false,
-      }),
-    ),
-  );
+  },
+  Effect.catch(() =>
+    Effect.succeed({
+      decision: helperDecision("needs-helper"),
+      helperInstalled: false,
+      socketsActive: false,
+    }),
+  ),
+);
 
 const hostExists = (path: string): Effect.Effect<boolean> => Effect.promise(() => Bun.file(path).exists());
 

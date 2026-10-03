@@ -3,7 +3,7 @@
  * slow bind-mount providers (`provider-lando` on macOS, `provider-docker` on
  * macOS / Windows, `provider-podman` on macOS / Windows).
  *
- * It exports the engine, Live Layer, deterministic session naming, and the
+ * It exports the engine layer, deterministic session naming, and the
  * `MutagenClient` seam used by the in-memory fake.
  *
  * Capability matrix is fixed:
@@ -101,33 +101,32 @@ export interface MakeFileSyncEngineOptions {
 export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): FileSyncEngineShape => {
   const client = options.client ?? makeUnavailableMutagenClient();
 
-  const createSession = (
+  const createSession = Effect.fn("FileSyncEngine.createSession")(function* (
     spec: FileSyncSessionSpec,
-  ): Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope> =>
-    Effect.gen(function* () {
-      if (!sourceIsInsideAppRoot(spec)) {
-        return yield* Effect.fail(
-          new FileSyncStartError({
-            engineId: ENGINE_ID,
-            message: `File-sync source "${spec.source}" must resolve inside the app root "${spec.app.root}".`,
-            sessionSpec: spec,
-            remediation:
-              "Use a source path inside the app root (the project directory containing the Landofile).",
-          }),
-        );
-      }
+  ): Effect.fn.Return<FileSyncSessionRef, FileSyncError, Scope.Scope> {
+    if (!sourceIsInsideAppRoot(spec)) {
+      return yield* Effect.fail(
+        new FileSyncStartError({
+          engineId: ENGINE_ID,
+          message: `File-sync source "${spec.source}" must resolve inside the app root "${spec.app.root}".`,
+          sessionSpec: spec,
+          remediation:
+            "Use a source path inside the app root (the project directory containing the Landofile).",
+        }),
+      );
+    }
 
-      const name = mutagenSessionName(spec);
-      yield* client.create({ name, spec });
+    const name = mutagenSessionName(spec);
+    yield* client.create({ name, spec });
 
-      if (client.persistsAcrossProcesses !== true) {
-        yield* Effect.addFinalizer(() => client.terminate(name).pipe(Effect.orDie));
-      }
+    if (client.persistsAcrossProcesses !== true) {
+      yield* Effect.addFinalizer(() => client.terminate(name).pipe(Effect.orDie));
+    }
 
-      return mutagenSessionRef(spec);
-    });
+    return mutagenSessionRef(spec);
+  });
 
-  return {
+  return FileSyncEngine.of({
     id: ENGINE_ID,
     displayName: ENGINE_DISPLAY_NAME,
     capabilities: mutagenCapabilities,
@@ -150,30 +149,34 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
       Effect.as(true),
       Effect.catch(() => Effect.succeed(false)),
     ),
-    setup: options.setup ?? (() => Effect.void),
+    setup: Effect.fn("FileSyncEngine.setup")(options.setup ?? (() => Effect.void)),
 
     createSession,
 
-    flushSession: (ref) => client.flush(ref as unknown as string),
-    pauseSession: (ref) => client.pause(ref as unknown as string),
-    resumeSession: (ref) =>
-      client.resume(ref as unknown as string) as Effect.Effect<void, FileSyncError, never>,
-    terminateSession: (ref) => client.terminate(ref as unknown as string),
+    flushSession: Effect.fn("FileSyncEngine.flushSession")((ref) => client.flush(ref as unknown as string)),
+    pauseSession: Effect.fn("FileSyncEngine.pauseSession")((ref) => client.pause(ref as unknown as string)),
+    resumeSession: Effect.fn("FileSyncEngine.resumeSession")(
+      (ref) => client.resume(ref as unknown as string) as Effect.Effect<void, FileSyncError, never>,
+    ),
+    terminateSession: Effect.fn("FileSyncEngine.terminateSession")((ref) =>
+      client.terminate(ref as unknown as string),
+    ),
 
-    listSessions: (filter) =>
+    listSessions: Effect.fn("FileSyncEngine.listSessions")((filter) =>
       client.list.pipe(
         Effect.map((records) =>
           records.map(toFileSyncSessionInfo).filter((info) => filterMatches(info, filter)),
         ),
       ),
+    ),
 
     streamEvents: (ref) =>
       client.streamEvents(ref as unknown as string) as Stream.Stream<FileSyncEventChunk, FileSyncError>,
-  } satisfies FileSyncEngineShape;
+  });
 };
 
 /**
- * Bundled Live Layer for consumers that include the plugin before running
+ * Bundled engine layer for consumers that include the plugin before running
  * `lando setup`. The default client fails closed until a real Mutagen client
  * is supplied by a later layer.
  */
@@ -185,7 +188,7 @@ const provisionError = (cause: ToolError): FileSyncStartError =>
     cause,
   });
 
-export const engine = Layer.effect(
+export const layer = Layer.effect(
   FileSyncEngine,
   Effect.gen(function* () {
     const paths = yield* PathsService;
@@ -204,64 +207,63 @@ export const engine = Layer.effect(
 export const fileSyncCheck: PluginDoctorCheckContribution = {
   id: "file-sync",
   relevant: (capabilities) => capabilities.bindMountPerformance === "slow",
-  run: ({ binDir }) =>
-    Effect.gen(function* () {
-      const installStatus =
-        binDir === undefined ? undefined : yield* Effect.promise(() => readInstalledMutagenStatus(binDir));
-      const installedVersion = installStatus?.installedVersion;
-      const isCurrent = installStatus?.isCurrent === true;
-      const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
-      const clientReady =
-        selectedEngine._tag === "Some" && selectedEngine.value.id === ENGINE_ID
-          ? yield* selectedEngine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false)))
-          : false;
-      const ready = isCurrent && clientReady;
+  run: Effect.fn("MutagenDoctorCheck.run")(function* ({ binDir }) {
+    const installStatus =
+      binDir === undefined ? undefined : yield* Effect.promise(() => readInstalledMutagenStatus(binDir));
+    const installedVersion = installStatus?.installedVersion;
+    const isCurrent = installStatus?.isCurrent === true;
+    const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
+    const clientReady =
+      selectedEngine._tag === "Some" && selectedEngine.value.id === ENGINE_ID
+        ? yield* selectedEngine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false)))
+        : false;
+    const ready = isCurrent && clientReady;
 
-      return [
-        {
-          name: "file-sync",
-          status: ready ? "pass" : "warn",
-          severity: ready ? "info" : "warn",
-          runtimeStatus:
-            installedVersion === undefined
-              ? "not-installed"
-              : isCurrent && !clientReady
-                ? "installed-client-unavailable"
-                : "installed",
-          runtime: {
-            running: ready,
-            ...(installedVersion === undefined ? {} : { version: installedVersion }),
-          },
-          context: {
-            engineId: ENGINE_ID,
-            mutagenVersion: installedVersion ?? "not-installed",
-            expectedVersion: MUTAGEN_TOOL_VERSION,
-            clientStatus: clientReady ? "available" : "unavailable",
-          },
-          solutions: ready
-            ? []
-            : isCurrent
-              ? [
-                  {
-                    kind: "manual",
-                    description:
-                      "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
-                  },
-                ]
-              : [
-                  {
-                    kind: "manual",
-                    description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
-                    command: "lando setup",
-                  },
-                ],
+    return [
+      {
+        name: "file-sync",
+        status: ready ? "pass" : "warn",
+        severity: ready ? "info" : "warn",
+        runtimeStatus:
+          installedVersion === undefined
+            ? "not-installed"
+            : isCurrent && !clientReady
+              ? "installed-client-unavailable"
+              : "installed",
+        runtime: {
+          running: ready,
+          ...(installedVersion === undefined ? {} : { version: installedVersion }),
         },
-      ] satisfies ReadonlyArray<PluginDoctorReport>;
-    }),
+        context: {
+          engineId: ENGINE_ID,
+          mutagenVersion: installedVersion ?? "not-installed",
+          expectedVersion: MUTAGEN_TOOL_VERSION,
+          clientStatus: clientReady ? "available" : "unavailable",
+        },
+        solutions: ready
+          ? []
+          : isCurrent
+            ? [
+                {
+                  kind: "manual",
+                  description:
+                    "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
+                },
+              ]
+            : [
+                {
+                  kind: "manual",
+                  description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
+                  command: "lando setup",
+                },
+              ],
+      },
+    ] satisfies ReadonlyArray<PluginDoctorReport>;
+  }),
 };
 
 /** Test seam for building the Layer against a caller-supplied client. */
-export const makeEngineLayer = (options: MakeFileSyncEngineOptions = {}) =>
+export const layerWith = (options: MakeFileSyncEngineOptions = {}) =>
   Layer.succeed(FileSyncEngine, makeFileSyncEngine(options));
 
 export const manifest = Schema.decodeSync(PluginManifest)({
@@ -278,7 +280,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  fileSyncEngines: new Map([[ENGINE_ID, engine]]),
+  fileSyncEngines: new Map([[ENGINE_ID, layer]]),
   doctorChecks: [fileSyncCheck],
 });
 

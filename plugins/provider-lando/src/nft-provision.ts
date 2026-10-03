@@ -659,10 +659,8 @@ export interface EnsureManagedNftOptions {
   readonly arch?: string;
 }
 
-export const ensureManagedNft = (
-  options: EnsureManagedNftOptions,
-): Effect.Effect<void, ProviderUnavailableError> =>
-  Effect.gen(function* () {
+export const ensureManagedNft = Effect.fn("ProviderLando.ensureManagedNft")(
+  function* (options: EnsureManagedNftOptions): Effect.fn.Return<void, ProviderUnavailableError> {
     const platform = options.platform ?? "linux";
     const arch = options.arch ?? process.arch;
     const hostKey = resolveNftHostKey(platform, arch);
@@ -715,13 +713,13 @@ export const ensureManagedNft = (
         provisionError("Installed nft helper is missing bundled loader libraries or failed `nft --version`."),
       );
     }
-  }).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof ProviderUnavailableError
-        ? cause
-        : provisionError("Failed to provision nft for netavark.", cause),
-    ),
-  );
+  },
+  Effect.mapError((cause) =>
+    cause instanceof ProviderUnavailableError
+      ? cause
+      : provisionError("Failed to provision nft for netavark.", cause),
+  ),
+);
 
 export const removeManagedNft = async (runtimeBinDir: string): Promise<void> => {
   await rm(managedNftBinPath(runtimeBinDir), { force: true });

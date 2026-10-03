@@ -8,7 +8,7 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { bringDown, bringUp, makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -22,7 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { Clock, DateTime, Effect, Layer, Schema } from "effect";
 
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
@@ -123,9 +123,9 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
 });
 
 const waitForHttp = async (url: string, timeoutMs: number): Promise<Response> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const response = await fetch(url);
       if (response.ok) return response;
@@ -197,13 +197,16 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
 
           const toolingLayer = Layer.mergeAll(
             PrivateFileAccessService.layer,
-            Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-            Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-            Layer.succeed(RuntimeProviderRegistry, {
-              list: Effect.succeed([providerId]),
-              capabilities: Effect.succeed(capabilities),
-              select: () => Effect.succeed(provider),
-            }),
+            Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+            Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              RuntimeProviderRegistry.of({
+                list: Effect.succeed([providerId]),
+                capabilities: Effect.succeed(capabilities),
+                select: () => Effect.succeed(provider),
+              }),
+            ),
             ProviderExecToolingEngine.layer,
             LandoEventService.layer,
             emptyConfigServiceLayer,

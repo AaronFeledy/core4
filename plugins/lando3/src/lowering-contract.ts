@@ -25,7 +25,7 @@ export interface LoweringPatch {
 
 export const emptyPatch: LoweringPatch = { patch: {}, diagnostics: [] };
 
-export const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+export const hasPlainObjectPrototype = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== "object" || value === null) return false;
   const prototype: unknown = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
@@ -60,7 +60,10 @@ const mergeWire = (left: V4Wire, right: V4Wire): V4Wire =>
       if (CONCATENATED_WIRE_KEYS.has(key) && Array.isArray(previous) && Array.isArray(next)) {
         return [key, [...previous, ...next]];
       }
-      return [key, isPlainObject(previous) && isPlainObject(next) ? mergeWire(previous, next) : next];
+      return [
+        key,
+        hasPlainObjectPrototype(previous) && hasPlainObjectPrototype(next) ? mergeWire(previous, next) : next,
+      ];
     }),
   );
 

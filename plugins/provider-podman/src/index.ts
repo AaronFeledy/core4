@@ -744,7 +744,9 @@ const assembleRuntimeProvider = (
         logFileHelperPayload,
       }): RuntimeProviderWithContainerEvents => ({
         id: PROVIDER_ID,
-        inspectResourceNames: (query) => inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
+        inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
+          inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
+        ),
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
         platform,
@@ -761,13 +763,17 @@ const assembleRuntimeProvider = (
           options.appliedPlanState === undefined
             ? Effect.succeed([])
             : listAppliedPlans(options.appliedPlanState),
-        planSetup: () => Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
-        setup: () => Effect.void,
+        planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
+          Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
+        ),
+        setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
         getContainerDiedEvents: getContainerDiedEvents(podmanApi),
-        buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
-        pullArtifact: (spec) =>
+        buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
+          buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
+        ),
+        pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
           pullImage(podmanApi, spec.ref, {
             ctx: PODMAN_CTX,
             dialect: libpodPullDialect,
@@ -780,7 +786,8 @@ const assembleRuntimeProvider = (
               ...(result.digest === undefined ? {} : { digest: result.digest }),
             })),
           ),
-        removeArtifact: () => Effect.void,
+        ),
+        removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           return yield* bringUp(plan, {
             api: podmanApi,
@@ -808,10 +815,11 @@ const assembleRuntimeProvider = (
           }
           return DESTROYED;
         }),
-        removeObservedService: (observed) =>
+        removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
           removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
             Effect.map(observedRemoval),
           ),
+        ),
         logs: (target, logOptions) =>
           Stream.unwrap(
             (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
@@ -838,38 +846,37 @@ const assembleRuntimeProvider = (
               ),
             ),
           ),
-        list: (filter) =>
-          Effect.gen(function* () {
-            const persistedPlans =
-              options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
-            const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
+        list: Effect.fn("RuntimeProvider.list")(function* (filter) {
+          const persistedPlans =
+            options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
+          const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
 
-            const snapshots = yield* Effect.forEach(allPlans, (plan) =>
-              Effect.forEach(Object.values(plan.services), (service) =>
-                inspect(
-                  plan,
-                  { app: plan.id, service: service.name },
-                  { api: podmanApi, ctx: PODMAN_CTX },
-                ).pipe(
-                  Effect.map((snapshot) => ({
-                    ...snapshot,
-                    appRoot: plan.root,
-                    providerId: providerIdBranded,
-                    labels: scratchLabelsForPlan(plan),
-                  })),
-                ),
+          const snapshots = yield* Effect.forEach(allPlans, (plan) =>
+            Effect.forEach(Object.values(plan.services), (service) =>
+              inspect(
+                plan,
+                { app: plan.id, service: service.name },
+                { api: podmanApi, ctx: PODMAN_CTX },
+              ).pipe(
+                Effect.map((snapshot) => ({
+                  ...snapshot,
+                  appRoot: plan.root,
+                  providerId: providerIdBranded,
+                  labels: scratchLabelsForPlan(plan),
+                })),
               ),
-            );
+            ),
+          );
 
-            const discovered =
-              filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
-            const flat = mergeDiscoveredContainers(
-              snapshots.flat(),
-              discovered,
-              filter.includeScratch === true,
-            );
-            return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
-          }),
+          const discovered =
+            filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
+          const flat = mergeDiscoveredContainers(
+            snapshots.flat(),
+            discovered,
+            filter.includeScratch === true,
+          );
+          return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
+        }),
         ...resolvedOps,
       }),
     ),
@@ -887,10 +894,10 @@ export const makeRuntimeProvider = (
     ),
   );
 
-export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
+export const layer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
 
-export const provider = makeProviderLayer();
+export const layerDefault = layer();
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -957,20 +964,19 @@ export const plugin = definePlugin({
       {
         id: runtimeProviderId,
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
-        make: (ctx) =>
-          Effect.gen(function* () {
-            const paths = yield* PathsService;
-            const assets = yield* LogFileHelperAssets;
-            const appPlanSanitizer = yield* AppPlanSanitizer;
-            const logFileHelperPayloads = yield* assets.payloads;
-            return yield* makeRuntimeProvider({
-              platform: paths.platform,
-              stateDir: `${paths.roots.userDataRoot}/providers`,
-              appliedPlanState: ctx.stateStore,
-              logFileHelperPayloads,
-              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
-            });
-          }),
+        make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
+          const paths = yield* PathsService;
+          const assets = yield* LogFileHelperAssets;
+          const appPlanSanitizer = yield* AppPlanSanitizer;
+          const logFileHelperPayloads = yield* assets.payloads;
+          return yield* makeRuntimeProvider({
+            platform: paths.platform,
+            stateDir: `${paths.roots.userDataRoot}/providers`,
+            appliedPlanState: ctx.stateStore,
+            logFileHelperPayloads,
+            sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+          });
+        }),
       },
     ],
   ]),

@@ -104,28 +104,26 @@ const helpers = (
   const resources = options.resources ?? new Map<string, string>();
   let failEnsure = options.failEnsureOnce;
   return {
-    prepareImage: () =>
-      Effect.gen(function* () {
-        events.push("image");
-        if (options.failImage) return yield* Effect.fail(failure("image pull failed"));
-      }),
-    ensure: (spec) =>
-      Effect.gen(function* () {
-        events.push(`ensure:${spec.service}`);
-        const id = resources.get(spec.service) ?? `container-${spec.service}`;
-        resources.set(spec.service, id);
-        if (spec.service === failEnsure) {
-          failEnsure = undefined;
-          return yield* Effect.fail(failure("ensure failed after durable create"));
-        }
-        return {
-          containerId: id,
-          containerName: `helper-${spec.service}`,
-          volumeName:
-            spec.service === options.wrongEndpoint ? "foreign-volume" : `demo-${spec.service}-app-mount`,
-          path: "/sync" as const,
-        };
-      }),
+    prepareImage: Effect.fnUntraced(function* () {
+      events.push("image");
+      if (options.failImage) return yield* Effect.fail(failure("image pull failed"));
+    }),
+    ensure: Effect.fnUntraced(function* (spec) {
+      events.push(`ensure:${spec.service}`);
+      const id = resources.get(spec.service) ?? `container-${spec.service}`;
+      resources.set(spec.service, id);
+      if (spec.service === failEnsure) {
+        failEnsure = undefined;
+        return yield* Effect.fail(failure("ensure failed after durable create"));
+      }
+      return {
+        containerId: id,
+        containerName: `helper-${spec.service}`,
+        volumeName:
+          spec.service === options.wrongEndpoint ? "foreign-volume" : `demo-${spec.service}-app-mount`,
+        path: "/sync" as const,
+      };
+    }),
   };
 };
 

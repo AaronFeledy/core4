@@ -18,7 +18,7 @@ import {
   emitCompose,
   linuxDockerCapabilities,
   makeDockerApiClient,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   makeRuntimeProvider,
   persistAppliedPlan,
   renderCompose,
@@ -1149,7 +1149,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
     expect(
@@ -1364,7 +1364,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "raw ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
   });
@@ -1401,7 +1401,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "split ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
   });
@@ -1694,7 +1694,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([

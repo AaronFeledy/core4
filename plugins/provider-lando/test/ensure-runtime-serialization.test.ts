@@ -54,13 +54,12 @@ describe("ensureRuntime launch serialization", () => {
         }),
       };
       const serviceRunner: PodmanServiceRunner = {
-        launch: () =>
-          Effect.gen(function* () {
-            yield* Effect.yieldNow;
-            launches += 1;
-            alive = true;
-            return 9100 + launches;
-          }),
+        launch: Effect.fnUntraced(function* () {
+          yield* Effect.yieldNow;
+          launches += 1;
+          alive = true;
+          return 9100 + launches;
+        }),
         isAlive: () => Effect.succeed(alive),
         isServiceProcess: () => Effect.succeed(alive),
         terminate: () =>

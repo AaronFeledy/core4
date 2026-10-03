@@ -495,7 +495,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     };
     const dependencies = Layer.merge(
       LandoEventService.layer,
-      Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root })),
+      Layer.succeed(PathsService, PathsService.of(makeLandoPaths({ userDataRoot: root }))),
     );
 
     try {

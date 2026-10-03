@@ -27,65 +27,64 @@ export const makeFakeDownloader = (): FakeDownloaderHandle => {
       offline: true,
       mirror: false,
     },
-    download: (request: DownloadRequest) =>
-      Effect.gen(function* () {
-        if (request.destination.kind !== "file") {
-          return yield* Effect.die(new Error("fake downloader only supports file destinations"));
-        }
-        const destinationPath = join(request.destination.directory, request.destination.filename);
-        if (request.expectedSha256 !== undefined) {
-          const existing = yield* Effect.promise(async () => {
-            try {
-              const bytes = await Bun.file(destinationPath).bytes();
-              return { sha256: sha256Hex(bytes), sizeBytes: bytes.length };
-            } catch {
-              return undefined;
-            }
-          });
-          if (existing !== undefined && existing.sha256 === request.expectedSha256) {
-            return {
-              url: request.url,
-              kind: "file",
-              path: destinationPath,
-              sha256: existing.sha256,
-              sizeBytes: existing.sizeBytes,
-              fromCache: true,
-            } satisfies DownloadResult;
+    download: Effect.fnUntraced(function* (request: DownloadRequest) {
+      if (request.destination.kind !== "file") {
+        return yield* Effect.die(new Error("fake downloader only supports file destinations"));
+      }
+      const destinationPath = join(request.destination.directory, request.destination.filename);
+      if (request.expectedSha256 !== undefined) {
+        const existing = yield* Effect.promise(async () => {
+          try {
+            const bytes = await Bun.file(destinationPath).bytes();
+            return { sha256: sha256Hex(bytes), sizeBytes: bytes.length };
+          } catch {
+            return undefined;
           }
+        });
+        if (existing !== undefined && existing.sha256 === request.expectedSha256) {
+          return {
+            url: request.url,
+            kind: "file",
+            path: destinationPath,
+            sha256: existing.sha256,
+            sizeBytes: existing.sizeBytes,
+            fromCache: true,
+          } satisfies DownloadResult;
         }
-        if (request.offline === true) {
-          return yield* Effect.fail(
-            new DownloadFetchError({ message: "offline and not cached", urlOrigin: request.url, status: 0 }),
-          );
-        }
-        calls += 1;
-        const body = sources.get(request.url);
-        if (body === undefined) {
-          return yield* Effect.fail(
-            new DownloadFetchError({ message: "no source", urlOrigin: request.url, status: 404 }),
-          );
-        }
-        const result = yield* persistVerifiedStream({
-          body: Stream.fromIterable([body]),
-          destinationPath,
-          ...(request.expectedSha256 === undefined ? {} : { expectedSha256: request.expectedSha256 }),
-        }).pipe(
-          Effect.catch((cause) =>
-            Effect.fail(new DownloadFetchError({ message: "persist failed", urlOrigin: request.url, cause })),
-          ),
+      }
+      if (request.offline === true) {
+        return yield* Effect.fail(
+          new DownloadFetchError({ message: "offline and not cached", urlOrigin: request.url, status: 0 }),
         );
-        return {
-          url: request.url,
-          kind: "file",
-          path: destinationPath,
-          sha256: result.sha256,
-          sizeBytes: result.sizeBytes,
-          fromCache: false,
-        } satisfies DownloadResult;
-      }),
+      }
+      calls += 1;
+      const body = sources.get(request.url);
+      if (body === undefined) {
+        return yield* Effect.fail(
+          new DownloadFetchError({ message: "no source", urlOrigin: request.url, status: 404 }),
+        );
+      }
+      const result = yield* persistVerifiedStream({
+        body: Stream.fromIterable([body]),
+        destinationPath,
+        ...(request.expectedSha256 === undefined ? {} : { expectedSha256: request.expectedSha256 }),
+      }).pipe(
+        Effect.catch((cause) =>
+          Effect.fail(new DownloadFetchError({ message: "persist failed", urlOrigin: request.url, cause })),
+        ),
+      );
+      return {
+        url: request.url,
+        kind: "file",
+        path: destinationPath,
+        sha256: result.sha256,
+        sizeBytes: result.sizeBytes,
+        fromCache: false,
+      } satisfies DownloadResult;
+    }),
   };
   return {
-    layer: Layer.succeed(Downloader, service),
+    layer: Layer.succeed(Downloader, Downloader.of(service)),
     serve: (url, bytes) => void sources.set(url, bytes),
     downloadCalls: () => calls,
   };

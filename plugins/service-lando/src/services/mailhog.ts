@@ -68,34 +68,33 @@ export const mailhogServiceType: ServiceType = {
   base: "lando",
   identity: { defaultUser: "mailhog", homes: { mailhog: "/home/mailhog", root: "/root" } },
   schema: MailhogServiceConfig,
-  resolve: (input) =>
-    Effect.gen(function* () {
-      const deprecations = yield* Effect.serviceOption(DeprecationService);
-      if (Option.isSome(deprecations)) {
-        yield* deprecations.value
-          .use({
-            kind: "service-type",
-            id: "mailhog",
-            notice: MAILHOG_DEPRECATION_NOTICE,
-            ...(input.appName === undefined ? {} : { app: input.appName }),
-            timestamp: DateTime.nowUnsafe(),
-          })
-          .pipe(Effect.catch(() => Effect.void));
-      }
-      return {
-        base: "lando" as const,
-        normalizedConfig: {
-          ...input.service,
-          type: "mailhog",
-          image: input.service.image ?? MAILHOG_IMAGE,
-          routes: input.service.routes ?? [
-            {
-              hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
-              endpoint: MAILPIT_WEB_PORT,
-            },
-          ],
-        },
-        features: [{ id: MAILHOG_FEATURE_ID }],
-      };
-    }),
+  resolve: Effect.fn("MailhogServiceType.resolve")(function* (input) {
+    const deprecations = yield* Effect.serviceOption(DeprecationService);
+    if (Option.isSome(deprecations)) {
+      yield* deprecations.value
+        .use({
+          kind: "service-type",
+          id: "mailhog",
+          notice: MAILHOG_DEPRECATION_NOTICE,
+          ...(input.appName === undefined ? {} : { app: input.appName }),
+          timestamp: DateTime.nowUnsafe(),
+        })
+        .pipe(Effect.catch(() => Effect.void));
+    }
+    return {
+      base: "lando" as const,
+      normalizedConfig: {
+        ...input.service,
+        type: "mailhog",
+        image: input.service.image ?? MAILHOG_IMAGE,
+        routes: input.service.routes ?? [
+          {
+            hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
+            endpoint: MAILPIT_WEB_PORT,
+          },
+        ],
+      },
+      features: [{ id: MAILHOG_FEATURE_ID }],
+    };
+  }),
 };

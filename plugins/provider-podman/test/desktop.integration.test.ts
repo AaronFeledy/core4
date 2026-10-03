@@ -12,7 +12,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import {
   PodmanMachineNotRunningError,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   resolvePodmanDesktopMachine,
 } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";

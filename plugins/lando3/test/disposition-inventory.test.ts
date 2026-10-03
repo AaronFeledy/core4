@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isLegacyTagged, parseLegacyLandofile } from "@lando/sdk/landofile";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
-import { isPlainObject } from "../src/lowering-contract.ts";
+import { hasPlainObjectPrototype } from "../src/lowering-contract.ts";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { type Golden, dispositionInventory, referenceVariants } from "./fixtures/disposition-inventory.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
@@ -32,7 +32,7 @@ const walk = (value: unknown, path: Path = []): ReadonlyArray<Path> => {
   if (isLegacyTagged(value)) return [path]; // A tag is one authored value, not marker metadata.
   const children: ReadonlyArray<readonly [string | number, unknown]> = Array.isArray(value)
     ? Array.from(value.entries())
-    : isPlainObject(value)
+    : hasPlainObjectPrototype(value)
       ? Object.entries(value)
       : [];
   return [
@@ -51,10 +51,10 @@ const parseFixture = async (basename: string) => {
 const inventoryPaths = async (): Promise<ReadonlyArray<Path>> => {
   const landofile = await parseFixture("kitchen-sink.lando.yml");
   const global = await parseFixture("kitchen-sink.config.yml");
-  expect(isPlainObject(global)).toBe(true);
+  expect(hasPlainObjectPrototype(global)).toBe(true);
   return [
     ...walk(landofile),
-    ...Object.keys(isPlainObject(global) ? global : {}).map((key) => [key]),
+    ...Object.keys(hasPlainObjectPrototype(global) ? global : {}).map((key) => [key]),
     ...referenceVariants.map((key) => [key]),
   ];
 };
@@ -63,7 +63,7 @@ const atPath = (value: unknown, path: ReadonlyArray<string>): unknown => {
   const [key, ...rest] = path;
   if (key === undefined) return value;
   if (Array.isArray(value)) return atPath(value[Number(key)], rest);
-  return isPlainObject(value) ? atPath(value[key], rest) : undefined;
+  return hasPlainObjectPrototype(value) ? atPath(value[key], rest) : undefined;
 };
 const residuals = (value: unknown): ReadonlyArray<Path> =>
   walk(value).filter((path) => {
@@ -88,7 +88,7 @@ const residuals = (value: unknown): ReadonlyArray<Path> =>
         "persistent-storage",
         "sslExpose",
       ].includes(String(key)) ||
-      (key === "xdebug" && isPlainObject(atPath(value, path.map(String))))
+      (key === "xdebug" && hasPlainObjectPrototype(atPath(value, path.map(String))))
     );
   });
 

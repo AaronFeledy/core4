@@ -18,7 +18,7 @@ import {
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   makeRuntimeProvider,
   makeSystemPodmanMachineRunner,
   providerStatePath,

@@ -14,7 +14,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -62,9 +62,9 @@ const sendMemcachedCommand = (
   });
 
 const waitForMemcached = async (port: number, timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const output = await sendMemcachedCommand(port, "version\r\n", (response) =>
         response.startsWith("VERSION "),

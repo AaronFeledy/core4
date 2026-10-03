@@ -2,11 +2,17 @@ import { expect } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer, pullImage } from "@lando/provider-lando";
+import {
+  bringDown,
+  bringUp,
+  makePodmanApiClient,
+  layer as makeProviderLayer,
+  pullImage,
+} from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -226,9 +232,9 @@ export const startErrorPageStack = async ({
 };
 
 const waitForIndex = async (request: HttpClient, baseUrl: string, timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: Error | undefined;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const response = await request(`${baseUrl}/`, { signal: AbortSignal.timeout(5_000) });
       await response.body?.cancel();

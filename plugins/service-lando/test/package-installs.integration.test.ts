@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,

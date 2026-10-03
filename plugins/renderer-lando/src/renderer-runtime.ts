@@ -21,13 +21,9 @@ import { createLiveRegionController } from "./opentui/live-region-controller.ts"
 import { prefetchLiveRegionModule } from "./opentui/live-region-substrate.ts";
 import type { OpenTuiLiveRegionModuleLike } from "./opentui/live-region-types.ts";
 import { makeLineModeConsumer, makeLandoService as makeRendererService } from "./renderer-service.ts";
-import { makeTaskTreeConsumerLive } from "./task-tree-consumer-live.ts";
+import * as TaskTreeConsumer from "./task-tree-consumer.ts";
 import type { LiveRegionHandle } from "./task-tree-substrate-handler.ts";
-import {
-  TranscriptTailReader,
-  TranscriptTailReaderLive,
-  type TranscriptTailReaderShape,
-} from "./transcript-tail-reader.ts";
+import { TranscriptTailReader, type TranscriptTailReaderShape } from "./transcript-tail-reader.ts";
 
 export type LandoRendererServiceOptions = {
   readonly capabilityProbe?: CapabilityProbe;
@@ -79,7 +75,7 @@ const handleNotifyDesktop = (
   triggerNotification(body.length === 0 ? title : body, body.length === 0 ? undefined : title);
 };
 
-const makeNotificationConsumerLive = (
+const layerNotificationConsumer = (
   getCapabilities: () => { readonly notifications: boolean },
   triggerNotification: ((message: string, title?: string) => boolean) | undefined,
   flushNotifications: (() => Promise<void>) | undefined,
@@ -126,7 +122,7 @@ export const makeLandoEventConsumer = (
     (() =>
       snapshot?.get() ??
       (io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE));
-  const notifications = makeNotificationConsumerLive(
+  const notifications = layerNotificationConsumer(
     getCapabilities,
     deps.triggerNotification,
     deps.flushNotifications,
@@ -149,9 +145,9 @@ export const makeLandoEventConsumer = (
   const raiseInterrupt = deps.raiseInterrupt ?? (() => process.kill(process.pid, "SIGINT"));
   const readerLayer =
     deps.transcriptReader === undefined
-      ? TranscriptTailReaderLive
-      : Layer.succeed(TranscriptTailReader, deps.transcriptReader);
-  const taskTree = makeTaskTreeConsumerLive(
+      ? TranscriptTailReader.layer
+      : Layer.succeed(TranscriptTailReader, TranscriptTailReader.of(deps.transcriptReader));
+  const taskTree = TaskTreeConsumer.layer(
     io,
     stdout,
     createLiveRegion,
@@ -166,7 +162,7 @@ export const makeLandoNotificationConsumer = (io: RendererIO): Layer.Layer<never
     io,
     io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
   );
-  return makeNotificationConsumerLive(
+  return layerNotificationConsumer(
     () => snapshot.get(),
     bindIoDesktopNotificationTrigger(io),
     flushPendingNotifications,

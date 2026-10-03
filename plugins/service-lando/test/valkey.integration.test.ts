@@ -14,7 +14,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { valkeyServiceType } from "../src/services/valkey.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -86,9 +86,9 @@ const sendValkeyCommand = (port: number, command: string): Promise<string> =>
   });
 
 const waitForValkey = async (port: number, timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const output = await sendValkeyCommand(port, "PING\r\n");
       expect(output).toMatch(/^\+PONG/);

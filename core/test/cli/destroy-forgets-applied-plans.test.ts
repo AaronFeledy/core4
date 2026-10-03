@@ -7,7 +7,7 @@ import { DateTime, Effect, Exit } from "effect";
 
 import { makePluginStateStore, stripHostProxyRunLando } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
-import { makeProviderLayer, persistAppliedPlan } from "@lando/provider-lando";
+import { layer as makeProviderLayer, persistAppliedPlan } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,

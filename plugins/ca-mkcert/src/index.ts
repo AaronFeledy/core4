@@ -8,7 +8,7 @@ import { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 
 export const PLUGIN_NAME = "@lando/ca-mkcert" as const;
 
-export const engine = Layer.effect(
+export const layer = Layer.effect(
   CertificateAuthority,
   Effect.gen(function* () {
     const paths = yield* PathsService;
@@ -48,7 +48,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  certificateAuthorities: new Map([[CA_ID, engine]]),
+  certificateAuthorities: new Map([[CA_ID, layer]]),
 });
 
 export { CA_ID, makeMkcertCertificateAuthority, mkcertLeafCertificateName } from "./ca.ts";

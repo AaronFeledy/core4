@@ -9,7 +9,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";

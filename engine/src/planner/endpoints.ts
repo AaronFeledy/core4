@@ -1,5 +1,5 @@
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import {
   type CapabilityError,
@@ -36,7 +36,7 @@ import {
   serviceBindRemediation,
 } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
-import { LOG_SOURCES_EXTENSION_KEY, isRecord, servicePlanFromDraft } from "./extensions.ts";
+import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { applyServiceHome } from "./home.ts";
 import { DEFAULT_PROXY_DOMAIN } from "./naming.ts";
@@ -206,7 +206,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         : {
             ...extensions,
             [LOG_SOURCES_EXTENSION_KEY]: {
-              ...(isRecord(extensions[LOG_SOURCES_EXTENSION_KEY])
+              ...(Predicate.isObject(extensions[LOG_SOURCES_EXTENSION_KEY])
                 ? extensions[LOG_SOURCES_EXTENSION_KEY]
                 : {}),
               unavailableFollow: unavailableFollowSources.map((source) => ({

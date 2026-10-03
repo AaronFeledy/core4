@@ -112,38 +112,37 @@ const syncVolumeEvidence = (body: string, plan: AppPlan): "none" | "accelerated"
 };
 
 /** Inspect durable provider state and managed Podman volumes before changing mount realization. */
-export const inspectAppliedFileSync = (
+export const inspectAppliedFileSync = Effect.fnUntraced(function* (
   stateStore: PluginStateStore,
   api: Pick<PodmanApiClient, "request">,
   plan: AppPlan,
-): Effect.Effect<AppliedFileSyncInspection> =>
-  Effect.gen(function* () {
-    const prior = yield* inspectAppliedPlan(stateStore, plan.id);
-    if (prior.status === "unreadable") return { status: "unknown" } as const;
-    if (prior.status === "readable") {
-      if (prior.plan.id !== plan.id || prior.plan.root !== plan.root) return { status: "unknown" } as const;
-      const sessions = verifiedFileSyncSessions(prior.plan);
-      if (sessions !== undefined) {
-        const engineIds = [...new Set(prior.plan.fileSync.map((entry) => entry.engineId))];
-        if (engineIds.length !== 1 || engineIds[0] === undefined) return { status: "unknown" } as const;
-        return { status: "accelerated", engineId: engineIds[0], sessions } as const;
-      }
-      if (
-        prior.plan.fileSync.length > 0 ||
-        Object.values(prior.plan.services).some(
-          (service) =>
-            service.appMount?.realization === "accelerated" ||
-            service.mounts.some((mount) => mount.type === "bind" && mount.realization === "accelerated"),
-        )
-      )
-        return { status: "unknown" } as const;
+): Effect.fn.Return<AppliedFileSyncInspection> {
+  const prior = yield* inspectAppliedPlan(stateStore, plan.id);
+  if (prior.status === "unreadable") return { status: "unknown" } as const;
+  if (prior.status === "readable") {
+    if (prior.plan.id !== plan.id || prior.plan.root !== plan.root) return { status: "unknown" } as const;
+    const sessions = verifiedFileSyncSessions(prior.plan);
+    if (sessions !== undefined) {
+      const engineIds = [...new Set(prior.plan.fileSync.map((entry) => entry.engineId))];
+      if (engineIds.length !== 1 || engineIds[0] === undefined) return { status: "unknown" } as const;
+      return { status: "accelerated", engineId: engineIds[0], sessions } as const;
     }
-    if (api.request === undefined) return { status: "unknown" } as const;
-    const response = yield* api
-      .request({ method: "GET", path: "/volumes" })
-      .pipe(Effect.catch(() => Effect.succeed(undefined)));
-    if (response === undefined || response.status !== 200) return { status: "unknown" } as const;
-    const evidence = syncVolumeEvidence(response.body, plan);
-    if (evidence !== "none") return { status: "unknown" } as const;
-    return { status: prior.status === "readable" ? "ordinary" : "missing" } as const;
-  });
+    if (
+      prior.plan.fileSync.length > 0 ||
+      Object.values(prior.plan.services).some(
+        (service) =>
+          service.appMount?.realization === "accelerated" ||
+          service.mounts.some((mount) => mount.type === "bind" && mount.realization === "accelerated"),
+      )
+    )
+      return { status: "unknown" } as const;
+  }
+  if (api.request === undefined) return { status: "unknown" } as const;
+  const response = yield* api
+    .request({ method: "GET", path: "/volumes" })
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
+  if (response === undefined || response.status !== 200) return { status: "unknown" } as const;
+  const evidence = syncVolumeEvidence(response.body, plan);
+  if (evidence !== "none") return { status: "unknown" } as const;
+  return { status: prior.status === "readable" ? "ordinary" : "missing" } as const;
+});

@@ -6,7 +6,7 @@ import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
-import { Duration, Effect, type Scope } from "effect";
+import { Clock, Duration, Effect, type Scope } from "effect";
 
 /**
  * Podman API client handle shared by every lifecycle call for one live app.
@@ -44,29 +44,28 @@ export interface LiveApp {
 }
 
 export const defaultLiveAppLifecycle: LiveAppLifecycle = {
-  clearPreviousRun: (plan, api) =>
-    Effect.gen(function* () {
-      const request = api.request;
-      if (request === undefined)
-        return yield* Effect.fail(new Error("Live app cleanup requires a provider API request client."));
-      const targets = [
-        ...Object.values(plan.services).map((service) => ({
-          // The engine API takes the query in the path; a running leftover needs force.
-          path: `/containers/${encodeURIComponent(serviceContainerName(plan, service.name))}?force=true` as const,
-        })),
-        ...plan.stores.map((store) => ({ path: `/volumes/${encodeURIComponent(store.name)}` as const })),
-      ];
-      for (const target of targets) {
-        const response = yield* request({ method: "DELETE", ...target });
-        if (response.status !== 200 && response.status !== 204 && response.status !== 404) {
-          return yield* Effect.fail(
-            new Error(
-              `Unable to clear previous live app run: DELETE ${target.path} returned HTTP ${response.status}.`,
-            ),
-          );
-        }
+  clearPreviousRun: Effect.fn("LiveAppLifecycle.clearPreviousRun")(function* (plan, api) {
+    const request = api.request;
+    if (request === undefined)
+      return yield* Effect.fail(new Error("Live app cleanup requires a provider API request client."));
+    const targets = [
+      ...Object.values(plan.services).map((service) => ({
+        // The engine API takes the query in the path; a running leftover needs force.
+        path: `/containers/${encodeURIComponent(serviceContainerName(plan, service.name))}?force=true` as const,
+      })),
+      ...plan.stores.map((store) => ({ path: `/volumes/${encodeURIComponent(store.name)}` as const })),
+    ];
+    for (const target of targets) {
+      const response = yield* request({ method: "DELETE", ...target });
+      if (response.status !== 200 && response.status !== 204 && response.status !== 404) {
+        return yield* Effect.fail(
+          new Error(
+            `Unable to clear previous live app run: DELETE ${target.path} returned HTTP ${response.status}.`,
+          ),
+        );
       }
-    }),
+    }
+  }),
   bringUp: (plan, api) => Effect.asVoid(bringUp(plan, { api })),
   bringDown: (plan, api, options) =>
     Effect.asVoid(
@@ -145,31 +144,30 @@ export const acquireLiveApp = (args: {
  * the loop tolerates failures until the deadline and then reports the last
  * thing the daemon actually said.
  */
-export const execUntil = (args: {
+export const execUntil = Effect.fnUntraced(function* (args: {
   readonly app: LiveApp;
   readonly service: string;
   readonly command: ReadonlyArray<string>;
   readonly accept: (result: ExecResult) => boolean;
   readonly timeoutMs: number;
   readonly intervalMs?: number;
-}): Effect.Effect<ExecResult, Error> =>
-  Effect.gen(function* () {
-    const interval = Duration.millis(args.intervalMs ?? 2_000);
-    const deadline = Date.now() + args.timeoutMs;
-    let last = "<never ran>";
-    while (Date.now() < deadline) {
-      const attempt = yield* Effect.result(args.app.exec(args.service, args.command));
-      if (attempt._tag === "Success") {
-        if (args.accept(attempt.success)) return attempt.success;
-        last = `exit ${attempt.success.exitCode} stdout=${JSON.stringify(attempt.success.stdout)} stderr=${JSON.stringify(attempt.success.stderr)}`;
-      } else {
-        last = String(attempt.failure);
-      }
-      yield* Effect.sleep(interval);
+}): Effect.fn.Return<ExecResult, Error> {
+  const interval = Duration.millis(args.intervalMs ?? 2_000);
+  const deadline = (yield* Clock.currentTimeMillis) + args.timeoutMs;
+  let last = "<never ran>";
+  while ((yield* Clock.currentTimeMillis) < deadline) {
+    const attempt = yield* Effect.result(args.app.exec(args.service, args.command));
+    if (attempt._tag === "Success") {
+      if (args.accept(attempt.success)) return attempt.success;
+      last = `exit ${attempt.success.exitCode} stdout=${JSON.stringify(attempt.success.stdout)} stderr=${JSON.stringify(attempt.success.stderr)}`;
+    } else {
+      last = String(attempt.failure);
     }
-    return yield* Effect.fail(
-      new Error(
-        `Service ${args.service} never satisfied \`${args.command.join(" ")}\` within ${args.timeoutMs}ms. Last observation: ${last}`,
-      ),
-    );
-  });
+    yield* Effect.sleep(interval);
+  }
+  return yield* Effect.fail(
+    new Error(
+      `Service ${args.service} never satisfied \`${args.command.join(" ")}\` within ${args.timeoutMs}ms. Last observation: ${last}`,
+    ),
+  );
+});

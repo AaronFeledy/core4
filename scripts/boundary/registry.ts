@@ -1,3 +1,4 @@
+import { effectIdiomsRule } from "./rules/effect-idioms.ts";
 import { envHelperRule } from "./rules/env-helper.ts";
 import { generatedOutputRule } from "./rules/generated-output.ts";
 import { importCycleRule } from "./rules/import-cycle.ts";
@@ -37,6 +38,11 @@ export const indexBoundaryRuleRegistrations = (
 };
 
 export const BOUNDARY_RULE_REGISTRATIONS = [
+  {
+    rule: effectIdiomsRule,
+    seamJustification:
+      "Package edges govern dependency direction; they cannot reject retired Effect idioms (Data errors, wall-clock Date in Effect modules, generator-only wrappers, hand-rolled record guards, *Live layer names, @effect/* imports) written inside an allowed package.",
+  },
   {
     rule: envHelperRule,
     seamJustification: "A workspace edge cannot express an intra-package feature-ordering constraint.",

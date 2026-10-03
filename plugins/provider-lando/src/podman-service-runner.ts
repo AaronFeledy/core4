@@ -155,28 +155,30 @@ const listProcPids = (): Effect.Effect<ReadonlyArray<number>> =>
     catch: () => [] as number[],
   }).pipe(Effect.catch(() => Effect.succeed([] as number[])));
 
-const findMatchingServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const expected = [spec.command, ...spec.args];
-    const pids = yield* listProcPids();
-    const matching: number[] = [];
-    for (const pid of pids) {
-      const argv = yield* readProcessArgv(pid);
-      if (sameArgv(argv, expected)) matching.push(pid);
-    }
-    return matching;
-  });
+const findMatchingServicePidsOnHost = Effect.fnUntraced(function* (
+  spec: PodmanServiceSpec,
+): Effect.fn.Return<ReadonlyArray<number>> {
+  const expected = [spec.command, ...spec.args];
+  const pids = yield* listProcPids();
+  const matching: number[] = [];
+  for (const pid of pids) {
+    const argv = yield* readProcessArgv(pid);
+    if (sameArgv(argv, expected)) matching.push(pid);
+  }
+  return matching;
+});
 
-const findManagedPodmanServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const pids = yield* listProcPids();
-    const matching: number[] = [];
-    for (const pid of pids) {
-      const argv = yield* readProcessArgv(pid);
-      if (isManagedPodmanServiceArgv(argv, spec)) matching.push(pid);
-    }
-    return matching;
-  });
+const findManagedPodmanServicePidsOnHost = Effect.fnUntraced(function* (
+  spec: PodmanServiceSpec,
+): Effect.fn.Return<ReadonlyArray<number>> {
+  const pids = yield* listProcPids();
+  const matching: number[] = [];
+  for (const pid of pids) {
+    const argv = yield* readProcessArgv(pid);
+    if (isManagedPodmanServiceArgv(argv, spec)) matching.push(pid);
+  }
+  return matching;
+});
 
 export const makeSystemPodmanServiceRunner = (
   spawn: PodmanServiceSpawn = defaultPodmanServiceSpawn,

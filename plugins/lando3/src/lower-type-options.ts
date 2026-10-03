@@ -5,7 +5,7 @@ import {
   asStringArray,
   containerWebroot,
   emptyPatch,
-  isPlainObject,
+  hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 
@@ -102,7 +102,7 @@ export const lowerTypeOptions = (
       if (typeof service.persist === "boolean") patch.persist = service.persist;
       break;
     case "node":
-      if (isPlainObject(service.globals)) {
+      if (hasPlainObjectPrototype(service.globals)) {
         patch.globals = Object.fromEntries(
           Object.entries(service.globals).map(([name, version]) => [name, String(version)]),
         );

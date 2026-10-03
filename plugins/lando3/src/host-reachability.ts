@@ -6,7 +6,7 @@
  */
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import type { Lando3Path } from "./contract.ts";
-import { type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
+import { type ServiceLoweringContext, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { rewrittenServiceKey } from "./service-diagnostics.ts";
 
 export const HOST_ALIAS = "host.lando.internal";
@@ -44,7 +44,7 @@ export const withoutHostAlias = (
     });
     return kept.length === 0 ? undefined : kept;
   }
-  if (isPlainObject(value)) {
+  if (hasPlainObjectPrototype(value)) {
     const aliasKey = Object.keys(value).find((key) => isHostAliasName(key));
     if (aliasKey !== undefined) {
       rewrite([...relative, aliasKey]);

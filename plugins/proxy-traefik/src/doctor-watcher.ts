@@ -50,18 +50,16 @@ export const makeRouterFileWatcherCheck = (
   readRecord?: (input: DoctorRunInput) => Effect.Effect<WatcherDiagnosticRecord | undefined>,
 ): PluginDoctorCheckContribution => ({
   id: "router-file-watcher",
-  run: (input) => {
-    if (input.userDataRoot === undefined) return Effect.succeed([]);
+  run: Effect.fnUntraced(function* (input) {
+    if (input.userDataRoot === undefined) return [];
     const resolved = makeLandoPaths({ userDataRoot: input.userDataRoot, platform: input.platform });
     const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
-    return Effect.gen(function* () {
-      const record = yield* readRecord ? readRecord(input) : readStoredRecord(paths);
-      if (record === undefined) return [];
-      // Traefik always runs on the Lando-managed provider. Doctor's selected
-      // providerId is the user's app default and must not hide this record.
-      return [watcherReport(record)];
-    });
-  },
+    const record = yield* readRecord ? readRecord(input) : readStoredRecord(paths);
+    if (record === undefined) return [];
+    // Traefik always runs on the Lando-managed provider. Doctor's selected
+    // providerId is the user's app default and must not hide this record.
+    return [watcherReport(record)];
+  }),
 });
 
 export const routerFileWatcherCheck = makeRouterFileWatcherCheck();

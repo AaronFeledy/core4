@@ -191,12 +191,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
     },
     confirm: () => Effect.succeed(false),
-    resume: () =>
-      Effect.gen(function* () {
-        lifecycle.push("resume");
-        if (options.startFails === true) return yield* Effect.fail(new FakeStartError());
-        runtimeRunning = true;
-      }),
+    resume: Effect.fnUntraced(function* () {
+      lifecycle.push("resume");
+      if (options.startFails === true) return yield* Effect.fail(new FakeStartError());
+      runtimeRunning = true;
+    }),
     suspend: () =>
       Effect.sync(() => {
         lifecycle.push("suspend");

@@ -10,7 +10,7 @@ import type {
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
-import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import type { ImagePullProgressEvent } from "@lando/sdk/events";
 import {
   AbsolutePath,
@@ -23,7 +23,7 @@ import {
 import { type EventService, RuntimeProvider } from "@lando/sdk/services";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
-const imagePullLive = liveIntegrationEligibility([
+const imagePullEligibility = liveIntegrationEligibility([
   {
     available: process.env.LANDO_TEST_IMAGE_PULL === "1",
     reason: "LANDO_TEST_IMAGE_PULL=1 is required",
@@ -112,10 +112,10 @@ describe("provider pullArtifact", () => {
     expect(serialized).toContain("[redacted]");
   });
 
-  test.skipIf(!imagePullLive.available)(
+  test.skipIf(!imagePullEligibility.available)(
     liveIntegrationTestName(
       "pulls a live image through the Podman socket when explicitly enabled",
-      imagePullLive,
+      imagePullEligibility,
     ),
     async () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath;
