@@ -1,12 +1,12 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
 const VERSIONS = ["7"] as const;
@@ -18,11 +18,6 @@ const AUTH_START =
 const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
 export const REDIS_FEATURE_ID = "service-lando.redis";
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -52,9 +47,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
 
 export const redisServiceFeature: ServiceFeatureDefinition = {

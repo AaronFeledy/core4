@@ -1,22 +1,17 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
 const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
 export const VALKEY_FEATURE_ID = "service-lando.valkey";
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -40,9 +35,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 30,
   });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
 
 export const valkeyServiceFeature: ServiceFeatureDefinition = {

@@ -6,6 +6,7 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { parseServiceMount } from "./_volume-helpers.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
@@ -220,9 +221,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  if (service.user !== undefined) ctx.setUser(service.user);
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
 
   ctx.addExtension("lando-service-php", {
     allowOverride,

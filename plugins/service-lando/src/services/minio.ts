@@ -1,11 +1,12 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+
+import { appNameFor } from "../app-name.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "quay.io/minio/minio:latest";
 const DEFAULT_API_PORT = 9000;
@@ -14,14 +15,6 @@ const DATA_TARGET = PortablePath.make("/data");
 
 export const MINIO_FEATURE_ID = "service-lando.minio";
 export const MINIO_DEFAULT_ROOT_PASSWORD = "landolando";
-
-const appNameFor = (input: {
-  readonly appName?: string | undefined;
-  readonly appRoot: string;
-}): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const bucketNameFor = (value: string): string => {
   const sanitized = value.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -93,10 +86,9 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
         "--console-address",
         `:${CONSOLE_PORT}`,
       ]);
-    if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+    applyAuthoredProcessFields(ctx, ["entrypoint"]);
   }
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["workingDirectory", "user"]);
 };
 
 export const minioServiceFeature: ServiceFeatureDefinition = {
