@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, sep } from "node:path";
+import { isPathWithin } from "@lando/paths";
 
 import { LandofileIncludeError } from "@lando/sdk/errors";
 
@@ -39,8 +39,7 @@ export const assertUnderRoot = async (
 ): Promise<string> => {
   const rootReal = await realpathOrSelf(root);
   const pathReal = await realpathOrSelf(path);
-  const rel = relative(rootReal, pathReal);
-  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+  if (!isPathWithin(rootReal, pathReal)) {
     throw includeError({
       message: `Include ${source} resolves outside the ${rootLabel}.`,
       source,

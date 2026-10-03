@@ -38,6 +38,7 @@ import { joinFor, nonEmpty, normalizeHostPlatform, platformDefaults } from "./pa
 import { parseMinimalYaml } from "./yaml-min.ts";
 
 export type { LandoPaths, LandoRoots, RootOverrides } from "@lando/sdk/services";
+export { isPathWithin } from "./containment.ts";
 export { normalizeHostPlatform } from "./paths-platform.ts";
 
 // --- config.yml read (lazy, cached per resolve) ------------------------------
