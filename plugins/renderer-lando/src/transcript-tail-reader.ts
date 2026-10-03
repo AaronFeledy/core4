@@ -2,9 +2,9 @@ import { type FSWatcher, watch } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 
-import { Context, Data, Effect, Layer, Option, Queue, type Scope } from "effect";
+import { Context, Effect, Layer, Option, Queue, Schema, type Scope } from "effect";
 
-import type { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 
 import { TranscriptPathOutsideRootError, assertTranscriptPathContained } from "./transcript-path-boundary.ts";
@@ -32,10 +32,17 @@ export interface TranscriptTailReaderShape {
   ) => Effect.Effect<TranscriptTailSession, TranscriptTailReadError, Scope.Scope>;
 }
 
-export class TranscriptTailReadError extends Data.TaggedError("TranscriptTailReadError")<{
-  readonly path: AbsolutePath;
-  readonly cause: unknown;
-}> {}
+export class TranscriptTailReadError extends Schema.TaggedError<TranscriptTailReadError>()(
+  "TranscriptTailReadError",
+  {
+    path: AbsolutePath,
+    cause: Schema.Unknown,
+  },
+) {
+  override get message(): string {
+    return "";
+  }
+}
 
 class InvalidTranscriptFileError extends Error {
   override readonly name = "InvalidTranscriptFileError";
@@ -46,7 +53,33 @@ class InvalidTranscriptFileError extends Error {
 
 export class TranscriptTailReader extends Context.Service<TranscriptTailReader, TranscriptTailReaderShape>()(
   "@lando/renderer-lando/TranscriptTailReader",
-) {}
+) {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.serviceOption(PathsService).pipe(
+      Effect.map((paths) =>
+        TranscriptTailReader.of(
+          Option.isSome(paths)
+            ? {
+                open: Effect.fn("TranscriptTailReader.open")(function* (
+                  path: AbsolutePath,
+                  onChange: Effect.Effect<void>,
+                ) {
+                  return yield* openReader(paths.value.roots.userDataRoot, path, onChange);
+                }),
+              }
+            : {
+                open: Effect.fn("TranscriptTailReader.open")(function* (path: AbsolutePath) {
+                  return yield* Effect.fail(
+                    new TranscriptTailReadError({ path, cause: new TranscriptPathOutsideRootError(path) }),
+                  );
+                }),
+              },
+        ),
+      ),
+    ),
+  );
+}
 
 type FileIdentity = {
   readonly key: string;
@@ -80,50 +113,58 @@ const identityOf = (handle: FileHandle) =>
     catch: (cause) => cause,
   });
 
-const readEndingAt = (handle: FileHandle, identity: FileIdentity, end: number, lineLimit: number) =>
-  Effect.gen(function* () {
-    const readStart = Math.max(0, end - MAX_PAGE_BYTES);
-    const raw = yield* readBytes(handle, readStart, end - readStart);
-    const safeStart = readStart === 0 ? 0 : safeUtf8Start(raw);
-    const firstNewline = readStart === 0 ? -1 : raw.indexOf(0x0a, safeStart);
-    const prefix = readStart === 0 ? 0 : firstNewline < 0 ? safeStart : firstNewline + 1;
-    const safe = raw.subarray(prefix, safeUtf8End(raw));
-    const ranges = lineRanges(safe);
-    const selected = lineLimit === 0 ? [] : ranges.slice(-lineLimit);
-    const selectedStart = selected[0]?.[0] ?? safe.length;
-    return {
-      identity: identity.key,
-      start: selected.length === 0 ? readStart : readStart + prefix + selectedStart,
-      end,
-      atLatest: end === identity.size,
-      page: { lines: decodeRanges(safe, selected) },
-    } satisfies Cursor;
-  });
+const readEndingAt = Effect.fnUntraced(function* (
+  handle: FileHandle,
+  identity: FileIdentity,
+  end: number,
+  lineLimit: number,
+) {
+  const readStart = Math.max(0, end - MAX_PAGE_BYTES);
+  const raw = yield* readBytes(handle, readStart, end - readStart);
+  const safeStart = readStart === 0 ? 0 : safeUtf8Start(raw);
+  const firstNewline = readStart === 0 ? -1 : raw.indexOf(0x0a, safeStart);
+  const prefix = readStart === 0 ? 0 : firstNewline < 0 ? safeStart : firstNewline + 1;
+  const safe = raw.subarray(prefix, safeUtf8End(raw));
+  const ranges = lineRanges(safe);
+  const selected = lineLimit === 0 ? [] : ranges.slice(-lineLimit);
+  const selectedStart = selected[0]?.[0] ?? safe.length;
+  return {
+    identity: identity.key,
+    start: selected.length === 0 ? readStart : readStart + prefix + selectedStart,
+    end,
+    atLatest: end === identity.size,
+    page: { lines: decodeRanges(safe, selected) },
+  } satisfies Cursor;
+});
 
-const readStartingAt = (handle: FileHandle, identity: FileIdentity, start: number, lineLimit: number) =>
-  Effect.gen(function* () {
-    const readEnd = Math.min(identity.size, start + MAX_PAGE_BYTES);
-    const raw = yield* readBytes(handle, start, readEnd - start);
-    const safeEnd = safeUtf8End(raw);
-    const bounded = raw.subarray(0, safeEnd);
-    const ranges = lineRanges(bounded);
-    const completeRanges =
-      readEnd === identity.size ? ranges : ranges.filter(([, end]) => end < bounded.length);
-    const availableRanges =
-      completeRanges.length === 0 && bounded.length > 0 ? ranges.slice(0, 1) : completeRanges;
-    const selected = lineLimit === 0 ? [] : availableRanges.slice(0, lineLimit);
-    const last = selected.at(-1);
-    let selectedEnd = last?.[1] ?? 0;
-    while (bounded[selectedEnd] === 0x0d || bounded[selectedEnd] === 0x0a) selectedEnd += 1;
-    const end = last === undefined ? start : start + selectedEnd;
-    return {
-      identity: identity.key,
-      start,
-      end: Math.min(end, identity.size),
-      atLatest: end >= identity.size,
-      page: { lines: decodeRanges(bounded, selected) },
-    } satisfies Cursor;
-  });
+const readStartingAt = Effect.fnUntraced(function* (
+  handle: FileHandle,
+  identity: FileIdentity,
+  start: number,
+  lineLimit: number,
+) {
+  const readEnd = Math.min(identity.size, start + MAX_PAGE_BYTES);
+  const raw = yield* readBytes(handle, start, readEnd - start);
+  const safeEnd = safeUtf8End(raw);
+  const bounded = raw.subarray(0, safeEnd);
+  const ranges = lineRanges(bounded);
+  const completeRanges =
+    readEnd === identity.size ? ranges : ranges.filter(([, end]) => end < bounded.length);
+  const availableRanges =
+    completeRanges.length === 0 && bounded.length > 0 ? ranges.slice(0, 1) : completeRanges;
+  const selected = lineLimit === 0 ? [] : availableRanges.slice(0, lineLimit);
+  const last = selected.at(-1);
+  let selectedEnd = last?.[1] ?? 0;
+  while (bounded[selectedEnd] === 0x0d || bounded[selectedEnd] === 0x0a) selectedEnd += 1;
+  const end = last === undefined ? start : start + selectedEnd;
+  return {
+    identity: identity.key,
+    start,
+    end: Math.min(end, identity.size),
+    atLatest: end >= identity.size,
+    page: { lines: decodeRanges(bounded, selected) },
+  } satisfies Cursor;
+});
 
 const assertContained = (userDataRoot: string, path: AbsolutePath) =>
   Effect.tryPromise({
@@ -195,52 +236,33 @@ const makeSession = (userDataRoot: string, path: AbsolutePath): TranscriptTailSe
   return { read };
 };
 
-const openReader = (userDataRoot: string, path: AbsolutePath, onChange: Effect.Effect<void>) =>
-  Effect.gen(function* () {
-    yield* assertContained(userDataRoot, path);
-    const notifications = yield* Queue.dropping<void>(1);
-    yield* Effect.acquireRelease(
-      Effect.try({
-        try: (): FSWatcher => {
-          const transcriptName = basename(path);
-          const watcher = watch(dirname(path), (_eventType, filename) => {
-            if (
-              filename === null ||
-              filename === undefined ||
-              basename(filename.toString()) === transcriptName
-            ) {
-              Effect.runSync(Queue.offer(notifications, undefined));
-            }
-          });
-          watcher.on("error", () => Effect.runSync(Queue.offer(notifications, undefined)));
-          return watcher;
-        },
-        catch: (cause) => new TranscriptTailReadError({ path, cause }),
-      }),
-      (watcher) => Effect.sync(() => watcher.close()),
-    );
-    yield* Effect.forkScoped(Effect.forever(Queue.take(notifications).pipe(Effect.andThen(onChange))));
-    return makeSession(userDataRoot, path);
-  });
-
-export const TranscriptTailReaderLive = Layer.effect(
-  TranscriptTailReader,
-  Effect.serviceOption(PathsService).pipe(
-    Effect.map((paths) =>
-      Option.isSome(paths)
-        ? {
-            open: (path: AbsolutePath, onChange: Effect.Effect<void>) =>
-              openReader(paths.value.roots.userDataRoot, path, onChange),
+const openReader = Effect.fnUntraced(function* (
+  userDataRoot: string,
+  path: AbsolutePath,
+  onChange: Effect.Effect<void>,
+) {
+  yield* assertContained(userDataRoot, path);
+  const notifications = yield* Queue.dropping<void>(1);
+  yield* Effect.acquireRelease(
+    Effect.try({
+      try: (): FSWatcher => {
+        const transcriptName = basename(path);
+        const watcher = watch(dirname(path), (_eventType, filename) => {
+          if (
+            filename === null ||
+            filename === undefined ||
+            basename(filename.toString()) === transcriptName
+          ) {
+            Effect.runSync(Queue.offer(notifications, undefined));
           }
-        : {
-            open: (path: AbsolutePath) =>
-              Effect.fail(
-                new TranscriptTailReadError({
-                  path,
-                  cause: new TranscriptPathOutsideRootError(path),
-                }),
-              ),
-          },
-    ),
-  ),
-);
+        });
+        watcher.on("error", () => Effect.runSync(Queue.offer(notifications, undefined)));
+        return watcher;
+      },
+      catch: (cause) => new TranscriptTailReadError({ path, cause }),
+    }),
+    (watcher) => Effect.sync(() => watcher.close()),
+  );
+  yield* Effect.forkScoped(Effect.forever(Queue.take(notifications).pipe(Effect.andThen(onChange))));
+  return makeSession(userDataRoot, path);
+});

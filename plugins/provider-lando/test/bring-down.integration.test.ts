@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -34,7 +34,7 @@ const metadata = {
   source: "bring-down.integration.test",
   runtime: 4 as const,
 };
-const volumePruneLive = liveIntegrationEligibility([
+const volumePruneEligibility = liveIntegrationEligibility([
   {
     available: process.env.LANDO_TEST_VOLUME_PRUNE === "1",
     reason: "LANDO_TEST_VOLUME_PRUNE=1 is required",
@@ -455,10 +455,10 @@ describe("provider-lando bringDown", () => {
     60_000,
   );
 
-  test.skipIf(!volumePruneLive.available)(
+  test.skipIf(!volumePruneEligibility.available)(
     liveIntegrationTestName(
       "prunes only explicitly created current-app/provider volumes when enabled",
-      volumePruneLive,
+      volumePruneEligibility,
     ),
     async () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath;
@@ -466,7 +466,7 @@ describe("provider-lando bringDown", () => {
       const api = makePodmanApiClient(socketPath ?? "");
       const liveRequest = api.request;
       if (liveRequest === undefined) throw new Error("missing request client");
-      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const suffix = `${Effect.runSync(Clock.currentTimeMillis)}-${Math.random().toString(36).slice(2)}`;
       const owned = `us436-prune-owned-${suffix}`;
       const other = `us436-prune-other-${suffix}`;
 

@@ -494,7 +494,7 @@ describe("meta:doctor command", () => {
   liveTest(
     "live: Windows provider-lando doctor surfaces win32 capabilities and socket/machine status",
     async () => {
-      const { makeProviderLayer } = await import("@lando/provider-lando");
+      const { layer: makeProviderLayer } = await import("@lando/provider-lando");
       const { RuntimeProvider } = await import("@lando/sdk/services");
 
       const layer = makeProviderLayer({ platform: "win32", sanitizeAppliedPlan: stripHostProxyRunLando });

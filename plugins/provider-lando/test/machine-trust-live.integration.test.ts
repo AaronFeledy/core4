@@ -11,7 +11,7 @@ import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-inte
 
 const machinePlatform =
   process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : undefined;
-const machineTrustLive = liveIntegrationEligibility([
+const machineTrustEligibility = liveIntegrationEligibility([
   {
     available: process.env.LANDO_TEST_PROVIDER_LANDO_MACHINE_TRUST === "1",
     reason: "LANDO_TEST_PROVIDER_LANDO_MACHINE_TRUST=1 is required",
@@ -22,10 +22,10 @@ const machineTrustLive = liveIntegrationEligibility([
   },
 ]);
 
-test.skipIf(!machineTrustLive.available)(
+test.skipIf(!machineTrustEligibility.available)(
   liveIntegrationTestName(
     "syncs native trust only for an existing Lando-owned Podman machine",
-    machineTrustLive,
+    machineTrustEligibility,
   ),
   async () => {
     if (machinePlatform === undefined) throw new Error("machine platform prerequisite was not enforced");

@@ -11,7 +11,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-// Live counterpart to `compose-knobs-bringup.test.ts`. That suite pins the
+// Runtime counterpart to `compose-knobs-bringup.test.ts`. That suite pins the
 // create-request body this provider sends; this one pins that Podman actually
 // applied it to the resulting container.
 

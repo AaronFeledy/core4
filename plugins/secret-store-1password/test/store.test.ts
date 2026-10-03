@@ -162,7 +162,7 @@ test.each([
   },
 ])("ProcessRunner failure maps to $reason", async ({ error, reason }) => {
   // Given
-  const { onePasswordSecretStore } = await import("../src/store.ts");
+  const { layer } = await import("../src/store.ts");
   const runner = ProcessRunner.of({
     run: () => Effect.fail(error),
     stream: () => Stream.empty,
@@ -173,7 +173,7 @@ test.each([
     Effect.gen(function* () {
       const store = yield* SecretStore;
       return yield* Effect.result(store.get(reference));
-    }).pipe(Effect.provide(onePasswordSecretStore), Effect.provideService(ProcessRunner, runner)),
+    }).pipe(Effect.provide(layer), Effect.provideService(ProcessRunner, runner)),
   );
   // Then
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "SecretStoreUnavailableError", reason } });
@@ -186,16 +186,15 @@ test("adapter passes argv and timeout but suppresses secret-bearing process even
   const calls: ProcessSpawnOptions[] = [];
   const published: unknown[] = [];
   const runner = {
-    run: (input: ProcessSpawnOptions) =>
-      Effect.gen(function* () {
-        calls.push(input);
-        const events = yield* Effect.serviceOption(EventService);
-        if (Option.isSome(events))
-          yield* events.value
-            .publish({ _tag: "post-process-exec", cmd: "op", args: input.args, ...output })
-            .pipe(Effect.ignore);
-        return output;
-      }),
+    run: Effect.fnUntraced(function* (input: ProcessSpawnOptions) {
+      calls.push(input);
+      const events = yield* Effect.serviceOption(EventService);
+      if (Option.isSome(events))
+        yield* events.value
+          .publish({ _tag: "post-process-exec", cmd: "op", args: input.args, ...output })
+          .pipe(Effect.ignore);
+      return output;
+    }),
   };
   const events = EventService.of({
     publish: (event) =>

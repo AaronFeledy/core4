@@ -8,7 +8,13 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { bringDown, bringUp, inspect, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import {
+  bringDown,
+  bringUp,
+  inspect,
+  makePodmanApiClient,
+  layer as makeProviderLayer,
+} from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,

@@ -379,25 +379,27 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           ),
         );
 
-  const run = (args: ReadonlyArray<string>, timeoutMs = DEFAULT_TIMEOUT_MS) =>
-    verifiedTransport.pipe(
-      Effect.andThen(installed),
-      Effect.flatMap(() => options.runner.run({ cmd: binary, args, env, timeoutMs })),
-      Effect.mapError((error) =>
-        error instanceof FileSyncStartError
-          ? error
-          : startError(`Mutagen command failed: ${args.slice(0, 2).join(" ")}.`),
-      ),
-      Effect.flatMap((result: ProcessResult) =>
-        result.exitCode === 0
-          ? Effect.succeed(result.stdout)
-          : Effect.fail(
-              startError(
-                `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
+  const run = Effect.fn("MutagenProcessClient.run")(
+    (args: ReadonlyArray<string>, timeoutMs = DEFAULT_TIMEOUT_MS) =>
+      verifiedTransport.pipe(
+        Effect.andThen(installed),
+        Effect.flatMap(() => options.runner.run({ cmd: binary, args, env, timeoutMs })),
+        Effect.mapError((error) =>
+          error instanceof FileSyncStartError
+            ? error
+            : startError(`Mutagen command failed: ${args.slice(0, 2).join(" ")}.`),
+        ),
+        Effect.flatMap((result: ProcessResult) =>
+          result.exitCode === 0
+            ? Effect.succeed(result.stdout)
+            : Effect.fail(
+                startError(
+                  `Mutagen command exited with code ${result.exitCode}: ${args.slice(0, 2).join(" ")}.`,
+                ),
               ),
-            ),
+        ),
       ),
-    );
+  );
 
   const inspectAll = run(["sync", "list", "--template", LIST_TEMPLATE]).pipe(
     Effect.flatMap((output) =>
@@ -462,44 +464,46 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
   // A create can fail before Mutagen has created anything. A later process may
   // clear that preparing receipt only after the isolated daemon proves that
   // every observed session belongs to another committed receipt.
-  const reconcilePreparing = (bucket: StateBucket<SessionLedger>, current: SessionLedger) =>
-    Effect.gen(function* () {
-      const preparing = current.sessions.filter((entry) => entry.phase === "preparing");
-      if (preparing.length === 0) return current;
-      if (
-        preparing.some(
-          (entry) =>
-            !pathMatches(options.dataDir, entry.dataDir, platform) || entry.dockerHost !== options.dockerHost,
-        )
-      ) {
-        return yield* Effect.fail(
-          startError("An incomplete Mutagen receipt belongs to a different isolated daemon."),
+  const reconcilePreparing = Effect.fnUntraced(function* (
+    bucket: StateBucket<SessionLedger>,
+    current: SessionLedger,
+  ) {
+    const preparing = current.sessions.filter((entry) => entry.phase === "preparing");
+    if (preparing.length === 0) return current;
+    if (
+      preparing.some(
+        (entry) =>
+          !pathMatches(options.dataDir, entry.dataDir, platform) || entry.dockerHost !== options.dockerHost,
+      )
+    ) {
+      return yield* Effect.fail(
+        startError("An incomplete Mutagen receipt belongs to a different isolated daemon."),
+      );
+    }
+    const observed = yield* inspectAll;
+    const committed = current.sessions.filter((entry) => entry.phase !== "preparing");
+    const owned = yield* Effect.forEach(committed, receiptOwned);
+    if (
+      observed.length !== owned.length ||
+      owned.some((entry) => {
+        const matching = observed.filter((session) => session.identifier === entry.identifier);
+        return (
+          matching.length !== 1 ||
+          matching[0] === undefined ||
+          !exactSession(entry, matching[0], platform, options.dockerHost)
         );
-      }
-      const observed = yield* inspectAll;
-      const committed = current.sessions.filter((entry) => entry.phase !== "preparing");
-      const owned = yield* Effect.forEach(committed, receiptOwned);
-      if (
-        observed.length !== owned.length ||
-        owned.some((entry) => {
-          const matching = observed.filter((session) => session.identifier === entry.identifier);
-          return (
-            matching.length !== 1 ||
-            matching[0] === undefined ||
-            !exactSession(entry, matching[0], platform, options.dockerHost)
-          );
-        })
-      ) {
-        return yield* Effect.fail(
-          startError(
-            "An incomplete Mutagen receipt cannot be cleared because isolated daemon sessions do not match committed ownership.",
-          ),
-        );
-      }
-      const reconciled: SessionLedger = { ...current, sessions: committed };
-      yield* bucket.set(reconciled);
-      return reconciled;
-    });
+      })
+    ) {
+      return yield* Effect.fail(
+        startError(
+          "An incomplete Mutagen receipt cannot be cleared because isolated daemon sessions do not match committed ownership.",
+        ),
+      );
+    }
+    const reconciled: SessionLedger = { ...current, sessions: committed };
+    yield* bucket.set(reconciled);
+    return reconciled;
+  });
 
   const ownedFor = (bucket: StateBucket<SessionLedger>, name: string) =>
     readKnownLedger(bucket).pipe(
@@ -553,34 +557,36 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
       ],
     });
 
-  const validateAppSet = (current: SessionLedger, app: FileSyncSessionSpec["app"]) =>
-    Effect.gen(function* () {
-      const receipts = appReceipts(current, app);
-      if (receipts.some((entry) => entry.phase !== "committed")) {
-        return yield* Effect.fail(startError("App has incomplete Mutagen session ownership."));
-      }
-      const owned = yield* Effect.forEach(receipts, receiptOwned);
-      if (
-        new Set(owned.map((entry) => entry.identifier)).size !== owned.length ||
-        new Set(owned.map((entry) => entry.name)).size !== owned.length
-      ) {
-        return yield* Effect.fail(startError("App has duplicate Mutagen session ownership."));
-      }
-      const listed = yield* inspectAll;
-      if (
-        listed.length !== current.sessions.length ||
-        current.sessions.some((entry) => {
-          const match = listed.filter((item) => item.name === entry.name);
-          return match.length !== 1 || match[0]?.identifier !== entry.identifier;
-        })
-      ) {
-        return yield* Effect.fail(
-          startError("Mutagen daemon sessions differ from durable ownership receipts."),
-        );
-      }
-      yield* Effect.forEach(owned, inspectOwned);
-      return owned;
-    });
+  const validateAppSet = Effect.fnUntraced(function* (
+    current: SessionLedger,
+    app: FileSyncSessionSpec["app"],
+  ) {
+    const receipts = appReceipts(current, app);
+    if (receipts.some((entry) => entry.phase !== "committed")) {
+      return yield* Effect.fail(startError("App has incomplete Mutagen session ownership."));
+    }
+    const owned = yield* Effect.forEach(receipts, receiptOwned);
+    if (
+      new Set(owned.map((entry) => entry.identifier)).size !== owned.length ||
+      new Set(owned.map((entry) => entry.name)).size !== owned.length
+    ) {
+      return yield* Effect.fail(startError("App has duplicate Mutagen session ownership."));
+    }
+    const listed = yield* inspectAll;
+    if (
+      listed.length !== current.sessions.length ||
+      current.sessions.some((entry) => {
+        const match = listed.filter((item) => item.name === entry.name);
+        return match.length !== 1 || match[0]?.identifier !== entry.identifier;
+      })
+    ) {
+      return yield* Effect.fail(
+        startError("Mutagen daemon sessions differ from durable ownership receipts."),
+      );
+    }
+    yield* Effect.forEach(owned, inspectOwned);
+    return owned;
+  });
 
   const invalidateAppDrain = (app: FileSyncSessionSpec["app"]) =>
     withLedger((bucket) =>

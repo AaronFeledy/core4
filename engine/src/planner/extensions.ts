@@ -9,8 +9,6 @@ import { sortRecord } from "../services/draft.ts";
 export const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
 export const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
 
-export const isRecord = Predicate.isObject;
-
 type NormalizedBuildStep = Exclude<BuildScriptStep, string>;
 
 const normalizeBuildStep = (step: BuildScriptStep): NormalizedBuildStep =>
@@ -41,23 +39,23 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     return servicePlan;
 
   const composeExtension = servicePlan.extensions.compose;
-  const compose = isRecord(composeExtension) ? { ...composeExtension } : {};
+  const compose = Predicate.isObject(composeExtension) ? { ...composeExtension } : {};
   if (service.labels !== undefined) {
-    compose.labels = { ...(isRecord(compose.labels) ? compose.labels : {}), ...service.labels };
+    compose.labels = { ...(Predicate.isObject(compose.labels) ? compose.labels : {}), ...service.labels };
   }
   if (startInterval !== undefined) {
     compose.healthcheck = {
-      ...(isRecord(compose.healthcheck) ? compose.healthcheck : {}),
+      ...(Predicate.isObject(compose.healthcheck) ? compose.healthcheck : {}),
       start_interval: startInterval,
     };
   }
   if (hasDependencyRestart) {
-    const dependsOn = isRecord(compose.depends_on) ? { ...compose.depends_on } : {};
+    const dependsOn = Predicate.isObject(compose.depends_on) ? { ...compose.depends_on } : {};
     for (const dependency of service.dependsOn ?? []) {
       if (dependency.restart === undefined) continue;
       const existing = dependsOn[dependency.service];
       dependsOn[dependency.service] = {
-        ...(isRecord(existing) ? existing : {}),
+        ...(Predicate.isObject(existing) ? existing : {}),
         restart: dependency.restart,
       };
     }
@@ -79,7 +77,7 @@ export const serviceFeatureExtension = (
   extensions: ServicePlan["extensions"],
 ): Record<string, unknown> | undefined => {
   const extension = extensions[SERVICE_FEATURES_EXTENSION_KEY];
-  return isRecord(extension) ? extension : undefined;
+  return Predicate.isObject(extension) ? extension : undefined;
 };
 
 export const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]): ServiceBuildStepIntent[] => {

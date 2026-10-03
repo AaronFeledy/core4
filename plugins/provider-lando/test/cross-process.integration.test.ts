@@ -18,7 +18,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { appliedPlanPath, loadAppliedPlan, makeProviderLayer } from "@lando/provider-lando";
+import { appliedPlanPath, loadAppliedPlan, layer as makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,

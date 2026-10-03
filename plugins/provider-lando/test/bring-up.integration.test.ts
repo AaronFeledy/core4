@@ -9,7 +9,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { bringUp, makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,

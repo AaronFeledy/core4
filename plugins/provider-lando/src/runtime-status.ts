@@ -47,28 +47,27 @@ const socketReachable = (podmanApi?: PodmanApiClient): Effect.Effect<boolean> =>
   );
 };
 
-const findAliveOrphanPids = (
+const findAliveOrphanPids = Effect.fnUntraced(function* (
   deps: RuntimeStatusDeps,
   recordedOwnedPid: number | undefined,
-): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const findMatchingServicePids = deps.serviceRunner.findMatchingServicePids;
-    if (findMatchingServicePids === undefined) return [];
+): Effect.fn.Return<ReadonlyArray<number>> {
+  const findMatchingServicePids = deps.serviceRunner.findMatchingServicePids;
+  if (findMatchingServicePids === undefined) return [];
 
-    const matchingPids = yield* findMatchingServicePids(deps.spec).pipe(
-      Effect.catchCause(() => Effect.succeed([] as ReadonlyArray<number>)),
-    );
-    const orphanPids: number[] = [];
-    for (const pid of matchingPids) {
-      if (pid === recordedOwnedPid) continue;
-      const alive = yield* safeBoolean(deps.serviceRunner.isAlive(pid));
-      if (alive) orphanPids.push(pid);
-    }
-    return orphanPids;
-  });
+  const matchingPids = yield* findMatchingServicePids(deps.spec).pipe(
+    Effect.catchCause(() => Effect.succeed([] as ReadonlyArray<number>)),
+  );
+  const orphanPids: number[] = [];
+  for (const pid of matchingPids) {
+    if (pid === recordedOwnedPid) continue;
+    const alive = yield* safeBoolean(deps.serviceRunner.isAlive(pid));
+    if (alive) orphanPids.push(pid);
+  }
+  return orphanPids;
+});
 
-export const probeRuntimeServiceStatus = (deps: RuntimeStatusDeps): Effect.Effect<RuntimeServiceStatus> =>
-  Effect.gen(function* () {
+export const probeRuntimeServiceStatus = Effect.fn("ProviderLando.probeRuntimeServiceStatus")(
+  function* (deps: RuntimeStatusDeps): Effect.fn.Return<RuntimeServiceStatus> {
     const reachable = yield* socketReachable(deps.podmanApi);
     const recordedPid = yield* readRecordedPid(deps.pidPath);
     const alive =
@@ -88,11 +87,15 @@ export const probeRuntimeServiceStatus = (deps: RuntimeStatusDeps): Effect.Effec
       ...(pid === undefined ? {} : { pid }),
       ...(orphanPids.length === 0 ? {} : { orphanPids }),
     };
-  }).pipe(
-    Effect.catchCause(() =>
-      Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false }),
-    ),
-  );
+  },
+  Effect.catchCause(() =>
+    Effect.succeed<RuntimeServiceStatus>({
+      running: false,
+      socketReachable: false,
+      ownedServiceProcess: false,
+    }),
+  ),
+);
 
 export const teardownRuntimeService = (params: {
   readonly paths: ManagedRuntimeServicePaths;

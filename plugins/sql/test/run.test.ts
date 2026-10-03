@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit, Option } from "effect";
+import { Cause, Clock, DateTime, Effect, Exit, Option } from "effect";
 
 import {
   SqlCommandFailedError,
@@ -571,7 +571,11 @@ describe("executeDbCommand", () => {
 
   test("marks an explicitly selected external import file as trusted after hashing it", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
-    const external = join(harness.root, "..", `external-${Date.now()}.sql`);
+    const external = join(
+      harness.root,
+      "..",
+      `external-${await Effect.runPromise(Clock.currentTimeMillis)}.sql`,
+    );
     writeFileSync(external, "SELECT 1;");
     try {
       const exit = await run(harness.deps, { action: "import", file: external, yes: true });

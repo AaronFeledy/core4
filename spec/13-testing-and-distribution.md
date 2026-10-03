@@ -98,6 +98,7 @@ A PR cannot merge unless:
 - The Linux x64 perf suite and e2e smoke pass; per-PR macOS and Windows perf results are advisory but nightly failures block release.
 - Scenario and recipe suites pass on every per-PR platform.
 - Boundary gates pass through the shared `check:boundaries` surface, with package seams primary and residual AST rules limited to behavior package edges cannot express.
+- The `effect-idioms` boundary rule keeps retired Effect forms out of the shared shipped-runtime tier (core, primitive packages, engine, renderer, data-mover, MCP, telemetry, and bundled plugins): `Data.TaggedError` and `Data.Error`; `Date.now()` and `new Date(` in modules that import `effect`; named functions or methods whose body only returns `Effect.gen(...)`; local definitions named `isRecord`, `isPlainObject`, or `isObject`; exports named `*Live`; and imports from `@effect/*`. It has no carve-outs.
 - Command, service, event, deprecation, export, and package-DAG registry drift checks pass.
 - New CLI or library behavior has scenario coverage; new CLI behavior also has e2e coverage.
 - New recipes have recipe and e2e smoke coverage; new schemas have annotations and round-trip coverage.

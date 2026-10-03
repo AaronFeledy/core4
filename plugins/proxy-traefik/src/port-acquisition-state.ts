@@ -89,137 +89,136 @@ const compatibleOwnedPair = (
   current.httpTryList.includes(previous.httpPort) &&
   current.httpsTryList.includes(previous.httpsPort);
 
-export const persistPortAcquisition = (
+export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquisition")(function* (
   dependencies: TraefikProxyDependencies,
-): Effect.Effect<AcquisitionDecision, unknown> =>
-  Effect.gen(function* () {
-    const lists = resolveTryLists(dependencies);
-    const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-    const routingExists = yield* dependencies.fileSystem.exists(routingStateFile(dependencies.paths));
-    const pin = dependencies.routerPin;
-    const previousPair =
-      previous === undefined
-        ? undefined
-        : {
-            httpPort: previous.httpPort,
-            httpsPort: previous.httpsPort,
-            helperInstalled: previous.helperInstalled === true,
-            socketsActive: previous.socketsActive === true,
-            ...(previous.bindHttpPort === undefined ? {} : { bindHttpPort: previous.bindHttpPort }),
-            ...(previous.bindHttpsPort === undefined ? {} : { bindHttpsPort: previous.bindHttpsPort }),
-          };
-    if (routingExists && pin !== undefined && previousPair !== undefined && pinDiffers(previousPair, pin)) {
-      return yield* Effect.fail(pinMismatch(previousPair, pin));
-    }
-    const unitsInstalled =
-      dependencies.socketProxy === undefined
-        ? (previous?.helperInstalled ?? false)
-        : yield* isSocketProxyInstalled(dependencies.socketProxy);
-    const helperInstalled = unitsInstalled || (previous?.helperInstalled ?? false);
-    const probed = yield* probeCurrent(dependencies, lists);
-    const linuxLike = dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl";
-    if (linuxLike && helperInstalled && helperOwnsPreferred(probed)) {
-      const fromUnits =
-        dependencies.socketProxy === undefined
-          ? undefined
-          : yield* readHelperHopTargets(dependencies.socketProxy);
-      const bindHttpPort = fromUnits?.httpTarget ?? previous?.bindHttpPort;
-      const bindHttpsPort = fromUnits?.httpsTarget ?? previous?.bindHttpsPort;
-      if (bindHttpPort !== undefined && bindHttpsPort !== undefined) {
-        const decision: AcquisitionDecision = {
-          mode: "socket-helper",
-          httpPort: DESIRED_HTTP_PORT,
-          httpsPort: DESIRED_HTTPS_PORT,
-          notices: [],
-          fingerprint: lists.fingerprint,
+): Effect.fn.Return<AcquisitionDecision, unknown> {
+  const lists = resolveTryLists(dependencies);
+  const previous = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+  const routingExists = yield* dependencies.fileSystem.exists(routingStateFile(dependencies.paths));
+  const pin = dependencies.routerPin;
+  const previousPair =
+    previous === undefined
+      ? undefined
+      : {
+          httpPort: previous.httpPort,
+          httpsPort: previous.httpsPort,
+          helperInstalled: previous.helperInstalled === true,
+          socketsActive: previous.socketsActive === true,
+          ...(previous.bindHttpPort === undefined ? {} : { bindHttpPort: previous.bindHttpPort }),
+          ...(previous.bindHttpsPort === undefined ? {} : { bindHttpsPort: previous.bindHttpsPort }),
         };
+  if (routingExists && pin !== undefined && previousPair !== undefined && pinDiffers(previousPair, pin)) {
+    return yield* Effect.fail(pinMismatch(previousPair, pin));
+  }
+  const unitsInstalled =
+    dependencies.socketProxy === undefined
+      ? (previous?.helperInstalled ?? false)
+      : yield* isSocketProxyInstalled(dependencies.socketProxy);
+  const helperInstalled = unitsInstalled || (previous?.helperInstalled ?? false);
+  const probed = yield* probeCurrent(dependencies, lists);
+  const linuxLike = dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl";
+  if (linuxLike && helperInstalled && helperOwnsPreferred(probed)) {
+    const fromUnits =
+      dependencies.socketProxy === undefined
+        ? undefined
+        : yield* readHelperHopTargets(dependencies.socketProxy);
+    const bindHttpPort = fromUnits?.httpTarget ?? previous?.bindHttpPort;
+    const bindHttpsPort = fromUnits?.httpsTarget ?? previous?.bindHttpsPort;
+    if (bindHttpPort !== undefined && bindHttpsPort !== undefined) {
+      const decision: AcquisitionDecision = {
+        mode: "socket-helper",
+        httpPort: DESIRED_HTTP_PORT,
+        httpsPort: DESIRED_HTTPS_PORT,
+        notices: [],
+        fingerprint: lists.fingerprint,
+      };
+      yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+        ...decision,
+        helperInstalled: true,
+        socketsActive: true,
+        bindHttpPort,
+        bindHttpsPort,
+      });
+      return decision;
+    }
+  }
+  if (linuxLike && preferredEacces(probed) && dependencies.socketProxy !== undefined) {
+    const hops = yield* Effect.try({
+      try: () =>
+        chooseHelperBindPorts({
+          httpBinds: probed.httpBinds,
+          httpsBinds: probed.httpsBinds,
+          ...(probed.httpHolders === undefined ? {} : { httpHolders: probed.httpHolders }),
+          ...(probed.httpsHolders === undefined ? {} : { httpsHolders: probed.httpsHolders }),
+        }),
+      catch: (error) => error,
+    }).pipe(Effect.result);
+    if (hops._tag === "Success") {
+      const resolved = yield* resolveNeedsHelper(dependencies.socketProxy, {
+        httpTarget: hops.success.bindHttpPort,
+        httpsTarget: hops.success.bindHttpsPort,
+      });
+      if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
+        const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
         yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
           ...decision,
-          helperInstalled: true,
-          socketsActive: true,
-          bindHttpPort,
-          bindHttpsPort,
+          helperInstalled: resolved.helperInstalled,
+          socketsActive: resolved.socketsActive,
+          bindHttpPort: hops.success.bindHttpPort,
+          bindHttpsPort: hops.success.bindHttpsPort,
         });
         return decision;
       }
     }
-    if (linuxLike && preferredEacces(probed) && dependencies.socketProxy !== undefined) {
-      const hops = yield* Effect.try({
-        try: () =>
-          chooseHelperBindPorts({
-            httpBinds: probed.httpBinds,
-            httpsBinds: probed.httpsBinds,
-            ...(probed.httpHolders === undefined ? {} : { httpHolders: probed.httpHolders }),
-            ...(probed.httpsHolders === undefined ? {} : { httpsHolders: probed.httpsHolders }),
-          }),
-        catch: (error) => error,
-      }).pipe(Effect.result);
-      if (hops._tag === "Success") {
-        const resolved = yield* resolveNeedsHelper(dependencies.socketProxy, {
-          httpTarget: hops.success.bindHttpPort,
-          httpsTarget: hops.success.bindHttpsPort,
-        });
-        if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
-          const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
-          yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-            ...decision,
-            helperInstalled: resolved.helperInstalled,
-            socketsActive: resolved.socketsActive,
-            bindHttpPort: hops.success.bindHttpPort,
-            bindHttpsPort: hops.success.bindHttpsPort,
-          });
-          return decision;
-        }
-      }
-    }
-    if (
-      previous !== undefined &&
-      previousPair !== undefined &&
-      compatibleOwnedPair(previous, lists) &&
-      (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
-    ) {
-      const notices =
-        previous.mode === "occupied-hop"
-          ? occupiedHopNotices({
-              preferredHttp: lists.httpTryList[0] ?? previous.httpPort,
-              preferredHttps: lists.httpsTryList[0] ?? previous.httpsPort,
-              httpPort: previous.httpPort,
-              httpsPort: previous.httpsPort,
-              http: probed.http,
-              https: probed.https,
-            })
-          : [];
-      if (!fingerprintsEqual(previous.fingerprint, lists.fingerprint)) {
-        yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-          ...previous,
-          fingerprint: lists.fingerprint,
-          notices: [...notices],
-        });
-      }
-      return {
-        mode: previous.mode,
-        httpPort: previous.httpPort,
-        httpsPort: previous.httpsPort,
-        notices,
+  }
+  if (
+    previous !== undefined &&
+    previousPair !== undefined &&
+    compatibleOwnedPair(previous, lists) &&
+    (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
+  ) {
+    const notices =
+      previous.mode === "occupied-hop"
+        ? occupiedHopNotices({
+            preferredHttp: lists.httpTryList[0] ?? previous.httpPort,
+            preferredHttps: lists.httpsTryList[0] ?? previous.httpsPort,
+            httpPort: previous.httpPort,
+            httpsPort: previous.httpsPort,
+            http: probed.http,
+            https: probed.https,
+          })
+        : [];
+    if (!fingerprintsEqual(previous.fingerprint, lists.fingerprint)) {
+      yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+        ...previous,
         fingerprint: lists.fingerprint,
-      };
+        notices: [...notices],
+      });
     }
-    const decision = yield* classifyOrFail({
-      platform: dependencies.paths.platform,
-      helperInstalled,
-      socketsActive: false,
-      http: probed.http,
-      https: probed.https,
-      httpBinds: probed.httpBinds,
-      httpsBinds: probed.httpsBinds,
-      httpTryList: lists.httpTryList,
-      httpsTryList: lists.httpsTryList,
-      bindAddress: lists.bindAddress,
-    });
-    yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
-      ...decision,
-      helperInstalled,
-      socketsActive: false,
-    });
-    return decision;
+    return {
+      mode: previous.mode,
+      httpPort: previous.httpPort,
+      httpsPort: previous.httpsPort,
+      notices,
+      fingerprint: lists.fingerprint,
+    };
+  }
+  const decision = yield* classifyOrFail({
+    platform: dependencies.paths.platform,
+    helperInstalled,
+    socketsActive: false,
+    http: probed.http,
+    https: probed.https,
+    httpBinds: probed.httpBinds,
+    httpsBinds: probed.httpsBinds,
+    httpTryList: lists.httpTryList,
+    httpsTryList: lists.httpsTryList,
+    bindAddress: lists.bindAddress,
   });
+  yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+    ...decision,
+    helperInstalled,
+    socketsActive: false,
+  });
+  return decision;
+});

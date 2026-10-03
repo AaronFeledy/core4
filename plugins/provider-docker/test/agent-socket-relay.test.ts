@@ -59,16 +59,15 @@ const fakeApi = (failurePath?: string) => {
   return { api, requests };
 };
 
-const open = (api: EngineApiClient, bridgeInput = input) =>
-  Effect.gen(function* () {
-    const provider = yield* makeRuntimeProvider({
-      platform: "darwin",
-      dockerApi: api,
-    });
-    expect(provider.openAgentSocketBridge).toBeDefined();
-    if (provider.openAgentSocketBridge === undefined) return yield* Effect.die("Missing agent socket bridge");
-    return yield* provider.openAgentSocketBridge(bridgeInput);
+const open = Effect.fnUntraced(function* (api: EngineApiClient, bridgeInput = input) {
+  const provider = yield* makeRuntimeProvider({
+    platform: "darwin",
+    dockerApi: api,
   });
+  expect(provider.openAgentSocketBridge).toBeDefined();
+  if (provider.openAgentSocketBridge === undefined) return yield* Effect.die("Missing agent socket bridge");
+  return yield* provider.openAgentSocketBridge(bridgeInput);
+});
 
 test("creates an owned volume and a token-bearing socat relay container", async () => {
   // Given

@@ -101,14 +101,15 @@ const treeComplete = (parentId: string, summary: string): LandoEvent =>
     timestamp: ts,
   });
 
-const waitForConsumer = (condition: () => boolean): Effect.Effect<void, Error> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      if (condition()) return;
-      yield* Effect.yieldNow;
-    }
-    return yield* Effect.fail(new Error("Renderer consumer did not reach the expected ordering point."));
-  });
+const waitForConsumer = Effect.fnUntraced(function* (
+  condition: () => boolean,
+): Effect.fn.Return<void, Error> {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    if (condition()) return;
+    yield* Effect.yieldNow;
+  }
+  return yield* Effect.fail(new Error("Renderer consumer did not reach the expected ordering point."));
+});
 
 /**
  * Minimal buffered terminal that records every write chunk in arrival order.
@@ -219,12 +220,11 @@ describe("TaskTreeViewModel — first-paint skeleton", () => {
 });
 
 describe("first paint via fake terminal recorder (buffered degradation)", () => {
-  const drive = (events: ReadonlyArray<LandoEvent>) =>
-    Effect.gen(function* () {
-      const svc = yield* EventService;
-      for (const event of events) yield* svc.publish(event);
-      yield* Effect.sleep("20 millis");
-    });
+  const drive = Effect.fnUntraced(function* (events: ReadonlyArray<LandoEvent>) {
+    const svc = yield* EventService;
+    for (const event of events) yield* svc.publish(event);
+    yield* Effect.sleep("20 millis");
+  });
 
   test("the first recorded write is the plain task-tree start line", async () => {
     const recorder = createFakeTerminalRecorder();

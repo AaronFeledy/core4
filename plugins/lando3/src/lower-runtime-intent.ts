@@ -10,7 +10,11 @@ import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { SERVICE_HOMES } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
-import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
+import {
+  type LoweringPatch,
+  type ServiceLoweringContext,
+  hasPlainObjectPrototype,
+} from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 import {
   droppedServiceKey,
@@ -55,7 +59,7 @@ const lowerScanner = (
     );
     return undefined;
   }
-  if (!isPlainObject(value) || isLegacyTagged(value)) {
+  if (!hasPlainObjectPrototype(value) || isLegacyTagged(value)) {
     drop(
       [],
       "Scanner must be false or a settings mapping.",
@@ -120,7 +124,7 @@ const lowerAuthoredHome = (
   ctx: ServiceLoweringContext,
   diagnostics: ConfigTranslateDiagnostic[],
 ): unknown => {
-  const rawPath = isPlainObject(value) && !isLegacyTagged(value) ? value.path : value;
+  const rawPath = hasPlainObjectPrototype(value) && !isLegacyTagged(value) ? value.path : value;
   const report: Report = (kind, relative, message, remediation) => {
     const input = { ctx, relative, message, remediation };
     diagnostics.push(
@@ -180,7 +184,8 @@ export const lowerScannerAndHome = (
 };
 
 const suppliedImage = (patch: Readonly<Record<string, unknown>>): boolean =>
-  typeof patch.image === "string" || (isPlainObject(patch.build) && Object.hasOwn(patch.build, "context"));
+  typeof patch.image === "string" ||
+  (hasPlainObjectPrototype(patch.build) && Object.hasOwn(patch.build, "context"));
 
 const principal = (user: unknown): string | undefined =>
   typeof user === "string" && user.length > 0 ? (user.split(":")[0] ?? user) : undefined;

@@ -96,7 +96,7 @@ const makePlan = (appRoot: string): AppPlan => {
   const node = service(appRoot);
   return {
     id: appId,
-    name: "Live File Logs App",
+    name: "File Logs App",
     slug: "livefilelogsapp",
     root: AbsolutePath.make(appRoot),
     provider: providerId,

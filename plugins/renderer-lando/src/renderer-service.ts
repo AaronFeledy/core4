@@ -7,9 +7,7 @@ import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 import { renderPlainLine } from "./format.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 
-const makeEventConsumerLive = (
-  handle: (event: LandoEvent) => void,
-): Layer.Layer<never, never, EventService> =>
+const layerEventConsumer = (handle: (event: LandoEvent) => void): Layer.Layer<never, never, EventService> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
@@ -64,7 +62,7 @@ export const makeLandoService = (
     Renderer,
     (() => {
       const output = outputJournalFor(io);
-      return {
+      return Renderer.of({
         id: "lando",
         get capabilities() {
           return getCapabilities();
@@ -74,12 +72,12 @@ export const makeLandoService = (
           stdout: (chunk: string) => Effect.sync(() => output.writeStdout(chunk)),
           stderr: (chunk: string) => Effect.sync(() => output.writeStderr(chunk)),
         },
-      };
+      });
     })(),
   );
 
 export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
-  makeEventConsumerLive((event) => {
+  layerEventConsumer((event) => {
     const line = renderPlainLine(event);
     if (line !== null) io.writeStdout(`${line}\n`);
   });

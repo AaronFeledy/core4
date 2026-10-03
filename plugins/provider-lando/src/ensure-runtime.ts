@@ -111,33 +111,34 @@ const mapLaunchLockError = (
       })
     : cause;
 
-const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    const spec = buildPodmanServiceArgs({
-      podmanBin: deps.podmanBin,
-      storageDir: deps.storageDir,
-      runRoot: deps.runRoot,
-      configDir: deps.configDir,
-      socketPath: deps.socketPath,
-    });
-
-    const pid = yield* deps.serviceRunner.launch(spec).pipe(
-      Effect.catch((launchError: RuntimeLaunchError) => {
-        const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
-        const rootlessError = classifyRootlessFailure(probes.probe(), launchError.stderr);
-        return Effect.fail(rootlessError ?? launchError);
-      }),
-    );
-
-    const recordLaunch =
-      deps.recordLaunch?.(pid, spec) ??
-      writeLaunchState(deps.pidPath, pid, spec, deps.runtimeBundleVersion).pipe(
-        Effect.andThen(writePidFile(deps.pidPath, pid)),
-      );
-    yield* recordLaunch.pipe(
-      Effect.onExit((exit) => (Exit.isFailure(exit) ? deps.serviceRunner.terminate(pid) : Effect.void)),
-    );
+const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
+  deps: EnsureRuntimeDeps,
+): Effect.fn.Return<void, ProviderUnavailableError> {
+  const spec = buildPodmanServiceArgs({
+    podmanBin: deps.podmanBin,
+    storageDir: deps.storageDir,
+    runRoot: deps.runRoot,
+    configDir: deps.configDir,
+    socketPath: deps.socketPath,
   });
+
+  const pid = yield* deps.serviceRunner.launch(spec).pipe(
+    Effect.catch((launchError: RuntimeLaunchError) => {
+      const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
+      const rootlessError = classifyRootlessFailure(probes.probe(), launchError.stderr);
+      return Effect.fail(rootlessError ?? launchError);
+    }),
+  );
+
+  const recordLaunch =
+    deps.recordLaunch?.(pid, spec) ??
+    writeLaunchState(deps.pidPath, pid, spec, deps.runtimeBundleVersion).pipe(
+      Effect.andThen(writePidFile(deps.pidPath, pid)),
+    );
+  yield* recordLaunch.pipe(
+    Effect.onExit((exit) => (Exit.isFailure(exit) ? deps.serviceRunner.terminate(pid) : Effect.void)),
+  );
+});
 
 const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   runProbe(
@@ -189,81 +190,82 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
     ),
   );
 
-const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    if (deps.nftProvision !== undefined) {
-      const runtimeBinDir = deps.podmanBin.includes("/")
-        ? deps.podmanBin.slice(0, deps.podmanBin.lastIndexOf("/"))
-        : undefined;
-      if (runtimeBinDir !== undefined) {
-        yield* ensureManagedNft({
-          runtimeBinDir,
-          download: deps.nftProvision.download,
-          cacheDir: deps.nftProvision.cacheDir,
-          platform: deps.platform,
-          arch: deps.nftProvision.arch ?? process.arch,
-        });
-      }
+const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(function* (
+  deps: EnsureRuntimeDeps,
+): Effect.fn.Return<void, ProviderUnavailableError> {
+  if (deps.nftProvision !== undefined) {
+    const runtimeBinDir = deps.podmanBin.includes("/")
+      ? deps.podmanBin.slice(0, deps.podmanBin.lastIndexOf("/"))
+      : undefined;
+    if (runtimeBinDir !== undefined) {
+      yield* ensureManagedNft({
+        runtimeBinDir,
+        download: deps.nftProvision.download,
+        cacheDir: deps.nftProvision.cacheDir,
+        platform: deps.platform,
+        arch: deps.nftProvision.arch ?? process.arch,
+      });
     }
-    if ((yield* linuxRuntimeIsHealthy(deps)) && deps.generationStore === undefined) {
-      yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
-      yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
-      return;
-    }
+  }
+  if ((yield* linuxRuntimeIsHealthy(deps)) && deps.generationStore === undefined) {
+    yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
+    yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
+    return;
+  }
 
-    const repair = Effect.gen(function* () {
-      if (yield* linuxRuntimeIsHealthy(deps)) {
-        const adopted =
-          deps.generationStore === undefined
-            ? true
-            : yield* adoptHealthyRuntimeGeneration({
-                storageDir: deps.storageDir,
-                runRoot: deps.runRoot,
-                configDir: deps.configDir,
-                socketPath: deps.socketPath,
-                pidPath: deps.pidPath,
-                generationStore: deps.generationStore,
-                ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
-                ...(deps.pidNamespaceReader === undefined
-                  ? {}
-                  : { pidNamespaceReader: deps.pidNamespaceReader }),
-                ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
-              });
-        if (adopted) {
-          yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
-          yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
-          return;
-        }
+  const repair = Effect.gen(function* () {
+    if (yield* linuxRuntimeIsHealthy(deps)) {
+      const adopted =
+        deps.generationStore === undefined
+          ? true
+          : yield* adoptHealthyRuntimeGeneration({
+              storageDir: deps.storageDir,
+              runRoot: deps.runRoot,
+              configDir: deps.configDir,
+              socketPath: deps.socketPath,
+              pidPath: deps.pidPath,
+              generationStore: deps.generationStore,
+              ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
+              ...(deps.pidNamespaceReader === undefined
+                ? {}
+                : { pidNamespaceReader: deps.pidNamespaceReader }),
+              ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
+            });
+      if (adopted) {
+        yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
+        yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
+        return;
       }
-      if (deps.generationStore === undefined) {
-        yield* stopDiscoveredRuntimeProcesses(deps);
-        yield* reapLegacyStaleRuntime(deps);
-      } else {
-        yield* reapStaleLinuxRuntime({
-          serviceRunner: deps.serviceRunner,
-          podmanBin: deps.podmanBin,
-          storageDir: deps.storageDir,
-          runRoot: deps.runRoot,
-          configDir: deps.configDir,
-          socketPath: deps.socketPath,
-          pidPath: deps.pidPath,
-          generationStore: deps.generationStore,
-          ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
-          ...(deps.pidNamespaceReader === undefined ? {} : { pidNamespaceReader: deps.pidNamespaceReader }),
-          ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
-          ...(deps.terminationPolicy === undefined ? {} : { terminationPolicy: deps.terminationPolicy }),
-        });
-      }
-      const launch = launchRuntime(deps);
-      yield* deps.setupProgress?.launch(launch) ?? launch;
-      const readiness = verifyRuntimeReachable(deps);
-      yield* deps.setupProgress?.readiness(readiness) ?? readiness;
-    });
-    const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(
-      Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
-    );
-    yield* launchAndReadiness;
+    }
+    if (deps.generationStore === undefined) {
+      yield* stopDiscoveredRuntimeProcesses(deps);
+      yield* reapLegacyStaleRuntime(deps);
+    } else {
+      yield* reapStaleLinuxRuntime({
+        serviceRunner: deps.serviceRunner,
+        podmanBin: deps.podmanBin,
+        storageDir: deps.storageDir,
+        runRoot: deps.runRoot,
+        configDir: deps.configDir,
+        socketPath: deps.socketPath,
+        pidPath: deps.pidPath,
+        generationStore: deps.generationStore,
+        ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
+        ...(deps.pidNamespaceReader === undefined ? {} : { pidNamespaceReader: deps.pidNamespaceReader }),
+        ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
+        ...(deps.terminationPolicy === undefined ? {} : { terminationPolicy: deps.terminationPolicy }),
+      });
+    }
+    const launch = launchRuntime(deps);
+    yield* deps.setupProgress?.launch(launch) ?? launch;
+    const readiness = verifyRuntimeReachable(deps);
+    yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
+  const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(
+    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+  );
+  yield* launchAndReadiness;
+});
 
 const ensureMachineRuntime = (
   deps: EnsureRuntimeDeps,
@@ -304,29 +306,30 @@ const ensureMachineRuntime = (
   );
 };
 
-export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    yield* rejectIntelMacHost(deps.platform, deps.arch);
-    const family = hostPlatformFamily(deps.platform);
-    if (family === "darwin") {
-      return yield* deps.machineRunner === undefined
-        ? Effect.fail(missingMachineRunnerError("darwin"))
-        : ensureMachineRuntime(
-            deps,
-            deps.machineRunner,
-            ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
-          );
-    }
+export const ensureRuntime = Effect.fn("ProviderLando.ensureRuntime")(function* (
+  deps: EnsureRuntimeDeps,
+): Effect.fn.Return<void, ProviderUnavailableError> {
+  yield* rejectIntelMacHost(deps.platform, deps.arch);
+  const family = hostPlatformFamily(deps.platform);
+  if (family === "darwin") {
+    return yield* deps.machineRunner === undefined
+      ? Effect.fail(missingMachineRunnerError("darwin"))
+      : ensureMachineRuntime(
+          deps,
+          deps.machineRunner,
+          ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
+        );
+  }
 
-    if (family === "win32") {
-      return yield* deps.machineRunner === undefined
-        ? Effect.fail(missingMachineRunnerError("win32"))
-        : ensureMachineRuntime(
-            deps,
-            deps.machineRunner,
-            ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
-          );
-    }
+  if (family === "win32") {
+    return yield* deps.machineRunner === undefined
+      ? Effect.fail(missingMachineRunnerError("win32"))
+      : ensureMachineRuntime(
+          deps,
+          deps.machineRunner,
+          ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
+        );
+  }
 
-    return yield* ensureLinuxRuntime(deps);
-  });
+  return yield* ensureLinuxRuntime(deps);
+});

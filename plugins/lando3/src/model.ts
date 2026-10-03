@@ -1,6 +1,6 @@
 /** Source-preserving shapes, not a validator for plugin-specific Lando 3 intent. */
 import { type LegacyTagged, isLegacyTagged } from "@lando/sdk/landofile";
-import { Schema, SchemaAST } from "effect";
+import { Predicate, Schema, SchemaAST } from "effect";
 import type { Lando3Path } from "./contract.ts";
 
 const Bag = Schema.Record(Schema.String, Schema.Unknown);
@@ -268,8 +268,6 @@ export interface Lando3DecodeResult {
   readonly tags: ReadonlyArray<{ readonly path: Lando3Path; readonly tag: string }>;
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value) && !isLegacyTagged(value);
 const UnknownService = Schema.Struct({ api: optional(Schema.Unknown), type: optional(Schema.Unknown) });
 const serviceAst = (value: Readonly<Record<string, unknown>>): SchemaAST.AST => {
   switch (value.api ?? 3) {
@@ -298,7 +296,7 @@ const structuralAst = (ast: SchemaAST.AST | undefined, value: unknown): SchemaAS
         .map((member) => structuralAst(member, value))
         .find(
           (member) =>
-            (isRecord(value) && member?._tag === "Objects") ||
+            (Predicate.isObject(value) && !isLegacyTagged(value) && member?._tag === "Objects") ||
             (Array.isArray(value) && member?._tag === "Arrays"),
         );
     default:
@@ -331,7 +329,7 @@ export const decodeLando3Landofile = (value: unknown): Lando3DecodeResult => {
           ast?._tag === "Arrays" ? (ast.elements[index] ?? ast.rest[0]) : undefined,
         ),
       );
-    } else if (isRecord(node)) {
+    } else if (Predicate.isObject(node) && !isLegacyTagged(node)) {
       const selected =
         path.length === 2 && path[0] === "services" && shape !== undefined ? serviceAst(node) : ast;
       for (const [key, child] of Object.entries(node)) {

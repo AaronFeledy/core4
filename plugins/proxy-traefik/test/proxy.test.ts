@@ -140,13 +140,12 @@ const makeHarness = (
     },
     paths: { platform, globalAppRoot: "/lando/global" },
     globalApp: {
-      restartRunningService: (service) =>
-        Effect.gen(function* () {
-          if (!running) return false;
-          if (failRestart) return yield* Effect.fail(new Error("injected Traefik restart failure"));
-          restarted.push(String(service));
-          return true;
-        }),
+      restartRunningService: Effect.fnUntraced(function* (service) {
+        if (!running) return false;
+        if (failRestart) return yield* Effect.fail(new Error("injected Traefik restart failure"));
+        restarted.push(String(service));
+        return true;
+      }),
       ensureRunning: (services) =>
         Effect.sync(() => {
           running = true;

@@ -118,47 +118,46 @@ export const makeAdvertisedProxyPortsCheck = (
   ports?: AdvertisedPortPair,
 ): PluginDoctorCheckContribution => ({
   id: "proxy-advertised-ports",
-  run: (input) =>
-    Effect.gen(function* () {
-      const pair = yield* resolveAdvertisedPair(input, ports);
-      const probed: ReadonlyArray<{ readonly port: number; readonly role: AdvertisedPortRole }> = [
-        { port: pair.httpPort, role: "http" },
-        { port: pair.httpsPort, role: "https" },
-      ];
-      const snapshots = yield* Effect.forEach(
-        probed,
-        ({ port, role }) => Effect.promise(() => readers.readPort(port, role).catch(() => idle(port))),
-        { concurrency: "unbounded" },
-      );
-      const broken = snapshots.filter((item) => item.listening && !item.httpOk);
-      if (broken[0] === undefined) return [];
+  run: Effect.fnUntraced(function* (input) {
+    const pair = yield* resolveAdvertisedPair(input, ports);
+    const probed: ReadonlyArray<{ readonly port: number; readonly role: AdvertisedPortRole }> = [
+      { port: pair.httpPort, role: "http" },
+      { port: pair.httpsPort, role: "https" },
+    ];
+    const snapshots = yield* Effect.forEach(
+      probed,
+      ({ port, role }) => Effect.promise(() => readers.readPort(port, role).catch(() => idle(port))),
+      { concurrency: "unbounded" },
+    );
+    const broken = snapshots.filter((item) => item.listening && !item.httpOk);
+    if (broken[0] === undefined) return [];
 
-      const report = {
-        name: "proxy-advertised-ports",
-        status: "warn",
-        severity: "warn",
-        runtimeStatus: "advertised-port-unhealthy",
-        runtime: { running: false },
-        context: {
-          host: LOOPBACK_HOST,
-          ports: broken.map((item) => String(item.port)).join(","),
+    const report = {
+      name: "proxy-advertised-ports",
+      status: "warn",
+      severity: "warn",
+      runtimeStatus: "advertised-port-unhealthy",
+      runtime: { running: false },
+      context: {
+        host: LOOPBACK_HOST,
+        ports: broken.map((item) => String(item.port)).join(","),
+      },
+      solutions: [
+        {
+          kind: "manual",
+          description: "Restart the global proxy so advertised URLs reach Traefik again.",
+          command: "lando global:restart",
         },
-        solutions: [
-          {
-            kind: "manual",
-            description: "Restart the global proxy so advertised URLs reach Traefik again.",
-            command: "lando global:restart",
-          },
-          {
-            kind: "manual",
-            description: "If restart does not fix it, restore the managed runtime and retry.",
-            command: "lando setup",
-          },
-        ],
-      } satisfies PluginDoctorReport;
+        {
+          kind: "manual",
+          description: "If restart does not fix it, restore the managed runtime and retry.",
+          command: "lando setup",
+        },
+      ],
+    } satisfies PluginDoctorReport;
 
-      return [report];
-    }),
+    return [report];
+  }),
 });
 
 export const advertisedProxyPortsCheck = makeAdvertisedProxyPortsCheck();

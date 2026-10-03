@@ -3,7 +3,11 @@ import { splitComposeCommand } from "./compose-command.ts";
 import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
-import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
+import {
+  type LoweringPatch,
+  type ServiceLoweringContext,
+  hasPlainObjectPrototype,
+} from "./lowering-contract.ts";
 import {
   droppedServiceKey,
   needsReviewServiceKey,
@@ -59,7 +63,7 @@ export const lowerComposeFields = (
           drop([...relative, index]);
         }
       });
-    } else if (isPlainObject(input)) {
+    } else if (hasPlainObjectPrototype(input)) {
       for (const [key, entry] of Object.entries(input)) {
         if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
           entries.set(key, String(entry));
@@ -73,7 +77,7 @@ export const lowerComposeFields = (
     return Object.fromEntries(entries);
   };
 
-  if (!isPlainObject(value)) {
+  if (!hasPlainObjectPrototype(value)) {
     drop(options.basePath);
     return { patch: {}, diagnostics };
   }
@@ -151,7 +155,7 @@ export const lowerComposeFields = (
       if (typeof input === "string") {
         output = { context: input };
         rewrite(relative, "build.context");
-      } else if (isPlainObject(input)) {
+      } else if (hasPlainObjectPrototype(input)) {
         const build = new Map<string, unknown>();
         for (const [buildKey, entry] of Object.entries(input)) {
           const path = [...relative, buildKey];
@@ -183,7 +187,7 @@ export const lowerComposeFields = (
       }
     } else if ((key === "volumes" || key === "ports") && Array.isArray(input)) {
       input.forEach((entry: unknown, index) => {
-        if (!isPlainObject(entry)) return;
+        if (!hasPlainObjectPrototype(entry)) return;
         for (const nestedKey of Object.keys(entry)) {
           const dotted = `${key}.${nestedKey}`;
           if (dispositionOf(dotted) === "rejected") reject(dotted, [...relative, index, nestedKey]);

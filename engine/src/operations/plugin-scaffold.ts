@@ -103,7 +103,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
       },
       devDependencies: {
         "@types/bun": "^1.4.0",
-        typescript: "^5.6.0",
+        typescript: "^5.9.0",
       },
       scripts: {
         test: "lando meta:plugin:test",
@@ -141,7 +141,7 @@ const renderPluginYaml = (input: PluginScaffoldInput): string => {
 
 const renderIndexTs = (input: PluginScaffoldInput): string => {
   const contributes = contributionForTemplate(input.template, input.cspace);
-  return `import { Layer, Schema } from "effect";\n\nimport { PluginManifest } from "@lando/sdk/schema";\n\nimport { Config } from "./config";\n\nexport const PLUGIN_NAME = ${JSON.stringify(input.name)} as const;\n\nexport const manifest = Schema.decodeSync(PluginManifest)(${JSON.stringify(
+  return `import { Schema } from "effect";\n\nimport { definePlugin } from "@lando/sdk/plugins";\nimport { PluginManifest } from "@lando/sdk/schema";\n\nimport { Config } from "./config";\nimport { Greeter } from "./service";\n\nexport const PLUGIN_NAME = ${JSON.stringify(input.name)} as const;\n\nexport const manifest = Schema.decodeSync(PluginManifest)(${JSON.stringify(
     {
       name: input.name,
       version: "0.0.0",
@@ -153,14 +153,58 @@ const renderIndexTs = (input: PluginScaffoldInput): string => {
     },
     null,
     2,
-  )});\n\nexport const config = Config;\n\nexport const services = Layer.empty;\n`;
+  )});\n\nexport const config = Config;\n\nexport const services = Greeter.layer;\n\nexport const plugin = definePlugin({\n  name: PLUGIN_NAME,\n  manifest,\n  layer: services,\n});\n`;
 };
 
 const renderConfigTs = (): string =>
   `import { Effect, Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),\n});\n\nexport type Config = typeof Config.Type;\n`;
 
+const renderServiceTs = (name: string): string =>
+  `import { Context, Effect, Layer } from "effect";
+
+export class Greeter extends Context.Service<Greeter, {
+  readonly greet: (name: string) => Effect.Effect<string>;
+}>()(${JSON.stringify(`${name}/Greeter`)}) {
+  static readonly layer = Layer.effect(this, Effect.gen(function* () {
+    return Greeter.of({
+      greet: Effect.fn("Greeter.greet")(function* (name: string) {
+        return \`Hello, \${name}!\`;
+      }),
+    });
+  }));
+}
+`;
+
 const renderTest = (name: string): string =>
-  `import { describe, expect, test } from "bun:test";\n\nimport { manifest } from "../src/index.ts";\n\ndescribe(${JSON.stringify(name)}, () => {\n  test("exports a Lando v4 plugin manifest", () => {\n    expect(manifest.name).toBe(${JSON.stringify(name)});\n    expect(manifest.api).toBe(4);\n    expect(manifest.requires?.["@lando/core"]).toBe("^4.0.0");\n  });\n});\n`;
+  `import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
+
+import { manifest } from "../src/index.ts";
+import { Greeter } from "../src/service.ts";
+
+describe(${JSON.stringify(name)}, () => {
+  test("exports a Lando v4 plugin manifest", () => {
+    expect(manifest.name).toBe(${JSON.stringify(name)});
+    expect(manifest.api).toBe(4);
+    expect(manifest.requires?.["@lando/core"]).toBe("^4.0.0");
+  });
+
+  test("greets the supplied name when its layer is provided", async () => {
+    // Given
+    const name = "Lando";
+    const program = Effect.gen(function* () {
+      const greeter = yield* Greeter;
+      return yield* greeter.greet(name);
+    });
+
+    // When
+    const greeting = await Effect.runPromise(program.pipe(Effect.provide(Greeter.layer)));
+
+    // Then
+    expect(greeting).toBe("Hello, Lando!");
+  });
+});
+`;
 
 const renderTsconfig = (): string =>
   `${JSON.stringify(
@@ -195,6 +239,7 @@ const renderFiles = (input: PluginScaffoldInput): Readonly<Record<string, string
   "plugin.yaml": renderPluginYaml(input),
   "src/index.ts": renderIndexTs(input),
   "src/config.ts": renderConfigTs(),
+  "src/service.ts": renderServiceTs(input.name),
   "test/plugin.test.ts": renderTest(input.name),
   "tsconfig.json": renderTsconfig(),
   "README.md": renderReadme(input),

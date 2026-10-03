@@ -65,7 +65,7 @@ export const newInvocationId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID().replaceAll("-", "");
   }
-  return `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  return `inv_${DateTime.toEpochMillis(DateTime.nowUnsafe()).toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
 };
 
 export const withCommandEventService = <A, E, R>(

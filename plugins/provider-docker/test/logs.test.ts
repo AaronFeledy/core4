@@ -5,7 +5,7 @@ import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   makeRuntimeProvider,
 } from "@lando/provider-docker";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -133,7 +133,7 @@ describe("provider-docker logs", () => {
         service: serviceName,
         stream: "stdout",
         line: "ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
     expect(fake.calls.find((call) => call.path.includes("/logs?"))?.path).toBe(

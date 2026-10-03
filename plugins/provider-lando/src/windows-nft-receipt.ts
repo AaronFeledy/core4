@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import type { PluginStateStore } from "@lando/sdk/plugins";
 
@@ -14,8 +14,7 @@ export interface PublishedRule {
 
 type RecordValue = Record<string, unknown>;
 
-const record = (value: unknown): RecordValue | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value) ? (value as RecordValue) : undefined;
+const record = (value: unknown): RecordValue | undefined => (Predicate.isObject(value) ? value : undefined);
 
 const exactKeys = (value: RecordValue, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => key in value);

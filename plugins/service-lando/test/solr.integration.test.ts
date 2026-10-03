@@ -13,7 +13,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { solr9ServiceType } from "../src/services/solr.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -29,9 +29,9 @@ const metadata = {
 };
 
 const waitForSolr = async (port: number, timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/solr/admin/info/system?wt=json`);
       if (resp.ok) return;

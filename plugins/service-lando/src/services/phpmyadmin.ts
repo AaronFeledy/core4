@@ -207,20 +207,19 @@ export const phpMyAdminWireFeature: AppFeatureDefinition = {
   priority: 100,
   activatedBy: { services: { type: "phpmyadmin" } },
   selectors: { types: ["phpmyadmin", ...DB_TYPES] },
-  apply: (ctx) =>
-    Effect.gen(function* () {
-      const needsDiscovery = ctx.selected.some(
-        (view) => view.serviceType === "phpmyadmin" && authoredHosts(view.normalizedConfig) === undefined,
+  apply: Effect.fn("PhpMyAdminWireFeature.apply")(function* (ctx) {
+    const needsDiscovery = ctx.selected.some(
+      (view) => view.serviceType === "phpmyadmin" && authoredHosts(view.normalizedConfig) === undefined,
+    );
+    if (needsDiscovery && discoveredSiblings(ctx.selected).length === 0) {
+      return yield* Effect.fail(
+        new AppFeatureSelectorMatchedNothingError({
+          message: `App feature ${ctx.featureId} found no mysql/mariadb siblings and no hosts: override`,
+          feature: ctx.featureId,
+          remediation: "Add a mysql or mariadb service, or author hosts: on the phpmyadmin service.",
+        }),
       );
-      if (needsDiscovery && discoveredSiblings(ctx.selected).length === 0) {
-        return yield* Effect.fail(
-          new AppFeatureSelectorMatchedNothingError({
-            message: `App feature ${ctx.featureId} found no mysql/mariadb siblings and no hosts: override`,
-            feature: ctx.featureId,
-            remediation: "Add a mysql or mariadb service, or author hosts: on the phpmyadmin service.",
-          }),
-        );
-      }
-      yield* applyPhpMyAdminWire(ctx);
-    }),
+    }
+    yield* applyPhpMyAdminWire(ctx);
+  }),
 };

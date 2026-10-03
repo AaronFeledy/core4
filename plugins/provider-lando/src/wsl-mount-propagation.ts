@@ -76,36 +76,35 @@ export const makeWslMountPropagationCheck = (
   readers: WslMountPropagationReaders = systemReaders,
 ): PluginDoctorCheckContribution => ({
   id: "wsl-root-mount-propagation",
-  run: (input) =>
-    Effect.gen(function* () {
-      if (input.platform !== "wsl") return [];
+  run: Effect.fn("WslMountPropagationCheck.run")(function* (input) {
+    if (input.platform !== "wsl") return [];
 
-      const mountinfo = yield* optionalRead(readers.readMountinfo);
-      if (mountinfo === undefined || parseRootMountPropagation(mountinfo) !== "private") return [];
+    const mountinfo = yield* optionalRead(readers.readMountinfo);
+    if (mountinfo === undefined || parseRootMountPropagation(mountinfo) !== "private") return [];
 
-      const report = {
-        name: "wsl-root-mount-propagation",
-        status: "warn",
-        severity: "warn",
-        runtimeStatus: "root mount propagation is private",
-        context: {
-          platform: "wsl",
-          rootMountPropagation: "private",
+    const report = {
+      name: "wsl-root-mount-propagation",
+      status: "warn",
+      severity: "warn",
+      runtimeStatus: "root mount propagation is private",
+      context: {
+        platform: "wsl",
+        rootMountPropagation: "private",
+      },
+      solutions: [
+        {
+          kind: "manual",
+          description: "Make the root mount recursively shared for the current WSL session.",
+          command: "sudo mount --make-rshared /",
         },
-        solutions: [
-          {
-            kind: "manual",
-            description: "Make the root mount recursively shared for the current WSL session.",
-            command: "sudo mount --make-rshared /",
-          },
-          {
-            kind: "manual",
-            description:
-              'Persist the setting in /etc/wsl.conf with a [boot] command such as command="mount --make-rshared /", then restart WSL.',
-          },
-        ],
-      } satisfies PluginDoctorReport;
+        {
+          kind: "manual",
+          description:
+            'Persist the setting in /etc/wsl.conf with a [boot] command such as command="mount --make-rshared /", then restart WSL.',
+        },
+      ],
+    } satisfies PluginDoctorReport;
 
-      return [report];
-    }),
+    return [report];
+  }),
 });

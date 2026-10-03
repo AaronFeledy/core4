@@ -183,56 +183,55 @@ export const makeLeftoverProxyPortsCheck = (
   ports?: LeftoverProxyPortPair,
 ): PluginDoctorCheckContribution => ({
   id: "proxy-loopback-ports",
-  run: (input) =>
-    Effect.gen(function* () {
-      const pair = yield* resolveProbedPair(input, ports);
-      const probed: ReadonlyArray<{ readonly port: number; readonly role: LoopbackPortRole }> = [
-        { port: pair.httpPort, role: "http" },
-        { port: pair.httpsPort, role: "https" },
-      ];
-      const snapshots = yield* Effect.forEach(
-        probed,
-        ({ port, role }) =>
-          Effect.promise(() => readers.readPort(port, input.platform, role).catch(() => idleSnapshot(port))),
-        { concurrency: "unbounded" },
-      );
+  run: Effect.fnUntraced(function* (input) {
+    const pair = yield* resolveProbedPair(input, ports);
+    const probed: ReadonlyArray<{ readonly port: number; readonly role: LoopbackPortRole }> = [
+      { port: pair.httpPort, role: "http" },
+      { port: pair.httpsPort, role: "https" },
+    ];
+    const snapshots = yield* Effect.forEach(
+      probed,
+      ({ port, role }) =>
+        Effect.promise(() => readers.readPort(port, input.platform, role).catch(() => idleSnapshot(port))),
+      { concurrency: "unbounded" },
+    );
 
-      const leftover = snapshots.filter(isLeftoverRootlessportHolder);
-      const first = leftover[0];
-      if (first === undefined) return [];
+    const leftover = snapshots.filter(isLeftoverRootlessportHolder);
+    const first = leftover[0];
+    if (first === undefined) return [];
 
-      const report = {
-        name: "proxy-loopback-ports",
-        status: "warn",
-        severity: "warn",
-        runtimeStatus: "leftover-rootlessport",
-        runtime: { running: false },
-        context: {
-          host: LOOPBACK_HOST,
-          ports: leftover.map((item) => String(item.port)).join(","),
-          holder: first.comm ?? "rootlessport",
+    const report = {
+      name: "proxy-loopback-ports",
+      status: "warn",
+      severity: "warn",
+      runtimeStatus: "leftover-rootlessport",
+      runtime: { running: false },
+      context: {
+        host: LOOPBACK_HOST,
+        ports: leftover.map((item) => String(item.port)).join(","),
+        holder: first.comm ?? "rootlessport",
+      },
+      solutions: [
+        {
+          kind: "manual",
+          description: "Stop the global app so leftover proxy loopback ports can be released.",
+          command: "lando global:stop",
         },
-        solutions: [
-          {
-            kind: "manual",
-            description: "Stop the global app so leftover proxy loopback ports can be released.",
-            command: "lando global:stop",
-          },
-          {
-            kind: "manual",
-            description:
-              "If global:stop does not release the port, terminate the leftover rootlessport process manually before retrying.",
-          },
-          {
-            kind: "manual",
-            description: "If the managed runtime is broken after reaping, restore it and retry start.",
-            command: "lando setup",
-          },
-        ],
-      } satisfies PluginDoctorReport;
+        {
+          kind: "manual",
+          description:
+            "If global:stop does not release the port, terminate the leftover rootlessport process manually before retrying.",
+        },
+        {
+          kind: "manual",
+          description: "If the managed runtime is broken after reaping, restore it and retry start.",
+          command: "lando setup",
+        },
+      ],
+    } satisfies PluginDoctorReport;
 
-      return [report];
-    }),
+    return [report];
+  }),
 });
 
 export const leftoverProxyPortsCheck = makeLeftoverProxyPortsCheck();
