@@ -168,3 +168,11 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - **Learnings for future iterations:**
   - Under `lando4-dev --exec`, piping CLI output into `head` can fail with EAGAIN on the interop stdout. Redirect to files under the repo and read them from the host.
 ---
+
+## 2026-10-03 00:50 CDT - US-662 Drift Audit
+- Trigger: 6 cycles, 1492 files, +29497/−12599, 57 commits
+- No scope absorption, weakened proof, Effect 3/4 dual path, ceremony forwarder, collateral story edit, or laundered regression. Removed Effect 3 APIs are gone; later stories are unstarted; characterization still exercises production behavior, including the recorded Effect 4 differences.
+- Fixed: none.
+- Split/excise: none.
+- Verification: typecheck and lint passed. Spot checks passed: 56 tests across the effect pin, schema-artifact null guard, shell-failure, layer-memo, telemetry-shutdown, and MCP-shutdown proofs.
+---
