@@ -8,11 +8,11 @@
  * callers and owns core's PEM-loading, service-inject resolution, and ambient
  * `NetworkTrust` context seams.
  *
- * Trust is carried as an already-resolved, already-loaded object through the
- * `NetworkTrust` tag. A caller that has computed trust (e.g. `lando setup`'s
- * network preflight) provides the tag around its egress effect; the HTTP client
- * reads it via `Effect.serviceOption` and applies Bun `fetch` `proxy`/`tls.ca`
- * options. When the tag is absent the client self-resolves from config/env or
+ * Trust is carried as an already-resolved, already-loaded object on the
+ * `NetworkTrust` reference. A caller that has computed trust (e.g. `lando setup`'s
+ * network preflight) provides it around its egress effect; the HTTP client
+ * reads it from the requesting fiber and applies Bun `fetch` `proxy`/`tls.ca`
+ * options. When the reference is unset the client self-resolves from config/env or
  * stays a bare request.
  *
  * The tag is intentionally NOT published from `@lando/sdk` and NOT re-exported
@@ -169,10 +169,11 @@ export const withWindowsHostTrust = (
 };
 
 /**
- * Core-private ambient context tag carrying an already-resolved network-trust
- * object. Provided by callers that resolved trust (setup preflight); consumed
- * by the HTTP client layer.
+ * Optional injected trust for one fiber. Callers that already resolved trust
+ * (setup preflight) provide it; otherwise the client resolves trust per request
+ * from `ConfigService`. Absent means "not injected", not "trust nothing".
  */
-export class NetworkTrust extends Context.Service<NetworkTrust, ResolvedNetworkTrust>()(
-  "@lando/core/NetworkTrust",
-) {}
+export const NetworkTrust = Context.Reference<ResolvedNetworkTrust | undefined>(
+  "@lando/http-client/NetworkTrust",
+  { defaultValue: () => undefined },
+);

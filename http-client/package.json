@@ -26,6 +26,7 @@
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "http-client", "downloader"],
   "dependencies": {
+    "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
   },

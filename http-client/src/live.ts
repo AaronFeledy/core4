@@ -1,3 +1,4 @@
+import { RedactionService } from "@lando/redaction/service";
 import { HttpTrustError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
@@ -11,6 +12,7 @@ import { type DirectHttpTransport, directHttpRequest } from "./direct-http.ts";
 import { requestWithNetworkTrust } from "./network-request.ts";
 import {
   NetworkTrust,
+  type ResolvedNetworkTrust,
   type SystemCaProvider,
   defaultSystemCaPems,
   loadCaPems,
@@ -42,9 +44,11 @@ const redactedUrl = (url: URL, policy: RequestPolicyShape): string => {
 const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unknown) =>
   new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
 
-const resolveTrust = Effect.fnUntraced(function* (context: Context.Context<never>) {
-  const injected = Context.getOption(context, NetworkTrust);
-  if (Option.isSome(injected)) return injected.value;
+const resolveTrust = Effect.fnUntraced(function* (
+  context: Context.Context<never>,
+  injected: ResolvedNetworkTrust | undefined,
+) {
+  if (injected !== undefined) return injected;
   const config = Context.getOption(context, ConfigService);
   if (Option.isNone(config)) return undefined;
   const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
@@ -95,7 +99,13 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
             ? eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
             : Effect.void;
         const execute = Effect.fn("HttpClient.request")(function* () {
-          yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": safeUrl });
+          const canonical = Context.getOption(fiber.context, RedactionService);
+          const spanUrl = Option.isNone(canonical)
+            ? safeUrl
+            : (yield* canonical.value.forProfile("secrets", {
+                redactionTokens: policy.redactionTokens,
+              })).redactString(safeUrl);
+          yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": spanUrl });
           const startedAt = yield* Clock.currentTimeMillis;
           const timestamp = yield* DateTime.now;
           const correlation = {
@@ -158,7 +168,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
             }
             if (url.protocol !== "http:" && url.protocol !== "https:")
               return yield* Effect.fail(transportError(safeRequest, "unsupported scheme"));
-            const resolved = yield* resolveTrust(fiber.context).pipe(
+            const resolved = yield* resolveTrust(fiber.context, fiber.getRef(NetworkTrust)).pipe(
               Effect.mapError((cause) => transportError(safeRequest, cause)),
             );
             const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];

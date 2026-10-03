@@ -12,7 +12,8 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { ConfigError } from "@lando/sdk/errors";
 import type { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
+import { ConfigService, EventService, SecretStore, type LandoEvent } from "@lando/sdk/services";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
@@ -805,6 +806,38 @@ describe("HttpClient egress span redaction", () => {
         span.name !== "HttpClient.request" && String(span.attributes.get("url.full") ?? "").includes(secret),
     );
     expect(rawUrlSpans).toHaveLength(0);
+  });
+
+  test("redacts a RedactionService secret stored in the URL path", async () => {
+    const secret = "opaque-private-token-3928";
+    const url = `https://span.test/${secret}/item`;
+    const spans: Array<Tracer.NativeSpan> = [];
+    const tracer = Tracer.make({
+      span(options) {
+        const span = new Tracer.NativeSpan(options);
+        spans.push(span);
+        return span;
+      },
+    });
+    const serve = (() => Promise.resolve(new Response("ok", { status: 200 }))) as unknown as typeof fetch;
+    const store = SecretStore.of({
+      id: "review-store",
+      list: Effect.succeed(["path-token"]),
+      get: () => Effect.succeed(secret),
+      has: () => Effect.succeed(true),
+    });
+    await Effect.runPromise(
+      getCollect(url).pipe(
+        Effect.provide(layerWith({ fetch: serve })),
+        Effect.provideService(RedactionService, RedactionService.of(makeRedactionService(store))),
+        Effect.provideService(Tracer.Tracer, tracer),
+      ),
+    );
+    const egress = spans.find((span) => span.name === "HttpClient.request");
+    const full = String(egress?.attributes.get("url.full") ?? "");
+    expect(full).toContain("https://span.test/");
+    expect(full).toContain("[redacted]");
+    expect(full).not.toContain(secret);
   });
 });
 
