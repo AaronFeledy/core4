@@ -93,6 +93,7 @@ describe("service config file sources", () => {
       );
       expect(result.failure.file).toBe(`${appRoot}/.lando.yml`);
       expect(result.failure.message).toContain(`services.database.config.${key}`);
+      expect(result.failure.issues.every((issue) => !issue.message.startsWith("services."))).toBe(true);
     }
   });
 

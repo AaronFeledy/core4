@@ -22,7 +22,7 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 
 const CERTS_FEATURE_ID = "lando.certs" as const;
 
@@ -58,12 +58,7 @@ const validationError = (input: ResolveCertsFeatureInput, message: string): Land
   new LandofileValidationError({
     message: `services.${input.serviceName}.certs ${message}`,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [
-      validationIssueFromText(
-        `services.${input.serviceName}.certs`,
-        `services.${input.serviceName}.certs ${message}`,
-      ),
-    ],
+    issues: [validationIssue(["services", input.serviceName, "certs"], message)],
   });
 
 const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;

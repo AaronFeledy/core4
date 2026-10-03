@@ -140,7 +140,7 @@ const validateSemantics = (
     const seen = new Set<string>();
     for (const prompt of manifest.prompts) {
       if (seen.has(prompt.name)) {
-        issues.push(validationIssue(["prompts"], `prompts: duplicate prompt name "${prompt.name}".`));
+        issues.push(validationIssue(["prompts"], `duplicate prompt name "${prompt.name}".`));
       }
       seen.add(prompt.name);
     }
@@ -154,7 +154,7 @@ const validateSemantics = (
         issues.push(
           validationIssue(
             ["prompts", index],
-            `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list (or use choicesFrom:).`,
+            `("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list (or use choicesFrom:).`,
           ),
         );
       }
@@ -165,7 +165,7 @@ const validateSemantics = (
     for (const [index, action] of manifest.postInit.entries()) {
       const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts ?? []);
       if (authorizationIssue !== undefined)
-        issues.push(validationIssue(["postInit", index], `postInit[${index}]: ${authorizationIssue}`));
+        issues.push(validationIssue(["postInit", index], authorizationIssue));
       if (action.type !== "bun") continue;
       if (action.verb === "add") {
         const categories = [
@@ -179,7 +179,7 @@ const validateSemantics = (
           issues.push(
             validationIssue(
               ["postInit", index],
-              `postInit[${index}] (bun add): at least one dependency category must be non-empty.`,
+              "(bun add): at least one dependency category must be non-empty.",
             ),
           );
         }
@@ -188,7 +188,7 @@ const validateSemantics = (
             issues.push(
               validationIssue(
                 ["postInit", index],
-                `postInit[${index}] (bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
+                `(bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
               ),
             );
           }
@@ -196,47 +196,35 @@ const validateSemantics = (
       }
       if (action.verb === "create") {
         if (action.template.trim() === "") {
-          issues.push(
-            validationIssue(
-              ["postInit", index],
-              `postInit[${index}] (bun create): template must not be empty.`,
-            ),
-          );
+          issues.push(validationIssue(["postInit", index], "(bun create): template must not be empty."));
         } else if (action.template.trim().startsWith("-")) {
           issues.push(
             validationIssue(
               ["postInit", index],
-              `postInit[${index}] (bun create): template "${action.template}" is invalid; it must not begin with "-".`,
+              `(bun create): template "${action.template}" is invalid; it must not begin with "-".`,
             ),
           );
         }
       }
       if ((action.verb === "run" || action.verb === "script") && action.script.trim() === "") {
-        issues.push(
-          validationIssue(
-            ["postInit", index],
-            `postInit[${index}] (bun ${action.verb}): script must not be empty.`,
-          ),
-        );
+        issues.push(validationIssue(["postInit", index], `(bun ${action.verb}): script must not be empty.`));
       }
       if (action.verb === "run" && action.script.trim().startsWith("-")) {
         issues.push(
           validationIssue(
             ["postInit", index],
-            `postInit[${index}] (bun run): script "${action.script}" is invalid; it must not begin with "-".`,
+            `(bun run): script "${action.script}" is invalid; it must not begin with "-".`,
           ),
         );
       }
       if (action.verb === "x") {
         if (action.spec.trim() === "") {
-          issues.push(
-            validationIssue(["postInit", index], `postInit[${index}] (bun x): spec must not be empty.`),
-          );
+          issues.push(validationIssue(["postInit", index], "(bun x): spec must not be empty."));
         } else if (action.spec.trim().startsWith("-")) {
           issues.push(
             validationIssue(
               ["postInit", index],
-              `postInit[${index}] (bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
+              `(bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
             ),
           );
         }

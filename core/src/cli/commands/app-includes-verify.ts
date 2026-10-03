@@ -3,19 +3,17 @@ import { dirname } from "node:path";
 import { Effect, Schema } from "effect";
 
 import {
+  type ComposeKeyRejectedError,
+  type LandofileIncludeError,
   type LandofileLoadExpressionError,
+  type LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
-  type NotImplementedError,
-} from "@lando/sdk/errors";
-import type {
-  ComposeKeyRejectedError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
   LandofileValidationError,
-  ToolingIncludeCycleError,
+  type NotImplementedError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
 
 import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
@@ -124,13 +122,12 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
   yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
   const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error", errors: "all" });
   if (decoded._tag === "Failure") {
+    const issues = validationIssuesFromCause(decoded.failure);
     return yield* Effect.fail(
-      new LandofileParseError({
-        message: `Landofile ${filePath} is not valid: ${String(decoded.failure)}`,
-        filePath,
-        line: undefined,
-        column: undefined,
-        cause: decoded.failure,
+      new LandofileValidationError({
+        message: `Landofile ${filePath} is not valid: ${issues.map(formatValidationIssueLine).join(", ")}`,
+        file: filePath,
+        issues,
       }),
     );
   }

@@ -672,8 +672,11 @@ prompts:
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((i) => i.message.includes("duplicate prompt name"))).toBe(true);
-      expect(error.issues.some((i) => i.message.includes("appName"))).toBe(true);
+      const duplicate = error.issues.find((issue) => issue.message.includes("duplicate prompt name"));
+      expect(duplicate?.path).toEqual(["prompts"]);
+      expect(duplicate?.message.startsWith("prompts")).toBe(false);
+      expect(error.message).toContain('prompts: duplicate prompt name "appName".');
+      expect(error.message).not.toContain("prompts: prompts:");
     }
   });
 
