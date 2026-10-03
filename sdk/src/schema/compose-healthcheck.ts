@@ -7,6 +7,10 @@ import { CommandSpec } from "./primitives.ts";
 
 const ComposeTest = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 
+// JSON Schema publishes the encoded side, so both sides of HealthcheckField carry the description.
+const HEALTHCHECK_FIELD_DESCRIPTION =
+  "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.";
+
 const ComposeHealthcheckAccepted = Schema.Struct({
   kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
   command: Schema.optionalKey(CommandSpec),
@@ -23,7 +27,7 @@ const ComposeHealthcheckAccepted = Schema.Struct({
   timeout: Schema.optionalKey(Schema.String),
   start_period: Schema.optionalKey(Schema.String),
   start_interval: Schema.optionalKey(Schema.String),
-});
+}).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });
 
 /**
  * Canonical Lando healthcheck fields, re-exported by `landofile.ts` as the
@@ -205,4 +209,4 @@ export const HealthcheckField = ComposeHealthcheckAccepted.pipe(
       encode: (input) => Effect.succeed(encodeHealthcheck(input)),
     }),
   ),
-);
+).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });

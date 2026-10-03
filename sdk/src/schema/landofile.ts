@@ -149,7 +149,12 @@ const ComposeScalarMapInput = mapInputWithPrecheck(
   ),
 );
 
+// JSON Schema publishes the encoded side, so each transformed field describes both sides.
+const COMPOSE_ENVIRONMENT_DESCRIPTION =
+  "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.";
+
 const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+  .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
       StringRecord,
@@ -193,10 +198,7 @@ const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Arra
       }),
     ),
   )
-  .annotate({
-    description:
-      "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.",
-  });
+  .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION });
 
 const ComposeLabelsInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
   .pipe(
@@ -262,11 +264,15 @@ const TopLevelEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.St
   )
   .annotate({ description: TOP_LEVEL_ENV_FILE_DESCRIPTION });
 
+const COMPOSE_DEPENDS_ON_DESCRIPTION =
+  "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.";
+
 const ComposeDependsOnInput = Schema.Union([
   Schema.Array(Schema.String),
   ServiceDependencyInputRecord,
   Schema.Array(ServiceDependency),
 ])
+  .annotate({ description: COMPOSE_DEPENDS_ON_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
       Schema.Array(ServiceDependency),
@@ -308,10 +314,7 @@ const ComposeDependsOnInput = Schema.Union([
       }),
     ),
   )
-  .annotate({
-    description:
-      "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
-  });
+  .annotate({ description: COMPOSE_DEPENDS_ON_DESCRIPTION });
 
 const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown).annotate(
   {
@@ -646,10 +649,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
-    environment: Schema.optionalKey(ComposeEnvironmentInput).annotateKey({
-      description:
-        "Service environment variables as a map or a Compose KEY=value list; host-environment interpolation is rejected.",
-    }),
+    environment: Schema.optionalKey(ComposeEnvironmentInput),
     envFile: Schema.optionalKey(ComposeEnvFileInput).annotate({
       description:
         "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
@@ -728,20 +728,14 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "Hostnames routed to service endpoints.",
     }),
 
-    healthcheck: Schema.optionalKey(HealthcheckField).annotateKey({
-      description:
-        "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.",
-    }),
+    healthcheck: Schema.optionalKey(HealthcheckField),
     logs: Schema.optionalKey(Schema.Array(LogSourceInput)),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
     security: Schema.optionalKey(ServiceSecurityField).annotate({
       description: SERVICE_SECURITY_DESCRIPTION,
     }),
-    dependsOn: Schema.optionalKey(ComposeDependsOnInput).annotateKey({
-      description:
-        "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
-    }),
+    dependsOn: Schema.optionalKey(ComposeDependsOnInput),
 
     providers: Schema.optionalKey(ProviderExtensionConfig).annotate({
       description: "Provider-specific service configuration keyed by provider id.",
