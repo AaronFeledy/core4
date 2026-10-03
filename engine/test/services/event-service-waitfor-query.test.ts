@@ -7,7 +7,7 @@ import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService, SecretStore } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { EventServiceLive, makeEventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({
@@ -27,16 +27,20 @@ const secretEvent = (token: string) => ({
 });
 
 const secretStoreLayer = (values: ReadonlyArray<string>) =>
-  Layer.succeed(SecretStore, {
-    id: "test-secret-store",
-    list: Effect.succeed([...values.keys()].map((index) => `secret-${index}`)),
-    has: (id: string) => Effect.succeed(values[Number.parseInt(id.replace("secret-", ""), 10)] !== undefined),
-    get: (id: string) => {
-      const index = Number.parseInt(id.replace("secret-", ""), 10);
-      const value = values[index];
-      return value === undefined ? Effect.fail(new Error("missing") as never) : Effect.succeed(value);
-    },
-  } as never);
+  Layer.succeed(
+    SecretStore,
+    SecretStore.of({
+      id: "test-secret-store",
+      list: Effect.succeed([...values.keys()].map((index) => `secret-${index}`)),
+      has: (id: string) =>
+        Effect.succeed(values[Number.parseInt(id.replace("secret-", ""), 10)] !== undefined),
+      get: (id: string) => {
+        const index = Number.parseInt(id.replace("secret-", ""), 10);
+        const value = values[index];
+        return value === undefined ? Effect.fail(new Error("missing") as never) : Effect.succeed(value);
+      },
+    } as never),
+  );
 
 describe("EventService waitFor", () => {
   test("resolves the first matching event from the live stream", async () => {
@@ -51,7 +55,7 @@ describe("EventService waitFor", () => {
           yield* events.publish(canonicalProgress(2));
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(received).toEqual(canonicalProgress(2));
@@ -67,7 +71,7 @@ describe("EventService waitFor", () => {
           yield* TestClock.adjust("2 seconds");
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      ).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -91,7 +95,7 @@ describe("EventService waitFor", () => {
           yield* Fiber.interrupt(waiter);
           return poll;
         }),
-      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      ).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(exit).toBeUndefined();
@@ -110,7 +114,7 @@ describe("EventService waitForAny", () => {
           yield* events.publish(canonicalProgress(7));
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(received).toEqual(canonicalProgress(7));
@@ -126,7 +130,7 @@ describe("EventService waitForAny", () => {
           yield* TestClock.adjust("2 seconds");
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      ).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -143,7 +147,7 @@ describe("EventService history buffer and query", () => {
           yield* events.publish(progressEvent(3));
           return yield* events.query("download-progress", (event) => event.bytesDownloaded >= 2);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(found.map((event) => event.bytesDownloaded)).toEqual([2, 3]);
@@ -158,7 +162,7 @@ describe("EventService history buffer and query", () => {
           }
           return yield* events.query("*");
         }),
-      ).pipe(Effect.provide(makeEventServiceLive(3))),
+      ).pipe(Effect.provide(LandoEventService.layerWith(3))),
     );
 
     expect(
@@ -171,7 +175,7 @@ describe("EventService history buffer and query", () => {
   test("redacts payloads before buffering so query never observes a raw secret", async () => {
     const token = "s3cr3t-token-abc123";
     const redaction = RedactionService.layer.pipe(Layer.provide(secretStoreLayer([token])));
-    const eventLayer = makeEventServiceLive(8).pipe(Layer.provide(redaction));
+    const eventLayer = LandoEventService.layerWith(8).pipe(Layer.provide(redaction));
 
     const snapshot = await Effect.runPromise(
       Effect.flatMap(EventService, (events) =>
@@ -194,7 +198,7 @@ describe("EventService history buffer and query", () => {
     delete process.env[envKey];
     try {
       const redaction = RedactionService.layer.pipe(Layer.provide(secretStoreLayer([])));
-      const eventLayer = makeEventServiceLive(8).pipe(Layer.provide(redaction));
+      const eventLayer = LandoEventService.layerWith(8).pipe(Layer.provide(redaction));
       process.env[envKey] = token;
 
       const snapshot = await Effect.runPromise(
@@ -228,7 +232,7 @@ describe("EventService history buffer and query", () => {
             yield* events.publish(secretEvent(token));
             return yield* events.query("*");
           }),
-        ).pipe(Effect.provide(makeEventServiceLive(8))),
+        ).pipe(Effect.provide(LandoEventService.layerWith(8))),
       );
 
       const serialized = JSON.stringify(snapshot);
@@ -251,7 +255,7 @@ describe("EventService history buffer and query", () => {
           const second = yield* events.query("download-progress");
           return { first, second };
         }),
-      ).pipe(Effect.provide(makeEventServiceLive(0))),
+      ).pipe(Effect.provide(LandoEventService.layerWith(0))),
     );
 
     expect(first).toEqual([]);
@@ -270,7 +274,7 @@ describe("EventService regression", () => {
           const recorded = yield* events.query("*");
           return recorded.length;
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(count).toBe(2);
@@ -286,7 +290,7 @@ describe("EventService regression", () => {
           yield* events.publish(canonicalProgress(1));
           return yield* Fiber.await(scopedFiber);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Exit.hasInterrupts(exit)).toBe(true);

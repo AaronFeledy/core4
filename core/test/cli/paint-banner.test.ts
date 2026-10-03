@@ -8,7 +8,7 @@ import { PaintBannerEvent } from "@lando/sdk/events";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRendererLive, makePlainRendererLive } from "@lando/renderer/runtime";
@@ -201,7 +201,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makePlainRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(makePlainRendererLive(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -215,7 +215,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -229,7 +229,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeJsonRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(makeJsonRendererLive(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -252,7 +252,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makePlainRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(makePlainRendererLive(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");

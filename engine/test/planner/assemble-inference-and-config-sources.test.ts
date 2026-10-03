@@ -7,9 +7,9 @@ import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import * as cache from "../../src/cache/app-plan.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const withTempCwd = async (run: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-inference-config-plan-")));
@@ -43,7 +43,11 @@ const planBoth = () => {
   };
   return Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(landofile, TestRuntimeProvider.capabilities),
-  ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive), Effect.provide(FileSystemLive));
+  ).pipe(
+    Effect.provide(AppPlannerLayer.layer),
+    Effect.provide(PluginRegistryLayer.layer),
+    Effect.provide(BunFileSystem.layer),
+  );
 };
 
 test("keeps Node project-file fingerprints and catalog config sources in one cache key", () =>

@@ -23,10 +23,10 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
-import { PluginRegistryLive } from "../../src/plugins/registry";
-import { RuntimeProviderRegistryLive } from "../../src/providers/registry";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+import * as PluginRegistryLayer from "../../src/plugins/registry";
+import * as RuntimeProviderRegistryLayer from "../../src/providers/registry";
 
 const appPlan: AppPlan = {
   id: AppId.make("myapp"),
@@ -68,10 +68,10 @@ const registryLayer = (
     ...(userDataRoot === undefined ? {} : { userDataRoot }),
   });
   const load = Effect.succeed(config);
-  const configService: Context.Service.Shape<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
   const managedFiles = Effect.runSync(makeTestManagedFileStore());
 
   const httpClientLayer = Layer.succeed(
@@ -80,11 +80,15 @@ const registryLayer = (
       Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
     ),
   );
-  return RuntimeProviderRegistryLive.pipe(
-    Layer.provideMerge(Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan })),
-    Layer.provideMerge(Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) })),
+  return RuntimeProviderRegistryLayer.layer.pipe(
+    Layer.provideMerge(
+      Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
+    ),
+    Layer.provideMerge(
+      Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    ),
     Layer.provideMerge(Layer.succeed(ManagedFileService, managedFiles.service)),
-    Layer.provideMerge(PluginRegistryLive),
+    Layer.provideMerge(PluginRegistryLayer.layer),
     Layer.provideMerge(
       options.downloader === undefined
         ? VerifiedDownloader.layer.pipe(Layer.provide(httpClientLayer))
@@ -112,7 +116,7 @@ const runWithRegistry = <A, E>(
   options: { userDataRoot?: string } = {},
 ) => Effect.runPromise(effect.pipe(Effect.provide(registryLayer(defaultProviderId, options))));
 
-describe("RuntimeProviderRegistryLive", () => {
+describe("RuntimeProviderRegistryLayer.layer", () => {
   test("LANDO_PROVIDER overrides the configured default provider", async () => {
     const previous = process.env.LANDO_PROVIDER;
     process.env.LANDO_PROVIDER = "docker";
@@ -133,7 +137,7 @@ describe("RuntimeProviderRegistryLive", () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-registry-progress-"));
     try {
       const events: LandoEvent[] = [];
-      const eventService: Context.Service.Shape<typeof EventService> = {
+      const eventService: Context.Service.Shape<typeof EventService> = EventService.of({
         publish: (event) =>
           Effect.sync(() => {
             events.push(event);
@@ -143,8 +147,8 @@ describe("RuntimeProviderRegistryLive", () => {
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
-      };
-      const downloader: Context.Service.Shape<typeof Downloader> = {
+      });
+      const downloader: Context.Service.Shape<typeof Downloader> = Downloader.of({
         id: "test-downloader",
         capabilities: {
           schemes: ["https"],
@@ -154,7 +158,7 @@ describe("RuntimeProviderRegistryLive", () => {
           mirror: false,
         },
         download: () => Effect.die("stop before bundle download"),
-      };
+      });
       const exit = await Effect.runPromiseExit(
         Effect.gen(function* () {
           const registry = yield* RuntimeProviderRegistry;

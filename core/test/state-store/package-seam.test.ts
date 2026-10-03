@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
@@ -92,7 +92,7 @@ describe("StateStore package seam", () => {
     const service = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* StateStore;
-      }).pipe(Effect.provide(serviceModule.layer), Effect.provide(ProcessRunnerLive)),
+      }).pipe(Effect.provide(serviceModule.layer), Effect.provide(BunProcessRunner.layer)),
     );
 
     // When a bucket key attempts to escape its assigned root

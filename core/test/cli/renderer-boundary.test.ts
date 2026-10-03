@@ -5,7 +5,7 @@ import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } 
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
@@ -440,7 +440,7 @@ describe("runWithRendererHandling", () => {
         return "ok";
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "plain",
         io,
         render: (value) => value,
@@ -462,7 +462,7 @@ describe("runWithRendererHandling", () => {
         yield* deprecations.use({ kind: "config-key", id: "legacy.key", notice: infoNotice, timestamp });
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "plain",
         io,
         render: () => undefined,
@@ -483,7 +483,7 @@ describe("runWithRendererHandling", () => {
         return yield* deprecations.summary();
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "plain",
         io,
         deprecationWarnings: false,
@@ -506,7 +506,7 @@ describe("runWithRendererHandling", () => {
         yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "json",
         io,
         render: () => undefined,

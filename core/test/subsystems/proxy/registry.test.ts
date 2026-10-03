@@ -22,12 +22,11 @@ import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
 } from "@lando/engine/plugins/certificate-authority-resolver";
+import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
 import {
   type RouterServiceRegistration,
   RouterServiceRegistry,
-  SelectedRouterServiceLive,
   makeRouterServiceRegistry,
-  makeRouterServiceRegistryLive,
 } from "@lando/engine/subsystems/proxy/registry";
 import { makeTestManagedFileStore } from "../../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../../src/testing/state-store.ts";
@@ -102,7 +101,7 @@ const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explici
   Effect.runPromise(
     Effect.flatMap(RouterServiceRegistry, (registry) => registry.select({ explicit })).pipe(
       Effect.provide(
-        makeRouterServiceRegistryLive(modules).pipe(
+        RouterServiceRegistryLayer.RouterServiceRegistry.layerWith(modules).pipe(
           Layer.provide(
             Layer.mergeAll(
               configLayer,
@@ -126,7 +125,7 @@ const buildSelectedProxy = (
   Effect.scoped(
     Effect.map(
       Layer.build(
-        SelectedRouterServiceLive.pipe(
+        RouterServiceRegistryLayer.layerSelected.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(RouterServiceRegistry, registry),

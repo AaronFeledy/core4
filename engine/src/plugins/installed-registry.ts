@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
-import { Result, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 
 export interface InstalledPluginRegistryEntry {
   readonly name: string;
@@ -41,9 +41,6 @@ const InstalledPluginRegistryEntryShape = Schema.Struct({
 
 const installedPluginRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
 
-const isRecord = (value: unknown): value is RawInstalledPluginRegistry =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const corruptRegistryError = (path: string, cause: unknown): Error =>
   new Error(`Installed plugin registry is corrupt: ${path}. ${String(cause)}`);
 
@@ -56,7 +53,7 @@ const readRawInstalledPluginRegistry = async (pluginsRoot: string): Promise<RawI
   } catch (cause) {
     throw corruptRegistryError(path, cause);
   }
-  if (!isRecord(parsed)) throw corruptRegistryError(path, "registry root is not an object");
+  if (!Predicate.isObject(parsed)) throw corruptRegistryError(path, "registry root is not an object");
   return parsed;
 };
 
@@ -71,7 +68,7 @@ export const readRawInstalledPluginRegistryEntries = async (
   } catch {
     return {};
   }
-  if (!isRecord(parsed)) return {};
+  if (!Predicate.isObject(parsed)) return {};
   return parsed;
 };
 
@@ -104,7 +101,7 @@ export const inspectInstalledPluginRegistry = async (
     } else {
       failures.push({
         pluginId: name,
-        pluginPath: isRecord(entry) && typeof entry.path === "string" ? entry.path : pluginsRoot,
+        pluginPath: Predicate.isObject(entry) && typeof entry.path === "string" ? entry.path : pluginsRoot,
         metadataPath,
         cause: decoded.failure,
       });
@@ -154,7 +151,7 @@ export const readInstalledPluginRegistryEntry = async (
 ): Promise<{ readonly source?: string; readonly path?: string } | undefined> => {
   const registry = await readRawInstalledPluginRegistryEntries(pluginsRoot);
   const entry = registry[name];
-  if (!isRecord(entry)) return undefined;
+  if (!Predicate.isObject(entry)) return undefined;
   return {
     ...(typeof entry.source === "string" ? { source: entry.source } : {}),
     ...(typeof entry.path === "string" ? { path: entry.path } : {}),

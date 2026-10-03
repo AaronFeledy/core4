@@ -16,12 +16,15 @@ const module: LandoPluginModule = {
   secretStores: new Map([
     [
       "vault",
-      Layer.succeed(SecretStore, {
-        id: "vault",
-        get: () => Effect.succeed("canary"),
-        has: () => Effect.succeed(true),
-        list: Effect.succeed([]),
-      }),
+      Layer.succeed(
+        SecretStore,
+        SecretStore.of({
+          id: "vault",
+          get: () => Effect.succeed("canary"),
+          has: () => Effect.succeed(true),
+          list: Effect.succeed([]),
+        }),
+      ),
     ],
   ]),
 };

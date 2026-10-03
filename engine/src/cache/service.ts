@@ -41,32 +41,30 @@ const makeCacheService = (
   entries: Ref.Ref<ReadonlyMap<string, CacheEntry>>,
   privateFileAccess: PrivateFileAccess,
 ): Context.Service.Shape<typeof CacheService> => ({
-  read: <A, I>(key: string, schema?: Schema.Codec<A, I>) =>
-    Effect.gen(function* () {
-      const nowMs = yield* Clock.currentTimeMillis;
-      const entry = (yield* Ref.get(entries)).get(key);
+  read: Effect.fn("CacheService.read")(function* <A, I>(key: string, schema?: Schema.Codec<A, I>) {
+    const nowMs = yield* Clock.currentTimeMillis;
+    const entry = (yield* Ref.get(entries)).get(key);
 
-      if (entry === undefined) {
-        return null;
-      }
+    if (entry === undefined) {
+      return null;
+    }
 
-      if (expired(entry, nowMs)) {
-        yield* Ref.update(entries, (current) => removeKey(current, key));
-        return null;
-      }
+    if (expired(entry, nowMs)) {
+      yield* Ref.update(entries, (current) => removeKey(current, key));
+      return null;
+    }
 
-      return yield* decodeStored(key, entry.value, schema);
-    }),
-  write: (key, value, ttlMs) =>
-    Effect.gen(function* () {
-      const nowMs = yield* Clock.currentTimeMillis;
-      yield* Ref.update(entries, (current) =>
-        new Map(current).set(key, {
-          value,
-          ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
-        }),
-      );
-    }),
+    return yield* decodeStored(key, entry.value, schema);
+  }),
+  write: Effect.fn("CacheService.write")(function* (key, value, ttlMs) {
+    const nowMs = yield* Clock.currentTimeMillis;
+    yield* Ref.update(entries, (current) =>
+      new Map(current).set(key, {
+        value,
+        ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
+      }),
+    );
+  }),
   writeAtomic: (path, content) => writeAtomicCacheFile(path, content, privateFileAccess.enforce),
   invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
 });
@@ -79,16 +77,11 @@ const makeCacheServiceLayer = (privateFileAccess: PrivateFileAccess) =>
     ),
   );
 
-export const CacheServiceWithPrivateFileAccessLive: Layer.Layer<
-  CacheService,
-  never,
-  PrivateFileAccessService
-> = Layer.unwrap(
-  Effect.map(PrivateFileAccessService, (privateFileAccess) => makeCacheServiceLayer(privateFileAccess)),
-);
+export const layerWithPrivateFileAccess: Layer.Layer<CacheService, never, PrivateFileAccessService> =
+  Layer.unwrap(
+    Effect.map(PrivateFileAccessService, (privateFileAccess) => makeCacheServiceLayer(privateFileAccess)),
+  );
 
-export const CacheServiceLive = CacheServiceWithPrivateFileAccessLive.pipe(
-  Layer.provide(PrivateFileAccessService.layer),
-);
+export const layer = layerWithPrivateFileAccess.pipe(Layer.provide(PrivateFileAccessService.layer));
 
 export { CacheService };

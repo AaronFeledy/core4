@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
-import { makeEventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import {
   RedactionService,
   createStandaloneRedactor,
@@ -31,7 +31,7 @@ describe("renderer finite stream completion", () => {
     test(`event renderer closes promptly with ${bodies.length} buffered events`, async () => {
       // Given: a real event subscription and renderer, with a watchdog outside Effect finalization.
       const io = createBufferedRendererIO();
-      const layer = makePlainRendererLive(io).pipe(Layer.provideMerge(makeEventServiceLive()));
+      const layer = makePlainRendererLive(io).pipe(Layer.provideMerge(LandoEventService.layerWith()));
       const deadline = Promise.withResolvers<"deadline">();
       const timer = setTimeout(() => deadline.resolve("deadline"), 1000);
       try {

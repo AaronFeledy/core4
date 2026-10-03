@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, Effect, Option, Result, Schema } from "effect";
+import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
 
 import { PrivilegeService } from "@lando/sdk/services";
 
@@ -756,7 +756,7 @@ const writeUninstallReport = async (
   const report: UninstallReport = {
     status: steps.some((step) => step.outcome === "failed") ? "failed" : "completed",
     mode,
-    updatedAt: new Date().toISOString(),
+    updatedAt: DateTime.formatIso(DateTime.nowUnsafe()),
     steps,
   };
   await writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -1039,39 +1039,38 @@ const executeUninstall = async (
   };
 };
 
-export const uninstall = (
+export const uninstall = Effect.fn("AppOperation.uninstall")(function* (
   options: UninstallOptions = {},
-): Effect.Effect<UninstallResult, never, PrivateFileAccessService> =>
-  Effect.gen(function* () {
-    const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
-    const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const elevate =
-      options.elevate ??
-      (privilege._tag === "Some"
-        ? (command: ReadonlyArray<string>) => Effect.runPromise(privilege.value.elevate(command))
-        : undefined);
-    const teardownHostProxySessions =
-      options.teardownHostProxySessions ??
-      ((userDataRoot: string) => defaultTeardownHostProxySessions(userDataRoot, privateFileAccess));
-    const resolvedOptions = {
-      ...options,
-      ...(elevate === undefined ? {} : { elevate }),
-      teardownHostProxySessions,
-    };
-    const dryRun = options.dryRun === true;
-    const yes = options.yes === true;
-    const requestedMode: UninstallMode | undefined =
-      options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
-    const mode = requestedMode ?? "keep-data";
-    if (!dryRun && yes)
-      return yield* Effect.promise(() => executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry));
-    const steps = yield* Effect.promise(() => buildUninstallPlan(options, mode));
-    return {
-      dryRun,
-      refused: !dryRun && !yes,
-      mode,
-      failed: false,
-      steps,
-    };
-  });
+): Effect.fn.Return<UninstallResult, never, PrivateFileAccessService> {
+  const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
+  const privilege = yield* Effect.serviceOption(PrivilegeService);
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const elevate =
+    options.elevate ??
+    (privilege._tag === "Some"
+      ? (command: ReadonlyArray<string>) => Effect.runPromise(privilege.value.elevate(command))
+      : undefined);
+  const teardownHostProxySessions =
+    options.teardownHostProxySessions ??
+    ((userDataRoot: string) => defaultTeardownHostProxySessions(userDataRoot, privateFileAccess));
+  const resolvedOptions = {
+    ...options,
+    ...(elevate === undefined ? {} : { elevate }),
+    teardownHostProxySessions,
+  };
+  const dryRun = options.dryRun === true;
+  const yes = options.yes === true;
+  const requestedMode: UninstallMode | undefined =
+    options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
+  const mode = requestedMode ?? "keep-data";
+  if (!dryRun && yes)
+    return yield* Effect.promise(() => executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry));
+  const steps = yield* Effect.promise(() => buildUninstallPlan(options, mode));
+  return {
+    dryRun,
+    refused: !dryRun && !yes,
+    mode,
+    failed: false,
+    steps,
+  };
+});

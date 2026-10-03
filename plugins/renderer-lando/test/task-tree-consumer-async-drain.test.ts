@@ -5,7 +5,7 @@ import { TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
 import type { LiveRegionSpoolFactory } from "../src/opentui/live-region-spool.ts";
@@ -127,7 +127,7 @@ test("collapse drains deferred output before later output and scope close awaits
                 return created;
               },
             }),
-            EventServiceLive,
+            LandoEventService.layer,
           ),
         ),
       ),

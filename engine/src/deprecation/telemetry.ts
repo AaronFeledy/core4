@@ -9,7 +9,7 @@ const isDeprecationUsedEvent = (event: unknown): event is DeprecationUsedEvent =
   event !== null &&
   (event as { readonly _tag?: unknown })._tag === "deprecation-used";
 
-export const DeprecationTelemetryLive = Layer.effectDiscard(
+export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const telemetry = yield* Telemetry;
     if (!telemetry.enabled) return;

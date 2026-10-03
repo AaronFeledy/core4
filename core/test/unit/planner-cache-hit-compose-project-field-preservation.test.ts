@@ -9,10 +9,10 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 test("Given supported project fields, when planning twice, then the cache hit retains the Compose extension", async () => {
   // Given
@@ -34,8 +34,8 @@ test("Given supported project fields, when planning twice, then the cache hit re
     ...TestRuntimeProvider.capabilities,
     composeProjectFields: { supported: ["configs"] },
   } satisfies ProviderCapabilities;
-  const plannerLayer = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+  const plannerLayer = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
   );
   const runPlan = () =>
     Effect.runPromise(

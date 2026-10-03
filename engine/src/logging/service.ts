@@ -36,7 +36,7 @@ import {
 export { Logger };
 export type { DiagnosticLineWriter, LoggerMode };
 
-export interface LoggerLiveOptions {
+export interface LoggerLayerOptions {
   readonly mode?: LoggerMode;
   readonly logLevel?: DiagnosticLogLevel | undefined;
   readonly structured?: boolean;
@@ -72,26 +72,25 @@ const redactRecord = (
   return output;
 };
 
-const redactPayload = (
+const redactPayload = Effect.fnUntraced(function* (
   message: string,
   data: Readonly<Record<string, unknown>> | undefined,
-): Effect.Effect<{
+): Effect.fn.Return<{
   readonly message: string;
   readonly data: Readonly<Record<string, unknown>> | undefined;
-}> =>
-  Effect.gen(function* () {
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    return yield* Option.match(redaction, {
-      onNone: () => Effect.succeed({ message, data }),
-      onSome: (service) =>
-        service.forProfile("secrets", { sourceEnv: process.env }).pipe(
-          Effect.map((redactor) => ({
-            message: redactor.redactString(message),
-            data: data === undefined ? undefined : redactRecord(redactor, data),
-          })),
-        ),
-    });
+}> {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  return yield* Option.match(redaction, {
+    onNone: () => Effect.succeed({ message, data }),
+    onSome: (service) =>
+      service.forProfile("secrets", { sourceEnv: process.env }).pipe(
+        Effect.map((redactor) => ({
+          message: redactor.redactString(message),
+          data: data === undefined ? undefined : redactRecord(redactor, data),
+        })),
+      ),
   });
+});
 
 const log = (
   write: (message: string) => Effect.Effect<void>,
@@ -117,7 +116,7 @@ const loggerServiceLayer = (): Layer.Layer<Logger> => Layer.succeed(Logger, make
 
 const noopWriteLine: DiagnosticLineWriter = () => {};
 
-export const LoggerLive = (options: LoggerLiveOptions = {}): Layer.Layer<Logger> => {
+export const layer = (options: LoggerLayerOptions = {}): Layer.Layer<Logger> => {
   const logLevel = options.logLevel;
   if (logLevel === "none" || (logLevel === undefined && options.mode === "silent")) {
     return Layer.mergeAll(loggerServiceLayer(), EffectLogger.layer([]));

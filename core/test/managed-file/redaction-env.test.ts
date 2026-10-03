@@ -8,10 +8,10 @@ import { Effect, Layer, Queue } from "effect";
 import type { ManagedFile } from "@lando/sdk/schema";
 import { EventService, ManagedFileService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as ManagedFileLayer from "@lando/managed-file/service";
-const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { RedactionService } from "@lando/redaction/service";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
@@ -39,8 +39,8 @@ describe("ManagedFile env redaction", () => {
       const emptySecretStore = makeTestSecretStore();
       const redactionLive = RedactionService.layer.pipe(Layer.provide(emptySecretStore.layer));
       const layer = Layer.mergeAll(
-        EventServiceLive,
-        managedFileLayer.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, redactionLive))),
+        LandoEventService.layer,
+        managedFileLayer.pipe(Layer.provide(Layer.mergeAll(LandoEventService.layer, redactionLive))),
       );
 
       const collected = await Effect.runPromise(

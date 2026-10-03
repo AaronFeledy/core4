@@ -22,7 +22,7 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
+import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
@@ -2313,7 +2313,7 @@ describe("meta:setup command", () => {
         const hostProxy = yield* HostProxyService;
         yield* hostProxy.setup({ mode: "none" });
         return yield* hostProxy.status();
-      }).pipe(Effect.provide(HostProxyServiceDisabledLive)),
+      }).pipe(Effect.provide(HostProxyServiceLayer.layerDisabled)),
     );
 
     expect(setupCalls).toBe(1);

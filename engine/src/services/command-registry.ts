@@ -42,14 +42,15 @@ import {
 import type { CommandIndexEntry } from "../cache/command-index.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 
-const discoverScriptsForCwd = (cwd: string): Effect.Effect<ReadonlyArray<DiscoveredBunShellScript>, never> =>
-  Effect.gen(function* () {
-    const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
-    if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
-    return yield* discoverBunShellScripts({ appRoot }).pipe(
-      Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
-    );
-  });
+const discoverScriptsForCwd = Effect.fnUntraced(function* (
+  cwd: string,
+): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, never> {
+  const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
+  if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
+  return yield* discoverBunShellScripts({ appRoot }).pipe(
+    Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
+  );
+});
 
 const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
   entries.map((entry) => ({
@@ -75,7 +76,7 @@ const writeCachesForLandofile = (
     },
   );
 
-export const CommandRegistryLive = Layer.effect(
+export const layer = Layer.effect(
   CommandRegistry,
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;

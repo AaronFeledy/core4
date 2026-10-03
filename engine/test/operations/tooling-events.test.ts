@@ -32,7 +32,7 @@ import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const metadata = {
@@ -103,58 +103,76 @@ const harness = (input: {
     input.omitEventRuntime === true
       ? Layer.empty
       : Layer.mergeAll(
-          EventServiceLive,
-          Layer.succeed(RedactionService, {
-            registerValues: registerRedactionValues,
-            forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-          }),
+          LandoEventService.layer,
+          Layer.succeed(
+            RedactionService,
+            RedactionService.of({
+              registerValues: registerRedactionValues,
+              forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+            }),
+          ),
         );
   const layer = Layer.mergeAll(
     eventRuntime,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.sync(() => {
-          const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
-          return {
-            tool: invocation.tool,
-            service: invocation.service ?? String(service.name),
-            exitCode,
-            stdout: exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join(""),
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
-        name: "tooling-events",
-        tooling: input.tooling,
-        ...(input.events === undefined ? {} : { events: input.events }),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "recording",
+        run: (invocation) =>
+          Effect.sync(() => {
+            const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
+            return {
+              tool: invocation.tool,
+              service: invocation.service ?? String(service.name),
+              exitCode,
+              stdout: exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join(""),
+              stderr: "",
+            };
+          }),
       }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([service.provider]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () =>
-        Effect.sync(() => {
-          selections.push("select");
-          return provider;
+    ),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({
+          name: "tooling-events",
+          tooling: input.tooling,
+          ...(input.events === undefined ? {} : { events: input.events }),
         }),
-    }),
-    Layer.succeed(ShellRunner, {
-      exec: (source, options) =>
-        Effect.sync(() => ({
-          exitCode: record([source, ...(options?.argv ?? [])][2] ?? source),
-          stdout: "",
-          stderr: "",
-        })),
-      runScript: () => Effect.die("unused script"),
-      run: () => Effect.die("unused run"),
-      interactive: () => Effect.die("unused interactive"),
-    }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([service.provider]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () =>
+          Effect.sync(() => {
+            selections.push("select");
+            return provider;
+          }),
+      }),
+    ),
+    Layer.succeed(
+      ShellRunner,
+      ShellRunner.of({
+        exec: (source, options) =>
+          Effect.sync(() => ({
+            exitCode: record([source, ...(options?.argv ?? [])][2] ?? source),
+            stdout: "",
+            stderr: "",
+          })),
+        runScript: () => Effect.die("unused script"),
+        run: () => Effect.die("unused run"),
+        interactive: () => Effect.die("unused interactive"),
+      }),
+    ),
   );
   return {
     executed,

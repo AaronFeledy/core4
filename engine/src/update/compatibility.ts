@@ -21,32 +21,33 @@ const compatibilityFailure = () =>
       "The plugin set changed. Resolve plugin compatibility, then re-run lando update; completed plugin updates remain active.",
   });
 
-export const checkCoreReplacement = (input: CoreReplacementPrecondition) =>
-  Effect.gen(function* () {
-    const inspection = yield* Effect.tryPromise({
-      try: () => inspectInstalledPluginRegistry(input.pluginsRoot),
-      catch: compatibilityFailure,
-    });
-    if (inspection.failures.length > 0) return yield* Effect.fail(compatibilityFailure());
-    const plugins = yield* Effect.forEach(Object.values(inspection.registry), (entry) =>
-      Effect.tryPromise({
-        try: () => validatePluginManifest(entry.path),
-        catch: compatibilityFailure,
-      }).pipe(
-        Effect.map(({ manifest }) => ({
-          name: entry.name,
-          currentVersion: entry.version,
-          requestedSelector: entry.version,
-          ...(manifest.requires === undefined ? {} : { currentRequires: manifest.requires }),
-          ...(manifest.bundled === undefined ? {} : { bundled: manifest.bundled }),
-          trusted: true,
-        })),
-      ),
-    );
-    const plan = planUpdates({ ...input, selection: "all", plugins });
-    if (plan.rows.some((row) => row.kind === "core" && row.status === "blocked"))
-      return yield* Effect.fail(compatibilityFailure());
+export const checkCoreReplacement = Effect.fn("Update.checkCoreReplacement")(function* (
+  input: CoreReplacementPrecondition,
+) {
+  const inspection = yield* Effect.tryPromise({
+    try: () => inspectInstalledPluginRegistry(input.pluginsRoot),
+    catch: compatibilityFailure,
   });
+  if (inspection.failures.length > 0) return yield* Effect.fail(compatibilityFailure());
+  const plugins = yield* Effect.forEach(Object.values(inspection.registry), (entry) =>
+    Effect.tryPromise({
+      try: () => validatePluginManifest(entry.path),
+      catch: compatibilityFailure,
+    }).pipe(
+      Effect.map(({ manifest }) => ({
+        name: entry.name,
+        currentVersion: entry.version,
+        requestedSelector: entry.version,
+        ...(manifest.requires === undefined ? {} : { currentRequires: manifest.requires }),
+        ...(manifest.bundled === undefined ? {} : { bundled: manifest.bundled }),
+        trusted: true,
+      })),
+    ),
+  );
+  const plan = planUpdates({ ...input, selection: "all", plugins });
+  if (plan.rows.some((row) => row.kind === "core" && row.status === "blocked"))
+    return yield* Effect.fail(compatibilityFailure());
+});
 
 export const guardCoreReplacement = <A, E, R>(
   input: CoreReplacementPrecondition,

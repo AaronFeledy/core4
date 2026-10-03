@@ -36,15 +36,15 @@ import type {
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeTestStateStore } from "@lando/core/testing";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
   attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
 } from "@lando/engine/planner/effective-events";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import {
   RedactionService,
@@ -54,12 +54,12 @@ import {
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
-import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
-const shellRunnerLive = makeShellRunnerLive(() => {
+const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by restart scenarios.");
 });
 
@@ -175,10 +175,12 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
     PrivateFileAccessService.layer,
-    NoopTransactionGuardLive,
-    ConfigServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    TestLandofileLayers.layerTransactionGuard,
+    LandoConfigService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
     Layer.succeed(PluginRegistry, {
       list: Effect.succeed([]),
       load: () => Effect.die("not used"),

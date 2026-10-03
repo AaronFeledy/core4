@@ -81,7 +81,7 @@ const makeDeprecationService = (
     ),
 });
 
-export const DeprecationServiceLive = Layer.effect(
+export const layer = Layer.effect(
   DeprecationService,
   Effect.gen(function* () {
     const state = yield* Ref.make<DeprecationState>({ registry: new Map(), uses: new Map() });

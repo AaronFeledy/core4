@@ -73,15 +73,15 @@ const eventError = (
   });
 };
 
-export const runAppEvent = (
+export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   plan: AppPlan,
   event: LandofileEventName,
   payload?: ExpressionContext["event"],
-): Effect.Effect<void, EventRuntimeError> => {
+): Effect.fn.Return<void, EventRuntimeError> {
   const steps = effectiveEventsForPlan(plan)?.[event] ?? [];
   const first = steps[0];
-  if (first === undefined) return Effect.void;
-  return withinEventInvocation(
+  if (first === undefined) return;
+  return yield* withinEventInvocation(
     { app: plan.id, event, file: plan.metadata.source },
     Effect.gen(function* () {
       const eventsOption = yield* Effect.serviceOption(EventService);
@@ -181,14 +181,14 @@ export const runAppEvent = (
       ).pipe(Effect.mapError((error) => eventError(error, event, first, redactor)));
     }),
   );
-};
+});
 
-export const runPostAppEvent = (
+export const runPostAppEvent = Effect.fn("AppOperation.runPostEvent")(function* (
   plan: AppPlan,
   event: AppLifecycleEventName,
   payload?: ExpressionContext["event"],
-) =>
-  runAppEvent(plan, event, payload).pipe(
+) {
+  return yield* runAppEvent(plan, event, payload).pipe(
     Effect.catch((error) =>
       EventService.pipe(
         Effect.flatMap((events) =>
@@ -202,15 +202,15 @@ export const runPostAppEvent = (
       ),
     ),
   );
+});
 
-export const runAppInitEvents = (plan: AppPlan) =>
-  Effect.gen(function* () {
-    const events = yield* EventService;
-    const app = { kind: "user" as const, id: plan.id, root: plan.root };
-    const pre = PreInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
-    yield* events.publish(pre);
-    yield* runAppEvent(plan, "pre-init", pre);
-    const post = PostInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
-    yield* events.publish(post);
-    yield* runAppEvent(plan, "post-init", post);
-  });
+export const runAppInitEvents = Effect.fn("AppOperation.initEvents")(function* (plan: AppPlan) {
+  const events = yield* EventService;
+  const app = { kind: "user" as const, id: plan.id, root: plan.root };
+  const pre = PreInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
+  yield* events.publish(pre);
+  yield* runAppEvent(plan, "pre-init", pre);
+  const post = PostInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
+  yield* events.publish(post);
+  yield* runAppEvent(plan, "post-init", post);
+});

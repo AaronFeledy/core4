@@ -31,10 +31,13 @@ test("enforces the configured recursion limit", async () => {
     const config = Schema.decodeUnknownSync(GlobalConfig)({ loadMaxRecursionDepth: 1 });
     const layer = Layer.merge(
       TestLandofileServiceLayer.layer,
-      Layer.succeed(ConfigService, {
-        load: Effect.succeed(config),
-        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-      }),
+      Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+        }),
+      ),
     );
 
     // When

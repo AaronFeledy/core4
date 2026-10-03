@@ -16,16 +16,18 @@ import {
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
 import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistry, ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import { ScratchRegistry } from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -33,7 +35,7 @@ import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -64,7 +66,7 @@ const landofileRuntimeInputs = {
 
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
 const redactionLive = Layer.succeed(RedactionService, {
   registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets")),
@@ -216,8 +218,8 @@ const makeRecordingLayer = (
     list: () => Effect.succeed([]),
   };
 
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -225,18 +227,18 @@ const makeRecordingLayer = (
     select: () => Effect.succeed(provider),
   });
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
+    BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
+    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     scratchInitAppPortLive,
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
-          EventServiceLive,
+          LandoEventService.layer,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),
           Layer.succeed(RuntimeProvider, provider),
@@ -246,7 +248,7 @@ const makeRecordingLayer = (
   );
   return Layer.mergeAll(
     scratchDeps,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
   );
 };
 
@@ -268,7 +270,7 @@ const waitUntil = (predicate: () => boolean) =>
     }
   });
 
-describe("ScratchAppServiceLive scope-bound finalizer", () => {
+describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
   test("keep-on-failure leaves the registry entry and scratch root after apply fails", async () => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];

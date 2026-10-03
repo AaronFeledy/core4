@@ -16,7 +16,7 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRendererLive, renderPlain } from "@lando/renderer/runtime";
 
@@ -243,7 +243,7 @@ describe("lando renderer visual language", () => {
           Effect.provide(
             Layer.provideMerge(
               makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -287,7 +287,7 @@ describe("lando renderer visual language", () => {
           Effect.provide(
             Layer.provideMerge(
               makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -313,7 +313,7 @@ describe("lando renderer visual language", () => {
     });
     await Effect.runPromise(
       Effect.scoped(
-        program.pipe(Effect.provide(Layer.provideMerge(makeJsonRendererLive(io), EventServiceLive))),
+        program.pipe(Effect.provide(Layer.provideMerge(makeJsonRendererLive(io), LandoEventService.layer))),
       ),
     );
     const lines = io.stderrLines();

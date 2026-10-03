@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { FileSystem } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
@@ -22,7 +22,7 @@ test("minimal doctor does not inspect ambient state without a supplied StateStor
             }),
         }),
       );
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   // Then it leaves the host alone and adds no checks to the minimal report.
   expect(checks).toEqual([]);
@@ -68,7 +68,7 @@ test.each(["retained", "preparing", "sessions-ready", "apply-intent"] as const)(
           Effect.provideService(FileSystem, { ...fs, readDir: () => Effect.succeed([key]) }),
           Effect.provide(store.layer),
         );
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then it reports the durable identities and both user recovery commands without auto-fixing.
     expect(checks).toHaveLength(1);

@@ -30,51 +30,49 @@ export interface ScratchResourceScannerService {
 export class ScratchResourceScanner extends Context.Service<
   ScratchResourceScanner,
   ScratchResourceScannerService
->()("@lando/core/ScratchResourceScanner") {}
+>()("@lando/engine/ScratchResourceScanner") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const registryOption = yield* Effect.serviceOption(RuntimeProviderRegistry);
+      if (Option.isNone(registryOption)) {
+        return ScratchResourceScanner.of({
+          listScratchIds: Effect.succeed([]),
+          pruneScratch: () => Effect.void,
+        });
+      }
+      const registry = registryOption.value;
 
-export const ScratchResourceScannerLive = Layer.effect(
-  ScratchResourceScanner,
-  Effect.gen(function* () {
-    const registryOption = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registryOption)) {
-      return {
-        listScratchIds: Effect.succeed([]),
-        pruneScratch: () => Effect.void,
-      } satisfies ScratchResourceScannerService;
-    }
-    const registry = registryOption.value;
+      const loadResources = () =>
+        registry.select().pipe(
+          Effect.flatMap((provider) =>
+            Effect.all({
+              services: provider.list({ includeScratch: true }),
+              volumes: provider.listVolumes({ labels: { [SCRATCH_LABEL]: "TRUE" } }),
+            }),
+          ),
+          Effect.mapError((cause) =>
+            scannerError("gc", "Unable to list labeled scratch provider resources.", cause),
+          ),
+        );
 
-    const loadResources = () =>
-      registry.select().pipe(
-        Effect.flatMap((provider) =>
-          Effect.all({
-            services: provider.list({ includeScratch: true }),
-            volumes: provider.listVolumes({ labels: { [SCRATCH_LABEL]: "TRUE" } }),
+      return ScratchResourceScanner.of({
+        listScratchIds: loadResources().pipe(
+          Effect.map(({ services, volumes }) => {
+            const ids = new Set<string>();
+            for (const service of services) {
+              const id = scratchIdFromLabels(service.labels, String(service.app));
+              if (id !== undefined) ids.add(id);
+            }
+            for (const volume of volumes) {
+              const id = scratchIdFromLabels(volume.labels);
+              if (id !== undefined) ids.add(id);
+            }
+            return [...ids].sort();
           }),
+          Effect.catch(() => Effect.succeed([])),
         ),
-        Effect.mapError((cause) =>
-          scannerError("gc", "Unable to list labeled scratch provider resources.", cause),
-        ),
-      );
-
-    return {
-      listScratchIds: loadResources().pipe(
-        Effect.map(({ services, volumes }) => {
-          const ids = new Set<string>();
-          for (const service of services) {
-            const id = scratchIdFromLabels(service.labels, String(service.app));
-            if (id !== undefined) ids.add(id);
-          }
-          for (const volume of volumes) {
-            const id = scratchIdFromLabels(volume.labels);
-            if (id !== undefined) ids.add(id);
-          }
-          return [...ids].sort();
-        }),
-        Effect.catch(() => Effect.succeed([])),
-      ),
-      pruneScratch: (id) =>
-        Effect.gen(function* () {
+        pruneScratch: Effect.fn("ScratchResourceScanner.pruneScratch")(function* (id) {
           if (!isCanonicalScratchId(id)) return;
           const { services, volumes } = yield* loadResources();
           const matchingVolumes = volumes.filter((volume) => scratchIdFromLabels(volume.labels) === id);
@@ -116,6 +114,7 @@ export const ScratchResourceScannerLive = Layer.effect(
             ),
           );
         }),
-    } satisfies ScratchResourceScannerService;
-  }),
-);
+      });
+    }),
+  );
+}

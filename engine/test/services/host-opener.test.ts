@@ -7,15 +7,18 @@ import { ShellRunner } from "@lando/sdk/services";
 import { canOpenHost, openUrl, openerCommandFor } from "../../src/services/host-opener";
 
 const fakeShell = (record: { commands: string[] }) =>
-  Layer.succeed(ShellRunner, {
-    exec: (command: string) => {
-      record.commands.push(command);
-      return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
-    },
-    run: () => Effect.die("not used"),
-    runScript: () => Effect.die("not used"),
-    interactive: () => Effect.die("not used"),
-  });
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec: (command: string) => {
+        record.commands.push(command);
+        return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+      },
+      run: () => Effect.die("not used"),
+      runScript: () => Effect.die("not used"),
+      interactive: () => Effect.die("not used"),
+    }),
+  );
 
 describe("openerCommandFor", () => {
   test("selects the platform opener", () => {

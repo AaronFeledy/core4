@@ -4,8 +4,9 @@ import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import { BuildOrchestrator, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Layer } from "effect";
-import { BuildOrchestratorLive, withBuildProvider } from "../../src/services/build-orchestrator.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
+import { withBuildProvider } from "../../src/services/build-orchestrator.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { planWith } from "./build-app-runner-test-support.ts";
 
@@ -20,20 +21,23 @@ const provider = (id: string) => ({
 const makeLayer = (selected: string[]) => {
   const fallback = provider("registry");
   const dependencies = Layer.mergeAll(
-    EventServiceLive,
+    LandoEventService.layer,
     makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([plan.provider]),
-      capabilities: Effect.succeed(fallback.capabilities),
-      select: () =>
-        Effect.sync(() => {
-          selected.push("registry");
-          return fallback;
-        }),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([plan.provider]),
+        capabilities: Effect.succeed(fallback.capabilities),
+        select: () =>
+          Effect.sync(() => {
+            selected.push("registry");
+            return fallback;
+          }),
+      }),
+    ),
   );
-  return BuildOrchestratorLive.pipe(Layer.provide(dependencies));
+  return BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies));
 };
 
 const buildRef = Effect.flatMap(BuildOrchestrator, (build) => build.build(plan)).pipe(

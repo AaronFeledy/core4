@@ -3,7 +3,7 @@ import { FileIoError } from "@lando/sdk/errors";
 import { FileSystem } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 import { acceleratedStartInventory } from "../../src/operations/accelerated-start-inventory.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test.each(["ENOTDIR", "EIO", "EPERM"])(
@@ -24,7 +24,7 @@ test.each(["ENOTDIR", "EIO", "EPERM"])(
           Effect.provideService(FileSystem, { ...fs, readDir: () => Effect.fail(failure) }),
           Effect.provide(store.layer),
         );
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then only an absent directory is empty; other errors retain their original identity.
     if (code === "ENOTDIR") {

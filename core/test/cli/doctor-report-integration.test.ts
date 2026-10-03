@@ -21,7 +21,7 @@ import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -51,7 +51,7 @@ const registryService: Context.Service.Shape<typeof RuntimeProviderRegistry> = {
 
 const runtimeLayer = (config: GlobalConfig) =>
   Layer.mergeAll(
-    PluginRegistryLive,
+    PluginRegistryLayer.layer,
     Layer.succeed(ConfigService, configService(Effect.succeed(config), config)),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
     Layer.succeed(RuntimeProviderRegistry, registryService),
@@ -271,7 +271,7 @@ describe("runtime-wired subsystem doctor", () => {
     }
   });
 
-  test("--fix invokes the injected stopped Traefik setup, not RouterServiceUnavailableLive", async () => {
+  test("--fix invokes the injected stopped Traefik setup, not RouterServiceLayer.layerUnavailable", async () => {
     // Given
     const config = makeConfig({});
     let setupCalls = 0;

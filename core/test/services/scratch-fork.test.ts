@@ -19,30 +19,24 @@ import {
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
 import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import {
-  ScratchRegistry,
-  ScratchRegistryLive,
-  makeScratchRegistry,
-} from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import {
-  ScratchInitAppPort,
-  makeScratchAppServiceLive,
-  suffixScratchHostname,
-} from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import { ScratchRegistry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort, suffixScratchHostname } from "@lando/engine/scratch-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
@@ -73,7 +67,7 @@ const landofileRuntimeInputs = {
 
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
 const redactionLive = Layer.succeed(RedactionService, {
   registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets")),
@@ -275,8 +269,8 @@ const makeScratchForkLayer = (
     list: () => Effect.succeed([]),
   };
 
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -287,7 +281,7 @@ const makeScratchForkLayer = (
     select: () => Effect.succeed(provider),
   });
   const scratchRegistryLive = (() => {
-    if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLive;
+    if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLayer.ScratchRegistry.layer;
     const registry = makeScratchRegistry(ownerOnlyFileAccess);
     let upsertCount = 0;
     return Layer.succeed(ScratchRegistry, {
@@ -311,7 +305,7 @@ const makeScratchForkLayer = (
     Layer.provide(
       Layer.mergeAll(
         stateStoreLayer,
-        EventServiceLive,
+        LandoEventService.layer,
         redactionLive,
         Layer.succeed(PathsService, makeLandoPaths()),
         Layer.succeed(RuntimeProvider, provider),
@@ -339,12 +333,12 @@ const makeScratchForkLayer = (
           }),
         ];
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
+    BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
     registryLive,
     scratchRegistryLive,
-    ScratchResourceScannerLive,
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     scratchInitAppPortLive,
     dataMoverLive,
     ...proxyLayers,
@@ -352,11 +346,11 @@ const makeScratchForkLayer = (
 
   return Layer.mergeAll(
     scratchDeps,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
   );
 };
 
-describe("ScratchAppServiceLive fork acquire", () => {
+describe("ScratchAppServiceLayer.layer fork acquire", () => {
   test("rejects an unsatisfied source constraint before provider capabilities or planning", async () => {
     await withTempProject(['lando: "<0.0.0"', forkLandofile].join("\n"), async () => {
       let capabilitiesCalls = 0;

@@ -3,12 +3,15 @@ import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import * as EngineLandofileServiceLayer from "../../src/services/landofile-live.ts";
 
-export const NoopTransactionGuardLive = Layer.succeed(ManagedFileTransactionGuard, {
-  ensureConsistent: () => Effect.void,
-  pending: () => Effect.succeed(null),
-});
+export const layerTransactionGuard = Layer.succeed(
+  ManagedFileTransactionGuard,
+  ManagedFileTransactionGuard.of({
+    ensureConsistent: () => Effect.void,
+    pending: () => Effect.succeed(null),
+  }),
+);
 
-const TestStateStoreLive = Layer.succeed(
+const testStateStoreLayer = Layer.succeed(
   StateStore,
   makeStateStore({
     privateFileAccess: {
@@ -19,5 +22,5 @@ const TestStateStoreLive = Layer.succeed(
 );
 
 export const layer = EngineLandofileServiceLayer.layerDefault.pipe(
-  Layer.provide(Layer.merge(NoopTransactionGuardLive, TestStateStoreLive)),
+  Layer.provide(Layer.merge(layerTransactionGuard, testStateStoreLayer)),
 );

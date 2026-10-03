@@ -9,7 +9,7 @@ import { StreamFrame } from "@lando/sdk/schema";
 import { HostProxyService, PathsService, RouterService } from "@lando/sdk/services";
 import { makeTestHostProxyService, makeTestRouterService } from "@lando/sdk/test";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
@@ -325,7 +325,7 @@ describe("meta:doctor subsystem checks", () => {
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
 
     try {
@@ -353,7 +353,7 @@ describe("meta:doctor subsystem checks", () => {
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
 
     try {
@@ -378,7 +378,7 @@ describe("meta:doctor subsystem checks", () => {
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
     try {
       const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
@@ -399,7 +399,7 @@ describe("meta:doctor subsystem checks", () => {
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
 
     try {
@@ -429,7 +429,7 @@ describe("meta:doctor subsystem checks", () => {
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
     try {
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));

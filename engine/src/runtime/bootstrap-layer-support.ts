@@ -2,7 +2,7 @@ import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogLevel, ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
-import type { Renderer, RootOverrides, RuntimeProvider } from "@lando/sdk/services";
+import { type Renderer, type RootOverrides, RuntimeProvider } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -74,7 +74,7 @@ const unsupportedProviderOperation = (operation: string) =>
     message: `runtime provider stub cannot ${operation}`,
   });
 
-export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvider> = {
+export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvider> = RuntimeProvider.of({
   id: "stub",
   displayName: "Stub Runtime Provider",
   version: "0.0.0",
@@ -111,7 +111,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   copyFromService: () => Stream.fail(unsupportedProviderOperation("copyFromService")),
   exportArtifact: () => Stream.fail(unsupportedProviderOperation("exportArtifact")),
   importArtifact: () => Effect.die("runtime provider stub cannot import artifacts"),
-};
+});
 
 export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Service.Shape<typeof Renderer> => ({
   id,

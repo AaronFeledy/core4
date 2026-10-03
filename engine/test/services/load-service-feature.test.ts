@@ -6,18 +6,20 @@ import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-import { makePluginRegistryLive } from "../../src/plugins/registry";
+import * as PluginRegistryLayer from "../../src/plugins/registry";
 
 const runWithPluginRegistry = <A, E>(
   effect: Effect.Effect<A, E, PluginRegistry>,
   modules: ReadonlyArray<LandoPluginModule> = [],
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(makePluginRegistryLive({ app: false, user: false }, modules))),
+    effect.pipe(Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, modules))),
   );
 
 const runExitWithPluginRegistry = <A, E>(effect: Effect.Effect<A, E, PluginRegistry>) =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(makePluginRegistryLive({ app: false, user: false }, []))));
+  Effect.runPromiseExit(
+    effect.pipe(Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, []))),
+  );
 
 describe("PluginRegistry.loadServiceFeature", () => {
   test("fails for an unknown bundled service feature", async () => {

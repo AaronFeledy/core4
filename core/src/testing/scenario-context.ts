@@ -21,7 +21,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
 import { redactDetails } from "../cli/redact";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
@@ -437,7 +437,7 @@ const createFixtureUse = (
           appendFrame({ kind: "fixture", name, copiedTo: target });
         }),
       ),
-      Effect.provide(FileSystemLive),
+      Effect.provide(BunFileSystem.layer),
     );
   };
 };

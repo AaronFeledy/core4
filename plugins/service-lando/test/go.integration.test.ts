@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runTooling } from "@lando/engine/operations/tooling";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
@@ -204,8 +204,8 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
               capabilities: Effect.succeed(capabilities),
               select: () => Effect.succeed(provider),
             }),
-            ProviderExecToolingEngineLive,
-            EventServiceLive,
+            ProviderExecToolingEngine.layer,
+            LandoEventService.layer,
             emptyConfigServiceLayer,
           );
 

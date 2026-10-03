@@ -32,7 +32,7 @@ import {
   StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
@@ -302,7 +302,7 @@ const makeDestroyLayer = (
     stop: Effect.void,
   });
   const commandLayer = Layer.mergeAll(
-    FileSystemLive,
+    BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),

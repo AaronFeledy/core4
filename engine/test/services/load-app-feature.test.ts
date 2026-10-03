@@ -11,14 +11,14 @@ import { PluginManifest } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { ConfigService } from "@lando/sdk/services";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
-import { makePluginRegistryLive } from "../../src/plugins/registry";
+import * as PluginRegistryLayer from "../../src/plugins/registry";
 
 const runWithPluginRegistry = <A, E>(
   effect: Effect.Effect<A, E, PluginRegistry>,
   modules: ReadonlyArray<LandoPluginModule> = [],
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(makePluginRegistryLive({ app: false, user: false }, modules))),
+    effect.pipe(Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, modules))),
   );
 
 const runExitWithPluginRegistry = <A, E>(
@@ -26,15 +26,18 @@ const runExitWithPluginRegistry = <A, E>(
   modules: ReadonlyArray<LandoPluginModule> = [],
 ) =>
   Effect.runPromiseExit(
-    effect.pipe(Effect.provide(makePluginRegistryLive({ app: false, user: false }, modules))),
+    effect.pipe(Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, modules))),
   );
 
 const configServiceFor = (userDataRoot: string) =>
-  Layer.succeed(ConfigService, {
-    get: <K extends string>(key: K) =>
-      Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
-    getEffective: () => Effect.succeed({} as never),
-  } as never);
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      get: <K extends string>(key: K) =>
+        Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
+      getEffective: () => Effect.succeed({} as never),
+    } as never),
+  );
 
 describe("PluginRegistry.loadAppFeature", () => {
   test("fails for an unknown bundled app feature", async () => {
@@ -159,7 +162,7 @@ describe("PluginRegistry.loadAppFeature", () => {
       );
       await Bun.$`ln -s ${pluginRoot} ${registryEntry}`;
 
-      const registryLayer = makePluginRegistryLive({ app: false, bundled: false }).pipe(
+      const registryLayer = PluginRegistryLayer.layerWith({ app: false, bundled: false }).pipe(
         Layer.provide(configServiceFor(userDataRoot)),
       );
 

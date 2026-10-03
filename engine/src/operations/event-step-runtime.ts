@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import { type Context, Effect, Option } from "effect";
+import { Clock, type Context, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
@@ -118,27 +118,26 @@ const nonzeroFailure = (
     remediation: `Fix ${options.event} step ${leaf.authoredIndex + 1}, then rerun the lifecycle command.`,
   });
 
-const toolingRuntime = (tool: string) =>
-  Effect.gen(function* () {
-    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-    if (Option.isNone(registry)) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: "Runtime provider registry is unavailable for event execution.",
-          tool,
-        }),
-      );
-    }
-    const engine = yield* Effect.serviceOption(ToolingEngine);
-    if (Option.isNone(engine)) {
-      return yield* Effect.fail(
-        new ToolingCompileError({ message: "Tooling engine is unavailable for event execution.", tool }),
-      );
-    }
-    return { registry: registry.value, engine: engine.value };
-  });
+const toolingRuntime = Effect.fnUntraced(function* (tool: string) {
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  if (Option.isNone(registry)) {
+    return yield* Effect.fail(
+      new ToolingCompileError({
+        message: "Runtime provider registry is unavailable for event execution.",
+        tool,
+      }),
+    );
+  }
+  const engine = yield* Effect.serviceOption(ToolingEngine);
+  if (Option.isNone(engine)) {
+    return yield* Effect.fail(
+      new ToolingCompileError({ message: "Tooling engine is unavailable for event execution.", tool }),
+    );
+  }
+  return { registry: registry.value, engine: engine.value };
+});
 
-const runInvocation = (
+const runInvocation = Effect.fnUntraced(function* (
   options: EventRuntimeOptions,
   tool: string,
   task: ToolingTaskShape,
@@ -146,114 +145,112 @@ const runInvocation = (
     readonly user?: string;
     readonly redactionTokens?: ReadonlyArray<string>;
   } = {},
-) =>
-  Effect.gen(function* () {
-    const runtime = yield* toolingRuntime(tool);
-    const compiled = yield* compileToolingInvocations({
-      name: tool,
-      lookupKey: tool,
-      task,
-      source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
-      ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
-    });
-    if (
-      options.hostRunner === undefined &&
-      compiled.invocations.some((invocation) => invocation.service === ":host")
-    ) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: "ShellRunner is unavailable for host event execution.",
-          tool,
-        }),
-      );
-    }
-    // An event step is an inline invocation of an already-running lifecycle, so it executes
-    // the compiled steps directly and never re-fires the task's own pre/post brackets.
-    const execution = executeToolingInvocations({
-      plan: options.plan,
-      tool,
-      invocations: compiled.invocations,
-      requiresProvider: requiresProvider(compiled.normalized),
-      ...(invocationOptions.redactionTokens === undefined
-        ? {}
-        : { redactionTokens: invocationOptions.redactionTokens }),
-    }).pipe(
-      Effect.provideService(ToolingEngine, runtime.engine),
-      Effect.provideService(RuntimeProviderRegistry, runtime.registry),
+) {
+  const runtime = yield* toolingRuntime(tool);
+  const compiled = yield* compileToolingInvocations({
+    name: tool,
+    lookupKey: tool,
+    task,
+    source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
+    ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
+  });
+  if (
+    options.hostRunner === undefined &&
+    compiled.invocations.some((invocation) => invocation.service === ":host")
+  ) {
+    return yield* Effect.fail(
+      new ToolingCompileError({
+        message: "ShellRunner is unavailable for host event execution.",
+        tool,
+      }),
     );
-    return yield* options.hostRunner === undefined
-      ? execution
-      : execution.pipe(Effect.provideService(ShellRunner, options.hostRunner));
-  });
+  }
+  // An event step is an inline invocation of an already-running lifecycle, so it executes
+  // the compiled steps directly and never re-fires the task's own pre/post brackets.
+  const execution = executeToolingInvocations({
+    plan: options.plan,
+    tool,
+    invocations: compiled.invocations,
+    requiresProvider: requiresProvider(compiled.normalized),
+    ...(invocationOptions.redactionTokens === undefined
+      ? {}
+      : { redactionTokens: invocationOptions.redactionTokens }),
+  }).pipe(
+    Effect.provideService(ToolingEngine, runtime.engine),
+    Effect.provideService(RuntimeProviderRegistry, runtime.registry),
+  );
+  return yield* options.hostRunner === undefined
+    ? execution
+    : execution.pipe(Effect.provideService(ShellRunner, options.hostRunner));
+});
 
-const runCmd = (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) =>
-  Effect.gen(function* () {
-    const startedAt = Date.now();
-    const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
-    const task: ToolingTaskShape = {
-      cmd: leaf.command,
-      ...(leaf.service === undefined ? {} : { service: leaf.service }),
-      ...(leaf.env === undefined ? {} : { env: leaf.env }),
-      ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
-    };
-    const result = yield* runInvocation(options, `${options.event}`, task, {
-      ...(leaf.user === undefined ? {} : { user: leaf.user }),
-      redactionTokens,
-    }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
-    return { leaf, result, startedAt, redactor };
-  });
+const runCmd = Effect.fnUntraced(function* (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) {
+  const startedAt = yield* Clock.currentTimeMillis;
+  const { redactor, redactionTokens } = yield* options.redactorFor([leaf.env]);
+  const task: ToolingTaskShape = {
+    cmd: leaf.command,
+    ...(leaf.service === undefined ? {} : { service: leaf.service }),
+    ...(leaf.env === undefined ? {} : { env: leaf.env }),
+    ...(leaf.dir === undefined ? {} : { dir: leaf.dir }),
+  };
+  const result = yield* runInvocation(options, `${options.event}`, task, {
+    ...(leaf.user === undefined ? {} : { user: leaf.user }),
+    redactionTokens,
+  }).pipe(Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)));
+  return { leaf, result, startedAt, redactor };
+});
 
-const runTask = (
+const runTask = Effect.fnUntraced(function* (
   options: EventRuntimeOptions,
   leaf: ResolvedToolingTaskStepLeaf,
   context: ExpressionContext,
-) =>
-  Effect.gen(function* () {
-    const startedAt = Date.now();
-    const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
-    const variableRedaction = yield* options.redactorFor([leaf.vars]);
-    if (task === undefined) {
-      const script = yield* runBunShellTooling(
-        { name: leaf.task, cwd: String(options.plan.root), renderProgress: false },
-        String(options.plan.root),
-      ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
-      if (script !== undefined) {
-        return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
-      }
-      return yield* Effect.fail(
-        stepFailure(
-          { ...options, redactor: variableRedaction.redactor },
-          leaf,
-          new ToolingCompileError({
-            message: `Unknown event tooling task ${leaf.task}.`,
-            tool: leaf.task,
-            remediation: "Define the named tooling task or update the event to reference an existing task.",
-          }),
-        ),
-      );
+) {
+  const startedAt = yield* Clock.currentTimeMillis;
+  const task = effectiveToolingForPlan(options.plan)?.[leaf.task];
+  const variableRedaction = yield* options.redactorFor([leaf.vars]);
+  if (task === undefined) {
+    const script = yield* runBunShellTooling(
+      { name: leaf.task, cwd: String(options.plan.root), renderProgress: false },
+      String(options.plan.root),
+    ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
+    if (script !== undefined) {
+      return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
     }
-    const resolved = yield* resolveToolingTaskShape(task, context).pipe(
-      Effect.mapError((error) =>
-        stepFailure({ ...options, redactor: variableRedaction.redactor }, leaf, error),
+    return yield* Effect.fail(
+      stepFailure(
+        { ...options, redactor: variableRedaction.redactor },
+        leaf,
+        new ToolingCompileError({
+          message: `Unknown event tooling task ${leaf.task}.`,
+          tool: leaf.task,
+          remediation: "Define the named tooling task or update the event to reference an existing task.",
+        }),
       ),
     );
-    const { redactor, redactionTokens } = yield* options.redactorFor([resolved.env, leaf.vars]);
-    const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
-      Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
-    );
-    return { leaf, result, startedAt, redactor };
-  });
+  }
+  const resolved = yield* resolveToolingTaskShape(task, context).pipe(
+    Effect.mapError((error) =>
+      stepFailure({ ...options, redactor: variableRedaction.redactor }, leaf, error),
+    ),
+  );
+  const { redactor, redactionTokens } = yield* options.redactorFor([resolved.env, leaf.vars]);
+  const result = yield* runInvocation(options, leaf.task, resolved, { redactionTokens }).pipe(
+    Effect.mapError((error) => stepFailure({ ...options, redactor }, leaf, error)),
+  );
+  return { leaf, result, startedAt, redactor };
+});
 
-const publish = (options: EventRuntimeOptions, execution: EventLeafResult) =>
-  emitToolingOutputProgress({
+const publish = Effect.fnUntraced(function* (options: EventRuntimeOptions, execution: EventLeafResult) {
+  return yield* emitToolingOutputProgress({
     events: options.events,
     tool: `${options.event}:${execution.leaf.authoredIndex + 1}`,
     service: String(execution.result.service),
     stdout: execution.redactor.redactString(execution.result.stdout),
     stderr: execution.redactor.redactString(execution.result.stderr),
     exitCode: execution.result.exitCode,
-    durationMs: Date.now() - execution.startedAt,
+    durationMs: (yield* Clock.currentTimeMillis) - execution.startedAt,
   });
+});
 
 const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {
   if (execution.result.exitCode === 0) return Effect.succeed(execution);
@@ -282,19 +279,20 @@ export const makeEventStepRunners = (
     runCommand: (leaf) =>
       checked(
         leaf,
-        Effect.suspend(() => {
-          const startedAt = Date.now();
-          return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
-            Effect.flatMap(({ redactor, redactionTokens }) =>
-              options.runCanonical(leaf, redactionTokens).pipe(
-                Effect.mapError((error) =>
-                  isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
+        Clock.currentTimeMillis.pipe(
+          Effect.flatMap((startedAt) => {
+            return options.redactorFor([leaf.flags, leaf.args], leaf.raw).pipe(
+              Effect.flatMap(({ redactor, redactionTokens }) =>
+                options.runCanonical(leaf, redactionTokens).pipe(
+                  Effect.mapError((error) =>
+                    isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
+                  ),
+                  Effect.map((result) => ({ leaf, result, startedAt, redactor })),
                 ),
-                Effect.map((result) => ({ leaf, result, startedAt, redactor })),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
     present: (execution) => publish(options, execution.result),
     mapLeafError: (leaf, error) => (isEventRuntimeError(error) ? error : stepFailure(options, leaf, error)),

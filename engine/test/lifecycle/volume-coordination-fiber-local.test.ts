@@ -55,18 +55,17 @@ describe("volume coordination fiber-local state", () => {
           plan: planFor("alpha"),
           provider,
           stateStore: recordingStore,
-          body: () =>
-            Effect.gen(function* () {
-              yield* verifyActiveVolumeCoordination(provider);
-              const child = yield* Effect.forkChild(
-                withVolumeCoordinationLock(
-                  recordingStore,
-                  key("alpha"),
-                  verifyActiveVolumeCoordination(provider).pipe(Effect.as("inherited")),
-                ),
-              );
-              return yield* Fiber.join(child);
-            }),
+          body: Effect.fnUntraced(function* () {
+            yield* verifyActiveVolumeCoordination(provider);
+            const child = yield* Effect.forkChild(
+              withVolumeCoordinationLock(
+                recordingStore,
+                key("alpha"),
+                verifyActiveVolumeCoordination(provider).pipe(Effect.as("inherited")),
+              ),
+            );
+            return yield* Fiber.join(child);
+          }),
         });
         yield* verifyActiveVolumeCoordination(provider);
         yield* withVolumeCoordinationLock(recordingStore, key("alpha"), Effect.void);

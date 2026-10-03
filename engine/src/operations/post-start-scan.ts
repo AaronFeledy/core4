@@ -65,28 +65,29 @@ const endpointWarning = (endpoint: ScanEndpoint): string => {
  * warning body is redacted again before it reaches the event bus. A cancelled
  * scan still interrupts start; only scan and event-bus failures stay warnings.
  */
-export const runPostStartScan = (input: PostStartScanInput): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const redactor = yield* resolveRedactor;
-    const warn = (body: string) =>
-      input.events
-        .publish(MessageWarnEvent.make({ body: redactor.redactString(body), timestamp: now() }))
-        .pipe(Effect.catchCause(() => Effect.void));
+export const runPostStartScan = Effect.fnUntraced(function* (
+  input: PostStartScanInput,
+): Effect.fn.Return<void> {
+  const redactor = yield* resolveRedactor;
+  const warn = (body: string) =>
+    input.events
+      .publish(MessageWarnEvent.make({ body: redactor.redactString(body), timestamp: now() }))
+      .pipe(Effect.catchCause(() => Effect.void));
 
-    const scanned = yield* Effect.result(
-      input.scanner.scan(input.plan.id, {
-        plan: input.plan,
-        ...(input.urls === undefined ? {} : { urls: input.urls }),
-      }),
-    );
-    if (scanned._tag === "Failure") {
-      yield* warn(`URL scan did not run: ${scanned.failure.message}`);
-      return;
-    }
+  const scanned = yield* Effect.result(
+    input.scanner.scan(input.plan.id, {
+      plan: input.plan,
+      ...(input.urls === undefined ? {} : { urls: input.urls }),
+    }),
+  );
+  if (scanned._tag === "Failure") {
+    yield* warn(`URL scan did not run: ${scanned.failure.message}`);
+    return;
+  }
 
-    yield* Effect.forEach(
-      scanned.success.endpoints.filter((endpoint) => !passed(endpoint)),
-      (endpoint) => warn(endpointWarning(endpoint)),
-      { discard: true },
-    );
-  });
+  yield* Effect.forEach(
+    scanned.success.endpoints.filter((endpoint) => !passed(endpoint)),
+    (endpoint) => warn(endpointWarning(endpoint)),
+    { discard: true },
+  );
+});

@@ -6,13 +6,13 @@ import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const plan = (input: unknown) =>
   Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(Schema.decodeUnknownSync(LandofileShape)(input), TestRuntimeProvider.capabilities),
-  ).pipe(Effect.provide(AppPlannerLive.pipe(Layer.provide(PluginRegistryLive))));
+  ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))));
 
 test("preserves distinct paths when routes share a host", async () => {
   // Given

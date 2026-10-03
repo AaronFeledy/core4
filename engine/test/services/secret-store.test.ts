@@ -4,15 +4,15 @@ import { Cause, Effect, Exit, Result } from "effect";
 import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { SecretStore } from "@lando/sdk/services";
 
-import { makeEnvSecretStoreLive } from "../../src/services/secret-store";
+import * as EnvSecretStore from "../../src/services/secret-store";
 
 const run = <A, E>(effect: Effect.Effect<A, E, SecretStore>, env: Record<string, string | undefined>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(makeEnvSecretStoreLive({ env }))));
+  Effect.runPromise(effect.pipe(Effect.provide(EnvSecretStore.layerWith({ env }))));
 
 const runExit = <A, E>(effect: Effect.Effect<A, E, SecretStore>, env: Record<string, string | undefined>) =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(makeEnvSecretStoreLive({ env }))));
+  Effect.runPromiseExit(effect.pipe(Effect.provide(EnvSecretStore.layerWith({ env }))));
 
-describe("env-backed SecretStoreLive", () => {
+describe("env-backed EnvSecretStore.layer", () => {
   test("get resolves a prefixed env var to its value", async () => {
     const value = await run(
       Effect.flatMap(SecretStore, (store) => store.get("MY_TOKEN")),
@@ -128,7 +128,7 @@ describe("env-backed SecretStoreLive", () => {
   test("supports a custom prefix", async () => {
     const value = await Effect.runPromise(
       Effect.flatMap(SecretStore, (store) => store.get("KEY")).pipe(
-        Effect.provide(makeEnvSecretStoreLive({ prefix: "MYAPP_", env: { MYAPP_KEY: "v" } })),
+        Effect.provide(EnvSecretStore.layerWith({ prefix: "MYAPP_", env: { MYAPP_KEY: "v" } })),
       ),
     );
     expect(value).toBe("v");
@@ -143,12 +143,12 @@ describe("env-backed SecretStoreLive", () => {
 
     const value = await Effect.runPromise(
       Effect.flatMap(SecretStore, (store) => store.get("KEY")).pipe(
-        Effect.provide(makeEnvSecretStoreLive({ prefix: "", env })),
+        Effect.provide(EnvSecretStore.layerWith({ prefix: "", env })),
       ),
     );
     const ids = await Effect.runPromise(
       Effect.flatMap(SecretStore, (store) => store.list).pipe(
-        Effect.provide(makeEnvSecretStoreLive({ prefix: "", env })),
+        Effect.provide(EnvSecretStore.layerWith({ prefix: "", env })),
       ),
     );
 

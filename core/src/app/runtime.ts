@@ -14,9 +14,10 @@ import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services
 import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
 import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
 import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import { ScratchRegistryWithPrivateFileAccessLive } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
 import { ScratchInitAppPortLive } from "../runtime/scratch-init-port.ts";
 import { buildAppHandle, resolveApp } from "./resolve";
@@ -50,16 +51,16 @@ export const openLandoRuntime = (
     });
     const scratchDeps = Layer.mergeAll(
       appLayer,
-      ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(appLayer)),
-      ScratchResourceScannerLive.pipe(Layer.provide(appLayer)),
+      ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+      ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
       ScratchInitAppPortLive.pipe(Layer.provide(appLayer)),
     );
     const layer = Layer.mergeAll(
       appLayer,
-      ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(appLayer)),
-      ScratchResourceScannerLive.pipe(Layer.provide(appLayer)),
+      ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+      ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
       ScratchInitAppPortLive.pipe(Layer.provide(appLayer)),
-      ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+      ScratchAppServiceLayer.layer.pipe(Layer.provide(scratchDeps)),
     );
     const context: RuntimeContext = yield* Layer.build(layer);
     const runtimeScope = yield* Effect.scope;

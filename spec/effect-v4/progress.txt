@@ -288,3 +288,23 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Compiled-binary setup, lamp init/start, and live HTTP and HTTPS returned the PHP body. Tooling, logs, app config, and doctor exited 0; doctor network-trust passed, and info showed database passwords as `[redacted]`. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
 - **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us663v-appserver`, `lando-us663v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after the app and runtime were already stopped. Expected no processes for that app. Same class as the US-662 note. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-663 acceptance failure.
 ---
+
+## 2026-10-03 07:36 CDT - Babysit
+- PR: #1142 https://github.com/AaronFeledy/core4/pull/1142
+- CI outcome: fail (unit-tests-linux-x64 shard 3), then pass
+- Review feedback: fixed (dropped the removed httpClients `capabilities` field from two stale plugin-registry test fixtures)
+- Merge: merged (squash)
+---
+
+## 2026-10-03 08:40 CDT - US-664 (Build)
+- The engine has no `*Live`/`make*Live` exports. SDK-contract implementations export namespace `layer`/`layer<Variant>`/`layerWith(opts)` (e.g. `BunFileSystem.layer`, `LandoEventService.layerRuntime`, `RouterServiceLayer.layerUnavailable`); engine-private services carry static `layer` members. Every consumer in core, plugins, tests, docs code and agent instructions moved, and the bootstrap-layer generators emit the namespace names.
+- Named functions that only returned `Effect.gen` are gone from `engine/src` and `engine/test`: about 115 traced and 180 untraced builders. Every app operation is an `AppOperation.<op>` span, planner phases are `AppPlanner.plan` with `AppPlanner.<phase>` children (resolveIdentity, assemble, discover, resolveServices, loadComposeConfigs, planServices, composeFeatures, finalizeServices, validateDependencies), and service, lifecycle, provider-registry, scratch, update and subsystem methods carry `<Service>.<method>` spans. Hot-path helpers stay untraced.
+- Build-step batching, service `dependsOn` cycles, feature-activation cycles and rebuild dependency closure now use `Graph`; error tags, messages, cycle paths and edges are unchanged, pinned by new exact-diagnostic tests that passed before the swap. Effect-side wall clocks moved to `Clock`/`DateTime` with byte-identical timestamps; equivalent record guards became `Predicate.isObject`; the last `Data.TaggedError` is a `Schema.TaggedError`; literal `Layer.succeed` values and shape-typed service objects go through `Tag.of`.
+- New tests: an in-memory `Tracer` asserts `AppOperation.infoForPlan` → `RuntimeProvider.inspect` nesting (fails when the operation span is removed); a planner span test asserts phase children; a `TestClock` test drives scratch-app detach and asserts the virtual `updatedAt`.
+- Measure (sandbox, one run each): tooling hot path warm p95 88.4 ms, cold p95 92.9 ms; startup p95 6.4 ms, first output p95 5.9 ms. Within the US-663 bands.
+- Verification: `gate:pr` passed (typecheck, lint, codegen drift, boundaries, guide drift against `origin/main`), then typecheck and lint again after the final `Tag.of` sweep. `bun test engine/test`: 2343 pass, 3 fail; 105 touched non-engine test files plus plugin-abstraction coverage: 1222 pass, 4 fail. All 7 failures are the `runtime-provider-registry` Docker-selection and `destroy` missing-Landofile scenario timeouts, which also time out on an `origin/main` worktree. Sandbox CLI: `app:config --format=json` exits 0 with a valid envelope; a missing Landofile returns tagged `LandofileNotFoundError` JSON and exit 1.
+- **Learnings for future iterations:**
+  - Span tests must enable `References.TracerEnabled`; the CLI composition disables it, so an in-memory `Tracer` alone records nothing.
+  - Remaining `Effect.gen` in engine source are layer constructors, reusable Effect values, and anonymous callbacks; none is a named generator-only wrapper. A line ending `=>` followed by `Effect.gen(` is a quick audit for regressions.
+  - Wrapping a literal in `Tag.of` turns a `import type` tag into a value use; fix the import to a value import rather than reverting.
+---

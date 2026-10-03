@@ -112,53 +112,52 @@ export interface CompileToolingInput extends InvocationOptions {
  * rejection (disabled, empty, bad argv, unknown service reference) happens here, before
  * any provider is selected or any event bracket runs.
  */
-export const compileToolingInvocations = (
+export const compileToolingInvocations = Effect.fnUntraced(function* (
   input: CompileToolingInput,
-): Effect.Effect<CompiledTooling, ToolingCompileError | ToolingDisabledError | ToolingInputError> =>
-  Effect.gen(function* () {
-    const normalized = yield* Effect.fromResult(
-      normalizeToolingTask(input.lookupKey, input.task, input.source),
+): Effect.fn.Return<CompiledTooling, ToolingCompileError | ToolingDisabledError | ToolingInputError> {
+  const normalized = yield* Effect.fromResult(
+    normalizeToolingTask(input.lookupKey, input.task, input.source),
+  );
+  if (normalized.disabled) {
+    return yield* Effect.fail(
+      new ToolingDisabledError({
+        message: `Tooling command ${input.name} is disabled.`,
+        tool: input.lookupKey,
+        source: input.source,
+        remediation: `Enable tooling task ${input.lookupKey} in ${input.source.path} before running it.`,
+      }),
     );
-    if (normalized.disabled) {
-      return yield* Effect.fail(
-        new ToolingDisabledError({
-          message: `Tooling command ${input.name} is disabled.`,
-          tool: input.lookupKey,
-          source: input.source,
-          remediation: `Enable tooling task ${input.lookupKey} in ${input.source.path} before running it.`,
-        }),
-      );
-    }
-    if (normalized.steps.length === 0) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: `Tooling command ${input.name} does not define cmd or cmds.`,
-          tool: input.name,
-        }),
-      );
-    }
-    if (!normalized.hasInput) {
-      const argumentFailure = validateToolingArguments(input.name, normalized, input.args ?? []);
-      if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
-    }
-    const values = yield* Effect.fromResult(parseToolingArgv(normalized, input.args ?? []));
-    const invocations = yield* Effect.forEach(
-      normalized.steps,
-      (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
-        Effect.gen(function* () {
-          const service = yield* Effect.fromResult(resolveServiceRef(step.service, values, normalized));
-          return stepInvocation(
-            input.name,
-            { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
-            {
-              ...input,
-              args: index === normalized.steps.length - 1 ? values.argv : [],
-            },
-          );
-        }),
+  }
+  if (normalized.steps.length === 0) {
+    return yield* Effect.fail(
+      new ToolingCompileError({
+        message: `Tooling command ${input.name} does not define cmd or cmds.`,
+        tool: input.name,
+      }),
     );
-    return { normalized, invocations };
-  });
+  }
+  if (!normalized.hasInput) {
+    const argumentFailure = validateToolingArguments(input.name, normalized, input.args ?? []);
+    if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
+  }
+  const values = yield* Effect.fromResult(parseToolingArgv(normalized, input.args ?? []));
+  const invocations = yield* Effect.forEach(
+    normalized.steps,
+    (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
+      Effect.gen(function* () {
+        const service = yield* Effect.fromResult(resolveServiceRef(step.service, values, normalized));
+        return stepInvocation(
+          input.name,
+          { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
+          {
+            ...input,
+            args: index === normalized.steps.length - 1 ? values.argv : [],
+          },
+        );
+      }),
+  );
+  return { normalized, invocations };
+});
 
 export type ToolingExecutionError =
   | ToolingCompileError
@@ -180,44 +179,43 @@ export interface ExecuteToolingInput {
  * non-zero exit is the task's result, not a failure, so the accumulated streams travel
  * with it. A task that never touches a container never initializes a provider.
  */
-export const executeToolingInvocations = (
+export const executeToolingInvocations = Effect.fnUntraced(function* (
   input: ExecuteToolingInput,
-): Effect.Effect<ToolingEngineResult, ToolingExecutionError, ToolingEngine | RuntimeProviderRegistry> =>
-  Effect.gen(function* () {
-    const provider = input.requiresProvider
-      ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
-      : runtimeProviderService;
-    let combined: ToolingEngineResult = {
-      tool: input.tool,
-      service: "",
-      exitCode: 0,
-      stdout: "",
-      stderr: "",
+): Effect.fn.Return<ToolingEngineResult, ToolingExecutionError, ToolingEngine | RuntimeProviderRegistry> {
+  const provider = input.requiresProvider
+    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
+    : runtimeProviderService;
+  let combined: ToolingEngineResult = {
+    tool: input.tool,
+    service: "",
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+  };
+  for (const invocation of input.invocations) {
+    const result = yield* invocation.service === ":host"
+      ? Effect.gen(function* () {
+          const shell = yield* Effect.serviceOption(ShellRunner);
+          if (Option.isNone(shell)) {
+            return yield* Effect.fail(
+              new ToolingCompileError({
+                message: `ShellRunner is unavailable for tooling command ${input.tool}.`,
+                tool: input.tool,
+              }),
+            );
+          }
+          const hostRun = runHostToolingWith(shell.value, invocation, input.plan, provider);
+          return yield* input.redactionTokens === undefined
+            ? hostRun
+            : withShellRedactionTokens(input.redactionTokens, hostRun);
+        })
+      : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
+    combined = {
+      ...result,
+      stdout: combined.stdout + result.stdout,
+      stderr: combined.stderr + result.stderr,
     };
-    for (const invocation of input.invocations) {
-      const result = yield* invocation.service === ":host"
-        ? Effect.gen(function* () {
-            const shell = yield* Effect.serviceOption(ShellRunner);
-            if (Option.isNone(shell)) {
-              return yield* Effect.fail(
-                new ToolingCompileError({
-                  message: `ShellRunner is unavailable for tooling command ${input.tool}.`,
-                  tool: input.tool,
-                }),
-              );
-            }
-            const hostRun = runHostToolingWith(shell.value, invocation, input.plan, provider);
-            return yield* input.redactionTokens === undefined
-              ? hostRun
-              : withShellRedactionTokens(input.redactionTokens, hostRun);
-          })
-        : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
-      combined = {
-        ...result,
-        stdout: combined.stdout + result.stdout,
-        stderr: combined.stderr + result.stderr,
-      };
-      if (result.exitCode !== 0) break;
-    }
-    return combined;
-  });
+    if (result.exitCode !== 0) break;
+  }
+  return combined;
+});

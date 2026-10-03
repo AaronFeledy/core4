@@ -1615,21 +1615,20 @@ describe("pre-apply accelerated mount preparation", () => {
           id: "mutagen",
           isAvailable: Effect.succeed(true),
           sessionsPersistAcrossProcesses: true,
-          listSessions: (filter) =>
-            Effect.gen(function* () {
-              expect(filter).toEqual({ app });
-              actions.push("inventory");
-              switch (inventory) {
-                case "existing":
-                  return sessions;
-                case "error":
-                  return yield* Effect.fail(inventoryError);
-                case "timeout":
-                  return yield* Effect.never;
-                case "empty":
-                  return [];
-              }
-            }),
+          listSessions: Effect.fnUntraced(function* (filter) {
+            expect(filter).toEqual({ app });
+            actions.push("inventory");
+            switch (inventory) {
+              case "existing":
+                return sessions;
+              case "error":
+                return yield* Effect.fail(inventoryError);
+              case "timeout":
+                return yield* Effect.never;
+              case "empty":
+                return [];
+            }
+          }),
           createSession: () => Effect.die(new Error("Binding failure reached the shared engine.")),
           bindPreparedTargets: () =>
             Effect.sync(() => actions.push("bind")).pipe(

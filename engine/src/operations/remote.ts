@@ -150,46 +150,45 @@ const redactMutationResult = (result: RemoteMutationResult): RemoteMutationResul
 const redactSyncResult = (result: SyncResultType): SyncResultType =>
   telemetryOutputRedactor.redactValue(result) as SyncResultType;
 
-const loadRemoteLandofile = (
+const loadRemoteLandofile = Effect.fnUntraced(function* (
   cwd = process.cwd(),
-): Effect.Effect<LoadedRemoteLandofile, LandofileNotFoundError | LandofileParseError> =>
-  Effect.gen(function* () {
-    const file = yield* Effect.promise(() => findLandofilePath(cwd));
-    if (file === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message: "No .lando.yml found. Run `lando init` before configuring remotes.",
-          cwd,
-        }),
-      );
-    }
-    const root = dirname(file);
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(file).text(),
-      catch: (cause) =>
-        new LandofileParseError({
-          message: `Could not read ${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          filePath: file,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
-    });
-    const parsed = yield* parseLandofile({ file, content, cwd: root });
-    const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Failure") {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile ${file} is not valid: ${String(decoded.failure)}`,
-          filePath: file,
-          line: undefined,
-          column: undefined,
-          cause: decoded.failure,
-        }),
-      );
-    }
-    return { file, root, landofile: decoded.success };
+): Effect.fn.Return<LoadedRemoteLandofile, LandofileNotFoundError | LandofileParseError> {
+  const file = yield* Effect.promise(() => findLandofilePath(cwd));
+  if (file === undefined) {
+    return yield* Effect.fail(
+      new LandofileNotFoundError({
+        message: "No .lando.yml found. Run `lando init` before configuring remotes.",
+        cwd,
+      }),
+    );
+  }
+  const root = dirname(file);
+  const content = yield* Effect.tryPromise({
+    try: () => Bun.file(file).text(),
+    catch: (cause) =>
+      new LandofileParseError({
+        message: `Could not read ${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        filePath: file,
+        line: undefined,
+        column: undefined,
+        cause,
+      }),
   });
+  const parsed = yield* parseLandofile({ file, content, cwd: root });
+  const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
+  if (decoded._tag === "Failure") {
+    return yield* Effect.fail(
+      new LandofileParseError({
+        message: `Landofile ${file} is not valid: ${String(decoded.failure)}`,
+        filePath: file,
+        line: undefined,
+        column: undefined,
+        cause: decoded.failure,
+      }),
+    );
+  }
+  return { file, root, landofile: decoded.success };
+});
 
 const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>
   Effect.tryPromise({
@@ -207,46 +206,41 @@ const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>
 const remoteEntries = (landofile: typeof LandofileShape.Type): ReadonlyArray<RemoteEntry> =>
   Object.entries(landofile.remotes ?? {}).map(([name, config]) => ({ name, config }));
 
-const chooseRemote = (
+const chooseRemote = Effect.fnUntraced(function* (
   landofile: typeof LandofileShape.Type,
   requested: string | undefined,
-): Effect.Effect<RemoteEntry, RemoteProviderUnavailableError> => {
-  return Effect.gen(function* () {
-    const entries = remoteEntries(landofile);
-    const match = requested === undefined ? entries[0] : entries.find((entry) => entry.name === requested);
-    if (match !== undefined) return match;
+): Effect.fn.Return<RemoteEntry, RemoteProviderUnavailableError> {
+  const entries = remoteEntries(landofile);
+  const match = requested === undefined ? entries[0] : entries.find((entry) => entry.name === requested);
+  if (match !== undefined) return match;
 
-    const sourceOption = yield* Effect.serviceOption(RemoteSource);
-    if (sourceOption._tag === "Some" && (requested === undefined || sourceOption.value.id === requested)) {
-      return { name: sourceOption.value.id, config: { source: sourceOption.value.id } };
-    }
-    return yield* Effect.fail(unavailable(requested));
-  });
-};
+  const sourceOption = yield* Effect.serviceOption(RemoteSource);
+  if (sourceOption._tag === "Some" && (requested === undefined || sourceOption.value.id === requested)) {
+    return { name: sourceOption.value.id, config: { source: sourceOption.value.id } };
+  }
+  return yield* Effect.fail(unavailable(requested));
+});
 
-const resolveRemoteSource = (entry: RemoteEntry) =>
-  Effect.gen(function* () {
-    const sourceOption = yield* Effect.serviceOption(RemoteSource);
-    if (sourceOption._tag === "None") return yield* Effect.fail(unavailable(entry.config.source));
-    const source = sourceOption.value;
-    if (source.id !== entry.config.source) return yield* Effect.fail(unavailable(entry.config.source));
-    return source;
-  });
+const resolveRemoteSource = Effect.fnUntraced(function* (entry: RemoteEntry) {
+  const sourceOption = yield* Effect.serviceOption(RemoteSource);
+  if (sourceOption._tag === "None") return yield* Effect.fail(unavailable(entry.config.source));
+  const source = sourceOption.value;
+  if (source.id !== entry.config.source) return yield* Effect.fail(unavailable(entry.config.source));
+  return source;
+});
 
-const resolvePlan = (
+const resolvePlan = Effect.fnUntraced(function* (
   cwd: string | undefined,
   target: ResolvedAppTarget | undefined,
-): Effect.Effect<AppPlan, AppPlanResolutionError, RemoteSyncServices> => {
-  if (target !== undefined) return Effect.succeed(target.plan);
-  return Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
-    const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
-    const capabilities = yield* registry.capabilities;
-    return yield* planner.plan(landofile, capabilities);
-  });
-};
+): Effect.fn.Return<AppPlan, AppPlanResolutionError, RemoteSyncServices> {
+  if (target !== undefined) return target.plan;
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
+  const capabilities = yield* registry.capabilities;
+  return yield* planner.plan(landofile, capabilities);
+});
 
 const validDatasetKinds = [
   "database",
@@ -257,44 +251,43 @@ const validDatasetKinds = [
 
 const isDatasetKind = (kind: string): kind is DatasetKind => validDatasetKinds.includes(kind as DatasetKind);
 
-const datasetKinds = (
+const datasetKinds = Effect.fnUntraced(function* (
   sourceDatasets: ReadonlyArray<DatasetKind>,
   requested: ReadonlyArray<string> | undefined,
-): Effect.Effect<ReadonlyArray<DatasetKind>, RemoteDatasetUnsupportedError> =>
-  Effect.gen(function* () {
-    if (requested === undefined) return sourceDatasets;
-    if (requested.length === 0) {
+): Effect.fn.Return<ReadonlyArray<DatasetKind>, RemoteDatasetUnsupportedError> {
+  if (requested === undefined) return sourceDatasets;
+  if (requested.length === 0) {
+    return yield* Effect.fail(
+      new RemoteDatasetUnsupportedError({
+        message: "No dataset kinds were selected.",
+        remediation: "Pass at least one dataset kind with --only, such as --only=database.",
+      }),
+    );
+  }
+
+  const selected: DatasetKind[] = [];
+  for (const kind of requested) {
+    if (!isDatasetKind(kind)) {
       return yield* Effect.fail(
         new RemoteDatasetUnsupportedError({
-          message: "No dataset kinds were selected.",
-          remediation: "Pass at least one dataset kind with --only, such as --only=database.",
+          message: `Unsupported dataset kind ${kind}.`,
+          dataset: kind,
+          remediation: `Use one of: ${validDatasetKinds.join(", ")}.`,
         }),
       );
     }
-
-    const selected: DatasetKind[] = [];
-    for (const kind of requested) {
-      if (!isDatasetKind(kind)) {
-        return yield* Effect.fail(
-          new RemoteDatasetUnsupportedError({
-            message: `Unsupported dataset kind ${kind}.`,
-            dataset: kind,
-            remediation: `Use one of: ${validDatasetKinds.join(", ")}.`,
-          }),
-        );
-      }
-      if (!sourceDatasets.includes(kind)) {
-        return yield* Effect.fail(
-          new RemoteDatasetUnsupportedError({
-            message: `RemoteSource does not support dataset kind ${kind}.`,
-            dataset: kind,
-          }),
-        );
-      }
-      if (!selected.includes(kind)) selected.push(kind);
+    if (!sourceDatasets.includes(kind)) {
+      return yield* Effect.fail(
+        new RemoteDatasetUnsupportedError({
+          message: `RemoteSource does not support dataset kind ${kind}.`,
+          dataset: kind,
+        }),
+      );
     }
-    return selected;
-  });
+    if (!selected.includes(kind)) selected.push(kind);
+  }
+  return selected;
+});
 
 const missingDataset = (kind?: DatasetKind): RemoteDatasetUnsupportedError =>
   new RemoteDatasetUnsupportedError({
@@ -306,11 +299,10 @@ const missingDataset = (kind?: DatasetKind): RemoteDatasetUnsupportedError =>
     remediation: "Install a Dataset plugin for the requested kind, then rerun the command.",
   });
 
-const defaultRemoteEnv = (source: RemoteSourceShape, config: RemoteConfigType) =>
-  Effect.gen(function* () {
-    const environments = yield* source.listEnvironments(config);
-    return environments.find((candidate) => candidate.default === true)?.id ?? environments[0]?.id ?? "dev";
-  });
+const defaultRemoteEnv = Effect.fnUntraced(function* (source: RemoteSourceShape, config: RemoteConfigType) {
+  const environments = yield* source.listEnvironments(config);
+  return environments.find((candidate) => candidate.default === true)?.id ?? environments[0]?.id ?? "dev";
+});
 
 const datasetContext = (plan: AppPlan, kind: DatasetKind, landofile: typeof LandofileShape.Type) => ({
   app: plan.id,
@@ -319,41 +311,46 @@ const datasetContext = (plan: AppPlan, kind: DatasetKind, landofile: typeof Land
   ...(landofile.sync?.[kind] === undefined ? {} : { binding: landofile.sync[kind] }),
 });
 
-const confirmDestructive = (message: string, options: RemoteSyncOptions, confirm?: RemoteSyncConfirmation) =>
-  Effect.gen(function* () {
-    if (options.yes === true || options.noInteractive === true) return;
-    const confirmed = confirm === undefined ? undefined : yield* confirm(message);
-    if (confirmed === undefined) {
-      return yield* Effect.fail(
-        new RemoteProtectedEnvError({
-          message: "Remote sync requires confirmation, but no InteractionService is available.",
-          remediation:
-            "Provide an InteractionService or re-run with -y/--yes after verifying the remote target.",
-        }),
-      );
-    }
-    if (!confirmed) {
-      return yield* Effect.fail(
-        new RemoteProtectedEnvError({
-          message: "Remote sync was not confirmed.",
-          remediation: "Re-run with -y/--yes after verifying the selected remote and environment.",
-        }),
-      );
-    }
-  });
+const confirmDestructive = Effect.fnUntraced(function* (
+  message: string,
+  options: RemoteSyncOptions,
+  confirm?: RemoteSyncConfirmation,
+) {
+  if (options.yes === true || options.noInteractive === true) return;
+  const confirmed = confirm === undefined ? undefined : yield* confirm(message);
+  if (confirmed === undefined) {
+    return yield* Effect.fail(
+      new RemoteProtectedEnvError({
+        message: "Remote sync requires confirmation, but no InteractionService is available.",
+        remediation:
+          "Provide an InteractionService or re-run with -y/--yes after verifying the remote target.",
+      }),
+    );
+  }
+  if (!confirmed) {
+    return yield* Effect.fail(
+      new RemoteProtectedEnvError({
+        message: "Remote sync was not confirmed.",
+        remediation: "Re-run with -y/--yes after verifying the selected remote and environment.",
+      }),
+    );
+  }
+});
 
-const snapshotBeforeApply = (store: VolumeRef | null, options: RemoteSyncOptions) =>
-  Effect.gen(function* () {
-    if (store === null || options.noSnapshot === true) return undefined;
-    const dataMover = yield* Effect.serviceOption(DataMover);
-    if (dataMover._tag === "None") return undefined;
-    return yield* Effect.scoped(dataMover.value.snapshot(store));
-  });
+const snapshotBeforeApply = Effect.fnUntraced(function* (
+  store: VolumeRef | null,
+  options: RemoteSyncOptions,
+) {
+  if (store === null || options.noSnapshot === true) return undefined;
+  const dataMover = yield* Effect.serviceOption(DataMover);
+  if (dataMover._tag === "None") return undefined;
+  return yield* Effect.scoped(dataMover.value.snapshot(store));
+});
 
-export const appRemoteList = (
+export const appRemoteList = Effect.fn("AppOperation.remoteList")(function* (
   options: RemoteListOptions = {},
-): Effect.Effect<ReadonlyArray<RemoteEntry>, LandofileNotFoundError | LandofileParseError> =>
-  loadRemoteLandofile(options.cwd).pipe(
+): Effect.fn.Return<ReadonlyArray<RemoteEntry>, LandofileNotFoundError | LandofileParseError> {
+  return yield* loadRemoteLandofile(options.cwd).pipe(
     Effect.map(({ landofile }) => {
       const entries = remoteEntries(landofile);
       return (
@@ -361,232 +358,233 @@ export const appRemoteList = (
       ).map(redactEntry);
     }),
   );
+});
 
-export const appRemoteAdd = (
+export const appRemoteAdd = Effect.fn("AppOperation.remoteAdd")(function* (
   options: RemoteAddOptions,
-): Effect.Effect<RemoteMutationResult, LandofileNotFoundError | LandofileParseError> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd);
-    const remotes = { ...(loaded.landofile.remotes ?? {}), [options.name]: options.config };
-    const next = { ...loaded.landofile, remotes };
-    yield* writeLandofile(loaded.file, next);
-    return redactMutationResult({
-      app: next.name ?? "app",
-      remote: options.name,
-      file: loaded.file,
-      config: options.config,
-    });
+): Effect.fn.Return<RemoteMutationResult, LandofileNotFoundError | LandofileParseError> {
+  const loaded = yield* loadRemoteLandofile(options.cwd);
+  const remotes = { ...(loaded.landofile.remotes ?? {}), [options.name]: options.config };
+  const next = { ...loaded.landofile, remotes };
+  yield* writeLandofile(loaded.file, next);
+  return redactMutationResult({
+    app: next.name ?? "app",
+    remote: options.name,
+    file: loaded.file,
+    config: options.config,
   });
+});
 
-export const appRemoteRemove = (
+export const appRemoteRemove = Effect.fn("AppOperation.remoteRemove")(function* (
   options: RemoteRemoveOptions,
-): Effect.Effect<RemoteMutationResult, LandofileNotFoundError | LandofileParseError | RemoteError> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd);
-    const existing = loaded.landofile.remotes?.[options.name];
-    if (existing === undefined) {
-      return yield* Effect.fail(
-        new RemoteError({
-          message: `Remote ${options.name} is not configured in this Landofile.`,
-          remote: options.name,
-        }),
-      );
-    }
-    const { [options.name]: _removed, ...remotes } = loaded.landofile.remotes ?? {};
-    const next = { ...loaded.landofile, remotes };
-    yield* writeLandofile(loaded.file, next);
-    return redactMutationResult({
-      app: next.name ?? "app",
-      remote: options.name,
-      file: loaded.file,
-      config: existing,
-    });
+): Effect.fn.Return<RemoteMutationResult, LandofileNotFoundError | LandofileParseError | RemoteError> {
+  const loaded = yield* loadRemoteLandofile(options.cwd);
+  const existing = loaded.landofile.remotes?.[options.name];
+  if (existing === undefined) {
+    return yield* Effect.fail(
+      new RemoteError({
+        message: `Remote ${options.name} is not configured in this Landofile.`,
+        remote: options.name,
+      }),
+    );
+  }
+  const { [options.name]: _removed, ...remotes } = loaded.landofile.remotes ?? {};
+  const next = { ...loaded.landofile, remotes };
+  yield* writeLandofile(loaded.file, next);
+  return redactMutationResult({
+    app: next.name ?? "app",
+    remote: options.name,
+    file: loaded.file,
+    config: existing,
   });
+});
 
-export const appRemoteEnvList = (
+export const appRemoteEnvList = Effect.fn("AppOperation.remoteEnvList")(function* (
   options: RemoteEnvListOptions = {},
-): Effect.Effect<ReadonlyArray<RemoteEnvironmentType>, RemoteSyncError> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd);
-    const entry = yield* chooseRemote(loaded.landofile, options.remote);
-    const source = yield* resolveRemoteSource(entry);
-    return yield* source.listEnvironments(entry.config);
-  });
+): Effect.fn.Return<ReadonlyArray<RemoteEnvironmentType>, RemoteSyncError> {
+  const loaded = yield* loadRemoteLandofile(options.cwd);
+  const entry = yield* chooseRemote(loaded.landofile, options.remote);
+  const source = yield* resolveRemoteSource(entry);
+  return yield* source.listEnvironments(entry.config);
+});
 
-export const appRemoteTest = (
+export const appRemoteTest = Effect.fn("AppOperation.remoteTest")(function* (
   options: RemoteTestOptions = {},
-): Effect.Effect<RemoteTestResult, RemoteSyncError> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd);
-    const entry = yield* chooseRemote(loaded.landofile, options.remote);
-    const source = yield* resolveRemoteSource(entry);
-    if (source.test !== undefined) return yield* source.test(entry.config, options.env);
-    const environments = yield* source.listEnvironments(entry.config);
-    const env =
-      options.env ?? environments.find((candidate) => candidate.default === true)?.id ?? environments[0]?.id;
-    return {
-      ok: env !== undefined,
-      ...(env === undefined ? {} : { env }),
-      message: "RemoteSource resolved.",
-    };
-  });
+): Effect.fn.Return<RemoteTestResult, RemoteSyncError> {
+  const loaded = yield* loadRemoteLandofile(options.cwd);
+  const entry = yield* chooseRemote(loaded.landofile, options.remote);
+  const source = yield* resolveRemoteSource(entry);
+  if (source.test !== undefined) return yield* source.test(entry.config, options.env);
+  const environments = yield* source.listEnvironments(entry.config);
+  const env =
+    options.env ?? environments.find((candidate) => candidate.default === true)?.id ?? environments[0]?.id;
+  return {
+    ok: env !== undefined,
+    ...(env === undefined ? {} : { env }),
+    message: "RemoteSource resolved.",
+  };
+});
 
-export const appRemoteSetup = (options: RemoteSetupOptions = {}) => appRemoteTest(options);
+export const appRemoteSetup = Effect.fn("AppOperation.remoteSetup")(function* (
+  options: RemoteSetupOptions = {},
+) {
+  return yield* appRemoteTest(options);
+});
 
-const appPullWithPlan = <E, R>(
+const appPullWithPlan = Effect.fnUntraced(function* <E, R>(
   options: RemoteSyncOptions,
   planEffect: Effect.Effect<AppPlan, E, R>,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, PullAppError | E, R> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd);
-    const entry = yield* chooseRemote(loaded.landofile, options.remote);
-    const source = yield* resolveRemoteSource(entry);
-    const dataset = yield* Effect.serviceOption(Dataset);
-    if (dataset._tag === "None") return yield* Effect.fail(missingDataset());
-    const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
-    const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
-    if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
-    const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
-    const plan = yield* planEffect;
-    const artifacts: DataEndpoint[] = [];
-    const snapshots = [];
-    let changed = false;
-    yield* confirmDestructive(`Pull ${kinds.join(", ")} from ${entry.name}@${env}?`, options, confirm);
-    for (const kind of kinds) {
-      const locator = yield* source.resolve(entry.config, env, kind);
-      const artifact = yield* Effect.scoped(
-        source.fetch(locator, options.force === undefined ? {} : { force: options.force }),
-      );
-      artifacts.push(artifact);
-      const ctx = datasetContext(plan, kind, loaded.landofile);
-      const localStore = yield* dataset.value.localStore(ctx);
-      const snapshot = yield* snapshotBeforeApply(localStore, options);
-      if (snapshot !== undefined) snapshots.push(snapshot);
-      const applied = yield* Effect.scoped(
-        dataset.value.apply(ctx, artifact, {
-          ...(options.force === undefined ? {} : { force: options.force }),
-          snapshot: options.noSnapshot !== true,
-        }),
-      );
-      changed = changed || applied.changed;
-    }
-    return redactSyncResult({
-      direction: "pull",
-      remote: entry.name,
-      env,
-      datasets: kinds,
-      changed,
-      artifacts,
-      snapshots,
-    });
+): Effect.fn.Return<SyncResultType, PullAppError | E, R> {
+  const loaded = yield* loadRemoteLandofile(options.cwd);
+  const entry = yield* chooseRemote(loaded.landofile, options.remote);
+  const source = yield* resolveRemoteSource(entry);
+  const dataset = yield* Effect.serviceOption(Dataset);
+  if (dataset._tag === "None") return yield* Effect.fail(missingDataset());
+  const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
+  const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
+  if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
+  const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
+  const plan = yield* planEffect;
+  const artifacts: DataEndpoint[] = [];
+  const snapshots = [];
+  let changed = false;
+  yield* confirmDestructive(`Pull ${kinds.join(", ")} from ${entry.name}@${env}?`, options, confirm);
+  for (const kind of kinds) {
+    const locator = yield* source.resolve(entry.config, env, kind);
+    const artifact = yield* Effect.scoped(
+      source.fetch(locator, options.force === undefined ? {} : { force: options.force }),
+    );
+    artifacts.push(artifact);
+    const ctx = datasetContext(plan, kind, loaded.landofile);
+    const localStore = yield* dataset.value.localStore(ctx);
+    const snapshot = yield* snapshotBeforeApply(localStore, options);
+    if (snapshot !== undefined) snapshots.push(snapshot);
+    const applied = yield* Effect.scoped(
+      dataset.value.apply(ctx, artifact, {
+        ...(options.force === undefined ? {} : { force: options.force }),
+        snapshot: options.noSnapshot !== true,
+      }),
+    );
+    changed = changed || applied.changed;
+  }
+  return redactSyncResult({
+    direction: "pull",
+    remote: entry.name,
+    env,
+    datasets: kinds,
+    changed,
+    artifacts,
+    snapshots,
   });
+});
 
-export const appPullForTarget = (
+export const appPullForTarget = Effect.fn("AppOperation.pullForTarget")(function* (
   options: RemoteSyncOptions | undefined,
   target: ResolvedAppTarget,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, PullAppError> =>
-  appPullWithPlan(
+): Effect.fn.Return<SyncResultType, PullAppError> {
+  return yield* appPullWithPlan(
     { ...(options ?? {}), cwd: options?.cwd ?? target.root },
     Effect.succeed(target.plan),
     confirm,
   );
+});
 
-export const appPull = (
+export const appPull = Effect.fn("AppOperation.pull")(function* (
   options: RemoteSyncOptions = {},
   target?: ResolvedAppTarget,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> => {
+): Effect.fn.Return<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> {
   const cwd = options.cwd ?? target?.root;
-  return appPullWithPlan(
+  return yield* appPullWithPlan(
     cwd === undefined ? options : { ...options, cwd },
     resolvePlan(options.cwd, target),
     confirm,
   );
-};
+});
 
-const appPushWithPlan = <E, R>(
+const appPushWithPlan = Effect.fnUntraced(function* <E, R>(
   options: RemoteSyncOptions,
   planEffect: Effect.Effect<AppPlan, E, R>,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, PushAppError | E, R> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadRemoteLandofile(options.cwd);
-    const entry = yield* chooseRemote(loaded.landofile, options.remote);
-    const source = yield* resolveRemoteSource(entry);
-    if (!source.capabilities.push) {
-      return yield* Effect.fail(
-        new RemoteDatasetUnsupportedError({
-          message: "RemoteSource does not support push.",
-          remote: entry.name,
-        }),
-      );
-    }
-    const dataset = yield* Effect.serviceOption(Dataset);
-    if (dataset._tag === "None") return yield* Effect.fail(missingDataset());
-    const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
-    const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
-    if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
-    const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
-    if (source.capabilities.protectedByDefault?.includes(env) === true && options.force !== true) {
-      return yield* Effect.fail(
-        new RemoteProtectedEnvError({
-          message: `Environment ${env} is protected and requires --force before push.`,
-          remote: entry.name,
-          env,
-          remediation: "Re-run with --force only after verifying the remote target.",
-        }),
-      );
-    }
-    const plan = yield* planEffect;
-    const artifacts: DataEndpoint[] = [];
-    yield* confirmDestructive(`Push ${kinds.join(", ")} to ${entry.name}@${env}?`, options, confirm);
-    for (const kind of kinds) {
-      const ctx = datasetContext(plan, kind, loaded.landofile);
-      const artifact = yield* Effect.scoped(dataset.value.capture(ctx));
-      artifacts.push(artifact);
-      const locator = yield* source.resolve(entry.config, env, kind);
-      yield* Effect.scoped(
-        source.send(locator, artifact, {
-          ...(options.force === undefined ? {} : { force: options.force }),
-          protectedEnvConfirmed: options.force === true,
-        }),
-      );
-    }
-    return redactSyncResult({
-      direction: "push",
-      remote: entry.name,
-      env,
-      datasets: kinds,
-      changed: artifacts.length > 0,
-      artifacts,
-    });
+): Effect.fn.Return<SyncResultType, PushAppError | E, R> {
+  const loaded = yield* loadRemoteLandofile(options.cwd);
+  const entry = yield* chooseRemote(loaded.landofile, options.remote);
+  const source = yield* resolveRemoteSource(entry);
+  if (!source.capabilities.push) {
+    return yield* Effect.fail(
+      new RemoteDatasetUnsupportedError({
+        message: "RemoteSource does not support push.",
+        remote: entry.name,
+      }),
+    );
+  }
+  const dataset = yield* Effect.serviceOption(Dataset);
+  if (dataset._tag === "None") return yield* Effect.fail(missingDataset());
+  const kinds = yield* datasetKinds(source.capabilities.datasets, options.only);
+  const missingKind = kinds.find((kind) => kind !== dataset.value.kind);
+  if (missingKind !== undefined) return yield* Effect.fail(missingDataset(missingKind));
+  const env = options.env ?? (yield* defaultRemoteEnv(source, entry.config));
+  if (source.capabilities.protectedByDefault?.includes(env) === true && options.force !== true) {
+    return yield* Effect.fail(
+      new RemoteProtectedEnvError({
+        message: `Environment ${env} is protected and requires --force before push.`,
+        remote: entry.name,
+        env,
+        remediation: "Re-run with --force only after verifying the remote target.",
+      }),
+    );
+  }
+  const plan = yield* planEffect;
+  const artifacts: DataEndpoint[] = [];
+  yield* confirmDestructive(`Push ${kinds.join(", ")} to ${entry.name}@${env}?`, options, confirm);
+  for (const kind of kinds) {
+    const ctx = datasetContext(plan, kind, loaded.landofile);
+    const artifact = yield* Effect.scoped(dataset.value.capture(ctx));
+    artifacts.push(artifact);
+    const locator = yield* source.resolve(entry.config, env, kind);
+    yield* Effect.scoped(
+      source.send(locator, artifact, {
+        ...(options.force === undefined ? {} : { force: options.force }),
+        protectedEnvConfirmed: options.force === true,
+      }),
+    );
+  }
+  return redactSyncResult({
+    direction: "push",
+    remote: entry.name,
+    env,
+    datasets: kinds,
+    changed: artifacts.length > 0,
+    artifacts,
   });
+});
 
-export const appPushForTarget = (
+export const appPushForTarget = Effect.fn("AppOperation.pushForTarget")(function* (
   options: RemoteSyncOptions | undefined,
   target: ResolvedAppTarget,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, PushAppError> =>
-  appPushWithPlan(
+): Effect.fn.Return<SyncResultType, PushAppError> {
+  return yield* appPushWithPlan(
     { ...(options ?? {}), cwd: options?.cwd ?? target.root },
     Effect.succeed(target.plan),
     confirm,
   );
+});
 
-export const appPush = (
+export const appPush = Effect.fn("AppOperation.push")(function* (
   options: RemoteSyncOptions = {},
   target?: ResolvedAppTarget,
   confirm?: RemoteSyncConfirmation,
-): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> => {
+): Effect.fn.Return<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> {
   const cwd = options.cwd ?? target?.root;
-  return appPushWithPlan(
+  return yield* appPushWithPlan(
     cwd === undefined ? options : { ...options, cwd },
     resolvePlan(options.cwd, target),
     confirm,
   );
-};
+});
 
 export const appRemote = {
   list: appRemoteList,

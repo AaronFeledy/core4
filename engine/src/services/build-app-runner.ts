@@ -23,7 +23,7 @@ import { type AppBuildInput, runAppBuildStep } from "./build-app-step-runner.ts"
 import { findCompleteBuildResult, openAppBuildResults, recordBuildResult } from "./build-results.ts";
 import { makeBuildTranscriptPath } from "./build-transcript.ts";
 
-const timestamp = () => DateTime.nowUnsafe();
+const timestamp = DateTime.now;
 
 const cacheError = (providerId: string, cause: unknown) =>
   new ProviderInternalError({
@@ -101,242 +101,243 @@ const runGate = (
   }
 };
 
-export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {}) =>
-  Effect.gen(function* () {
-    const steps = appSteps(input.plan);
-    if (steps.length === 0) return;
-    const graphPlan = buildAppGraph(input.plan, steps);
-    if (graphPlan._tag === "Cycle") return yield* planError(input, graphPlan.edges);
-    const parentId = `build-app-${String(input.plan.id)}`;
-    const bucket = yield* openAppBuildResults(input.stateStore, String(input.plan.id)).pipe(
-      Effect.mapError((cause) => cacheError(input.provider.id, cause)),
-    );
-    const cached =
-      (yield* bucket.get.pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)))) ?? [];
-    yield* input.events.publish(
-      TaskTreeStartEvent.make({
-        parentId,
-        label: "Building app dependencies",
-        children: steps.map(({ step }) => step.id),
-        mode: "list",
-        timestamp: timestamp(),
-      }),
-    );
-    const started = performance.now();
-    const startedIds = new Set<string>();
-    const settledIds = new Set<string>();
-    const succeededIds = new Set<string>();
-    const failures = new Map<string, BuildStepFailedError>();
-    let treeSettled = false;
+export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* (
+  input: AppBuildInput,
+  options: BuildAppOptions = {},
+) {
+  const steps = appSteps(input.plan);
+  if (steps.length === 0) return;
+  const graphPlan = buildAppGraph(input.plan, steps);
+  if (graphPlan._tag === "Cycle") return yield* planError(input, graphPlan.edges);
+  const parentId = `build-app-${String(input.plan.id)}`;
+  const bucket = yield* openAppBuildResults(input.stateStore, String(input.plan.id)).pipe(
+    Effect.mapError((cause) => cacheError(input.provider.id, cause)),
+  );
+  const cached =
+    (yield* bucket.get.pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)))) ?? [];
+  yield* input.events.publish(
+    TaskTreeStartEvent.make({
+      parentId,
+      label: "Building app dependencies",
+      children: steps.map(({ step }) => step.id),
+      mode: "list",
+      timestamp: yield* timestamp,
+    }),
+  );
+  const started = performance.now();
+  const startedIds = new Set<string>();
+  const settledIds = new Set<string>();
+  const succeededIds = new Set<string>();
+  const failures = new Map<string, BuildStepFailedError>();
+  let treeSettled = false;
 
-    const runStep = (appStep: AppStep, blockedBy: ReadonlyArray<string>) =>
-      Effect.gen(function* () {
-        const { step } = appStep;
-        const transcriptPath = transcriptPathFor(input, step);
-        startedIds.add(step.id);
-        // The blocked check stays ahead of the build-results lookup: a cached step
-        // must not bypass a gate or predecessor that just failed.
-        if (blockedBy.length > 0) {
-          const summary = `${step.id} blocked by ${blockedBy.join(", ")}`;
-          yield* input.events.publish(
-            TaskStartEvent.make({
-              taskId: step.id,
-              parentId,
-              label: `Build ${String(step.service)}`,
-              transcriptPath,
-              timestamp: timestamp(),
-            }),
-          );
-          yield* input.events.publish({
-            _tag: "build-step-skip",
-            eventName: "build-step-skip",
-            appRef: appRefFor(input),
-            serviceName: input.redactor.redactString(step.service),
-            providerId: input.redactor.redactString(input.plan.provider),
-            phase: "app",
-            buildKey: step.buildKey,
-            cached: false,
-            reason: "phase-aborted",
-            timestamp: timestamp(),
-          });
-          yield* input.events.publish(
-            TaskFailEvent.make({
-              taskId: step.id,
-              summary,
-              exitCode: 1,
-              durationMs: 0,
-              timestamp: timestamp(),
-            }),
-          );
-          settledIds.add(step.id);
-          failures.set(step.id, new BuildStepFailedError({ step, exitCode: 1, transcriptPath, summary }));
-          return "blocked" as const;
-        }
-        if (!options.force && findCompleteBuildResult(cached, step) !== undefined) {
-          yield* input.events.publish(
-            TaskStartEvent.make({
-              taskId: step.id,
-              parentId,
-              label: `Build ${String(step.service)}`,
-              transcriptPath,
-              timestamp: timestamp(),
-            }),
-          );
-          yield* input.events.publish({
-            _tag: "build-step-skip",
-            eventName: "build-step-skip",
-            appRef: appRefFor(input),
-            serviceName: input.redactor.redactString(step.service),
-            providerId: input.redactor.redactString(input.plan.provider),
-            phase: "app",
-            buildKey: step.buildKey,
-            cached: true,
-            reason: "up-to-date",
-            timestamp: timestamp(),
-          });
-          yield* input.events.publish(
-            TaskCompleteEvent.make({
-              taskId: step.id,
-              summary: `${step.id} cached`,
-              durationMs: 0,
-              timestamp: timestamp(),
-            }),
-          );
-          settledIds.add(step.id);
-          succeededIds.add(step.id);
-          return "succeeded" as const;
-        }
-        const result = yield* runAppBuildStep(input, appStep, transcriptPath);
-        settledIds.add(step.id);
-        if (result.exitCode === 0) succeededIds.add(step.id);
-        yield* recordBuildResult(bucket, {
-          buildKey: step.buildKey,
-          service: step.service,
-          phase: "app",
-          outcome: result.exitCode === 0 ? "complete" : "fail",
-          exitCode: result.exitCode,
-          durationMs: result.durationMs,
-          transcriptPath,
-        }).pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)));
-        if (result.exitCode === 0) return "succeeded" as const;
-        failures.set(
-          step.id,
-          new BuildStepFailedError({
-            step,
-            exitCode: result.exitCode,
-            transcriptPath,
-            summary: `${step.id} failed`,
-          }),
-        );
-        return "failed" as const;
-      });
-
-    const execution = Effect.gen(function* () {
-      const nodeById = new Map(graphPlan.graph.nodes.map((node) => [node.id, node.value]));
-      const settled = yield* runDependencySchedule(graphPlan.graph, {
-        concurrency: Math.max(1, Math.min(4, availableParallelism())),
-        run: (node, blockedBy) => {
-          if (node.value._tag === "gate") return runGate(input, node.value, options.signal);
-          const labels = blockedBy.map((id) => {
-            const blockedNode = nodeById.get(id);
-            if (blockedNode?._tag === "gate") {
-              return gateId(String(blockedNode.service), blockedNode.condition);
-            }
-            if (blockedNode?._tag === "step") return blockedNode.appStep.step.id;
-            return id;
-          });
-          return runStep(node.value.appStep, labels);
-        },
-      });
-      if (settled._tag === "Cycle") return yield* planError(input, settled.edges);
-      const ordered = steps.flatMap(({ step }) => {
-        const failure = failures.get(step.id);
-        return failure === undefined ? [] : [failure];
-      });
+  const runStep = Effect.fnUntraced(function* (appStep: AppStep, blockedBy: ReadonlyArray<string>) {
+    const { step } = appStep;
+    const transcriptPath = transcriptPathFor(input, step);
+    startedIds.add(step.id);
+    // The blocked check stays ahead of the build-results lookup: a cached step
+    // must not bypass a gate or predecessor that just failed.
+    if (blockedBy.length > 0) {
+      const summary = `${step.id} blocked by ${blockedBy.join(", ")}`;
       yield* input.events.publish(
-        TaskTreeCompleteEvent.make({
+        TaskStartEvent.make({
+          taskId: step.id,
           parentId,
-          summary: ordered.length === 0 ? "App dependencies built" : "App dependency build failed",
-          succeeded: steps.length - ordered.length,
-          failed: ordered.length,
-          durationMs: performance.now() - started,
-          timestamp: timestamp(),
+          label: `Build ${String(step.service)}`,
+          transcriptPath,
+          timestamp: yield* timestamp,
         }),
       );
-      treeSettled = true;
-      if (ordered.length > 0) {
-        yield* new BuildPhaseFailedError({
-          app: {
-            kind: String(input.plan.id).startsWith("scratch-") ? "scratch" : "user",
-            id: input.plan.id,
-            root: input.plan.root,
-          },
-          phase: "app",
-          failures: ordered,
+      yield* input.events.publish({
+        _tag: "build-step-skip",
+        eventName: "build-step-skip",
+        appRef: appRefFor(input),
+        serviceName: input.redactor.redactString(step.service),
+        providerId: input.redactor.redactString(input.plan.provider),
+        phase: "app",
+        buildKey: step.buildKey,
+        cached: false,
+        reason: "phase-aborted",
+        timestamp: yield* timestamp,
+      });
+      yield* input.events.publish(
+        TaskFailEvent.make({
+          taskId: step.id,
+          summary,
+          exitCode: 1,
+          durationMs: 0,
+          timestamp: yield* timestamp,
+        }),
+      );
+      settledIds.add(step.id);
+      failures.set(step.id, new BuildStepFailedError({ step, exitCode: 1, transcriptPath, summary }));
+      return "blocked" as const;
+    }
+    if (!options.force && findCompleteBuildResult(cached, step) !== undefined) {
+      yield* input.events.publish(
+        TaskStartEvent.make({
+          taskId: step.id,
+          parentId,
+          label: `Build ${String(step.service)}`,
+          transcriptPath,
+          timestamp: yield* timestamp,
+        }),
+      );
+      yield* input.events.publish({
+        _tag: "build-step-skip",
+        eventName: "build-step-skip",
+        appRef: appRefFor(input),
+        serviceName: input.redactor.redactString(step.service),
+        providerId: input.redactor.redactString(input.plan.provider),
+        phase: "app",
+        buildKey: step.buildKey,
+        cached: true,
+        reason: "up-to-date",
+        timestamp: yield* timestamp,
+      });
+      yield* input.events.publish(
+        TaskCompleteEvent.make({
+          taskId: step.id,
+          summary: `${step.id} cached`,
+          durationMs: 0,
+          timestamp: yield* timestamp,
+        }),
+      );
+      settledIds.add(step.id);
+      succeededIds.add(step.id);
+      return "succeeded" as const;
+    }
+    const result = yield* runAppBuildStep(input, appStep, transcriptPath);
+    settledIds.add(step.id);
+    if (result.exitCode === 0) succeededIds.add(step.id);
+    yield* recordBuildResult(bucket, {
+      buildKey: step.buildKey,
+      service: step.service,
+      phase: "app",
+      outcome: result.exitCode === 0 ? "complete" : "fail",
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      transcriptPath,
+    }).pipe(Effect.mapError((cause) => cacheError(input.provider.id, cause)));
+    if (result.exitCode === 0) return "succeeded" as const;
+    failures.set(
+      step.id,
+      new BuildStepFailedError({
+        step,
+        exitCode: result.exitCode,
+        transcriptPath,
+        summary: `${step.id} failed`,
+      }),
+    );
+    return "failed" as const;
+  });
+
+  const execution = Effect.gen(function* () {
+    const nodeById = new Map(graphPlan.graph.nodes.map((node) => [node.id, node.value]));
+    const settled = yield* runDependencySchedule(graphPlan.graph, {
+      concurrency: Math.max(1, Math.min(4, availableParallelism())),
+      run: (node, blockedBy) => {
+        if (node.value._tag === "gate") return runGate(input, node.value, options.signal);
+        const labels = blockedBy.map((id) => {
+          const blockedNode = nodeById.get(id);
+          if (blockedNode?._tag === "gate") {
+            return gateId(String(blockedNode.service), blockedNode.condition);
+          }
+          if (blockedNode?._tag === "step") return blockedNode.appStep.step.id;
+          return id;
         });
-      }
+        return runStep(node.value.appStep, labels);
+      },
     });
-    const interruptOnAbort =
-      options.signal === undefined
-        ? execution
-        : Effect.raceFirst(
-            execution,
-            Effect.callback<void>((resume) => {
-              const signal = options.signal;
-              if (signal === undefined) return;
-              if (signal.aborted) {
-                resume(Effect.interrupt);
-                return;
-              }
-              const abort = () => resume(Effect.interrupt);
-              signal.addEventListener("abort", abort, { once: true });
-              return Effect.sync(() => signal.removeEventListener("abort", abort));
-            }),
-          );
-    yield* interruptOnAbort.pipe(
-      Effect.onExit((exit) => {
-        if (Exit.isSuccess(exit) || treeSettled) return Effect.void;
-        const summary = Cause.hasInterruptsOnly(exit.cause) ? "interrupted" : "failed";
-        return Effect.uninterruptible(
-          Effect.exit(
-            Effect.gen(function* () {
-              for (const { step } of steps) {
-                if (settledIds.has(step.id)) continue;
-                const transcriptPath = transcriptPathFor(input, step);
-                if (!startedIds.has(step.id)) {
-                  yield* input.events.publish(
-                    TaskStartEvent.make({
-                      taskId: step.id,
-                      parentId,
-                      label: `Build ${String(step.service)}`,
-                      transcriptPath,
-                      timestamp: timestamp(),
-                    }),
-                  );
-                }
+    if (settled._tag === "Cycle") return yield* planError(input, settled.edges);
+    const ordered = steps.flatMap(({ step }) => {
+      const failure = failures.get(step.id);
+      return failure === undefined ? [] : [failure];
+    });
+    yield* input.events.publish(
+      TaskTreeCompleteEvent.make({
+        parentId,
+        summary: ordered.length === 0 ? "App dependencies built" : "App dependency build failed",
+        succeeded: steps.length - ordered.length,
+        failed: ordered.length,
+        durationMs: performance.now() - started,
+        timestamp: yield* timestamp,
+      }),
+    );
+    treeSettled = true;
+    if (ordered.length > 0) {
+      yield* new BuildPhaseFailedError({
+        app: {
+          kind: String(input.plan.id).startsWith("scratch-") ? "scratch" : "user",
+          id: input.plan.id,
+          root: input.plan.root,
+        },
+        phase: "app",
+        failures: ordered,
+      });
+    }
+  });
+  const interruptOnAbort =
+    options.signal === undefined
+      ? execution
+      : Effect.raceFirst(
+          execution,
+          Effect.callback<void>((resume) => {
+            const signal = options.signal;
+            if (signal === undefined) return;
+            if (signal.aborted) {
+              resume(Effect.interrupt);
+              return;
+            }
+            const abort = () => resume(Effect.interrupt);
+            signal.addEventListener("abort", abort, { once: true });
+            return Effect.sync(() => signal.removeEventListener("abort", abort));
+          }),
+        );
+  yield* interruptOnAbort.pipe(
+    Effect.onExit((exit) => {
+      if (Exit.isSuccess(exit) || treeSettled) return Effect.void;
+      const summary = Cause.hasInterruptsOnly(exit.cause) ? "interrupted" : "failed";
+      return Effect.uninterruptible(
+        Effect.exit(
+          Effect.gen(function* () {
+            for (const { step } of steps) {
+              if (settledIds.has(step.id)) continue;
+              const transcriptPath = transcriptPathFor(input, step);
+              if (!startedIds.has(step.id)) {
                 yield* input.events.publish(
-                  TaskFailEvent.make({
+                  TaskStartEvent.make({
                     taskId: step.id,
-                    summary: `${step.id} ${summary}`,
-                    exitCode: 1,
-                    durationMs: performance.now() - started,
-                    timestamp: timestamp(),
+                    parentId,
+                    label: `Build ${String(step.service)}`,
+                    transcriptPath,
+                    timestamp: yield* timestamp,
                   }),
                 );
               }
               yield* input.events.publish(
-                TaskTreeCompleteEvent.make({
-                  parentId,
-                  summary: `App dependency build ${summary}`,
-                  succeeded: succeededIds.size,
-                  failed: steps.length - succeededIds.size,
+                TaskFailEvent.make({
+                  taskId: step.id,
+                  summary: `${step.id} ${summary}`,
+                  exitCode: 1,
                   durationMs: performance.now() - started,
-                  timestamp: timestamp(),
+                  timestamp: yield* timestamp,
                 }),
               );
-            }),
-          ).pipe(Effect.asVoid),
-        );
-      }),
-    );
-  });
+            }
+            yield* input.events.publish(
+              TaskTreeCompleteEvent.make({
+                parentId,
+                summary: `App dependency build ${summary}`,
+                succeeded: succeededIds.size,
+                failed: steps.length - succeededIds.size,
+                durationMs: performance.now() - started,
+                timestamp: yield* timestamp,
+              }),
+            );
+          }),
+        ).pipe(Effect.asVoid),
+      );
+    }),
+  );
+});

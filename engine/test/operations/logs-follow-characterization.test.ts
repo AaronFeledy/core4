@@ -82,18 +82,24 @@ describe("log-follow completion", () => {
         },
       };
       const layer = Layer.merge(
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
-        Layer.succeed(StreamFrameSink, {
-          emit: (frame) =>
-            Effect.sync(() => {
-              frames.push(frame);
-              if (mode === "abort" && frames.length === 2) controller.abort();
-            }),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([providerId]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
+        Layer.succeed(
+          StreamFrameSink,
+          StreamFrameSink.of({
+            emit: (frame) =>
+              Effect.sync(() => {
+                frames.push(frame);
+                if (mode === "abort" && frames.length === 2) controller.abort();
+              }),
+          }),
+        ),
       );
 
       const result = await Effect.runPromise(

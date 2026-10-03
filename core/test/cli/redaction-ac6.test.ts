@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { makeEnvSecretStoreLive } from "@lando/engine/services/secret-store";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
@@ -11,7 +11,7 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const secretEnv = { LANDO_SECRET_AC6: "ac6secretvalue" };
 const realRedactionLayer = RedactionService.layer.pipe(
-  Layer.provide(makeEnvSecretStoreLive({ env: secretEnv })),
+  Layer.provide(EnvSecretStore.layerWith({ env: secretEnv })),
 );
 
 describe("redaction integration on emitting surfaces", () => {

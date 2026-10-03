@@ -8,13 +8,13 @@ import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
 } from "../../../src/plugins/certificate-authority-resolver.ts";
-import { DeferredCertificateAuthorityLive } from "../../../src/subsystems/proxy/deferred-certificate-authority.ts";
+import * as DeferredCertificateAuthority from "../../../src/subsystems/proxy/deferred-certificate-authority.ts";
 
 const buildAuthority = (resolver: CertificateAuthorityResolverShape) =>
   Effect.scoped(
     Effect.map(
       Layer.build(
-        DeferredCertificateAuthorityLive.pipe(
+        DeferredCertificateAuthority.layer.pipe(
           Layer.provide(Layer.succeed(CertificateAuthorityResolver, resolver)),
         ),
       ),

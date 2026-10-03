@@ -43,19 +43,22 @@ const isolate = async () => {
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Schema.is(LandoEventSchema)(event)
-          ? Effect.sync(() => {
-              events.push(event);
-            })
-          : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
-      subscribe: () => Stream.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Schema.is(LandoEventSchema)(event)
+            ? Effect.sync(() => {
+                events.push(event);
+              })
+            : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
   return { userDataRoot, appRoot, events, layer };
 };

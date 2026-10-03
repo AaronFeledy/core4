@@ -6,12 +6,8 @@ import { EventError } from "@lando/sdk/errors";
 import { PreAppStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import {
-  EventDispatchControl,
-  EventRuntimeLive,
-  EventServiceLive,
-  makeEventServiceLive,
-} from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
+import { EventDispatchControl } from "../../src/services/event-service.ts";
 
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)({
   _tag: "pre-app-start",
@@ -23,7 +19,7 @@ const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)({
 const invalidKnownEvent = { _tag: "download-progress", bytes: 1 };
 const unknownTagEvent = { _tag: "not-a-real-lando-event", value: 1 };
 
-describe("EventServiceLive publish contract", () => {
+describe("LandoEventService.layer publish contract", () => {
   test("malformed runtime input fails with EventError instead of escaping as a defect", async () => {
     const hostileEvent = {
       ...preAppStartEvent,
@@ -34,7 +30,7 @@ describe("EventServiceLive publish contract", () => {
 
     const exit = await Effect.runPromise(
       Effect.flatMap(EventService, (events) => events.publish(hostileEvent).pipe(Effect.exit)).pipe(
-        Effect.provide(EventServiceLive),
+        Effect.provide(LandoEventService.layer),
       ),
     );
 
@@ -49,7 +45,7 @@ describe("EventServiceLive publish contract", () => {
   test("null runtime input fails with EventError instead of escaping as a defect", async () => {
     const exit = await Effect.runPromise(
       Effect.flatMap(EventService, (events) => events.publish(null as never).pipe(Effect.exit)).pipe(
-        Effect.provide(EventServiceLive),
+        Effect.provide(LandoEventService.layer),
       ),
     );
 
@@ -75,7 +71,7 @@ describe("EventServiceLive publish contract", () => {
             return { exit, queued, recorded };
           }),
         ),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Exit.isFailure(outcome.exit)).toBe(true);
@@ -99,7 +95,7 @@ describe("EventServiceLive publish contract", () => {
         const exit = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);
         const recorded = yield* events.query("*");
         return { exit, recorded };
-      }).pipe(Effect.provide(EventRuntimeLive)),
+      }).pipe(Effect.provide(LandoEventService.layerRuntime)),
     );
 
     expect(Exit.isFailure(outcome.exit)).toBe(true);
@@ -122,7 +118,7 @@ describe("EventServiceLive publish contract", () => {
             return { exit, recorded };
           }),
         ),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Exit.isFailure(outcome.exit)).toBe(true);
@@ -136,7 +132,7 @@ describe("EventServiceLive publish contract", () => {
           yield* events.publish(invalidKnownEvent);
           return yield* events.query("*");
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(recorded).toHaveLength(1);
@@ -145,7 +141,7 @@ describe("EventServiceLive publish contract", () => {
 
   test("zero-subscriber short-circuit does not invoke PubSub publish", async () => {
     let publishCalls = 0;
-    const layer = makeEventServiceLive(64, {
+    const layer = LandoEventService.layerWith(64, {
       onPubSubPublish: () => {
         publishCalls += 1;
       },
@@ -160,7 +156,7 @@ describe("EventServiceLive publish contract", () => {
 
   test("PubSub instrumentation observes the delivering path", async () => {
     let publishCalls = 0;
-    const layer = makeEventServiceLive(64, {
+    const layer = LandoEventService.layerWith(64, {
       onPubSubPublish: () => {
         publishCalls += 1;
       },
@@ -191,7 +187,7 @@ describe("EventServiceLive publish contract", () => {
           const afterRelease = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);
           return { whileActive, afterRelease };
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Exit.isFailure(outcome.whileActive)).toBe(true);
@@ -208,7 +204,7 @@ describe("EventServiceLive publish contract", () => {
             return yield* Queue.take(queue);
           }),
         ),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(received).toEqual(preAppStartEvent);

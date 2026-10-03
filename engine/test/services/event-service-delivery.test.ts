@@ -7,11 +7,8 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, EventService } from "@lando/sdk/services";
 import { EventDeliveryMetrics } from "../../src/services/event-service.ts";
 
-import {
-  EventDispatchControl,
-  makeEventRuntimeLive,
-  makeEventServiceLive,
-} from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
+import { EventDispatchControl } from "../../src/services/event-service.ts";
 
 const progressEvent = (bytesDownloaded: number): DownloadProgressEvent =>
   Schema.decodeUnknownSync(DownloadProgressEvent)({
@@ -27,11 +24,13 @@ describe("EventService bounded delivery", () => {
     const loaded = Schema.decodeUnknownSync(GlobalConfig)({
       events: { deliveryQueueCapacity: 1 },
     });
-    const configService: Context.Service.Shape<typeof ConfigService> = {
+    const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
       load: Effect.succeed(loaded),
       get: (key) => Effect.succeed(loaded[key]),
-    };
-    const layer = makeEventRuntimeLive().pipe(Layer.provide(Layer.succeed(ConfigService, configService)));
+    });
+    const layer = LandoEventService.layerRuntimeWithConfig().pipe(
+      Layer.provide(Layer.succeed(ConfigService, configService)),
+    );
 
     const delivered = await Effect.runPromise(
       Effect.flatMap(EventService, (events) =>
@@ -50,7 +49,7 @@ describe("EventService bounded delivery", () => {
   });
 
   test("publish completes without waiting when a stalled subscriber reaches capacity", async () => {
-    const layer = makeEventServiceLive(8, {}, 2);
+    const layer = LandoEventService.layerWith(8, {}, 2);
 
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
@@ -78,7 +77,7 @@ describe("EventService bounded delivery", () => {
   });
 
   test("overflow accounting increments once per rejected subscriber delivery", async () => {
-    const layer = makeEventServiceLive(0, {}, 1);
+    const layer = LandoEventService.layerWith(0, {}, 1);
 
     const snapshot = await Effect.runPromise(
       Effect.gen(function* () {
@@ -115,7 +114,7 @@ describe("EventService bounded delivery", () => {
             return { first, second: secondTake.pollUnsafe() };
           }),
         );
-      }).pipe(Effect.provide(makeEventServiceLive(0, {}, 1))),
+      }).pipe(Effect.provide(LandoEventService.layerWith(0, {}, 1))),
     );
 
     expect(outcome.first.bytesDownloaded).toBe(1);
@@ -136,7 +135,7 @@ describe("EventService bounded delivery", () => {
           }),
         );
         return yield* metrics.snapshot;
-      }).pipe(Effect.provide(makeEventServiceLive(0, {}, 1))),
+      }).pipe(Effect.provide(LandoEventService.layerWith(0, {}, 1))),
     );
 
     expect(snapshot).toEqual({ capacity: 1, droppedEvents: 2 });
@@ -165,7 +164,7 @@ describe("EventService bounded delivery", () => {
             return { delivered, history };
           }),
         );
-      }).pipe(Effect.provide(makeEventServiceLive(8, {}, 1))),
+      }).pipe(Effect.provide(LandoEventService.layerWith(8, {}, 1))),
     );
 
     expect(outcome.delivered.map((event) => event.bytesDownloaded)).toEqual([1]);
@@ -175,7 +174,7 @@ describe("EventService bounded delivery", () => {
 
   test("zero subscribers bypass delivery and history when both paths are disabled", async () => {
     let publishCalls = 0;
-    const layer = makeEventServiceLive(
+    const layer = LandoEventService.layerWith(
       0,
       {
         onPubSubPublish: () => {
@@ -201,7 +200,7 @@ describe("EventService bounded delivery", () => {
 
   test("scoped subscriber cleanup restores the zero-subscriber bypass", async () => {
     let publishCalls = 0;
-    const layer = makeEventServiceLive(
+    const layer = LandoEventService.layerWith(
       0,
       {
         onPubSubPublish: () => {

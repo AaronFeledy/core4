@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { runTooling } from "@lando/engine/operations/tooling";
 import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { configTranslators } from "@lando/lando3";
 import {
   RedactionService,
@@ -136,7 +136,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
-    EventServiceLive,
+    LandoEventService.layer,
     Layer.succeed(RedactionService, {
       registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),

@@ -4,7 +4,7 @@ import { type IncomingMessage, createServer, request as httpRequest } from "node
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Stream } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -79,10 +79,13 @@ const envelope: CommandResultEnvelope = {
   deprecations: [],
 };
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+  }),
+);
 
 type CapturedEvent = {
   readonly _tag: string;
@@ -92,14 +95,20 @@ type CapturedEvent = {
 };
 
 const eventLayerFor = (events: CapturedEvent[] = []) =>
-  Layer.succeed(EventService, {
-    publish: (event: CapturedEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-    subscribe: () => Effect.die("unused"),
-    waitFor: () => Effect.die("unused"),
-  } as never);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: CapturedEvent) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Stream.die("unused"),
+      subscribeQueue: Effect.die("unused"),
+      waitForAny: () => Effect.die("unused"),
+      query: () => Effect.die("unused"),
+      waitFor: () => Effect.die("unused"),
+    }),
+  );
 
 const runWithEvents = <Value, Error>(
   program: Effect.Effect<Value, Error, EventService | RedactionService>,
@@ -112,11 +121,17 @@ const runExitWithEvents = <Value, Error>(
 ) =>
   Effect.runPromiseExit(program.pipe(Effect.provide(Layer.mergeAll(redactionLayer, eventLayerFor(events)))));
 
-const unusedEventLayer = Layer.succeed(EventService, {
-  publish: () => Effect.void,
-  subscribe: () => Effect.die("unused"),
-  waitFor: () => Effect.die("unused"),
-} as never);
+const unusedEventLayer = Layer.succeed(
+  EventService,
+  EventService.of({
+    publish: () => Effect.void,
+    subscribe: () => Stream.die("unused"),
+    subscribeQueue: Effect.die("unused"),
+    waitForAny: () => Effect.die("unused"),
+    query: () => Effect.die("unused"),
+    waitFor: () => Effect.die("unused"),
+  }),
+);
 
 const run = <Value, Error>(program: Effect.Effect<Value, Error, EventService | RedactionService>) =>
   Effect.runPromise(program.pipe(Effect.provide(Layer.mergeAll(redactionLayer, unusedEventLayer))));

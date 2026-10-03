@@ -4,7 +4,8 @@ import { type Context, Effect, Layer } from "effect";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
-import { LoggerLive, type LoggerLiveOptions } from "../../src/logging/service";
+import * as LandoLogger from "../../src/logging/service";
+import type { LoggerLayerOptions } from "../../src/logging/service";
 
 const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
   const lines: Array<string> = [];
@@ -100,15 +101,17 @@ const writeStderrLine = (line: string): void => {
   process.stderr.write(`${line}\n`);
 };
 
-const runWithLogger = (effect: Effect.Effect<void, unknown, Logger>, options: LoggerLiveOptions = {}) =>
+const runWithLogger = (effect: Effect.Effect<void, unknown, Logger>, options: LoggerLayerOptions = {}) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(LoggerLive({ writeLine: writeStderrLine, stderrIsTTY: true, ...options }))),
+    effect.pipe(
+      Effect.provide(LandoLogger.layer({ writeLine: writeStderrLine, stderrIsTTY: true, ...options })),
+    ),
   );
 
 const logProgram = (run: (logger: Context.Service.Shape<typeof Logger>) => Effect.Effect<void, unknown>) =>
   Effect.flatMap(Logger, run);
 
-describe("LoggerLive characterization", () => {
+describe("LandoLogger.layer characterization", () => {
   test("pretty mode emits info, warn, and error through console.log", async () => {
     const lines = await captureConsoleLog(() =>
       runWithLogger(
@@ -140,7 +143,7 @@ describe("LoggerLive characterization", () => {
   });
 });
 
-describe("LoggerLive logLevel and stderr", () => {
+describe("LandoLogger.layer logLevel and stderr", () => {
   test("emits nothing on stderr or stdout at logLevel none", async () => {
     const captured = await withStderrTty(true, () =>
       captureStreams(() =>
@@ -270,10 +273,13 @@ describe("LoggerLive logLevel and stderr", () => {
   });
 
   test("redacts message and data when RedactionService is present", async () => {
-    const redaction = Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["super-secret-value"] })),
-    });
+    const redaction = Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["super-secret-value"] })),
+      }),
+    );
     const captured = await withStderrTty(true, () =>
       captureStreams(() =>
         Effect.runPromise(
@@ -282,7 +288,7 @@ describe("LoggerLive logLevel and stderr", () => {
           ).pipe(
             Effect.provide(
               Layer.mergeAll(
-                LoggerLive({ logLevel: "info", writeLine: writeStderrLine, stderrIsTTY: true }),
+                LandoLogger.layer({ logLevel: "info", writeLine: writeStderrLine, stderrIsTTY: true }),
                 redaction,
               ),
             ),

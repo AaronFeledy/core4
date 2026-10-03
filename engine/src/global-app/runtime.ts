@@ -16,7 +16,7 @@ import {
 import { ensureGlobalServicesRunning } from "../operations/ensure-global-services.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "../providers/managed.ts";
 
-export const GlobalAppRuntimeLive = Layer.effect(
+export const layer = Layer.effect(
   GlobalAppService,
   Effect.gen(function* () {
     const globalApp = yield* GlobalAppService;

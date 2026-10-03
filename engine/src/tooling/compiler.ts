@@ -14,7 +14,7 @@
  * app plan cache. On invocation at bootstrap level `tooling`:
  *   1. Read the cached `ToolingProgram` from `CacheService`.
  *   2. Parse argv with the cached flag/arg specs.
- *   3. Build `LandoRuntimeLive` at level `provider` (skip `app`).
+ *   3. Build `LandoRuntimeLayer` at level `provider` (skip `app`).
  *   4. Run `engine.execute(program, input)` and propagate exit code.
  *
  * Status: stub.

@@ -77,7 +77,45 @@ export interface CertificateAuthorityResolverShape {
 export class CertificateAuthorityResolver extends Context.Service<
   CertificateAuthorityResolver,
   CertificateAuthorityResolverShape
->()("@lando/core/private/CertificateAuthorityResolver") {}
+>()("@lando/engine/CertificateAuthorityResolver") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const graph = yield* PluginContributionGraph;
+      const paths = yield* PathsService;
+      const downloader = yield* Downloader;
+      const processRunner = yield* ProcessRunner;
+      const scope = yield* Scope.Scope;
+      const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, paths.platform);
+      const acquire: Effect.Effect<
+        Context.Service.Shape<typeof CertificateAuthority>,
+        SelectionError | PluginLoadError
+      > = Result.match(selected, {
+        onFailure: Effect.fail,
+        onSuccess: (selection) =>
+          loadContributionLayer(selection).pipe(
+            Effect.flatMap((layer) =>
+              Layer.buildWithScope(
+                layer.pipe(
+                  Layer.provide(
+                    Layer.mergeAll(
+                      Layer.succeed(PathsService, paths),
+                      Layer.succeed(Downloader, downloader),
+                      Layer.succeed(ProcessRunner, processRunner),
+                    ),
+                  ),
+                ),
+                scope,
+              ),
+            ),
+            Effect.map((context) => Context.get(context, CertificateAuthority)),
+          ),
+      });
+      const cached = yield* Effect.cached(acquire);
+      return CertificateAuthorityResolver.of({ resolve: cached });
+    }),
+  );
+}
 
 const isModuleRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null;
@@ -117,41 +155,3 @@ const loadContributionLayer = (
     }),
   );
 };
-
-export const CertificateAuthorityResolverLive = Layer.effect(
-  CertificateAuthorityResolver,
-  Effect.gen(function* () {
-    const graph = yield* PluginContributionGraph;
-    const paths = yield* PathsService;
-    const downloader = yield* Downloader;
-    const processRunner = yield* ProcessRunner;
-    const scope = yield* Scope.Scope;
-    const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, paths.platform);
-    const acquire: Effect.Effect<
-      Context.Service.Shape<typeof CertificateAuthority>,
-      SelectionError | PluginLoadError
-    > = Result.match(selected, {
-      onFailure: Effect.fail,
-      onSuccess: (selection) =>
-        loadContributionLayer(selection).pipe(
-          Effect.flatMap((layer) =>
-            Layer.buildWithScope(
-              layer.pipe(
-                Layer.provide(
-                  Layer.mergeAll(
-                    Layer.succeed(PathsService, paths),
-                    Layer.succeed(Downloader, downloader),
-                    Layer.succeed(ProcessRunner, processRunner),
-                  ),
-                ),
-              ),
-              scope,
-            ),
-          ),
-          Effect.map((context) => Context.get(context, CertificateAuthority)),
-        ),
-    });
-    const cached = yield* Effect.cached(acquire);
-    return { resolve: cached };
-  }),
-);

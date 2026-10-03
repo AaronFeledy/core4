@@ -151,82 +151,79 @@ const dedupeCas = (cas: ReadonlyArray<LoadedCaPem>): ReadonlyArray<LoadedCaPem> 
   });
 };
 
-export const resolveSecurityFeature = (
+export const resolveSecurityFeature = Effect.fnUntraced(function* (
   input: ResolveSecurityFeatureInput,
-): Effect.Effect<
+): Effect.fn.Return<
   { readonly id: typeof SECURITY_FEATURE_ID; readonly config: SecurityFeatureConfig },
   LandofileValidationError
-> =>
-  Effect.gen(function* () {
-    const resolved = resolveServiceNetworkInject({
-      network: input.network,
-      env: process.env,
-      security: input.security,
-      plan: input.networkPlan,
-    });
-    const landofileCaPaths = resolved.landofileCaPaths ?? [];
-    const hasCaInputs = resolved.caPaths.length > 0 || landofileCaPaths.length > 0;
-    if (!hasCaInputs) {
-      return {
-        id: SECURITY_FEATURE_ID,
-        config: {
-          injectCa: false,
-          injectProxy: resolved.injectProxy,
-          cas: [],
-          ...(resolved.injectProxy ? { proxy: resolved.proxy } : {}),
-        },
-      };
-    }
-    if (input.fileSystem === undefined || input.paths === undefined) {
-      return yield* Effect.fail(
-        validationError(
-          input,
-          "requires FileSystem and PathsService to materialize CA inputs. Restore the standard app runtime services and retry.",
-        ),
-      );
-    }
-
-    const cacheDirectory = join(input.paths.appCacheDir(input.appName, input.appRoot), "security");
-    const globalCas = resolved.injectCa ? input.globalCas : [];
-    const projectCas = yield* loadProjectCas(input, cacheDirectory, landofileCaPaths);
-    const cas = dedupeCas([...globalCas, ...projectCas]);
-    yield* input.fileSystem
-      .mkdir(cacheDirectory)
-      .pipe(
-        Effect.mapError((cause) =>
-          validationError(input, `could not create its app cache: ${cause.message}`),
-        ),
-      );
-    for (const ca of projectCas.filter((candidate) => candidate.path.startsWith(cacheDirectory))) {
-      yield* input.fileSystem
-        .writeAtomic(ca.path, ca.pem)
-        .pipe(
-          Effect.mapError((cause) =>
-            validationError(input, `could not materialize inline PEM input: ${cause.message}`),
-          ),
-        );
-    }
-    const bundleDigest = createNodeHash("sha256")
-      .update(cas.map((ca) => ca.digest).join(""), "utf-8")
-      .digest("hex");
-    const bundlePath = join(cacheDirectory, `ca-bundle-${bundleDigest}.pem`);
-    const bundle = cas.map((ca) => (ca.pem.endsWith("\n") ? ca.pem : `${ca.pem}\n`)).join("");
-    yield* input.fileSystem
-      .writeAtomic(bundlePath, bundle)
-      .pipe(
-        Effect.mapError((cause) =>
-          validationError(input, `could not write its app-cache CA bundle: ${cause.message}`),
-        ),
-      );
-
+> {
+  const resolved = resolveServiceNetworkInject({
+    network: input.network,
+    env: process.env,
+    security: input.security,
+    plan: input.networkPlan,
+  });
+  const landofileCaPaths = resolved.landofileCaPaths ?? [];
+  const hasCaInputs = resolved.caPaths.length > 0 || landofileCaPaths.length > 0;
+  if (!hasCaInputs) {
     return {
       id: SECURITY_FEATURE_ID,
       config: {
-        injectCa: cas.length > 0,
+        injectCa: false,
         injectProxy: resolved.injectProxy,
-        cas: cas.map(({ path, digest }) => ({ path, digest })),
-        bundlePath,
+        cas: [],
         ...(resolved.injectProxy ? { proxy: resolved.proxy } : {}),
       },
     };
-  });
+  }
+  if (input.fileSystem === undefined || input.paths === undefined) {
+    return yield* Effect.fail(
+      validationError(
+        input,
+        "requires FileSystem and PathsService to materialize CA inputs. Restore the standard app runtime services and retry.",
+      ),
+    );
+  }
+
+  const cacheDirectory = join(input.paths.appCacheDir(input.appName, input.appRoot), "security");
+  const globalCas = resolved.injectCa ? input.globalCas : [];
+  const projectCas = yield* loadProjectCas(input, cacheDirectory, landofileCaPaths);
+  const cas = dedupeCas([...globalCas, ...projectCas]);
+  yield* input.fileSystem
+    .mkdir(cacheDirectory)
+    .pipe(
+      Effect.mapError((cause) => validationError(input, `could not create its app cache: ${cause.message}`)),
+    );
+  for (const ca of projectCas.filter((candidate) => candidate.path.startsWith(cacheDirectory))) {
+    yield* input.fileSystem
+      .writeAtomic(ca.path, ca.pem)
+      .pipe(
+        Effect.mapError((cause) =>
+          validationError(input, `could not materialize inline PEM input: ${cause.message}`),
+        ),
+      );
+  }
+  const bundleDigest = createNodeHash("sha256")
+    .update(cas.map((ca) => ca.digest).join(""), "utf-8")
+    .digest("hex");
+  const bundlePath = join(cacheDirectory, `ca-bundle-${bundleDigest}.pem`);
+  const bundle = cas.map((ca) => (ca.pem.endsWith("\n") ? ca.pem : `${ca.pem}\n`)).join("");
+  yield* input.fileSystem
+    .writeAtomic(bundlePath, bundle)
+    .pipe(
+      Effect.mapError((cause) =>
+        validationError(input, `could not write its app-cache CA bundle: ${cause.message}`),
+      ),
+    );
+
+  return {
+    id: SECURITY_FEATURE_ID,
+    config: {
+      injectCa: cas.length > 0,
+      injectProxy: resolved.injectProxy,
+      cas: cas.map(({ path, digest }) => ({ path, digest })),
+      bundlePath,
+      ...(resolved.injectProxy ? { proxy: resolved.proxy } : {}),
+    },
+  };
+});

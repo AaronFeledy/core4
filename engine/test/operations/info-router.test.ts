@@ -100,11 +100,14 @@ const infoOf = (plan: AppPlan, endpoints: ServiceRuntimeInfo["endpoints"] = [pub
     infoForPlan(plan).pipe(
       Effect.provide(Layer.succeed(RouterService, proxy)),
       Effect.provide(
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([providerId]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
       ),
     ),
   );

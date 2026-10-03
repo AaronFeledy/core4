@@ -10,31 +10,38 @@ import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ProcessRunner } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
-import { ProcessRunnerLive, awaitSinkResult, resolveProcessCgroup } from "../../src/services/process-runner";
+import * as BunProcessRunner from "../../src/services/process-runner";
+import { awaitSinkResult, resolveProcessCgroup } from "../../src/services/process-runner";
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+  }),
+);
 
 const captureEventsLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event) => Effect.sync(() => events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<never>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  } satisfies Context.Service.Shape<typeof EventService>);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) => Effect.sync(() => events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<never>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } satisfies Context.Service.Shape<typeof EventService>),
+  );
 
 const runProcess = (input: Parameters<Context.Service.Shape<typeof ProcessRunner>["run"]>[0]) =>
   Effect.runPromise(
     Effect.flatMap(ProcessRunner, (processRunner) => processRunner.run(input)).pipe(
-      Effect.provide(ProcessRunnerLive),
+      Effect.provide(BunProcessRunner.layer),
     ),
   );
 
-describe("ProcessRunnerLive", () => {
+describe("BunProcessRunner.layer", () => {
   for (const mode of ["interrupt", "timeout"] as const) {
     test(`kills and reaps a SIGTERM-resistant child on ${mode}`, async () => {
       const ready = Promise.withResolvers<number>();
@@ -56,7 +63,7 @@ describe("ProcessRunnerLive", () => {
           ],
           ...(mode === "timeout" ? { timeoutMs: 300 } : {}),
         }),
-      ).pipe(Effect.provide(ProcessRunnerLive));
+      ).pipe(Effect.provide(BunProcessRunner.layer));
       const completion = Effect.runPromiseExit(program, { signal: controller.signal });
       let pid: number | undefined;
       try {
@@ -164,7 +171,7 @@ describe("ProcessRunnerLive", () => {
             stdinStream: stdinStream(),
           })
           .pipe(Stream.runCollect),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
 
     expect([...chunks].map((chunk) => [chunk.kind, new TextDecoder().decode(chunk.chunk)])).toEqual([
@@ -189,7 +196,7 @@ describe("ProcessRunnerLive", () => {
             stdinStream: stdinStream(),
           })
           .pipe(Stream.runCollect),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
 
     expect(
@@ -212,7 +219,7 @@ describe("ProcessRunnerLive", () => {
     const streamed = Effect.runPromise(
       Effect.flatMap(ProcessRunner, (runner) =>
         runner.streamWithExit({ ...command, stdinStream: stalledStdin() }).pipe(Stream.runCollect),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
     const [result, events] = await Promise.race([
       Promise.all([run, streamed]),
@@ -233,7 +240,7 @@ describe("ProcessRunnerLive", () => {
     const result = await runProcess(command);
     const events = await Effect.runPromise(
       Effect.flatMap(ProcessRunner, (runner) => runner.streamWithExit(command).pipe(Stream.runCollect)).pipe(
-        Effect.provide(ProcessRunnerLive),
+        Effect.provide(BunProcessRunner.layer),
       ),
     );
     expect(result).toEqual({ exitCode: 0, stdout: "direct-input", stderr: "" });
@@ -254,7 +261,7 @@ describe("ProcessRunnerLive", () => {
     const result = await runProcess(command);
     const events = await Effect.runPromise(
       Effect.flatMap(ProcessRunner, (runner) => runner.streamWithExit(command).pipe(Stream.runCollect)).pipe(
-        Effect.provide(ProcessRunnerLive),
+        Effect.provide(BunProcessRunner.layer),
       ),
     );
     expect(result).toEqual({ exitCode: 37, stdout: "done", stderr: "" });
@@ -272,7 +279,7 @@ describe("ProcessRunnerLive", () => {
       Effect.runPromise(
         Effect.flatMap(ProcessRunner, (runner) =>
           runner.streamWithExit(command).pipe(Stream.runCollect),
-        ).pipe(Effect.provide(ProcessRunnerLive)),
+        ).pipe(Effect.provide(BunProcessRunner.layer)),
       ),
     ).rejects.toThrow("EPIPE");
   });
@@ -290,7 +297,7 @@ describe("ProcessRunnerLive", () => {
       Effect.runPromise(
         Effect.flatMap(ProcessRunner, (runner) =>
           runner.streamWithExit({ ...command, stdinStream: failingStdin() }).pipe(Stream.runCollect),
-        ).pipe(Effect.provide(ProcessRunnerLive)),
+        ).pipe(Effect.provide(BunProcessRunner.layer)),
       ),
     ).rejects.toThrow("stdin producer failed");
   });
@@ -308,7 +315,7 @@ describe("ProcessRunnerLive", () => {
       Effect.runPromise(
         Effect.flatMap(ProcessRunner, (runner) =>
           runner.streamWithExit({ ...command, stdinStream: stdinStream() }).pipe(Stream.runCollect),
-        ).pipe(Effect.provide(ProcessRunnerLive)),
+        ).pipe(Effect.provide(BunProcessRunner.layer)),
       ),
     ).rejects.toThrow("EPIPE");
   });
@@ -339,7 +346,7 @@ describe("ProcessRunnerLive", () => {
                 });
               }),
             ),
-        ).pipe(Effect.provide(ProcessRunnerLive)),
+        ).pipe(Effect.provide(BunProcessRunner.layer)),
       );
       expect(checked).toBe(true);
       expect(await Bun.file(marker).exists()).toBe(true);
@@ -352,7 +359,7 @@ describe("ProcessRunnerLive", () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(ProcessRunner, (processRunner) =>
         processRunner.run({ cmd: "definitely-not-a-binary", args: [] }),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -374,7 +381,7 @@ describe("ProcessRunnerLive", () => {
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(ProcessRunner, (processRunner) =>
           processRunner.run({ cmd: "missing-topsecret-binary", args: [], cwd }),
-        ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, redactionLayer))),
+        ).pipe(Effect.provide(Layer.mergeAll(BunProcessRunner.layer, redactionLayer))),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -399,7 +406,7 @@ describe("ProcessRunnerLive", () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(ProcessRunner, (processRunner) =>
         processRunner.run({ cmd: "bun", args: ["-e", "await new Promise(() => {})"], timeoutMs: 50 }),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -427,7 +434,7 @@ describe("ProcessRunnerLive", () => {
             cwd,
             timeoutMs: 50,
           }),
-        ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, redactionLayer))),
+        ).pipe(Effect.provide(Layer.mergeAll(BunProcessRunner.layer, redactionLayer))),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -453,7 +460,7 @@ describe("ProcessRunnerLive", () => {
     const result = await Effect.runPromise(
       Effect.flatMap(ProcessRunner, (processRunner) =>
         processRunner.run({ cmd: "bun", args: ["-e", "console.log('topsecret')"] }),
-      ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, redactionLayer))),
+      ).pipe(Effect.provide(Layer.mergeAll(BunProcessRunner.layer, redactionLayer))),
     );
 
     expect(result.stdout).toContain("topsecret");
@@ -469,7 +476,9 @@ describe("ProcessRunnerLive", () => {
           args: ["-e", "console.log(process.env.BUN_AUTH_TOKEN)"],
           env: { BUN_AUTH_TOKEN: "topsecret" },
         }),
-      ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, redactionLayer, captureEventsLayer(events)))),
+      ).pipe(
+        Effect.provide(Layer.mergeAll(BunProcessRunner.layer, redactionLayer, captureEventsLayer(events))),
+      ),
     );
 
     expect(result.stdout).toContain("topsecret");
@@ -488,7 +497,7 @@ describe("ProcessRunnerLive", () => {
           args: ["-e", "console.log(process.env.BUN_AUTH_TOKEN)"],
           env: { BUN_AUTH_TOKEN: "topsecret" },
         }),
-      ).pipe(Effect.provide(Layer.mergeAll(ProcessRunnerLive, captureEventsLayer(events)))),
+      ).pipe(Effect.provide(Layer.mergeAll(BunProcessRunner.layer, captureEventsLayer(events)))),
     );
 
     expect(result.stdout).toContain("topsecret");
@@ -504,7 +513,7 @@ describe("ProcessRunnerLive", () => {
             args: ["-e", "console.log('out'); console.error('err')"],
           })
           .pipe(Stream.runCollect),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
 
     const decoded = Array.from(chunks).map((chunk) => ({
@@ -533,7 +542,7 @@ describe("resolveProcessCgroup", () => {
   });
 });
 
-describe("ProcessRunnerLive cgroup", () => {
+describe("BunProcessRunner.layer cgroup", () => {
   test("ignores cgroup off Linux and fails ProcessExecError for a missing cgroup on Linux", async () => {
     if (process.platform !== "linux") {
       const result = await runProcess({ cmd: "true", args: [], cgroup: "/sys/fs/cgroup/jobs" });
@@ -547,7 +556,7 @@ describe("ProcessRunnerLive cgroup", () => {
           args: [],
           cgroup: "/sys/fs/cgroup/lando-definitely-missing-cgroup",
         }),
-      ).pipe(Effect.provide(ProcessRunnerLive)),
+      ).pipe(Effect.provide(BunProcessRunner.layer)),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {

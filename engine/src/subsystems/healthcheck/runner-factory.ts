@@ -64,34 +64,33 @@ const resolveRedactor = Effect.gen(function* () {
   return yield* redaction.value.forProfile("secrets", { sourceEnv: { ...process.env } });
 });
 
-const makeAttempt = (context: AttemptContext): Effect.Effect<AttemptOutcome> =>
-  Effect.gen(function* () {
-    const completed = yield* Effect.timeoutOrElse(
-      Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
-      {
-        duration: Duration.seconds(context.timeoutSeconds),
-        orElse: () => Effect.succeed((() => "timeout" as const)()),
-      },
-    );
+const makeAttempt = Effect.fnUntraced(function* (context: AttemptContext): Effect.fn.Return<AttemptOutcome> {
+  const completed = yield* Effect.timeoutOrElse(
+    Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
+    {
+      duration: Duration.seconds(context.timeoutSeconds),
+      orElse: () => Effect.succeed((() => "timeout" as const)()),
+    },
+  );
 
-    if (completed === "timeout") {
-      yield* Ref.set(context.status, { _tag: "timeout" });
-      return "red";
-    }
-
-    if (completed._tag === "Failure") {
-      yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.failure) });
-      return "red";
-    }
-
-    if (completed.success.exitCode === 0) {
-      yield* Ref.set(context.status, { _tag: "ok" });
-      return "green";
-    }
-
-    yield* Ref.set(context.status, { _tag: "exit", code: completed.success.exitCode });
+  if (completed === "timeout") {
+    yield* Ref.set(context.status, { _tag: "timeout" });
     return "red";
-  });
+  }
+
+  if (completed._tag === "Failure") {
+    yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.failure) });
+    return "red";
+  }
+
+  if (completed.success.exitCode === 0) {
+    yield* Ref.set(context.status, { _tag: "ok" });
+    return "green";
+  }
+
+  yield* Ref.set(context.status, { _tag: "exit", code: completed.success.exitCode });
+  return "red";
+});
 
 const toProbeError = (service: ServiceName, cause: unknown): HealthcheckError =>
   new HealthcheckError({
@@ -124,84 +123,83 @@ export const makeHealthcheckRunner: (deps: {
   readonly signal?: AbortSignal;
 }) => HealthcheckRunnerShape = (deps) => ({
   id: "provider-exec",
-  run: (plan, appId, service) =>
-    Effect.gen(function* () {
-      switch (plan.kind) {
-        case "none":
-          return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
-        case "http":
-        case "tcp":
-          return yield* Effect.fail(providerExecUnsupported(plan, service));
-        case "command":
-          break;
-      }
+  run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service) {
+    switch (plan.kind) {
+      case "none":
+        return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
+      case "http":
+      case "tcp":
+        return yield* Effect.fail(providerExecUnsupported(plan, service));
+      case "command":
+        break;
+    }
 
-      if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
+    if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
 
-      const normalized = normalizeCommand(plan.command);
-      const command = {
-        ...normalized.provider,
-        ...(deps.signal === undefined ? {} : { signal: deps.signal }),
-      };
-      const rendered = normalized.rendered;
-      const target: ExecTarget = { app: appId, service };
-      const status = yield* Ref.make<AttemptStatus>({
-        _tag: "provider",
-        message: "Healthcheck command did not run",
-      });
-      const redactor = yield* resolveRedactor;
+    const normalized = normalizeCommand(plan.command);
+    const command = {
+      ...normalized.provider,
+      ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+    };
+    const rendered = normalized.rendered;
+    const target: ExecTarget = { app: appId, service };
+    const status = yield* Ref.make<AttemptStatus>({
+      _tag: "provider",
+      message: "Healthcheck command did not run",
+    });
+    const redactor = yield* resolveRedactor;
 
-      if (plan.startPeriodSeconds !== undefined && plan.startPeriodSeconds > 0) {
-        yield* Effect.sleep(Duration.seconds(plan.startPeriodSeconds));
-      }
+    if (plan.startPeriodSeconds !== undefined && plan.startPeriodSeconds > 0) {
+      yield* Effect.sleep(Duration.seconds(plan.startPeriodSeconds));
+    }
 
-      const result = yield* runProbe(
-        {
-          id: `healthcheck:${service}`,
-          policy: {
-            maxAttempts: Math.max(1, plan.retries),
-            delay: Duration.seconds(plan.intervalSeconds),
-            backoff: "fixed",
-          },
-          classify: {
-            success: (value) => (value === "green" ? "green" : "red"),
-            failure: () => "red",
-          },
+    const result = yield* runProbe(
+      {
+        id: `healthcheck:${service}`,
+        policy: {
+          maxAttempts: Math.max(1, plan.retries),
+          delay: Duration.seconds(plan.intervalSeconds),
+          backoff: "fixed",
         },
-        makeAttempt({ deps, target, command, timeoutSeconds: plan.timeoutSeconds, status }),
-      ).pipe(Effect.mapError((cause) => toProbeError(service, cause)));
-      const finalStatus = yield* Ref.get(status);
+        classify: {
+          success: (value) => (value === "green" ? "green" : "red"),
+          failure: () => "red",
+        },
+      },
+      makeAttempt({ deps, target, command, timeoutSeconds: plan.timeoutSeconds, status }),
+    ).pipe(Effect.mapError((cause) => toProbeError(service, cause)));
+    const finalStatus = yield* Ref.get(status);
 
-      if (result.outcome === "green")
-        return { healthy: true, service, attempts: result.attempts, lastStatus: "ok" };
+    if (result.outcome === "green")
+      return { healthy: true, service, attempts: result.attempts, lastStatus: "ok" };
 
-      switch (finalStatus._tag) {
-        case "timeout":
-          return yield* Effect.fail(
-            timeoutError({
-              service,
-              renderedCommand: rendered,
-              timeoutSeconds: plan.timeoutSeconds,
-              result,
-              redactor,
-            }),
-          );
-        case "exit":
-          return {
-            healthy: false,
+    switch (finalStatus._tag) {
+      case "timeout":
+        return yield* Effect.fail(
+          timeoutError({
             service,
-            attempts: result.attempts,
-            lastStatus: redactor.redactString(`exit ${finalStatus.code}`),
-          };
-        case "provider":
-          return {
-            healthy: false,
-            service,
-            attempts: result.attempts,
-            lastStatus: redactor.redactString(finalStatus.message),
-          };
-        case "ok":
-          return { healthy: false, service, attempts: result.attempts, lastStatus: "ok" };
-      }
-    }),
+            renderedCommand: rendered,
+            timeoutSeconds: plan.timeoutSeconds,
+            result,
+            redactor,
+          }),
+        );
+      case "exit":
+        return {
+          healthy: false,
+          service,
+          attempts: result.attempts,
+          lastStatus: redactor.redactString(`exit ${finalStatus.code}`),
+        };
+      case "provider":
+        return {
+          healthy: false,
+          service,
+          attempts: result.attempts,
+          lastStatus: redactor.redactString(finalStatus.message),
+        };
+      case "ok":
+        return { healthy: false, service, attempts: result.attempts, lastStatus: "ok" };
+    }
+  }),
 });

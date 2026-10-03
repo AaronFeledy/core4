@@ -12,11 +12,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
-import { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
-import { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";
-import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
-import { UrlScannerUnavailableLive } from "@lando/engine/subsystems/scanner/api";
-import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
+import * as CertificateAuthorityLayer from "@lando/engine/subsystems/certs/api";
+import * as HealthcheckRunnerLayer from "@lando/engine/subsystems/healthcheck/api";
+import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
+import * as UrlScannerLayer from "@lando/engine/subsystems/scanner/api";
+import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import {
@@ -123,7 +123,7 @@ describe("each subsystem failure path produces a tagged error with severity + so
     const proxy = await Effect.runPromiseExit(
       Effect.scoped(
         Effect.flatMap(RouterService, (s) => s.setup({ defaultDomain: "lndo.site" })).pipe(
-          Effect.provide(RouterServiceUnavailableLive),
+          Effect.provide(RouterServiceLayer.layerUnavailable),
         ),
       ),
     );
@@ -131,14 +131,14 @@ describe("each subsystem failure path produces a tagged error with severity + so
 
     const ca = await Effect.runPromiseExit(
       Effect.flatMap(CertificateAuthority, (s) => s.setup({ force: false })).pipe(
-        Effect.provide(CertificateAuthorityUnavailableLive),
+        Effect.provide(CertificateAuthorityLayer.layerUnavailable),
       ),
     );
     expectTaggedDiagnosticForFailure("certs", ca);
 
     const ssh = await Effect.runPromiseExit(
       Effect.flatMap(SshService, (s) => s.setup({ force: false })).pipe(
-        Effect.provide(SshServiceUnavailableLive),
+        Effect.provide(SshServiceLayer.layerUnavailable),
       ),
     );
     expectTaggedDiagnosticForFailure("ssh", ssh);
@@ -146,13 +146,13 @@ describe("each subsystem failure path produces a tagged error with severity + so
     const hc = await Effect.runPromiseExit(
       Effect.flatMap(HealthcheckRunner, (s) =>
         s.run({ probes: [] } as never, "app" as never, "web" as never),
-      ).pipe(Effect.provide(HealthcheckRunnerUnavailableLive)),
+      ).pipe(Effect.provide(HealthcheckRunnerLayer.layerUnavailable)),
     );
     expectTaggedDiagnosticForFailure("healthcheck", hc);
 
     const scanner = await Effect.runPromiseExit(
       Effect.flatMap(UrlScanner, (s) => s.scan("app" as never)).pipe(
-        Effect.provide(UrlScannerUnavailableLive),
+        Effect.provide(UrlScannerLayer.layerUnavailable),
       ),
     );
     expectTaggedDiagnosticForFailure("scanner", scanner);

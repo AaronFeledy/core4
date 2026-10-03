@@ -9,4 +9,4 @@ export interface GlobalPluginManifestsShape {
 export class GlobalPluginManifests extends Context.Service<
   GlobalPluginManifests,
   GlobalPluginManifestsShape
->()("@lando/core/GlobalPluginManifests") {}
+>()("@lando/engine/GlobalPluginManifests") {}

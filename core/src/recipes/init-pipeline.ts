@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
+import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
@@ -176,7 +176,7 @@ const encodeRecipeLandofile = (
       catch: () => blocked("translate"),
     });
     const translators = yield* Effect.flatMap(ConfigTranslatorRegistry, (registry) => registry.list).pipe(
-      Effect.provide(makeConfigTranslatorRegistryLive([module])),
+      Effect.provide(ConfigTranslatorRegistryLayer.layerWith([module])),
       Effect.mapError(() => blocked("translate")),
     );
     const translator = translators.find(({ id }) => id === RECIPE_TRANSLATOR_ID);

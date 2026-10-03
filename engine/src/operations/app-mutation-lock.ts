@@ -117,8 +117,8 @@ const isSameHolder = (key: string, lockPath: string): Effect.Effect<boolean> =>
     );
   });
 
-const announceWait = (): Effect.Effect<void> =>
-  Effect.gen(function* () {
+const announceWait = Effect.fnUntraced(
+  function* () {
     const events = yield* Effect.serviceOption(EventService);
     if (events._tag === "None") return;
     yield* events.value.publish(
@@ -127,7 +127,9 @@ const announceWait = (): Effect.Effect<void> =>
         timestamp: DateTime.nowUnsafe(),
       }),
     );
-  }).pipe(Effect.catch(() => Effect.void));
+  },
+  Effect.catch(() => Effect.void),
+);
 
 const timeoutError = (appId: string, timeoutMs: number, cause?: unknown): AppLockTimeoutError =>
   new AppLockTimeoutError({
@@ -210,66 +212,69 @@ export const appMutationLockIdentity = (app: {
  * Confirmation prompts belong outside this wrapper. The lock is the mutate
  * phase only.
  */
-export const withAppMutationLock = <A, E, R>(
+export const withAppMutationLock = Effect.fnUntraced(function* <A, E, R>(
   app: { readonly id: string; readonly root: string },
   body: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | AppLockTimeoutError | StateStoreError, R | PathsService | PrivateFileAccessService> =>
-  Effect.gen(function* () {
-    const context = yield* Effect.context<R | PathsService | PrivateFileAccessService>();
-    const paths = yield* PathsService;
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const { key, canonicalRoot } = yield* appMutationLockIdentity(app);
-    const held = yield* HeldAppLockKeys;
-    const provided = body.pipe(
-      Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
-      Effect.provideService(HeldAppLockKeys, new Set([...held, key])),
-      Effect.provide(context),
-    );
-    if (held.has(key)) return yield* provided;
+): Effect.fn.Return<
+  A,
+  E | AppLockTimeoutError | StateStoreError,
+  R | PathsService | PrivateFileAccessService
+> {
+  const context = yield* Effect.context<R | PathsService | PrivateFileAccessService>();
+  const paths = yield* PathsService;
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const { key, canonicalRoot } = yield* appMutationLockIdentity(app);
+  const held = yield* HeldAppLockKeys;
+  const provided = body.pipe(
+    Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
+    Effect.provideService(HeldAppLockKeys, new Set([...held, key])),
+    Effect.provide(context),
+  );
+  if (held.has(key)) return yield* provided;
 
-    const resolved = yield* resolveStatePath(
-      { path: AbsolutePath.make(paths.roots.userDataRoot) },
-      "operation-locks",
-      key,
-      "app-mutate",
-    );
-    const lockPath = `${resolved.file}.lock`;
-    if (yield* isSameHolder(key, lockPath)) return yield* provided;
+  const resolved = yield* resolveStatePath(
+    { path: AbsolutePath.make(paths.roots.userDataRoot) },
+    "operation-locks",
+    key,
+    "app-mutate",
+  );
+  const lockPath = `${resolved.file}.lock`;
+  if (yield* isSameHolder(key, lockPath)) return yield* provided;
 
-    const timeoutMs = resolveAppLockTimeoutMs();
-    return yield* Effect.acquireUseRelease(
-      acquireAdvisoryLockAt(lockPath, "app-mutate", {
-        expireLiveOwner: false,
-        timeoutMs,
-        onWait: announceWait(),
-        privateFileAccess,
-      }).pipe(
-        Effect.map((lock) => ({ lock, restore: installHolderEnv(key, lock.token) })),
-        Effect.mapError((cause) =>
-          cause instanceof StateStoreError && cause.reason === "lock"
-            ? timeoutError(String(app.id), timeoutMs, cause)
-            : cause,
+  const timeoutMs = resolveAppLockTimeoutMs();
+  return yield* Effect.acquireUseRelease(
+    acquireAdvisoryLockAt(lockPath, "app-mutate", {
+      expireLiveOwner: false,
+      timeoutMs,
+      onWait: announceWait(),
+      privateFileAccess,
+    }).pipe(
+      Effect.map((lock) => ({ lock, restore: installHolderEnv(key, lock.token) })),
+      Effect.mapError((cause) =>
+        cause instanceof StateStoreError && cause.reason === "lock"
+          ? timeoutError(String(app.id), timeoutMs, cause)
+          : cause,
+      ),
+    ),
+    () =>
+      appMutationLockIdentity(app).pipe(
+        Effect.flatMap(
+          (current): Effect.Effect<A, E | StateStoreError, never> =>
+            current.key === key
+              ? provided
+              : Effect.fail(
+                  new StateStoreError({
+                    reason: "path",
+                    operation: "canonicalMissingAppRoot",
+                    path: app.root,
+                    remediation: "The app root parent changed while waiting for its lock; retry.",
+                  }),
+                ),
         ),
       ),
-      () =>
-        appMutationLockIdentity(app).pipe(
-          Effect.flatMap(
-            (current): Effect.Effect<A, E | StateStoreError, never> =>
-              current.key === key
-                ? provided
-                : Effect.fail(
-                    new StateStoreError({
-                      reason: "path",
-                      operation: "canonicalMissingAppRoot",
-                      path: app.root,
-                      remediation: "The app root parent changed while waiting for its lock; retry.",
-                    }),
-                  ),
-          ),
-        ),
-      ({ lock, restore }) => Effect.sync(restore).pipe(Effect.andThen(lock.release)),
-    );
-  });
+    ({ lock, restore }) => Effect.sync(restore).pipe(Effect.andThen(lock.release)),
+  );
+});
 
 /** Sync helper for child-process tests that need the same key the parent used. */
 export const canonicalAppRootSync = (root: string): string => {

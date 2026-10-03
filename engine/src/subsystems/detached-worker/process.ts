@@ -60,7 +60,7 @@ const awaitWorkerInput = async (
   label: string,
 ): Promise<number> => {
   const timeoutMessage = `${label} worker startup payload delivery timed out after 15 seconds.`;
-  const remaining = deadline - Date.now();
+  const remaining = deadline - performance.now();
   if (remaining <= 0) throw new Error(timeoutMessage);
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -85,10 +85,10 @@ const textFromStreamUntilLine = async (
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let text = "";
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   try {
     while (true) {
-      const remaining = deadline - Date.now();
+      const remaining = deadline - performance.now();
       if (remaining <= 0) throw new Error("Detached worker readiness timed out.");
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const chunk = await Promise.race([
@@ -164,7 +164,7 @@ export const spawnDetachedWorker = <Ready, Encoded>(
           `${options.payloadLabel ?? options.logLabel} worker startup payload exceeds the 16 MiB limit.`,
         );
       const payloadTimeoutMs = options.payloadTimeoutMs ?? WORKER_PAYLOAD_TIMEOUT_MS;
-      const deadline = Date.now() + payloadTimeoutMs;
+      const deadline = performance.now() + payloadTimeoutMs;
       for (let offset = 0; offset < payload.byteLength; ) {
         const end = Math.min(offset + WORKER_PAYLOAD_CHUNK_BYTES, payload.byteLength);
         await awaitWorkerInput(

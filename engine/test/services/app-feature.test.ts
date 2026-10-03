@@ -401,6 +401,35 @@ describe("composeAppFeatures idempotency and conflicts", () => {
 });
 
 describe("composeAppFeatures cycle detection", () => {
+  test("reports the mutation cycle in priority order without repeating its start", async () => {
+    // Given
+    const services = ["alpha", "beta", "gamma"].map((name) =>
+      draft({ serviceName: name, serviceType: name }),
+    );
+    const features = [
+      { id: "feat-c", priority: 300, trigger: "gamma", selected: "alpha" },
+      { id: "feat-b", priority: 200, trigger: "beta", selected: "gamma" },
+      { id: "feat-a", priority: 100, trigger: "alpha", selected: "beta" },
+    ].map(({ id, priority, trigger, selected }) =>
+      feature({
+        id,
+        priority,
+        activatedBy: { services: { type: trigger } },
+        selectors: { types: [selected] },
+        apply: () => Effect.void,
+      }),
+    );
+    // When
+    const error = await Effect.runPromise(Effect.flip(composeAppFeatures(inputFor(services, features))));
+    // Then
+    expect(error).toMatchObject({
+      _tag: "CycleDetected",
+      cycle: ["feat-a", "feat-b", "feat-c"],
+      message: "App features form a mutation cycle: feat-a -> feat-b -> feat-c",
+      remediation: "Break the mutual app-feature mutation so no two features mutate each other's triggers.",
+    });
+  });
+
   test("A<->B mutual mutation is rejected with AppFeatureCycleError", async () => {
     const services = [
       draft({ serviceName: "alpha", serviceType: "alpha" }),

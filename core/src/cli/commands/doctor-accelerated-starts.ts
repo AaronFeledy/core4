@@ -1,5 +1,5 @@
 import { acceleratedStartInventory } from "@lando/engine/operations/accelerated-start-inventory";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { FileSystem, StateStore } from "@lando/sdk/services";
 import { Effect, Layer, Option } from "effect";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
@@ -13,7 +13,7 @@ export const acceleratedStartsDoctor = (redact: (text: string) => string) =>
       Effect.provide(
         Layer.merge(
           Layer.succeed(StateStore, store.value),
-          Option.isSome(fs) ? Layer.succeed(FileSystem, fs.value) : FileSystemLive,
+          Option.isSome(fs) ? Layer.succeed(FileSystem, fs.value) : BunFileSystem.layer,
         ),
       ),
     );

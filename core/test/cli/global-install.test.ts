@@ -9,10 +9,10 @@ import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName }
 import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { globalInstall } from "@lando/engine/operations/global-install";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
 import { renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
@@ -57,7 +57,9 @@ const layerWithFakeGlobalService = (modulePath: string) => {
   };
 
   return Layer.mergeAll(
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
     Layer.succeed(PluginRegistry, {
       list: Effect.succeed([fakeManifest]),
       load: () => Effect.succeed(fakeManifest),
@@ -169,7 +171,9 @@ describe("global:install command operation", () => {
         capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
       };
       const layer = Layer.mergeAll(
-        GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+        GlobalAppServiceLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+        ),
         Layer.succeed(PluginRegistry, {
           list: Effect.succeed([]),
           load: () => Effect.die("not needed"),

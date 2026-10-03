@@ -11,7 +11,7 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { renderVerboseLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeVerboseRendererLive } from "@lando/renderer/runtime";
@@ -161,7 +161,7 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
       yield* events.publish(infoEvent);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeVerboseRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(makeVerboseRendererLive(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const stdout = io.stdout();
@@ -179,7 +179,7 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
       yield* events.publish(detail("a", "hello"));
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeVerboseRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(makeVerboseRendererLive(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const stdout = io.stdout();
@@ -210,7 +210,7 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
       yield* events.publish(infoEvent);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeVerboseRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(makeVerboseRendererLive(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const stdout = io.stdout();

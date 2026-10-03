@@ -10,7 +10,7 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import type { ServiceTypeInput } from "@lando/core/services";
-import { PluginRegistryLive, makePluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import {
   collectGlobalServiceContributions,
   defaultGlobalServiceModuleLoader,
@@ -65,14 +65,16 @@ const fakeLogger = (sink: Array<string>) =>
   });
 
 const pluginRegistryTestLayer = (dataRoot: string | undefined) =>
-  PluginRegistryLive.pipe(Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))));
+  PluginRegistryLayer.layer.pipe(
+    Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))),
+  );
 
 const pluginRegistryTestLayerWithDiscovery = (
   dataRoot: string | undefined,
-  discovery: Parameters<typeof makePluginRegistryLive>[0],
+  discovery: Parameters<typeof PluginRegistryLayer.layerWith>[0],
   modules: ReadonlyArray<LandoPluginModule>,
 ) =>
-  makePluginRegistryLive(discovery, modules).pipe(
+  PluginRegistryLayer.layerWith(discovery, modules).pipe(
     Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))),
   );
 
@@ -240,7 +242,7 @@ afterEach(async () => {
   await rm(appRoot, { recursive: true, force: true });
 });
 
-describe("PluginRegistryLive", () => {
+describe("PluginRegistryLayer.layer", () => {
   test("lists bundled plugin manifests", async () => {
     const manifests = await runWithPluginRegistry(
       Effect.flatMap(PluginRegistry, (registry) => registry.list),

@@ -25,19 +25,21 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistryLive, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { makeScratchAppServiceLive, readScratchLandofile } from "@lando/engine/scratch-app/service";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import { makeScratchRegistry } from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { readScratchLandofile } from "@lando/engine/scratch-app/service";
+import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -45,7 +47,7 @@ import { makeJsonRendererServiceLive } from "@lando/renderer/runtime";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(
-  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessService.layer)),
+  Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
@@ -92,7 +94,7 @@ const landofileRuntimeInputs = {
 } satisfies LandofileRuntimeInputs;
 
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -242,11 +244,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     importArtifact: () => die("importArtifact"),
   };
 
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const redactionLive = RedactionService.layer.pipe(Layer.provide(SecretStoreLive));
-  const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  const eventLive = LandoEventService.layer.pipe(Layer.provide(redactionLive));
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -254,7 +256,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     select: () => Effect.succeed(provider),
   });
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
+    BunFileSystem.layer,
     PrivateFileAccessService.layer,
     landofileServiceLayer,
     plannerLive,
@@ -262,8 +264,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     eventLive,
     pathsLive,
     redactionLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
+    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLive,
     DataMoverLive.pipe(
       Layer.provide(
@@ -277,23 +279,23 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       ),
     ),
   );
-  const buildOrchestratorLive = BuildOrchestratorLive.pipe(
+  const buildOrchestratorLive = BuildOrchestratorLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(eventLive, pathsLive, registryLive, stateStoreLayer)),
   );
   return Layer.mergeAll(
     scratchDeps,
     buildOrchestratorLive,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(
       Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive)),
     ),
-    options.configLayer ?? ConfigServiceLive,
-    SecretStoreLive,
+    options.configLayer ?? LandoConfigService.layer,
+    EnvSecretStore.layer,
   ).pipe(Layer.provide(PrivateFileAccessService.layer));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
-  const redactionLive = RedactionService.layer.pipe(Layer.provide(SecretStoreLive));
-  return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  return Layer.mergeAll(redactionLive, LandoEventService.layer.pipe(Layer.provide(redactionLive)));
 };
 
 const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {

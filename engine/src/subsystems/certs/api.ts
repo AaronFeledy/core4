@@ -27,9 +27,12 @@ const CA_UNAVAILABLE_ID = "unavailable" as const;
 const CA_UNAVAILABLE_MESSAGE =
   "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).";
 
-export const CertificateAuthorityUnavailableLive = Layer.succeed(CertificateAuthority, {
-  id: CA_UNAVAILABLE_ID,
-  setup: (_opts) => Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_UNAVAILABLE_ID })),
-  issueCert: (_spec) =>
-    Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_UNAVAILABLE_ID })),
-});
+export const layerUnavailable = Layer.succeed(
+  CertificateAuthority,
+  CertificateAuthority.of({
+    id: CA_UNAVAILABLE_ID,
+    setup: (_opts) => Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_UNAVAILABLE_ID })),
+    issueCert: (_spec) =>
+      Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_UNAVAILABLE_ID })),
+  }),
+);

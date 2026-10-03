@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
-import { EventServiceLive, recordedEvents } from "@lando/core/testing";
+import { recordedEvents } from "@lando/core/testing";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { EventService } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer } from "effect";
 
 test("the public testing event bus is shared within a run, including nested provide, and rebuilt for a new run", async () => {
   // Given: use the public testing export, not makeTestRuntime's fake event bus.
   const instances: Context.Service.Shape<typeof EventService>[] = [];
-  const layer = EventServiceLive.pipe(
+  const layer = LandoEventService.layer.pipe(
     Layer.tap((context) => Effect.sync(() => instances.push(Context.get(context, EventService)))),
   );
   const graph = Layer.merge(layer, layer);

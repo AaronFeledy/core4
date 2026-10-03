@@ -11,7 +11,7 @@ import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import {
   type DownloaderEvents,
@@ -53,7 +53,7 @@ const secretStoreLayer = Layer.succeed(SecretStore, {
 } satisfies Context.Service.Shape<typeof SecretStore>);
 
 const realRedactionLayer = RedactionService.layer.pipe(Layer.provide(secretStoreLayer));
-const shellRunnerLive = makeShellRunnerLive(() => {
+const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by redaction service tests.");
 });
 

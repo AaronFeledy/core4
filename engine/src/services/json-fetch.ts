@@ -14,8 +14,8 @@ import { Duration, Effect, Layer, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { RequestPolicy, layer as httpClientLayer } from "@lando/http-client/live";
-import { ConfigServiceLive } from "./config.ts";
-import { EventServiceLive } from "./event-service.ts";
+import * as LandoConfigService from "./config.ts";
+import * as LandoEventService from "./event-service.ts";
 
 export interface HttpJsonResult {
   readonly status: number;
@@ -55,23 +55,27 @@ const headersRecord = (headers: HttpJsonOptions["headers"]): Record<string, stri
  */
 export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}): Promise<HttpJsonResult> =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* HttpClient.HttpClient;
-      const headers = headersRecord(options.headers);
-      const get = client.get(url, headers === undefined ? undefined : { headers }).pipe(
-        Effect.provideService(RequestPolicy, {
-          redirect: options.redirect ?? "follow",
-        }),
-      );
-      const response = yield* get;
-      const chunks = yield* Stream.runCollect(response.stream);
-      return { status: response.status, bytes: collectBytes(Array.from(chunks)) };
-    }).pipe(
+    Effect.fn("HttpClient.jsonFetch")(
+      function* () {
+        const client = yield* HttpClient.HttpClient;
+        const headers = headersRecord(options.headers);
+        const get = client.get(url, headers === undefined ? undefined : { headers }).pipe(
+          Effect.provideService(RequestPolicy, {
+            redirect: options.redirect ?? "follow",
+          }),
+        );
+        const response = yield* get;
+        const chunks = yield* Stream.runCollect(response.stream);
+        return { status: response.status, bytes: collectBytes(Array.from(chunks)) };
+      },
       options.timeoutMs === undefined
         ? (effect) => effect
         : Effect.timeout(Duration.millis(options.timeoutMs)),
       Effect.provide(
-        Layer.mergeAll(httpClientLayer.pipe(Layer.provide(EventServiceLive)), ConfigServiceLive),
+        Layer.mergeAll(
+          httpClientLayer.pipe(Layer.provide(LandoEventService.layer)),
+          LandoConfigService.layer,
+        ),
       ),
-    ),
+    )(),
   );

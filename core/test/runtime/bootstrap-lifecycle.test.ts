@@ -9,7 +9,7 @@ import {
   makeBootstrapLifecycleTracker,
   superviseBootstrapLayer,
 } from "@lando/engine/runtime/bootstrap-lifecycle";
-import { makeEventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const stubEventService = (
@@ -72,7 +72,7 @@ describe("runtime bootstrap lifecycle", () => {
   test("minimal bootstrap uses the zero-subscriber short-circuit", async () => {
     let decodeCalls = 0;
     let pubSubCalls = 0;
-    const eventLayer = makeEventServiceLive(16, {
+    const eventLayer = LandoEventService.layerWith(16, {
       onPayloadDecode: () => {
         decodeCalls += 1;
       },

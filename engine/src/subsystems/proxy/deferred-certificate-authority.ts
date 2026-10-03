@@ -20,7 +20,7 @@ const resolutionError = (cause: unknown): CaError => {
   });
 };
 
-export const DeferredCertificateAuthorityLive = Layer.effect(
+export const layer = Layer.effect(
   CertificateAuthority,
   Effect.gen(function* () {
     const resolver = yield* CertificateAuthorityResolver;

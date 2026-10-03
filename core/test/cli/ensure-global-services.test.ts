@@ -35,15 +35,15 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
 } from "@lando/engine/operations/ensure-global-services";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 interface ApplyCall {
   readonly plan: AppPlan;
@@ -189,10 +189,12 @@ const makeHarness = async (
     loadAppFeature: () => Effect.die("not used"),
   };
   const layer = Layer.mergeAll(
-    ConfigServiceLive,
-    CacheServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    LandoConfigService.layer,
+    AppCacheService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {
@@ -224,9 +226,13 @@ const makeHarness = async (
         }),
       buildApp: () => Effect.void,
     }),
-    AppPlannerLive.pipe(
+    AppPlannerLayer.layer.pipe(
       Layer.provide(
-        Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
+        Layer.mergeAll(
+          Layer.succeed(PluginRegistry, pluginRegistry),
+          AppCacheService.layer,
+          LandoConfigService.layer,
+        ),
       ),
     ),
   );

@@ -18,11 +18,11 @@ import {
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import * as AppCacheService from "../../src/cache/service.ts";
 import { landofileRuntimeInputs } from "../../src/composition.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 test("recomputes profile identities through edit, deletion, and byte-identical restoration", async () => {
   // Given: real include resolution, planner, and disk caches, isolated from host roots.
@@ -49,9 +49,9 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
           ),
         ),
     })),
-  ).pipe(Layer.provide(CacheServiceLive));
-  const plannerLayer = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLive, FileSystemLive, cache)),
+  ).pipe(Layer.provide(AppCacheService.layer));
+  const plannerLayer = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, cache)),
   );
   const load = () =>
     resolveLandofileIncludes({

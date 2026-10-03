@@ -36,7 +36,7 @@ export {
   mergeDefaultExcludes,
 };
 
-export const AppPlannerLive = Layer.effect(
+export const layer = Layer.effect(
   AppPlanner,
   Effect.gen(function* () {
     const pluginRegistry = yield* PluginRegistry;
@@ -47,38 +47,30 @@ export const AppPlannerLive = Layer.effect(
     const pathsService = yield* Effect.serviceOption(PathsService);
     const processRunner = yield* Effect.serviceOption(ProcessRunner);
     const certificateAuthorityResolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
-    return {
-      plan: (landofile, providerCapabilities) =>
-        resolveAppIdentity(
+    return AppPlanner.of({
+      plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities) {
+        const identity = yield* resolveAppIdentity(
           getLandofileAppRoot(landofile) ?? process.cwd(),
           Option.getOrUndefined(processRunner),
-        ).pipe(
-          Effect.flatMap((identity) =>
-            planApp(
-              pluginRegistry,
-              Option.getOrUndefined(cacheService),
-              Option.getOrUndefined(configService),
-              Option.getOrUndefined(fileSystem),
-              Option.getOrUndefined(pathsService),
-              Option.getOrUndefined(certificateAuthorityResolver),
-              landofile,
-              providerCapabilities,
-            ).pipe(
-              Effect.flatMap((plan) => {
-                const identified = { ...plan, root: identity.appRoot, identity };
-                const tooling = effectiveToolingForPlan(plan);
-                const events = effectiveEventsForPlan(plan);
-                return adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry)).pipe(
-                  Effect.map((adopted) => {
-                    if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
-                    if (events !== undefined) attachEffectiveEvents(adopted, events);
-                    return adopted;
-                  }),
-                );
-              }),
-            ),
-          ),
-        ),
-    } satisfies Context.Service.Shape<typeof AppPlanner>;
+        );
+        const plan = yield* planApp(
+          pluginRegistry,
+          Option.getOrUndefined(cacheService),
+          Option.getOrUndefined(configService),
+          Option.getOrUndefined(fileSystem),
+          Option.getOrUndefined(pathsService),
+          Option.getOrUndefined(certificateAuthorityResolver),
+          landofile,
+          providerCapabilities,
+        );
+        const identified = { ...plan, root: identity.appRoot, identity };
+        const tooling = effectiveToolingForPlan(plan);
+        const events = effectiveEventsForPlan(plan);
+        const adopted = yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
+        if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
+        if (events !== undefined) attachEffectiveEvents(adopted, events);
+        return adopted;
+      }),
+    } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),
 );

@@ -29,7 +29,7 @@ import {
   appToolingCompilationCachePath,
   pluginCommandCachePath,
 } from "@lando/engine/cache/paths";
-import { CommandRegistryLive } from "@lando/engine/services/command-registry";
+import * as CommandRegistryLayer from "@lando/engine/services/command-registry";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
@@ -64,7 +64,7 @@ const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Pro
   }
 };
 
-const registryLayer = Layer.provide(CommandRegistryLive, TestLandofileServiceLayer.layer);
+const registryLayer = Layer.provide(CommandRegistryLayer.layer, TestLandofileServiceLayer.layer);
 
 const listFromLive = () =>
   Effect.runPromise(
@@ -101,7 +101,7 @@ const writeInstalledPlugin = async (pluginsRoot: string, plugin: PluginManifest)
   );
 };
 
-describe("CommandRegistryLive", () => {
+describe("CommandRegistryLayer.layer", () => {
   test("lists parsed tooling tasks as RegisteredCommand entries under the app: namespace", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -345,7 +345,7 @@ describe("CommandRegistryLive", () => {
   });
 });
 
-describe("CommandRegistryLive cold-path cache writes", () => {
+describe("CommandRegistryLayer.layer cold-path cache writes", () => {
   let previousCwd = process.cwd();
 
   beforeEach(() => {

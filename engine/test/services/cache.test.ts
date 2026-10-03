@@ -40,7 +40,7 @@ import {
   writeCwdAppMapEntry,
 } from "../../src/cache/cwd-app-map.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive, CacheServiceWithPrivateFileAccessLive } from "../../src/cache/service.ts";
+import * as AppCacheService from "../../src/cache/service.ts";
 
 const CachedValue = Schema.Struct({
   name: Schema.String,
@@ -48,7 +48,7 @@ const CachedValue = Schema.Struct({
 });
 
 const runWithCache = <A>(effect: Effect.Effect<A, CacheError, CacheService>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
+  Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
 const expectExitFailure = <A, E>(exit: Exit.Exit<A, E>) => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -110,19 +110,22 @@ const providerCapabilities: ProviderCapabilities = {
   providerExtensions: ["compose"],
 };
 
-describe("CacheServiceLive", () => {
+describe("AppCacheService.layer", () => {
   test("uses the composed private-file service before publishing an atomic cache file", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-cache-private-access-"));
     const path = join(root, "plan.bin");
     const enforcedPaths: string[] = [];
-    const cacheLayer = CacheServiceWithPrivateFileAccessLive.pipe(
+    const cacheLayer = AppCacheService.layerWithPrivateFileAccess.pipe(
       Layer.provide(
-        Layer.succeed(PrivateFileAccessService, {
-          enforce: async (candidate) => {
-            enforcedPaths.push(candidate);
-          },
-          verify: async () => undefined,
-        }),
+        Layer.succeed(
+          PrivateFileAccessService,
+          PrivateFileAccessService.of({
+            enforce: async (candidate) => {
+              enforcedPaths.push(candidate);
+            },
+            verify: async () => undefined,
+          }),
+        ),
       ),
     );
 
@@ -196,7 +199,7 @@ describe("CacheServiceLive", () => {
           const expired = yield* cache.read("short-lived", CachedValue);
           return { expired, missing };
         }),
-      ).pipe(Effect.provide(CacheServiceLive), Effect.provide(TestClock.layer())),
+      ).pipe(Effect.provide(AppCacheService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(values).toEqual({ expired: null, missing: null });
@@ -209,7 +212,7 @@ describe("CacheServiceLive", () => {
           yield* cache.write("bad", { name: "bad", count: "not-a-number" });
           return yield* cache.read("bad", CachedValue);
         }),
-      ).pipe(Effect.provide(CacheServiceLive)),
+      ).pipe(Effect.provide(AppCacheService.layer)),
     );
 
     const failure = expectExitFailure(exit);

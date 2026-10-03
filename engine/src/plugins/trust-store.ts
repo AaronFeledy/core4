@@ -116,7 +116,7 @@ export const makePluginTrustStore = (path: string): typeof PluginTrustStore.Serv
   };
 };
 
-export const PluginTrustStoreLive = Layer.effect(
+export const layer = Layer.effect(
   PluginTrustStore,
   Effect.succeed(makePluginTrustStore(makeLandoPaths().pluginTrustFile)),
 );

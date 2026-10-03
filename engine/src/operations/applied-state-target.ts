@@ -18,35 +18,34 @@ const mismatch = (detail: string): AppResolveError =>
     remediation: "Restore the matching app root or remove the conflicting provider state before retrying.",
   });
 
-export const validateResolvedAppTarget = (target: ResolvedAppTarget) =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const plan = target.plan;
-    const identity = plan.identity;
-    if (target.root !== plan.root) {
+export const validateResolvedAppTarget = Effect.fnUntraced(function* (target: ResolvedAppTarget) {
+  const registry = yield* RuntimeProviderRegistry;
+  const plan = target.plan;
+  const identity = plan.identity;
+  if (target.root !== plan.root) {
+    return yield* Effect.fail(mismatch("canonical-root"));
+  }
+  if (target.app.id !== plan.id || target.app.root !== plan.root) {
+    return yield* Effect.fail(mismatch("app-ref"));
+  }
+  if (identity !== undefined) {
+    if (plan.root !== identity.appRoot) {
       return yield* Effect.fail(mismatch("canonical-root"));
     }
-    if (target.app.id !== plan.id || target.app.root !== plan.root) {
-      return yield* Effect.fail(mismatch("app-ref"));
+    const canonicalIdentity = yield* resolveAppIdentity(target.root);
+    if (canonicalIdentity.appRoot !== identity.appRoot) {
+      return yield* Effect.fail(mismatch("canonical-root"));
     }
-    if (identity !== undefined) {
-      if (plan.root !== identity.appRoot) {
-        return yield* Effect.fail(mismatch("canonical-root"));
-      }
-      const canonicalIdentity = yield* resolveAppIdentity(target.root);
-      if (canonicalIdentity.appRoot !== identity.appRoot) {
-        return yield* Effect.fail(mismatch("canonical-root"));
-      }
-      if (canonicalIdentity.ownerKey !== identity.ownerKey) {
-        return yield* Effect.fail(mismatch("owner-key"));
-      }
+    if (canonicalIdentity.ownerKey !== identity.ownerKey) {
+      return yield* Effect.fail(mismatch("owner-key"));
     }
-    const provider = yield* registry.select(plan);
-    if (provider.id !== String(plan.provider)) {
-      return yield* Effect.fail(mismatch("provider"));
-    }
-    return target;
-  });
+  }
+  const provider = yield* registry.select(plan);
+  if (provider.id !== String(plan.provider)) {
+    return yield* Effect.fail(mismatch("provider"));
+  }
+  return target;
+});
 
 const appliedStateTarget = (plan: AppPlan) =>
   plan.identity === undefined
@@ -57,20 +56,19 @@ const appliedStateTarget = (plan: AppPlan) =>
         app: appRef(plan),
       } satisfies ResolvedAppTarget);
 
-export const missingRootAppliedTarget = (plan: AppPlan, root: AbsolutePath) =>
-  Effect.gen(function* () {
-    if (plan.identity === undefined) return yield* Effect.fail(mismatch("identity"));
-    if (plan.identity.appRoot !== root || plan.root !== root) {
-      return yield* Effect.fail(mismatch("canonical-root"));
-    }
-    if (plan.identity.ownerKey !== appIdentityKey("owner", root)) {
-      return yield* Effect.fail(mismatch("owner-key"));
-    }
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(plan);
-    if (provider.id !== String(plan.provider)) return yield* Effect.fail(mismatch("provider"));
-    return { plan, root: plan.root, app: appRef(plan) } satisfies ResolvedAppTarget;
-  });
+export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPlan, root: AbsolutePath) {
+  if (plan.identity === undefined) return yield* Effect.fail(mismatch("identity"));
+  if (plan.identity.appRoot !== root || plan.root !== root) {
+    return yield* Effect.fail(mismatch("canonical-root"));
+  }
+  if (plan.identity.ownerKey !== appIdentityKey("owner", root)) {
+    return yield* Effect.fail(mismatch("owner-key"));
+  }
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(plan);
+  if (provider.id !== String(plan.provider)) return yield* Effect.fail(mismatch("provider"));
+  return { plan, root: plan.root, app: appRef(plan) } satisfies ResolvedAppTarget;
+});
 
 export const resolveAppliedStateTarget = Effect.gen(function* () {
   const registry = yield* RuntimeProviderRegistry;
@@ -101,38 +99,37 @@ export type TeardownResolution =
     }
   | { readonly kind: "absent"; readonly root: AbsolutePath; readonly landofilePresent: boolean };
 
-export const teardownResolutionAt = <E, R>(
+export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
   root: AbsolutePath,
   landofilePresent: boolean,
   targetFor: (plan: AppPlan) => Effect.Effect<ResolvedAppTarget, E, R>,
-): Effect.Effect<
+): Effect.fn.Return<
   TeardownResolution,
   E | AppResolveError | ProviderError | NoProviderInstalledError,
   R | RuntimeProviderRegistry
-> =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const resolveEvidence = registry.resolveTeardownEvidence;
-    const resolveAppliedPlan = registry.resolveAppliedPlan;
-    const evidence =
-      resolveEvidence !== undefined
-        ? yield* resolveEvidence(root)
-        : resolveAppliedPlan !== undefined
-          ? yield* resolveAppliedPlan(root).pipe(
-              Effect.map((plan) =>
-                plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
-              ),
-            )
-          : { kind: "absent" as const };
-    switch (evidence.kind) {
-      case "applied":
-        return { kind: "applied", target: yield* targetFor(evidence.plan) };
-      case "orphans":
-        return { kind: "orphans", root, groups: evidence.groups };
-      case "absent":
-        return { kind: "absent", root, landofilePresent };
-    }
-  });
+> {
+  const registry = yield* RuntimeProviderRegistry;
+  const resolveEvidence = registry.resolveTeardownEvidence;
+  const resolveAppliedPlan = registry.resolveAppliedPlan;
+  const evidence =
+    resolveEvidence !== undefined
+      ? yield* resolveEvidence(root)
+      : resolveAppliedPlan !== undefined
+        ? yield* resolveAppliedPlan(root).pipe(
+            Effect.map((plan) =>
+              plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+            ),
+          )
+        : { kind: "absent" as const };
+  switch (evidence.kind) {
+    case "applied":
+      return { kind: "applied", target: yield* targetFor(evidence.plan) };
+    case "orphans":
+      return { kind: "orphans", root, groups: evidence.groups };
+    case "absent":
+      return { kind: "absent", root, landofilePresent };
+  }
+});
 
 /**
  * Resolves the app root by discovery, which succeeds while the Landofile is unreadable, then asks

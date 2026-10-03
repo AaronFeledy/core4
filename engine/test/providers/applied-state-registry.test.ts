@@ -87,21 +87,27 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
     Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
   );
   const dependencies = Layer.mergeAll(
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(PluginRegistry, {
-      list: Effect.succeed(modules.map((module) => module.manifest)),
-      load: unsupported,
-      loadServiceType: unsupported,
-      loadServiceFeature: unsupported,
-      loadAppFeature: unsupported,
-    }),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed(modules.map((module) => module.manifest)),
+        load: unsupported,
+        loadServiceType: unsupported,
+        loadServiceFeature: unsupported,
+        loadAppFeature: unsupported,
+      }),
+    ),
     Layer.succeed(Downloader, Effect.runSync(makeTestDownloader()).service),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (value) => value }),
+    Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (value) => value })),
   );
   return Effect.runPromise(
     Effect.gen(function* () {

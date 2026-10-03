@@ -6,7 +6,7 @@ import { RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/s
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { layer as httpClientLayer } from "@lando/http-client/live";
-import { UrlScannerLive } from "../../../src/subsystems/scanner/live.ts";
+import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
 
 const web = ServiceName.make("web");
 const appId = AppId.make("real-scan");
@@ -80,7 +80,7 @@ const planWith = (scanner: ScanPlan): AppPlan =>
 const scanAgainst = (hostPort: number, scanner: ScanPlan) =>
   Effect.runPromise(
     Effect.flatMap(UrlScanner, (service) => service.scan(appId, { plan: planWith(scanner) })).pipe(
-      Effect.provide(UrlScannerLive),
+      Effect.provide(ProviderUrlScanner.layer),
       Effect.provide(Layer.succeed(RuntimeProvider, providerAt(hostPort))),
       Effect.provide(httpClientLayer),
     ),

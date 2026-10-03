@@ -139,7 +139,7 @@ const bundledContributions = (
     return entry === undefined ? plugin : { ...plugin, entry };
   });
 
-export const makeConfigTranslatorRegistryLive = (
+export const layerWith = (
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
 ): Layer.Layer<ConfigTranslatorRegistry> =>
   Layer.effect(
@@ -156,4 +156,4 @@ export const makeConfigTranslatorRegistryLive = (
     }),
   );
 
-export const ConfigTranslatorRegistryLive = Layer.suspend(() => makeConfigTranslatorRegistryLive());
+export const layer = Layer.suspend(() => layerWith());

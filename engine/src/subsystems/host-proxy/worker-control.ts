@@ -154,21 +154,18 @@ const awaitWorkerProcessExit = (record: HostProxyControlRecord): Effect.Effect<b
     Effect.catch(() => Effect.succeed(false)),
   );
 
-const terminateWorkerProcess = (
+const terminateWorkerProcess = Effect.fnUntraced(function* (
   record: HostProxyControlRecord,
   options: WorkerControlTerminationOptions,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const terminate = options.terminateProcess ?? defaultTerminateProcess;
-    yield* Effect.promise(() => terminate(record.pid, "SIGTERM"));
-    if (yield* awaitWorkerProcessExit(record)) return;
-    yield* Effect.promise(() => terminate(record.pid, "SIGKILL"));
-    if (!(yield* awaitWorkerProcessExit(record))) {
-      return yield* Effect.die(
-        new Error(`Host-proxy worker ${record.appId} did not exit after termination.`),
-      );
-    }
-  });
+): Effect.fn.Return<void> {
+  const terminate = options.terminateProcess ?? defaultTerminateProcess;
+  yield* Effect.promise(() => terminate(record.pid, "SIGTERM"));
+  if (yield* awaitWorkerProcessExit(record)) return;
+  yield* Effect.promise(() => terminate(record.pid, "SIGKILL"));
+  if (!(yield* awaitWorkerProcessExit(record))) {
+    return yield* Effect.die(new Error(`Host-proxy worker ${record.appId} did not exit after termination.`));
+  }
+});
 
 export const terminateControlRecord = (
   record: HostProxyControlRecord,

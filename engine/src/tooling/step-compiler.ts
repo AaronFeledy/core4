@@ -1,4 +1,4 @@
-import { Data, Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
@@ -16,12 +16,15 @@ import type {
   ToolingTaskStepLeaf,
 } from "./step-program.ts";
 
-export class EventStepCompileError extends Data.TaggedError("EventStepCompileError")<{
-  readonly message: string;
-  readonly authoredIndex: number;
-  readonly kind: ToolingStepLeaf["kind"];
-  readonly cause: ToolingStepSelectorUnavailableError | ToolingCompileError;
-}> {}
+export class EventStepCompileError extends Schema.TaggedError<EventStepCompileError>()(
+  "EventStepCompileError",
+  {
+    message: Schema.String,
+    authoredIndex: Schema.Number,
+    kind: Schema.Literals(["cmd", "task", "command"]),
+    cause: Schema.Union([ToolingStepSelectorUnavailableError, ToolingCompileError]),
+  },
+) {}
 
 const leafNode = (leaf: ToolingStepLeaf): ToolingStepLeafNode => ({
   kind: "leaf",

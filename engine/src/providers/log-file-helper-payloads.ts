@@ -37,35 +37,32 @@ export const defaultLogFileHelperDistRoot = (
   return defaultDistRoot(input.execPath ?? process.execPath);
 };
 
-export const loadLogFileHelperPayloads = (
+export const loadLogFileHelperPayloads = Effect.fnUntraced(function* (
   input: {
     readonly distRoot?: string;
     readonly env?: Readonly<Record<string, string | undefined>>;
     readonly execPath?: string;
   } = {},
-): Effect.Effect<LogFileHelperPayloads> =>
-  Effect.gen(function* () {
-    const distRoot = input.distRoot ?? defaultLogFileHelperDistRoot(input);
-    const entries = yield* Effect.forEach(payloadKeys, (key) =>
-      Effect.tryPromise({
-        try: () => readFile(resolveLogFileHelperPayloadPath({ distRoot, key })),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.option,
-        Effect.map(
-          (bytes) => [key, bytes._tag === "None" ? undefined : new Uint8Array(bytes.value)] as const,
-        ),
-      ),
-    );
+): Effect.fn.Return<LogFileHelperPayloads> {
+  const distRoot = input.distRoot ?? defaultLogFileHelperDistRoot(input);
+  const entries = yield* Effect.forEach(payloadKeys, (key) =>
+    Effect.tryPromise({
+      try: () => readFile(resolveLogFileHelperPayloadPath({ distRoot, key })),
+      catch: (cause) => cause,
+    }).pipe(
+      Effect.option,
+      Effect.map((bytes) => [key, bytes._tag === "None" ? undefined : new Uint8Array(bytes.value)] as const),
+    ),
+  );
 
-    const payloads: LogFileHelperPayloads = {};
-    for (const [key, bytes] of entries) {
-      if (bytes !== undefined) payloads[key] = bytes;
-    }
-    return payloads;
-  });
+  const payloads: LogFileHelperPayloads = {};
+  for (const [key, bytes] of entries) {
+    if (bytes !== undefined) payloads[key] = bytes;
+  }
+  return payloads;
+});
 
-export const LogFileHelperAssetsLive = Layer.effect(
+export const layer = Layer.effect(
   LogFileHelperAssets,
   Effect.cached(loadLogFileHelperPayloads()).pipe(Effect.map((payloads) => ({ payloads }))),
 );

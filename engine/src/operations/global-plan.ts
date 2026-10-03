@@ -94,31 +94,28 @@ const withProcessCwd = <A, E, R>(
     (original) => Effect.sync(() => process.chdir(original)),
   );
 
-export const loadGlobalPlan = (): Effect.Effect<
+export const loadGlobalPlan = Effect.fnUntraced(function* (): Effect.fn.Return<
   LoadGlobalPlanResult,
   LoadGlobalPlanError,
   LoadGlobalPlanServices
-> =>
-  Effect.gen(function* () {
-    const globalApp = yield* GlobalAppService;
-    const fileSystem = yield* FileSystem;
-    const paths = yield* globalApp.paths;
-    const exists = yield* fileSystem.exists(paths.distLandofile);
-    if (!exists) return { materialized: false, paths };
+> {
+  const globalApp = yield* GlobalAppService;
+  const fileSystem = yield* FileSystem;
+  const paths = yield* globalApp.paths;
+  const exists = yield* fileSystem.exists(paths.distLandofile);
+  if (!exists) return { materialized: false, paths };
 
-    const content = yield* fileSystem.readText(paths.distLandofile);
-    const landofile = yield* decodeGlobalLandofile({
-      file: paths.distLandofile,
-      content,
-      cwd: paths.root,
-    });
-    const registry = yield* RuntimeProviderRegistry;
-    const managed = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const planner = yield* AppPlanner;
-    const landofileForPlan = { ...landofile, provider: MANAGED_PROVIDER_ID };
-    const plan = yield* withProcessCwd(paths.root, () =>
-      planner.plan(landofileForPlan, managed.capabilities),
-    );
-
-    return { materialized: true, paths, landofile: landofileForPlan, plan };
+  const content = yield* fileSystem.readText(paths.distLandofile);
+  const landofile = yield* decodeGlobalLandofile({
+    file: paths.distLandofile,
+    content,
+    cwd: paths.root,
   });
+  const registry = yield* RuntimeProviderRegistry;
+  const managed = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const planner = yield* AppPlanner;
+  const landofileForPlan = { ...landofile, provider: MANAGED_PROVIDER_ID };
+  const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofileForPlan, managed.capabilities));
+
+  return { materialized: true, paths, landofile: landofileForPlan, plan };
+});

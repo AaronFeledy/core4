@@ -73,11 +73,13 @@ const nonempty = (value: string | undefined): string | undefined => {
   return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
 };
 
-const readGpgSocket = (options: HostAgentDiscoveryOptions): Effect.Effect<string | undefined, never> => {
-  if (options.gpgSocket !== undefined) return options.gpgSocket;
+const readGpgSocket = Effect.fnUntraced(function* (
+  options: HostAgentDiscoveryOptions,
+): Effect.fn.Return<string | undefined, never> {
+  if (options.gpgSocket !== undefined) return yield* options.gpgSocket;
   const runGpgconf = options.runGpgconf;
   if (runGpgconf !== undefined) {
-    return Effect.promise(async () => {
+    return yield* Effect.promise(async () => {
       try {
         return nonempty(await runGpgconf());
       } catch (cause) {
@@ -86,20 +88,18 @@ const readGpgSocket = (options: HostAgentDiscoveryOptions): Effect.Effect<string
       }
     });
   }
-  return Effect.gen(function* () {
-    const runner = yield* Effect.serviceOption(ProcessRunner);
-    if (Option.isNone(runner)) return undefined;
-    const result = yield* runner.value
-      .run({
-        cmd: "gpgconf",
-        args: ["--list-dirs", "agent-ssh-socket"],
-        timeoutMs: options.gpgTimeoutMs ?? 5_000,
-      })
-      .pipe(Effect.catch(() => Effect.succeed(undefined)));
-    if (result === undefined || result.exitCode !== 0) return undefined;
-    return nonempty(result.stdout);
-  });
-};
+  const runner = yield* Effect.serviceOption(ProcessRunner);
+  if (Option.isNone(runner)) return undefined;
+  const result = yield* runner.value
+    .run({
+      cmd: "gpgconf",
+      args: ["--list-dirs", "agent-ssh-socket"],
+      timeoutMs: options.gpgTimeoutMs ?? 5_000,
+    })
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
+  if (result === undefined || result.exitCode !== 0) return undefined;
+  return nonempty(result.stdout);
+});
 
 const onePasswordPath = (options: HostAgentDiscoveryOptions): string | undefined => {
   switch (options.platform) {
@@ -113,76 +113,73 @@ const onePasswordPath = (options: HostAgentDiscoveryOptions): string | undefined
   }
 };
 
-export const discoverHostSshAgent = (
+export const discoverHostSshAgent = Effect.fnUntraced(function* (
   options: HostAgentDiscoveryOptions,
-): Effect.Effect<DiscoveredHostSshAgent, SshAgentUnavailableError> =>
-  Effect.gen(function* () {
-    const inspect =
-      options.inspect ?? (options.exists === undefined ? nodeInspect : existsInspect(options.exists));
-    const probe = (upstream: AgentRelayUpstream) =>
-      options.probe === undefined
-        ? Effect.tryPromise({
-            try: () => probeSshAgent(upstream, { timeoutMs: options.probeTimeoutMs ?? 2_000 }),
-            catch: (cause: unknown) => cause,
-          })
-        : options.probe(upstream);
-    const tryCandidate = (
-      path: string,
-      source: HostSshAgentUpstream["source"],
-      authoritative: boolean,
-    ): Effect.Effect<DiscoveredHostSshAgent | undefined, SshAgentUnavailableError> =>
-      Effect.gen(function* () {
-        const namedPipe = options.platform === "win32" && path.startsWith("\\\\.\\pipe\\");
-        const upstream: HostSshAgentUpstream = {
-          _tag: namedPipe ? "named-pipe" : "unix",
-          path,
-          source,
-        };
-        if (!namedPipe) {
-          const kind = yield* inspect(path);
-          if (authoritative && kind !== "socket")
-            return yield* Effect.fail(unavailable("socket-missing", path));
-          if (!authoritative && kind === "missing") return undefined;
-        }
-        const probed = yield* probe(upstream).pipe(Effect.result);
-        if (probed._tag === "Success") return { upstream, identities: probed.success.identities };
-        if (authoritative) return yield* Effect.fail(unavailable("socket-missing", path));
-        return undefined;
-      });
-    const explicit = options.explicitSocket;
-    if (explicit !== undefined) {
-      const found = yield* tryCandidate(explicit, "explicit", true);
-      if (found === undefined) return yield* Effect.fail(unavailable("socket-missing", explicit));
-      return found;
+): Effect.fn.Return<DiscoveredHostSshAgent, SshAgentUnavailableError> {
+  const inspect =
+    options.inspect ?? (options.exists === undefined ? nodeInspect : existsInspect(options.exists));
+  const probe = (upstream: AgentRelayUpstream) =>
+    options.probe === undefined
+      ? Effect.tryPromise({
+          try: () => probeSshAgent(upstream, { timeoutMs: options.probeTimeoutMs ?? 2_000 }),
+          catch: (cause: unknown) => cause,
+        })
+      : options.probe(upstream);
+  const tryCandidate = Effect.fnUntraced(function* (
+    path: string,
+    source: HostSshAgentUpstream["source"],
+    authoritative: boolean,
+  ): Effect.fn.Return<DiscoveredHostSshAgent | undefined, SshAgentUnavailableError> {
+    const namedPipe = options.platform === "win32" && path.startsWith("\\\\.\\pipe\\");
+    const upstream: HostSshAgentUpstream = {
+      _tag: namedPipe ? "named-pipe" : "unix",
+      path,
+      source,
+    };
+    if (!namedPipe) {
+      const kind = yield* inspect(path);
+      if (authoritative && kind !== "socket") return yield* Effect.fail(unavailable("socket-missing", path));
+      if (!authoritative && kind === "missing") return undefined;
     }
-    const envSocket = nonempty(options.env.SSH_AUTH_SOCK);
-    if (envSocket !== undefined) {
-      const found = yield* tryCandidate(envSocket, "env", false);
-      if (found !== undefined) return found;
-    }
-    const password = onePasswordPath(options);
-    if (password !== undefined) {
-      const found = yield* tryCandidate(password, "1password", false);
-      if (found !== undefined) return found;
-    }
-    const gpg = yield* readGpgSocket(options);
-    if (gpg !== undefined) {
-      const found = yield* tryCandidate(gpg, "gpg", false);
-      if (found !== undefined) return found;
-    }
-    const runtimeDir = nonempty(options.env.XDG_RUNTIME_DIR);
-    if (runtimeDir !== undefined) {
-      const join = options.platform === "win32" ? win32.join : posix.join;
-      const found = yield* tryCandidate(
-        join(runtimeDir, "yubikey-agent", "yubikey-agent.sock"),
-        "yubikey-agent",
-        false,
-      );
-      if (found !== undefined) return found;
-    }
-    if (options.platform === "win32") {
-      const found = yield* tryCandidate(String.raw`\\.\pipe\openssh-ssh-agent`, "windows-openssh", false);
-      if (found !== undefined) return found;
-    }
-    return yield* Effect.fail(unavailable("host-agent-not-found"));
+    const probed = yield* probe(upstream).pipe(Effect.result);
+    if (probed._tag === "Success") return { upstream, identities: probed.success.identities };
+    if (authoritative) return yield* Effect.fail(unavailable("socket-missing", path));
+    return undefined;
   });
+  const explicit = options.explicitSocket;
+  if (explicit !== undefined) {
+    const found = yield* tryCandidate(explicit, "explicit", true);
+    if (found === undefined) return yield* Effect.fail(unavailable("socket-missing", explicit));
+    return found;
+  }
+  const envSocket = nonempty(options.env.SSH_AUTH_SOCK);
+  if (envSocket !== undefined) {
+    const found = yield* tryCandidate(envSocket, "env", false);
+    if (found !== undefined) return found;
+  }
+  const password = onePasswordPath(options);
+  if (password !== undefined) {
+    const found = yield* tryCandidate(password, "1password", false);
+    if (found !== undefined) return found;
+  }
+  const gpg = yield* readGpgSocket(options);
+  if (gpg !== undefined) {
+    const found = yield* tryCandidate(gpg, "gpg", false);
+    if (found !== undefined) return found;
+  }
+  const runtimeDir = nonempty(options.env.XDG_RUNTIME_DIR);
+  if (runtimeDir !== undefined) {
+    const join = options.platform === "win32" ? win32.join : posix.join;
+    const found = yield* tryCandidate(
+      join(runtimeDir, "yubikey-agent", "yubikey-agent.sock"),
+      "yubikey-agent",
+      false,
+    );
+    if (found !== undefined) return found;
+  }
+  if (options.platform === "win32") {
+    const found = yield* tryCandidate(String.raw`\\.\pipe\openssh-ssh-agent`, "windows-openssh", false);
+    if (found !== undefined) return found;
+  }
+  return yield* Effect.fail(unavailable("host-agent-not-found"));
+});

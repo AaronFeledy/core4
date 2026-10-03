@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Stream } from "effect";
-import { ProcessRunnerLive } from "../../src/services/process-runner";
+import * as BunProcessRunner from "../../src/services/process-runner";
 
 for (const mode of ["take", "interrupt", "timeout"] as const) {
   test(`kills and reaps a streaming child after ${mode}`, async () => {
@@ -29,7 +29,7 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
           ),
         );
       return (mode === "take" ? stream.pipe(Stream.take(1)) : stream).pipe(Stream.runDrain);
-    }).pipe(Effect.provide(ProcessRunnerLive));
+    }).pipe(Effect.provide(BunProcessRunner.layer));
     const completion = Effect.runPromiseExit(program, { signal: controller.signal });
     let pid: number | undefined;
     try {
@@ -75,7 +75,7 @@ test("streaming concurrently drains both pipes and feeds stdin", async () => {
           timeoutMs: 2000,
         })
         .pipe(Stream.runCollect),
-    ).pipe(Effect.provide(ProcessRunnerLive)),
+    ).pipe(Effect.provide(BunProcessRunner.layer)),
   );
   const stdout = [...chunks]
     .filter(({ kind }) => kind === "stdout")

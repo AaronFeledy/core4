@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { EventService } from "@lando/sdk/services";
 import { Context, Effect, Layer } from "effect";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 test("EventService builds once per runtime, reuses it for nested provide, and rebuilds for a new run", async () => {
   // Given: observe successful builds of the real layer and its fresh service instances.
   const instances: Context.Service.Shape<typeof EventService>[] = [];
-  const layer = EventServiceLive.pipe(
+  const layer = LandoEventService.layer.pipe(
     Layer.tap((context) => Effect.sync(() => instances.push(Context.get(context, EventService)))),
   );
   const graph = Layer.merge(layer, layer);

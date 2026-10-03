@@ -73,26 +73,35 @@ const layerFor = (root: string) => {
       PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(PathsService, paths),
-      Layer.succeed(LandofileService, {
-        discover: Effect.die("desired config must not load during orphan teardown"),
-      }),
-      Layer.succeed(AppPlanner, { plan: () => Effect.die("desired planning must not run") }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(provider),
-        resolveAppliedPlan: () => Effect.succeed<AppPlan | undefined>(undefined),
-        resolveTeardownEvidence: () =>
-          Effect.succeed({ kind: "orphans" as const, groups: [orphanGroup(root)] }),
-      }),
-      Layer.succeed(EventService, {
-        publish: () => Effect.void,
-        subscribe: () => Stream.die("not used"),
-        subscribeQueue: Effect.die("not used"),
-        waitFor: () => Effect.die("not used"),
-        waitForAny: () => Effect.die("not used"),
-        query: () => Effect.succeed([]),
-      }),
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({
+          discover: Effect.die("desired config must not load during orphan teardown"),
+        }),
+      ),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("desired planning must not run") })),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.succeed(provider),
+          resolveAppliedPlan: () => Effect.succeed<AppPlan | undefined>(undefined),
+          resolveTeardownEvidence: () =>
+            Effect.succeed({ kind: "orphans" as const, groups: [orphanGroup(root)] }),
+        }),
+      ),
+      Layer.succeed(
+        EventService,
+        EventService.of({
+          publish: () => Effect.void,
+          subscribe: () => Stream.die("not used"),
+          subscribeQueue: Effect.die("not used"),
+          waitFor: () => Effect.die("not used"),
+          waitForAny: () => Effect.die("not used"),
+          query: () => Effect.succeed([]),
+        }),
+      ),
     ),
   };
 };

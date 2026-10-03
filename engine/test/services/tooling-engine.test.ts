@@ -23,7 +23,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
+import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {
@@ -178,7 +178,7 @@ const makeFakeProvider = (
 
 const runEngine = (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
   Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider)).pipe(
-    Effect.provide(ProviderExecToolingEngineLive),
+    Effect.provide(ProviderExecToolingEngine.layer),
   );
 
 const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
@@ -199,9 +199,11 @@ const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () =
   }
 };
 
-describe("ProviderExecToolingEngineLive", () => {
+describe("ProviderExecToolingEngine.layer", () => {
   test("Layer registers engine id 'providerExec'", async () => {
-    const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(ProviderExecToolingEngineLive)));
+    const engine = await Effect.runPromise(
+      ToolingEngine.pipe(Effect.provide(ProviderExecToolingEngine.layer)),
+    );
     expect(engine.id).toBe("providerExec");
   });
 

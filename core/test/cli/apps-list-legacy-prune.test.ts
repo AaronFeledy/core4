@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Result, Schema } from "effect";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { StateStoreError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
@@ -73,7 +73,7 @@ const fixture = async (provider: string) => {
                   }),
                 ),
             }),
-            FileSystemLive,
+            BunFileSystem.layer,
             PrivateFileAccessService.layer,
           ),
         ),
@@ -207,7 +207,7 @@ test.each(["lando", "docker"])(
         providerId: provider,
         appRoot: f.plan.root,
         services: [],
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then: the live modern record is unchanged.
     expect(await readFile(modern, "utf8")).toBe(payload);
@@ -243,7 +243,7 @@ test("does not delete a live podman record for a stale missing-root candidate", 
       providerId: "podman",
       appRoot: f.plan.root,
       services: [],
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   // Then
   expect(removed).toBe(false);

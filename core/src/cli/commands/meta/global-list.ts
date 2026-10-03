@@ -4,8 +4,8 @@ import type { PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 import { type Logger, PluginRegistry } from "@lando/sdk/services";
 
-import { LoggerLive } from "@lando/engine/logging/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as LandoLogger from "@lando/engine/logging/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
@@ -101,4 +101,4 @@ export const renderGlobalListResult = (result: GlobalListResult, ctx?: RenderCon
 // Self-provides PluginRegistry (serviceOption-backed) with a silent logger so
 // the catalog listing runs at bootstrap `minimal` without provider contact.
 export const DefaultGlobalListLayer: Layer.Layer<PluginRegistry | Logger, never, ConfigService> =
-  PluginRegistryLive.pipe(Layer.provideMerge(LoggerLive({ mode: "silent" })));
+  PluginRegistryLayer.layer.pipe(Layer.provideMerge(LandoLogger.layer({ mode: "silent" })));

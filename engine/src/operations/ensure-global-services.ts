@@ -109,91 +109,90 @@ const missingServiceError = (
     remediation: "Run `lando global:install <plugin>` to enable the required global service(s).",
   });
 
-export const ensureGlobalServicesRunning = (
+export const ensureGlobalServicesRunning = Effect.fnUntraced(function* (
   options: EnsureGlobalServicesOptions,
-): Effect.Effect<EnsureGlobalServicesResult, EnsureGlobalServicesError, EnsureGlobalServicesServices> =>
-  Effect.gen(function* () {
-    const requested = options.services;
-    yield* globalInstall({});
-    const loaded = yield* loadGlobalPlan();
-    const events = yield* EventService;
+): Effect.fn.Return<EnsureGlobalServicesResult, EnsureGlobalServicesError, EnsureGlobalServicesServices> {
+  const requested = options.services;
+  yield* globalInstall({});
+  const loaded = yield* loadGlobalPlan();
+  const events = yield* EventService;
 
-    if (!loaded.materialized) {
-      return yield* Effect.fail(missingServiceError(requested, requested, []));
-    }
+  if (!loaded.materialized) {
+    return yield* Effect.fail(missingServiceError(requested, requested, []));
+  }
 
-    const plan = loaded.plan;
-    const planServices = Object.values(plan.services);
-    const available = planServices.map((service) => String(service.name));
-    const availableSet = new Set(available);
-    const missing = requested.filter((id) => !availableSet.has(id));
+  const plan = loaded.plan;
+  const planServices = Object.values(plan.services);
+  const available = planServices.map((service) => String(service.name));
+  const availableSet = new Set(available);
+  const missing = requested.filter((id) => !availableSet.has(id));
 
-    yield* events.publish(
-      PreGlobalStartEvent.make({
-        scope: "global",
-        app: globalAppRef(plan),
-        plan,
-        triggeredBy: "ensure-running",
-        ensuringServices: [...requested],
-        cached: false,
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PreGlobalStartEvent.make({
+      scope: "global",
+      app: globalAppRef(plan),
+      plan,
+      triggeredBy: "ensure-running",
+      ensuringServices: [...requested],
+      cached: false,
+      timestamp: now(),
+    }),
+  );
 
-    if (missing.length > 0) {
-      return yield* Effect.fail(missingServiceError(requested, missing, available));
-    }
+  if (missing.length > 0) {
+    return yield* Effect.fail(missingServiceError(requested, missing, available));
+  }
 
-    const requestedSet = includeAvailableDependencies(requested, planServices);
-    const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
-    const planToApply =
-      selected.length === planServices.length
-        ? plan
-        : {
-            ...plan,
-            services: Object.fromEntries(
-              Object.entries(plan.services).filter(([, service]) => requestedSet.has(String(service.name))),
-            ),
-          };
+  const requestedSet = includeAvailableDependencies(requested, planServices);
+  const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
+  const planToApply =
+    selected.length === planServices.length
+      ? plan
+      : {
+          ...plan,
+          services: Object.fromEntries(
+            Object.entries(plan.services).filter(([, service]) => requestedSet.has(String(service.name))),
+          ),
+        };
 
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const builds = yield* BuildOrchestrator;
-    // Managed global service configuration is generated locally and has no sync session lifecycle.
-    const realizedPlan = withOrdinaryMounts(planToApply);
-    const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
-    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const builds = yield* BuildOrchestrator;
+  // Managed global service configuration is generated locally and has no sync session lifecycle.
+  const realizedPlan = withOrdinaryMounts(planToApply);
+  const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
+  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
-    yield* Effect.scoped(
-      provider
-        .apply(builtPlan, {
-          reconcile: false,
-          recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-          serviceEnvironment,
-        })
-        .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
-    );
+  yield* Effect.scoped(
+    provider
+      .apply(builtPlan, {
+        reconcile: false,
+        recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        serviceEnvironment,
+      })
+      .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
+  );
 
-    const servicesStarted = yield* Effect.forEach(selected, (service) =>
-      provider.inspect({ app: plan.id, service: service.name, plan: realizedPlan }).pipe(
-        Effect.map((runtime) => ({
-          name: String(service.name),
-          state: runtime.state ?? runtime.status,
-          endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-        })),
-      ),
-    );
+  const servicesStarted = yield* Effect.forEach(selected, (service) =>
+    provider.inspect({ app: plan.id, service: service.name, plan: realizedPlan }).pipe(
+      Effect.map((runtime) => ({
+        name: String(service.name),
+        state: runtime.state ?? runtime.status,
+        endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+      })),
+    ),
+  );
 
-    yield* events.publish(
-      PostGlobalStartEvent.make({
-        scope: "global",
-        app: globalAppRef(plan),
-        plan: realizedPlan,
-        cached: false,
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PostGlobalStartEvent.make({
+      scope: "global",
+      app: globalAppRef(plan),
+      plan: realizedPlan,
+      cached: false,
+      timestamp: now(),
+    }),
+  );
 
-    return { app: plan.name, servicesStarted };
-  });
+  return { app: plan.name, servicesStarted };
+});

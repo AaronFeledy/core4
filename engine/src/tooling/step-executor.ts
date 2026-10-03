@@ -107,18 +107,21 @@ export const runToolingStepProgramWith = <E, A>(
     Effect.gen(function* () {
       const deferred: Array<Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError>> =
         [];
-      const executeLeaf = (leaf: ToolingStepLeaf, leafContext: ExpressionContext, checkCondition: boolean) =>
-        Effect.gen(function* () {
+      const executeLeaf = Effect.fnUntraced(
+        function* (leaf: ToolingStepLeaf, leafContext: ExpressionContext, checkCondition: boolean) {
           if (checkCondition && !(yield* dependencies.conditionAllows(leaf.condition, leafContext))) return;
           const resolved = yield* dependencies.resolveLeaf(leaf, leafContext);
           yield* executeResolved(resolved.leaf, resolved.context, runners);
-        }).pipe(
-          Effect.catch((error) =>
-            runners.mapLeafError === undefined
-              ? Effect.fail(error)
-              : Effect.fail(runners.mapLeafError(leaf, error)),
+        },
+        (effect, leaf) =>
+          effect.pipe(
+            Effect.catch((error) =>
+              runners.mapLeafError === undefined
+                ? Effect.fail(error)
+                : Effect.fail(runners.mapLeafError(leaf, error)),
+            ),
           ),
-        );
+      );
       const executeNode = (
         node: ToolingStepNode,
         nodeContext: ExpressionContext,

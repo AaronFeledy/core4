@@ -6,22 +6,17 @@ import { join } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileUnknownEventError, PluginLoadError } from "@lando/sdk/errors";
-import {
-  type LandofileShape,
-  PluginManifest,
-  PluginName,
-  type ProviderCapabilities,
-} from "@lando/sdk/schema";
+import { PluginManifest, PluginName, type ProviderCapabilities } from "@lando/sdk/schema";
 import { AppPlanner, PathsService, PluginRegistry, type ServiceType, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import * as AppCacheService from "../../src/cache/service.ts";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { scopedLandofileRuntimeInputs } from "../../src/services/landofile-live.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: true,
@@ -118,7 +113,7 @@ const registryLayer = Layer.effect(
         ? Effect.succeed(serviceType)
         : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
   })),
-).pipe(Layer.provide(PluginRegistryLive));
+).pipe(Layer.provide(PluginRegistryLayer.layer));
 
 const landofileYaml = `name: shared-event-resolution
 runtime: 4
@@ -200,17 +195,19 @@ const testServices = (appRoot: string) =>
     ),
   );
 
-const loadLayered = (appRoot: string): Effect.Effect<LandofileShape, unknown, never> =>
-  Effect.gen(function* () {
+const loadLayered = Effect.fnUntraced(
+  function* (appRoot: string) {
     const runtimeInputs = yield* scopedLandofileRuntimeInputs;
     return yield* loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"), runtimeInputs);
-  }).pipe(Effect.provide(testServices(appRoot))) as Effect.Effect<LandofileShape, unknown, never>;
+  },
+  (effect, appRoot) => Effect.provide(effect, testServices(appRoot)),
+);
 
 test("lint and the planner report one identical known event set for the same app", async () => {
   await withApp(async (appRoot) => {
     // Given
-    const plannerLayer = AppPlannerLive.pipe(
-      Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, registryLayer)),
+    const plannerLayer = AppPlannerLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
     );
 
     // When

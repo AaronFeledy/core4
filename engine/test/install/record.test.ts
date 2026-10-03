@@ -10,7 +10,7 @@ import {
   readInstallRecord,
   verifyInstallRecordOwnership,
 } from "../../src/install/record.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const digest = "a".repeat(64);
 const executable = {
@@ -183,7 +183,7 @@ describe("install record filesystem integration", () => {
         }
         // When
         const result = await Effect.runPromise(
-          readInstallRecord(file).pipe(Effect.result, Effect.provide(FileSystemLive)),
+          readInstallRecord(file).pipe(Effect.result, Effect.provide(BunFileSystem.layer)),
         );
         // Then
         if (kind === "absent" || kind === "regular") {
@@ -226,7 +226,7 @@ describe("install record filesystem integration", () => {
           await writeFile(destination, kind === "digest-mismatch" ? "drift" : bytes);
         // When
         const result = await Effect.runPromise(
-          verifyInstallRecordOwnership(file, destination).pipe(Effect.provide(FileSystemLive)),
+          verifyInstallRecordOwnership(file, destination).pipe(Effect.provide(BunFileSystem.layer)),
         );
         // Then
         expect(result).toEqual(

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
@@ -33,7 +33,7 @@ const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string
       }),
       TestRuntimeProvider.capabilities,
     ),
-  ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive));
+  ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
 const plan = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
   Effect.runPromise(planEffect(mailFrom, php, firstOverrides));
 

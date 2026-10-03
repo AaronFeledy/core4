@@ -23,7 +23,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
+import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
 const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   const calls: {
@@ -84,36 +84,48 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
-    ProviderExecToolingEngineLive,
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([service.provider]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () =>
-        Effect.sync(() => {
-          selections.push(1);
-          return provider;
-        }),
-    }),
-    Layer.succeed(ShellRunner, {
-      exec: (source, options) =>
-        Effect.sync(() => {
-          calls.push({
-            service: ":host",
-            command: [source, ...(options?.argv ?? [])],
-            ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-            ...(options?.env === undefined ? {} : { env: options.env }),
-          });
-          return { exitCode: failureCode, stdout: "", stderr: "" };
-        }),
-      runScript: () => Effect.die("unused script"),
-      run: () => Effect.die("unused run"),
-      interactive: () => Effect.die("unused interactive"),
-    }),
+    ProviderExecToolingEngine.layer,
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([service.provider]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () =>
+          Effect.sync(() => {
+            selections.push(1);
+            return provider;
+          }),
+      }),
+    ),
+    Layer.succeed(
+      ShellRunner,
+      ShellRunner.of({
+        exec: (source, options) =>
+          Effect.sync(() => {
+            calls.push({
+              service: ":host",
+              command: [source, ...(options?.argv ?? [])],
+              ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+              ...(options?.env === undefined ? {} : { env: options.env }),
+            });
+            return { exitCode: failureCode, stdout: "", stderr: "" };
+          }),
+        runScript: () => Effect.die("unused script"),
+        run: () => Effect.die("unused run"),
+        interactive: () => Effect.die("unused interactive"),
+      }),
+    ),
   );
   return {
     calls,

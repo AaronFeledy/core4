@@ -21,16 +21,16 @@ import {
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
 import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -38,7 +38,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(
-  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessService.layer)),
+  Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
@@ -69,7 +69,7 @@ const landofileRuntimeInputs = {
 } satisfies LandofileRuntimeInputs;
 
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
 const redactionLive = Layer.succeed(RedactionService, {
   registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets")),
@@ -190,8 +190,8 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
   };
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -199,19 +199,19 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     select: () => Effect.succeed(provider),
   });
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
+    BunFileSystem.layer,
     PrivateFileAccessService.layer,
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
+    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     ScratchInitAppPortLive,
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
-          EventServiceLive,
+          LandoEventService.layer,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),
           Layer.succeed(RuntimeProvider, provider),
@@ -221,7 +221,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   );
   return Layer.mergeAll(
     scratchDeps,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
   ).pipe(Layer.provide(PrivateFileAccessService.layer));
 };
 
@@ -248,7 +248,7 @@ const acquireRecipe = (appliedPlans: AppPlan[], input: Record<string, unknown>) 
     ),
   ).pipe(Effect.provide(makeLayer(appliedPlans)));
 
-describe("ScratchAppServiceLive --mount-cwd transform", () => {
+describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
   test("default mount-cwd rebinds the primary service's appMount source to $PWD", async () => {
     await withScratchEnv(undefined, async (dir) => {
       const appliedPlans: AppPlan[] = [];
@@ -296,7 +296,7 @@ describe("ScratchAppServiceLive --mount-cwd transform", () => {
   });
 });
 
-describe("ScratchAppServiceLive --share-global-storage transform", () => {
+describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => {
   test("joins the shared cross-app network and stamps the share marker", async () => {
     await withScratchEnv(undefined, async () => {
       const appliedPlans: AppPlan[] = [];
@@ -327,7 +327,7 @@ describe("ScratchAppServiceLive --share-global-storage transform", () => {
   });
 });
 
-describe("ScratchAppServiceLive mount-cwd + share-global-storage together", () => {
+describe("ScratchAppServiceLayer.layer mount-cwd + share-global-storage together", () => {
   test("applies both transforms in a single acquire", async () => {
     await withScratchEnv(undefined, async (dir) => {
       const appliedPlans: AppPlan[] = [];

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
 
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as LandoConfigService from "@lando/engine/services/config";
 import { ProviderUnavailableError, ScratchAppError, ScratchAppNotFoundError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -112,11 +112,11 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
           Effect.result,
           Effect.provide(
             Layer.mergeAll(
-              ConfigServiceLive,
+              LandoConfigService.layer,
               providerLayer,
               scratchLayer,
               events,
-              ScratchResourceScannerLive.pipe(Layer.provide(providerLayer)),
+              ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(providerLayer)),
             ),
           ),
         ),

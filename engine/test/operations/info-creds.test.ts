@@ -72,11 +72,14 @@ const provide = (plan: AppPlan) => {
         state: "running",
       }),
   };
-  return Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  return Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
 };
 
 const infoForEnvironment = (environment: Readonly<Record<string, string>>) => {

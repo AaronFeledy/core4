@@ -22,7 +22,7 @@ export const HostProxyServiceDisabled: HostProxyServiceShape = {
   teardown: () => Effect.void,
 };
 
-export const HostProxyServiceDisabledLive = Layer.succeed(HostProxyService, HostProxyServiceDisabled);
+export const layerDisabled = Layer.succeed(HostProxyService, HostProxyServiceDisabled);
 
 export type {
   DispatchRunLandoDeps,

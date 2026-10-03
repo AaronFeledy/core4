@@ -21,7 +21,7 @@
  */
 import { Effect, Layer, Schema } from "effect";
 
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpDispatchDeps, type McpRunInput, dispatchTool } from "@lando/mcp/dispatch";
@@ -201,7 +201,7 @@ export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionServ
  * env-backed `SecretStore`, so the check needs no ambient services beyond it.
  */
 export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionService.layer.pipe(
-  Layer.provide(SecretStoreLive),
+  Layer.provide(EnvSecretStore.layer),
 );
 
 const renderCheck = (check: McpDoctorCheck): ReadonlyArray<string> => {

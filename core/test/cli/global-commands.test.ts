@@ -49,13 +49,13 @@ import { makeTestRouterService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
@@ -286,10 +286,12 @@ const makeHarness = async (
     buildApp: () => Effect.void,
   };
   const layer = Layer.mergeAll(
-    ConfigServiceLive,
-    CacheServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    LandoConfigService.layer,
+    AppCacheService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {
@@ -340,9 +342,13 @@ const makeHarness = async (
       has: () => Effect.succeed(true),
       list: Effect.succeed(["GLOBAL_TOKEN"]),
     }),
-    AppPlannerLive.pipe(
+    AppPlannerLayer.layer.pipe(
       Layer.provide(
-        Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
+        Layer.mergeAll(
+          Layer.succeed(PluginRegistry, pluginRegistry),
+          AppCacheService.layer,
+          LandoConfigService.layer,
+        ),
       ),
     ),
   );
@@ -593,7 +599,7 @@ describe("meta:global command effects", () => {
         timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-31T07:30:00Z")),
       });
 
-      const layer = Layer.mergeAll(harness.layer, EventServiceLive);
+      const layer = Layer.mergeAll(harness.layer, LandoEventService.layer);
 
       const tags = await Effect.runPromise(
         Effect.scoped(

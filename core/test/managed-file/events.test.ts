@@ -8,12 +8,12 @@ import { Effect, Layer, Queue, type Scope } from "effect";
 import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as ManagedFileLayer from "@lando/managed-file/service";
 import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { RedactionService } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
@@ -161,7 +161,10 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
     const secret = "integration-secret-7Q2x";
 
     try {
-      const layer = Layer.mergeAll(EventServiceLive, managedFileLayer.pipe(Layer.provide(EventServiceLive)));
+      const layer = Layer.mergeAll(
+        LandoEventService.layer,
+        managedFileLayer.pipe(Layer.provide(LandoEventService.layer)),
+      );
 
       const collected = await Effect.runPromise(
         Effect.scoped(
@@ -215,8 +218,8 @@ describe("ManagedFile lifecycle events (real EventService wiring)", () => {
 
     try {
       const layer = Layer.mergeAll(
-        EventServiceLive,
-        managedFileLayer.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, redactionLive))),
+        LandoEventService.layer,
+        managedFileLayer.pipe(Layer.provide(Layer.mergeAll(LandoEventService.layer, redactionLive))),
       );
 
       const collected = await Effect.runPromise(

@@ -81,7 +81,7 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
   }
 };
 
-const configService: Context.Service.Shape<typeof ConfigService> = {
+const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
   load: Effect.tryPromise({
     try: async (): Promise<GlobalConfig> => loadGlobalConfigSync(),
     catch: (cause) =>
@@ -90,9 +90,9 @@ const configService: Context.Service.Shape<typeof ConfigService> = {
         : new ConfigError({ message: "Failed to load global config.", cause }),
   }),
   get: (key) => Effect.map(configService.load, (config) => config[key]),
-};
+});
 
-export const ConfigServiceLive = Layer.succeed(ConfigService, configService);
+export const layer = Layer.succeed(ConfigService, configService);
 
 export const loadGlobalConfigView = Effect.gen(function* () {
   const service = yield* ConfigService;

@@ -20,23 +20,22 @@ export interface InstallSignalHandlersOptions {
   readonly signals?: ReadonlyArray<NodeJS.Signals>;
 }
 
-export const installSignalHandlers = (
+export const installSignalHandlers = Effect.fnUntraced(function* (
   options: InstallSignalHandlersOptions,
-): Effect.Effect<void, never, Scope.Scope> =>
-  Effect.gen(function* () {
-    const signals = Array.from(new Set(options.signals ?? ["SIGINT", "SIGTERM"]));
-    const interruptor = options.fiber.id;
-    const handlers = signals.map((signal) => {
-      const handler = () => {
-        options.fiber.interruptUnsafe(interruptor);
-      };
-      (process as NodeJS.EventEmitter).once(signal, handler);
-      return { signal, handler };
-    });
-
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        for (const { signal, handler } of handlers) (process as NodeJS.EventEmitter).off(signal, handler);
-      }),
-    );
+): Effect.fn.Return<void, never, Scope.Scope> {
+  const signals = Array.from(new Set(options.signals ?? ["SIGINT", "SIGTERM"]));
+  const interruptor = options.fiber.id;
+  const handlers = signals.map((signal) => {
+    const handler = () => {
+      options.fiber.interruptUnsafe(interruptor);
+    };
+    (process as NodeJS.EventEmitter).once(signal, handler);
+    return { signal, handler };
   });
+
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      for (const { signal, handler } of handlers) (process as NodeJS.EventEmitter).off(signal, handler);
+    }),
+  );
+});

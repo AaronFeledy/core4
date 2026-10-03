@@ -12,10 +12,13 @@ import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 
 import { StreamFrameSink } from "../src/operations/stream-frame-sink";
 
-const identityRedaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
-});
+const identityRedaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
+  }),
+);
 
 describe("makeStreamFrameSinkLive raw frames", () => {
   test("writes a raw stdout chunk without adding a newline or service prefix", async () => {

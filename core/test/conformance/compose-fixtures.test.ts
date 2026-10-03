@@ -18,10 +18,10 @@ import {
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
@@ -84,8 +84,8 @@ const fixtureCases: ReadonlyArray<FixtureCase> = await Promise.all(
   }),
 );
 
-const registryLayer = makePluginRegistryLive({ app: false, user: false });
-const plannerLayer = AppPlannerLive.pipe(Layer.provide(FileSystemLive));
+const registryLayer = PluginRegistryLayer.layerWith({ app: false, user: false });
+const plannerLayer = AppPlannerLayer.layer.pipe(Layer.provide(BunFileSystem.layer));
 const nativeCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
   composeSpec: "native",

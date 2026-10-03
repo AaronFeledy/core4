@@ -19,7 +19,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { RuntimeProviderRegistryLive } from "@lando/engine/providers/registry";
+import * as RuntimeProviderRegistryLayer from "@lando/engine/providers/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
@@ -41,7 +41,7 @@ interface FakeRegistryOptions {
   readonly defaultProviderId?: string | null;
 }
 
-/** Builds the exact dependency set `RuntimeProviderRegistryLive` requires, fully faked. */
+/** Builds the exact dependency set `RuntimeProviderRegistryLayer.layer` requires, fully faked. */
 const buildDependencyLayer = (
   options: FakeRegistryOptions,
 ): Layer.Layer<
@@ -99,7 +99,9 @@ const runList = (options: FakeRegistryOptions) =>
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       return yield* registry.list;
-    }).pipe(Effect.provide(RuntimeProviderRegistryLive.pipe(Layer.provide(buildDependencyLayer(options))))),
+    }).pipe(
+      Effect.provide(RuntimeProviderRegistryLayer.layer.pipe(Layer.provide(buildDependencyLayer(options)))),
+    ),
   );
 
 const runSelectEither = (options: FakeRegistryOptions, providerId?: string) =>
@@ -109,7 +111,9 @@ const runSelectEither = (options: FakeRegistryOptions, providerId?: string) =>
       return yield* registry
         .select(providerId === undefined ? undefined : ({ provider: ProviderId.make(providerId) } as never))
         .pipe(Effect.result);
-    }).pipe(Effect.provide(RuntimeProviderRegistryLive.pipe(Layer.provide(buildDependencyLayer(options))))),
+    }).pipe(
+      Effect.provide(RuntimeProviderRegistryLayer.layer.pipe(Layer.provide(buildDependencyLayer(options)))),
+    ),
   );
 
 /** Save/restore LANDO_PROVIDER around a test — registry.ts reads `process.env` directly (not injectable). */

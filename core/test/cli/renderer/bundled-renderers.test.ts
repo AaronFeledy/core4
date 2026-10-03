@@ -4,7 +4,7 @@ import { Effect, Layer, Schema } from "effect";
 import { TaskStartEvent } from "@lando/sdk/events";
 import { EventService, Renderer } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   bundledRendererRegistry,
@@ -63,7 +63,7 @@ describe("bundled renderer resolution", () => {
       );
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdoutLines()).toEqual(["[web] start: start web"]);

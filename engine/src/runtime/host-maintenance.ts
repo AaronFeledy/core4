@@ -15,14 +15,17 @@ export interface HostMaintenanceRegistryShape {
 export class HostMaintenanceRegistry extends Context.Service<
   HostMaintenanceRegistry,
   HostMaintenanceRegistryShape
->()("@lando/core/HostMaintenanceRegistry") {}
+>()("@lando/engine/HostMaintenanceRegistry") {}
 
 export const makeHostMaintenanceRegistryLayer = (
   modules: ReadonlyArray<LandoPluginModule>,
 ): Layer.Layer<HostMaintenanceRegistry> =>
-  Layer.succeed(HostMaintenanceRegistry, {
-    maintainers: modules.flatMap((module) => module.hostMaintainers ?? []),
-  });
+  Layer.succeed(
+    HostMaintenanceRegistry,
+    HostMaintenanceRegistry.of({
+      maintainers: modules.flatMap((module) => module.hostMaintainers ?? []),
+    }),
+  );
 
 export const teardownHostMaintainers = (
   registry: HostMaintenanceRegistryShape,

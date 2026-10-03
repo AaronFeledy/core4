@@ -26,8 +26,11 @@ const HC_UNAVAILABLE_ID = "unavailable" as const;
 const HC_UNAVAILABLE_MESSAGE =
   "HealthcheckRunner requires provider-exec. Run `lando setup` to install the provider (full implementation is not available yet).";
 
-export const HealthcheckRunnerUnavailableLive = Layer.succeed(HealthcheckRunner, {
-  id: HC_UNAVAILABLE_ID,
-  run: (_plan, _appId, service) =>
-    Effect.fail(new HealthcheckError({ message: HC_UNAVAILABLE_MESSAGE, service: String(service) })),
-});
+export const layerUnavailable = Layer.succeed(
+  HealthcheckRunner,
+  HealthcheckRunner.of({
+    id: HC_UNAVAILABLE_ID,
+    run: (_plan, _appId, service) =>
+      Effect.fail(new HealthcheckError({ message: HC_UNAVAILABLE_MESSAGE, service: String(service) })),
+  }),
+);

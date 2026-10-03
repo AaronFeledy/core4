@@ -75,8 +75,8 @@ export const makeEnvSecretStore = (
 };
 
 /** Build the env-backed `SecretStore` Live Layer. */
-export const makeEnvSecretStoreLive = (options: EnvSecretStoreOptions = {}): Layer.Layer<SecretStore> =>
+export const layerWith = (options: EnvSecretStoreOptions = {}): Layer.Layer<SecretStore> =>
   Layer.succeed(SecretStore, makeEnvSecretStore(options));
 
 /** Default `SecretStore` Live Layer: env-backed, `LANDO_SECRET_` prefix, live `process.env`. */
-export const SecretStoreLive: Layer.Layer<SecretStore> = makeEnvSecretStoreLive();
+export const layer: Layer.Layer<SecretStore> = layerWith();

@@ -1,4 +1,4 @@
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { RecipeInitPipelineRequest, RecipeInitPostInitError } from "../init-pipeline.ts";
@@ -15,7 +15,7 @@ export const runBoundPostInit = (options: {
     const provided = yield* Effect.serviceOption(ProcessRunner);
     const runner = Option.isSome(provided)
       ? provided.value
-      : yield* ProcessRunner.pipe(Effect.provide(ProcessRunnerLive));
+      : yield* ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer));
     const executed: PostInitExecutedAction[] = [];
     // One invocation per action limits each raw secret to its one declared consumer.
     for (const [index, action] of (request.manifest.postInit ?? []).entries()) {

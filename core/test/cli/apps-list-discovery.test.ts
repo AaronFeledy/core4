@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService, PathsService } from "@lando/sdk/services";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -74,7 +74,7 @@ const runList = (
           ),
           PrivateFileAccessService.layer,
           StateStoreLayer.layer,
-          FileSystemLive,
+          BunFileSystem.layer,
         ),
       ),
     ),

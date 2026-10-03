@@ -244,16 +244,22 @@ test("allows and logs an opted-in outside-root load", async () => {
     const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
     const layer = Layer.mergeAll(
       TestLandofileServiceLayer.layer,
-      Layer.succeed(ConfigService, {
-        load: Effect.succeed(config),
-        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-      }),
-      Layer.succeed(Logger, {
-        debug: () => Effect.void,
-        info: (message) => Effect.sync(() => messages.push(message)),
-        warn: () => Effect.void,
-        error: () => Effect.void,
-      }),
+      Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+        }),
+      ),
+      Layer.succeed(
+        Logger,
+        Logger.of({
+          debug: () => Effect.void,
+          info: (message) => Effect.sync(() => messages.push(message)),
+          warn: () => Effect.void,
+          error: () => Effect.void,
+        }),
+      ),
     );
 
     // When
@@ -299,16 +305,22 @@ test("logs an opted-in outside-root load from an include fragment", async () => 
     const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
     const layer = Layer.mergeAll(
       TestLandofileServiceLayer.layer,
-      Layer.succeed(ConfigService, {
-        load: Effect.succeed(config),
-        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-      }),
-      Layer.succeed(Logger, {
-        debug: () => Effect.void,
-        info: (message) => Effect.sync(() => messages.push(message)),
-        warn: () => Effect.void,
-        error: () => Effect.void,
-      }),
+      Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+        }),
+      ),
+      Layer.succeed(
+        Logger,
+        Logger.of({
+          debug: () => Effect.void,
+          info: (message) => Effect.sync(() => messages.push(message)),
+          warn: () => Effect.void,
+          error: () => Effect.void,
+        }),
+      ),
     );
 
     // When

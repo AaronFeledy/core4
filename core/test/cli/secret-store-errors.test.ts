@@ -1,11 +1,8 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
-import {
-  RoutedSecretStoreLive,
-  makeSecretStoreRegistryLive,
-} from "@lando/engine/services/secret-store-registry";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -24,7 +21,7 @@ import {
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
 const unavailable = new SecretStoreUnavailableError({
   storeId: "fake-vault",
@@ -67,8 +64,8 @@ const renderStartFailure = async (reference: string) => {
       ],
     ]),
   };
-  const store = RoutedSecretStoreLive.pipe(
-    Layer.provide(Layer.mergeAll(base.layer, paths, makeSecretStoreRegistryLive([plugin]))),
+  const store = RoutedSecretStore.layer.pipe(
+    Layer.provide(Layer.mergeAll(base.layer, paths, RoutedSecretStore.SecretStoreRegistry.layer([plugin]))),
   );
   const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
   const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -106,7 +103,7 @@ const renderStartFailure = async (reference: string) => {
     paths,
     store,
     RedactionService.layer.pipe(Layer.provide(store)),
-    NoopTransactionGuardLive,
+    TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RouterService, TestRouterService),
@@ -114,7 +111,7 @@ const renderStartFailure = async (reference: string) => {
       build: (value) => Effect.succeed(value),
       buildApp: () => Effect.void,
     }),
-    makeShellRunnerLive(() => {
+    BunShellRunner.layer(() => {
       throw new TypeError("Start must not open an interactive shell.");
     }),
   );
