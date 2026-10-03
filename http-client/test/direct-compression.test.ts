@@ -109,16 +109,10 @@ for (const bytes of [new Uint8Array(), new Uint8Array([255, 255, 255, 255])]) {
             return yield* Stream.runCollect(response.stream);
           }).pipe(Effect.provide(layer), Effect.result),
         );
-        // Then completion/failure matches fetch when possible; empty wire + encoding may
-        // succeed on the direct transport (parent closes empty encoded body) even when
-        // Bun fetch rejects — assert no timeout either way.
+        // Then completion/failure matches fetch, and a decoder failure is not a timeout.
+        expect(Result.isSuccess(result)).toBe(baseline.ok);
         if (Result.isSuccess(result)) {
-          if (baseline.ok) {
-            expect(Array.from(result.success).flatMap((chunk) => [...chunk])).toEqual(baseline.bytes);
-          } else {
-            // Direct transport accepted empty encoded body; not a timeout.
-            expect(Array.from(result.success).flatMap((chunk) => [...chunk])).toEqual([]);
-          }
+          expect(Array.from(result.success).flatMap((chunk) => [...chunk])).toEqual(baseline.bytes);
         } else {
           expect((result.failure as { _tag?: string })._tag).not.toBe("TimeoutError");
           expect(baseline.ok).toBe(false);

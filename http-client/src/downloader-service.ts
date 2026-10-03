@@ -29,7 +29,7 @@ import {
 import { urlOrigin, validateDestinationFilename, validateSource } from "./downloader-validate.ts";
 import { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 
-export const CAPABILITIES: DownloaderCapabilities = {
+const CAPABILITIES: DownloaderCapabilities = {
   schemes: ["https", "file"],
   memoryDownload: true,
   cacheAware: true,
@@ -38,7 +38,7 @@ export const CAPABILITIES: DownloaderCapabilities = {
 };
 
 /** Build the fiber-local egress policy for one download request. */
-export const requestPolicyFor = (request: DownloadRequest): RequestPolicyShape => ({
+const requestPolicyFor = (request: DownloadRequest): RequestPolicyShape => ({
   onBehalfOf: "downloader",
   ...(request.callerId === undefined ? {} : { callerId: request.callerId }),
   ...(request.redactionTokens === undefined ? {} : { redactionTokens: request.redactionTokens }),

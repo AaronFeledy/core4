@@ -9,11 +9,11 @@ import * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ConfigError } from "@lando/sdk/errors";
 import type { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, SecretStore, type LandoEvent } from "@lando/sdk/services";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { ConfigService, EventService, type LandoEvent, SecretStore } from "@lando/sdk/services";
 
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";

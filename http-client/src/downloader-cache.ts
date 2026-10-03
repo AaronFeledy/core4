@@ -9,7 +9,7 @@ import { Effect } from "effect";
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 
 /** Hash an existing destination file, or `undefined` when it is absent/unreadable. */
-export const hashExistingFile = (
+const hashExistingFile = (
   path: string,
 ): Effect.Effect<{ readonly sha256: string; readonly sizeBytes: number } | undefined> =>
   Effect.promise(

@@ -271,3 +271,15 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): the gate review also asked for `Effect.fn` on every remaining provider arrow (`RuntimeProvider.start`, `ProviderDataPlane.run`, `PodmanApiClient.request`, plus helpers such as `collectByteStream`). The idiom pass already replaced Effect.gen-only bodies, and operation/provider span trees are US-664. Wrapping those arrows here would start that story.
 - Verification: http-client and core typecheck passed. Package DAG passed. Span redaction, private-CA, and injected-trust tests passed (the new path-secret case included).
 ---
+
+## 2026-10-03 06:23 CDT - US-663 Drift Audit
+- Trigger: 3 cycles, 339 files (+12977/−12300), 5 commits
+- Scope: no later story started. Changes outside the idiom packages are HTTP migration and layer renames. Scheduling Graph stays in container-runtime. The PRD index is unchanged.
+- Weakened proof: the direct-transport compression check allowed an empty success when Bun fetch failed. It again requires the same success or failure as fetch.
+- Ceremony: one-importer downloader helpers keep real logic, so they stay. Three same-file-only exports are no longer exported.
+- Contract drift: the network-trust note still named removed HttpClientLive as a current consumer. It now names the http-client package.
+- Deferred notes re-checked: the YAML plain-object guard stays because Predicate.isObject accepts instances; provider Effect.fn arrows are not gen-only wrappers and remain US-664. No owned regression was left deferred.
+- Fixed: compression parity restored; dead exports unexported; live-test imports sorted so lint matches the claimed gate; compatibility note corrected.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (67 tests: compression parity, downloader, egress spans, tracer suppression).
+---
