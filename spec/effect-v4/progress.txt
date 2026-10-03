@@ -283,3 +283,8 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck and lint pass. Spot checks pass (67 tests: compression parity, downloader, egress spans, tracer suppression).
 ---
+
+## 2026-10-03 06:33 CDT - US-663 Verify
+- Compiled-binary setup, lamp init/start, and live HTTP and HTTPS returned the PHP body. Tooling, logs, app config, and doctor exited 0; doctor network-trust passed, and info showed database passwords as `[redacted]`. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us663v-appserver`, `lando-us663v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after the app and runtime were already stopped. Expected no processes for that app. Same class as the US-662 note. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-663 acceptance failure.
+---
