@@ -117,59 +117,65 @@ const execSpec = (input: {
   };
 };
 
-const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
-  Effect.gen(function* () {
-    if (invocation.commands.length === 0) {
-      return yield* Effect.fail(noCommandsError(invocation.tool));
-    }
-    const service = yield* resolveService(invocation, plan);
-    const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
-    const env = withAgentContextEnv(invocation.env, process.env, {
-      lowerThanEnv: service.environment,
-      ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
-    });
-    const sink = yield* Effect.serviceOption(StreamFrameSink);
-    const tty = invocation.tty === true;
-    let exitCode = 0;
-    let stdout = "";
-    let stderr = "";
-    for (const command of invocation.commands) {
-      const target = {
-        app: plan.id,
-        service: service.name,
-        plan,
-        ...(invocation.user === undefined ? {} : { user: invocation.user }),
-      };
-      const result = yield* collectExecStream(
-        provider.execStream(
-          target,
-          execSpec({
-            command,
-            cwd,
-            env,
-            tty,
-            hostTerminal: invocation.hostTerminal,
-            serviceEnv: service.environment,
-          }),
-        ),
-        sink,
-      );
-      stdout += result.stdout;
-      stderr += result.stderr;
-      exitCode = result.exitCode;
-      if (exitCode !== 0) break;
-    }
-    const out: ToolingEngineResult = {
-      tool: invocation.tool,
-      service: service.name,
-      exitCode,
-      stdout,
-      stderr,
-    };
-    return out;
+const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
+  invocation: ToolingInvocation,
+  plan: AppPlan,
+  provider: RuntimeProviderShape,
+) {
+  if (invocation.commands.length === 0) {
+    return yield* Effect.fail(noCommandsError(invocation.tool));
+  }
+  const service = yield* resolveService(invocation, plan);
+  const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
+  const env = withAgentContextEnv(invocation.env, process.env, {
+    lowerThanEnv: service.environment,
+    ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
   });
-
-export const ProviderExecToolingEngineLive = Layer.succeed(ToolingEngine, {
-  id: "providerExec",
-  run: providerExecRun,
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const tty = invocation.tty === true;
+  let exitCode = 0;
+  let stdout = "";
+  let stderr = "";
+  for (const command of invocation.commands) {
+    const target = {
+      app: plan.id,
+      service: service.name,
+      plan,
+      ...(invocation.user === undefined ? {} : { user: invocation.user }),
+    };
+    const result = yield* collectExecStream(
+      provider.execStream(
+        target,
+        execSpec({
+          command,
+          cwd,
+          env,
+          tty,
+          hostTerminal: invocation.hostTerminal,
+          serviceEnv: service.environment,
+        }),
+      ),
+      sink,
+    );
+    stdout += result.stdout;
+    stderr += result.stderr;
+    exitCode = result.exitCode;
+    if (exitCode !== 0) break;
+  }
+  const out: ToolingEngineResult = {
+    tool: invocation.tool,
+    service: service.name,
+    exitCode,
+    stdout,
+    stderr,
+  };
+  return out;
 });
+
+export const layer = Layer.succeed(
+  ToolingEngine,
+  ToolingEngine.of({
+    id: "providerExec",
+    run: providerExecRun,
+  }),
+);

@@ -9,8 +9,8 @@ import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import * as cache from "../../src/cache/app-plan.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const withTempCwd = async (run: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-config-plan-")));
@@ -35,7 +35,7 @@ const plan = (config: { readonly server?: string; readonly dir?: string }) => {
   };
   return Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(landofile, TestRuntimeProvider.capabilities),
-  ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive));
+  ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
 };
 
 test("changes the derived plan cache key when config bytes change", () =>

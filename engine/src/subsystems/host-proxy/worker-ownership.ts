@@ -68,11 +68,11 @@ export const removeOwnedHostProxyWorkerState = (
     Effect.asVoid,
   );
 
-export const terminateOwnedHostProxyWorkersInRoot = (
-  userDataRoot: string,
-  options: Omit<TerminateHostProxyWorkerOptions, "paths">,
-): Effect.Effect<void, never> =>
-  Effect.gen(function* () {
+export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
+  function* (
+    userDataRoot: string,
+    options: Omit<TerminateHostProxyWorkerOptions, "paths">,
+  ): Effect.fn.Return<void, never> {
     const paths = makeLandoPaths({ userDataRoot });
     const entries = yield* Effect.promise(() =>
       readdir(paths.hostProxyRunRoot, { withFileTypes: true }).catch(() => []),
@@ -105,4 +105,6 @@ export const terminateOwnedHostProxyWorkersInRoot = (
       const app = { id: record.appId, root: AbsolutePath.make(record.appRoot) };
       yield* terminateOwnedHostProxyWorker(app, { ...options, paths: { userDataRoot } }).pipe(Effect.asVoid);
     }
-  }).pipe(Effect.catch(() => Effect.void));
+  },
+  Effect.catch(() => Effect.void),
+);

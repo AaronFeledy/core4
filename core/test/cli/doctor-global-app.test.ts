@@ -144,7 +144,7 @@ describe("global-app doctor check", () => {
     expect(check?.solutions[0]?.description).not.toContain("global:start");
   });
 
-  test("DefaultGlobalAppDoctorLayer provides ConfigService to PluginRegistryLive", async () => {
+  test("DefaultGlobalAppDoctorLayer provides ConfigService to PluginRegistryLayer.layer", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-global-doctor-plugins-"));
     try {
       await writeInstalledPlugin(join(userDataRoot, "plugins"), "@example/global-doctor-user-plugin");

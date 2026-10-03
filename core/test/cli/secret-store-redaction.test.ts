@@ -1,11 +1,8 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
-import {
-  RoutedSecretStoreLive,
-  makeSecretStoreRegistryLive,
-} from "@lando/engine/services/secret-store-registry";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -25,7 +22,7 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
 test.each([false, true])(
   "start --format=json redacts scheme-store values when provider failure is %s",
@@ -89,8 +86,8 @@ test.each([false, true])(
     };
     const base = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
     const paths = Layer.succeed(PathsService, makeLandoPaths());
-    const store = RoutedSecretStoreLive.pipe(
-      Layer.provide(Layer.mergeAll(base.layer, paths, makeSecretStoreRegistryLive([plugin]))),
+    const store = RoutedSecretStore.layer.pipe(
+      Layer.provide(Layer.mergeAll(base.layer, paths, RoutedSecretStore.SecretStoreRegistry.layer([plugin]))),
     );
     const redaction = RedactionService.layer.pipe(Layer.provide(store));
     const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
@@ -129,7 +126,7 @@ test.each([false, true])(
       paths,
       store,
       redaction,
-      NoopTransactionGuardLive,
+      TestLandofileLayers.layerTransactionGuard,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RouterService, TestRouterService),
@@ -137,7 +134,7 @@ test.each([false, true])(
         build: (appPlan) => Effect.succeed(appPlan),
         buildApp: () => Effect.void,
       }),
-      makeShellRunnerLive(() => {
+      BunShellRunner.layer(() => {
         throw new TypeError("Start must not open an interactive shell.");
       }),
     );

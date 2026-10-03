@@ -44,7 +44,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   }
 };
 
-describe("ScratchAppServiceLive", () => {
+describe("ScratchAppServiceLayer.layer", () => {
   test("resolves the scratch base under the user cache root", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       const resolved = await Effect.runPromise(

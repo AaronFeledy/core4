@@ -23,8 +23,8 @@ import { Effect, Layer } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { ConfigService, Downloader } from "@lando/sdk/services";
 
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -101,7 +101,7 @@ const userDataRoot = async (override: string | undefined): Promise<string> => {
   if (override !== undefined) return override;
   const resolved = await Effect.runPromise(
     Effect.flatMap(ConfigService, (config) => config.get("userDataRoot")).pipe(
-      Effect.provide(ConfigServiceLive),
+      Effect.provide(LandoConfigService.layer),
     ),
   );
   if (resolved === undefined) throw new Error("ConfigService returned no userDataRoot.");
@@ -133,8 +133,10 @@ export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(EventServiceLive)))),
-              ConfigServiceLive,
+              downloaderLayer.pipe(
+                Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
+              ),
+              LandoConfigService.layer,
             ),
           ),
         ),

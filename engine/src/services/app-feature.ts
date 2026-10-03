@@ -12,7 +12,7 @@ import { SchemaIssue } from "effect";
  * can fold it into the app plan. Provider realization stays out of the
  * app-feature context.
  */
-import { Cause, Effect, Result, Schema } from "effect";
+import { Cause, Effect, Graph, Option, Result, Schema } from "effect";
 
 import {
   AppFeatureCycleError,
@@ -184,32 +184,31 @@ const selectFromConfig = (
   return Effect.succeed(value);
 };
 
-const selectServices = (
+const selectServices = Effect.fnUntraced(function* (
   feature: ComposeAppFeature,
   input: ComposeAppFeaturesInput,
-): Effect.Effect<ReadonlyArray<string>, AppFeatureError> =>
-  Effect.gen(function* () {
-    const selectors = feature.definition.selectors;
-    if (selectors === undefined) return input.services.map((service) => service.serviceName);
+): Effect.fn.Return<ReadonlyArray<string>, AppFeatureError> {
+  const selectors = feature.definition.selectors;
+  if (selectors === undefined) return input.services.map((service) => service.serviceName);
 
-    const matched = new Set<string>();
-    for (const service of input.services) {
-      if (selectors.types?.includes(service.serviceType)) matched.add(service.serviceName);
-      else if (service.framework !== undefined && selectors.framework?.includes(service.framework))
-        matched.add(service.serviceName);
-      else if (selectors.hasFeature?.some((id) => service.featureIds.includes(id)))
-        matched.add(service.serviceName);
-      else if (selectors.names?.includes(service.serviceName)) matched.add(service.serviceName);
-    }
+  const matched = new Set<string>();
+  for (const service of input.services) {
+    if (selectors.types?.includes(service.serviceType)) matched.add(service.serviceName);
+    else if (service.framework !== undefined && selectors.framework?.includes(service.framework))
+      matched.add(service.serviceName);
+    else if (selectors.hasFeature?.some((id) => service.featureIds.includes(id)))
+      matched.add(service.serviceName);
+    else if (selectors.names?.includes(service.serviceName)) matched.add(service.serviceName);
+  }
 
-    if (selectors.fromConfig !== undefined) {
-      const names = yield* selectFromConfig(selectors.fromConfig, input, feature);
-      const valid = new Set(input.services.map((service) => service.serviceName));
-      for (const name of names) if (valid.has(name)) matched.add(name);
-    }
+  if (selectors.fromConfig !== undefined) {
+    const names = yield* selectFromConfig(selectors.fromConfig, input, feature);
+    const valid = new Set(input.services.map((service) => service.serviceName));
+    for (const name of names) if (valid.has(name)) matched.add(name);
+  }
 
-    return input.services.map((service) => service.serviceName).filter((name) => matched.has(name));
-  });
+  return input.services.map((service) => service.serviceName).filter((name) => matched.has(name));
+});
 
 const decodeFeatureConfig = (
   feature: OrderedAppFeature,
@@ -429,58 +428,39 @@ const hasExplicitTrigger = (feature: AppFeatureDefinition): boolean => {
 };
 
 const detectCycle = (plans: ReadonlyArray<ActivationPlan>): AppFeatureCycleError | undefined => {
-  const adjacency = new Map<string, Set<string>>();
-  for (const plan of plans) adjacency.set(plan.feature.definition.id, new Set<string>());
-
-  for (const left of plans) {
-    const selected = new Set(left.selectedServices);
-    for (const right of plans) {
-      if (left.feature.definition.id === right.feature.definition.id) continue;
-      // Edges only target features with an EXPLICIT activatedBy trigger: an
-      // unconditionally-active feature has no service trigger another feature's
-      // mutation could satisfy, so it cannot be a cycle participant target.
-      if (!hasExplicitTrigger(right.feature.definition)) continue;
-      if (right.triggeredByServices.some((service) => selected.has(service))) {
-        adjacency.get(left.feature.definition.id)?.add(right.feature.definition.id);
+  const indices = new Map<string, Graph.NodeIndex>();
+  const graph = Graph.directed<string, undefined>((mutable) => {
+    for (const plan of plans) {
+      const id = plan.feature.definition.id;
+      if (!indices.has(id)) indices.set(id, Graph.addNode(mutable, id));
+    }
+    for (const left of plans) {
+      const selected = new Set(left.selectedServices);
+      const source = indices.get(left.feature.definition.id);
+      if (source === undefined) continue;
+      for (const right of plans) {
+        if (left.feature.definition.id === right.feature.definition.id) continue;
+        // Edges only target features with an EXPLICIT activatedBy trigger: an
+        // unconditionally-active feature has no service trigger another feature's
+        // mutation could satisfy, so it cannot be a cycle participant target.
+        if (!hasExplicitTrigger(right.feature.definition)) continue;
+        if (right.triggeredByServices.some((service) => selected.has(service))) {
+          const target = indices.get(right.feature.definition.id);
+          if (target !== undefined) Graph.addEdge(mutable, source, target, undefined);
+        }
       }
     }
-  }
-
-  const order = plans.map((plan) => plan.feature.definition.id);
-  const state = new Map<string, 0 | 1 | 2>();
-  const stack: string[] = [];
-
-  const visit = (node: string): ReadonlyArray<string> | undefined => {
-    state.set(node, 1);
-    stack.push(node);
-    for (const next of adjacency.get(node) ?? []) {
-      const color = state.get(next) ?? 0;
-      if (color === 1) {
-        const start = stack.indexOf(next);
-        return stack.slice(start);
-      }
-      if (color === 0) {
-        const cycle = visit(next);
-        if (cycle !== undefined) return cycle;
-      }
-    }
-    stack.pop();
-    state.set(node, 2);
-    return undefined;
-  };
-
-  for (const node of order) {
-    if ((state.get(node) ?? 0) === 0) {
-      const cycle = visit(node);
-      if (cycle !== undefined) {
-        return new AppFeatureCycleError({
-          message: `App features form a mutation cycle: ${cycle.join(" -> ")}`,
-          cycle,
-          remediation:
-            "Break the mutual app-feature mutation so no two features mutate each other's triggers.",
-        });
-      }
-    }
+  });
+  const found = Graph.findCycle(graph);
+  if (Option.isSome(found)) {
+    const cycle = found.value.path
+      .slice(0, -1)
+      .map((index) => Option.getOrThrow(Graph.getNode(graph, index)));
+    return new AppFeatureCycleError({
+      message: `App features form a mutation cycle: ${cycle.join(" -> ")}`,
+      cycle,
+      remediation: "Break the mutual app-feature mutation so no two features mutate each other's triggers.",
+    });
   }
 
   return undefined;
@@ -498,70 +478,67 @@ const dedupe = <T>(values: ReadonlyArray<T>): ReadonlyArray<T> => {
   return output;
 };
 
-export const composeAppFeatures = (
+export const composeAppFeatures = Effect.fn("AppPlanner.composeFeatures")(function* (
   input: ComposeAppFeaturesInput,
-): Effect.Effect<ComposeAppFeaturesResult, AppFeatureError> =>
-  Effect.gen(function* () {
-    const ordered: ReadonlyArray<OrderedAppFeature> = input.features
-      .map((feature, index) => ({ ...feature, index }))
-      .sort(
-        (left, right) => left.definition.priority - right.definition.priority || left.index - right.index,
+): Effect.fn.Return<ComposeAppFeaturesResult, AppFeatureError> {
+  const ordered: ReadonlyArray<OrderedAppFeature> = input.features
+    .map((feature, index) => ({ ...feature, index }))
+    .sort((left, right) => left.definition.priority - right.definition.priority || left.index - right.index);
+
+  const activations: ActivationPlan[] = [];
+  for (const feature of ordered) {
+    const triggeredByServices = triggeredBy(feature.definition, input.services);
+    if (triggeredByServices.length === 0) continue;
+    const selectedServices = yield* selectServices(feature, input);
+    if (selectedServices.length === 0) {
+      return yield* Effect.fail(
+        new AppFeatureSelectorMatchedNothingError({
+          message: `App feature ${feature.definition.id} activated but selected no service`,
+          feature: feature.definition.id,
+          remediation: "Adjust the feature selectors so they match at least one service draft.",
+        }),
       );
+    }
+    activations.push({ feature, triggeredByServices, selectedServices });
+  }
 
-    const activations: ActivationPlan[] = [];
-    for (const feature of ordered) {
-      const triggeredByServices = triggeredBy(feature.definition, input.services);
-      if (triggeredByServices.length === 0) continue;
-      const selectedServices = yield* selectServices(feature, input);
-      if (selectedServices.length === 0) {
-        return yield* Effect.fail(
-          new AppFeatureSelectorMatchedNothingError({
-            message: `App feature ${feature.definition.id} activated but selected no service`,
-            feature: feature.definition.id,
-            remediation: "Adjust the feature selectors so they match at least one service draft.",
-          }),
-        );
-      }
-      activations.push({ feature, triggeredByServices, selectedServices });
+  const cycle = detectCycle(activations);
+  if (cycle !== undefined) return yield* Effect.fail(cycle);
+
+  const ledger: WriteLedger = new Map();
+  const activatedFeatures: ActivatedAppFeature[] = [];
+  const globalServices: string[] = [];
+  const providerCapabilities: Array<keyof ProviderCapabilities> = [];
+
+  for (const plan of activations) {
+    const config = yield* decodeFeatureConfig(plan.feature);
+    const context = makeContext(plan.feature, input, config, plan.selectedServices, ledger);
+    const applyExit = yield* Effect.exit(Effect.suspend(() => plan.feature.definition.apply(context)));
+    if (applyExit._tag === "Failure") {
+      const conflict = conflictFromCause(applyExit.cause);
+      if (conflict !== undefined) return yield* Effect.fail(conflict);
+      return yield* Effect.failCause(applyExit.cause);
     }
 
-    const cycle = detectCycle(activations);
-    if (cycle !== undefined) return yield* Effect.fail(cycle);
+    activatedFeatures.push({
+      id: plan.feature.definition.id,
+      ...(plan.feature.pluginId === undefined ? {} : { pluginId: plan.feature.pluginId }),
+      priority: plan.feature.definition.priority,
+      selectedServices: plan.selectedServices,
+      triggeredByServices: plan.triggeredByServices,
+    });
 
-    const ledger: WriteLedger = new Map();
-    const activatedFeatures: ActivatedAppFeature[] = [];
-    const globalServices: string[] = [];
-    const providerCapabilities: Array<keyof ProviderCapabilities> = [];
+    for (const service of plan.feature.definition.requires?.globalServices ?? [])
+      globalServices.push(service);
+    for (const capability of plan.feature.definition.requires?.providerCapabilities ?? [])
+      providerCapabilities.push(capability);
+  }
 
-    for (const plan of activations) {
-      const config = yield* decodeFeatureConfig(plan.feature);
-      const context = makeContext(plan.feature, input, config, plan.selectedServices, ledger);
-      const applyExit = yield* Effect.exit(Effect.suspend(() => plan.feature.definition.apply(context)));
-      if (applyExit._tag === "Failure") {
-        const conflict = conflictFromCause(applyExit.cause);
-        if (conflict !== undefined) return yield* Effect.fail(conflict);
-        return yield* Effect.failCause(applyExit.cause);
-      }
-
-      activatedFeatures.push({
-        id: plan.feature.definition.id,
-        ...(plan.feature.pluginId === undefined ? {} : { pluginId: plan.feature.pluginId }),
-        priority: plan.feature.definition.priority,
-        selectedServices: plan.selectedServices,
-        triggeredByServices: plan.triggeredByServices,
-      });
-
-      for (const service of plan.feature.definition.requires?.globalServices ?? [])
-        globalServices.push(service);
-      for (const capability of plan.feature.definition.requires?.providerCapabilities ?? [])
-        providerCapabilities.push(capability);
-    }
-
-    return {
-      activatedFeatures,
-      requires: {
-        globalServices: dedupe(globalServices),
-        providerCapabilities: dedupe(providerCapabilities),
-      },
-    };
-  });
+  return {
+    activatedFeatures,
+    requires: {
+      globalServices: dedupe(globalServices),
+      providerCapabilities: dedupe(providerCapabilities),
+    },
+  };
+});

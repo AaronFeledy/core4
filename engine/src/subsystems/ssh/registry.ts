@@ -6,7 +6,7 @@ import type { FileSystem, GlobalAppService, PathsService, SshService } from "@la
 
 import { bundledPluginModules } from "../../composition.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
-import { SshServiceUnavailableLive } from "./api.ts";
+import * as UnavailableSshService from "./api.ts";
 
 export type SshServiceLayer = Layer.Layer<SshService, SshError, FileSystem | GlobalAppService | PathsService>;
 
@@ -28,52 +28,18 @@ interface SshServiceRegistryShape {
 }
 
 export class SshServiceRegistry extends Context.Service<SshServiceRegistry, SshServiceRegistryShape>()(
-  "@lando/core/SshServiceRegistry",
-) {}
+  "@lando/engine/SshServiceRegistry",
+) {
+  static readonly layerWith = (modules: ReadonlyArray<LandoPluginModule>) =>
+    Layer.effect(
+      this,
+      Effect.gen(function* () {
+        const registrations = yield* registrationsFromModules(modules);
+        const byId = new Map(registrations.map((registration) => [registration.id, registration]));
 
-const selectionError = (message: string, sshId: string): SshError =>
-  new SshError({
-    message,
-    sshId,
-  });
-
-const registrationsFromModules = (
-  modules: ReadonlyArray<LandoPluginModule>,
-): Effect.Effect<ReadonlyArray<SshServiceRegistration>, SshError> =>
-  Effect.gen(function* () {
-    const indexResult = makePluginCapabilityIndex(modules);
-    if (Result.isFailure(indexResult))
-      return yield* Effect.fail(selectionError("Unable to discover SshService contributions.", "unknown"));
-    const index = indexResult.success;
-    const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.sshServices ?? []);
-    return yield* Effect.forEach(contributions, (contribution) => {
-      const layer = index.sshServices?.get(contribution.id);
-      return layer === undefined
-        ? Effect.fail(
-            new SshError({
-              message: `SSH service descriptor does not export ${contribution.id}.`,
-              sshId: contribution.id,
-            }),
-          )
-        : Effect.succeed({
-            id: contribution.id,
-            layer,
-            ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
-          });
-    });
-  });
-
-export const makeSshServiceRegistryLive = (modules: ReadonlyArray<LandoPluginModule>) =>
-  Layer.effect(
-    SshServiceRegistry,
-    Effect.gen(function* () {
-      const registrations = yield* registrationsFromModules(modules);
-      const byId = new Map(registrations.map((registration) => [registration.id, registration]));
-
-      return {
-        list: Effect.succeed([...byId.keys()]),
-        select: (selection = {}) =>
-          Effect.gen(function* () {
+        return SshServiceRegistry.of({
+          list: Effect.succeed([...byId.keys()]),
+          select: Effect.fn("SshServiceRegistry.select")(function* (selection = {}) {
             if (selection.explicit !== undefined) {
               const registration = byId.get(selection.explicit);
               return registration === undefined
@@ -91,17 +57,49 @@ export const makeSshServiceRegistryLive = (modules: ReadonlyArray<LandoPluginMod
               selectionError("No SshService plugin could be selected unambiguously.", "unknown"),
             );
           }),
-      };
-    }),
-  );
+        });
+      }),
+    );
 
-export const SshServiceRegistryLive = Layer.suspend(() => makeSshServiceRegistryLive(bundledPluginModules()));
+  static readonly layer = Layer.suspend(() => this.layerWith(bundledPluginModules()));
+}
 
-export const SelectedSshServiceLive = Layer.unwrap(
+const selectionError = (message: string, sshId: string): SshError =>
+  new SshError({
+    message,
+    sshId,
+  });
+
+const registrationsFromModules = Effect.fnUntraced(function* (
+  modules: ReadonlyArray<LandoPluginModule>,
+): Effect.fn.Return<ReadonlyArray<SshServiceRegistration>, SshError> {
+  const indexResult = makePluginCapabilityIndex(modules);
+  if (Result.isFailure(indexResult))
+    return yield* Effect.fail(selectionError("Unable to discover SshService contributions.", "unknown"));
+  const index = indexResult.success;
+  const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.sshServices ?? []);
+  return yield* Effect.forEach(contributions, (contribution) => {
+    const layer = index.sshServices?.get(contribution.id);
+    return layer === undefined
+      ? Effect.fail(
+          new SshError({
+            message: `SSH service descriptor does not export ${contribution.id}.`,
+            sshId: contribution.id,
+          }),
+        )
+      : Effect.succeed({
+          id: contribution.id,
+          layer,
+          ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
+        });
+  });
+});
+
+export const layerSelected = Layer.unwrap(
   Effect.flatMap(SshServiceRegistry, (registry) =>
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0
-        ? Effect.succeed(SshServiceUnavailableLive)
+        ? Effect.succeed(UnavailableSshService.layerUnavailable)
         : registry.select().pipe(Effect.map((selected) => selected.layer)),
     ),
   ),

@@ -120,63 +120,61 @@ export const ensureStartTransactionConsistent = (target: ResolvedAppTarget) =>
   ManagedFileTransactionGuard.pipe(Effect.flatMap((guard) => guard.ensureConsistent(String(target.root))));
 
 /** Verify saved accelerated ownership and clear a prior drain before init hooks can write. */
-export const preflightStartAppDrain = (
+export const preflightStartAppDrain = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   stopPreflight?: StopAppPreflight,
   allowRetained = false,
-) =>
-  Effect.gen(function* () {
-    const retained = yield* requireNoPendingAcceleratedStart(target.app, target.plan, allowRetained);
-    if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained);
-    const prior =
-      stopPreflight?.appliedFileSync ??
-      (yield* Effect.gen(function* () {
-        const registry = yield* RuntimeProviderRegistry;
-        const provider = yield* registry.select(target.plan);
-        return provider.inspectAppliedFileSync === undefined
-          ? undefined
-          : yield* provider.inspectAppliedFileSync(target.plan);
-      }));
-    if (prior === undefined) return;
-    if (prior.status === "unknown") {
-      return yield* Effect.fail(
-        new FileSyncStartError({
-          engineId: target.plan.fileSync[0]?.engineId ?? "unavailable",
-          message: "Previous file sync state could not be verified before app init hooks.",
-          remediation: "Inspect and repair the provider's applied file sync state, then retry start.",
-        }),
-      );
-    }
-    if (prior.status !== "accelerated") return;
-    const maybeFileSync = stopPreflight?.maybeFileSync ?? (yield* Effect.serviceOption(FileSyncEngine));
-    if (
-      Option.isNone(maybeFileSync) ||
-      maybeFileSync.value.id !== prior.engineId ||
-      !(yield* maybeFileSync.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))))
-    ) {
-      return yield* Effect.fail(
-        new FileSyncStartError({
-          engineId: prior.engineId,
-          message: "The saved accelerated app requires its original available file sync engine.",
-          remediation: "Restore the recorded file sync engine and repair its sessions before retrying start.",
-        }),
-      );
-    }
-    const lifecycle = maybeFileSync.value.appLifecycle;
-    if (lifecycle === undefined) return;
-    const sessions =
-      stopPreflight?.sessions ?? (yield* maybeFileSync.value.listSessions({ app: target.app }));
-    if (!hasExactFileSyncSessionCoverage(prior.sessions, sessions)) {
-      return yield* Effect.fail(
-        new FileSyncStartError({
-          engineId: prior.engineId,
-          message: "The saved accelerated app has missing or changed durable file sync sessions.",
-          remediation: "Repair its owned sessions before retrying start.",
-        }),
-      );
-    }
-    yield* lifecycle.invalidateDrain(target.app);
-  });
+) {
+  const retained = yield* requireNoPendingAcceleratedStart(target.app, target.plan, allowRetained);
+  if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained);
+  const prior =
+    stopPreflight?.appliedFileSync ??
+    (yield* Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      const provider = yield* registry.select(target.plan);
+      return provider.inspectAppliedFileSync === undefined
+        ? undefined
+        : yield* provider.inspectAppliedFileSync(target.plan);
+    }));
+  if (prior === undefined) return;
+  if (prior.status === "unknown") {
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: target.plan.fileSync[0]?.engineId ?? "unavailable",
+        message: "Previous file sync state could not be verified before app init hooks.",
+        remediation: "Inspect and repair the provider's applied file sync state, then retry start.",
+      }),
+    );
+  }
+  if (prior.status !== "accelerated") return;
+  const maybeFileSync = stopPreflight?.maybeFileSync ?? (yield* Effect.serviceOption(FileSyncEngine));
+  if (
+    Option.isNone(maybeFileSync) ||
+    maybeFileSync.value.id !== prior.engineId ||
+    !(yield* maybeFileSync.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))))
+  ) {
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: prior.engineId,
+        message: "The saved accelerated app requires its original available file sync engine.",
+        remediation: "Restore the recorded file sync engine and repair its sessions before retrying start.",
+      }),
+    );
+  }
+  const lifecycle = maybeFileSync.value.appLifecycle;
+  if (lifecycle === undefined) return;
+  const sessions = stopPreflight?.sessions ?? (yield* maybeFileSync.value.listSessions({ app: target.app }));
+  if (!hasExactFileSyncSessionCoverage(prior.sessions, sessions)) {
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: prior.engineId,
+        message: "The saved accelerated app has missing or changed durable file sync sessions.",
+        remediation: "Repair its owned sessions before retrying start.",
+      }),
+    );
+  }
+  yield* lifecycle.invalidateDrain(target.app);
+});
 
 /** Stop has just drained durable sessions; clear that drain before startup resumes them. */
 export const invalidateAppDrainAfterStop = (target: ResolvedAppTarget, stopPreflight: StopAppPreflight) => {
@@ -187,350 +185,340 @@ export const invalidateAppDrainAfterStop = (target: ResolvedAppTarget, stopPrefl
     : Effect.void;
 };
 
-export const startAppForTargetUnlocked = (
+export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
   execution: { readonly forceAppBuild?: boolean } = {},
-): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
-  Effect.gen(function* () {
-    const resolvedOptions = options ?? {};
-    const registry = yield* RuntimeProviderRegistry;
-    const events = yield* EventService;
-    const builds = yield* BuildOrchestrator;
-    const proxy = yield* RouterService;
+): Effect.fn.Return<StartAppResult, SdkStartAppError, BoundStartAppServices> {
+  const resolvedOptions = options ?? {};
+  const registry = yield* RuntimeProviderRegistry;
+  const events = yield* EventService;
+  const builds = yield* BuildOrchestrator;
+  const proxy = yield* RouterService;
 
-    const candidateProvider = yield* registry.select(target.plan);
-    const inspectAppliedFileSync = candidateProvider.inspectAppliedFileSync;
-    const inspectPrior =
-      inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
-    const { pending: retainedJournal } = yield* readJournal(target.app);
-    const recovering = isRecoverableStart(retainedJournal);
-    if (recovering && target.plan.fileSync.length === 0)
-      return yield* Effect.fail(
-        new FileSyncStartError({
-          engineId: retainedJournal.engineId,
-          message: "Automatic recovery is not possible: mount plan digest changed (no planned sessions).",
-          remediation: "Restore the original mount plan and run `lando start`, or run `lando destroy`.",
-        }),
-      );
-    const resolvedPlan = recovering
-      ? target.plan
-      : yield* resolveFileSyncMountPlan(target.plan, inspectPrior);
-    const selectedProvider =
-      resolvedPlan === target.plan ? candidateProvider : yield* registry.select(resolvedPlan);
-    if (
-      resolvedPlan.fileSync.length > 0 &&
-      selectedProvider.prepareFileSyncTargets !== undefined &&
-      selectedProvider.inspectAppliedFileSync === undefined
-    ) {
-      return yield* Effect.fail(
-        new FileSyncStartError({
-          engineId: resolvedPlan.fileSync[0]?.engineId ?? "unknown",
-          message: "The selected provider cannot verify previous accelerated mount state.",
-          remediation:
-            "Use a provider that implements both accelerated target preparation and prior-state inspection.",
-        }),
-      );
-    }
-    const needsProviderFallback =
-      resolvedPlan.fileSync.length > 0 && selectedProvider.prepareFileSyncTargets === undefined;
-    if (recovering && needsProviderFallback)
-      return yield* Effect.fail(
-        new FileSyncStartError({
-          engineId: retainedJournal.engineId,
-          message: "Automatic recovery is not possible: provider cannot prepare targets.",
-          remediation: "Restore the recorded provider or run `lando destroy`.",
-        }),
-      );
-    if (needsProviderFallback) yield* guardOrdinaryFileSyncFallback(target.plan, inspectPrior);
-    const plan = needsProviderFallback ? withOrdinaryMounts(resolvedPlan) : resolvedPlan;
-    const engineId = plan.fileSync[0]?.engineId ?? "unknown";
-    if (plan !== target.plan) {
-      yield* events.publish(
-        MessageWarnEvent.make({
-          body: "Accelerated file sync is unavailable. Lando is using ordinary bind mounts for this app.",
-          timestamp: now(),
-        }),
-      );
-    }
-    const provider = plan === resolvedPlan ? selectedProvider : yield* registry.select(plan);
-    if (plan.fileSync.length > 0 && inspectPrior !== undefined) {
-      const prior = yield* inspectPrior();
-      if (prior.status === "accelerated" && prior.engineId !== plan.fileSync[0]?.engineId) {
-        return yield* Effect.fail(
-          new FileSyncStartError({
-            engineId,
-            message: "The applied app used a different file sync engine.",
-            remediation: "Restore the engine recorded in provider state before restarting this app.",
-          }),
-        );
-      }
-    }
-    const ref = target.app;
-    const applyStarted = yield* Ref.make(false);
-    const routesApplied = yield* Ref.make(false);
-    const routesAttempted = yield* Ref.make(false);
-    const routesRemoved = yield* Ref.make(false);
-    const writersStopped = yield* Ref.make(false);
-    const leaseCleanupDone = yield* Ref.make(false);
-
+  const candidateProvider = yield* registry.select(target.plan);
+  const inspectAppliedFileSync = candidateProvider.inspectAppliedFileSync;
+  const inspectPrior =
+    inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
+  const { pending: retainedJournal } = yield* readJournal(target.app);
+  const recovering = isRecoverableStart(retainedJournal);
+  if (recovering && target.plan.fileSync.length === 0)
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: retainedJournal.engineId,
+        message: "Automatic recovery is not possible: mount plan digest changed (no planned sessions).",
+        remediation: "Restore the original mount plan and run `lando start`, or run `lando destroy`.",
+      }),
+    );
+  const resolvedPlan = recovering ? target.plan : yield* resolveFileSyncMountPlan(target.plan, inspectPrior);
+  const selectedProvider =
+    resolvedPlan === target.plan ? candidateProvider : yield* registry.select(resolvedPlan);
+  if (
+    resolvedPlan.fileSync.length > 0 &&
+    selectedProvider.prepareFileSyncTargets !== undefined &&
+    selectedProvider.inspectAppliedFileSync === undefined
+  ) {
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: resolvedPlan.fileSync[0]?.engineId ?? "unknown",
+        message: "The selected provider cannot verify previous accelerated mount state.",
+        remediation:
+          "Use a provider that implements both accelerated target preparation and prior-state inspection.",
+      }),
+    );
+  }
+  const needsProviderFallback =
+    resolvedPlan.fileSync.length > 0 && selectedProvider.prepareFileSyncTargets === undefined;
+  if (recovering && needsProviderFallback)
+    return yield* Effect.fail(
+      new FileSyncStartError({
+        engineId: retainedJournal.engineId,
+        message: "Automatic recovery is not possible: provider cannot prepare targets.",
+        remediation: "Restore the recorded provider or run `lando destroy`.",
+      }),
+    );
+  if (needsProviderFallback) yield* guardOrdinaryFileSyncFallback(target.plan, inspectPrior);
+  const plan = needsProviderFallback ? withOrdinaryMounts(resolvedPlan) : resolvedPlan;
+  const engineId = plan.fileSync[0]?.engineId ?? "unknown";
+  if (plan !== target.plan) {
     yield* events.publish(
-      PreAppStartEvent.make({
-        eventName: "pre-app-start",
-        appRef: ref,
-        providerId: plan.provider,
+      MessageWarnEvent.make({
+        body: "Accelerated file sync is unavailable. Lando is using ordinary bind mounts for this app.",
         timestamp: now(),
       }),
     );
-    const preStart = PreStartEvent.make({
-      _tag: "pre-start",
-      scope: "app",
-      app: ref,
-      plan,
-      triggeredBy: "app:start",
-      timestamp: now(),
-    });
-    yield* events.publish(preStart);
-    yield* runAppEvent(plan, "pre-start", preStart);
-
-    const neededGlobalServices = requiredGlobalServicesForPlan(plan);
-    if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
-      const defaultDomain = yield* resolveProxyDefaultDomain;
-      const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.router);
-      yield* proxy.prepare({ defaultDomain, router, routerPin });
-    }
-    if (neededGlobalServices.length > 0) {
-      const ensureGlobals = ensureGlobalServicesRunning({
-        services: neededGlobalServices,
-        ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new GlobalAutoStartError({
-              message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,
-              app: plan.name,
-              services: [...neededGlobalServices],
-              remediation:
-                taggedErrorRemediation(cause) ??
-                "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry `lando start`.",
-              cause,
-            }),
-        ),
-      );
-      yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
-    }
-
-    const sshAgentIntent = yield* resolveStartSshAgentIntent(target);
-    const gpgIntent = yield* resolveStartGpgAgentIntent(target);
-    return yield* withStartedGpgAgent(plan, ref, provider.capabilities, gpgIntent, {
-      exec: provider.exec,
-      ...(managed === undefined ? {} : { managed }),
-      use: (gpgPlan, prepareGpgHome) =>
-        withStartedSshAgent(gpgPlan, ref, provider.capabilities, sshAgentIntent, {
-          platform: provider.platform,
-          ...(managed === undefined ? {} : { managed }),
-          use: (agentPlan) =>
-            withStartedHostProxy(agentPlan, ref, provider.capabilities, {
-              platform: provider.platform,
-              ...(managed === undefined ? {} : { managed }),
-              use: (applyPlan) =>
-                Effect.gen(function* () {
-                  const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
-                  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-                  const serviceList = Object.values(builtPlan.services);
-                  const { pendingStart, preparedRollback, sessionLease } = yield* prepareAcceleratedStart(
-                    builtPlan,
-                    provider,
-                    { app: ref, events, managed },
-                  );
-
-                  const teardownForFailure = teardownAppliedApp(provider, plan).pipe(
-                    Effect.tap(() => Ref.set(writersStopped, true)),
-                  );
-                  const removeRoutesForFailure = proxy
-                    .removeRoutes(plan.id)
-                    .pipe(Effect.tap(() => Ref.set(routesRemoved, true)));
-                  const removeRoutesAndTeardown =
-                    sessionLease === undefined
-                      ? removeRoutesAndDestroyApp(proxy, provider, plan)
-                      : runAllAndMergeFailures<ProviderError | ProxyError, never>([
-                          removeRoutesForFailure,
-                          teardownForFailure,
-                        ]);
-                  const finishStart = Effect.gen(function* () {
-                    if (pendingStart !== undefined) yield* pendingStart.phase("sessions-ready");
-                    const applyAndInspect = Effect.gen(function* () {
-                      yield* verifyActiveVolumeCoordination(provider);
-                      if (pendingStart !== undefined) yield* pendingStart.phase("apply-intent");
-                      yield* Ref.set(applyStarted, true);
-                      yield* Effect.scoped(
-                        provider
-                          .apply(builtPlan, {
-                            reconcile: resolvedOptions.reconcile ?? false,
-                            serviceEnvironment,
-                            ...(resolvedOptions.signal === undefined
-                              ? {}
-                              : { signal: resolvedOptions.signal }),
-                          })
-                          .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
-                      );
-                      yield* prepareGpgHome;
-                      return yield* Effect.forEach(serviceList, (service) =>
-                        provider.inspect({ app: plan.id, service: service.name }).pipe(
-                          Effect.map((runtime) => {
-                            const sourceEndpoints = runtime.endpoints ?? service.endpoints;
-                            return {
-                              name: String(service.name),
-                              state: runtime.state ?? runtime.status,
-                              endpoints: sourceEndpoints.flatMap((endpoint) => {
-                                if (endpoint._tag === "internal") return [];
-                                const rendered = publishedEndpointUrl(endpoint);
-                                return rendered === undefined ? [] : [rendered];
-                              }),
-                              published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
-                            };
-                          }),
-                        ),
-                      );
-                    });
-                    const inspectedServices = yield* compensateFailure(
-                      withApplyProgress({ events, plan, services: serviceList, work: applyAndInspect }),
-                      sessionLease === undefined ? teardownAppliedApp(provider, plan) : teardownForFailure,
-                    );
-
-                    yield* compensateFailure(
-                      withBuildProvider(
-                        builds.buildApp(builtPlan, {
-                          ...(execution.forceAppBuild === true ? { force: true } : {}),
-                          ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                        }),
-                        provider,
-                      ),
-                      removeRoutesAndTeardown,
-                    );
-
-                    const routedPlan = {
-                      ...builtPlan,
-                      routes: rewriteCrossEngineProxyRoutes({
-                        plan: builtPlan,
-                        published: inspectedServices.flatMap((service) => service.published),
-                      }),
-                    };
-                    const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
-                    yield* Ref.set(routesAttempted, true);
-                    const proxyResult = yield* compensateFailure(
-                      routedPlan.routes.length === 0
-                        ? applyRoutes
-                        : withRoutesStartProgress({ events, plan, work: applyRoutes }),
-                      removeRoutesAndTeardown,
-                    );
-                    yield* Ref.set(routesApplied, true);
-                    const proxyUrls = appliedProxyUrlsByService(proxyResult);
-                    const servicesStarted = inspectedServices.map((service) => ({
-                      ...service,
-                      endpoints: [
-                        ...(proxyUrls.get(ServiceName.make(service.name)) ?? []),
-                        ...service.endpoints,
-                      ],
-                    }));
-
-                    yield* compensateFailure(
-                      events.publish(
-                        PostAppStartEvent.make({
-                          eventName: "post-app-start",
-                          appRef: ref,
-                          providerId: plan.provider,
-                          timestamp: now(),
-                        }),
-                      ),
-                      removeRoutesAndTeardown,
-                    );
-                    const postStart = PostStartEvent.make({
-                      _tag: "post-start",
-                      scope: "app",
-                      app: ref,
-                      plan,
-                      timestamp: now(),
-                    });
-                    yield* events.publish(postStart);
-                    yield* runPostAppEvent(plan, "post-start", postStart);
-                    const scanner = yield* Effect.serviceOption(UrlScanner);
-                    if (Option.isSome(scanner)) {
-                      yield* runPostStartScan({
-                        scanner: scanner.value,
-                        plan: builtPlan,
-                        events,
-                        urls: startupScanUrls(builtPlan, servicesStarted),
-                      });
-                    }
-                    if (pendingStart !== undefined) yield* pendingStart.clear;
-
-                    return { app: plan.name, servicesStarted };
-                  });
-                  if (sessionLease === undefined)
-                    return yield* pendingStart?.retained === undefined
-                      ? finishStart
-                      : finishStart.pipe(
-                          Effect.catchCause((cause) =>
-                            pendingStart.retainTargets(cause).pipe(Effect.flatMap(Effect.failCause)),
-                          ),
-                        );
-                  return yield* Effect.uninterruptibleMask((restore) =>
-                    Effect.gen(function* () {
-                      const exit = yield* Effect.exit(restore(finishStart));
-                      if (Exit.isSuccess(exit)) return exit.value;
-                      const cleanupExit = yield* Effect.exit(
-                        Effect.gen(function* () {
-                          const needRoutes =
-                            (yield* Ref.get(routesAttempted)) && !(yield* Ref.get(routesRemoved));
-                          const needWriters =
-                            (yield* Ref.get(applyStarted)) && !(yield* Ref.get(writersStopped));
-                          yield* runAllAndMergeFailures<ProviderError | ProxyError, never>([
-                            ...(needRoutes ? [removeRoutesForFailure] : []),
-                            ...(needWriters ? [teardownForFailure] : []),
-                          ]);
-                          yield* sessionLease.rollback;
-                          if (sessionLease.rollbackTargets) {
-                            if (preparedRollback === undefined && pendingStart !== undefined) {
-                              return yield* pendingStart.retainTargets(exit.cause);
-                            }
-                            if (preparedRollback !== undefined) yield* preparedRollback;
-                          }
-                          yield* Ref.set(leaseCleanupDone, true);
-                          if (sessionLease.rollbackTargets && pendingStart !== undefined)
-                            yield* pendingStart.clear;
-                        }),
-                      );
-                      if (Exit.isFailure(cleanupExit)) {
-                        const failure = Cause.combine(exit.cause, cleanupExit.cause);
-                        // Without provider rollback, prepared targets survive any cleanup failure.
-                        if (
-                          sessionLease.rollbackTargets &&
-                          preparedRollback === undefined &&
-                          pendingStart !== undefined
-                        ) {
-                          return yield* Effect.failCause(yield* pendingStart.retainTargets(failure));
-                        }
-                        return yield* Effect.failCause(failure);
-                      }
-                      if (cleanupExit.value !== undefined) return yield* Effect.failCause(cleanupExit.value);
-                      return yield* Effect.failCause(exit.cause);
-                    }),
-                  );
-                }),
-            }),
+  }
+  const provider = plan === resolvedPlan ? selectedProvider : yield* registry.select(plan);
+  if (plan.fileSync.length > 0 && inspectPrior !== undefined) {
+    const prior = yield* inspectPrior();
+    if (prior.status === "accelerated" && prior.engineId !== plan.fileSync[0]?.engineId) {
+      return yield* Effect.fail(
+        new FileSyncStartError({
+          engineId,
+          message: "The applied app used a different file sync engine.",
+          remediation: "Restore the engine recorded in provider state before restarting this app.",
         }),
+      );
+    }
+  }
+  const ref = target.app;
+  const applyStarted = yield* Ref.make(false);
+  const routesApplied = yield* Ref.make(false);
+  const routesAttempted = yield* Ref.make(false);
+  const routesRemoved = yield* Ref.make(false);
+  const writersStopped = yield* Ref.make(false);
+  const leaseCleanupDone = yield* Ref.make(false);
+
+  yield* events.publish(
+    PreAppStartEvent.make({
+      eventName: "pre-app-start",
+      appRef: ref,
+      providerId: plan.provider,
+      timestamp: now(),
+    }),
+  );
+  const preStart = PreStartEvent.make({
+    _tag: "pre-start",
+    scope: "app",
+    app: ref,
+    plan,
+    triggeredBy: "app:start",
+    timestamp: now(),
+  });
+  yield* events.publish(preStart);
+  yield* runAppEvent(plan, "pre-start", preStart);
+
+  const neededGlobalServices = requiredGlobalServicesForPlan(plan);
+  if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
+    const defaultDomain = yield* resolveProxyDefaultDomain;
+    const { router, routerPin } = yield* resolveRouterConfigForApp(target.landofile?.router);
+    yield* proxy.prepare({ defaultDomain, router, routerPin });
+  }
+  if (neededGlobalServices.length > 0) {
+    const ensureGlobals = ensureGlobalServicesRunning({
+      services: neededGlobalServices,
+      ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
     }).pipe(
-      Effect.onInterrupt(() =>
-        Effect.all([Ref.get(applyStarted), Ref.get(routesApplied), Ref.get(leaseCleanupDone)]).pipe(
-          Effect.flatMap(([started, routed, cleaned]) => {
-            if (cleaned) return Effect.void;
-            if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
-            return Effect.void;
+      Effect.mapError(
+        (cause) =>
+          new GlobalAutoStartError({
+            message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,
+            app: plan.name,
+            services: [...neededGlobalServices],
+            remediation:
+              taggedErrorRemediation(cause) ??
+              "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry `lando start`.",
+            cause,
           }),
-          Effect.orDie,
-        ),
       ),
     );
-  });
+    yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
+  }
+
+  const sshAgentIntent = yield* resolveStartSshAgentIntent(target);
+  const gpgIntent = yield* resolveStartGpgAgentIntent(target);
+  return yield* withStartedGpgAgent(plan, ref, provider.capabilities, gpgIntent, {
+    exec: provider.exec,
+    ...(managed === undefined ? {} : { managed }),
+    use: (gpgPlan, prepareGpgHome) =>
+      withStartedSshAgent(gpgPlan, ref, provider.capabilities, sshAgentIntent, {
+        platform: provider.platform,
+        ...(managed === undefined ? {} : { managed }),
+        use: (agentPlan) =>
+          withStartedHostProxy(agentPlan, ref, provider.capabilities, {
+            platform: provider.platform,
+            ...(managed === undefined ? {} : { managed }),
+            use: Effect.fnUntraced(function* (applyPlan) {
+              const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
+              const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+              const serviceList = Object.values(builtPlan.services);
+              const { pendingStart, preparedRollback, sessionLease } = yield* prepareAcceleratedStart(
+                builtPlan,
+                provider,
+                { app: ref, events, managed },
+              );
+
+              const teardownForFailure = teardownAppliedApp(provider, plan).pipe(
+                Effect.tap(() => Ref.set(writersStopped, true)),
+              );
+              const removeRoutesForFailure = proxy
+                .removeRoutes(plan.id)
+                .pipe(Effect.tap(() => Ref.set(routesRemoved, true)));
+              const removeRoutesAndTeardown =
+                sessionLease === undefined
+                  ? removeRoutesAndDestroyApp(proxy, provider, plan)
+                  : runAllAndMergeFailures<ProviderError | ProxyError, never>([
+                      removeRoutesForFailure,
+                      teardownForFailure,
+                    ]);
+              const finishStart = Effect.gen(function* () {
+                if (pendingStart !== undefined) yield* pendingStart.phase("sessions-ready");
+                const applyAndInspect = Effect.gen(function* () {
+                  yield* verifyActiveVolumeCoordination(provider);
+                  if (pendingStart !== undefined) yield* pendingStart.phase("apply-intent");
+                  yield* Ref.set(applyStarted, true);
+                  yield* Effect.scoped(
+                    provider
+                      .apply(builtPlan, {
+                        reconcile: resolvedOptions.reconcile ?? false,
+                        serviceEnvironment,
+                        ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                      })
+                      .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
+                  );
+                  yield* prepareGpgHome;
+                  return yield* Effect.forEach(serviceList, (service) =>
+                    provider.inspect({ app: plan.id, service: service.name }).pipe(
+                      Effect.map((runtime) => {
+                        const sourceEndpoints = runtime.endpoints ?? service.endpoints;
+                        return {
+                          name: String(service.name),
+                          state: runtime.state ?? runtime.status,
+                          endpoints: sourceEndpoints.flatMap((endpoint) => {
+                            if (endpoint._tag === "internal") return [];
+                            const rendered = publishedEndpointUrl(endpoint);
+                            return rendered === undefined ? [] : [rendered];
+                          }),
+                          published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
+                        };
+                      }),
+                    ),
+                  );
+                });
+                const inspectedServices = yield* compensateFailure(
+                  withApplyProgress({ events, plan, services: serviceList, work: applyAndInspect }),
+                  sessionLease === undefined ? teardownAppliedApp(provider, plan) : teardownForFailure,
+                );
+
+                yield* compensateFailure(
+                  withBuildProvider(
+                    builds.buildApp(builtPlan, {
+                      ...(execution.forceAppBuild === true ? { force: true } : {}),
+                      ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                    }),
+                    provider,
+                  ),
+                  removeRoutesAndTeardown,
+                );
+
+                const routedPlan = {
+                  ...builtPlan,
+                  routes: rewriteCrossEngineProxyRoutes({
+                    plan: builtPlan,
+                    published: inspectedServices.flatMap((service) => service.published),
+                  }),
+                };
+                const applyRoutes = applyAppRoutes(proxy, routedPlan, target.landofile?.router);
+                yield* Ref.set(routesAttempted, true);
+                const proxyResult = yield* compensateFailure(
+                  routedPlan.routes.length === 0
+                    ? applyRoutes
+                    : withRoutesStartProgress({ events, plan, work: applyRoutes }),
+                  removeRoutesAndTeardown,
+                );
+                yield* Ref.set(routesApplied, true);
+                const proxyUrls = appliedProxyUrlsByService(proxyResult);
+                const servicesStarted = inspectedServices.map((service) => ({
+                  ...service,
+                  endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
+                }));
+
+                yield* compensateFailure(
+                  events.publish(
+                    PostAppStartEvent.make({
+                      eventName: "post-app-start",
+                      appRef: ref,
+                      providerId: plan.provider,
+                      timestamp: now(),
+                    }),
+                  ),
+                  removeRoutesAndTeardown,
+                );
+                const postStart = PostStartEvent.make({
+                  _tag: "post-start",
+                  scope: "app",
+                  app: ref,
+                  plan,
+                  timestamp: now(),
+                });
+                yield* events.publish(postStart);
+                yield* runPostAppEvent(plan, "post-start", postStart);
+                const scanner = yield* Effect.serviceOption(UrlScanner);
+                if (Option.isSome(scanner)) {
+                  yield* runPostStartScan({
+                    scanner: scanner.value,
+                    plan: builtPlan,
+                    events,
+                    urls: startupScanUrls(builtPlan, servicesStarted),
+                  });
+                }
+                if (pendingStart !== undefined) yield* pendingStart.clear;
+
+                return { app: plan.name, servicesStarted };
+              });
+              if (sessionLease === undefined)
+                return yield* pendingStart?.retained === undefined
+                  ? finishStart
+                  : finishStart.pipe(
+                      Effect.catchCause((cause) =>
+                        pendingStart.retainTargets(cause).pipe(Effect.flatMap(Effect.failCause)),
+                      ),
+                    );
+              return yield* Effect.uninterruptibleMask((restore) =>
+                Effect.gen(function* () {
+                  const exit = yield* Effect.exit(restore(finishStart));
+                  if (Exit.isSuccess(exit)) return exit.value;
+                  const cleanupExit = yield* Effect.exit(
+                    Effect.gen(function* () {
+                      const needRoutes =
+                        (yield* Ref.get(routesAttempted)) && !(yield* Ref.get(routesRemoved));
+                      const needWriters = (yield* Ref.get(applyStarted)) && !(yield* Ref.get(writersStopped));
+                      yield* runAllAndMergeFailures<ProviderError | ProxyError, never>([
+                        ...(needRoutes ? [removeRoutesForFailure] : []),
+                        ...(needWriters ? [teardownForFailure] : []),
+                      ]);
+                      yield* sessionLease.rollback;
+                      if (sessionLease.rollbackTargets) {
+                        if (preparedRollback === undefined && pendingStart !== undefined) {
+                          return yield* pendingStart.retainTargets(exit.cause);
+                        }
+                        if (preparedRollback !== undefined) yield* preparedRollback;
+                      }
+                      yield* Ref.set(leaseCleanupDone, true);
+                      if (sessionLease.rollbackTargets && pendingStart !== undefined)
+                        yield* pendingStart.clear;
+                    }),
+                  );
+                  if (Exit.isFailure(cleanupExit)) {
+                    const failure = Cause.combine(exit.cause, cleanupExit.cause);
+                    // Without provider rollback, prepared targets survive any cleanup failure.
+                    if (
+                      sessionLease.rollbackTargets &&
+                      preparedRollback === undefined &&
+                      pendingStart !== undefined
+                    ) {
+                      return yield* Effect.failCause(yield* pendingStart.retainTargets(failure));
+                    }
+                    return yield* Effect.failCause(failure);
+                  }
+                  if (cleanupExit.value !== undefined) return yield* Effect.failCause(cleanupExit.value);
+                  return yield* Effect.failCause(exit.cause);
+                }),
+              );
+            }),
+          }),
+      }),
+  }).pipe(
+    Effect.onInterrupt(() =>
+      Effect.all([Ref.get(applyStarted), Ref.get(routesApplied), Ref.get(leaseCleanupDone)]).pipe(
+        Effect.flatMap(([started, routed, cleaned]) => {
+          if (cleaned) return Effect.void;
+          if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
+          return Effect.void;
+        }),
+        Effect.orDie,
+      ),
+    ),
+  );
+});

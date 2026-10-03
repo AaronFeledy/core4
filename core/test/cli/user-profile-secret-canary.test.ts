@@ -10,18 +10,18 @@ import {
   appPlanCachePath,
   appToolingCompilationCachePath,
 } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 import { landofileRuntimeInputs } from "@lando/engine/composition";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { startApp } from "@lando/engine/operations/start";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { appSteps } from "@lando/engine/services/build-app-plan";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -123,10 +123,10 @@ test.each([
       },
     };
     const dependencies = Layer.mergeAll(
-      CacheServiceLive,
-      FileSystemLive,
-      PluginRegistryLive,
-      EventServiceLive,
+      AppCacheService.layer,
+      BunFileSystem.layer,
+      PluginRegistryLayer.layer,
+      LandoEventService.layer,
       PrivateFileAccessService.layer,
       Layer.succeed(PathsService, paths),
       Layer.succeed(StateStore, store),
@@ -142,10 +142,12 @@ test.each([
         select: () => Effect.succeed(provider),
       }),
       Layer.succeed(RouterService, TestRouterService),
-      makeShellRunnerLive(() => {
+      BunShellRunner.layer(() => {
         throw new TypeError("No host shell is expected");
       }),
-      GlobalAppServiceLive.pipe(Layer.provide(Layer.merge(ConfigServiceLive, FileSystemLive))),
+      GlobalAppServiceLayer.layer.pipe(
+        Layer.provide(Layer.merge(LandoConfigService.layer, BunFileSystem.layer)),
+      ),
       Layer.succeed(LandofileService, {
         discover: resolveLandofileIncludes({
           landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
@@ -158,8 +160,8 @@ test.each([
     );
     const layer = Layer.mergeAll(
       dependencies,
-      AppPlannerLive.pipe(Layer.provide(dependencies)),
-      BuildOrchestratorLive.pipe(Layer.provide(dependencies)),
+      AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
+      BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
     );
     try {
       await mkdir(appRoot, { recursive: true });

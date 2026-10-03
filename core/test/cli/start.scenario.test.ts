@@ -52,18 +52,18 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
-import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { makeTestStateStore } from "@lando/core/testing";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as LandoConfigService from "@lando/engine/services/config";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { makeLandoPaths } from "@lando/paths";
@@ -331,17 +331,19 @@ const emptyPluginRegistry = {
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
   PrivateFileAccessService.layer,
-  NoopTransactionGuardLive,
-  ConfigServiceLive,
-  FileSystemLive,
-  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+  TestLandofileLayers.layerTransactionGuard,
+  LandoConfigService.layer,
+  BunFileSystem.layer,
+  GlobalAppServiceLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+  ),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
   Layer.succeed(RedactionService, {
     registerValues: registerRedactionValues,
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
   Layer.succeed(RouterService, TestRouterService),
-  makeShellRunnerLive(() => {
+  BunShellRunner.layer(() => {
     throw new TypeError("Interactive shell IO is not used by start scenarios.");
   }),
   Layer.succeed(BuildOrchestrator, {
@@ -781,10 +783,12 @@ const makeAutoStartLayer = async (options: {
   const layer = Layer.mergeAll(
     TestStateStoreLive,
     PrivateFileAccessService.layer,
-    NoopTransactionGuardLive,
-    ConfigServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    TestLandofileLayers.layerTransactionGuard,
+    LandoConfigService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: options.userPlan.name,
@@ -836,7 +840,7 @@ const makeAutoStartLayer = async (options: {
           stderr: "",
         }),
     }),
-    makeShellRunnerLive(() => {
+    BunShellRunner.layer(() => {
       throw new TypeError("Interactive shell IO is not used by global start scenarios.");
     }),
     Layer.succeed(BuildOrchestrator, {

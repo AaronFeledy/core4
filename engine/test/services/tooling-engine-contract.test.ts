@@ -22,8 +22,8 @@ import {
 } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import { HostToolingEngineLive } from "../../src/services/host-tooling-engine";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
+import * as HostToolingEngine from "../../src/services/host-tooling-engine";
+import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {
@@ -164,13 +164,13 @@ const inertProvider: RuntimeProviderShape = {
   exec: () => Effect.die("host engine must not call provider exec"),
 };
 
-const runEngineLayer = (live: typeof ProviderExecToolingEngineLive) =>
+const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
   Effect.runPromise(ToolingEngine.pipe(Effect.provide(live)));
-const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessService.layer));
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
 
 describe("ToolingEngine contract — built-in engines", () => {
   test("the built-in providerExec engine passes the contract", async () => {
-    const engine = await runEngineLayer(ProviderExecToolingEngineLive);
+    const engine = await runEngineLayer(ProviderExecToolingEngine.layer);
     const harness: ToolingEngineContractHarness = {
       name: "providerExec",
       engine,
@@ -233,7 +233,7 @@ describe("ToolingEngine contract — built-in engines", () => {
   });
 
   test("the built-in host engine passes the contract (host-safe shell commands)", async () => {
-    const engine = await runEngineLayer(hostToolingEngineLive);
+    const engine = await runEngineLayer(hostToolingEngineLayer);
     // The host engine runs real shell commands on the host, so the recording
     // provider is inert (the engine ignores it) and the assertions use the host
     // shell's own output. `expectedCommands` is empty because the host engine

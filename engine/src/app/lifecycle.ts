@@ -20,66 +20,67 @@ export interface AppLifecycle {
   readonly discard: (scope: Scope.Closeable) => Effect.Effect<void>;
 }
 
-export const makeAppLifecycle = (handleScope: Scope.Scope): Effect.Effect<AppLifecycle> =>
-  Effect.gen(function* () {
-    const mutex = yield* Semaphore.make(1);
-    const current = yield* Ref.make<Scope.Closeable | undefined>(undefined);
+export const makeAppLifecycle = Effect.fnUntraced(function* (
+  handleScope: Scope.Scope,
+): Effect.fn.Return<AppLifecycle> {
+  const mutex = yield* Semaphore.make(1);
+  const current = yield* Ref.make<Scope.Closeable | undefined>(undefined);
 
-    const closeCurrent: Effect.Effect<void> = Ref.getAndSet(current, undefined).pipe(
+  const closeCurrent: Effect.Effect<void> = Ref.getAndSet(current, undefined).pipe(
+    Effect.flatMap((prev) => (prev === undefined ? Effect.void : Scope.close(prev, Exit.void))),
+    Effect.uninterruptible,
+  );
+
+  const installFresh: Effect.Effect<Scope.Closeable> = Scope.fork(handleScope, "sequential").pipe(
+    Effect.tap((scope) => Ref.set(current, scope)),
+    Effect.uninterruptible,
+  );
+
+  const stageFresh: Effect.Effect<Scope.Closeable> = Scope.fork(handleScope, "sequential").pipe(
+    Effect.uninterruptible,
+  );
+
+  const replaceCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
+    Ref.getAndSet(current, scope).pipe(
       Effect.flatMap((prev) => (prev === undefined ? Effect.void : Scope.close(prev, Exit.void))),
       Effect.uninterruptible,
     );
 
-    const installFresh: Effect.Effect<Scope.Closeable> = Scope.fork(handleScope, "sequential").pipe(
-      Effect.tap((scope) => Ref.set(current, scope)),
+  const forgetIfCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
+    Ref.get(current).pipe(
+      Effect.flatMap((value) => (value === scope ? Ref.set(current, undefined) : Effect.void)),
       Effect.uninterruptible,
     );
 
-    const stageFresh: Effect.Effect<Scope.Closeable> = Scope.fork(handleScope, "sequential").pipe(
+  const discardIfCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
+    Ref.get(current).pipe(
+      Effect.flatMap((value) =>
+        value === scope
+          ? Ref.set(current, undefined).pipe(Effect.andThen(Scope.close(scope, Exit.void)))
+          : Effect.void,
+      ),
       Effect.uninterruptible,
     );
 
-    const replaceCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
-      Ref.getAndSet(current, scope).pipe(
-        Effect.flatMap((prev) => (prev === undefined ? Effect.void : Scope.close(prev, Exit.void))),
-        Effect.uninterruptible,
-      );
-
-    const forgetIfCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
-      Ref.get(current).pipe(
-        Effect.flatMap((value) => (value === scope ? Ref.set(current, undefined) : Effect.void)),
-        Effect.uninterruptible,
-      );
-
-    const discardIfCurrent = (scope: Scope.Closeable): Effect.Effect<void> =>
-      Ref.get(current).pipe(
-        Effect.flatMap((value) =>
-          value === scope
-            ? Ref.set(current, undefined).pipe(Effect.andThen(Scope.close(scope, Exit.void)))
-            : Effect.void,
+  const discard = (scope: Scope.Closeable): Effect.Effect<void> =>
+    Ref.get(current).pipe(
+      Effect.flatMap((value) =>
+        (value === scope ? Ref.set(current, undefined) : Effect.void).pipe(
+          Effect.andThen(Scope.close(scope, Exit.void)),
         ),
-        Effect.uninterruptible,
-      );
+      ),
+      Effect.uninterruptible,
+    );
 
-    const discard = (scope: Scope.Closeable): Effect.Effect<void> =>
-      Ref.get(current).pipe(
-        Effect.flatMap((value) =>
-          (value === scope ? Ref.set(current, undefined) : Effect.void).pipe(
-            Effect.andThen(Scope.close(scope, Exit.void)),
-          ),
-        ),
-        Effect.uninterruptible,
-      );
-
-    return {
-      serialize: (effect) => mutex.withPermits(1)(effect),
-      current: Ref.get(current),
-      closeCurrent,
-      installFresh,
-      stageFresh,
-      replaceCurrent,
-      forgetIfCurrent,
-      discardIfCurrent,
-      discard,
-    };
-  });
+  return {
+    serialize: (effect) => mutex.withPermits(1)(effect),
+    current: Ref.get(current),
+    closeCurrent,
+    installFresh,
+    stageFresh,
+    replaceCurrent,
+    forgetIfCurrent,
+    discardIfCurrent,
+    discard,
+  };
+});

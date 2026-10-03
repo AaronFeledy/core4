@@ -619,8 +619,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             })),
           ),
         removeArtifact: () => Effect.void,
-        apply: (plan, applyOptions) =>
-          bringUp(plan, {
+        apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+          return yield* bringUp(plan, {
             api: dockerApi,
             ctx: DOCKER_CTX,
             dialect: dockerLifecycleDialect,
@@ -633,10 +633,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile)));
+        }),
         ...resolvedOps,
-        destroy: (target, destroyOptions) =>
-          resolvePlan(target).pipe(
+        destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+          return yield* resolvePlan(target).pipe(
             Effect.flatMap((plan) =>
               plan === undefined
                 ? Effect.succeed(DESTROY_NO_OP)
@@ -655,7 +656,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     Effect.as(DESTROYED),
                   ),
             ),
-          ),
+          );
+        }),
         removeObservedService: (observed) =>
           removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }).pipe(
             Effect.map(observedRemoval),

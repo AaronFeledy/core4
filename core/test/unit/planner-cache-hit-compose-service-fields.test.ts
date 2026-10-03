@@ -13,10 +13,10 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -40,8 +40,8 @@ test("Given a cached plan with networks, when support is omitted, then the cache
     runtime: 4,
     services: { web: { image: "node:lts", home: false } },
   });
-  const plannerLayer = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+  const plannerLayer = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
   );
   const runPlan = (capabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(
@@ -79,7 +79,7 @@ test("Given a cached plan with networks, when support is omitted, then the cache
               },
             },
           },
-        }).pipe(Effect.provide(CacheServiceLive)),
+        }).pipe(Effect.provide(AppCacheService.layer)),
       );
     }
 

@@ -73,28 +73,27 @@ const hasCompleteFileSyncCoverage = (plan: AppPlan): boolean => {
 };
 
 /** A provider verdict is required before changing mounts for an app it has already accelerated. */
-export const guardOrdinaryFileSyncFallback = (
+export const guardOrdinaryFileSyncFallback = Effect.fnUntraced(function* (
   plan: AppPlan,
   inspectPrior?: () => Effect.Effect<AppliedFileSyncInspection, unknown>,
-) =>
-  Effect.gen(function* () {
-    if (inspectPrior === undefined) return;
-    const prior = yield* inspectPrior().pipe(
-      Effect.catch(() => Effect.succeed({ status: "unknown" } as const)),
-    );
-    if (prior.status === "missing" || prior.status === "ordinary") return;
-    return yield* Effect.fail(
-      new FileSyncStartError({
-        engineId: plan.fileSync[0]?.engineId ?? "unknown",
-        message:
-          prior.status === "accelerated"
-            ? "This app previously used accelerated mounts; ordinary mounts could hide unflushed container changes."
-            : "Lando cannot verify the app's previous mount state; ordinary mounts could hide container changes.",
-        remediation:
-          "Restore the file-sync adapter and reconcile the existing session before retrying start. Inspect the provider's applied app state if needed.",
-      }),
-    );
-  });
+) {
+  if (inspectPrior === undefined) return;
+  const prior = yield* inspectPrior().pipe(
+    Effect.catch(() => Effect.succeed({ status: "unknown" } as const)),
+  );
+  if (prior.status === "missing" || prior.status === "ordinary") return;
+  return yield* Effect.fail(
+    new FileSyncStartError({
+      engineId: plan.fileSync[0]?.engineId ?? "unknown",
+      message:
+        prior.status === "accelerated"
+          ? "This app previously used accelerated mounts; ordinary mounts could hide unflushed container changes."
+          : "Lando cannot verify the app's previous mount state; ordinary mounts could hide container changes.",
+      remediation:
+        "Restore the file-sync adapter and reconcile the existing session before retrying start. Inspect the provider's applied app state if needed.",
+    }),
+  );
+});
 /** Realize a planned accelerated mount as a host bind when no live sync adapter can populate its volume. */
 export const withOrdinaryMounts = (plan: AppPlan): AppPlan => ({
   ...plan,
@@ -118,24 +117,23 @@ export const withOrdinaryMounts = (plan: AppPlan): AppPlan => ({
 });
 
 /** Resolve mount realization before any provider action, using the selected runtime's live adapter readiness. */
-export const resolveFileSyncMountPlan = (
+export const resolveFileSyncMountPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
   inspectPrior?: () => Effect.Effect<AppliedFileSyncInspection, unknown>,
-): Effect.Effect<AppPlan, FileSyncStartError> =>
-  Effect.gen(function* () {
-    if (!hasAcceleratedMounts(plan)) {
-      yield* guardOrdinaryFileSyncFallback(plan, inspectPrior);
-      return plan.fileSync.length === 0 ? plan : { ...plan, fileSync: [] };
-    }
-    const engine = yield* Effect.serviceOption(FileSyncEngine);
-    if (
-      engine._tag === "Some" &&
-      hasCompleteFileSyncCoverage(plan) &&
-      plan.fileSync.every((entry) => entry.engineId === engine.value.id) &&
-      (yield* engine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))))
-    ) {
-      return plan;
-    }
+): Effect.fn.Return<AppPlan, FileSyncStartError> {
+  if (!hasAcceleratedMounts(plan)) {
     yield* guardOrdinaryFileSyncFallback(plan, inspectPrior);
-    return withOrdinaryMounts(plan);
-  });
+    return plan.fileSync.length === 0 ? plan : { ...plan, fileSync: [] };
+  }
+  const engine = yield* Effect.serviceOption(FileSyncEngine);
+  if (
+    engine._tag === "Some" &&
+    hasCompleteFileSyncCoverage(plan) &&
+    plan.fileSync.every((entry) => entry.engineId === engine.value.id) &&
+    (yield* engine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))))
+  ) {
+    return plan;
+  }
+  yield* guardOrdinaryFileSyncFallback(plan, inspectPrior);
+  return withOrdinaryMounts(plan);
+});

@@ -5,7 +5,7 @@ import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Sche
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -564,7 +564,7 @@ describe("doctor chaos: whole report", () => {
         const fiber = yield* Effect.forkChild(
           doctorReport({ signal: controller.signal }).pipe(
             Effect.provide(layers),
-            Effect.provide(PluginRegistryLive),
+            Effect.provide(PluginRegistryLayer.layer),
           ),
         );
         yield* Deferred.await(started);
@@ -586,7 +586,7 @@ describe("doctor chaos: whole report", () => {
     const report = await Effect.runPromise(
       doctorReport({ env: SHORT_BUDGET_ENV }).pipe(
         Effect.provide(layers),
-        Effect.provide(PluginRegistryLive),
+        Effect.provide(PluginRegistryLayer.layer),
       ),
     );
 

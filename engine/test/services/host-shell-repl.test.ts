@@ -33,14 +33,17 @@ const runHostShellRepl = (spec: Parameters<typeof runHostShellReplWithPrivateFil
   runHostShellReplWithPrivateFileAccess(spec, ownerOnlyFileAccess);
 
 const eventLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<never>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  });
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<never>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    }),
+  );
 
 test("canonical redaction covers literal secrets in output, events, and history", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-host-repl-redaction-"));
@@ -61,10 +64,13 @@ test("canonical redaction covers literal secrets in output, events, and history"
         Effect.provide(
           Layer.mergeAll(
             eventLayer(events),
-            Layer.succeed(RedactionService, {
-              registerValues: registerRedactionValues,
-              forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-            }),
+            Layer.succeed(
+              RedactionService,
+              RedactionService.of({
+                registerValues: registerRedactionValues,
+                forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+              }),
+            ),
           ),
         ),
       ),

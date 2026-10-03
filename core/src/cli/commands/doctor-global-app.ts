@@ -16,10 +16,10 @@ import { Effect, Layer } from "effect";
 import type { ConfigService } from "@lando/sdk/services";
 import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { LoggerLive } from "@lando/engine/logging/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import * as LandoLogger from "@lando/engine/logging/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
@@ -204,9 +204,9 @@ export const DefaultGlobalAppDoctorLayer: Layer.Layer<
   never,
   ConfigService
 > = Layer.mergeAll(
-  GlobalAppServiceLive.pipe(Layer.provide(FileSystemLive)),
-  PluginRegistryLive.pipe(Layer.provideMerge(LoggerLive({ mode: "silent" }))),
-  FileSystemLive,
+  GlobalAppServiceLayer.layer.pipe(Layer.provide(BunFileSystem.layer)),
+  PluginRegistryLayer.layer.pipe(Layer.provideMerge(LandoLogger.layer({ mode: "silent" }))),
+  BunFileSystem.layer,
 );
 
 const renderCheck = (check: GlobalAppDoctorCheck): ReadonlyArray<string> => {

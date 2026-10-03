@@ -5,7 +5,7 @@ import { Effect, Layer, Schema } from "effect";
 import { type LandoEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
@@ -56,7 +56,7 @@ describe("TTY task tree live-region placement", () => {
           yield* events.publish(treeStart("app", "Starting app", ["web", "db"]));
           yield* events.publish(taskStart("web", "web service", "app"));
           yield* waitForPaint(() => recording.captured().includes("╭─"));
-        }).pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), EventServiceLive))),
+        }).pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), LandoEventService.layer))),
       ),
     );
     const output = recording.captured();

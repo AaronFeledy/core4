@@ -22,7 +22,7 @@ export type { StartManagedScope } from "./start-file-sync.ts";
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const startAppForTarget = (
+export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
@@ -33,8 +33,8 @@ export const startAppForTarget = (
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
-) =>
-  withAppMutationLock(
+) {
+  return yield* withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
       const context = yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
@@ -68,8 +68,9 @@ export const startAppForTarget = (
       });
     }),
   );
+});
 
-export const startApp = (
+export const startApp = Effect.fn("AppOperation.start")(function* (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
@@ -80,8 +81,8 @@ export const startApp = (
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
-) =>
-  target === undefined
+) {
+  return yield* target === undefined
     ? Effect.gen(function* () {
         const landofileService = yield* LandofileService;
         const registry = yield* RuntimeProviderRegistry;
@@ -97,3 +98,4 @@ export const startApp = (
         );
       })
     : startAppForTarget(options, target, managed, execution);
+});

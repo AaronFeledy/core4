@@ -111,10 +111,10 @@ export interface FinalizePluginInstallOptions {
 
 const defaultIo = { recordInstalledPlugin };
 
-export const finalizePluginInstall = (
+export const finalizePluginInstall = Effect.fn("AppOperation.finalizePluginInstall")(function* (
   options: FinalizePluginInstallOptions,
   io: typeof defaultIo = defaultIo,
-): Effect.Effect<void, NotImplementedError> => {
+): Effect.fn.Return<void, NotImplementedError> {
   const finalize = Effect.gen(function* () {
     if (options.expectedActivation !== undefined) {
       const registry = yield* Effect.promise(() => readInstalledPluginRegistry(options.pluginsRoot));
@@ -226,5 +226,5 @@ export const finalizePluginInstall = (
       }),
     ),
   );
-  return withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
-};
+  return yield* withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
+});

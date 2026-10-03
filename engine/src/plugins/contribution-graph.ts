@@ -60,7 +60,92 @@ export interface PluginContributionGraphShape {
 export class PluginContributionGraph extends Context.Service<
   PluginContributionGraph,
   PluginContributionGraphShape
->()("@lando/core/private/PluginContributionGraph") {}
+>()("@lando/engine/PluginContributionGraph") {
+  static readonly layer = (
+    policy: PluginContributionGraphPolicy,
+    modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
+  ) =>
+    Layer.effect(
+      this,
+      Effect.gen(function* () {
+        const paths = yield* PathsService;
+        const loggerOption = yield* Effect.serviceOption(Logger);
+        const logger = Option.getOrUndefined(loggerOption);
+        const scope = yield* Scope.Scope;
+        let rawContext = Context.empty();
+        const rawCandidates: GraphCertificateAuthorityCandidate[] = [];
+        for (const [index, layer] of policy.layers.entries()) {
+          const context = yield* Layer.buildWithScope(layer, scope).pipe(
+            Effect.mapError((cause) => bootstrapFailure(`Failed to build plugins.layers[${index}].`, cause)),
+          );
+          const authority = Context.getOption(context, CertificateAuthority);
+          if (Option.isSome(authority)) {
+            rawCandidates.push({
+              id: authority.value.id,
+              pluginName: `plugins.layers[${index}]`,
+              source: `plugins.layers[${index}]`,
+              acquisition: { kind: "service", service: authority.value },
+            });
+          }
+          rawContext = Context.merge(rawContext, Context.omit(CertificateAuthority)(context));
+        }
+
+        const bundled = policy.discovery.bundled
+          ? systemPluginsFromModules(modules).map((plugin, index) => ({
+              ...plugin,
+              entry: modules[index],
+            }))
+          : [];
+        const external = policy.externalImports;
+        const system =
+          external && policy.discovery.system
+            ? yield* discoverInstalledPlugins("system", paths.systemPluginsDir, logger)
+            : [];
+        const user =
+          external && policy.discovery.user
+            ? yield* discoverInstalledPlugins("user", paths.pluginsDir, logger)
+            : [];
+        const appRoot =
+          external && policy.discovery.app ? yield* Effect.promise(() => findAppRoot(policy.cwd)) : undefined;
+        const app =
+          appRoot === undefined
+            ? []
+            : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
+        const explicit = yield* Effect.forEach(policy.manifests, (input) =>
+          Result.match(validateResolvedPlugin(input), {
+            onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+            onSuccess: Effect.succeed,
+          }),
+        );
+        const globalPlugins = mergeLoadedPluginSources(
+          [bundled, system, user, explicit],
+          policy.discovery.disable,
+        );
+        const merged = mergeLoadedPluginSources(
+          [bundled, system, user, app, explicit],
+          policy.discovery.disable,
+        );
+        const commands = yield* Result.match(pluginCommandCandidates(merged), {
+          onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+          onSuccess: Effect.succeed,
+        });
+        const graph: PluginContributionGraphShape = {
+          plugins: merged,
+          globalPlugins,
+          certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
+          commands,
+          hostContext: rawContext,
+        };
+        return PluginContributionGraph.of(graph);
+      }),
+    ).pipe(
+      Layer.flatMap((context) =>
+        Layer.succeedContext(
+          Context.merge(Context.get(context, PluginContributionGraph).hostContext, context),
+        ),
+      ),
+    );
+}
 
 export interface PluginContributionGraphPolicy {
   readonly layers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
@@ -212,84 +297,6 @@ export const pluginCommandCandidates = (
 
 const bootstrapFailure = (message: string, cause: unknown) =>
   new LandoRuntimeBootstrapError({ message, stage: "plugins", cause });
-
-export const makePluginContributionGraphLive = (
-  policy: PluginContributionGraphPolicy,
-  modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
-) =>
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const paths = yield* PathsService;
-      const loggerOption = yield* Effect.serviceOption(Logger);
-      const logger = Option.getOrUndefined(loggerOption);
-      const scope = yield* Scope.Scope;
-      let rawContext = Context.empty();
-      const rawCandidates: GraphCertificateAuthorityCandidate[] = [];
-      for (const [index, layer] of policy.layers.entries()) {
-        const context = yield* Layer.buildWithScope(layer, scope).pipe(
-          Effect.mapError((cause) => bootstrapFailure(`Failed to build plugins.layers[${index}].`, cause)),
-        );
-        const authority = Context.getOption(context, CertificateAuthority);
-        if (Option.isSome(authority)) {
-          rawCandidates.push({
-            id: authority.value.id,
-            pluginName: `plugins.layers[${index}]`,
-            source: `plugins.layers[${index}]`,
-            acquisition: { kind: "service", service: authority.value },
-          });
-        }
-        rawContext = Context.merge(rawContext, Context.omit(CertificateAuthority)(context));
-      }
-
-      const bundled = policy.discovery.bundled
-        ? systemPluginsFromModules(modules).map((plugin, index) => ({
-            ...plugin,
-            entry: modules[index],
-          }))
-        : [];
-      const external = policy.externalImports;
-      const system =
-        external && policy.discovery.system
-          ? yield* discoverInstalledPlugins("system", paths.systemPluginsDir, logger)
-          : [];
-      const user =
-        external && policy.discovery.user
-          ? yield* discoverInstalledPlugins("user", paths.pluginsDir, logger)
-          : [];
-      const appRoot =
-        external && policy.discovery.app ? yield* Effect.promise(() => findAppRoot(policy.cwd)) : undefined;
-      const app =
-        appRoot === undefined
-          ? []
-          : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
-      const explicit = yield* Effect.forEach(policy.manifests, (input) =>
-        Result.match(validateResolvedPlugin(input), {
-          onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-          onSuccess: Effect.succeed,
-        }),
-      );
-      const globalPlugins = mergeLoadedPluginSources(
-        [bundled, system, user, explicit],
-        policy.discovery.disable,
-      );
-      const merged = mergeLoadedPluginSources(
-        [bundled, system, user, app, explicit],
-        policy.discovery.disable,
-      );
-      const commands = yield* Result.match(pluginCommandCandidates(merged), {
-        onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-        onSuccess: Effect.succeed,
-      });
-      const graph: PluginContributionGraphShape = {
-        plugins: merged,
-        globalPlugins,
-        certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
-        commands,
-        hostContext: rawContext,
-      };
-      return Context.add(rawContext, PluginContributionGraph, graph);
-    }),
-  );
 
 export const withPluginLayerOverrides = <A, E, R>(
   runtimeLayer: Layer.Layer<A | PluginContributionGraph, E, R>,

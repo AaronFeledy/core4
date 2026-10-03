@@ -5,7 +5,7 @@
  * The active logger is an Effect `Logger` provided by a Layer; swapping it
  * changes how lines render.
  *
- * This file builds the Effect `Logger` that `LoggerLive` installs via
+ * This file builds the Effect `Logger` that `LandoLogger.layer` installs via
  * `Logger.layer`. Diagnostic lines are a side channel, not command UX.
  */
 import { Logger as EffectLogger } from "effect";

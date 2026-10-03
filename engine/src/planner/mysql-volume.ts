@@ -23,26 +23,27 @@ export const resolveMysqlVolume = (
     return Effect.succeed(plan);
   }
 
-  return Effect.gen(function* () {
-    const provider = yield* registry.select(plan);
-    const scopedVolumes = yield* provider.listVolumes({ app: plan.id, store: scoped });
-    if (scopedVolumes.length > 0) return plan;
-    const legacyVolumes = yield* provider.listVolumes({ app: plan.id, store: legacy });
-    if (legacyVolumes.length === 0) return plan;
-    return {
-      ...plan,
-      services: {
-        ...plan.services,
-        [service.name]: {
-          ...service,
-          storage: service.storage.map((mount) =>
-            mount.store === scoped ? { ...mount, store: legacy } : mount,
-          ),
+  return Effect.fnUntraced(
+    function* () {
+      const provider = yield* registry.select(plan);
+      const scopedVolumes = yield* provider.listVolumes({ app: plan.id, store: scoped });
+      if (scopedVolumes.length > 0) return plan;
+      const legacyVolumes = yield* provider.listVolumes({ app: plan.id, store: legacy });
+      if (legacyVolumes.length === 0) return plan;
+      return {
+        ...plan,
+        services: {
+          ...plan.services,
+          [service.name]: {
+            ...service,
+            storage: service.storage.map((mount) =>
+              mount.store === scoped ? { ...mount, store: legacy } : mount,
+            ),
+          },
         },
-      },
-      stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
-    };
-  }).pipe(
+        stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
+      };
+    },
     Effect.mapError((cause): LandofileValidationError | ProviderUnavailableError =>
       cause._tag === "ProviderUnavailableError"
         ? cause
@@ -52,7 +53,7 @@ export const resolveMysqlVolume = (
             issues: [`services.${service.name}.storage`],
           }),
     ),
-  );
+  )();
 };
 
 /** Keep configuration planning available while the selected runtime is offline. */

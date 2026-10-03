@@ -17,7 +17,7 @@ import {
   writeCachedAppPlan,
 } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import * as AppCacheService from "../../src/cache/service.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const runtimeLandofileInput = {
@@ -63,7 +63,7 @@ const runtimeAppPlan: AppPlan = {
 };
 
 const runWithCache = <A, E>(effect: Effect.Effect<A, E, import("@lando/sdk/services").CacheService>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
+  Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
 test("ignores a valid revision-6 app plan without pinned PHP prerequisite identities", async () => {
   // Given

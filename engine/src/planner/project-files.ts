@@ -52,44 +52,43 @@ const containedPath = (
 // Reject symlink components for static-tree containment; realpath adds no protection
 // and shares the check/read race. Concurrent mutation of the user's own working
 // tree is outside the threat model: its writer can already edit inference inputs.
-const assertNoSymlinkComponents = (
+const assertNoSymlinkComponents = Effect.fnUntraced(function* (
   input: ProjectFileRequest & { readonly fileSystem: Context.Service.Shape<typeof FileSystem> },
   absolute: string,
   allowMissing: boolean,
-): Effect.Effect<boolean, LandofileValidationError> =>
-  Effect.gen(function* () {
-    const rel = relative(input.appRoot, absolute);
-    const segments = rel === "" ? [] : rel.split(sep);
-    let current = input.appRoot;
-    for (const segment of segments) {
-      current = resolve(current, segment);
-      const stat = yield* input.fileSystem.lstat(current).pipe(
-        Effect.map((value) => ({ kind: "present" as const, value })),
-        Effect.catchTag("FileNotFoundError", () => Effect.succeed({ kind: "missing" as const })),
-        Effect.mapError((cause) =>
-          validationError(input, `Unable to inspect project path ${current}: ${cause.message}.`),
+): Effect.fn.Return<boolean, LandofileValidationError> {
+  const rel = relative(input.appRoot, absolute);
+  const segments = rel === "" ? [] : rel.split(sep);
+  let current = input.appRoot;
+  for (const segment of segments) {
+    current = resolve(current, segment);
+    const stat = yield* input.fileSystem.lstat(current).pipe(
+      Effect.map((value) => ({ kind: "present" as const, value })),
+      Effect.catchTag("FileNotFoundError", () => Effect.succeed({ kind: "missing" as const })),
+      Effect.mapError((cause) =>
+        validationError(input, `Unable to inspect project path ${current}: ${cause.message}.`),
+      ),
+    );
+    if (stat.kind === "missing") {
+      if (allowMissing) return false;
+      return yield* Effect.fail(
+        validationError(
+          input,
+          `Service ${input.serviceName} packageRoot directory does not exist: ${input.packageRoot}. Create the directory or correct packageRoot.`,
         ),
       );
-      if (stat.kind === "missing") {
-        if (allowMissing) return false;
-        return yield* Effect.fail(
-          validationError(
-            input,
-            `Service ${input.serviceName} packageRoot directory does not exist: ${input.packageRoot}. Create the directory or correct packageRoot.`,
-          ),
-        );
-      }
-      if (stat.value.isSymbolicLink === true) {
-        return yield* Effect.fail(
-          validationError(
-            input,
-            `Service ${input.serviceName} project path ${relative(input.appRoot, current)} is a symbolic link. Use regular files and directories contained in the app root.`,
-          ),
-        );
-      }
     }
-    return true;
-  });
+    if (stat.value.isSymbolicLink === true) {
+      return yield* Effect.fail(
+        validationError(
+          input,
+          `Service ${input.serviceName} project path ${relative(input.appRoot, current)} is a symbolic link. Use regular files and directories contained in the app root.`,
+        ),
+      );
+    }
+  }
+  return true;
+});
 
 const readTextBounded = (
   input: ProjectFileRequest & { readonly fileSystem: Context.Service.Shape<typeof FileSystem> },
@@ -134,84 +133,83 @@ const readTextBounded = (
     ),
   );
 
-export const loadServiceTypeProjectFiles = (
+export const loadServiceTypeProjectFiles = Effect.fnUntraced(function* (
   input: ProjectFileRequest,
-): Effect.Effect<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> =>
-  Effect.gen(function* () {
-    if (input.declarations.length === 0) return [];
-    for (const declaration of input.declarations) {
-      if (
-        !Number.isFinite(declaration.maxBytes) ||
-        !Number.isInteger(declaration.maxBytes) ||
-        declaration.maxBytes <= 0
-      ) {
-        return yield* Effect.fail(
-          validationError(
-            input,
-            `Service ${input.serviceName} project-file maxBytes must be a finite positive integer. Correct the service-type declaration.`,
-          ),
-        );
-      }
-    }
-    if (input.fileSystem === undefined) {
+): Effect.fn.Return<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> {
+  if (input.declarations.length === 0) return [];
+  for (const declaration of input.declarations) {
+    if (
+      !Number.isFinite(declaration.maxBytes) ||
+      !Number.isInteger(declaration.maxBytes) ||
+      declaration.maxBytes <= 0
+    ) {
       return yield* Effect.fail(
         validationError(
           input,
-          `Service ${input.serviceName} requires project-file inference, but the FileSystem service is unavailable. Provide FileSystem or use an explicit service type.`,
+          `Service ${input.serviceName} project-file maxBytes must be a finite positive integer. Correct the service-type declaration.`,
         ),
       );
     }
-    const request = { ...input, fileSystem: input.fileSystem };
-    const packageRoot = yield* containedPath(input, input.packageRoot);
-    yield* assertNoSymlinkComponents(request, packageRoot, false);
-    const packageRootStat = yield* input.fileSystem
-      .lstat(packageRoot)
+  }
+  if (input.fileSystem === undefined) {
+    return yield* Effect.fail(
+      validationError(
+        input,
+        `Service ${input.serviceName} requires project-file inference, but the FileSystem service is unavailable. Provide FileSystem or use an explicit service type.`,
+      ),
+    );
+  }
+  const request = { ...input, fileSystem: input.fileSystem };
+  const packageRoot = yield* containedPath(input, input.packageRoot);
+  yield* assertNoSymlinkComponents(request, packageRoot, false);
+  const packageRootStat = yield* input.fileSystem
+    .lstat(packageRoot)
+    .pipe(
+      Effect.mapError((cause) =>
+        validationError(input, `Unable to inspect packageRoot ${packageRoot}: ${cause.message}.`),
+      ),
+    );
+  if (!packageRootStat.isDirectory) {
+    return yield* Effect.fail(
+      validationError(
+        input,
+        `Service ${input.serviceName} packageRoot is not a directory: ${input.packageRoot}.`,
+      ),
+    );
+  }
+
+  const files: ServiceTypeProjectFileInput[] = [];
+  for (const declaration of input.declarations) {
+    const absolute = yield* containedPath(input, declaration.path);
+    const present = yield* assertNoSymlinkComponents(request, absolute, true);
+    const path = relative(input.appRoot, absolute);
+    if (!present) {
+      files.push({ path, present: false });
+      continue;
+    }
+    const stat = yield* input.fileSystem
+      .lstat(absolute)
       .pipe(
         Effect.mapError((cause) =>
-          validationError(input, `Unable to inspect packageRoot ${packageRoot}: ${cause.message}.`),
+          validationError(input, `Unable to inspect project file ${absolute}: ${cause.message}.`),
         ),
       );
-    if (!packageRootStat.isDirectory) {
+    if (!stat.isFile) {
+      return yield* Effect.fail(
+        validationError(input, `Project-file inference input is not a file: ${absolute}.`),
+      );
+    }
+    const limit = Math.min(declaration.maxBytes, MAX_PROJECT_FILE_BYTES);
+    if (stat.size > limit) {
       return yield* Effect.fail(
         validationError(
           input,
-          `Service ${input.serviceName} packageRoot is not a directory: ${input.packageRoot}.`,
+          `Project-file inference input ${absolute} exceeds the ${limit}-byte read limit.`,
         ),
       );
     }
-
-    const files: ServiceTypeProjectFileInput[] = [];
-    for (const declaration of input.declarations) {
-      const absolute = yield* containedPath(input, declaration.path);
-      const present = yield* assertNoSymlinkComponents(request, absolute, true);
-      const path = relative(input.appRoot, absolute);
-      if (!present) {
-        files.push({ path, present: false });
-        continue;
-      }
-      const stat = yield* input.fileSystem
-        .lstat(absolute)
-        .pipe(
-          Effect.mapError((cause) =>
-            validationError(input, `Unable to inspect project file ${absolute}: ${cause.message}.`),
-          ),
-        );
-      if (!stat.isFile) {
-        return yield* Effect.fail(
-          validationError(input, `Project-file inference input is not a file: ${absolute}.`),
-        );
-      }
-      const limit = Math.min(declaration.maxBytes, MAX_PROJECT_FILE_BYTES);
-      if (stat.size > limit) {
-        return yield* Effect.fail(
-          validationError(
-            input,
-            `Project-file inference input ${absolute} exceeds the ${limit}-byte read limit.`,
-          ),
-        );
-      }
-      const content = yield* readTextBounded(request, absolute, limit);
-      files.push({ path, present: true, ...content });
-    }
-    return files;
-  });
+    const content = yield* readTextBounded(request, absolute, limit);
+    files.push({ path, present: true, ...content });
+  }
+  return files;
+});

@@ -781,8 +781,8 @@ const assembleRuntimeProvider = (
             })),
           ),
         removeArtifact: () => Effect.void,
-        apply: (plan, applyOptions) =>
-          bringUp(plan, {
+        apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+          return yield* bringUp(plan, {
             api: podmanApi,
             ctx: PODMAN_CTX,
             ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
@@ -792,24 +792,22 @@ const assembleRuntimeProvider = (
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
-        destroy: (target, destroyOptions) =>
-          Effect.gen(function* () {
-            const plan = target.plan ?? (yield* resolvePlan(target.app));
-            if (plan === undefined) return DESTROY_NO_OP;
-            yield* bringDown(plan, {
-              api: podmanApi,
-              ctx: PODMAN_CTX,
-              volumes: destroyOptions.volumes,
-              ...(destroyOptions.purgeCaches === undefined
-                ? {}
-                : { purgeCaches: destroyOptions.purgeCaches }),
-            });
-            if (destroyOptions.removeState !== false) {
-              yield* forgetPlan(target.app);
-            }
-            return DESTROYED;
-          }),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile)));
+        }),
+        destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+          const plan = target.plan ?? (yield* resolvePlan(target.app));
+          if (plan === undefined) return DESTROY_NO_OP;
+          yield* bringDown(plan, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            volumes: destroyOptions.volumes,
+            ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
+          });
+          if (destroyOptions.removeState !== false) {
+            yield* forgetPlan(target.app);
+          }
+          return DESTROYED;
+        }),
         removeObservedService: (observed) =>
           removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
             Effect.map(observedRemoval),

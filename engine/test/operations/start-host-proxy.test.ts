@@ -31,7 +31,7 @@ import {
   withStartedHostProxy,
 } from "../../src/operations/start-host-proxy.ts";
 import { withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transport-shim.ts";
 
 const PREPARE_SPY_SOCKET = "prepare-spy";
@@ -117,17 +117,23 @@ const capabilitiesFor = (
 
 const runtimeLayer = Layer.mergeAll(
   PrivateFileAccessService.layer,
-  EventServiceLive,
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  }),
-  Layer.succeed(ShellRunner, {
-    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    run: () => Effect.die("unused shell run in start-host-proxy test"),
-    runScript: () => Effect.die("unused shell runScript in start-host-proxy test"),
-    interactive: () => Effect.die("unused shell interactive in start-host-proxy test"),
-  }),
+  LandoEventService.layer,
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    }),
+  ),
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      run: () => Effect.die("unused shell run in start-host-proxy test"),
+      runScript: () => Effect.die("unused shell runScript in start-host-proxy test"),
+      interactive: () => Effect.die("unused shell interactive in start-host-proxy test"),
+    }),
+  ),
 );
 
 beforeEach(() => {

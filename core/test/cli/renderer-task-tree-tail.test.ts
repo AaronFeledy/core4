@@ -14,7 +14,7 @@ import { Effect } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import {
   TASK_DETAIL_TAIL_CAPACITY,
   TaskDetailRing,
@@ -391,7 +391,7 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
       taskComplete("a", "step a", 10),
       treeComplete("build", "Built", 1, 0),
     ];
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = io.stdout();
     expect(io.stdoutLines()).toHaveLength(events.length);
@@ -408,7 +408,7 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
       detail("a", "hello"),
       taskComplete("a", "step a", 10),
     ];
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = buffered.stdout();
     expect(stripCsi(out)).toContain("[a] hello");

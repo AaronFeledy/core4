@@ -87,7 +87,7 @@ export interface RuntimeLogging {
  * Resolve Effect logger mode + diagnostic level for bootstrap.
  *
  * `none` (or omitted) stays silent. A non-`none` level uses pretty mode so
- * `LoggerLive` can install the stderr pretty/structured logger. `logger:
+ * `LandoLogger.layer` can install the stderr pretty/structured logger. `logger:
  * "pretty"` remains an independent embedder override and does not flip the
  * library renderer. JSON renderer + a non-`none` level forces structured
  * stderr so machine output is not mixed with pretty prose.

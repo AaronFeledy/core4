@@ -6,7 +6,8 @@ import { Cause, Effect, Exit, Stream } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
 import { FileSystem } from "@lando/sdk/services";
-import { FileSystemLive, writeAtomicFile } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import { writeAtomicFile } from "../../src/services/file-system.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-file-system-"));
@@ -17,7 +18,7 @@ const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   }
 };
 
-describe("FileSystemLive", () => {
+describe("BunFileSystem.layer", () => {
   test("writes, reads, stats, lists, and removes files", async () => {
     await withTempDir(async (dir) => {
       const filePath = join(dir, "nested", "hello.txt");
@@ -37,7 +38,7 @@ describe("FileSystemLive", () => {
 
             return { chunks, entries, exists, existsAfterRemove, stats, text };
           }),
-        ).pipe(Effect.provide(FileSystemLive)),
+        ).pipe(Effect.provide(BunFileSystem.layer)),
       );
 
       expect(result.text).toBe("hello");
@@ -55,7 +56,7 @@ describe("FileSystemLive", () => {
     await withTempDir(async (dir) => {
       const exists = await Effect.runPromise(
         Effect.flatMap(FileSystem, (fileSystem) => fileSystem.exists(dir)).pipe(
-          Effect.provide(FileSystemLive),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -68,7 +69,7 @@ describe("FileSystemLive", () => {
       const missing = join(dir, "missing");
       const exists = await Effect.runPromise(
         Effect.flatMap(FileSystem, (fileSystem) => fileSystem.exists(missing)).pipe(
-          Effect.provide(FileSystemLive),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -81,7 +82,7 @@ describe("FileSystemLive", () => {
       const missing = join(dir, "missing.txt");
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(FileSystem, (fileSystem) => fileSystem.readText(missing)).pipe(
-          Effect.provide(FileSystemLive),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -110,7 +111,7 @@ describe("FileSystemLive", () => {
             const entries = yield* fileSystem.readDir(dir);
             return { entries, text };
           }),
-        ).pipe(Effect.provide(FileSystemLive)),
+        ).pipe(Effect.provide(BunFileSystem.layer)),
       );
 
       expect(result.text).toBe("new");
@@ -149,7 +150,7 @@ describe("FileSystemLive", () => {
             yield* fileSystem.mkdir(subdir);
             return yield* fileSystem.stat(subdir);
           }),
-        ).pipe(Effect.provide(FileSystemLive)),
+        ).pipe(Effect.provide(BunFileSystem.layer)),
       );
 
       expect(stats.isDirectory).toBe(true);
@@ -162,7 +163,7 @@ describe("FileSystemLive", () => {
       const missing = join(dir, "no-such-thing");
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(FileSystem, (fileSystem) => fileSystem.stat(missing)).pipe(
-          Effect.provide(FileSystemLive),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 

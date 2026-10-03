@@ -9,33 +9,40 @@ import { ShellExecError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
-import { makeShellRunnerLive, withShellRedactionTokens } from "../../src/services/shell-runner";
+import * as BunShellRunner from "../../src/services/shell-runner";
+import { withShellRedactionTokens } from "../../src/services/shell-runner";
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: (profile, options) =>
-    Effect.succeed(createRedactor(profile, { values: ["topsecret", ...(options?.redactionTokens ?? [])] })),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: (profile, options) =>
+      Effect.succeed(createRedactor(profile, { values: ["topsecret", ...(options?.redactionTokens ?? [])] })),
+  }),
+);
 
 const unexpectedReplIO = () => {
   throw new TypeError("Interactive shell IO was not expected in this test.");
 };
-const shellRunnerLive = makeShellRunnerLive(unexpectedReplIO);
+const shellRunnerLayer = BunShellRunner.layer(unexpectedReplIO);
 
 const captureEventsLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<never>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  } satisfies Context.Service.Shape<typeof EventService>);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<never>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } satisfies Context.Service.Shape<typeof EventService>),
+  );
 
 const execShell = (command: string, options?: ShellCommandOptions) =>
   Effect.runPromise(
     Effect.flatMap(ShellRunner, (shellRunner) => shellRunner.exec(command, options)).pipe(
-      Effect.provide(shellRunnerLive),
+      Effect.provide(shellRunnerLayer),
     ),
   );
 
@@ -44,7 +51,7 @@ const replInput = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<Shel
     yield* events;
   })();
 
-describe("makeShellRunnerLive", () => {
+describe("BunShellRunner.layer", () => {
   test("runs a command with env and captures stdout", async () => {
     const result = await execShell("echo $FOO", { env: { FOO: "bar" } });
 
@@ -87,7 +94,7 @@ describe("makeShellRunnerLive", () => {
   test("fails with ShellExecError for invalid shell syntax", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(ShellRunner, (shellRunner) => shellRunner.exec("echo &&")).pipe(
-        Effect.provide(shellRunnerLive),
+        Effect.provide(shellRunnerLayer),
       ),
     );
 
@@ -105,7 +112,7 @@ describe("makeShellRunnerLive", () => {
   test("fails with ShellExecError for non-zero exits", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(ShellRunner, (shellRunner) => shellRunner.exec("printf 'nope' && exit 7")).pipe(
-        Effect.provide(shellRunnerLive),
+        Effect.provide(shellRunnerLayer),
       ),
     );
 
@@ -130,7 +137,7 @@ describe("makeShellRunnerLive", () => {
             cwd,
             env: { BUN_AUTH_TOKEN: "topsecret" },
           }),
-        ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, redactionLayer))),
+        ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLayer, redactionLayer))),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -159,7 +166,7 @@ describe("makeShellRunnerLive", () => {
     const result = await Effect.runPromise(
       Effect.flatMap(ShellRunner, (shellRunner) =>
         shellRunner.exec("echo topsecret", { env: { BUN_AUTH_TOKEN: "topsecret" } }),
-      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, redactionLayer, captureEventsLayer(events)))),
+      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLayer, redactionLayer, captureEventsLayer(events)))),
     );
 
     expect(result.stdout).toContain("topsecret");
@@ -181,7 +188,7 @@ describe("makeShellRunnerLive", () => {
         Effect.flatMap(ShellRunner, (shellRunner) =>
           shellRunner.exec(`test -z "$EVENT_TASK_TOKEN" && printf '${secret}' && printf '${secret}' 1>&2`),
         ),
-      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, redactionLayer, captureEventsLayer(events)))),
+      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLayer, redactionLayer, captureEventsLayer(events)))),
     );
 
     // Then
@@ -197,7 +204,7 @@ describe("makeShellRunnerLive", () => {
     const result = await Effect.runPromise(
       Effect.flatMap(ShellRunner, (shellRunner) =>
         shellRunner.exec("echo topsecret", { env: { BUN_AUTH_TOKEN: "topsecret" } }),
-      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, captureEventsLayer(events)))),
+      ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLayer, captureEventsLayer(events)))),
     );
 
     expect(result.stdout).toContain("topsecret");
@@ -223,7 +230,7 @@ describe("makeShellRunnerLive", () => {
             writeStderr: () => {},
           },
         }),
-      ).pipe(Effect.provide(shellRunnerLive)),
+      ).pipe(Effect.provide(shellRunnerLayer)),
     );
 
     expect(result).toEqual({ exitCode: 0 });
@@ -257,7 +264,7 @@ describe("makeShellRunnerLive", () => {
               writeStderr: () => {},
             },
           }),
-        ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLive, redactionLayer, captureEventsLayer(events)))),
+        ).pipe(Effect.provide(Layer.mergeAll(shellRunnerLayer, redactionLayer, captureEventsLayer(events)))),
       );
 
       expect(result.exitCode).toBe(0);
@@ -287,7 +294,7 @@ describe("makeShellRunnerLive", () => {
             writeStderr: () => {},
           },
         }),
-      ).pipe(Effect.provide(shellRunnerLive)),
+      ).pipe(Effect.provide(shellRunnerLayer)),
     );
 
     expect(result.exitCode).toBe(0);
@@ -296,7 +303,7 @@ describe("makeShellRunnerLive", () => {
   test("interactive uses injected IO when the caller does not supply IO", async () => {
     // Given
     let factoryCalls = 0;
-    const injected = makeShellRunnerLive(() => {
+    const injected = BunShellRunner.layer(() => {
       factoryCalls += 1;
       return {
         input: replInput({ _tag: "eof" }),
@@ -320,7 +327,7 @@ describe("makeShellRunnerLive", () => {
   test("interactive caller IO overrides the injected factory", async () => {
     // Given
     let factoryCalls = 0;
-    const injected = makeShellRunnerLive(() => {
+    const injected = BunShellRunner.layer(() => {
       factoryCalls += 1;
       return { input: replInput({ _tag: "eof" }), writeStdout: () => {}, writeStderr: () => {} };
     });

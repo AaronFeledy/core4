@@ -9,7 +9,7 @@ import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
@@ -1481,7 +1481,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     // Given: ID deliberately differs from slug.
     const userDataRoot = await mkdtemp(path.join(tmpdir(), "lando-docker-compose-"));
     const plan = { ...makePlan(), id: AppId.make("compose-id"), slug: "compose-slug" };
-    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(FileSystemLive)));
+    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
     const calls: string[] = [];
     try {
       // When

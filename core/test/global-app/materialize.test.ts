@@ -19,15 +19,17 @@ import {
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
 
 const provider = { ...TestRuntimeProvider, id: "lando" };
 
 const globalAppLayer = Layer.mergeAll(
-  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+  GlobalAppServiceLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+  ),
   Layer.succeed(PluginRegistry, {
     list: Effect.succeed([]),
     load: () => Effect.die("not needed"),

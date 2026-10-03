@@ -10,7 +10,7 @@ import {
   startSshAgentSession,
   withStartedSshAgent,
 } from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 const metadata = { resolvedAt: "2026-01-01T00:00:00Z", source: "test", runtime: 4 };
 const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -81,7 +81,7 @@ test("managed sidecar uses the plugin volume without host probing or worker serv
       Effect.provideService(SshService, ssh),
       Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "darwin" })),
-      Effect.provide(EventServiceLive),
+      Effect.provide(LandoEventService.layer),
       Effect.provide(PrivateFileAccessService.layer),
     ),
   );
@@ -112,7 +112,7 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
       Effect.provideService(SshService, ssh),
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
-      Effect.provide(EventServiceLive),
+      Effect.provide(LandoEventService.layer),
       Effect.provide(PrivateFileAccessService.layer),
     ),
   );

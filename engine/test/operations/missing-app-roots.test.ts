@@ -12,7 +12,7 @@ import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } fro
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { type Context, DateTime, Effect } from "effect";
 import { findMissingAppRoots } from "../../src/operations/missing-app-roots.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const root = AbsolutePath.make("/missing/app");
 const app = AppId.make("app");
@@ -75,7 +75,7 @@ const run = (
           ...(snapshots === undefined ? {} : { observeRuntime: Effect.succeed(snapshots) }),
         }),
       );
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
 
 test("retains applied state without counting a service whose container is gone", async () => {

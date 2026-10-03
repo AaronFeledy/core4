@@ -8,7 +8,7 @@ import { Effect, Result } from "effect";
 import { FileSystem } from "@lando/sdk/services";
 
 import { loadServiceTypeProjectFiles } from "../../src/planner/project-files.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
 // Backslashes are separators only on Windows for this native-path loader.
 const separators = sep === "\\" ? ["/", "\\"] : ["/"];
@@ -37,7 +37,7 @@ for (const separator of separators) {
                 fileSystem,
               }),
             );
-          }).pipe(Effect.provide(FileSystemLive)),
+          }).pipe(Effect.provide(BunFileSystem.layer)),
         );
         // Then containment fails in the typed error channel.
         expect(Result.isFailure(result)).toBe(true);
@@ -89,7 +89,7 @@ for (const separator of separators) {
                 fileSystem,
               }),
             );
-          }).pipe(Effect.provide(FileSystemLive)),
+          }).pipe(Effect.provide(BunFileSystem.layer)),
         );
         // Then no inference input is returned through the symlink.
         expect(Result.isFailure(result)).toBe(true);
@@ -138,7 +138,7 @@ test.each([
             fileSystem,
           }),
         );
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then the condition is rejected without an Effect defect or inferred data.
     expect(Result.isFailure(result)).toBe(true);
@@ -164,7 +164,7 @@ test("reports project traversal as a typed failure rather than an Effect defect"
           fileSystem,
         }),
       );
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
 
   expect(Result.isFailure(result)).toBe(true);
@@ -186,7 +186,7 @@ test("fingerprints original file bytes including a UTF-8 BOM", async () => {
           declarations: [{ path: ".nvmrc", maxBytes: 1_048_576 }],
           fileSystem,
         });
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
 
     expect(files[0]).toMatchObject({

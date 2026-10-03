@@ -8,7 +8,7 @@ const outputLines = (text: string): ReadonlyArray<string> => {
   return lines;
 };
 
-export const emitToolingOutputProgress = (input: {
+export const emitToolingOutputProgress = Effect.fnUntraced(function* (input: {
   readonly events: ProgressEmitter | undefined;
   readonly tool: string;
   readonly service: string;
@@ -16,33 +16,31 @@ export const emitToolingOutputProgress = (input: {
   readonly stderr: string;
   readonly exitCode: number;
   readonly durationMs: number;
-}): Effect.Effect<void> => {
+}): Effect.fn.Return<void> {
   const tree = makeTaskTree(input.events, {
     parentId: `tooling:${input.tool}`,
     label: `Tooling: ${input.tool}`,
     children: [{ id: input.service, label: input.service }],
     prefixChildIds: true,
   });
-  return Effect.gen(function* () {
-    yield* tree.start;
-    yield* tree.startTask(input.service);
-    for (const line of outputLines(input.stdout)) {
-      yield* tree.detail(input.service, "stdout", line);
-    }
-    for (const line of outputLines(input.stderr)) {
-      yield* tree.detail(input.service, "stderr", line);
-    }
-    if (input.exitCode === 0) {
-      yield* tree.completeTask(input.service, "completed with exit code 0", input.durationMs);
-    } else {
-      yield* tree.failTask(input.service, `failed with exit code ${input.exitCode}`, {
-        durationMs: input.durationMs,
-        exitCode: input.exitCode,
-      });
-    }
-    yield* tree.close(undefined, input.durationMs);
-  });
-};
+  yield* tree.start;
+  yield* tree.startTask(input.service);
+  for (const line of outputLines(input.stdout)) {
+    yield* tree.detail(input.service, "stdout", line);
+  }
+  for (const line of outputLines(input.stderr)) {
+    yield* tree.detail(input.service, "stderr", line);
+  }
+  if (input.exitCode === 0) {
+    yield* tree.completeTask(input.service, "completed with exit code 0", input.durationMs);
+  } else {
+    yield* tree.failTask(input.service, `failed with exit code ${input.exitCode}`, {
+      durationMs: input.durationMs,
+      exitCode: input.exitCode,
+    });
+  }
+  yield* tree.close(undefined, input.durationMs);
+});
 
 export const beginLiveToolingTree = (events: ProgressEmitter | undefined, tool: string) => {
   const tree = makeTaskTree(events, {
@@ -56,11 +54,10 @@ export const beginLiveToolingTree = (events: ProgressEmitter | undefined, tool: 
       yield* tree.start;
       yield* tree.startTask("exec");
     }),
-    finish: (exitCode: number, durationMs: number) =>
-      Effect.gen(function* () {
-        if (exitCode === 0) yield* tree.completeTask("exec", undefined, durationMs);
-        else yield* tree.failTask("exec", undefined, { durationMs, exitCode });
-        yield* tree.close(undefined, durationMs);
-      }),
+    finish: Effect.fnUntraced(function* (exitCode: number, durationMs: number) {
+      if (exitCode === 0) yield* tree.completeTask("exec", undefined, durationMs);
+      else yield* tree.failTask("exec", undefined, { durationMs, exitCode });
+      yield* tree.close(undefined, durationMs);
+    }),
   };
 };

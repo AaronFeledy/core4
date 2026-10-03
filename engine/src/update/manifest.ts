@@ -17,8 +17,8 @@ import { Downloader } from "@lando/sdk/services";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
-import { ConfigServiceLive } from "../services/config";
-import { EventServiceLive } from "../services/event-service";
+import * as LandoConfigService from "../services/config";
+import * as LandoEventService from "../services/event-service";
 import {
   UpdateDowngradeError,
   UpdateManifestReplayError,
@@ -109,8 +109,8 @@ export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(EventServiceLive)))),
-            ConfigServiceLive,
+            downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer)))),
+            LandoConfigService.layer,
           ),
         ),
       ),
@@ -370,7 +370,7 @@ export const writeUpdateManifestState = (
       }),
   });
 
-export const writeUpdateFailureState = ({
+export const writeUpdateFailureState = Effect.fn("Update.writeUpdateFailureState")(function* ({
   category,
   channel,
   path,
@@ -382,20 +382,19 @@ export const writeUpdateFailureState = ({
   readonly category: Exclude<ReturnType<typeof updateOutcomeFromError>, "success">;
   readonly targetVersion: string;
   readonly platform: string;
-}): Effect.Effect<void, never> =>
-  Effect.gen(function* () {
-    const state = yield* readUpdateManifestState(path).pipe(
-      Effect.catch(() => Effect.succeed(emptyUpdateManifestState)),
-    );
-    const current = state[channel];
-    yield* writeUpdateManifestState(path, {
-      ...state,
-      [channel]: {
-        latest: current?.latest ?? targetVersion,
-        lastFailure: { category, targetVersion, platform },
-      },
-    }).pipe(Effect.catch(() => Effect.void));
-  });
+}): Effect.fn.Return<void, never> {
+  const state = yield* readUpdateManifestState(path).pipe(
+    Effect.catch(() => Effect.succeed(emptyUpdateManifestState)),
+  );
+  const current = state[channel];
+  yield* writeUpdateManifestState(path, {
+    ...state,
+    [channel]: {
+      latest: current?.latest ?? targetVersion,
+      lastFailure: { category, targetVersion, platform },
+    },
+  }).pipe(Effect.catch(() => Effect.void));
+});
 
 export const failureOutcomeFromError = (
   error: unknown,
@@ -404,29 +403,28 @@ export const failureOutcomeFromError = (
   return outcome === "success" ? "network_failure" : outcome;
 };
 
-export const enforceManifestFreshness = (
+export const enforceManifestFreshness = Effect.fn("Update.enforceManifestFreshness")(function* (
   manifest: UpdateManifest,
   statePath: string,
   options: { readonly persist: boolean },
-): Effect.Effect<void, UpdateNetworkError | UpdateManifestReplayError> =>
-  Effect.gen(function* () {
-    const state = yield* readUpdateManifestState(statePath);
-    const cached = state[manifest.channel];
-    if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0) {
-      return yield* Effect.fail(
-        new UpdateManifestReplayError({
-          message: `Update manifest ${manifest.channel} channel version ${manifest.latest} is older than previously observed signed version ${cached.latest}. Refusing possible manifest replay.`,
-          channel: manifest.channel,
-          cachedVersion: cached.latest,
-          manifestVersion: manifest.latest,
-        }),
-      );
-    }
+): Effect.fn.Return<void, UpdateNetworkError | UpdateManifestReplayError> {
+  const state = yield* readUpdateManifestState(statePath);
+  const cached = state[manifest.channel];
+  if (cached !== undefined && compareVersions(manifest.latest, cached.latest) < 0) {
+    return yield* Effect.fail(
+      new UpdateManifestReplayError({
+        message: `Update manifest ${manifest.channel} channel version ${manifest.latest} is older than previously observed signed version ${cached.latest}. Refusing possible manifest replay.`,
+        channel: manifest.channel,
+        cachedVersion: cached.latest,
+        manifestVersion: manifest.latest,
+      }),
+    );
+  }
 
-    if (!options.persist) return;
+  if (!options.persist) return;
 
-    yield* writeUpdateManifestState(statePath, {
-      ...state,
-      [manifest.channel]: { ...cached, latest: manifest.latest },
-    });
+  yield* writeUpdateManifestState(statePath, {
+    ...state,
+    [manifest.channel]: { ...cached, latest: manifest.latest },
   });
+});

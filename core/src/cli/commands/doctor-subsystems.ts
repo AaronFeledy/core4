@@ -30,11 +30,11 @@ import {
 } from "@lando/sdk/services";
 
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
-import { HealthcheckRunnerLive } from "@lando/engine/subsystems/healthcheck/live";
-import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
-import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
-import { UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
-import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
+import * as ProviderHealthcheckRunner from "@lando/engine/subsystems/healthcheck/live";
+import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
+import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
+import * as ProviderUrlScanner from "@lando/engine/subsystems/scanner/live";
+import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
 import * as LandoHttpClient from "@lando/http-client/live";
 import { renderSolution } from "./doctor";
 import {
@@ -86,20 +86,22 @@ export interface SubsystemDoctorOptions {
 // Proxy readiness additionally reads `status()`.
 const DoctorRuntimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
 
-const HealthcheckRunnerDoctorLive = HealthcheckRunnerLive.pipe(Layer.provide(DoctorRuntimeProviderLive));
+const HealthcheckRunnerDoctorLive = ProviderHealthcheckRunner.layer.pipe(
+  Layer.provide(DoctorRuntimeProviderLive),
+);
 
-const UrlScannerDoctorLive = UrlScannerLive.pipe(
+const UrlScannerDoctorLive = ProviderUrlScanner.layer.pipe(
   Layer.provide(Layer.mergeAll(DoctorRuntimeProviderLive, LandoHttpClient.layer)),
 );
 
 export const DefaultSubsystemDoctorLayer: Layer.Layer<
   RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
 > = Layer.mergeAll(
-  RouterServiceUnavailableLive,
-  SshServiceUnavailableLive,
+  RouterServiceLayer.layerUnavailable,
+  SshServiceLayer.layerUnavailable,
   HealthcheckRunnerDoctorLive,
   UrlScannerDoctorLive,
-  HostProxyServiceDisabledLive,
+  HostProxyServiceLayer.layerDisabled,
   HostDnsResolverLive,
 );
 

@@ -15,7 +15,7 @@ import { Context, Effect, Layer } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as LandoConfigService from "@lando/engine/services/config";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
@@ -59,7 +59,7 @@ const collectResilientDoctorReport = (
       });
       const context = built.value;
 
-      // `ConfigServiceLive` is a pure `Layer.succeed`, so providing it here
+      // `LandoConfigService.layer` is a pure `Layer.succeed`, so providing it here
       // cannot fail even when the full runtime could not be built.
       return yield* collectDoctorReport({
         options,
@@ -91,6 +91,6 @@ const collectResilientDoctorReport = (
                 ),
             }),
         ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
-      }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(ConfigServiceLive));
+      }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(LandoConfigService.layer));
     }),
   );

@@ -62,16 +62,15 @@ const toProcessResult = (output: ShellOutput): ProcessResult => ({
 const isShellExecError = (cause: unknown): cause is ShellExecError =>
   typeof cause === "object" && cause !== null && "_tag" in cause && cause._tag === "ShellExecError";
 
-const redactorForOptions = (options: ShellCommandOptions | undefined) =>
-  Effect.gen(function* () {
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    if (redaction._tag === "None") return identityRedactor;
-    const redactionTokens = yield* ShellRedactionTokens;
-    return yield* redaction.value.forProfile("secrets", {
-      sourceEnv: { ...process.env, ...(options?.env ?? {}) },
-      redactionTokens,
-    });
+const redactorForOptions = Effect.fnUntraced(function* (options: ShellCommandOptions | undefined) {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "None") return identityRedactor;
+  const redactionTokens = yield* ShellRedactionTokens;
+  return yield* redaction.value.forProfile("secrets", {
+    sourceEnv: { ...process.env, ...(options?.env ?? {}) },
+    redactionTokens,
   });
+});
 
 export const withShellRedactionTokens = <A, E, R>(
   redactionTokens: ReadonlyArray<string>,
@@ -85,11 +84,13 @@ const publishShellEvent = (event: LandoEvent): Effect.Effect<void> =>
     ),
   );
 
-const redactShellEvent = (options: ShellCommandOptions | undefined, event: LandoEvent) =>
-  Effect.gen(function* () {
-    const redactor = yield* redactorForOptions(options);
-    return redactor.redactValue(event) as LandoEvent;
-  });
+const redactShellEvent = Effect.fnUntraced(function* (
+  options: ShellCommandOptions | undefined,
+  event: LandoEvent,
+) {
+  const redactor = yield* redactorForOptions(options);
+  return redactor.redactValue(event) as LandoEvent;
+});
 
 const publishRedactedShellEvent = (options: ShellCommandOptions | undefined, event: LandoEvent) =>
   Effect.serviceOption(RedactionService).pipe(
@@ -105,19 +106,21 @@ const shellEventShape = (command: string, options: ShellCommandOptions | undefin
   ...(options?.env === undefined ? {} : { env: { ...options.env } }),
 });
 
-const redactShellError = (options: ShellCommandOptions | undefined, error: ShellExecError) =>
-  Effect.gen(function* () {
-    const redactor = yield* redactorForOptions(options);
-    return new ShellExecError({
-      message: redactor.redactString(error.message),
-      command: redactor.redactString(error.command),
-      ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
-      ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
-      ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
-      ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-      cause: error.cause,
-    });
+const redactShellError = Effect.fnUntraced(function* (
+  options: ShellCommandOptions | undefined,
+  error: ShellExecError,
+) {
+  const redactor = yield* redactorForOptions(options);
+  return new ShellExecError({
+    message: redactor.redactString(error.message),
+    command: redactor.redactString(error.command),
+    ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
+    ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
+    ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
+    ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
+    cause: error.cause,
   });
+});
 
 const execShell = async (command: string, options?: ShellCommandOptions): Promise<ProcessResult> => {
   let shell = (
@@ -152,37 +155,36 @@ export const makeShellRunnerService = (
   makeReplIO: () => ShellReplIO,
   privateFileAccess: PrivateFileAccess,
 ): Context.Service.Shape<typeof ShellRunner> => {
-  const service: Context.Service.Shape<typeof ShellRunner> = {
-    exec: (command, options) =>
-      Effect.gen(function* () {
-        yield* publishRedactedShellEvent(options, {
-          _tag: "pre-shell-exec",
-          ...shellEventShape(command, options),
-        });
-        const result = yield* Effect.tryPromise({
-          try: () => execShell(command, options),
-          catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
-        }).pipe(Effect.catch((error) => Effect.flatMap(redactShellError(options, error), Effect.fail)));
-        yield* publishRedactedShellEvent(options, {
-          _tag: "post-shell-exec",
-          ...shellEventShape(command, options),
-          exitCode: result.exitCode,
-          stdout: result.stdout,
-          stderr: result.stderr,
-        });
-        return result;
-      }),
+  const service: Context.Service.Shape<typeof ShellRunner> = ShellRunner.of({
+    exec: Effect.fn("ShellRunner.exec")(function* (command, options) {
+      yield* publishRedactedShellEvent(options, {
+        _tag: "pre-shell-exec",
+        ...shellEventShape(command, options),
+      });
+      const result = yield* Effect.tryPromise({
+        try: () => execShell(command, options),
+        catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
+      }).pipe(Effect.catch((error) => Effect.flatMap(redactShellError(options, error), Effect.fail)));
+      yield* publishRedactedShellEvent(options, {
+        _tag: "post-shell-exec",
+        ...shellEventShape(command, options),
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+      return result;
+    }),
     run: (command, options) => service.exec(command, options),
     runScript: (path, options) => service.exec(`bun ${quoteShellPath(path)}`, options),
     interactive: (spec) => runHostShellRepl({ ...spec, io: spec.io ?? makeReplIO() }, privateFileAccess),
-  };
+  });
   return service;
 };
 
-export const makeShellRunnerLive = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner> =>
-  makeShellRunnerWithPrivateFileAccessLive(makeReplIO).pipe(Layer.provide(PrivateFileAccessService.layer));
+export const layer = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner> =>
+  layerWithPrivateFileAccess(makeReplIO).pipe(Layer.provide(PrivateFileAccessService.layer));
 
-export const makeShellRunnerWithPrivateFileAccessLive = (
+export const layerWithPrivateFileAccess = (
   makeReplIO: () => ShellReplIO,
 ): Layer.Layer<ShellRunner, never, PrivateFileAccessService> =>
   Layer.effect(

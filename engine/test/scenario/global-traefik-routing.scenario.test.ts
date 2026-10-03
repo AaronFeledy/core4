@@ -15,9 +15,9 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
   name: "@lando/proxy-traefik",
@@ -77,8 +77,8 @@ const planApp = (
   const landofile = Schema.decodeUnknownSync(LandofileShape)(landofileInput);
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 };

@@ -1,5 +1,6 @@
 import type { BuildScript, BuildScriptStep, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent, ServiceTypeResolution } from "@lando/sdk/services";
+import { Predicate } from "effect";
 
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import type { DraftServicePlan } from "../services/draft.ts";
@@ -8,8 +9,7 @@ import { sortRecord } from "../services/draft.ts";
 export const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
 export const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
 
-export const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export const isRecord = Predicate.isObject;
 
 type NormalizedBuildStep = Exclude<BuildScriptStep, string>;
 

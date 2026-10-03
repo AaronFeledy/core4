@@ -28,7 +28,7 @@ import { RENDERER_CAPABILITIES_TTY_INITIAL, type RendererIO } from "@lando/sdk/r
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
@@ -223,7 +223,9 @@ const drive = (
       for (const event of events) yield* svc.publish(event);
       yield* Effect.sleep("20 millis");
     }).pipe(
-      Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io, { createLiveRegion }), EventServiceLive)),
+      Effect.provide(
+        Layer.provideMerge(makeLandoEventConsumer(io, { createLiveRegion }), LandoEventService.layer),
+      ),
     ),
   );
 
@@ -318,7 +320,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -363,7 +365,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -411,7 +413,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -464,7 +466,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -492,7 +494,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       },
     };
     const dependencies = Layer.merge(
-      EventServiceLive,
+      LandoEventService.layer,
       Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root })),
     );
 
@@ -559,7 +561,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 makeLandoEventConsumer(io, {
                   createLiveRegion: () => Promise.resolve(controller),
                 }),
-                EventServiceLive,
+                LandoEventService.layer,
               ),
             ),
           ),
@@ -612,7 +614,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -664,7 +666,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -715,7 +717,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -801,7 +803,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -861,7 +863,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -926,7 +928,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -968,7 +970,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                   return Promise.resolve(controller);
                 },
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1028,7 +1030,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 },
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1089,7 +1091,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1138,7 +1140,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           Effect.provide(
             Layer.provideMerge(
               makeLandoEventConsumer(io, { createLiveRegion: () => Promise.resolve(controller) }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),

@@ -1,5 +1,6 @@
 import { ComposeProjectFieldKey } from "@lando/sdk/schema";
 import type { AppPlan, ProviderCapabilities } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 
 export type ComposeProjectFieldUse = {
   readonly key: ComposeProjectFieldKey;
@@ -7,14 +8,11 @@ export type ComposeProjectFieldUse = {
 
 type ComposeProjectFieldCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeProjectFields">;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 export const collectComposeProjectFields = (
   extensions: AppPlan["extensions"],
 ): ReadonlyArray<ComposeProjectFieldUse> => {
   const compose = extensions.compose;
-  if (!isRecord(compose)) return [];
+  if (!Predicate.isObject(compose)) return [];
   return ComposeProjectFieldKey.literals.flatMap((key) => (compose[key] === undefined ? [] : [{ key }]));
 };
 

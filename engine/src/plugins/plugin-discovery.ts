@@ -147,27 +147,26 @@ export const discoverInstalledPlugins = (
     ),
   );
 
-export const mergeDiscoveredPlugins = (
+export const mergeDiscoveredPlugins = Effect.fnUntraced(function* (
   sources: ReadonlyArray<ReadonlyArray<DiscoveredPlugin>>,
   logger: Context.Service.Shape<typeof Logger> | undefined,
-): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
-  Effect.gen(function* () {
-    const merged = new Map<string, DiscoveredPlugin>();
-    for (const source of sources) {
-      for (const plugin of source) {
-        const existing = merged.get(plugin.manifest.name);
-        if (existing !== undefined && logger !== undefined) {
-          yield* logger
-            .warn(
-              `Plugin ${plugin.manifest.name} from ${plugin.source} source overrides ${existing.source} source.`,
-            )
-            .pipe(Effect.catch(() => Effect.void));
-        }
-        merged.set(plugin.manifest.name, plugin);
+): Effect.fn.Return<ReadonlyArray<DiscoveredPlugin>> {
+  const merged = new Map<string, DiscoveredPlugin>();
+  for (const source of sources) {
+    for (const plugin of source) {
+      const existing = merged.get(plugin.manifest.name);
+      if (existing !== undefined && logger !== undefined) {
+        yield* logger
+          .warn(
+            `Plugin ${plugin.manifest.name} from ${plugin.source} source overrides ${existing.source} source.`,
+          )
+          .pipe(Effect.catch(() => Effect.void));
       }
+      merged.set(plugin.manifest.name, plugin);
     }
-    return [...merged.values()];
-  });
+  }
+  return [...merged.values()];
+});
 
 export const systemPluginsFromModules = (
   modules: ReadonlyArray<LandoPluginModule>,

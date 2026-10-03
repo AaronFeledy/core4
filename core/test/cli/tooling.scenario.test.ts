@@ -35,10 +35,10 @@ import {
   readAppPlanSourceFingerprint,
   writeCachedAppPlan,
 } from "@lando/engine/cache/app-plan";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -205,7 +205,7 @@ const makeLayer = (options: {
     landofileLayer,
     plannerLayer,
     registryLayer,
-    ProviderExecToolingEngineLive,
+    ProviderExecToolingEngine.layer,
     emptyConfigServiceLayer,
   );
 };
@@ -251,7 +251,7 @@ const cacheAwareLayer = (options: {
   readonly provider: RuntimeProviderShape;
   readonly planCalls?: number[];
   readonly planCwds?: string[];
-}) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, CacheServiceLive);
+}) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, AppCacheService.layer);
 
 const configLayer = (defaultProviderId: string | null) =>
   configServiceLayer(Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId }));
@@ -438,8 +438,8 @@ describe("runTooling — CLI rendering", () => {
       const planCalls: number[] = [];
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan, provider, planCalls }),
-        PluginRegistryLive,
-        CacheServiceLive,
+        PluginRegistryLayer.layer,
+        AppCacheService.layer,
       );
 
       const result = await Effect.runPromise(
@@ -494,7 +494,7 @@ describe("runTooling — CLI rendering", () => {
           key: await cachedPlanKey(landofile, root, provider),
           plan: cachedPlan,
           now: () => 1,
-        }).pipe(Effect.provide(CacheServiceLive)),
+        }).pipe(Effect.provide(AppCacheService.layer)),
       );
       const planCalls: number[] = [];
       const layer = Layer.mergeAll(
@@ -508,7 +508,7 @@ describe("runTooling — CLI rendering", () => {
           loadServiceFeature: () => Effect.die("not used"),
           loadAppFeature: () => Effect.die("not used"),
         }),
-        CacheServiceLive,
+        AppCacheService.layer,
       );
 
       const result = await Effect.runPromise(
@@ -537,7 +537,7 @@ describe("runTooling — CLI rendering", () => {
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan: planned, provider }),
         configLayer("docker"),
-        CacheServiceLive,
+        AppCacheService.layer,
       );
 
       const result = await Effect.runPromise(
@@ -576,7 +576,7 @@ describe("runTooling — CLI rendering", () => {
           key: staleKey,
           plan: stalePlan,
           now: () => 1,
-        }).pipe(Effect.provide(CacheServiceLive)),
+        }).pipe(Effect.provide(AppCacheService.layer)),
       );
       const planCalls: number[] = [];
       const layer = cacheAwareLayer({ landofile, plan: freshPlan, provider, planCalls });

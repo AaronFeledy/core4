@@ -5,7 +5,7 @@ import { AppId } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRendererLive, renderPlain } from "@lando/renderer/runtime";
 
@@ -249,7 +249,7 @@ describe("provider-free injected-event pipeline", () => {
                 }),
                 raiseInterrupt: () => {},
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -276,7 +276,7 @@ describe("undecorated machine-mode regression fixtures", () => {
     });
     await Effect.runPromise(
       Effect.scoped(
-        program.pipe(Effect.provide(Layer.provideMerge(makeJsonRendererLive(io), EventServiceLive))),
+        program.pipe(Effect.provide(Layer.provideMerge(makeJsonRendererLive(io), LandoEventService.layer))),
       ),
     );
     const lines = io.stderrLines();
@@ -309,7 +309,7 @@ describe("undecorated machine-mode regression fixtures", () => {
     });
     await Effect.runPromise(
       Effect.scoped(
-        program.pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), EventServiceLive))),
+        program.pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), LandoEventService.layer))),
       ),
     );
     expect(io.stdout()).not.toContain(ESC);

@@ -5,7 +5,7 @@ import {
   makeBootstrapLifecycleTracker,
   superviseBootstrapLayer,
 } from "../../src/runtime/bootstrap-lifecycle.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 class Resource extends Context.Service<Resource, { readonly isOpen: Effect.Effect<boolean> }>()(
   "bootstrap-resource-lifetime-test/Resource",
@@ -17,7 +17,7 @@ test("bootstrap resources outlive runtime construction and runs, and close with 
   let acquired = 0;
   let released = 0;
   const closeOrder: string[] = [];
-  const events = EventServiceLive.pipe(
+  const events = LandoEventService.layer.pipe(
     Layer.tap((context) => tracker.complete("minimal", Context.get(context, EventService))),
   );
   const resource = Layer.effect(

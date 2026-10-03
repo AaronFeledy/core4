@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/engine/operations/tooling";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -130,8 +130,8 @@ const makeProvider = (
 const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(Layer.merge(services, AppPlannerLive)),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 
@@ -156,8 +156,8 @@ const makeToolingLayer = (options: {
     landofileLayer,
     plannerLayer,
     registryLayer,
-    EventServiceLive,
-    ProviderExecToolingEngineLive,
+    LandoEventService.layer,
+    ProviderExecToolingEngine.layer,
     emptyConfigServiceLayer,
   );
 };

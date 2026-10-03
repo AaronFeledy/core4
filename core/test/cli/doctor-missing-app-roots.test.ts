@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { shellArg } from "@lando/engine/services/shell-quote";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -62,7 +62,7 @@ const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) => ({
 const fsLayer = Layer.effect(
   FileSystem,
   Effect.map(FileSystem, (fs) => ({ ...fs, exists: () => Effect.succeed(false) })),
-).pipe(Layer.provide(FileSystemLive));
+).pipe(Layer.provide(BunFileSystem.layer));
 const run = (
   snapshots: ReadonlyArray<ProviderRuntimeSnapshot>,
   redact: (text: string) => string = (text) => text,

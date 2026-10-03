@@ -9,7 +9,7 @@ import { makePluginCapabilityIndex } from "./module-set.ts";
 
 const BUNDLED_FILE_SYNC_ENGINE_ID = "mutagen";
 
-export const makeBundledFileSyncEngineLive = (modules: ReadonlyArray<LandoPluginModule>) =>
+export const layerWith = (modules: ReadonlyArray<LandoPluginModule>) =>
   Result.match(makePluginCapabilityIndex(modules), {
     onFailure: (error) => Layer.effect(FileSyncEngine, Effect.fail(error)),
     onSuccess: (index) =>
@@ -29,6 +29,4 @@ export const makeBundledFileSyncEngineLive = (modules: ReadonlyArray<LandoPlugin
       ),
   });
 
-export const BundledFileSyncEngineLive = Layer.suspend(() =>
-  makeBundledFileSyncEngineLive(bundledPluginModules()),
-);
+export const layer = Layer.suspend(() => layerWith(bundledPluginModules()));

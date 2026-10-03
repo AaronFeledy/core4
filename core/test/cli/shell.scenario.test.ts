@@ -30,7 +30,7 @@ import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/co
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
@@ -493,7 +493,7 @@ describe("shellApp — shell modes", () => {
               undefined,
               shellRunnerLayer(() => Effect.succeed({ exitCode: 0 })),
             ),
-            DeprecationServiceLive,
+            DeprecationServiceLayer.layer,
           ),
         ),
       ),

@@ -21,7 +21,7 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 
 import { renderPlainLine } from "../src/format.ts";
@@ -229,7 +229,7 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
   test("the first recorded write is the plain task-tree start line", async () => {
     const recorder = createFakeTerminalRecorder();
     const event = treeStart("app", "Starting app", ["web", "db"]);
-    const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), EventServiceLive);
+    const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive([event]).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toHaveLength(1);
     expect(recorder.chunks[0]).toBe(`${renderPlainLine(event)}\n`);
@@ -238,7 +238,7 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
   test("buffered degradation writes one complete plain line per event", async () => {
     const recorder = createFakeTerminalRecorder();
     const events = [treeStart("app", "Starting app", ["web"]), taskStart("web", "web", "app")];
-    const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), EventServiceLive);
+    const layer = Layer.provideMerge(makeLandoEventConsumer(recorder.io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toEqual(events.map((event) => `${renderPlainLine(event)}\n`));
   });
@@ -271,7 +271,7 @@ describe("first paint via the production TTY consumer and fake OpenTUI substrate
               makeLandoEventConsumer(io, {
                 createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -317,7 +317,7 @@ describe("provisional first paint via the production TTY consumer", () => {
                     return createTestLiveRegionController(fixture, options);
                   },
                 }),
-                EventServiceLive,
+                LandoEventService.layer,
               ),
             ),
           ),
@@ -350,7 +350,7 @@ describe("provisional first paint via the production TTY consumer", () => {
               makeLandoEventConsumer(ttyIo(), {
                 createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -378,7 +378,7 @@ describe("provisional first paint via the production TTY consumer", () => {
               makeLandoEventConsumer(ttyIo(), {
                 createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -414,7 +414,7 @@ describe("provisional first paint via the production TTY consumer", () => {
                   return createTestLiveRegionController(fixture, options);
                 },
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),

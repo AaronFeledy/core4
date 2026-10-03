@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { Logger } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { LoggerLive } from "../../src/logging/service.ts";
+import * as LandoLogger from "../../src/logging/service.ts";
 
 test("structured diagnostics preserve the exact JSON record keys", async () => {
   const lines: string[] = [];
-  const layer = LoggerLive({
+  const layer = LandoLogger.layer({
     logLevel: "info",
     structured: true,
     stderrIsTTY: true,

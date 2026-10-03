@@ -9,10 +9,10 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "../../src/cache/service";
-import { PluginRegistryLive } from "../../src/plugins/registry";
-import { FileSystemLive } from "../../src/services/file-system";
-import { AppPlannerLive } from "../../src/services/planner";
+import * as AppCacheService from "../../src/cache/service";
+import * as PluginRegistryLayer from "../../src/plugins/registry";
+import * as BunFileSystem from "../../src/services/file-system";
+import * as AppPlannerLayer from "../../src/services/planner";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 export const PEM = "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n";
@@ -46,13 +46,16 @@ export const planDiscoveredEffect = (input: { readonly appRoot: string; readonly
   const config = Schema.decodeUnknownSync(GlobalConfig)({ userCacheRoot: input.cacheRoot });
   const dependencies = Layer.mergeAll(
     TestLandofileServiceLayer.layer,
-    CacheServiceLive,
-    PluginRegistryLive,
-    FileSystemLive,
-    Layer.succeed(ConfigService, {
-      load: Effect.succeed(config),
-      get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-    }),
+    AppCacheService.layer,
+    PluginRegistryLayer.layer,
+    BunFileSystem.layer,
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.succeed(config),
+        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+      }),
+    ),
     Layer.succeed(
       PathsService,
       makeLandoPaths({
@@ -63,7 +66,7 @@ export const planDiscoveredEffect = (input: { readonly appRoot: string; readonly
       }),
     ),
   );
-  const planner = AppPlannerLive.pipe(Layer.provide(dependencies));
+  const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const appPlanner = yield* AppPlanner;

@@ -38,16 +38,15 @@ const commandOf = (leaf: ResolvedToolingStepLeaf): string => {
 const harness = (failures: ReadonlySet<string> = new Set()): Harness => {
   const seen: Harness["seen"] = [];
   const presented: string[] = [];
-  const run = (
+  const run = Effect.fnUntraced(function* (
     leaf: ResolvedToolingStepLeaf,
     context: Parameters<ToolingStepRunners<LeafFailure, string>["runCmd"]>[1],
-  ) =>
-    Effect.gen(function* () {
-      const command = commandOf(leaf);
-      seen.push({ kind: leaf.kind, command, item: context.item, key: context.key });
-      if (failures.has(command)) return yield* Effect.fail(new LeafFailure(command));
-      return command;
-    });
+  ) {
+    const command = commandOf(leaf);
+    seen.push({ kind: leaf.kind, command, item: context.item, key: context.key });
+    if (failures.has(command)) return yield* Effect.fail(new LeafFailure(command));
+    return command;
+  });
   return {
     seen,
     presented,

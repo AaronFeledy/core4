@@ -5,7 +5,7 @@ import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
 import { type RendererIO, createStdioRendererIO, onStdioBrokenPipe } from "@lando/renderer/io";
@@ -149,13 +149,15 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
   const failureDiagnosticsLayer = Layer.mergeAll(
     rendererLayer,
-    RedactionService.layer.pipe(Layer.provide(SecretStoreLive)),
+    RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer)),
   );
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
   const streamFrameSinkLayer = makeStreamFrameSinkLive(renderContext.format).pipe(
-    Layer.provide(Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(SecretStoreLive)))),
+    Layer.provide(
+      Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer))),
+    ),
   );
   const commandLayer = (
     liveStreaming

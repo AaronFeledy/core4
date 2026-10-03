@@ -4,12 +4,13 @@ import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import { type ProbeResult, runProbe } from "@lando/sdk/probe";
 import type { HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import type {
-  ExecTarget,
-  HealthcheckRunnerShape,
-  CommandSpec as ProviderCommandSpec,
-  ProviderError,
-  RuntimeProviderShape,
+import {
+  type ExecTarget,
+  HealthcheckRunner,
+  type HealthcheckRunnerShape,
+  type CommandSpec as ProviderCommandSpec,
+  type ProviderError,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -64,34 +65,33 @@ const resolveRedactor = Effect.gen(function* () {
   return yield* redaction.value.forProfile("secrets", { sourceEnv: { ...process.env } });
 });
 
-const makeAttempt = (context: AttemptContext): Effect.Effect<AttemptOutcome> =>
-  Effect.gen(function* () {
-    const completed = yield* Effect.timeoutOrElse(
-      Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
-      {
-        duration: Duration.seconds(context.timeoutSeconds),
-        orElse: () => Effect.succeed((() => "timeout" as const)()),
-      },
-    );
+const makeAttempt = Effect.fnUntraced(function* (context: AttemptContext): Effect.fn.Return<AttemptOutcome> {
+  const completed = yield* Effect.timeoutOrElse(
+    Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
+    {
+      duration: Duration.seconds(context.timeoutSeconds),
+      orElse: () => Effect.succeed((() => "timeout" as const)()),
+    },
+  );
 
-    if (completed === "timeout") {
-      yield* Ref.set(context.status, { _tag: "timeout" });
-      return "red";
-    }
-
-    if (completed._tag === "Failure") {
-      yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.failure) });
-      return "red";
-    }
-
-    if (completed.success.exitCode === 0) {
-      yield* Ref.set(context.status, { _tag: "ok" });
-      return "green";
-    }
-
-    yield* Ref.set(context.status, { _tag: "exit", code: completed.success.exitCode });
+  if (completed === "timeout") {
+    yield* Ref.set(context.status, { _tag: "timeout" });
     return "red";
-  });
+  }
+
+  if (completed._tag === "Failure") {
+    yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.failure) });
+    return "red";
+  }
+
+  if (completed.success.exitCode === 0) {
+    yield* Ref.set(context.status, { _tag: "ok" });
+    return "green";
+  }
+
+  yield* Ref.set(context.status, { _tag: "exit", code: completed.success.exitCode });
+  return "red";
+});
 
 const toProbeError = (service: ServiceName, cause: unknown): HealthcheckError =>
   new HealthcheckError({
@@ -122,10 +122,10 @@ const timeoutError = (context: TimeoutContext): HealthcheckTimeoutError => {
 export const makeHealthcheckRunner: (deps: {
   readonly exec: RuntimeProviderShape["exec"];
   readonly signal?: AbortSignal;
-}) => HealthcheckRunnerShape = (deps) => ({
-  id: "provider-exec",
-  run: (plan, appId, service) =>
-    Effect.gen(function* () {
+}) => HealthcheckRunnerShape = (deps) =>
+  HealthcheckRunner.of({
+    id: "provider-exec",
+    run: Effect.fn("HealthcheckRunner.run")(function* (plan, appId, service) {
       switch (plan.kind) {
         case "none":
           return { healthy: true, service, attempts: 0, lastStatus: "skipped" };
@@ -204,4 +204,4 @@ export const makeHealthcheckRunner: (deps: {
           return { healthy: false, service, attempts: result.attempts, lastStatus: "ok" };
       }
     }),
-});
+  });

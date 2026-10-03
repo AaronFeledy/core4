@@ -141,7 +141,7 @@ const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> =>
   );
 };
 
-export const makeSubscriberRuntimeLive = (
+export const layer = (
   privateFileAccess: PrivateFileAccess,
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
@@ -223,12 +223,10 @@ export const makeSubscriberRuntimeLive = (
     }),
   );
 
-export const makeSubscriberRuntimeWithPrivateFileAccessLive = (
+export const layerWithPrivateFileAccess = (
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
 ) =>
   Layer.unwrap(
-    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
-      makeSubscriberRuntimeLive(privateFileAccess, modules, builtIns),
-    ),
+    Effect.map(PrivateFileAccessService, (privateFileAccess) => layer(privateFileAccess, modules, builtIns)),
   );

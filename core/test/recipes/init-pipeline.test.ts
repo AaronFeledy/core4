@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
+import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { plugin } from "@lando/lando4";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
@@ -320,7 +320,7 @@ test("S6 the in-process recipe module lists through ConfigTranslatorRegistry", a
   });
   const translators = await Effect.runPromise(
     Effect.flatMap(ConfigTranslatorRegistry, (registry) => registry.list).pipe(
-      Effect.provide(makeConfigTranslatorRegistryLive([module])),
+      Effect.provide(ConfigTranslatorRegistryLayer.layerWith([module])),
     ),
   );
   expect(translators.map(({ id }) => id)).toEqual(["recipe"]);

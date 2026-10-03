@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 
-import { AppPlanSanitizerLive } from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
+import * as AppPlanSanitizerLayer from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
 import {
   HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
@@ -85,7 +85,7 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
     Effect.gen(function* () {
       const sanitizer = yield* AppPlanSanitizer;
       return sanitizer.sanitizeForPersistence(fixturePlan);
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
 
   // Then
@@ -138,7 +138,7 @@ test("sanitizer strips ssh-agent overlay", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
   // Then
   expect(result).toEqual(plan);
@@ -196,7 +196,7 @@ test("sanitizer strips gpg-agent overlay", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
   // Then
   expect(result).toEqual(plan);

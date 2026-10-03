@@ -3,7 +3,7 @@ import { Cause, Clock, Context, Effect, Exit, Option, Schema } from "effect";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
 import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary";
 
@@ -73,7 +73,7 @@ export const withCommandEventService = <A, E, R>(
     Effect.flatMap((eventService) =>
       Option.isSome(eventService)
         ? effect.pipe(Effect.provideService(EventService, eventService.value))
-        : effect.pipe(Effect.provide(EventServiceLive)),
+        : effect.pipe(Effect.provide(LandoEventService.layer)),
     ),
   );
 

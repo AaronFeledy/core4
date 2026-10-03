@@ -71,10 +71,13 @@ const runElevated = async (command: ReadonlyArray<string>): Promise<ProcessResul
   return { exitCode, stdout, stderr };
 };
 
-export const PrivilegeServiceLive = Layer.succeed(PrivilegeService, {
-  elevate: (command) =>
-    Effect.tryPromise({
-      try: () => runElevated(command),
-      catch: (cause) => resultFromFailure(command, cause),
-    }).pipe(Effect.catch((result) => Effect.succeed(result))),
-});
+export const layer = Layer.succeed(
+  PrivilegeService,
+  PrivilegeService.of({
+    elevate: (command) =>
+      Effect.tryPromise({
+        try: () => runElevated(command),
+        catch: (cause) => resultFromFailure(command, cause),
+      }).pipe(Effect.catch((result) => Effect.succeed(result))),
+  }),
+);

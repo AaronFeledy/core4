@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
@@ -39,11 +39,11 @@ const providerCapabilities = {
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;
 
-const registryLayer = Layer.merge(services, PluginRegistryLive);
+const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 
 export const planMysqlApp = (servicesInput: NonNullable<LandofileShape["services"]>) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan({ name: "mysql-versions", runtime: 4, services: servicesInput }, providerCapabilities),
-    ).pipe(Effect.provide(AppPlannerLive), Effect.provide(registryLayer)),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );

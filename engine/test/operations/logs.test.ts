@@ -89,11 +89,14 @@ const recordingProvider = (): {
 };
 
 const provide = (provider: RuntimeProviderShape) =>
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
 
 describe("logsForPlan", () => {
   test("passes the app plan into provider logs for each service", async () => {

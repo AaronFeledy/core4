@@ -6,12 +6,12 @@ import { type ApplyResult, type RuntimeProvider, StateStore } from "@lando/sdk/s
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withVolumeCoordinationLock } from "./volume-coordination.ts";
 
-export const recordCreatedVolumes = (
-  provider: Pick<Context.Service.Shape<typeof RuntimeProvider>, "id" | "observeVolume">,
-  plan: AppPlan,
-  result: ApplyResult,
-) =>
-  Effect.gen(function* () {
+export const recordCreatedVolumes = Effect.fn("Lifecycle.recordCreatedVolumes")(
+  function* (
+    provider: Pick<Context.Service.Shape<typeof RuntimeProvider>, "id" | "observeVolume">,
+    plan: AppPlan,
+    result: ApplyResult,
+  ) {
     if (!result.createdVolumes?.length) return;
     const store = yield* Effect.serviceOption(StateStore);
     const observe = provider.observeVolume;
@@ -50,15 +50,18 @@ export const recordCreatedVolumes = (
         );
       }
     }
-  }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ProviderInternalError({
-          providerId: provider.id,
-          operation: "record-volume-creation",
-          message: "Could not persist verified volume creation evidence.",
-          remediation: "The volume remains ineligible for seeding; inspect durable state before retrying.",
-          cause,
-        }),
+  },
+  (effect, provider) =>
+    effect.pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderInternalError({
+            providerId: provider.id,
+            operation: "record-volume-creation",
+            message: "Could not persist verified volume creation evidence.",
+            remediation: "The volume remains ineligible for seeding; inspect durable state before retrying.",
+            cause,
+          }),
+      ),
     ),
-  );
+);

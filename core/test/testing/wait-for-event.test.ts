@@ -4,7 +4,7 @@ import { TestClock } from "effect/testing";
 import { Cause, DateTime, Duration, Effect, Exit, Fiber, Schema } from "effect";
 
 import { EventService } from "@lando/core/services";
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import { waitForEvent } from "../../src/testing/events.ts";
 
@@ -60,7 +60,7 @@ describe("waitForEvent", () => {
         yield* Effect.flatMap(EventService, (events) => events.publish(filteredOutPreAppStartEvent));
         yield* Effect.flatMap(EventService, (events) => events.publish(preAppStartEvent));
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive)),
+      }).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(received).toEqual(preAppStartEvent);
@@ -79,7 +79,7 @@ describe("waitForEvent", () => {
         yield* Effect.sleep("10 millis");
         yield* Effect.flatMap(EventService, (events) => events.publish(preAppStartEvent));
         return [yield* Fiber.join(helperWaiter), yield* Fiber.join(serviceWaiter)] as const;
-      }).pipe(Effect.provide(EventServiceLive)),
+      }).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(viaHelper).toEqual(viaService);
@@ -94,7 +94,7 @@ describe("waitForEvent", () => {
         }).pipe(Effect.exit, Effect.forkChild);
         yield* TestClock.adjust("3 seconds");
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      }).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -117,7 +117,7 @@ describe("waitForEvent", () => {
         const result = waiter.pollUnsafe();
         yield* Fiber.interrupt(waiter);
         return result;
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      }).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(polled).toBeUndefined();

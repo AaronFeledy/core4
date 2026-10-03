@@ -203,8 +203,16 @@ export interface ScratchRegistryService {
 }
 
 export class ScratchRegistry extends Context.Service<ScratchRegistry, ScratchRegistryService>()(
-  "@lando/core/ScratchRegistry",
-) {}
+  "@lando/engine/ScratchRegistry",
+) {
+  static readonly layerWithPrivateFileAccess: Layer.Layer<ScratchRegistry, never, PrivateFileAccessService> =
+    Layer.effect(
+      this,
+      Effect.map(PrivateFileAccessService, (access) => ScratchRegistry.of(makeScratchRegistry(access))),
+    );
+
+  static readonly layer = this.layerWithPrivateFileAccess.pipe(Layer.provide(PrivateFileAccessService.layer));
+}
 
 const openRegistryBucket = (
   privateFileAccess: PrivateFileAccess,
@@ -270,13 +278,3 @@ export const makeScratchRegistry = (privateFileAccess: PrivateFileAccess): Scrat
 
   return { read, upsert, remove, list, get };
 };
-
-export const ScratchRegistryWithPrivateFileAccessLive: Layer.Layer<
-  ScratchRegistry,
-  never,
-  PrivateFileAccessService
-> = Layer.effect(ScratchRegistry, Effect.map(PrivateFileAccessService, makeScratchRegistry));
-
-export const ScratchRegistryLive = ScratchRegistryWithPrivateFileAccessLive.pipe(
-  Layer.provide(PrivateFileAccessService.layer),
-);

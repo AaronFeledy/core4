@@ -26,15 +26,15 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import * as AppCacheService from "../../src/cache/service.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { CommandRegistryLive } from "../../src/services/command-registry.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as CommandRegistryLayer from "../../src/services/command-registry.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { emptyConfigServiceLayer } from "../_support/agent-env-test-config.ts";
 
 const capabilities: ProviderCapabilities = {
@@ -109,19 +109,21 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   });
   const registryLayer = Layer.effect(
     PluginRegistry,
-    Effect.map(PluginRegistry, (registry) => ({
-      ...registry,
-      list: Effect.succeed([manifest]),
-      loadServiceType: (id: string) =>
-        id === serviceType.id
-          ? Effect.succeed(serviceType)
-          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
-      loadServiceFeature: (id: string) =>
-        id === feature.id ? Effect.succeed(feature) : registry.loadServiceFeature(id),
-    })),
-  ).pipe(Layer.provide(PluginRegistryLive));
-  const plannerLayer = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, registryLayer)),
+    Effect.map(PluginRegistry, (registry) =>
+      PluginRegistry.of({
+        ...registry,
+        list: Effect.succeed([manifest]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+        loadServiceFeature: (id: string) =>
+          id === feature.id ? Effect.succeed(feature) : registry.loadServiceFeature(id),
+      }),
+    ),
+  ).pipe(Layer.provide(PluginRegistryLayer.layer));
+  const plannerLayer = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
   );
   const landofile = {
     name: "effective-tooling-cache",
@@ -158,33 +160,39 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
 
     let invocation: ToolingInvocation | undefined;
     const toolingLayer = Layer.mergeAll(
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(changed) }),
-      Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
-      Layer.succeed(ToolingEngine, {
-        id: "recording",
-        run: (nextInvocation) => {
-          invocation = nextInvocation;
-          return Effect.succeed({
-            tool: nextInvocation.tool,
-            service: ServiceName.make(nextInvocation.service ?? "web"),
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-          });
-        },
-      }),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(changed) })),
+      Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.succeed(TestRuntimeProvider),
+        }),
+      ),
+      Layer.succeed(
+        ToolingEngine,
+        ToolingEngine.of({
+          id: "recording",
+          run: (nextInvocation) => {
+            invocation = nextInvocation;
+            return Effect.succeed({
+              tool: nextInvocation.tool,
+              service: ServiceName.make(nextInvocation.service ?? "web"),
+              exitCode: 0,
+              stdout: "",
+              stderr: "",
+            });
+          },
+        }),
+      ),
       emptyConfigServiceLayer,
-      EventServiceLive,
+      LandoEventService.layer,
       PrivateFileAccessService.layer,
     );
     const registryIds = await Effect.runPromise(
       Effect.flatMap(CommandRegistry, (registry) => registry.list).pipe(
-        Effect.provide(Layer.provide(CommandRegistryLive, toolingLayer)),
+        Effect.provide(Layer.provide(CommandRegistryLayer.layer, toolingLayer)),
       ),
     );
     expect(registryIds).toEqual([]);
@@ -225,16 +233,20 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
   });
   const registryLayer = Layer.effect(
     PluginRegistry,
-    Effect.map(PluginRegistry, (registry) => ({
-      ...registry,
-      list: Effect.succeed([manifest]),
-      loadServiceType: (id: string) =>
-        id === serviceType.id
-          ? Effect.succeed(serviceType)
-          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
-    })),
-  ).pipe(Layer.provide(PluginRegistryLive));
-  return AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, registryLayer)));
+    Effect.map(PluginRegistry, (registry) =>
+      PluginRegistry.of({
+        ...registry,
+        list: Effect.succeed([manifest]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+      }),
+    ),
+  ).pipe(Layer.provide(PluginRegistryLayer.layer));
+  return AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+  );
 };
 
 const phpLandofile = (name: string, tooling?: PhpTooling) => ({
@@ -348,26 +360,32 @@ test("fails runTooling reserved when Landofile authors run even if php also cont
     async () => {
       const plan = await Effect.runPromise(planPhp(landofile, plannerLayer));
       const toolingLayer = Layer.mergeAll(
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-        Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-        }),
-        Layer.succeed(ToolingEngine, {
-          id: "noop",
-          run: () =>
-            Effect.succeed({
-              tool: "run",
-              service: ServiceName.make("web"),
-              exitCode: 0,
-              stdout: "",
-              stderr: "",
-            }),
-        }),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.succeed(TestRuntimeProvider),
+          }),
+        ),
+        Layer.succeed(
+          ToolingEngine,
+          ToolingEngine.of({
+            id: "noop",
+            run: () =>
+              Effect.succeed({
+                tool: "run",
+                service: ServiceName.make("web"),
+                exitCode: 0,
+                stdout: "",
+                stderr: "",
+              }),
+          }),
+        ),
         emptyConfigServiceLayer,
-        EventServiceLive,
+        LandoEventService.layer,
         PrivateFileAccessService.layer,
       );
 

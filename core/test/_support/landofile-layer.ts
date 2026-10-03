@@ -3,7 +3,7 @@ import { ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 
-export const NoopTransactionGuardLive = Layer.succeed(ManagedFileTransactionGuard, {
+export const layerTransactionGuard = Layer.succeed(ManagedFileTransactionGuard, {
   ensureConsistent: () => Effect.void,
   pending: () => Effect.succeed(null),
 });
@@ -18,7 +18,7 @@ export const TestStateStoreLive = Layer.succeed(
   }),
 );
 
-const TestLandofileDependencies = Layer.merge(NoopTransactionGuardLive, TestStateStoreLive);
+const TestLandofileDependencies = Layer.merge(layerTransactionGuard, TestStateStoreLive);
 
 export const layer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(TestLandofileDependencies));
 

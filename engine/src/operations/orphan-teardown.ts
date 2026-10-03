@@ -67,53 +67,52 @@ const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan =
  * Containers and volumes alike go by observed identity, never through provider state looked up by
  * app id, so the caller reports exactly what went away and nothing else.
  */
-export const tearDownOrphans = (input: {
+export const tearDownOrphans = Effect.fnUntraced(function* (input: {
   readonly root: AbsolutePath;
   readonly groups: ReadonlyArray<AppliedOrphanGroup>;
   readonly options: OrphanTeardownOptions;
-}): Effect.Effect<
+}): Effect.fn.Return<
   OrphanTeardownResult,
   OrphanTeardownError,
   RuntimeProviderRegistry | PathsService | PrivateFileAccessService
-> =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const paths = yield* PathsService;
-    const relayRoots = { ...paths.roots, platform: paths.platform };
-    const removeVolumes = input.options.volumes || input.options.purgeCaches;
-    const volumeClasses = teardownVolumeClasses(input.options);
-    const services: string[] = [];
-    let volumesRemoved = false;
-    for (const group of input.groups) {
-      const plan = selectionPlan(group, input.root);
-      const ref = { id: group.appId, root: input.root };
-      yield* withAppMutationLock(
-        appLockTarget(plan),
-        Effect.gen(function* () {
-          const provider = yield* registry.select(plan);
-          for (const service of group.services) {
-            const removal = yield* provider.removeObservedService(service);
-            if (removal.kind === "removed") services.push(String(service.service));
-          }
-          if (!removeVolumes) return;
-          for (const volume of group.volumes) {
-            const generation = volume.identity?.generation;
-            if (generation === undefined) continue;
-            const volumeClass = volumeClassFromLabels(volume.labels);
-            if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
-            if (!volumeClasses.includes(volumeClass)) continue;
-            yield* provider.removeVolume(volume.ref, generation);
-            volumesRemoved = true;
-          }
-        }).pipe(
-          Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
-          Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
-        ),
-      );
-    }
-    return {
-      app: String(input.groups[0]?.appId ?? ""),
-      services,
-      volumesRemoved,
-    };
-  });
+> {
+  const registry = yield* RuntimeProviderRegistry;
+  const paths = yield* PathsService;
+  const relayRoots = { ...paths.roots, platform: paths.platform };
+  const removeVolumes = input.options.volumes || input.options.purgeCaches;
+  const volumeClasses = teardownVolumeClasses(input.options);
+  const services: string[] = [];
+  let volumesRemoved = false;
+  for (const group of input.groups) {
+    const plan = selectionPlan(group, input.root);
+    const ref = { id: group.appId, root: input.root };
+    yield* withAppMutationLock(
+      appLockTarget(plan),
+      Effect.gen(function* () {
+        const provider = yield* registry.select(plan);
+        for (const service of group.services) {
+          const removal = yield* provider.removeObservedService(service);
+          if (removal.kind === "removed") services.push(String(service.service));
+        }
+        if (!removeVolumes) return;
+        for (const volume of group.volumes) {
+          const generation = volume.identity?.generation;
+          if (generation === undefined) continue;
+          const volumeClass = volumeClassFromLabels(volume.labels);
+          if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
+          if (!volumeClasses.includes(volumeClass)) continue;
+          yield* provider.removeVolume(volume.ref, generation);
+          volumesRemoved = true;
+        }
+      }).pipe(
+        Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
+        Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
+      ),
+    );
+  }
+  return {
+    app: String(input.groups[0]?.appId ?? ""),
+    services,
+    volumesRemoved,
+  };
+});

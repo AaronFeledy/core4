@@ -18,32 +18,31 @@ const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationE
       }),
   });
 
-export const resolveAppIdentity = (
+export const resolveAppIdentity = Effect.fn("AppPlanner.resolveIdentity")(function* (
   appRoot: string,
   processRunner?: Context.Service.Shape<typeof ProcessRunner>,
-): Effect.Effect<AppIdentity, LandofileValidationError> =>
-  Effect.gen(function* () {
-    const canonicalAppRoot = yield* canonicalPath(appRoot);
-    const commonDir =
-      processRunner === undefined
-        ? undefined
-        : yield* processRunner
-            .run({
-              cmd: "git",
-              args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-              cwd: canonicalAppRoot,
-            })
-            .pipe(
-              Effect.flatMap((result) =>
-                result.exitCode === 0 && result.stdout.trim().length > 0
-                  ? canonicalPath(result.stdout.trim())
-                  : Effect.succeed(undefined),
-              ),
-              Effect.catch(() => Effect.succeed(undefined)),
-            );
-    return {
-      appRoot: AbsolutePath.make(canonicalAppRoot),
-      ownerKey: appIdentityKey("owner", canonicalAppRoot),
-      ...(commonDir === undefined ? {} : { repoGroupKey: appIdentityKey("repository", commonDir) }),
-    };
-  });
+): Effect.fn.Return<AppIdentity, LandofileValidationError> {
+  const canonicalAppRoot = yield* canonicalPath(appRoot);
+  const commonDir =
+    processRunner === undefined
+      ? undefined
+      : yield* processRunner
+          .run({
+            cmd: "git",
+            args: ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd: canonicalAppRoot,
+          })
+          .pipe(
+            Effect.flatMap((result) =>
+              result.exitCode === 0 && result.stdout.trim().length > 0
+                ? canonicalPath(result.stdout.trim())
+                : Effect.succeed(undefined),
+            ),
+            Effect.catch(() => Effect.succeed(undefined)),
+          );
+  return {
+    appRoot: AbsolutePath.make(canonicalAppRoot),
+    ownerKey: appIdentityKey("owner", canonicalAppRoot),
+    ...(commonDir === undefined ? {} : { repoGroupKey: appIdentityKey("repository", commonDir) }),
+  };
+});

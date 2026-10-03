@@ -11,7 +11,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect } from "effect";
 import * as operation from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/app/demo") };
@@ -63,7 +63,7 @@ const run = <A, E>(
 ) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provide(EventServiceLive),
+      Effect.provide(LandoEventService.layer),
       Effect.provide(PrivateFileAccessService.layer),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
     ),

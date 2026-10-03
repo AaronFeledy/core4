@@ -16,22 +16,22 @@ import {
 import {
   type RuntimeProviderShape,
   type ShellCommandOptions,
-  type ShellRunner,
+  ShellRunner,
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import * as HostToolingEngine from "../../src/services/host-tooling-engine";
 import {
-  HostToolingEngineLive,
   evaluateHostVar as evaluateHostVarEffect,
   resolveScriptPath,
   runHostScript as runHostScriptEffect,
   runHostToolingWith,
 } from "../../src/services/host-tooling-engine";
 
-const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessService.layer));
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
 const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
   runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
 const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
@@ -141,7 +141,7 @@ const stubProvider: RuntimeProviderShape = {
 
 const runEngine = (invocation: ToolingInvocation, plan: AppPlan) =>
   Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, stubProvider)).pipe(
-    Effect.provide(hostToolingEngineLive),
+    Effect.provide(hostToolingEngineLayer),
   );
 
 type ShellExecCall = {
@@ -154,7 +154,7 @@ const makeRecordingShell = (): {
   readonly calls: () => ReadonlyArray<ShellExecCall>;
 } => {
   const calls: ShellExecCall[] = [];
-  const shell: Context.Service.Shape<typeof ShellRunner> = {
+  const shell: Context.Service.Shape<typeof ShellRunner> = ShellRunner.of({
     exec: (source: string, options?: ShellCommandOptions) =>
       Effect.sync(() => {
         calls.push({ source, argv: options?.argv ?? [] });
@@ -163,13 +163,13 @@ const makeRecordingShell = (): {
     run: (source, options) => shell.exec(source, options),
     runScript: () => Effect.die("not used"),
     interactive: () => Effect.die("not used"),
-  };
+  });
   return { shell, calls: () => calls };
 };
 
-describe("HostToolingEngineLive", () => {
+describe("HostToolingEngine.layer", () => {
   test("layer registers engine id 'host'", async () => {
-    const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(hostToolingEngineLive)));
+    const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(hostToolingEngineLayer)));
     expect(engine.id).toBe("host");
   });
 

@@ -22,9 +22,9 @@ export type AppConfigLintOptions = LintLandofileOptions;
 /**
  * Schema and resolved event-name validation shared by config lint and doctor.
  */
-export const appConfigLint = (
+export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   options: AppConfigLintOptions = {},
-): Effect.Effect<
+): Effect.fn.Return<
   ConfigLintResult,
   | LandofileNotFoundError
   | LandofileFormConflictError
@@ -33,29 +33,28 @@ export const appConfigLint = (
   | CommandAliasConflictError
   | NotImplementedError,
   PluginRegistry
-> =>
-  Effect.gen(function* () {
-    const result = yield* lintLandofile(options);
-    if (!result.valid) return result;
-    const runtimeInputs = yield* scopedLandofileRuntimeInputs;
-    const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
-      ...runtimeInputs,
-      ...(options.templates === undefined ? {} : { templates: options.templates }),
-    }).pipe(Effect.result);
-    if (Result.isFailure(loaded)) {
-      return { ...result, valid: false, violations: [{ path: "", message: loaded.failure.message }] };
-    }
-    const pluginRegistry = yield* PluginRegistry;
-    const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
-    const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
-    const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-    yield* resolveKnownEventSet({
-      landofile: loaded.success,
-      pluginRegistry,
-      configService,
-      fileSystem,
-      pathsService,
-      file: result.file,
-    });
-    return result;
+> {
+  const result = yield* lintLandofile(options);
+  if (!result.valid) return result;
+  const runtimeInputs = yield* scopedLandofileRuntimeInputs;
+  const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
+    ...runtimeInputs,
+    ...(options.templates === undefined ? {} : { templates: options.templates }),
+  }).pipe(Effect.result);
+  if (Result.isFailure(loaded)) {
+    return { ...result, valid: false, violations: [{ path: "", message: loaded.failure.message }] };
+  }
+  const pluginRegistry = yield* PluginRegistry;
+  const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
+  const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
+  const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
+  yield* resolveKnownEventSet({
+    landofile: loaded.success,
+    pluginRegistry,
+    configService,
+    fileSystem,
+    pathsService,
+    file: result.file,
   });
+  return result;
+});

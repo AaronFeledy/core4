@@ -100,50 +100,49 @@ const hostStepCommand = (
   }
 };
 
-const hostRun = (
+const hostRun = Effect.fn("ToolingEngine.run")(function* (
   shell: Context.Service.Shape<typeof ShellRunner>,
   invocation: ToolingInvocation,
   _plan: AppPlan,
   _provider: RuntimeProviderShape,
-) =>
-  Effect.gen(function* () {
-    const steps = resolveHostSteps(invocation);
-    if (steps.length === 0) return yield* Effect.fail(missingHostStepsError(invocation.tool));
-    let exitCode = 0;
-    let stdout = "";
-    let stderr = "";
-    for (const step of steps) {
-      const command = yield* hostStepCommand(invocation.tool, step);
-      const options: ShellCommandOptions = {
-        ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
-        ...(invocation.env === undefined ? {} : { env: invocation.env }),
-        argv: command.argv,
-      };
-      const result = yield* shell.exec(command.source, options).pipe(
-        Effect.catch((cause) =>
-          cause.exitCode !== undefined
-            ? Effect.succeed({
-                exitCode: cause.exitCode,
-                stdout: cause.stdout ?? "",
-                stderr: cause.stderr ?? "",
-              })
-            : Effect.fail(wrapShellAsToolingError(invocation.tool, cause)),
-        ),
-      );
-      stdout += result.stdout;
-      stderr += result.stderr;
-      exitCode = result.exitCode;
-      if (exitCode !== 0) break;
-    }
-    const out: ToolingEngineResult = {
-      tool: invocation.tool,
-      service: invocation.service ?? HOST_SERVICE,
-      exitCode,
-      stdout,
-      stderr,
+) {
+  const steps = resolveHostSteps(invocation);
+  if (steps.length === 0) return yield* Effect.fail(missingHostStepsError(invocation.tool));
+  let exitCode = 0;
+  let stdout = "";
+  let stderr = "";
+  for (const step of steps) {
+    const command = yield* hostStepCommand(invocation.tool, step);
+    const options: ShellCommandOptions = {
+      ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
+      ...(invocation.env === undefined ? {} : { env: invocation.env }),
+      argv: command.argv,
     };
-    return out;
-  });
+    const result = yield* shell.exec(command.source, options).pipe(
+      Effect.catch((cause) =>
+        cause.exitCode !== undefined
+          ? Effect.succeed({
+              exitCode: cause.exitCode,
+              stdout: cause.stdout ?? "",
+              stderr: cause.stderr ?? "",
+            })
+          : Effect.fail(wrapShellAsToolingError(invocation.tool, cause)),
+      ),
+    );
+    stdout += result.stdout;
+    stderr += result.stderr;
+    exitCode = result.exitCode;
+    if (exitCode !== 0) break;
+  }
+  const out: ToolingEngineResult = {
+    tool: invocation.tool,
+    service: invocation.service ?? HOST_SERVICE,
+    exitCode,
+    stdout,
+    stderr,
+  };
+  return out;
+});
 
 export const runHostToolingWith = (
   shell: Context.Service.Shape<typeof ShellRunner>,
@@ -153,13 +152,14 @@ export const runHostToolingWith = (
 ): Effect.Effect<ToolingEngineResult, ToolingCompileError | ToolingExecError> =>
   hostRun(shell, invocation, plan, provider);
 
-const makeHostToolingEngine = (shell: Context.Service.Shape<typeof ShellRunner>) => ({
-  id: "host",
-  run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
-    hostRun(shell, invocation, plan, provider),
-});
+const makeHostToolingEngine = (shell: Context.Service.Shape<typeof ShellRunner>) =>
+  ToolingEngine.of({
+    id: "host",
+    run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
+      hostRun(shell, invocation, plan, provider),
+  });
 
-export const HostToolingEngineLive = Layer.effect(
+export const layer = Layer.effect(
   ToolingEngine,
   Effect.map(PrivateFileAccessService, (privateFileAccess) =>
     makeHostToolingEngine(makeHostShellRunner(privateFileAccess)),
@@ -228,23 +228,21 @@ export const resolveScriptPath = (
         : outsideRootError(scriptPath, permittedRoots, undefined, cause),
   });
 
-export const runHostScript = (
+export const runHostScript = Effect.fn("ShellRunner.runHostScript")(function* (
   scriptPath: string,
   permittedRoots: ReadonlyArray<string>,
   options?: ShellCommandOptions,
-) =>
-  Effect.gen(function* () {
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const resolved = yield* resolveScriptPath(scriptPath, permittedRoots);
-    return yield* makeHostShellRunner(privateFileAccess).runScript(resolved, options);
-  });
+) {
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const resolved = yield* resolveScriptPath(scriptPath, permittedRoots);
+  return yield* makeHostShellRunner(privateFileAccess).runScript(resolved, options);
+});
 
-export const evaluateHostVar = (
+export const evaluateHostVar = Effect.fnUntraced(function* (
   command: string,
   options?: ShellCommandOptions,
-): Effect.Effect<string, ShellExecError, PrivateFileAccessService> =>
-  Effect.gen(function* () {
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const result = yield* makeHostShellRunner(privateFileAccess).exec(command, options);
-    return result.stdout.replace(/\r?\n$/u, "");
-  });
+): Effect.fn.Return<string, ShellExecError, PrivateFileAccessService> {
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const result = yield* makeHostShellRunner(privateFileAccess).exec(command, options);
+  return result.stdout.replace(/\r?\n$/u, "");
+});

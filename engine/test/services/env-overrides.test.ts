@@ -9,7 +9,7 @@ import { mergeLandofiles } from "@lando/sdk/landofile";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { resolveProviderSelection } from "../../src/providers/precedence.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
+import * as LandoConfigService from "../../src/services/config.ts";
 
 /**
  * Runs `body` with a temp `LANDO_USER_CONF_ROOT` and a clean slate of
@@ -64,7 +64,7 @@ const writeConfig = (dir: string, lines: ReadonlyArray<string>): Promise<void> =
 const loadConfig = () =>
   Effect.runPromise(
     Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
-      Effect.provide(ConfigServiceLive),
+      Effect.provide(LandoConfigService.layer),
     ),
   );
 
@@ -257,7 +257,7 @@ describe("notify environment overrides", () => {
     await withEnv({ LANDO_NOTIFY_COMMANDS: "app:info" }, async () => {
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
-          Effect.provide(ConfigServiceLive),
+          Effect.provide(LandoConfigService.layer),
         ),
       );
 
@@ -349,7 +349,7 @@ describe("router environment overrides", () => {
       // Given / When
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
-          Effect.provide(ConfigServiceLive),
+          Effect.provide(LandoConfigService.layer),
         ),
       );
       // Then
@@ -417,7 +417,7 @@ describe("network inject environment overrides", () => {
       await withEnv({ [name]: "sometimes" }, async (dir) => {
         const exit = await Effect.runPromiseExit(
           Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
-            Effect.provide(ConfigServiceLive),
+            Effect.provide(LandoConfigService.layer),
           ),
         );
 

@@ -10,7 +10,7 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 
-import { makeConfigTranslatorRegistryLive } from "../../src/plugins/config-translator-registry.ts";
+import * as ConfigTranslatorRegistryLayer from "../../src/plugins/config-translator-registry.ts";
 import { PluginContributionGraph } from "../../src/plugins/contribution-graph.ts";
 
 const fakeTranslator = (id: string): ConfigTranslatorShape => ({
@@ -52,18 +52,26 @@ const graphLayer = (
     readonly entry: LandoPluginModule;
   }>,
 ) =>
-  Layer.succeed(PluginContributionGraph, {
-    plugins: plugins.map(({ source, entry }) => ({ source, manifest: entry.manifest, entry, module: entry })),
-    globalPlugins: plugins.map(({ source, entry }) => ({
-      source,
-      manifest: entry.manifest,
-      entry,
-      module: entry,
-    })),
-    certificateAuthorities: [],
-    commands: [],
-    hostContext: Context.empty(),
-  });
+  Layer.succeed(
+    PluginContributionGraph,
+    PluginContributionGraph.of({
+      plugins: plugins.map(({ source, entry }) => ({
+        source,
+        manifest: entry.manifest,
+        entry,
+        module: entry,
+      })),
+      globalPlugins: plugins.map(({ source, entry }) => ({
+        source,
+        manifest: entry.manifest,
+        entry,
+        module: entry,
+      })),
+      certificateAuthorities: [],
+      commands: [],
+      hostContext: Context.empty(),
+    }),
+  );
 
 const listWith = (registryLayer: Layer.Layer<ConfigTranslatorRegistry, never, never>) =>
   Effect.runPromiseExit(
@@ -79,7 +87,7 @@ describe("ConfigTranslatorRegistry", () => {
     const calls: Array<string> = [];
     const bundled = makeModule("@lando/bundled", [{ id: "lando4" }], calls);
     const injected = makeModule("@acme/host", [{ id: "terraform" }], calls);
-    const registryLayer = makeConfigTranslatorRegistryLive([]).pipe(
+    const registryLayer = ConfigTranslatorRegistryLayer.layerWith([]).pipe(
       Layer.provide(
         graphLayer([
           { source: "bundled", entry: bundled },
@@ -109,7 +117,7 @@ describe("ConfigTranslatorRegistry", () => {
     const module = makeModule("@lando/bundled", [{ id: "lando4" }], calls);
 
     // When: the registry lists.
-    const exit = await listWith(makeConfigTranslatorRegistryLive([module]));
+    const exit = await listWith(ConfigTranslatorRegistryLayer.layerWith([module]));
 
     // Then: the bundled translator resolves.
     expect(exit._tag).toBe("Success");
@@ -121,7 +129,7 @@ describe("ConfigTranslatorRegistry", () => {
     const calls: Array<string> = [];
     const bundled = makeModule("@lando/lando3", [{ id: "lando3" }], calls);
     const user = makeModule("@acme/lando3-fork", [{ id: "lando3" }], calls);
-    const registryLayer = makeConfigTranslatorRegistryLive([]).pipe(
+    const registryLayer = ConfigTranslatorRegistryLayer.layerWith([]).pipe(
       Layer.provide(
         graphLayer([
           { source: "bundled", entry: bundled },
@@ -152,7 +160,7 @@ describe("ConfigTranslatorRegistry", () => {
     const module = makeModule("@lando/bundled", [{ id: "lando4", loads: "other" }], calls);
 
     // When: the registry lists.
-    const exit = await listWith(makeConfigTranslatorRegistryLive([module]));
+    const exit = await listWith(ConfigTranslatorRegistryLayer.layerWith([module]));
 
     // Then: the mismatch is a plugin load error attributed to the producer.
     expect(exit._tag).toBe("Failure");
@@ -188,7 +196,7 @@ describe("ConfigTranslatorRegistry", () => {
     };
 
     // When: the registry lists.
-    const exit = await listWith(makeConfigTranslatorRegistryLive([module]));
+    const exit = await listWith(ConfigTranslatorRegistryLayer.layerWith([module]));
 
     // Then: the disagreement is a descriptor mismatch and no loader ran.
     expect(exit._tag).toBe("Failure");
@@ -219,7 +227,7 @@ describe("ConfigTranslatorRegistry", () => {
     };
 
     // When: the registry lists.
-    const exit = await listWith(makeConfigTranslatorRegistryLive([module]));
+    const exit = await listWith(ConfigTranslatorRegistryLayer.layerWith([module]));
 
     // Then: the missing loader is a descriptor mismatch, not a silent empty list.
     expect(exit._tag).toBe("Failure");

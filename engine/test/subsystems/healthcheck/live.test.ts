@@ -7,7 +7,7 @@ import type { HealthcheckPlan } from "@lando/sdk/schema";
 import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
 
-import { HealthcheckRunnerLive } from "../../../src/subsystems/healthcheck/live.ts";
+import * as ProviderHealthcheckRunner from "../../../src/subsystems/healthcheck/live.ts";
 import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
 import {
   appId,
@@ -238,7 +238,7 @@ describe("makeHealthcheckRunner", () => {
   });
 });
 
-describe("HealthcheckRunnerLive", () => {
+describe("ProviderHealthcheckRunner.layer", () => {
   test("provides the provider-exec runner from RuntimeProvider", async () => {
     const fakeExecOk = execSequence([0]);
     const provider = { ...TestRuntimeProvider, exec: fakeExecOk.exec } satisfies RuntimeProviderShape;
@@ -246,7 +246,7 @@ describe("HealthcheckRunnerLive", () => {
       Effect.gen(function* () {
         return yield* HealthcheckRunner;
       }).pipe(
-        Effect.provide(HealthcheckRunnerLive),
+        Effect.provide(ProviderHealthcheckRunner.layer),
         Effect.provide(Layer.succeed(RuntimeProvider, provider)),
       ),
     );

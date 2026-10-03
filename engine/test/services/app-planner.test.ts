@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
 
 import {
   CapabilityError,
@@ -36,12 +36,13 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import * as AppCacheService from "../../src/cache/service.ts";
 import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -125,18 +126,76 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 
 const planExit = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
+
+test("planning emits phase spans beneath AppPlanner.plan", async () => {
+  // Given
+  const spans: Tracer.NativeSpan[] = [];
+  const tracer = Tracer.make({
+    span(options) {
+      const span = new Tracer.NativeSpan(options);
+      spans.push(span);
+      return span;
+    },
+  });
+  // When
+  const result = await Effect.runPromise(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofileFixture, providerLandoCapabilities)).pipe(
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
+      Effect.withTracer(tracer),
+      Effect.provideService(References.TracerEnabled, true),
+    ),
+  );
+  // Then
+  expect(Object.keys(result.services)).toEqual(["web", "db"]);
+  const root = spans.find((span) => span.name === "AppPlanner.plan");
+  expect(root?.status._tag).toBe("Ended");
+  if (root === undefined) throw new TypeError("planner root span is missing");
+  expect(
+    spans
+      .filter(
+        (span) =>
+          span.name.startsWith("AppPlanner.") &&
+          Option.exists(span.parent, (parent) => parent.spanId === root.spanId),
+      )
+      .map((span) => span.name),
+  ).toEqual(["AppPlanner.resolveIdentity", "AppPlanner.assemble"]);
+  const assembly = spans.find((span) => span.name === "AppPlanner.assemble");
+  if (assembly === undefined) throw new TypeError("planner assembly span is missing");
+  expect(
+    spans
+      .filter(
+        (span) =>
+          span.name.startsWith("AppPlanner.") &&
+          Option.exists(span.parent, (parent) => parent.spanId === assembly.spanId),
+      )
+      .map((span) => span.name),
+  ).toEqual([
+    "AppPlanner.discover",
+    "AppPlanner.loadComposeConfigs",
+    "AppPlanner.planServices",
+    "AppPlanner.composeFeatures",
+    "AppPlanner.finalizeServices",
+  ]);
+  const discover = spans.find((span) => span.name === "AppPlanner.discover");
+  const resolve = spans.find((span) => span.name === "AppPlanner.resolveServices");
+  expect(Option.getOrUndefined(resolve?.parent ?? Option.none())?.spanId).toBe(discover?.spanId);
+  expect(
+    spans.some((span) => span.name === "AppPlanner.validateDependencies" && span.status._tag === "Ended"),
+  ).toBe(true);
+});
 
 test("seeds gpg forwarding only when enabled", async () => {
   // Given
@@ -213,20 +272,23 @@ test("sidecar mode plans without agentSocket and retains intent", async () => {
 const planWithFileSystem = (landofile: LandofileShape) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
-      Effect.provide(FileSystemLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
+      Effect.provide(BunFileSystem.layer),
     ),
   );
 
 const configLayer = (defaultProviderId: ProviderId | null) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId, telemetry: { enabled: false } });
   const load = Effect.succeed(config);
-  return Layer.succeed(ConfigService, {
-    load,
-    get: <K extends keyof GlobalConfig>(key: K) =>
-      Effect.map(load, (loadedConfig): GlobalConfig[K] => loadedConfig[key]),
-  });
+  return Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load,
+      get: <K extends keyof GlobalConfig>(key: K) =>
+        Effect.map(load, (loadedConfig): GlobalConfig[K] => loadedConfig[key]),
+    }),
+  );
 };
 
 const planWithConfig = (
@@ -236,8 +298,8 @@ const planWithConfig = (
 ) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(configLayer(defaultProviderId)),
     ),
   );
@@ -390,7 +452,7 @@ const planWithCustomRegistry = (
 ) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
+      Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
   );
@@ -401,7 +463,7 @@ const planExitWithCustomRegistry = (
 ) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
+      Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
   );
@@ -417,7 +479,7 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return Option.getOrThrow(failure);
 };
 
-describe("AppPlannerLive", () => {
+describe("AppPlannerLayer.layer", () => {
   test("records canonical app-root ownership on every planned app", async () => {
     // Given: an app planned from an existing canonical working directory.
     await withTempCwd(async (dir) => {
@@ -444,16 +506,19 @@ describe("AppPlannerLive", () => {
           loads += 1;
           return config;
         });
-        const layer = AppPlannerLive.pipe(
+        const layer = AppPlannerLayer.layer.pipe(
           Layer.provide(
             Layer.mergeAll(
-              PluginRegistryLive,
-              CacheServiceLive,
-              Layer.succeed(ConfigService, {
-                load,
-                get: <K extends keyof GlobalConfig>(key: K) =>
-                  Effect.map(load, (value): GlobalConfig[K] => value[key]),
-              }),
+              PluginRegistryLayer.layer,
+              AppCacheService.layer,
+              Layer.succeed(
+                ConfigService,
+                ConfigService.of({
+                  load,
+                  get: <K extends keyof GlobalConfig>(key: K) =>
+                    Effect.map(load, (value): GlobalConfig[K] => value[key]),
+                }),
+              ),
             ),
           ),
         );
@@ -585,7 +650,7 @@ describe("AppPlannerLive", () => {
     // When
     const appPlan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
+        Effect.provide(AppPlannerLayer.layer),
         Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
       ),
     );
@@ -926,12 +991,11 @@ describe("AppPlannerLive", () => {
       // Given
       const feature: ServiceFeatureDefinition = {
         ...socketOnlyServiceType.testFeature,
-        apply: (ctx) =>
-          Effect.gen(function* () {
-            yield* socketOnlyServiceType.testFeature.apply(ctx);
-            ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-lc", "a"] });
-            ctx.setUser("node");
-          }),
+        apply: Effect.fnUntraced(function* (ctx) {
+          yield* socketOnlyServiceType.testFeature.apply(ctx);
+          ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-lc", "a"] });
+          ctx.setUser("node");
+        }),
       };
       const registry = {
         ...customPluginRegistry,
@@ -947,7 +1011,7 @@ describe("AppPlannerLive", () => {
       // When
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
+          Effect.provide(AppPlannerLayer.layer),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -1249,7 +1313,7 @@ describe("AppPlannerLive", () => {
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLive),
+          Effect.provide(AppPlannerLayer.layer),
           Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
         ),
       );
@@ -1282,7 +1346,7 @@ describe("AppPlannerLive", () => {
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLive),
+          Effect.provide(AppPlannerLayer.layer),
           Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
         ),
       );
@@ -1445,9 +1509,9 @@ describe("AppPlannerLive", () => {
       // When
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
-          Effect.provide(PluginRegistryLive),
-          Effect.provide(FileSystemLive),
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(PluginRegistryLayer.layer),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -1493,9 +1557,9 @@ describe("AppPlannerLive", () => {
       // When
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
-          Effect.provide(PluginRegistryLive),
-          Effect.provide(FileSystemLive),
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(PluginRegistryLayer.layer),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -1518,9 +1582,9 @@ describe("AppPlannerLive", () => {
       // When
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
-          Effect.provide(PluginRegistryLive),
-          Effect.provide(FileSystemLive),
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(PluginRegistryLayer.layer),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -1585,9 +1649,9 @@ describe("AppPlannerLive", () => {
       // When
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
-          Effect.provide(PluginRegistryLive),
-          Effect.provide(FileSystemLive),
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(PluginRegistryLayer.layer),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -1624,9 +1688,9 @@ describe("AppPlannerLive", () => {
       // When
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
-          Effect.provide(PluginRegistryLive),
-          Effect.provide(FileSystemLive),
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(PluginRegistryLayer.layer),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -1661,9 +1725,9 @@ describe("AppPlannerLive", () => {
       // When
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLive),
-          Effect.provide(PluginRegistryLive),
-          Effect.provide(FileSystemLive),
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(PluginRegistryLayer.layer),
+          Effect.provide(BunFileSystem.layer),
         ),
       );
 
@@ -1747,33 +1811,36 @@ describe("AppPlannerLive", () => {
           });
         },
       });
-      const layer = AppPlannerLive.pipe(
+      const layer = AppPlannerLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
-            CacheServiceLive,
-            FileSystemLive,
-            Layer.succeed(PluginRegistry, {
-              list: Effect.succeed([
-                Schema.decodeUnknownSync(PluginManifest)({
-                  name: PluginName.make("@lando/cached"),
-                  version: "1.0.0",
-                  api: 4 as const,
-                  contributes: { serviceTypes: ["cached-type"] },
-                }),
-              ]),
-              load: () => Effect.die("not needed"),
-              loadServiceType: () => Effect.succeed(cachedType),
-              loadServiceFeature: (id: string) =>
-                id === cachedType.testFeature.id
-                  ? Effect.succeed(cachedType.testFeature)
-                  : Effect.fail(
-                      new PluginLoadError({
-                        message: `Service feature ${id} is not registered.`,
-                        pluginName: id,
-                      }),
-                    ),
-              loadAppFeature: () => Effect.die("not used"),
-            }),
+            AppCacheService.layer,
+            BunFileSystem.layer,
+            Layer.succeed(
+              PluginRegistry,
+              PluginRegistry.of({
+                list: Effect.succeed([
+                  Schema.decodeUnknownSync(PluginManifest)({
+                    name: PluginName.make("@lando/cached"),
+                    version: "1.0.0",
+                    api: 4 as const,
+                    contributes: { serviceTypes: ["cached-type"] },
+                  }),
+                ]),
+                load: () => Effect.die("not needed"),
+                loadServiceType: () => Effect.succeed(cachedType),
+                loadServiceFeature: (id: string) =>
+                  id === cachedType.testFeature.id
+                    ? Effect.succeed(cachedType.testFeature)
+                    : Effect.fail(
+                        new PluginLoadError({
+                          message: `Service feature ${id} is not registered.`,
+                          pluginName: id,
+                        }),
+                      ),
+                loadAppFeature: () => Effect.die("not used"),
+              }),
+            ),
           ),
         ),
       );
@@ -1867,33 +1934,36 @@ describe("AppPlannerLive", () => {
           });
         },
       });
-      const layer = AppPlannerLive.pipe(
+      const layer = AppPlannerLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
-            CacheServiceLive,
-            FileSystemLive,
-            Layer.succeed(PluginRegistry, {
-              list: Effect.succeed([
-                Schema.decodeUnknownSync(PluginManifest)({
-                  name: PluginName.make("@lando/env-file-cache"),
-                  version: "1.0.0",
-                  api: 4 as const,
-                  contributes: { serviceTypes: ["env-file-cache-type"] },
-                }),
-              ]),
-              load: () => Effect.die("not needed"),
-              loadServiceType: () => Effect.succeed(cachedType),
-              loadServiceFeature: (id: string) =>
-                id === cachedType.testFeature.id
-                  ? Effect.succeed(cachedType.testFeature)
-                  : Effect.fail(
-                      new PluginLoadError({
-                        message: `Service feature ${id} is not registered.`,
-                        pluginName: id,
-                      }),
-                    ),
-              loadAppFeature: () => Effect.die("not used"),
-            }),
+            AppCacheService.layer,
+            BunFileSystem.layer,
+            Layer.succeed(
+              PluginRegistry,
+              PluginRegistry.of({
+                list: Effect.succeed([
+                  Schema.decodeUnknownSync(PluginManifest)({
+                    name: PluginName.make("@lando/env-file-cache"),
+                    version: "1.0.0",
+                    api: 4 as const,
+                    contributes: { serviceTypes: ["env-file-cache-type"] },
+                  }),
+                ]),
+                load: () => Effect.die("not needed"),
+                loadServiceType: () => Effect.succeed(cachedType),
+                loadServiceFeature: (id: string) =>
+                  id === cachedType.testFeature.id
+                    ? Effect.succeed(cachedType.testFeature)
+                    : Effect.fail(
+                        new PluginLoadError({
+                          message: `Service feature ${id} is not registered.`,
+                          pluginName: id,
+                        }),
+                      ),
+                loadAppFeature: () => Effect.die("not used"),
+              }),
+            ),
           ),
         ),
       );
@@ -2129,7 +2199,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       expect(appPlan.services[ServiceName.make("web")]?.environment.MAIL_HOST).toBe(
@@ -2180,7 +2253,10 @@ describe("AppPlannerLive", () => {
             },
             { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       const failure = expectSomeFailure(exit);
@@ -2261,7 +2337,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       expect(appPlan.services[ServiceName.make("web")]?.environment.SERVICE_FEATURE_COMPOSED).toBe("1");
@@ -2351,7 +2430,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       expect(appPlan.services[ServiceName.make("web")]?.extensions["@lando/core/service-features"]).toEqual({
@@ -2417,7 +2499,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       expect(appPlan.services[ServiceName.make("web")]?.environment.ONCE).toBe("1");
@@ -2466,7 +2551,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       expect(appPlan.services[ServiceName.make("web")]?.environment.MAIL_HOST).toBeUndefined();
@@ -2660,8 +2748,8 @@ describe("AppPlannerLive", () => {
         runtime: 4,
         services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
       };
-      const layer = AppPlannerLive.pipe(
-        Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+      const layer = AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
       );
       const runPlan = () =>
         Effect.runPromise(
@@ -2886,7 +2974,9 @@ describe("AppPlannerLive", () => {
             },
             slowBindMountCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.succeed(PluginRegistry, registry))))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PluginRegistry, registry)))),
+        ),
       );
 
       expect(fileSyncEngineIdReads).toBe(2);
@@ -3919,7 +4009,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       const environment = appPlan.services[ServiceName.make("web")]?.environment;
@@ -3999,7 +4092,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       const servicePlan = appPlan.services[ServiceName.make("api")];
@@ -4098,7 +4194,10 @@ describe("AppPlannerLive", () => {
             },
             providerLandoCapabilities,
           ),
-        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        ).pipe(
+          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
       );
 
       const environment = appPlan.services[ServiceName.make("web")]?.environment;
@@ -4171,8 +4270,8 @@ describe("AppPlannerLive", () => {
             : Effect.succeed(definition);
         },
       };
-      const layer = AppPlannerLive.pipe(
-        Layer.provide(Layer.mergeAll(CacheServiceLive, Layer.succeed(PluginRegistry, registry))),
+      const layer = AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, registry))),
       );
       const landofile: LandofileShape = {
         name: "feature-flip-app",
@@ -4321,9 +4420,9 @@ describe("AppPlannerLive", () => {
                   providerLandoCapabilities,
                 ),
               ).pipe(
-                Effect.provide(AppPlannerLive),
-                Effect.provide(PluginRegistryLive),
-                Effect.provide(CacheServiceLive),
+                Effect.provide(AppPlannerLayer.layer),
+                Effect.provide(PluginRegistryLayer.layer),
+                Effect.provide(AppCacheService.layer),
               ),
             );
           const first = await runPlan("2019");
@@ -4365,9 +4464,9 @@ describe("AppPlannerLive", () => {
                 providerLandoCapabilities,
               ),
             ).pipe(
-              Effect.provide(AppPlannerLive),
-              Effect.provide(PluginRegistryLive),
-              Effect.provide(CacheServiceLive),
+              Effect.provide(AppPlannerLayer.layer),
+              Effect.provide(PluginRegistryLayer.layer),
+              Effect.provide(AppCacheService.layer),
             ),
           );
 
@@ -4437,7 +4536,10 @@ describe("AppPlannerLive", () => {
               },
               providerLandoCapabilities,
             ),
-          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+          ).pipe(
+            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(Layer.succeed(PluginRegistry, registry)),
+          ),
         );
         expect(exactPin.services[ServiceName.make("db")]?.artifact).toEqual({
           kind: "ref",
@@ -4460,7 +4562,10 @@ describe("AppPlannerLive", () => {
               },
               providerLandoCapabilities,
             ),
-          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+          ).pipe(
+            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(Layer.succeed(PluginRegistry, registry)),
+          ),
         );
         expect(imageOverride.services[ServiceName.make("db")]?.artifact).toEqual({
           kind: "ref",
@@ -4477,7 +4582,10 @@ describe("AppPlannerLive", () => {
               },
               providerLandoCapabilities,
             ),
-          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+          ).pipe(
+            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(Layer.succeed(PluginRegistry, registry)),
+          ),
         );
         const missingArtifactFailure = expectSomeFailure(missingArtifact);
         expect(missingArtifactFailure).toBeInstanceOf(LandofileValidationError);
@@ -4495,7 +4603,10 @@ describe("AppPlannerLive", () => {
               },
               providerLandoCapabilities,
             ),
-          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+          ).pipe(
+            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(Layer.succeed(PluginRegistry, registry)),
+          ),
         );
         const failure = expectSomeFailure(unsupported);
         expect(failure).toBeInstanceOf(LandofileValidationError);
@@ -4718,8 +4829,10 @@ describe("AppPlannerLive", () => {
         runtime: 4,
         services: { web: { type: "appmount-only", home: false } },
       });
-      const plannerLayer = AppPlannerLive.pipe(
-        Layer.provide(Layer.mergeAll(CacheServiceLive, Layer.succeed(PluginRegistry, customPluginRegistry))),
+      const plannerLayer = AppPlannerLayer.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, customPluginRegistry)),
+        ),
       );
 
       try {
@@ -4757,7 +4870,7 @@ describe("AppPlannerLive", () => {
             appRoot,
             key: cachedPayload.key,
             plan: invalidPlan,
-          }).pipe(Effect.provide(CacheServiceLive)),
+          }).pipe(Effect.provide(AppCacheService.layer)),
         );
 
         // When
@@ -5015,7 +5128,7 @@ describe("Compose runtime knobs", () => {
       Effect.flatMap(AppPlanner, (appPlanner) =>
         appPlanner.plan(injectedLandofile, providerCapabilities),
       ).pipe(
-        Effect.provide(AppPlannerLive),
+        Effect.provide(AppPlannerLayer.layer),
         Effect.provide(Layer.succeed(PluginRegistry, tmpfsInjectingRegistry)),
       ),
     );
@@ -5051,8 +5164,8 @@ describe("Compose runtime knobs", () => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-knob-cache-root-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
-      const cachedLayer = AppPlannerLive.pipe(
-        Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+      const cachedLayer = AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
       );
       const runPlan = (providerCapabilities: ProviderCapabilities) =>
         Effect.runPromiseExit(

@@ -46,7 +46,10 @@ export interface EventDeliveryMetricsSnapshot {
 export class EventDeliveryMetrics extends Context.Service<
   EventDeliveryMetrics,
   { readonly snapshot: Effect.Effect<EventDeliveryMetricsSnapshot> }
->()("@lando/core/EventDeliveryMetrics") {}
+>()("@lando/engine/EventDeliveryMetrics") {
+  static readonly layer = (service: Context.Service.Shape<typeof EventDeliveryMetrics>) =>
+    Layer.succeed(this, this.of(service));
+}
 
 export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
 export type EventDispatchRegistration = {
@@ -57,7 +60,10 @@ export type EventDispatchRegistration = {
 export class EventDispatchControl extends Context.Service<
   EventDispatchControl,
   { readonly install: (registration: EventDispatchRegistration) => Effect.Effect<void> }
->()("@lando/core/EventDispatchControl") {}
+>()("@lando/engine/EventDispatchControl") {
+  static readonly layer = (service: Context.Service.Shape<typeof EventDispatchControl>) =>
+    Layer.succeed(this, this.of(service));
+}
 
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
@@ -124,15 +130,13 @@ const makeEventService = (
       }).pipe(Effect.andThen(Queue.shutdown(queue))),
   );
 
-  const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
-    if (historyCap <= 0) return Effect.void;
-    return Effect.gen(function* () {
-      const redacted = yield* redactForHistory(redaction, event);
-      yield* Ref.update(history, (events) =>
-        events.length < historyCap ? [...events, redacted] : [...events.slice(1), redacted],
-      );
-    });
-  };
+  const appendHistory = Effect.fnUntraced(function* (event: LandoEvent): Effect.fn.Return<void> {
+    if (historyCap <= 0) return;
+    const redacted = yield* redactForHistory(redaction, event);
+    yield* Ref.update(history, (events) =>
+      events.length < historyCap ? [...events, redacted] : [...events.slice(1), redacted],
+    );
+  });
 
   const publishToBus = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
@@ -183,7 +187,7 @@ const makeEventService = (
       }),
     );
 
-  const service: Context.Service.Shape<typeof EventService> = {
+  const service: Context.Service.Shape<typeof EventService> = EventService.of({
     publish: (event) =>
       readEventName(event).pipe(
         Effect.flatMap((eventName) =>
@@ -239,12 +243,12 @@ const makeEventService = (
         ),
       );
     },
-  };
+  });
 
   return service;
 };
 
-export const makeEventServiceLive = (
+export const layerWith = (
   historyCap = DEFAULT_HISTORY_CAP,
   instrumentation: EventServiceInstrumentation = {},
   deliveryQueueCapacity = DEFAULT_DELIVERY_QUEUE_CAPACITY,
@@ -278,13 +282,13 @@ export const makeEventServiceLive = (
           () => registration,
         ),
       );
-      const control = Layer.succeed(EventDispatchControl, {
+      const control = EventDispatchControl.layer({
         install: (next) =>
           Effect.sync(() => {
             registration = next;
           }),
       });
-      const metrics = Layer.succeed(EventDeliveryMetrics, {
+      const metrics = EventDeliveryMetrics.layer({
         snapshot: Ref.get(droppedEvents).pipe(
           Effect.map(
             (droppedEvents): EventDeliveryMetricsSnapshot => ({
@@ -298,14 +302,14 @@ export const makeEventServiceLive = (
     }),
   );
 
-export const makeEventRuntimeLive = (
+export const layerRuntimeWithConfig = (
   deliveryQueueCapacity?: number,
 ): Layer.Layer<EventService | EventDispatchControl | EventDeliveryMetrics, never, ConfigService> =>
   Layer.unwrap(
     Effect.gen(function* () {
       const config = yield* ConfigService;
       const eventConfig = yield* config.get("events").pipe(Effect.orElseSucceed(() => undefined));
-      return makeEventServiceLive(
+      return layerWith(
         DEFAULT_HISTORY_CAP,
         {},
         deliveryQueueCapacity ?? eventConfig?.deliveryQueueCapacity ?? DEFAULT_DELIVERY_QUEUE_CAPACITY,
@@ -313,5 +317,5 @@ export const makeEventRuntimeLive = (
     }),
   );
 
-export const EventRuntimeLive = makeEventServiceLive();
-export const EventServiceLive: Layer.Layer<EventService, never, never> = EventRuntimeLive;
+export const layerRuntime = layerWith();
+export const layer: Layer.Layer<EventService, never, never> = layerRuntime;

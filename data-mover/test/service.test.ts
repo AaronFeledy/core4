@@ -25,7 +25,7 @@ import {
   __testOnlyUnarchivePayloadWithCap,
 } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import {
@@ -60,7 +60,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");

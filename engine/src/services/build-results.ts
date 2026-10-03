@@ -92,12 +92,10 @@ const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyA
     return newerOrSame.length <= limitFor(entry.outcome);
   });
 
-export const recordBuildResult = (
+export const recordBuildResult = Effect.fnUntraced(function* (
   bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
   entry: Omit<BuildResultEntry, "completedAt">,
-): Effect.Effect<void, StateStoreError> =>
-  bucket
-    .update((current) =>
-      rotateBuildResults([...(current ?? []), { ...entry, completedAt: DateTime.nowUnsafe() }]),
-    )
-    .pipe(Effect.asVoid);
+): Effect.fn.Return<void, StateStoreError> {
+  const completedAt = yield* DateTime.now;
+  yield* bucket.update((current) => rotateBuildResults([...(current ?? []), { ...entry, completedAt }]));
+});

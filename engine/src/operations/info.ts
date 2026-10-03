@@ -182,70 +182,68 @@ const toServiceInfo = (
 // Requires only RuntimeProviderRegistry (no LandofileService/AppPlanner) so
 // out-of-band plan resolvers (global-app commands) reuse this without pulling
 // user-Landofile resolution into their bootstrap layer.
-export const infoForPlan = (
+export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
-): Effect.Effect<InfoAppResult, InfoAppError, RuntimeProviderRegistry> =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const proxy = yield* Effect.serviceOption(RouterService);
-    const provider = yield* registry.select(plan);
-    const routedUrls =
-      proxy._tag === "Some"
-        ? yield* routeUrlsForPlan(proxy.value, plan)
-        : new Map<ServiceName, ReadonlyArray<string>>();
+): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
+  const registry = yield* RuntimeProviderRegistry;
+  const proxy = yield* Effect.serviceOption(RouterService);
+  const provider = yield* registry.select(plan);
+  const routedUrls =
+    proxy._tag === "Some"
+      ? yield* routeUrlsForPlan(proxy.value, plan)
+      : new Map<ServiceName, ReadonlyArray<string>>();
 
-    const serviceLogSources = provider.capabilities.serviceLogSources === true;
-    const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
-      provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
-        Effect.map((runtime) => {
-          const status = statusText(runtime.state ?? runtime.status);
-          return toServiceInfo(
-            plan,
-            service,
-            status,
-            status === "stopped"
-              ? []
-              : [
-                  ...(routedUrls.get(service.name) ?? []),
-                  ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
-                    endpoint._tag === "published" ? endpointText(service, endpoint) : [],
-                  ),
-                ],
-            serviceLogSources,
-          );
-        }),
-      ),
-    );
+  const serviceLogSources = provider.capabilities.serviceLogSources === true;
+  const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
+    provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
+      Effect.map((runtime) => {
+        const status = statusText(runtime.state ?? runtime.status);
+        return toServiceInfo(
+          plan,
+          service,
+          status,
+          status === "stopped"
+            ? []
+            : [
+                ...(routedUrls.get(service.name) ?? []),
+                ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
+                  endpoint._tag === "published" ? endpointText(service, endpoint) : [],
+                ),
+              ],
+          serviceLogSources,
+        );
+      }),
+    ),
+  );
 
-    const hostProxy = hostProxyPlanExtension(plan);
-    return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
-  });
+  const hostProxy = hostProxyPlanExtension(plan);
+  return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
+});
 
-export const infoApp = (
+export const infoApp = Effect.fn("AppOperation.info")(function* (
   options?: InfoAppOptions,
   target?: ResolvedAppTarget,
-): Effect.Effect<InfoAppResult, InfoAppError, InfoAppServices> =>
-  Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+): Effect.fn.Return<InfoAppResult, InfoAppError, InfoAppServices> {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
 
-    let plan: AppPlan;
-    let landofile: LandofileShape | undefined;
-    if (target?.plan !== undefined) {
-      plan = target.plan;
-      if (options?.deep === true) {
-        landofile = yield* loadUserLandofileAt(landofileService, target.root);
-      }
-    } else {
-      landofile = yield* loadUserLandofile(landofileService);
-      const capabilities = yield* registry.capabilities;
-      plan = yield* planner.plan(landofile, capabilities);
+  let plan: AppPlan;
+  let landofile: LandofileShape | undefined;
+  if (target?.plan !== undefined) {
+    plan = target.plan;
+    if (options?.deep === true) {
+      landofile = yield* loadUserLandofileAt(landofileService, target.root);
     }
+  } else {
+    landofile = yield* loadUserLandofile(landofileService);
+    const capabilities = yield* registry.capabilities;
+    plan = yield* planner.plan(landofile, capabilities);
+  }
 
-    const selectedPlan = yield* selectInfoPlan(plan, options?.services);
-    const result = yield* infoForPlan(selectedPlan);
-    if (options?.deep !== true) return result;
-    const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
-    return { ...result, agentEnv };
-  });
+  const selectedPlan = yield* selectInfoPlan(plan, options?.services);
+  const result = yield* infoForPlan(selectedPlan);
+  if (options?.deep !== true) return result;
+  const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
+  return { ...result, agentEnv };
+});

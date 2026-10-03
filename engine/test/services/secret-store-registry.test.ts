@@ -5,8 +5,8 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PathsService, SecretStore } from "@lando/sdk/services";
 import { Effect, Layer, Result, Schema } from "effect";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
 const moduleFor = (id: string, schemes: readonly string[]): LandoPluginModule => ({
   name: `@test/${id}`,
@@ -19,13 +19,16 @@ const moduleFor = (id: string, schemes: readonly string[]): LandoPluginModule =>
   secretStores: new Map([
     [
       id,
-      Layer.succeed(SecretStore, {
-        id,
-        schemes,
-        get: (ref) => Effect.succeed(`${id}:${ref}`),
-        has: () => Effect.succeed(true),
-        list: Effect.succeed([`${schemes[0]}://Vault/Item/field`]),
-      }),
+      Layer.succeed(
+        SecretStore,
+        SecretStore.of({
+          id,
+          schemes,
+          get: (ref) => Effect.succeed(`${id}:${ref}`),
+          has: () => Effect.succeed(true),
+          list: Effect.succeed([`${schemes[0]}://Vault/Item/field`]),
+        }),
+      ),
     ],
   ]),
 });
@@ -38,31 +41,32 @@ const run = async <A, E>(
     readonly configError?: boolean;
   } = {},
 ) => {
-  const { makeSecretStoreRegistryLive, RoutedSecretStoreLive } = await import(
-    "../../src/services/secret-store-registry.ts"
-  );
+  const RoutedSecretStore = await import("../../src/services/secret-store-registry.ts");
   const config = Schema.decodeUnknownSync(GlobalConfig)(
     options.defaultSecretStore === undefined ? {} : { defaultSecretStore: options.defaultSecretStore },
   );
-  const layer = RoutedSecretStoreLive.pipe(
+  const layer = RoutedSecretStore.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        makeSecretStoreRegistryLive(options.modules ?? [moduleFor("vault", ["op"])]),
-        Layer.succeed(ConfigService, {
-          load: Effect.succeed(config),
-          get: (key) =>
-            options.configError === true && key === "defaultSecretStore"
-              ? Effect.fail(
-                  new ConfigError({
-                    message: "Lando config could not be read.",
-                    path: "defaultSecretStore",
-                  }),
-                )
-              : Effect.succeed(config[key]),
-        }),
+        RoutedSecretStore.SecretStoreRegistry.layer(options.modules ?? [moduleFor("vault", ["op"])]),
+        Layer.succeed(
+          ConfigService,
+          ConfigService.of({
+            load: Effect.succeed(config),
+            get: (key) =>
+              options.configError === true && key === "defaultSecretStore"
+                ? Effect.fail(
+                    new ConfigError({
+                      message: "Lando config could not be read.",
+                      path: "defaultSecretStore",
+                    }),
+                  )
+                : Effect.succeed(config[key]),
+          }),
+        ),
         Layer.succeed(PathsService, makeLandoPaths()),
-        FileSystemLive,
-        ProcessRunnerLive,
+        BunFileSystem.layer,
+        BunProcessRunner.layer,
       ),
     ),
   );
@@ -112,15 +116,16 @@ test("unknown default store fails SecretReferenceInvalidError", async () => {
 
 test("duplicate schemes fail registry construction", async () => {
   // Given
-  const { SecretStoreRegistry, makeSecretStoreRegistryLive } = await import(
-    "../../src/services/secret-store-registry.ts"
-  );
+  const RoutedSecretStore = await import("../../src/services/secret-store-registry.ts");
   // When
   const result = await Effect.runPromise(
     Effect.result(
-      SecretStoreRegistry.pipe(
+      RoutedSecretStore.SecretStoreRegistry.pipe(
         Effect.provide(
-          makeSecretStoreRegistryLive([moduleFor("first", ["op"]), moduleFor("second", ["op"])]),
+          RoutedSecretStore.SecretStoreRegistry.layer([
+            moduleFor("first", ["op"]),
+            moduleFor("second", ["op"]),
+          ]),
         ),
       ),
     ),

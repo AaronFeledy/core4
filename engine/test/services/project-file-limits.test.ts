@@ -3,7 +3,7 @@ import { Effect, Result, Stream } from "effect";
 
 import { FileSystem } from "@lando/sdk/services";
 import { loadServiceTypeProjectFiles } from "../../src/planner/project-files.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
 test.each([undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1, 1.5])(
   "rejects maxBytes %s before filesystem access",
@@ -36,7 +36,7 @@ test.each([undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFI
             },
           }),
         );
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then rejection is typed and happens before even inspecting a path.
     expect(Result.isFailure(result)).toBe(true);
@@ -78,7 +78,7 @@ test.each(["stat", "stream"] as const)("clamps large valid limits at the %s size
           },
         }),
       );
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   // Then neither size check accepts bytes beyond the planner-owned limit.
   expect(Result.isFailure(result)).toBe(true);

@@ -16,7 +16,7 @@ import {
 } from "../../src/landofile/app-resolution.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
-const TestStateStoreLive = makeTestStateStore().layer;
+const testStateStoreLayer = makeTestStateStore().layer;
 
 const landofile = (name?: string): LandofileShape =>
   (name === undefined ? {} : { name }) as unknown as LandofileShape;
@@ -66,7 +66,7 @@ describe("loadUserLandofile includes", () => {
 
       const result = await Effect.runPromise(
         loadUserLandofile(fakeLandofileService({ name: "myapp", includes: ["./fragment.yml"] })).pipe(
-          Effect.provide(TestStateStoreLive),
+          Effect.provide(testStateStoreLayer),
         ),
       );
       const actual: unknown = result;
@@ -87,7 +87,7 @@ describe("loadUserLandofile includes", () => {
       await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
 
       const result = await Effect.runPromise(
-        loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(TestStateStoreLive)),
+        loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(testStateStoreLayer)),
       );
       const actual: unknown = result;
 
@@ -104,7 +104,7 @@ describe("loadUserLandofile includes", () => {
       await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
 
       const result = await Effect.runPromise(
-        loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(TestStateStoreLive)),
+        loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(testStateStoreLayer)),
       );
       const actual: unknown = result;
 
@@ -122,7 +122,7 @@ describe("loadUserLandofile includes", () => {
       await writeFile(join(dir, ".lando.yml"), "name: layered\n", "utf8");
 
       const error = await Effect.runPromise(
-        Effect.flip(loadUserLandofileFile(join(dir, ".lando.yml"))).pipe(Effect.provide(TestStateStoreLive)),
+        Effect.flip(loadUserLandofileFile(join(dir, ".lando.yml"))).pipe(Effect.provide(testStateStoreLayer)),
       );
 
       expect(error._tag).toBe("LandofileVersionConstraintError");

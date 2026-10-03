@@ -118,53 +118,52 @@ export const observeProviderRuntime = (
  * Resolves what the providers actually hold for `root`: the applied plan that owns it, the orphaned
  * resources recorded against it, or nothing at all.
  */
-const collectEvidence = (
+const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(function* (
   root: AbsolutePath,
   providers: ReadonlyArray<AppliedStateProvider>,
   ownership: "exact" | "ancestor",
-): Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError> =>
-  Effect.gen(function* () {
-    if (providers.length === 0) {
-      return yield* Effect.fail(
-        new AppResolveError({
-          message: "No runtime provider can confirm applied app state.",
-          reason: "not-found",
-          detail: "provider-evidence",
-          remediation: "Install or enable a runtime provider before retrying teardown.",
-        }),
-      );
-    }
-    const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
-    const matches = plans
-      .filter((plan) => {
-        const appRoot = plan.identity?.appRoot;
-        if (appRoot === undefined) return false;
-        if (ownership === "exact") return appRoot === root;
-        const child = relative(appRoot, root);
-        return child === "" || (!child.startsWith("..") && !isAbsolute(child));
-      })
-      .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
-    const selected = matches[0];
-    if (selected === undefined) {
-      const evidence = yield* Effect.forEach(providers, (provider) =>
-        runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
-      );
-      const groups = groupOrphans(root, providers, evidence);
-      return groups.length > 0 ? { kind: "orphans" as const, groups } : { kind: "absent" as const };
-    }
-    const selectedRoot = selected.identity?.appRoot;
-    if (matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)) {
-      return yield* Effect.fail(
-        new AppResolveError({
-          message: `Multiple providers claim applied state for ${selectedRoot}.`,
-          reason: "ambiguous",
-          detail: "applied-state",
-          remediation: "Remove the conflicting provider state before retrying teardown.",
-        }),
-      );
-    }
-    return { kind: "applied" as const, plan: selected };
-  });
+): Effect.fn.Return<AppliedTeardownEvidence, AppResolveError | ProviderError> {
+  if (providers.length === 0) {
+    return yield* Effect.fail(
+      new AppResolveError({
+        message: "No runtime provider can confirm applied app state.",
+        reason: "not-found",
+        detail: "provider-evidence",
+        remediation: "Install or enable a runtime provider before retrying teardown.",
+      }),
+    );
+  }
+  const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
+  const matches = plans
+    .filter((plan) => {
+      const appRoot = plan.identity?.appRoot;
+      if (appRoot === undefined) return false;
+      if (ownership === "exact") return appRoot === root;
+      const child = relative(appRoot, root);
+      return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+    })
+    .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
+  const selected = matches[0];
+  if (selected === undefined) {
+    const evidence = yield* Effect.forEach(providers, (provider) =>
+      runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
+    );
+    const groups = groupOrphans(root, providers, evidence);
+    return groups.length > 0 ? { kind: "orphans" as const, groups } : { kind: "absent" as const };
+  }
+  const selectedRoot = selected.identity?.appRoot;
+  if (matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)) {
+    return yield* Effect.fail(
+      new AppResolveError({
+        message: `Multiple providers claim applied state for ${selectedRoot}.`,
+        reason: "ambiguous",
+        detail: "applied-state",
+        remediation: "Remove the conflicting provider state before retrying teardown.",
+      }),
+    );
+  }
+  return { kind: "applied" as const, plan: selected };
+});
 
 /**
  * Resolves what the providers hold for a root that teardown has already discovered, so ownership is

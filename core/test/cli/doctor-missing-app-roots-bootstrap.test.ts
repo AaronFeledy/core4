@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -26,12 +26,12 @@ test.each([false, true])(
         }),
     };
     const runtime = Layer.mergeAll(
-      PluginRegistryLive,
+      PluginRegistryLayer.layer,
       Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
       Layer.effect(
         FileSystem,
         Effect.map(FileSystem, (fs) => ({ ...fs, exists: () => Effect.succeed(false) })),
-      ).pipe(Layer.provide(FileSystemLive)),
+      ).pipe(Layer.provide(BunFileSystem.layer)),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),

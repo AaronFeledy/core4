@@ -69,43 +69,39 @@ const defaultWindowsReplacementSpawner: UpdateWindowsReplacementSpawner = (input
   detachable.unref?.();
 };
 
-export const scheduleWindowsReplacement = (
+export const scheduleWindowsReplacement = Effect.fn("Update.scheduleWindowsReplacement")(function* (
   input: UpdateWindowsReplacementInput,
   spawner: UpdateWindowsReplacementSpawner = defaultWindowsReplacementSpawner,
-): Effect.Effect<void, unknown, StateStore> =>
-  Effect.gen(function* () {
-    if (input.precondition === undefined || input.completedResult === undefined)
-      return yield* Effect.fail(
-        new Error("Windows replacement requires a compatibility precondition and completed receipt."),
+): Effect.fn.Return<void, unknown, StateStore> {
+  if (input.precondition === undefined || input.completedResult === undefined)
+    return yield* Effect.fail(
+      new Error("Windows replacement requires a compatibility precondition and completed receipt."),
+    );
+  const handoff = makeUpdateHandoff(yield* StateStore);
+  const token = yield* handoff.saveDeferred(input.completedResult);
+  yield* Effect.tryPromise({
+    try: async () => {
+      const scriptPath = join(dirname(input.stagedBinaryPath), "replace-lando.cmd");
+      await copyFile(input.executablePath, join(dirname(input.stagedBinaryPath), "lando-update-helper.exe"));
+      await writeFile(
+        join(dirname(input.stagedBinaryPath), "replacement.json"),
+        JSON.stringify({
+          ...input,
+          token,
+          parentPid: process.pid,
+        }),
+        { mode: 0o600 },
       );
-    const handoff = makeUpdateHandoff(yield* StateStore);
-    const token = yield* handoff.saveDeferred(input.completedResult);
-    yield* Effect.tryPromise({
-      try: async () => {
-        const scriptPath = join(dirname(input.stagedBinaryPath), "replace-lando.cmd");
-        await copyFile(
-          input.executablePath,
-          join(dirname(input.stagedBinaryPath), "lando-update-helper.exe"),
-        );
-        await writeFile(
-          join(dirname(input.stagedBinaryPath), "replacement.json"),
-          JSON.stringify({
-            ...input,
-            token,
-            parentPid: process.pid,
-          }),
-          { mode: 0o600 },
-        );
-        await writeFile(scriptPath, buildWindowsReplacementScript(input, token));
-        spawner({
-          cmd: ["cmd.exe", "/d", "/s", "/c", scriptPath],
-          cwd: dirname(input.stagedBinaryPath),
-          detached: true,
-        });
-      },
-      catch: (cause) => cause,
-    }).pipe(Effect.tapError(() => handoff.consume(token)));
-  });
+      await writeFile(scriptPath, buildWindowsReplacementScript(input, token));
+      spawner({
+        cmd: ["cmd.exe", "/d", "/s", "/c", scriptPath],
+        cwd: dirname(input.stagedBinaryPath),
+        detached: true,
+      });
+    },
+    catch: (cause) => cause,
+  }).pipe(Effect.tapError(() => handoff.consume(token)));
+});
 
 export const defaultWindowsReplacement: UpdateWindowsReplacement = (input) =>
   scheduleWindowsReplacement(input).pipe(Effect.provide(StateStoreLayer.layer));

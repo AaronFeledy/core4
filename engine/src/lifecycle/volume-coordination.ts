@@ -141,36 +141,38 @@ export const withVolumeCoordinationLock = <A, E>(
     ),
   );
 
-export const withPlanVolumeCoordination = <A, E>(input: {
+export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoordination")(function* <
+  A,
+  E,
+>(input: {
   readonly plan: AppPlan;
   readonly provider: Pick<RuntimeProviderShape, "id" | "locateVolume">;
   readonly stateStore: StateStoreShape;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E>;
-}): Effect.Effect<A, E | VolumeOperationError | StateStoreError> =>
-  Effect.gen(function* () {
-    const planVolumes = yield* locatePlanVolumes(input.plan, input.provider);
-    const located = uniqueByCoordinationKey(planVolumes);
-    const keys = located.map((volume) => volume.locator.coordinationKey);
-    const held = yield* HeldCoordinationKeys;
-    const coordination: VolumeCoordination = {
-      locators: located.map((volume) => volume.locator),
-      verify: verifyLocatedVolumes(located, input.provider),
-    };
-    if (keys.every((key) => held.has(key))) return yield* input.body(coordination);
+}): Effect.fn.Return<A, E | VolumeOperationError | StateStoreError> {
+  const planVolumes = yield* locatePlanVolumes(input.plan, input.provider);
+  const located = uniqueByCoordinationKey(planVolumes);
+  const keys = located.map((volume) => volume.locator.coordinationKey);
+  const held = yield* HeldCoordinationKeys;
+  const coordination: VolumeCoordination = {
+    locators: located.map((volume) => volume.locator),
+    verify: verifyLocatedVolumes(located, input.provider),
+  };
+  if (keys.every((key) => held.has(key))) return yield* input.body(coordination);
 
-    const lockAll = (index: number): Effect.Effect<A, E | VolumeOperationError | StateStoreError> => {
-      const volume = located[index];
-      if (volume === undefined) {
-        return verifyLocatedVolumes(located, input.provider).pipe(Effect.andThen(input.body(coordination)));
-      }
-      return input.stateStore.withLock(
-        physicalVolumeLockKey(volume.locator.coordinationKey),
-        lockAll(index + 1),
-      );
-    };
-
-    return yield* lockAll(0).pipe(
-      Effect.provideService(ActiveLocatedVolumes, located),
-      Effect.provideService(HeldCoordinationKeys, new Set([...held, ...keys])),
+  const lockAll = (index: number): Effect.Effect<A, E | VolumeOperationError | StateStoreError> => {
+    const volume = located[index];
+    if (volume === undefined) {
+      return verifyLocatedVolumes(located, input.provider).pipe(Effect.andThen(input.body(coordination)));
+    }
+    return input.stateStore.withLock(
+      physicalVolumeLockKey(volume.locator.coordinationKey),
+      lockAll(index + 1),
     );
-  });
+  };
+
+  return yield* lockAll(0).pipe(
+    Effect.provideService(ActiveLocatedVolumes, located),
+    Effect.provideService(HeldCoordinationKeys, new Set([...held, ...keys])),
+  );
+});

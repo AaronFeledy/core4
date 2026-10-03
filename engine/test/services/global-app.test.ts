@@ -9,12 +9,12 @@ import { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
 import { GlobalAppService } from "@lando/sdk/services";
 
 import { parseLandofile } from "@lando/landofile/parser";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as GlobalAppServiceLayer from "../../src/global-app/service.ts";
+import * as LandoConfigService from "../../src/services/config.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
-const globalAppLayer = GlobalAppServiceLive.pipe(
-  Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),
+const globalAppLayer = GlobalAppServiceLayer.layer.pipe(
+  Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
 );
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
@@ -41,7 +41,7 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 const parseGeneratedLandofile = (content: string) =>
   Effect.runPromise(parseLandofile({ file: ".lando.dist.yml", content, cwd: "/tmp" }));
 
-describe("GlobalAppServiceLive", () => {
+describe("GlobalAppServiceLayer.layer", () => {
   test("exposes the reserved global id", async () => {
     const id = await Effect.runPromise(
       Effect.map(GlobalAppService, (service) => service.id).pipe(Effect.provide(globalAppLayer)),

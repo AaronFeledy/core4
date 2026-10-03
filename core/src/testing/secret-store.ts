@@ -1,4 +1,4 @@
-// In-memory `SecretStore` test double. Mirrors the env-backed `SecretStoreLive`
+// In-memory `SecretStore` test double. Mirrors the env-backed `EnvSecretStore.layer`
 // contract (`get`/`has`/`list`, `SecretNotFoundError` on a missing id) against a
 // `Map` of secret ids to values so `runSecretStoreContractSuite` can run without
 // reading `process.env` or any external backend.

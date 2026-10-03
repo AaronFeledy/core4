@@ -15,16 +15,19 @@ import {
 import { CapabilityError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import { AppPlanner, AppPlannerLive } from "@lando/engine/services/planner";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { AppPlanner } from "@lando/engine/services/planner";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const fixturesRoot = resolve(import.meta.dir, "../../../core/test/fixtures/compose");
-const plannerLayer = AppPlannerLive.pipe(
-  Layer.provide(Layer.mergeAll(FileSystemLive, makePluginRegistryLive({ app: false, user: false }))),
+const plannerLayer = AppPlannerLayer.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layerWith({ app: false, user: false })),
+  ),
 );
 
 const field = (value: unknown, key: string): unknown =>

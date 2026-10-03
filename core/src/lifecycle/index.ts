@@ -12,10 +12,8 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { PluginManifest } from "@lando/sdk/schema";
 import type { RegisteredCommand } from "@lando/sdk/services";
 
-import {
-  canonicalSubscriberCommandIds as canonicalEngineSubscriberCommandIds,
-  makeSubscriberRuntimeWithPrivateFileAccessLive as makeEngineSubscriberRuntimeLive,
-} from "@lando/engine/lifecycle/subscribers";
+import * as SubscriberRuntimeLayer from "@lando/engine/lifecycle/subscribers";
+import { canonicalSubscriberCommandIds as canonicalEngineSubscriberCommandIds } from "@lando/engine/lifecycle/subscribers";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
 import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled";
 
@@ -29,7 +27,7 @@ export const canonicalSubscriberCommandIds = (
   builtIns: ReadonlyArray<string> = BUILT_IN_COMMAND_IDS,
 ): ReadonlyArray<string> => canonicalEngineSubscriberCommandIds(manifests, commands, builtIns);
 
-export const makeSubscriberRuntimeLive = (
+export const layer = (
   modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
   builtIns: ReadonlyArray<string> = BUILT_IN_COMMAND_IDS,
-) => makeEngineSubscriberRuntimeLive(modules, builtIns);
+) => SubscriberRuntimeLayer.layerWithPrivateFileAccess(modules, builtIns);

@@ -32,7 +32,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
@@ -199,33 +199,42 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
-    FileSystemLive,
+    BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
-    Layer.succeed(LandofileService, {
-      discover: Effect.suspend(() => {
-        desiredLoads.push("discover");
-        return input.desiredPlan === undefined
-          ? Effect.fail(invalidDesiredConfig)
-          : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.suspend(() => {
+          desiredLoads.push("discover");
+          return input.desiredPlan === undefined
+            ? Effect.fail(invalidDesiredConfig)
+            : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+        }),
       }),
-    }),
-    Layer.succeed(AppPlanner, {
-      plan: () =>
-        input.desiredPlan === undefined
-          ? Effect.die("desired planning must not run")
-          : Effect.succeed(input.desiredPlan),
-    }),
+    ),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({
+        plan: () =>
+          input.desiredPlan === undefined
+            ? Effect.die("desired planning must not run")
+            : Effect.succeed(input.desiredPlan),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, registry),
-    Layer.succeed(EventService, {
-      publish: () => Effect.void,
-      subscribe: () => Stream.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: () => Effect.void,
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
   return {
     layer,

@@ -46,7 +46,7 @@ export const makeEnvSecretStore = (
 
   const readValue = (secret: string): string | undefined => env[`${prefix}${secret}`];
 
-  return {
+  return SecretStore.of({
     id: "env",
     schemes: [],
     get: (secret) => {
@@ -71,12 +71,12 @@ export const makeEnvSecretStore = (
         .map((key) => key.slice(prefix.length))
         .sort(),
     ),
-  };
+  });
 };
 
 /** Build the env-backed `SecretStore` Live Layer. */
-export const makeEnvSecretStoreLive = (options: EnvSecretStoreOptions = {}): Layer.Layer<SecretStore> =>
+export const layerWith = (options: EnvSecretStoreOptions = {}): Layer.Layer<SecretStore> =>
   Layer.succeed(SecretStore, makeEnvSecretStore(options));
 
 /** Default `SecretStore` Live Layer: env-backed, `LANDO_SECRET_` prefix, live `process.env`. */
-export const SecretStoreLive: Layer.Layer<SecretStore> = makeEnvSecretStoreLive();
+export const layer: Layer.Layer<SecretStore> = layerWith();

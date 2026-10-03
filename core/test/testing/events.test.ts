@@ -3,7 +3,7 @@ import { TestClock } from "effect/testing";
 
 import { Cause, Effect, Exit, Fiber } from "effect";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { expectEvent } from "../../src/testing/events.ts";
 
 describe("expectEvent", () => {
@@ -13,7 +13,7 @@ describe("expectEvent", () => {
         const waiter = yield* expectEvent("download-progress").pipe(Effect.exit, Effect.forkChild);
         yield* TestClock.adjust("6 seconds");
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      }).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -33,7 +33,7 @@ describe("expectEvent", () => {
         const waiter = yield* expectEvent("download-progress", {}).pipe(Effect.exit, Effect.forkChild);
         yield* TestClock.adjust("6 seconds");
         return yield* Fiber.join(waiter);
-      }).pipe(Effect.provide(EventServiceLive), Effect.provide(TestClock.layer())),
+      }).pipe(Effect.provide(LandoEventService.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);

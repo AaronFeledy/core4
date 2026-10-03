@@ -30,12 +30,12 @@ import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/s
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeTestStateStore } from "@lando/core/testing";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import {
   RedactionService,
@@ -44,15 +44,15 @@ import {
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 import "../../src/runtime/engine-composition.ts";
-import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
-const shellRunnerLive = makeShellRunnerLive(() => {
+const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by rebuild scenarios.");
 });
 
@@ -220,10 +220,12 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = Layer.mergeAll(
   PrivateFileAccessService.layer,
-  NoopTransactionGuardLive,
-  ConfigServiceLive,
-  FileSystemLive,
-  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+  TestLandofileLayers.layerTransactionGuard,
+  LandoConfigService.layer,
+  BunFileSystem.layer,
+  GlobalAppServiceLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+  ),
   Layer.succeed(PluginRegistry, {
     list: Effect.succeed([]),
     load: () => Effect.die("not used"),
@@ -385,7 +387,7 @@ const makeCachedBuildLayer = () => {
     }),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithAppBuild) }),
     dependencies,
-    BuildOrchestratorLive.pipe(Layer.provide(dependencies)),
+    BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
   );
   return { layer, appBuildCalls: () => appBuildCalls, events };
 };
