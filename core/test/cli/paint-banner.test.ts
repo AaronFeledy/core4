@@ -11,7 +11,7 @@ import { EventService } from "@lando/sdk/services";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeJsonRendererLive, makePlainRendererLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { DEFAULT_BANNER_RUNTIME_LABEL, formatBanner, paintBanner } from "../../src/cli/pre-renderer.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
@@ -201,7 +201,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makePlainRendererLive(io), LandoEventService.layer);
+    const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -229,7 +229,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeJsonRendererLive(io), LandoEventService.layer);
+    const layer = Layer.provideMerge(RendererRuntime.layerJson(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -252,7 +252,7 @@ describe("Renderer Layer hand-off for paint.banner", () => {
       yield* events.publish(buildBannerEvent() as never);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makePlainRendererLive(io), LandoEventService.layer);
+    const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");

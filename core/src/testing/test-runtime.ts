@@ -216,7 +216,6 @@ export type TestRuntime = {
 }[TestBootstrapLevel];
 
 type MinimalTestRuntimeOptions = TestRuntimeOptions<"minimal"> & { readonly bootstrap?: "minimal" };
-type RuntimeProviderRegistryService = Context.Service.Shape<typeof RuntimeProviderRegistry>;
 
 const fixedDateTime = DateTime.makeUnsafe("2026-06-01T00:00:00.000Z");
 const fixedMetadata: PlanMetadata = {
@@ -408,7 +407,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchRegistryEntries = new Map<string, ScratchRegistryEntry>();
   const fileSyncSessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
 
-  const loggerService: Context.Service.Shape<typeof Logger> = {
+  const loggerService = Logger.of({
     debug: (message: string, data?: Readonly<Record<string, unknown>>) =>
       Effect.sync(() => recordLoggerCall(calls, "debug", message, data)),
     info: (message: string, data?: Readonly<Record<string, unknown>>) =>
@@ -417,9 +416,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       Effect.sync(() => recordLoggerCall(calls, "warn", message, data)),
     error: (message: string, data?: Readonly<Record<string, unknown>>) =>
       Effect.sync(() => recordLoggerCall(calls, "error", message, data)),
-  };
+  });
 
-  const rendererService: Context.Service.Shape<typeof Renderer> = {
+  const rendererService = Renderer.of({
     id: "test",
     capabilities: {
       color: false,
@@ -442,55 +441,51 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           calls.renderer.push({ stream: "stderr", chunk });
         }),
     },
-  };
+  });
 
-  const telemetryService: Context.Service.Shape<typeof Telemetry> = {
+  const telemetryService = Telemetry.of({
     enabled: false,
     record: () => Effect.void,
-  };
+  });
 
   const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
   const eventQueues = new Set<Queue.Queue<LandoEvent>>();
   const eventHistoryRedactor = createRedactor("secrets");
   const matchesEventName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
-  const waitForEventMatch = <A>(
+  const waitForEventMatch = Effect.fnUntraced(function* <A>(
     label: string,
     predicate: (event: LandoEvent) => boolean,
     timeout: Duration.Input | undefined,
-  ): Effect.Effect<A, EventError> =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const queue = yield* PubSub.subscribe(eventPubSub);
-        const awaited = Stream.fromSubscription(queue).pipe(
-          Stream.filter(predicate),
-          Stream.runHead,
-          Effect.flatMap(
-            Option.match({
-              onNone: () =>
-                Effect.fail(eventError(label, `Event stream ended before receiving event: ${label}`)),
-              onSome: (event) => Effect.succeed(event as A),
-            }),
-          ),
-        );
-        return yield* timeout === undefined
-          ? awaited
-          : awaited.pipe(
-              Effect.timeoutOrElse({
-                duration: timeout,
-                orElse: () =>
-                  Effect.fail(
-                    (() =>
-                      new EventError({
-                        message: `Timed out waiting for event: ${label}`,
-                        event: label,
-                        reason: "timeout",
-                      }))(),
-                  ),
-              }),
-            );
-      }),
+  ): Effect.fn.Return<A, EventError, import("effect").Scope.Scope> {
+    const queue = yield* PubSub.subscribe(eventPubSub);
+    const awaited = Stream.fromSubscription(queue).pipe(
+      Stream.filter(predicate),
+      Stream.runHead,
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.fail(eventError(label, `Event stream ended before receiving event: ${label}`)),
+          onSome: (event) => Effect.succeed(event as A),
+        }),
+      ),
     );
-  const eventService: Context.Service.Shape<typeof EventService> = {
+    return yield* timeout === undefined
+      ? awaited
+      : awaited.pipe(
+          Effect.timeoutOrElse({
+            duration: timeout,
+            orElse: () =>
+              Effect.fail(
+                (() =>
+                  new EventError({
+                    message: `Timed out waiting for event: ${label}`,
+                    event: label,
+                    reason: "timeout",
+                  }))(),
+              ),
+          }),
+        );
+  }, Effect.scoped);
+  const eventService = EventService.of({
     publish: (event) =>
       Effect.sync(() => {
         calls.events.push(event);
@@ -544,17 +539,17 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           )
           .map((event) => eventHistoryRedactor.redactValue(event) as EventFor<Name>),
       ),
-  };
+  });
 
-  const deprecationService: Context.Service.Shape<typeof DeprecationService> = {
+  const deprecationService = DeprecationService.of({
     use: () => Effect.void,
     summary: () => Effect.succeed([]),
     lookup: () => Effect.succeed(Option.none()),
     register: () => Effect.void,
     registerAlias: () => Effect.void,
-  };
+  });
 
-  const pluginTrustStoreService: Context.Service.Shape<typeof PluginTrustStore> = {
+  const pluginTrustStoreService = PluginTrustStore.of({
     read: Effect.sync(() => pluginTrustState),
     isPluginTrusted: (name) => Effect.sync(() => pluginTrustState.trustedPlugins.includes(name)),
     trustPlugin: (name) =>
@@ -582,30 +577,28 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           trustedAuthoringRoots: uniqueSorted([...pluginTrustState.trustedAuthoringRoots, path]),
         };
       }),
-  };
+  });
 
-  const cacheService: Context.Service.Shape<typeof CacheService> = {
-    read: (key, schema) =>
-      Effect.gen(function* () {
-        const entry = cacheEntries.get(key);
-        if (entry === undefined) return null;
+  const cacheService = CacheService.of({
+    read: Effect.fnUntraced(function* (key, schema) {
+      const entry = cacheEntries.get(key);
+      if (entry === undefined) return null;
 
-        const nowMs = yield* Clock.currentTimeMillis;
-        if (isExpiredCacheEntry(entry, nowMs)) {
-          cacheEntries.delete(key);
-          return null;
-        }
+      const nowMs = yield* Clock.currentTimeMillis;
+      if (isExpiredCacheEntry(entry, nowMs)) {
+        cacheEntries.delete(key);
+        return null;
+      }
 
-        return yield* decodeCacheValue(key, entry.value, schema);
-      }),
-    write: (key, value, ttlMs) =>
-      Effect.gen(function* () {
-        const nowMs = yield* Clock.currentTimeMillis;
-        cacheEntries.set(key, {
-          value,
-          ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
-        });
-      }),
+      return yield* decodeCacheValue(key, entry.value, schema);
+    }),
+    write: Effect.fnUntraced(function* (key, value, ttlMs) {
+      const nowMs = yield* Clock.currentTimeMillis;
+      cacheEntries.set(key, {
+        value,
+        ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
+      });
+    }),
     writeAtomic: (path, content) =>
       Effect.sync(() => {
         directories.delete(path);
@@ -615,9 +608,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       Effect.sync(() => {
         cacheEntries.delete(key);
       }),
-  };
+  });
 
-  const fileSystemService: Context.Service.Shape<typeof FileSystem> = {
+  const fileSystemService = FileSystem.of({
     read: (path: string) => {
       calls.fileSystem.push({ operation: "read", path });
       const content = files.get(path) ?? "";
@@ -708,13 +701,13 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         directories.delete(path);
         files.set(path, content);
       }),
-  };
+  });
 
-  const privilegeService: Context.Service.Shape<typeof PrivilegeService> = {
+  const privilegeService = PrivilegeService.of({
     elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-  };
+  });
 
-  const secretStoreService: Context.Service.Shape<typeof SecretStore> = {
+  const secretStoreService = SecretStore.of({
     id: "test",
     get: (secret) => {
       const value = secrets.get(secret);
@@ -730,9 +723,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     },
     has: (secret) => Effect.sync(() => secrets.has(secret)),
     list: Effect.sync(() => uniqueSorted([...secrets.keys()])),
-  };
+  });
 
-  const processRunnerService: Context.Service.Shape<typeof ProcessRunner> = {
+  const processRunnerService = ProcessRunner.of({
     run: (spawnOptions) =>
       Effect.sync(() => {
         calls.processRunner.push(spawnOptions);
@@ -746,9 +739,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       calls.processRunner.push(spawnOptions);
       return Stream.make({ exitCode: 0 });
     },
-  };
+  });
 
-  const configService: Context.Service.Shape<typeof ConfigService> = {
+  const configService = ConfigService.of({
     load: Effect.sync(() => {
       calls.config.push("load");
       return config;
@@ -758,33 +751,33 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         calls.config.push(`get:${String(key)}`);
         return config[key];
       }),
-  };
+  });
 
-  const pluginRegistryService: Context.Service.Shape<typeof PluginRegistry> = {
+  const pluginRegistryService = PluginRegistry.of({
     list: Effect.succeed([]),
     load: (name) => Effect.fail(serviceNotRegistered(name)),
     loadServiceType: (id) => Effect.fail(serviceNotRegistered(id)),
     loadServiceFeature: (id) => Effect.fail(serviceNotRegistered(id)),
     loadAppFeature: (id) => Effect.fail(serviceNotRegistered(id)),
-  };
+  });
 
-  const commandRegistryService: Context.Service.Shape<typeof CommandRegistry> = {
+  const commandRegistryService = CommandRegistry.of({
     list: Effect.succeed([]),
-  };
+  });
 
-  const runtimeProviderRegistryService: RuntimeProviderRegistryService = {
+  const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
     select: () => Effect.succeed(runtimeProvider),
     resolveAppliedPlan: () => Effect.succeed(undefined),
-  };
+  });
 
   const globalPaths = {
     root: AbsolutePath.make("/test-runtime/global"),
     distLandofile: AbsolutePath.make("/test-runtime/global/.lando.dist.yml"),
     userLandofile: AbsolutePath.make("/test-runtime/global/.lando.yml"),
   };
-  const globalAppService: Context.Service.Shape<typeof GlobalAppService> = {
+  const globalAppService = GlobalAppService.of({
     id: "global",
     root: Effect.succeed(globalPaths.root),
     ensureRoot: Effect.void,
@@ -797,9 +790,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         status: "unchanged" as const,
         serviceIds: uniqueSorted(Object.keys(input?.services ?? {})),
       }),
-  };
+  });
 
-  const appPlannerService: Context.Service.Shape<typeof AppPlanner> = {
+  const appPlannerService = AppPlanner.of({
     plan: (landofile) =>
       Effect.succeed(
         makeAppPlan({
@@ -808,11 +801,11 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           providerId: landofile.provider ?? providerId,
         }),
       ),
-  };
+  });
 
-  const landofileService: Context.Service.Shape<typeof LandofileService> = {
+  const landofileService = LandofileService.of({
     discover: Effect.succeed(makeLandofile(providerId)),
-  };
+  });
 
   const scratchPaths = (id: string) => {
     const instanceRoot = AbsolutePath.make(`/test-runtime/scratch/${id}`);
@@ -845,7 +838,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     network: {},
     endpoints: [],
   });
-  const scratchService: Context.Service.Shape<typeof ScratchAppService> = {
+  const scratchService: Context.Service.Shape<typeof ScratchAppService> = ScratchAppService.of({
     kind: "scratch",
     root: Effect.succeed(AbsolutePath.make("/test-runtime/scratch")),
     ensureRoot: Effect.succeed(AbsolutePath.make("/test-runtime/scratch")),
@@ -894,9 +887,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         }),
       ),
     gc: () => Effect.sync(() => ({ inspected: scratchSummaries.size, reaped: [], errors: [] })),
-  };
+  });
 
-  const scratchRegistryService: Context.Service.Shape<typeof ScratchRegistry> = {
+  const scratchRegistryService = ScratchRegistry.of({
     read: () =>
       Effect.succeed({
         version: 1,
@@ -912,14 +905,14 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       }),
     list: () => Effect.succeed(registryEntriesFrom(scratchRegistryEntries)),
     get: (id) => Effect.sync(() => scratchRegistryEntries.get(id)),
-  };
+  });
 
-  const scratchResourceScannerService: Context.Service.Shape<typeof ScratchResourceScanner> = {
+  const scratchResourceScannerService = ScratchResourceScanner.of({
     listScratchIds: Effect.succeed([]),
     pruneScratch: () => Effect.void,
-  };
+  });
 
-  const toolingEngineService: Context.Service.Shape<typeof ToolingEngine> = {
+  const toolingEngineService = ToolingEngine.of({
     id: "test",
     run: (invocation, plan) =>
       Effect.succeed({
@@ -929,9 +922,9 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         stdout: "",
         stderr: "",
       }),
-  };
+  });
 
-  const fileSyncEngineService: Context.Service.Shape<typeof FileSyncEngine> = {
+  const fileSyncEngineService = FileSyncEngine.of({
     id: "test",
     displayName: "Test Runtime File Sync",
     capabilities: {
@@ -988,7 +981,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         }),
       ),
     streamEvents: () => Stream.empty,
-  };
+  });
 
   const minimalLayer: Layer.Layer<MinimalTestRuntimeServices> = Layer.mergeAll(
     Layer.succeed(Logger, loggerService),
@@ -1068,7 +1061,7 @@ export function provideTestRuntime(options: TestRuntimeOptions = {}): TestRuntim
  * Builds a one-service Layer override for tests that need to replace a runtime double.
  */
 export const withService = <I, S>(tag: Context.Service<I, S>, service: S): Layer.Layer<I> =>
-  Layer.succeed(tag, service);
+  Layer.succeed(tag, tag.of(service));
 
 /**
  * A pre-built Effect `Layer` providing all test service doubles with `bootstrap: "provider"`.

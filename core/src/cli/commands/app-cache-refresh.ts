@@ -62,58 +62,58 @@ type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | 
 export const renderAppCacheRefreshResult = (result: AppCacheRefreshResult): string =>
   `refreshed: ${result.app} (${result.commandsCompiled} command${result.commandsCompiled === 1 ? "" : "s"})`;
 
-const discoverScripts = (cwd: string): Effect.Effect<ReadonlyArray<DiscoveredBunShellScript>, never> =>
-  Effect.gen(function* () {
-    const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
-    if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
-    return yield* discoverBunShellScripts({ appRoot }).pipe(
-      Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
-    );
-  });
+const discoverScripts = Effect.fnUntraced(function* (
+  cwd: string,
+): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, never> {
+  const appRoot = yield* Effect.promise(() => findAppRoot(cwd));
+  if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
+  return yield* discoverBunShellScripts({ appRoot }).pipe(
+    Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
+  );
+});
 
-export const refreshAppCache = (
+export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   options: AppCacheRefreshOptions = {},
-): Effect.Effect<AppCacheRefreshResult, AppCacheRefreshError, AppCacheRefreshServices> =>
-  Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const pluginRegistry = yield* PluginRegistry;
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+): Effect.fn.Return<AppCacheRefreshResult, AppCacheRefreshError, AppCacheRefreshServices> {
+  const landofileService = yield* LandofileService;
+  const pluginRegistry = yield* PluginRegistry;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+  const landofile = yield* loadUserLandofile(landofileService);
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* planner.plan(landofile, capabilities);
 
-    const cwd = options.cwd ?? process.cwd();
-    const scripts = yield* discoverScripts(cwd);
-    const entries = yield* Effect.try({
-      try: () => compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan)),
-      catch: (cause) => {
-        if (cause instanceof ToolingCompileError) return cause;
-        throw cause;
-      },
-    });
-    const aliasError = commandAliasRegistrationError(
-      landofile.commandAliases,
-      entries.map((entry) => entry.id),
-    );
-    if (aliasError !== undefined) yield* Effect.fail(aliasError);
-
-    const appCachePath = yield* writeAppCommandCacheStrict({
-      landofile,
-      entries,
-      cwd,
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    });
-    const pluginCachePath = yield* writePluginCommandCacheStrict({
-      manifests: yield* pluginRegistry.list,
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    });
-
-    return {
-      app: plan.name,
-      commandsCompiled: entries.length,
-      ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
-      pluginCommandCachePath: pluginCachePath,
-    };
+  const cwd = options.cwd ?? process.cwd();
+  const scripts = yield* discoverScripts(cwd);
+  const entries = yield* Effect.try({
+    try: () => compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan)),
+    catch: (cause) => {
+      if (cause instanceof ToolingCompileError) return cause;
+      throw cause;
+    },
   });
+  const aliasError = commandAliasRegistrationError(
+    landofile.commandAliases,
+    entries.map((entry) => entry.id),
+  );
+  if (aliasError !== undefined) yield* Effect.fail(aliasError);
+
+  const appCachePath = yield* writeAppCommandCacheStrict({
+    landofile,
+    entries,
+    cwd,
+    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+  });
+  const pluginCachePath = yield* writePluginCommandCacheStrict({
+    manifests: yield* pluginRegistry.list,
+    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+  });
+
+  return {
+    app: plan.name,
+    commandsCompiled: entries.length,
+    ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
+    pluginCommandCachePath: pluginCachePath,
+  };
+});

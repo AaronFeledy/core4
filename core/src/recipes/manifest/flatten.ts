@@ -186,58 +186,57 @@ const readBuiltinParent = (
   );
 };
 
-const readLocalParent = (
+const readLocalParent = Effect.fnUntraced(function* (
   ref: string,
   childSource: string,
   ctx: FlattenRecipeContext,
-): Effect.Effect<RawParent, FlattenError> =>
-  Effect.gen(function* () {
-    const expanded = expandLocalParent(ref, childSource);
-    const jailReal = ctx.jailRoot === undefined ? undefined : yield* realpathOf(ctx.jailRoot, ref, ctx.chain);
-    if (jailReal !== undefined) {
-      yield* rejectIfOutsideJail(resolve(expanded), jailReal, ref, ctx.chain);
-      const expandedReal = yield* realpathOf(expanded, ref, ctx.chain);
-      yield* rejectIfOutsideJail(expandedReal, jailReal, ref, ctx.chain);
-    }
-    const ymlPath = resolve(expanded, "recipe.yml");
-    const tsPath = resolve(expanded, "recipe.ts");
-    const [ymlExists, tsExists] = yield* Effect.tryPromise({
-      try: () => Promise.all([Bun.file(ymlPath).exists(), Bun.file(tsPath).exists()]),
-      catch: () => parentNotFound(ref, ctx.chain),
-    });
-    if (ymlExists && tsExists) {
-      return yield* Effect.fail(
-        new RecipeManifestValidationError({
-          message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
-          source: expanded,
-          issues: ["recipe.yml and recipe.ts are mutually exclusive in a recipe directory"],
-        }),
-      );
-    }
-    if (tsExists && ctx.allowRecipeTs === false) {
-      return yield* Effect.fail(
-        new RecipeManifestValidationError({
-          message: `Remote recipe parents cannot execute recipe.ts at ${tsPath}.`,
-          source: tsPath,
-          issues: ["remote extends hops load YAML only; recipe.ts is not executed from a remote parent tree"],
-        }),
-      );
-    }
-    if (tsExists) {
-      if (jailReal !== undefined) {
-        yield* rejectIfOutsideJail(yield* realpathOf(tsPath, ref, ctx.chain), jailReal, ref, ctx.chain);
-      }
-      const content = yield* readText(tsPath, ref, ctx.chain);
-      const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
-      return { source: tsPath, parsed };
-    }
-    if (!ymlExists) return yield* Effect.fail(parentNotFound(ref, ctx.chain));
-    if (jailReal !== undefined) {
-      yield* rejectIfOutsideJail(yield* realpathOf(ymlPath, ref, ctx.chain), jailReal, ref, ctx.chain);
-    }
-    const content = yield* readText(ymlPath, ref, ctx.chain);
-    return { source: ymlPath, parsed: yield* parseRecipeYaml({ source: ymlPath, content }) };
+): Effect.fn.Return<RawParent, FlattenError> {
+  const expanded = expandLocalParent(ref, childSource);
+  const jailReal = ctx.jailRoot === undefined ? undefined : yield* realpathOf(ctx.jailRoot, ref, ctx.chain);
+  if (jailReal !== undefined) {
+    yield* rejectIfOutsideJail(resolve(expanded), jailReal, ref, ctx.chain);
+    const expandedReal = yield* realpathOf(expanded, ref, ctx.chain);
+    yield* rejectIfOutsideJail(expandedReal, jailReal, ref, ctx.chain);
+  }
+  const ymlPath = resolve(expanded, "recipe.yml");
+  const tsPath = resolve(expanded, "recipe.ts");
+  const [ymlExists, tsExists] = yield* Effect.tryPromise({
+    try: () => Promise.all([Bun.file(ymlPath).exists(), Bun.file(tsPath).exists()]),
+    catch: () => parentNotFound(ref, ctx.chain),
   });
+  if (ymlExists && tsExists) {
+    return yield* Effect.fail(
+      new RecipeManifestValidationError({
+        message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
+        source: expanded,
+        issues: ["recipe.yml and recipe.ts are mutually exclusive in a recipe directory"],
+      }),
+    );
+  }
+  if (tsExists && ctx.allowRecipeTs === false) {
+    return yield* Effect.fail(
+      new RecipeManifestValidationError({
+        message: `Remote recipe parents cannot execute recipe.ts at ${tsPath}.`,
+        source: tsPath,
+        issues: ["remote extends hops load YAML only; recipe.ts is not executed from a remote parent tree"],
+      }),
+    );
+  }
+  if (tsExists) {
+    if (jailReal !== undefined) {
+      yield* rejectIfOutsideJail(yield* realpathOf(tsPath, ref, ctx.chain), jailReal, ref, ctx.chain);
+    }
+    const content = yield* readText(tsPath, ref, ctx.chain);
+    const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
+    return { source: tsPath, parsed };
+  }
+  if (!ymlExists) return yield* Effect.fail(parentNotFound(ref, ctx.chain));
+  if (jailReal !== undefined) {
+    yield* rejectIfOutsideJail(yield* realpathOf(ymlPath, ref, ctx.chain), jailReal, ref, ctx.chain);
+  }
+  const content = yield* readText(ymlPath, ref, ctx.chain);
+  return { source: ymlPath, parsed: yield* parseRecipeYaml({ source: ymlPath, content }) };
+});
 
 const readParent = (
   ref: string,
@@ -282,32 +281,31 @@ const nextFlattenContext = (
   };
 };
 
-const flattenRaw = (
+const flattenRaw = Effect.fnUntraced(function* (
   source: string,
   parsed: unknown,
   ctx: FlattenRecipeContext,
-): Effect.Effect<Record<string, unknown>, FlattenError> =>
-  Effect.gen(function* () {
-    if (!Predicate.isObject(parsed)) return {};
-    const ref = extendsRefOf(parsed);
-    if (ref === undefined) return stripExtendsAndDrop(parsed);
+): Effect.fn.Return<Record<string, unknown>, FlattenError> {
+  if (!Predicate.isObject(parsed)) return {};
+  const ref = extendsRefOf(parsed);
+  if (ref === undefined) return stripExtendsAndDrop(parsed);
 
-    const nextIdentity = parentIdentity(ref, source);
-    if (ctx.chain.includes(nextIdentity)) {
-      return yield* Effect.fail(extendsError("cycle", [...ctx.chain, nextIdentity]));
-    }
-    if (ctx.hops >= MAX_RECIPE_EXTENDS_DEPTH) {
-      return yield* Effect.fail(extendsError("depth", [...ctx.chain, nextIdentity]));
-    }
+  const nextIdentity = parentIdentity(ref, source);
+  if (ctx.chain.includes(nextIdentity)) {
+    return yield* Effect.fail(extendsError("cycle", [...ctx.chain, nextIdentity]));
+  }
+  if (ctx.hops >= MAX_RECIPE_EXTENDS_DEPTH) {
+    return yield* Effect.fail(extendsError("depth", [...ctx.chain, nextIdentity]));
+  }
 
-    const parent = yield* readParent(ref, source, ctx);
-    const parentFlat = yield* flattenRaw(
-      parent.source,
-      parent.parsed,
-      nextFlattenContext(ctx, ref, parent.source, nextIdentity),
-    );
-    return mergeRecipeManifests(parentFlat, parsed);
-  });
+  const parent = yield* readParent(ref, source, ctx);
+  const parentFlat = yield* flattenRaw(
+    parent.source,
+    parent.parsed,
+    nextFlattenContext(ctx, ref, parent.source, nextIdentity),
+  );
+  return mergeRecipeManifests(parentFlat, parsed);
+});
 
 export const flattenRecipe = (
   source: string,

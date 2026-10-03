@@ -48,16 +48,19 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
     fsLayer,
     PluginRegistryLayer.layer,
     Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
   );
   // When the safe-mode entry point builds the runtime and collects its report.
   const report = await Effect.runPromise(
     resilientDoctorReport({ env: {} }).pipe(
-      Effect.provideService(RuntimeLayerFactory, { make: () => runtime }),
+      Effect.provideService(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtime })),
     ),
   );
   // Then exactly the injected journal is reported, not journals from the ambient home.

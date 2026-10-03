@@ -32,16 +32,17 @@ import { makeTestManagedFileStore } from "../../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../../src/testing/state-store.ts";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
-const service = (id: string): RouterServiceShape => ({
-  id,
-  capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-  setup: () => Effect.void,
-  revalidateStartup: Effect.void,
-  applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-  removeRoutes: () => Effect.void,
-  status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
-  stop: Effect.void,
-});
+const service = (id: string): RouterServiceShape =>
+  RouterService.of({
+    id,
+    capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+    setup: () => Effect.void,
+    revalidateStartup: Effect.void,
+    applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+    removeRoutes: () => Effect.void,
+    status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
+    stop: Effect.void,
+  });
 
 const registration = (
   id: string,
@@ -53,20 +54,26 @@ const registration = (
 });
 
 const config = Schema.decodeSync(GlobalConfig)({});
-const configLayer = Layer.succeed(ConfigService, {
-  load: Effect.succeed(config),
-  get: (key) => Effect.succeed(config[key]),
-});
+const configLayer = Layer.succeed(
+  ConfigService,
+  ConfigService.of({
+    load: Effect.succeed(config),
+    get: (key) => Effect.succeed(config[key]),
+  }),
+);
 const pathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 const managedFileLayer = Layer.succeed(
   ManagedFileService,
   Effect.runSync(makeTestManagedFileStore()).service,
 );
 const stateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
-const privateFileAccessLayer = Layer.succeed(PrivateFileAccessService, {
-  enforce: async () => undefined,
-  verify: async () => undefined,
-});
+const privateFileAccessLayer = Layer.succeed(
+  PrivateFileAccessService,
+  PrivateFileAccessService.of({
+    enforce: async () => undefined,
+    verify: async () => undefined,
+  }),
+);
 const stubHttpClient = HttpClient.make((request) =>
   Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
 );
@@ -128,8 +135,8 @@ const buildSelectedProxy = (
         RouterServiceRegistryLayer.layerSelected.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(RouterServiceRegistry, registry),
-              Layer.succeed(CertificateAuthorityResolver, resolver),
+              Layer.succeed(RouterServiceRegistry, RouterServiceRegistry.of(registry)),
+              Layer.succeed(CertificateAuthorityResolver, CertificateAuthorityResolver.of(resolver)),
               Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/proxy-registry-test" })),
               provideTestRuntime({ bootstrap: "global" }),
             ),

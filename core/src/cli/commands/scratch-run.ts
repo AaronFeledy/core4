@@ -315,78 +315,77 @@ const resolveRunService = (
   );
 };
 
-export const scratchRun = (
+export const scratchRun = Effect.fn("ScratchRun.run")(function* (
   options: ScratchRunOptions,
   deps: ScratchRunDeps = defaultScratchRunDeps,
-): Effect.Effect<ScratchRunResult, ScratchRunError, ScratchRunServices> =>
-  Effect.gen(function* () {
-    const issue = options.issues[0];
-    if (issue !== undefined) return yield* Effect.fail(usageError(issue));
-    if (options.command.length === 0) {
-      return yield* Effect.fail(usageError("apps:scratch:run requires a command to run."));
-    }
-    const registry = yield* RuntimeProviderRegistry;
-    return yield* Effect.scoped(
-      Effect.gen(function* () {
-        const { handle, plan } = yield* deps.acquireWithPlan({
-          source: { kind: "recipe", ref: options.from ?? DEFAULT_SCRATCH_RUN_RECIPE },
-          isolate: options.mount ? "cwd" : "baked",
-          detached: false,
-          ...(Object.keys(options.answers).length === 0 ? {} : { answers: options.answers }),
-          ...(options.mount ? { mountCwd: {} } : {}),
-        });
-        const service = yield* resolveRunService(options.service, plan);
-        const provider = yield* registry.select(plan).pipe(
+): Effect.fn.Return<ScratchRunResult, ScratchRunError, ScratchRunServices> {
+  const issue = options.issues[0];
+  if (issue !== undefined) return yield* Effect.fail(usageError(issue));
+  if (options.command.length === 0) {
+    return yield* Effect.fail(usageError("apps:scratch:run requires a command to run."));
+  }
+  const registry = yield* RuntimeProviderRegistry;
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const { handle, plan } = yield* deps.acquireWithPlan({
+        source: { kind: "recipe", ref: options.from ?? DEFAULT_SCRATCH_RUN_RECIPE },
+        isolate: options.mount ? "cwd" : "baked",
+        detached: false,
+        ...(Object.keys(options.answers).length === 0 ? {} : { answers: options.answers }),
+        ...(options.mount ? { mountCwd: {} } : {}),
+      });
+      const service = yield* resolveRunService(options.service, plan);
+      const provider = yield* registry.select(plan).pipe(
+        Effect.mapError(
+          (cause) =>
+            new ScratchAppError({
+              message: `Unable to select a provider for scratch app ${handle.id}.`,
+              operation: "run",
+              cause,
+            }),
+        ),
+      );
+      const landofile = yield* deps.readLandofile(handle.id);
+      const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+      const env = withAgentContextEnv(undefined, process.env, {
+        allowlist,
+        lowerThanEnv: service.environment,
+      });
+      const tty = deps.stdinIsTty();
+      const result = yield* provider
+        .exec(
+          { app: plan.id, service: service.name, plan },
+          {
+            command: options.command,
+            ...(env === undefined ? {} : { env }),
+            ...(tty ? { tty: true, stdin: "inherit" as const } : {}),
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+          },
+        )
+        .pipe(
           Effect.mapError(
             (cause) =>
               new ScratchAppError({
-                message: `Unable to select a provider for scratch app ${handle.id}.`,
+                message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
                 operation: "run",
                 cause,
               }),
           ),
         );
-        const landofile = yield* deps.readLandofile(handle.id);
-        const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-        const env = withAgentContextEnv(undefined, process.env, {
-          allowlist,
-          lowerThanEnv: service.environment,
-        });
-        const tty = deps.stdinIsTty();
-        const result = yield* provider
-          .exec(
-            { app: plan.id, service: service.name, plan },
-            {
-              command: options.command,
-              ...(env === undefined ? {} : { env }),
-              ...(tty ? { tty: true, stdin: "inherit" as const } : {}),
-              ...(options.signal === undefined ? {} : { signal: options.signal }),
-            },
-          )
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ScratchAppError({
-                  message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
-                  operation: "run",
-                  cause,
-                }),
-            ),
-          );
-        if (options.keep) yield* deps.detach(handle.id);
-        return {
-          scratchId: handle.id,
-          service: String(service.name),
-          command: options.command,
-          exitCode: result.exitCode,
-          kept: options.keep,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          redactionTokens: redactionTokensFromEnv(env),
-        } satisfies ScratchRunResult;
-      }),
-    );
-  });
+      if (options.keep) yield* deps.detach(handle.id);
+      return {
+        scratchId: handle.id,
+        service: String(service.name),
+        command: options.command,
+        exitCode: result.exitCode,
+        kept: options.keep,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        redactionTokens: redactionTokensFromEnv(env),
+      } satisfies ScratchRunResult;
+    }),
+  );
+});
 
 export const renderScratchRunResult = (result: ScratchRunResult, ctx?: RenderContext): string | undefined => {
   const lines: string[] = [];

@@ -158,17 +158,23 @@ const makeInfoLayer = () => {
   };
 
   return Layer.mergeAll(
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "test-info-secret", services: {} }),
-    }).pipe(Layer.provide(emptyConfigServiceLayer)),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }).pipe(
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "test-info-secret", services: {} }),
+      }),
+    ).pipe(Layer.provide(emptyConfigServiceLayer)),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
     ),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
 };
 

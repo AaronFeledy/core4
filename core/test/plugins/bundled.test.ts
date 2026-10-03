@@ -203,17 +203,23 @@ describe("bundled plugin descriptor tables", () => {
       const registryLayer = PluginRegistryLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(ConfigService, {
-              load: Effect.succeed({ userDataRoot } as never),
-              get: (key) =>
-                Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
-            }),
-            Layer.succeed(Logger, {
-              debug: () => Effect.void,
-              info: () => Effect.void,
-              warn: () => Effect.void,
-              error: () => Effect.void,
-            }),
+            Layer.succeed(
+              ConfigService,
+              ConfigService.of({
+                load: Effect.succeed({ userDataRoot } as never),
+                get: (key) =>
+                  Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
+              }),
+            ),
+            Layer.succeed(
+              Logger,
+              Logger.of({
+                debug: () => Effect.void,
+                info: () => Effect.void,
+                warn: () => Effect.void,
+                error: () => Effect.void,
+              }),
+            ),
           ),
         ),
       );

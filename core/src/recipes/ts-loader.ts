@@ -11,7 +11,7 @@
  */
 import { dirname } from "node:path";
 
-import { Duration, Effect } from "effect";
+import { Clock, Duration, Effect } from "effect";
 
 import { RecipeManifestParseError } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
@@ -58,10 +58,13 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
   return await resolveTsModuleResult(exported);
 };
 
-const evaluateImport = (filePath: string): Effect.Effect<unknown, RecipeManifestParseError> =>
-  Effect.tryPromise({
+const evaluateImport = Effect.fnUntraced(function* (
+  filePath: string,
+): Effect.fn.Return<unknown, RecipeManifestParseError> {
+  const timestamp = yield* Clock.currentTimeMillis;
+  return yield* Effect.tryPromise({
     try: async () => {
-      const module = await import(`${filePath}?t=${Date.now()}`);
+      const module = await import(`${filePath}?t=${timestamp}`);
       return await unwrapDefault(filePath, module);
     },
     catch: (cause) =>
@@ -73,6 +76,7 @@ const evaluateImport = (filePath: string): Effect.Effect<unknown, RecipeManifest
             cause,
           ),
   });
+});
 
 export interface LoadRecipeTsOptions {
   readonly filePath: string;
@@ -81,37 +85,36 @@ export interface LoadRecipeTsOptions {
   readonly timeoutMs?: number;
 }
 
-export const loadRecipeTs = (
+export const loadRecipeTs = Effect.fnUntraced(function* (
   options: LoadRecipeTsOptions,
-): Effect.Effect<unknown, RecipeManifestParseError> =>
-  Effect.gen(function* () {
-    yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
-      Effect.mapError((cause) =>
-        isSandboxParseFailure(cause)
-          ? parseError(
-              options.filePath,
-              `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${
-                cause.cause instanceof Error ? cause.cause.message : String(cause.cause)
-              }`,
-              cause,
-            )
-          : parseError(
-              options.filePath,
-              `recipe.ts at ${options.filePath} has a disallowed import: ${cause.violation}. Programmatic recipes must not perform host shell-outs, remote module fetches, or filesystem access outside the recipe directory.`,
-              cause,
-            ),
+): Effect.fn.Return<unknown, RecipeManifestParseError> {
+  yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
+    Effect.mapError((cause) =>
+      isSandboxParseFailure(cause)
+        ? parseError(
+            options.filePath,
+            `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${
+              cause.cause instanceof Error ? cause.cause.message : String(cause.cause)
+            }`,
+            cause,
+          )
+        : parseError(
+            options.filePath,
+            `recipe.ts at ${options.filePath} has a disallowed import: ${cause.violation}. Programmatic recipes must not perform host shell-outs, remote module fetches, or filesystem access outside the recipe directory.`,
+            cause,
+          ),
+    ),
+  );
+  const timeoutMs = options.timeoutMs ?? resolveRecipeTimeoutMs();
+  return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
+    duration: Duration.millis(timeoutMs),
+    orElse: () =>
+      Effect.fail(
+        (() =>
+          parseError(
+            options.filePath,
+            `recipe.ts at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
+          ))(),
       ),
-    );
-    const timeoutMs = options.timeoutMs ?? resolveRecipeTimeoutMs();
-    return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
-      duration: Duration.millis(timeoutMs),
-      orElse: () =>
-        Effect.fail(
-          (() =>
-            parseError(
-              options.filePath,
-              `recipe.ts at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
-            ))(),
-        ),
-    });
   });
+});

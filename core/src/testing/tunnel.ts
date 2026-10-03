@@ -87,7 +87,7 @@ export const makeTestTunnelService = () =>
           );
         }
 
-        return Effect.gen(function* () {
+        return Effect.fnUntraced(function* () {
           const sessionId = `tun_${nextId++}`;
           const detachedMode = request.detached === true;
           const publicUrl = `https://${TUNNEL_SECRET}.public.example.test/${sessionId}`;
@@ -163,7 +163,7 @@ export const makeTestTunnelService = () =>
             }),
           );
           return session;
-        });
+        })();
       },
       stop: (request) =>
         Effect.sync(() => {

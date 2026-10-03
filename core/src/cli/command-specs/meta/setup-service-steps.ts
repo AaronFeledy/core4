@@ -47,139 +47,136 @@ const recordAbsentHostIntegration = (
   return recorder.recordUnavailable(id, serviceName);
 };
 
-export const runCaSetupStep = (
+export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function* (
   input: unknown,
   privilegeOptions: SetupPrivilegeOptions,
   recorder: SetupReadinessRecorder,
   selectedProviderId = "lando",
   platform: NodeJS.Platform = process.platform,
-) =>
-  Effect.gen(function* () {
-    const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
-    const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
-    const authority = yield* Effect.serviceOption(CertificateAuthority);
-    if (resolver._tag === "None" && authority._tag === "None") {
-      if (skipTrustInstall) {
-        yield* recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE });
-      } else {
-        yield* recordAbsentHostIntegration(recorder, selectedProviderId, "ca", "Certificate authority");
-      }
-      return;
+) {
+  const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
+  const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
+  const authority = yield* Effect.serviceOption(CertificateAuthority);
+  if (resolver._tag === "None" && authority._tag === "None") {
+    if (skipTrustInstall) {
+      yield* recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE });
+    } else {
+      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "ca", "Certificate authority");
     }
-    const ca =
-      resolver._tag === "Some"
-        ? yield* resolver.value.resolve.pipe(
-            Effect.catchTag("NoCertificateAuthorityError", (cause) =>
-              Effect.as(
-                skipTrustInstall
-                  ? recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE })
-                  : recorder.record({
-                      id: "ca",
-                      status: "unavailable",
-                      evidence: cause.message,
-                      remediation: cause.remediation,
-                    }),
-                undefined,
-              ),
+    return;
+  }
+  const ca =
+    resolver._tag === "Some"
+      ? yield* resolver.value.resolve.pipe(
+          Effect.catchTag("NoCertificateAuthorityError", (cause) =>
+            Effect.as(
+              skipTrustInstall
+                ? recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE })
+                : recorder.record({
+                    id: "ca",
+                    status: "unavailable",
+                    evidence: cause.message,
+                    remediation: cause.remediation,
+                  }),
+              undefined,
             ),
-            Effect.catchTag("AmbiguousCertificateAuthoritiesError", (cause) =>
-              Effect.as(
-                recorder.record({
-                  id: "ca",
-                  status: "failed",
-                  evidence: cause.message,
-                  remediation: cause.remediation,
-                }),
-                undefined,
-              ),
-            ),
-            Effect.tapError((cause) => recorder.recordFailure("ca", cause)),
-          )
-        : authority._tag === "Some"
-          ? authority.value
-          : undefined;
-    if (ca !== undefined) {
-      if (platform === "win32" && !skipTrustInstall) {
-        const events = yield* Effect.serviceOption(EventService);
-        if (events._tag === "Some") {
-          yield* events.value
-            .publish(
-              MessageInfoEvent.make({
-                body: "Installing local certificate trust. Windows may open a Security Warning; approve it to continue. --yes cannot answer Windows security prompts.",
-                timestamp: DateTime.nowUnsafe(),
+          ),
+          Effect.catchTag("AmbiguousCertificateAuthoritiesError", (cause) =>
+            Effect.as(
+              recorder.record({
+                id: "ca",
+                status: "failed",
+                evidence: cause.message,
+                remediation: cause.remediation,
               }),
-            )
-            .pipe(Effect.ignore);
-        }
+              undefined,
+            ),
+          ),
+          Effect.tapError((cause) => recorder.recordFailure("ca", cause)),
+        )
+      : authority._tag === "Some"
+        ? authority.value
+        : undefined;
+  if (ca !== undefined) {
+    if (platform === "win32" && !skipTrustInstall) {
+      const events = yield* Effect.serviceOption(EventService);
+      if (events._tag === "Some") {
+        yield* events.value
+          .publish(
+            MessageInfoEvent.make({
+              body: "Installing local certificate trust. Windows may open a Security Warning; approve it to continue. --yes cannot answer Windows security prompts.",
+              timestamp: yield* DateTime.now,
+            }),
+          )
+          .pipe(Effect.ignore);
       }
-      yield* ca
-        .setup({
-          force: false,
-          ...privilegeOptions,
-          ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
-        })
-        .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
-      yield* recorder.record({
-        id: "ca",
-        status: skipTrustInstall ? "skipped" : "satisfied",
-        evidence: skipTrustInstall ? SKIP_CA_TRUST_EVIDENCE : "Certificate authority setup completed.",
-      });
     }
-  });
+    yield* ca
+      .setup({
+        force: false,
+        ...privilegeOptions,
+        ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
+      })
+      .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
+    yield* recorder.record({
+      id: "ca",
+      status: skipTrustInstall ? "skipped" : "satisfied",
+      evidence: skipTrustInstall ? SKIP_CA_TRUST_EVIDENCE : "Certificate authority setup completed.",
+    });
+  }
+});
 
-export const runProxySetupStep = (
+export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(function* (
   input: unknown,
   recorder: SetupReadinessRecorder,
   selectedProviderId = "lando",
-) =>
-  Effect.gen(function* () {
-    if (inputBooleanFlag(input, "skip-proxy")) {
-      yield* recorder.record({
-        id: "proxy",
-        status: "skipped",
-        evidence: "Router setup skipped by --skip-proxy.",
-      });
-      return;
-    }
-    const proxy = yield* Effect.serviceOption(RouterService);
-    if (proxy._tag === "Some") {
-      const defaultDomain = yield* resolveProxyDefaultDomain;
-      const { router, routerPin } = yield* resolveRouterConfigForApp();
-      const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
-      yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove })).pipe(
-        Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
-      );
-      yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });
-    } else {
-      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "proxy", "Proxy");
-    }
-  });
+) {
+  if (inputBooleanFlag(input, "skip-proxy")) {
+    yield* recorder.record({
+      id: "proxy",
+      status: "skipped",
+      evidence: "Router setup skipped by --skip-proxy.",
+    });
+    return;
+  }
+  const proxy = yield* Effect.serviceOption(RouterService);
+  if (proxy._tag === "Some") {
+    const defaultDomain = yield* resolveProxyDefaultDomain;
+    const { router, routerPin } = yield* resolveRouterConfigForApp();
+    const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
+    yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove })).pipe(
+      Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
+    );
+    yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });
+  } else {
+    yield* recordAbsentHostIntegration(recorder, selectedProviderId, "proxy", "Proxy");
+  }
+});
 
-export const runShellServiceSetupStep = (
+export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceSetupStep")(function* (
   input: unknown,
   recorder: SetupReadinessRecorder,
   selectedProviderId = "lando",
-) =>
-  Effect.gen(function* () {
-    if (inputBooleanFlag(input, "skip-shell-integration")) {
-      yield* recorder.record({
-        id: "shell",
-        status: "skipped",
-        evidence: "Shell integration skipped by --skip-shell-integration.",
-      });
-      return;
-    }
-    const ssh = yield* Effect.serviceOption(SshService);
-    if (ssh._tag === "Some") {
-      yield* ssh.value
-        .setup({ force: false })
-        .pipe(Effect.tapError((cause) => recorder.recordFailure("shell", cause)));
-      yield* recorder.record({
-        id: "shell",
-        status: "satisfied",
-        evidence: "Shell integration setup completed.",
-      });
-    } else {
-      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "shell", "Shell integration");
-    }
-  });
+) {
+  if (inputBooleanFlag(input, "skip-shell-integration")) {
+    yield* recorder.record({
+      id: "shell",
+      status: "skipped",
+      evidence: "Shell integration skipped by --skip-shell-integration.",
+    });
+    return;
+  }
+  const ssh = yield* Effect.serviceOption(SshService);
+  if (ssh._tag === "Some") {
+    yield* ssh.value
+      .setup({ force: false })
+      .pipe(Effect.tapError((cause) => recorder.recordFailure("shell", cause)));
+    yield* recorder.record({
+      id: "shell",
+      status: "satisfied",
+      evidence: "Shell integration setup completed.",
+    });
+  } else {
+    yield* recordAbsentHostIntegration(recorder, selectedProviderId, "shell", "Shell integration");
+  }
+});

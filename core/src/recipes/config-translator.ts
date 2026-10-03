@@ -40,83 +40,82 @@ const detect = (
 const knownRecipeIds = (decomposers: ReadonlyMap<string, RecipeDecomposerFactory>): string =>
   [...decomposers.keys()].sort().join(", ");
 
-const translateRecipe = (
+const translateRecipe = Effect.fn("RecipeConfigTranslator.translateRecipe")(function* (
   ports: RecipeConfigTranslatorPorts,
   input: ConfigTranslateRecipeRequestInput,
-): Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never> =>
-  Effect.gen(function* () {
-    const factory = ports.decomposers.get(input.recipe.id);
-    if (factory === undefined) {
-      const known = knownRecipeIds(ports.decomposers);
-      return yield* Effect.fail(
+): Effect.fn.Return<ConfigTranslateResult, ConfigTranslateError, never> {
+  const factory = ports.decomposers.get(input.recipe.id);
+  if (factory === undefined) {
+    const known = knownRecipeIds(ports.decomposers);
+    return yield* Effect.fail(
+      translateError(
+        `Unknown recipe id ${input.recipe.id}.`,
+        known === ""
+          ? "Register a recipe decomposer before translating a recipe request."
+          : `Choose one of: ${known}.`,
+      ),
+    );
+  }
+  const decomposer = factory({ redactor: ports.redactor });
+  if (
+    decomposer.producer.recipeId !== input.recipe.id ||
+    decomposer.producer.manifestVersion !== input.recipe.version
+  ) {
+    return yield* Effect.fail(
+      translateError(
+        `Recipe producer ${decomposer.producer.recipeId}@${decomposer.producer.manifestVersion} does not match requested ${input.recipe.id}@${input.recipe.version}.`,
+        "Use a decomposer whose producer recipeId and manifestVersion match the recipe request.",
+      ),
+    );
+  }
+  const decomposed = yield* decomposer
+    .decompose({
+      producer: decomposer.producer,
+      options: input.answers,
+      secrets: input.secretAnswers,
+    })
+    .pipe(
+      Effect.mapError((error) =>
         translateError(
-          `Unknown recipe id ${input.recipe.id}.`,
-          known === ""
-            ? "Register a recipe decomposer before translating a recipe request."
-            : `Choose one of: ${known}.`,
-        ),
-      );
-    }
-    const decomposer = factory({ redactor: ports.redactor });
-    if (
-      decomposer.producer.recipeId !== input.recipe.id ||
-      decomposer.producer.manifestVersion !== input.recipe.version
-    ) {
-      return yield* Effect.fail(
-        translateError(
-          `Recipe producer ${decomposer.producer.recipeId}@${decomposer.producer.manifestVersion} does not match requested ${input.recipe.id}@${input.recipe.version}.`,
-          "Use a decomposer whose producer recipeId and manifestVersion match the recipe request.",
-        ),
-      );
-    }
-    const decomposed = yield* decomposer
-      .decompose({
-        producer: decomposer.producer,
-        options: input.answers,
-        secrets: input.secretAnswers,
-      })
-      .pipe(
-        Effect.mapError((error) =>
-          translateError(
-            `Recipe decomposition failed (${error.reason}): ${error.remediation}`,
-            error.remediation,
-          ),
-        ),
-      );
-    const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
-      decomposed.fragment,
-    ).pipe(
-      Effect.mapError(() =>
-        translateError(
-          "Recipe decomposition did not return an authoring mapping.",
-          "Return a Landofile object fragment plus provenance from the decomposer.",
+          `Recipe decomposition failed (${error.reason}): ${error.remediation}`,
+          error.remediation,
         ),
       ),
     );
-    const result: ConfigTranslateResult = {
-      outputs: [
-        {
-          targetLayer: "canonical",
-          fragment: { ...mapping, recipe: decomposed.provenance },
-          sourceIds: [input.sourceId],
-        },
-      ],
-      diagnostics: [
-        {
-          kind: "generated",
-          sourceId: input.sourceId,
-          keyPath: [],
-          message: `Recipe ${input.recipe.id}@${input.recipe.version} generated the canonical layer.`,
-        },
-      ],
-      deletions: [],
-    };
-    const validated = validateConfigTranslateResult(input, result);
-    if (Result.isFailure(validated)) {
-      return yield* Effect.fail(validated.failure);
-    }
-    return validated.success;
-  });
+  const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
+    decomposed.fragment,
+  ).pipe(
+    Effect.mapError(() =>
+      translateError(
+        "Recipe decomposition did not return an authoring mapping.",
+        "Return a Landofile object fragment plus provenance from the decomposer.",
+      ),
+    ),
+  );
+  const result: ConfigTranslateResult = {
+    outputs: [
+      {
+        targetLayer: "canonical",
+        fragment: { ...mapping, recipe: decomposed.provenance },
+        sourceIds: [input.sourceId],
+      },
+    ],
+    diagnostics: [
+      {
+        kind: "generated",
+        sourceId: input.sourceId,
+        keyPath: [],
+        message: `Recipe ${input.recipe.id}@${input.recipe.version} generated the canonical layer.`,
+      },
+    ],
+    deletions: [],
+  };
+  const validated = validateConfigTranslateResult(input, result);
+  if (Result.isFailure(validated)) {
+    return yield* Effect.fail(validated.failure);
+  }
+  return validated.success;
+});
 
 export const makeRecipeConfigTranslator = (ports: RecipeConfigTranslatorPorts): ConfigTranslatorShape => ({
   id: RECIPE_TRANSLATOR_ID,

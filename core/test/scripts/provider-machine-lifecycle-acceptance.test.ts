@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Predicate } from "effect";
 
 interface ProviderAcceptanceCellPlan {
   readonly id: string;
@@ -40,15 +41,12 @@ interface AcceptanceModule {
   }) => Promise<ProviderAcceptanceReport>;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 const isAcceptanceModule = (value: unknown): value is AcceptanceModule =>
-  isRecord(value) &&
-  Array.isArray(value.PROVIDER_ACCEPTANCE_CELLS) &&
-  typeof value.evaluateProviderAcceptanceReport === "function" &&
-  typeof value.preflightProviderAcceptanceCell === "function" &&
-  typeof value.runProviderAcceptanceCell === "function";
+  Predicate.isObjectOrArray(value) &&
+  Array.isArray(Reflect.get(value, "PROVIDER_ACCEPTANCE_CELLS")) &&
+  typeof Reflect.get(value, "evaluateProviderAcceptanceReport") === "function" &&
+  typeof Reflect.get(value, "preflightProviderAcceptanceCell") === "function" &&
+  typeof Reflect.get(value, "runProviderAcceptanceCell") === "function";
 
 class AcceptanceModuleShapeError extends Error {
   constructor() {

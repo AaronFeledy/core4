@@ -43,8 +43,8 @@ const captureFetch = (
   return { fetchImpl, init: () => captured };
 };
 
-const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
-  Effect.gen(function* () {
+const artifactDownloadEffect = Effect.fnUntraced(
+  function* (_fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) {
     const downloader = yield* Downloader;
     const artifactDownload = makeArtifactDownload(downloader);
     const effect = artifactDownload({
@@ -54,14 +54,18 @@ const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trus
       filename: "bundle.zip",
       allowFileSource: false,
     });
-    return yield* trust === undefined ? effect : effect.pipe(Effect.provideService(NetworkTrust, trust));
-  }).pipe(
+    return yield* trust === undefined
+      ? effect
+      : effect.pipe(Effect.provideService(NetworkTrust, NetworkTrust.of(trust)));
+  },
+  (effect, fetchImpl) =>
     Effect.provide(
+      effect,
       VerifiedDownloader.layer.pipe(
         Layer.provide(LandoHttpClient.layerWith({ fetch: fetchImpl, systemCaPems: () => [] })),
       ),
     ),
-  );
+);
 
 const runArtifactDownload = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
   Effect.runPromise(artifactDownloadEffect(fetchImpl, directory, trust));

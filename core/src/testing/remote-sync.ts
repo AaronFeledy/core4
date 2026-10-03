@@ -221,70 +221,69 @@ const makeRemoteSource = (input: {
       }
       return Effect.succeed(locatorFor(env, dataset));
     },
-    fetch: (locator, opts) =>
-      Effect.gen(function* () {
-        input.captured.push(
-          event({
-            _tag: "pre-dataset-fetch",
-            eventName: "pre-dataset-fetch",
-            remote: input.id,
-            env: locator.env,
-            dataset: locator.dataset,
-            timestamp: TIMESTAMP,
-          } satisfies LandoEvent),
-        );
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => void input.records.finalizers.push({ operation: "fetch", remote: input.id })),
-        );
-        if (capabilities.tool !== undefined) {
-          yield* downloader
-            .download({
-              url: `https://tools.example.test/${capabilities.tool}.tgz`,
-              destination: { kind: "memory" },
-              expectedSha256: emptySha256,
-              callerId: `${input.id}:tool-provision`,
-              redactionTokens: [TEST_REMOTE_SECRET],
-            })
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new RemoteToolMissingError({
-                    message: "Tool provisioning failed",
-                    remote: input.id,
-                    tool: capabilities.tool,
-                    cause,
-                  }),
-              ),
-            );
-        }
-        yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/fetch`).pipe(
-          Effect.mapError(
-            (cause) =>
-              new RemoteUnreachableError({
-                message: "Remote fetch egress failed",
-                remote: input.id,
-                cause,
-              }),
-          ),
-        );
-        const endpoint = artifact;
-        yield* datasetBridge.fetch(endpoint);
-        if (opts?.expectedDigest === INTERRUPT_DIGEST) yield* Effect.never;
-        input.captured.push(
-          event({
-            _tag: "post-dataset-fetch",
-            eventName: "post-dataset-fetch",
-            remote: input.id,
-            env: locator.env,
-            dataset: locator.dataset,
-            timestamp: TIMESTAMP,
-            outcome: "success",
-            failureDetail: TEST_REMOTE_SECRET,
-            durationMs: 1,
-          } satisfies LandoEvent),
-        );
-        return endpoint;
-      }),
+    fetch: Effect.fnUntraced(function* (locator, opts) {
+      input.captured.push(
+        event({
+          _tag: "pre-dataset-fetch",
+          eventName: "pre-dataset-fetch",
+          remote: input.id,
+          env: locator.env,
+          dataset: locator.dataset,
+          timestamp: TIMESTAMP,
+        } satisfies LandoEvent),
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => void input.records.finalizers.push({ operation: "fetch", remote: input.id })),
+      );
+      if (capabilities.tool !== undefined) {
+        yield* downloader
+          .download({
+            url: `https://tools.example.test/${capabilities.tool}.tgz`,
+            destination: { kind: "memory" },
+            expectedSha256: emptySha256,
+            callerId: `${input.id}:tool-provision`,
+            redactionTokens: [TEST_REMOTE_SECRET],
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new RemoteToolMissingError({
+                  message: "Tool provisioning failed",
+                  remote: input.id,
+                  tool: capabilities.tool,
+                  cause,
+                }),
+            ),
+          );
+      }
+      yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/fetch`).pipe(
+        Effect.mapError(
+          (cause) =>
+            new RemoteUnreachableError({
+              message: "Remote fetch egress failed",
+              remote: input.id,
+              cause,
+            }),
+        ),
+      );
+      const endpoint = artifact;
+      yield* datasetBridge.fetch(endpoint);
+      if (opts?.expectedDigest === INTERRUPT_DIGEST) yield* Effect.never;
+      input.captured.push(
+        event({
+          _tag: "post-dataset-fetch",
+          eventName: "post-dataset-fetch",
+          remote: input.id,
+          env: locator.env,
+          dataset: locator.dataset,
+          timestamp: TIMESTAMP,
+          outcome: "success",
+          failureDetail: TEST_REMOTE_SECRET,
+          durationMs: 1,
+        } satisfies LandoEvent),
+      );
+      return endpoint;
+    }),
     send: (locator, endpoint, opts) => {
       if (!input.push) {
         return Effect.fail(
@@ -306,7 +305,7 @@ const makeRemoteSource = (input: {
           }),
         );
       }
-      return Effect.gen(function* () {
+      return Effect.fnUntraced(function* () {
         input.captured.push(
           event({
             _tag: "pre-dataset-send",
@@ -363,7 +362,7 @@ const makeRemoteSource = (input: {
             durationMs: 1,
           } satisfies LandoEvent),
         );
-      });
+      })();
     },
     test: (_cfg, env) =>
       Effect.sync(() => {
@@ -493,7 +492,7 @@ export const makeTestDataset = () =>
       capture: (ctx) => {
         const bindingError = rejectCodeTree(ctx);
         if (bindingError !== undefined) return Effect.fail(bindingError);
-        return Effect.gen(function* () {
+        return Effect.fnUntraced(function* () {
           appliedBytes = null;
           captured.push(
             event({
@@ -540,7 +539,7 @@ export const makeTestDataset = () =>
             } satisfies LandoEvent),
           );
           return artifact;
-        });
+        })();
       },
       apply: (ctx, endpoint) => {
         const bindingError = rejectCodeTree(ctx);
@@ -548,7 +547,7 @@ export const makeTestDataset = () =>
         if (endpoint._tag !== artifact._tag) {
           return Effect.fail(new DatasetApplyError({ message: "Unsupported artifact", dataset: "test" }));
         }
-        return Effect.gen(function* () {
+        return Effect.fnUntraced(function* () {
           captured.push(
             event({
               _tag: "pre-dataset-apply",
@@ -584,7 +583,7 @@ export const makeTestDataset = () =>
             } satisfies LandoEvent),
           );
           return { changed, localStore, summary: "applied test dataset" };
-        });
+        })();
       },
       localStore: () => Effect.succeed(localStore),
     };

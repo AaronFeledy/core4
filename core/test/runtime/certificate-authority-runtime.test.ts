@@ -12,7 +12,7 @@ import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const authorityLayer = (id: string) =>
-  Layer.succeed(CertificateAuthority, { ...makeTestCertificateAuthority(), id });
+  Layer.succeed(CertificateAuthority, CertificateAuthority.of({ ...makeTestCertificateAuthority(), id }));
 
 const resolvedManifest = (id: string, platforms?: ReadonlyArray<string>) => {
   const manifest = Schema.decodeSync(PluginManifest)({

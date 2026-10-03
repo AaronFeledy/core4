@@ -54,13 +54,16 @@ const renderStartFailure = async (reference: string) => {
     secretStores: new Map([
       [
         "fake-vault",
-        Layer.succeed(SecretStore, {
-          id: "fake-vault",
-          schemes: ["fake"],
-          get: (id) => Effect.sync(() => reads.push(id)).pipe(Effect.andThen(Effect.fail(unavailable))),
-          has: () => Effect.fail(unavailable),
-          list: Effect.succeed([]),
-        }),
+        Layer.succeed(
+          SecretStore,
+          SecretStore.of({
+            id: "fake-vault",
+            schemes: ["fake"],
+            get: (id) => Effect.sync(() => reads.push(id)).pipe(Effect.andThen(Effect.fail(unavailable))),
+            has: () => Effect.fail(unavailable),
+            list: Effect.succeed([]),
+          }),
+        ),
       ],
     ]),
   };
@@ -105,12 +108,15 @@ const renderStartFailure = async (reference: string) => {
     RedactionService.layer.pipe(Layer.provide(store)),
     TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(RouterService, TestRouterService),
-    Layer.succeed(BuildOrchestrator, {
-      build: (value) => Effect.succeed(value),
-      buildApp: () => Effect.void,
-    }),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (value) => Effect.succeed(value),
+        buildApp: () => Effect.void,
+      }),
+    ),
     BunShellRunner.layer(() => {
       throw new TypeError("Start must not open an interactive shell.");
     }),

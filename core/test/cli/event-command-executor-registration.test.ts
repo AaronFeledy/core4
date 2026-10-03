@@ -37,11 +37,10 @@ test.each(["service", "standalone"] as const)(
       mode === "service"
         ? Context.add(base, RedactionService, {
             ...service,
-            registerValues: (values) =>
-              Effect.gen(function* () {
-                delegated.push(...values);
-                yield* service.registerValues(values);
-              }),
+            registerValues: Effect.fnUntraced(function* (values) {
+              delegated.push(...values);
+              yield* service.registerValues(values);
+            }),
           })
         : base;
     const spec = {
@@ -50,12 +49,11 @@ test.each(["service", "standalone"] as const)(
       namespace: "meta",
       bootstrap: "none",
       resultSchema: Schema.Void,
-      run: () =>
-        Effect.gen(function* () {
-          const redaction = yield* RedactionService;
-          yield* redaction.registerValues([secret]);
-          yield* (yield* Renderer).output.stdout(secret);
-        }),
+      run: Effect.fnUntraced(function* () {
+        const redaction = yield* RedactionService;
+        yield* redaction.registerValues([secret]);
+        yield* (yield* Renderer).output.stdout(secret);
+      }),
     } satisfies LandoCommandSpec;
     // When
     await Effect.runPromise(

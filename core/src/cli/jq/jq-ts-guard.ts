@@ -1,4 +1,5 @@
 import type { parse } from "@gabrielbryk/jq-ts";
+import * as Predicate from "effect/Predicate";
 
 // 1e6 is a false-positive posture: legitimate huge-literal assignment/multiply is
 // refused because maxSteps does not tick during array hole-fill or string-repeat allocation.
@@ -23,8 +24,7 @@ const BINARY_ARITH = {
 
 type BinaryArithOp = keyof typeof BINARY_ARITH;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const isRecord = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const isBinaryArithOp = (op: unknown): op is BinaryArithOp =>
   typeof op === "string" && Object.hasOwn(BINARY_ARITH, op);

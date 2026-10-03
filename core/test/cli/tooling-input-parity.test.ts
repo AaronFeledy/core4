@@ -53,39 +53,54 @@ const harnessLayer = (input: {
   readonly exitCode: number;
 }) =>
   Layer.mergeAll(
-    Layer.succeed(Context.Service<unknown>("parity-runtime"), {}),
-    Layer.succeed(LandofileService, { discover: Effect.succeed(input.landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(input.plan) }),
-    Layer.succeed(Renderer, {
-      id: "plain",
-      capabilities: RENDERER_CAPABILITIES_NONE,
-      message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
-      output: { stdout: () => Effect.void, stderr: () => Effect.void },
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-    Layer.succeed(ToolingEngine, {
-      id: "capture",
-      run: (invocation) =>
-        Effect.sync(() => {
-          input.invocations.push(invocation);
-          return {
-            tool: invocation.tool,
-            service: ":lando",
-            exitCode: input.exitCode,
-            stdout: "",
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () => Effect.succeed(createRedactor("secrets")),
-    }),
-    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
+    Layer.succeed(
+      Context.Service<unknown>("parity-runtime"),
+      Context.Service<unknown>("parity-runtime").of({}),
+    ),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(input.landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(input.plan) })),
+    Layer.succeed(
+      Renderer,
+      Renderer.of({
+        id: "plain",
+        capabilities: RENDERER_CAPABILITIES_NONE,
+        message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
+        output: { stdout: () => Effect.void, stderr: () => Effect.void },
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "capture",
+        run: (invocation) =>
+          Effect.sync(() => {
+            input.invocations.push(invocation);
+            return {
+              tool: invocation.tool,
+              service: ":lando",
+              exitCode: input.exitCode,
+              stdout: "",
+              stderr: "",
+            };
+          }),
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () => Effect.succeed(createRedactor("secrets")),
+      }),
+    ),
+    Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),
     emptyConfigServiceLayer,
   );
 

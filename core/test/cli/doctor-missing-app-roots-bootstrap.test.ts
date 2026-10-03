@@ -32,33 +32,36 @@ test.each([false, true])(
         FileSystem,
         Effect.map(FileSystem, (fs) => ({ ...fs, exists: () => Effect.succeed(false) })),
       ).pipe(Layer.provide(BunFileSystem.layer)),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([ProviderId.make(provider.id)]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-        observeRuntime: Effect.succeed([
-          {
-            providerId: ProviderId.make(provider.id),
-            runtimeObserved: true,
-            appliedPlans: [],
-            volumes: [],
-            services: [
-              {
-                app: AppId.make("gone"),
-                appRoot: AbsolutePath.make("/apps/gone"),
-                service: ServiceName.make("web"),
-                providerId: ProviderId.make(provider.id),
-                status: "running",
-                containerId: "observed-container",
-              },
-            ],
-          },
-        ]),
-      }),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([ProviderId.make(provider.id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+          observeRuntime: Effect.succeed([
+            {
+              providerId: ProviderId.make(provider.id),
+              runtimeObserved: true,
+              appliedPlans: [],
+              volumes: [],
+              services: [
+                {
+                  app: AppId.make("gone"),
+                  appRoot: AbsolutePath.make("/apps/gone"),
+                  service: ServiceName.make("web"),
+                  providerId: ProviderId.make(provider.id),
+                  status: "running",
+                  containerId: "observed-container",
+                },
+              ],
+            },
+          ]),
+        }),
+      ),
     );
     const report = await Effect.runPromise(
       resilientDoctorReport({ env: {}, fix }).pipe(
-        Effect.provideService(RuntimeLayerFactory, { make: () => runtime }),
+        Effect.provideService(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtime })),
       ),
     );
     const checks = report.subsystems.checks.filter(({ name }) => name === "missing-app-root");

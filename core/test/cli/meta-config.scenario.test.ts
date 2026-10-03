@@ -32,10 +32,13 @@ const runCli = async (
 
 const fakeConfigService = (overrides: typeof GlobalConfig.Encoded) => {
   const loaded = Schema.decodeUnknownSync(GlobalConfig)(overrides);
-  return Layer.succeed(ConfigService, {
-    get: (key) => Effect.succeed(loaded[key]),
-    load: Effect.succeed(loaded),
-  });
+  return Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      get: (key) => Effect.succeed(loaded[key]),
+      load: Effect.succeed(loaded),
+    }),
+  );
 };
 
 const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) => Promise<T>): Promise<T> => {

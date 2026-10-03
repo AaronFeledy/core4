@@ -259,11 +259,9 @@ describe("remote sync command skeleton", () => {
       const result = await Effect.runPromise(
         operations
           .appRemoteTest({ cwd: dir, remote: "test", env: TestRemoteSource.supportedEnv })
-          .pipe(Effect.provide(Layer.succeed(RemoteSource, TestRemoteSource.source))) as Effect.Effect<
-          { readonly ok: boolean; readonly env?: string },
-          unknown,
-          never
-        >,
+          .pipe(
+            Effect.provide(Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source))),
+          ) as Effect.Effect<{ readonly ok: boolean; readonly env?: string }, unknown, never>,
       );
 
       expect(result.ok).toBe(true);
@@ -279,7 +277,7 @@ describe("remote sync command skeleton", () => {
       );
 
       const snapshots: string[] = [];
-      const dataMover: DataMoverShape = {
+      const dataMover: DataMoverShape = DataMover.of({
         transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
         transferStream: () =>
           Stream.die("external transfer stream is not used by the orchestration skeleton"),
@@ -292,7 +290,7 @@ describe("remote sync command skeleton", () => {
         listSnapshots: () => Effect.succeed([]),
         removeSnapshot: () => Effect.void,
         pruneSnapshots: () => Effect.succeed([]),
-      };
+      });
       let confirms = 0;
       const confirm = () =>
         Effect.sync(() => {
@@ -310,16 +308,22 @@ describe("remote sync command skeleton", () => {
         .pipe(
           Effect.provide(
             Layer.mergeAll(
-              Layer.succeed(RemoteSource, TestRemoteSource.source),
-              Layer.succeed(Dataset, TestDataset.dataset),
+              Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+              Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
               Layer.succeed(DataMover, dataMover),
-              Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-              Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-              Layer.succeed(RuntimeProviderRegistry, {
-                list: Effect.succeed([]),
-                capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                select: () => Effect.die("target supplies the plan"),
-              }),
+              Layer.succeed(
+                LandofileService,
+                LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+              ),
+              Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                RuntimeProviderRegistry.of({
+                  list: Effect.succeed([]),
+                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  select: () => Effect.die("target supplies the plan"),
+                }),
+              ),
             ),
           ),
         ) as Effect.Effect<unknown, unknown, never>;
@@ -347,7 +351,7 @@ describe("remote sync command skeleton", () => {
       );
       const plan = TestDataset.context.plan;
       let confirms = 0;
-      const interaction: InteractionServiceShape = {
+      const interaction: InteractionServiceShape = InteractionService.of({
         id: "remote-cli-interaction",
         isInteractive: Effect.succeed(true),
         prompt: () => Effect.die("prompt must not run"),
@@ -359,7 +363,7 @@ describe("remote sync command skeleton", () => {
           }),
         select: () => Effect.die("select must not run"),
         secret: () => Effect.succeed(Redacted.make("secret")),
-      };
+      });
       const original = process.cwd();
       process.chdir(dir);
       try {
@@ -372,18 +376,24 @@ describe("remote sync command skeleton", () => {
             .pipe(
               Effect.provide(
                 Layer.mergeAll(
-                  Layer.succeed(RemoteSource, TestRemoteSource.source),
-                  Layer.succeed(Dataset, TestDataset.dataset),
+                  Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+                  Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
                   Layer.succeed(InteractionService, interaction),
-                  Layer.succeed(LandofileService, {
-                    discover: Effect.succeed({ name: "remote-skeleton", services: {} }),
-                  }),
-                  Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-                  Layer.succeed(RuntimeProviderRegistry, {
-                    list: Effect.succeed([]),
-                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                    select: () => Effect.die("provider selection is not used"),
-                  }),
+                  Layer.succeed(
+                    LandofileService,
+                    LandofileService.of({
+                      discover: Effect.succeed({ name: "remote-skeleton", services: {} }),
+                    }),
+                  ),
+                  Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+                  Layer.succeed(
+                    RuntimeProviderRegistry,
+                    RuntimeProviderRegistry.of({
+                      list: Effect.succeed([]),
+                      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                      select: () => Effect.die("provider selection is not used"),
+                    }),
+                  ),
                 ),
               ),
             ) as Effect.Effect<unknown, unknown, never>,
@@ -409,7 +419,7 @@ describe("remote sync command skeleton", () => {
         app: { kind: "user" as const, id: plan.id, root: plan.root },
       };
       let fetches = 0;
-      const defaultEnvSource: RemoteSourceShape = {
+      const defaultEnvSource: RemoteSourceShape = RemoteSource.of({
         ...TestRemoteSource.source,
         id: "default-env",
         listEnvironments: () =>
@@ -428,7 +438,7 @@ describe("remote sync command skeleton", () => {
             fetches += 1;
             return TestRemoteSource.artifact;
           }),
-      };
+      });
 
       const result = (await Effect.runPromise(
         operations
@@ -437,14 +447,20 @@ describe("remote sync command skeleton", () => {
             Effect.provide(
               Layer.mergeAll(
                 Layer.succeed(RemoteSource, defaultEnvSource),
-                Layer.succeed(Dataset, TestDataset.dataset),
-                Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-                Layer.succeed(RuntimeProviderRegistry, {
-                  list: Effect.succeed([]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                  select: () => Effect.die("target supplies the plan"),
-                }),
+                Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
+                Layer.succeed(
+                  LandofileService,
+                  LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+                ),
+                Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+                Layer.succeed(
+                  RuntimeProviderRegistry,
+                  RuntimeProviderRegistry.of({
+                    list: Effect.succeed([]),
+                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                    select: () => Effect.die("target supplies the plan"),
+                  }),
+                ),
               ),
             ),
           ) as Effect.Effect<unknown, unknown, never>,
@@ -487,14 +503,20 @@ describe("remote sync command skeleton", () => {
         app: { kind: "user" as const, id: plan.id, root: plan.root },
       };
       const layer = Layer.mergeAll(
-        Layer.succeed(RemoteSource, TestRemoteSource.source),
-        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.die("target supplies the plan"),
-        }),
+        Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+        Layer.succeed(
+          LandofileService,
+          LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+        ),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.die("target supplies the plan"),
+          }),
+        ),
       );
 
       const pullExit = await Effect.runPromiseExit(
@@ -536,15 +558,21 @@ describe("remote sync command skeleton", () => {
         app: { kind: "user" as const, id: plan.id, root: plan.root },
       };
       const layer = Layer.mergeAll(
-        Layer.succeed(RemoteSource, TestRemoteSource.source),
-        Layer.succeed(Dataset, TestDataset.dataset),
-        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.die("target supplies the plan"),
-        }),
+        Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+        Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
+        Layer.succeed(
+          LandofileService,
+          LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+        ),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.die("target supplies the plan"),
+          }),
+        ),
       );
 
       const invalidPull = await Effect.runPromiseExit(
@@ -583,7 +611,7 @@ describe("remote sync command skeleton", () => {
       };
       let fetches = 0;
       let sends = 0;
-      const multiKindSource = {
+      const multiKindSource = RemoteSource.of({
         ...TestRemoteSource.source,
         id: "multi",
         capabilities: { ...TestRemoteSource.source.capabilities, datasets: ["database", "files"] as const },
@@ -596,17 +624,23 @@ describe("remote sync command skeleton", () => {
           Effect.sync(() => {
             sends += 1;
           }),
-      };
+      });
       const layer = Layer.mergeAll(
         Layer.succeed(RemoteSource, multiKindSource),
-        Layer.succeed(Dataset, TestDataset.dataset),
-        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.die("target supplies the plan"),
-        }),
+        Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
+        Layer.succeed(
+          LandofileService,
+          LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+        ),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.die("target supplies the plan"),
+          }),
+        ),
       );
 
       const pullExit = await Effect.runPromiseExit(
@@ -659,15 +693,21 @@ describe("remote sync command skeleton", () => {
           .pipe(
             Effect.provide(
               Layer.mergeAll(
-                Layer.succeed(RemoteSource, TestRemoteSource.source),
-                Layer.succeed(Dataset, TestDataset.dataset),
-                Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-                Layer.succeed(RuntimeProviderRegistry, {
-                  list: Effect.succeed([]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                  select: () => Effect.die("target supplies the plan"),
-                }),
+                Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+                Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
+                Layer.succeed(
+                  LandofileService,
+                  LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+                ),
+                Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+                Layer.succeed(
+                  RuntimeProviderRegistry,
+                  RuntimeProviderRegistry.of({
+                    list: Effect.succeed([]),
+                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                    select: () => Effect.die("target supplies the plan"),
+                  }),
+                ),
               ),
             ),
           ) as Effect.Effect<unknown, unknown, never>,
@@ -714,14 +754,20 @@ describe("remote sync command skeleton", () => {
       );
       const plan = TestDataset.context.plan;
       const baseLayer = Layer.mergeAll(
-        Layer.succeed(Dataset, TestDataset.dataset),
-        Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.die("target supplies the plan"),
-        }),
+        Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
+        Layer.succeed(
+          LandofileService,
+          LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+        ),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.die("target supplies the plan"),
+          }),
+        ),
       );
       const target = {
         plan,
@@ -737,7 +783,10 @@ describe("remote sync command skeleton", () => {
           )
           .pipe(
             Effect.provide(
-              Layer.merge(baseLayer, Layer.succeed(RemoteSource, TestRemoteSource.noPushSource)),
+              Layer.merge(
+                baseLayer,
+                Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.noPushSource)),
+              ),
             ),
           ) as Effect.Effect<unknown, unknown, never>,
       );
@@ -754,7 +803,9 @@ describe("remote sync command skeleton", () => {
             target,
           )
           .pipe(
-            Effect.provide(Layer.merge(baseLayer, Layer.succeed(RemoteSource, TestRemoteSource.source))),
+            Effect.provide(
+              Layer.merge(baseLayer, Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source))),
+            ),
           ) as Effect.Effect<unknown, unknown, never>,
       );
       const forced = (await Effect.runPromise(
@@ -771,7 +822,9 @@ describe("remote sync command skeleton", () => {
             target,
           )
           .pipe(
-            Effect.provide(Layer.merge(baseLayer, Layer.succeed(RemoteSource, TestRemoteSource.source))),
+            Effect.provide(
+              Layer.merge(baseLayer, Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source))),
+            ),
           ) as Effect.Effect<unknown, unknown, never>,
       )) as { readonly direction: string; readonly env: string };
 
@@ -795,7 +848,7 @@ describe("remote sync command skeleton", () => {
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
       let snapshotCalls = 0;
-      const dataMover: DataMoverShape = {
+      const dataMover: DataMoverShape = DataMover.of({
         transfer: () => Effect.die("external transfer is not used by the orchestration skeleton"),
         transferStream: () =>
           Stream.die("external transfer stream is not used by the orchestration skeleton"),
@@ -808,7 +861,7 @@ describe("remote sync command skeleton", () => {
         listSnapshots: () => Effect.succeed([]),
         removeSnapshot: () => Effect.void,
         pruneSnapshots: () => Effect.succeed([]),
-      };
+      });
       const plan = TestDataset.context.plan;
       const result = (await Effect.runPromise(
         operations
@@ -826,16 +879,22 @@ describe("remote sync command skeleton", () => {
           .pipe(
             Effect.provide(
               Layer.mergeAll(
-                Layer.succeed(RemoteSource, TestRemoteSource.source),
-                Layer.succeed(Dataset, TestDataset.dataset),
+                Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+                Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
                 Layer.succeed(DataMover, dataMover),
-                Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
-                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-                Layer.succeed(RuntimeProviderRegistry, {
-                  list: Effect.succeed([]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                  select: () => Effect.die("target supplies the plan"),
-                }),
+                Layer.succeed(
+                  LandofileService,
+                  LandofileService.of({ discover: Effect.die("target supplies the landofile") }),
+                ),
+                Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+                Layer.succeed(
+                  RuntimeProviderRegistry,
+                  RuntimeProviderRegistry.of({
+                    list: Effect.succeed([]),
+                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                    select: () => Effect.die("target supplies the plan"),
+                  }),
+                ),
               ),
             ),
           ) as Effect.Effect<unknown, unknown, never>,

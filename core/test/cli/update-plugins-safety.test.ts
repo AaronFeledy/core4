@@ -62,10 +62,13 @@ async function fixture() {
   await Effect.runPromise(trust.trustPlugin(name));
   const layer = Layer.merge(
     Layer.succeed(PluginTrustStore, trust),
-    Layer.succeed(ConfigService, {
-      load: Effect.die("unused fixture config"),
-      get: () => Effect.die("unused fixture config"),
-    }),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.die("unused fixture config"),
+        get: () => Effect.die("unused fixture config"),
+      }),
+    ),
   );
   const runner = (client: NpmRegistryClient) =>
     Effect.runPromise(

@@ -39,29 +39,32 @@ export const GlobalListResultSchema = Schema.Struct({
 
 const stateOf = (enabled: boolean): GlobalServiceListState => (enabled ? "enabled" : "disabled");
 
-export const globalList = (): Effect.Effect<GlobalListResult, PluginManifestError, PluginRegistry> =>
-  Effect.gen(function* () {
-    const registry = yield* PluginRegistry;
-    const manifests = yield* registry.list;
+export const globalList = Effect.fn("GlobalList.list")(function* (): Effect.fn.Return<
+  GlobalListResult,
+  PluginManifestError,
+  PluginRegistry
+> {
+  const registry = yield* PluginRegistry;
+  const manifests = yield* registry.list;
 
-    const entries: GlobalServiceListEntry[] = [];
-    for (const manifest of manifests) {
-      for (const contribution of manifest.contributes?.globalServices ?? []) {
-        const enabled = contribution.enabledByDefault !== false;
-        entries.push({
-          id: contribution.id,
-          plugin: String(manifest.name),
-          enabled,
-          state: stateOf(enabled),
-          ...(contribution.summary === undefined ? {} : { summary: contribution.summary }),
-          commands: [...(contribution.commands ?? [])],
-        });
-      }
+  const entries: GlobalServiceListEntry[] = [];
+  for (const manifest of manifests) {
+    for (const contribution of manifest.contributes?.globalServices ?? []) {
+      const enabled = contribution.enabledByDefault !== false;
+      entries.push({
+        id: contribution.id,
+        plugin: String(manifest.name),
+        enabled,
+        state: stateOf(enabled),
+        ...(contribution.summary === undefined ? {} : { summary: contribution.summary }),
+        commands: [...(contribution.commands ?? [])],
+      });
     }
-    entries.sort((left, right) => left.id.localeCompare(right.id));
+  }
+  entries.sort((left, right) => left.id.localeCompare(right.id));
 
-    return { services: entries };
-  });
+  return { services: entries };
+});
 
 const buildGlobalListSummary = (result: GlobalListResult): SummaryDocument => {
   const rows = result.services.map((service) => ({

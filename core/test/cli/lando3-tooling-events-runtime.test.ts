@@ -137,33 +137,45 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
     LandoEventService.layer,
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.sync(() => {
-          const exitCode = record(invocation.commands[0] ?? [], String(invocation.service));
-          return {
-            tool: invocation.tool,
-            service: String(invocation.service),
-            exitCode,
-            stdout: "",
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      }),
+    ),
+    Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "recording",
+        run: (invocation) =>
+          Effect.sync(() => {
+            const exitCode = record(invocation.commands[0] ?? [], String(invocation.service));
+            return {
+              tool: invocation.tool,
+              service: String(invocation.service),
+              exitCode,
+              stdout: "",
+              stderr: "",
+            };
+          }),
+      }),
+    ),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
   return Effect.runPromise(runTooling({ name: "build" }).pipe(Effect.provide(layer), Effect.result)).then(
     (result) => ({ result, executed }),

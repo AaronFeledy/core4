@@ -7,22 +7,28 @@ import { createRedactor } from "@lando/sdk/secrets";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+  }),
+);
 
 describe("bunSelfRun redaction", () => {
   test("redacts free-text pre/post bun-self-exec event fields without changing event shape", async () => {
     const events: Array<Record<string, unknown>> = [];
-    const eventLayer = Layer.succeed(EventService, {
-      publish: (event: LandoEvent) => Effect.sync(() => events.push({ ...event })),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Queue.unbounded<never>(),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    } satisfies EventServiceShape);
+    const eventLayer = Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event: LandoEvent) => Effect.sync(() => events.push({ ...event })),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Queue.unbounded<never>(),
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      } satisfies EventServiceShape),
+    );
     const spawner: BunSelfSpawner = {
       spawn: async () => ({ exitCode: 0 }),
     };

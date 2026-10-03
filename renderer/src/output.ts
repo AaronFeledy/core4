@@ -17,31 +17,22 @@ import { type EventService, Renderer } from "@lando/sdk/services";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
 import { type RendererIO, createStdioRendererIO } from "./io.ts";
-import {
-  makeJsonNotificationRendererLive,
-  makeJsonRendererLive,
-  makeJsonRendererServiceLive,
-  makePlainRendererLive,
-  makePlainRendererServiceLive,
-  makePlainTaskDetailRendererLive,
-  makeVerboseRendererLive,
-  makeVerboseRendererServiceLive,
-} from "./runtime.ts";
+import * as RendererRuntime from "./runtime.ts";
 
 type RendererMode = "lando" | "json" | "plain" | "verbose";
 
-export const makeRendererServiceLiveForMode = (
+export const layerServiceForMode = (
   mode: RendererMode,
   landoRenderer: RendererContribution,
   io: RendererIO = createStdioRendererIO(),
 ): Layer.Layer<Renderer> => {
   switch (mode) {
     case "json":
-      return makeJsonRendererServiceLive(io);
+      return RendererRuntime.layerJsonService(io);
     case "plain":
-      return makePlainRendererServiceLive(io);
+      return RendererRuntime.layerPlainService(io);
     case "verbose":
-      return makeVerboseRendererServiceLive(io);
+      return RendererRuntime.layerVerboseService(io);
     case "lando":
       return landoRenderer.makeService(io);
   }
@@ -52,33 +43,33 @@ export interface RendererEventConsumerOptions {
   readonly plainTaskEvents?: "detail-only";
 }
 
-export const makeRendererEventConsumerLiveForMode = (
+export const layerEventConsumerForMode = (
   mode: RendererMode,
   io: RendererIO,
   options: RendererEventConsumerOptions,
 ): Layer.Layer<never, never, EventService> => {
   switch (mode) {
     case "json":
-      return makeJsonRendererLive(io);
+      return RendererRuntime.layerJson(io);
     case "plain":
       return options.plainTaskEvents === "detail-only"
-        ? makePlainTaskDetailRendererLive(io)
-        : makePlainRendererLive(io);
+        ? RendererRuntime.layerPlainTaskDetail(io)
+        : RendererRuntime.layerPlain(io);
     case "verbose":
-      return makeVerboseRendererLive(io);
+      return RendererRuntime.layerVerbose(io);
     case "lando":
       return options.landoRenderer.makeEventConsumer(io);
   }
 };
 
-export const makeRendererNotificationConsumerLiveForMode = (
+export const layerNotificationConsumerForMode = (
   mode: RendererMode,
   landoRenderer: RendererContribution,
   io: RendererIO,
 ): Layer.Layer<never, never, EventService> | undefined => {
   switch (mode) {
     case "json":
-      return makeJsonNotificationRendererLive(io);
+      return RendererRuntime.layerJsonNotification(io);
     case "lando":
       return landoRenderer.makeEventConsumer({
         writeStdout: () => {},
@@ -88,7 +79,7 @@ export const makeRendererNotificationConsumerLiveForMode = (
     case "plain":
       return undefined;
     case "verbose":
-      return makeVerboseRendererLive(io);
+      return RendererRuntime.layerVerbose(io);
   }
 };
 
@@ -128,7 +119,7 @@ export const writeResultLine = (text: string): Effect.Effect<void> =>
 export const writeDiagnosticLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(`${text}\n`)));
 
-export const makeStreamFrameSinkLive = (
+export const layerStreamFrameSink = (
   format: CommandResultFormat,
 ): Layer.Layer<StreamFrameSink, never, Renderer | RedactionService> =>
   Layer.effect(
@@ -137,38 +128,37 @@ export const makeStreamFrameSinkLive = (
       const renderer = yield* Renderer;
       const redaction = yield* RedactionService;
       const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-      const emit = (frame: StreamFrameSinkFrame): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          const streamFrameOptions = {
-            chunk: frame.chunk,
-            ...(frame.service === undefined ? {} : { service: frame.service }),
-            ...(frame.source === undefined ? {} : { source: frame.source }),
-            redactor,
-          };
-          if (format === "json") {
-            const line =
-              frame._tag === "stdout"
-                ? yield* encodeStreamStdoutFrame(streamFrameOptions)
-                : yield* encodeStreamStderrFrame(streamFrameOptions);
-            yield* renderer.output.stdout(`${line}\n`);
-            return;
-          }
-          // A YAML run emits one envelope document, so a raw chunk would
-          // corrupt it. Frame transport belongs to the framed JSON stream.
-          if (format === "yaml") return;
-          const chunk = redactor.redactString(frame.chunk);
-          if (frame.raw === true) {
-            yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
-            return;
-          }
-          const text =
-            frame.service === undefined
-              ? chunk
-              : frame.source === undefined
-                ? `${frame.service} ${frame._tag}: ${chunk}`
-                : `${frame.service} ${frame._tag} [${frame.source}]: ${chunk}`;
-          yield* renderer.output.stdout(`${text}\n`);
-        });
-      return { emit };
+      const emit = Effect.fnUntraced(function* (frame: StreamFrameSinkFrame): Effect.fn.Return<void> {
+        const streamFrameOptions = {
+          chunk: frame.chunk,
+          ...(frame.service === undefined ? {} : { service: frame.service }),
+          ...(frame.source === undefined ? {} : { source: frame.source }),
+          redactor,
+        };
+        if (format === "json") {
+          const line =
+            frame._tag === "stdout"
+              ? yield* encodeStreamStdoutFrame(streamFrameOptions)
+              : yield* encodeStreamStderrFrame(streamFrameOptions);
+          yield* renderer.output.stdout(`${line}\n`);
+          return;
+        }
+        // A YAML run emits one envelope document, so a raw chunk would
+        // corrupt it. Frame transport belongs to the framed JSON stream.
+        if (format === "yaml") return;
+        const chunk = redactor.redactString(frame.chunk);
+        if (frame.raw === true) {
+          yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);
+          return;
+        }
+        const text =
+          frame.service === undefined
+            ? chunk
+            : frame.source === undefined
+              ? `${frame.service} ${frame._tag}: ${chunk}`
+              : `${frame.service} ${frame._tag} [${frame.source}]: ${chunk}`;
+        yield* renderer.output.stdout(`${text}\n`);
+      });
+      return StreamFrameSink.of({ emit });
     }),
   );

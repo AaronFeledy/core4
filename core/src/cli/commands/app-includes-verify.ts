@@ -91,54 +91,53 @@ const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
  * `LandofileService`) so the command runs at the `minimal` bootstrap level, then
  * delegates to {@link verifyLandofileIncludes}, which never mutates the lockfile.
  */
-export const appIncludesVerify = (
+export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function* (
   options: AppIncludesVerifyOptions = {},
-): Effect.Effect<IncludeVerifyReport, AppIncludesVerifyError, StateStore> =>
-  Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
-    const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
-    if (filePath === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message: "No .lando.yml found. Run `lando init` to create one before verifying includes.",
-          cwd,
-        }),
-      );
-    }
-    const appRoot = dirname(filePath);
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(filePath).text(),
-      catch: (cause) =>
-        new LandofileParseError({
-          message: `Could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
-    });
-    const checkedContent = yield* rejectComposeTags(filePath, content);
-    const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
-    const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
-    yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-    const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Failure") {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile ${filePath} is not valid: ${String(decoded.failure)}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause: decoded.failure,
-        }),
-      );
-    }
-    return yield* verifyLandofileIncludes({
-      landofile: decoded.success,
-      appRoot,
-      ...(options.deps === undefined ? {} : { deps: options.deps }),
-    });
+): Effect.fn.Return<IncludeVerifyReport, AppIncludesVerifyError, StateStore> {
+  const cwd = options.cwd ?? process.cwd();
+  const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
+  if (filePath === undefined) {
+    return yield* Effect.fail(
+      new LandofileNotFoundError({
+        message: "No .lando.yml found. Run `lando init` to create one before verifying includes.",
+        cwd,
+      }),
+    );
+  }
+  const appRoot = dirname(filePath);
+  const content = yield* Effect.tryPromise({
+    try: () => Bun.file(filePath).text(),
+    catch: (cause) =>
+      new LandofileParseError({
+        message: `Could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        filePath,
+        line: undefined,
+        column: undefined,
+        cause,
+      }),
   });
+  const checkedContent = yield* rejectComposeTags(filePath, content);
+  const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
+  const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
+  yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
+  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
+  if (decoded._tag === "Failure") {
+    return yield* Effect.fail(
+      new LandofileParseError({
+        message: `Landofile ${filePath} is not valid: ${String(decoded.failure)}`,
+        filePath,
+        line: undefined,
+        column: undefined,
+        cause: decoded.failure,
+      }),
+    );
+  }
+  return yield* verifyLandofileIncludes({
+    landofile: decoded.success,
+    appRoot,
+    ...(options.deps === undefined ? {} : { deps: options.deps }),
+  });
+});
 
 const summaryLine = (report: IncludeVerifyReport): string => {
   const counts: Record<IncludeVerifyStatus, number> = { ok: 0, mismatch: 0, missing: 0, stale: 0 };

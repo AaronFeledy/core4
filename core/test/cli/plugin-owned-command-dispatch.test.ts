@@ -72,12 +72,12 @@ const makeExecutableDbImportSpec = (): ExecutableCommandSpec<typeof DbImportResu
     }),
 });
 
-const silentRenderer = {
+const silentRenderer = Renderer.of({
   id: "test",
   capabilities: RENDERER_CAPABILITIES_NONE,
   message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
   output: { stdout: () => Effect.void, stderr: () => Effect.void },
-} satisfies Context.Service.Shape<typeof Renderer>;
+} satisfies Context.Service.Shape<typeof Renderer>);
 
 const makeDbImportPlugin = () => {
   const spec = makeDbImportSpec();

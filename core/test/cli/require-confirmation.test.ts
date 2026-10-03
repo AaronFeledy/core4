@@ -25,10 +25,13 @@ describe("requireConfirmation", () => {
               mutations += 1;
             }),
           ),
-          Effect.provideService(InteractionService, {
-            ...interaction.service,
-            isInteractive: Effect.succeed(interactive),
-          }),
+          Effect.provideService(
+            InteractionService,
+            InteractionService.of({
+              ...interaction.service,
+              isInteractive: Effect.succeed(interactive),
+            }),
+          ),
           Effect.result,
         ),
       ),

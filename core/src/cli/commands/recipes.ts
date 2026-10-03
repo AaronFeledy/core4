@@ -124,23 +124,22 @@ const recipeManifestPath = (path: string, cwd: string): string => {
     : resolve(expanded, "recipe.yml");
 };
 
-export const recipesDescribe = (
+export const recipesDescribe = Effect.fn("Recipes.describe")(function* (
   ref: string,
   options: { readonly cwd: string },
-): Effect.Effect<RecipesDescribeResult, RecipesManifestError> =>
-  Effect.gen(function* () {
-    if (expandsAsLocalPath(ref)) {
-      const manifestPath = recipeManifestPath(ref, options.cwd);
-      const manifestYaml = yield* readManifestText(manifestPath);
-      yield* ensureSingleRecipeManifestForm(manifestPath);
-      const manifest = yield* parseRecipe(manifestPath, manifestYaml);
-      yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
-      return describeFromManifest(manifest, manifestPath);
-    }
-    const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
-    const manifest = resolved.manifest ?? (yield* parseRecipe(resolved.source, resolved.manifestYaml));
-    return describeFromManifest(manifest, resolved.source);
-  });
+): Effect.fn.Return<RecipesDescribeResult, RecipesManifestError> {
+  if (expandsAsLocalPath(ref)) {
+    const manifestPath = recipeManifestPath(ref, options.cwd);
+    const manifestYaml = yield* readManifestText(manifestPath);
+    yield* ensureSingleRecipeManifestForm(manifestPath);
+    const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+    yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
+    return describeFromManifest(manifest, manifestPath);
+  }
+  const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
+  const manifest = resolved.manifest ?? (yield* parseRecipe(resolved.source, resolved.manifestYaml));
+  return describeFromManifest(manifest, resolved.source);
+});
 
 export const renderRecipesDescribeResult = (result: RecipesDescribeResult): string => {
   const lines = [
@@ -234,24 +233,23 @@ const ensureRecipeIdMatchesDirectory = (
       );
 };
 
-export const recipesValidate = (
+export const recipesValidate = Effect.fn("Recipes.validate")(function* (
   path: string,
   options: { readonly cwd: string },
-): Effect.Effect<RecipesValidateResult, RecipesManifestError> =>
-  Effect.gen(function* () {
-    const manifestPath = recipeManifestPath(path, options.cwd);
-    const manifestYaml = yield* readManifestText(manifestPath);
-    yield* ensureSingleRecipeManifestForm(manifestPath);
-    const manifest = yield* parseRecipe(manifestPath, manifestYaml);
-    yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
-    return {
-      valid: true as const,
-      id: manifest.id,
-      source: manifestPath,
-      prompts: manifest.prompts?.length ?? 0,
-      files: manifest.files?.length ?? 0,
-    };
-  });
+): Effect.fn.Return<RecipesValidateResult, RecipesManifestError> {
+  const manifestPath = recipeManifestPath(path, options.cwd);
+  const manifestYaml = yield* readManifestText(manifestPath);
+  yield* ensureSingleRecipeManifestForm(manifestPath);
+  const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+  yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
+  return {
+    valid: true as const,
+    id: manifest.id,
+    source: manifestPath,
+    prompts: manifest.prompts?.length ?? 0,
+    files: manifest.files?.length ?? 0,
+  };
+});
 
 export const renderRecipesValidateResult = (result: RecipesValidateResult): string =>
   `${result.source} is a valid recipe manifest (id: ${result.id}, ${result.prompts} prompt${

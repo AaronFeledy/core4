@@ -288,24 +288,30 @@ const makeDestroyLayer = (
     list: () => Effect.succeed([]),
   };
 
-  const proxyLayer = Layer.succeed(RouterService, {
-    id: "recording",
-    capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-    setup: () => Effect.void,
-    revalidateStartup: Effect.void,
-    applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-    removeRoutes: (app) =>
-      Effect.sync(() => void routeRemovals.push(String(app))).pipe(
-        Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
-      ),
-    status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
-    stop: Effect.void,
-  });
+  const proxyLayer = Layer.succeed(
+    RouterService,
+    RouterService.of({
+      id: "recording",
+      capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+      setup: () => Effect.void,
+      revalidateStartup: Effect.void,
+      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+      removeRoutes: (app) =>
+        Effect.sync(() => void routeRemovals.push(String(app))).pipe(
+          Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
+        ),
+      status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+      stop: Effect.void,
+    }),
+  );
   const commandLayer = Layer.mergeAll(
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
+    ),
     makeTestStateStore().layer,
     Layer.succeed(
       PathsService,
@@ -315,38 +321,44 @@ const makeDestroyLayer = (
         platform: "linux",
       }),
     ),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-      ...(options.appliedPlanEvidence === true
-        ? {
-            resolveTeardownEvidence: (root: AbsolutePath) => {
-              evidenceRoots.push(root);
-              return Effect.succeed(
-                evidenceRoots.length === 1
-                  ? { kind: "applied" as const, plan: plannedApp }
-                  : { kind: "absent" as const },
-              );
-            },
-          }
-        : {}),
-    }),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+        ...(options.appliedPlanEvidence === true
+          ? {
+              resolveTeardownEvidence: (root: AbsolutePath) => {
+                evidenceRoots.push(root);
+                return Effect.succeed(
+                  evidenceRoots.length === 1
+                    ? { kind: "applied" as const, plan: plannedApp }
+                    : { kind: "absent" as const },
+                );
+              },
+            }
+          : {}),
+      }),
+    ),
     ...(options.proxyAvailable === false ? [] : [proxyLayer]),
   );
-  const eventLayer = Layer.succeed(EventService, {
-    publish: (event) =>
-      Effect.sync(() => {
-        events.push(event._tag);
-        publishedEvents.push(event);
-      }),
-    subscribe: () => Stream.die("not used"),
-    subscribeQueue: Effect.die("not used"),
-    waitFor: () => Effect.die("not used"),
-    waitForAny: () => Effect.die("not used"),
-    query: () => Effect.succeed([]),
-  });
+  const eventLayer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event._tag);
+          publishedEvents.push(event);
+        }),
+      subscribe: () => Stream.die("not used"),
+      subscribeQueue: Effect.die("not used"),
+      waitFor: () => Effect.die("not used"),
+      waitForAny: () => Effect.die("not used"),
+      query: () => Effect.succeed([]),
+    }),
+  );
   const layer = Layer.merge(commandLayer, eventLayer);
 
   return {
@@ -758,7 +770,7 @@ describe("lando destroy", () => {
 
   test("skips file-sync cleanup when the engine is unavailable and still destroys the app", async () => {
     const callLog: string[] = [];
-    const unavailableEngine: FileSyncEngineShape = {
+    const unavailableEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -784,7 +796,7 @@ describe("lando destroy", () => {
           return [];
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeDestroyLayer();
     const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, unavailableEngine));
 
@@ -796,7 +808,7 @@ describe("lando destroy", () => {
 
   test("preserves provider resources when file-sync session listing fails", async () => {
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -831,7 +843,7 @@ describe("lando destroy", () => {
           ),
         ),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeDestroyLayer({
       appliedFileSync: {
         status: "accelerated",
@@ -866,7 +878,7 @@ describe("lando destroy", () => {
       lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     }));
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -908,7 +920,7 @@ describe("lando destroy", () => {
           return existing;
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeDestroyLayer({
       appliedFileSync: {
         status: "accelerated",
@@ -950,7 +962,7 @@ describe("lando destroy", () => {
       lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     };
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -989,7 +1001,7 @@ describe("lando destroy", () => {
           return [existing];
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeDestroyLayer({
       appliedFileSync: {
         status: "accelerated",
@@ -1023,7 +1035,7 @@ describe("lando destroy", () => {
       lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     };
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -1052,7 +1064,7 @@ describe("lando destroy", () => {
           return [existing];
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeDestroyLayer({
       appliedFileSync: {
         status: "accelerated",

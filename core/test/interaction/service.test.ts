@@ -9,7 +9,7 @@ import { ChoicesUnavailableError } from "@lando/sdk/errors";
 import { Logger, Renderer } from "@lando/sdk/services";
 
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeRendererServiceLiveForMode } from "@lando/renderer/output";
+import * as RendererOutput from "@lando/renderer/output";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { resetInteractivePromptDegradationForTest } from "../../src/interaction/interactive-driver.ts";
 import {
@@ -43,7 +43,7 @@ const capturingWritable = () => {
 const capturingRenderer = (id = "plain") => {
   let out = "";
   let err = "";
-  const service: RendererService = {
+  const service: RendererService = Renderer.of({
     id,
     capabilities: { color: false, interactive: false, animation: false, notifications: false },
     message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
@@ -57,7 +57,7 @@ const capturingRenderer = (id = "plain") => {
           err += chunk;
         }),
     },
-  };
+  });
   return { service, out: () => out, err: () => err };
 };
 
@@ -331,7 +331,7 @@ describe("InteractionServiceLive — rich driver wiring", () => {
       releaseNotice = resolve;
     });
     const notices: string[] = [];
-    const logger: Context.Service.Shape<typeof Logger> = {
+    const logger: Context.Service.Shape<typeof Logger> = Logger.of({
       debug: (message) =>
         Effect.promise(async () => {
           notices.push(message);
@@ -341,7 +341,7 @@ describe("InteractionServiceLive — rich driver wiring", () => {
       info: () => Effect.void,
       warn: () => Effect.void,
       error: () => Effect.void,
-    };
+    });
     const service = makeInteractionService({
       stdin: ttyStdin,
       stdout: capturingWritable().stream,
@@ -396,12 +396,12 @@ describe("InteractionServiceLive — rich driver wiring", () => {
     const answer = await runScoped(
       service
         .prompt({ name: "name", type: "text", message: "Name?" })
-        .pipe(Effect.provide(Layer.succeed(Renderer, renderer.service))),
+        .pipe(Effect.provide(Layer.succeed(Renderer, Renderer.of(renderer.service)))),
     );
     const baselineAnswer = await runScoped(
       baselineService
         .prompt({ name: "name", type: "text", message: "Name?" })
-        .pipe(Effect.provide(Layer.succeed(Renderer, baselineRenderer.service))),
+        .pipe(Effect.provide(Layer.succeed(Renderer, Renderer.of(baselineRenderer.service)))),
     );
 
     expect(answer).toBe("line-answer");
@@ -453,7 +453,7 @@ describe("InteractionServiceLive — renderer coordination", () => {
     await runScoped(
       service
         .promptAll([{ name: "app", type: "text", message: "Routed?" }], { interactive: true })
-        .pipe(Effect.provideService(Renderer, renderer.service)),
+        .pipe(Effect.provideService(Renderer, Renderer.of(renderer.service))),
     );
     expect(renderer.out()).toContain("Routed?");
     expect(directStdout.text()).toBe("");
@@ -478,7 +478,7 @@ describe("InteractionServiceLive — renderer coordination", () => {
         Effect.runSync(
           Effect.scoped(
             Effect.gen(function* () {
-              const context = yield* Layer.build(makeRendererServiceLiveForMode(mode, landoRenderer, io));
+              const context = yield* Layer.build(RendererOutput.layerServiceForMode(mode, landoRenderer, io));
               const renderer = Context.get(context, Renderer);
               yield* renderer.output.stdout("chrome");
               yield* renderer.output.stderr("diag");

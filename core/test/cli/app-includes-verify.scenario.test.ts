@@ -9,7 +9,7 @@ import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@land
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
 import { appIncludesVerifySpec } from "../../src/cli/command-specs/app/includes/verify.ts";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
-import { TestStateStoreLive } from "../_support/landofile-layer.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -177,7 +177,7 @@ describe("lando app:includes:verify (source dispatch)", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -200,7 +200,7 @@ describe("lando app:includes:verify (source dispatch)", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);

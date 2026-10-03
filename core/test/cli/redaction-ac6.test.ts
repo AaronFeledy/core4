@@ -17,14 +17,17 @@ const realRedactionLayer = RedactionService.layer.pipe(
 describe("redaction integration on emitting surfaces", () => {
   test("resolved SecretStore values are absent from bun-self event payloads", async () => {
     const events: Array<Record<string, unknown>> = [];
-    const eventLayer = Layer.succeed(EventService, {
-      publish: (event: LandoEvent) => Effect.sync(() => events.push({ ...event })),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Queue.unbounded<never>(),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    } satisfies EventServiceShape);
+    const eventLayer = Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event: LandoEvent) => Effect.sync(() => events.push({ ...event })),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Queue.unbounded<never>(),
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      } satisfies EventServiceShape),
+    );
     const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
 
     await Effect.runPromise(

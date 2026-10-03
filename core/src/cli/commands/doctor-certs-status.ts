@@ -54,22 +54,21 @@ const statusFromFailure = (
   }
 };
 
-export const certsDoctorStatus = (redact: (value: string) => string) =>
-  Effect.gen(function* () {
-    const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
-    if (Option.isNone(resolver)) return UNRESOLVED_CERTS_STATUS;
+export const certsDoctorStatus = Effect.fnUntraced(function* (redact: (value: string) => string) {
+  const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
+  if (Option.isNone(resolver)) return UNRESOLVED_CERTS_STATUS;
 
-    const resolved = yield* Effect.exit(resolver.value.resolve);
-    if (Exit.isSuccess(resolved)) return { _tag: "selected", id: resolved.value.id } as const;
+  const resolved = yield* Effect.exit(resolver.value.resolve);
+  if (Exit.isSuccess(resolved)) return { _tag: "selected", id: resolved.value.id } as const;
 
-    const failure = Cause.findErrorOption(resolved.cause);
-    if (Option.isSome(failure)) return statusFromFailure(failure.value, redact);
-    return {
-      _tag: "load-failed",
-      pluginName: "unknown",
-      detail: redact(String(Cause.squash(resolved.cause))),
-    } as const;
-  });
+  const failure = Cause.findErrorOption(resolved.cause);
+  if (Option.isSome(failure)) return statusFromFailure(failure.value, redact);
+  return {
+    _tag: "load-failed",
+    pluginName: "unknown",
+    detail: redact(String(Cause.squash(resolved.cause))),
+  } as const;
+});
 
 export const certsSubsystemId = (status: CertsDoctorStatus): string => {
   switch (status._tag) {

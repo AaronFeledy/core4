@@ -48,52 +48,48 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
   });
 };
 
-const planResolvedLandofile = (
+const planResolvedLandofile = Effect.fnUntraced(function* (
   landofile: LandofileShape,
   root: string,
-): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* withResolvedCwd(
-      root,
-      Effect.suspend(() => planner.plan(landofile, capabilities)),
-    );
-    return { plan, landofile };
-  }).pipe(Effect.mapError(toAppResolveError));
+): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* withResolvedCwd(
+    root,
+    Effect.suspend(() => planner.plan(landofile, capabilities)),
+  );
+  return { plan, landofile };
+}, Effect.mapError(toAppResolveError));
 
-const planAt = (
+const planAt = Effect.fnUntraced(function* (
   dir: string | undefined,
-): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
-  Effect.gen(function* () {
-    const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
-    const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
-    const landofileService = yield* LandofileService;
-    const landofile = yield* loadUserLandofileAt(landofileService, root);
-    return yield* planResolvedLandofile(landofile, root);
-  }).pipe(Effect.mapError(toAppResolveError));
+): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
+  const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
+  const root = dir ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
+  const landofileService = yield* LandofileService;
+  const landofile = yield* loadUserLandofileAt(landofileService, root);
+  return yield* planResolvedLandofile(landofile, root);
+}, Effect.mapError(toAppResolveError));
 
-const planFromShape = (
+const planFromShape = Effect.fnUntraced(function* (
   shape: LandofileShape,
   appRoot: string,
-): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
-  Effect.gen(function* () {
-    const sourcePath = join(appRoot, ".lando.yml");
-    const stateStore = yield* StateStore;
-    const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath, stateStore });
-    yield* assertUserAppIdNotReserved(landofile);
-    yield* assertLandoVersionConstraint(landofile, { sourcePath });
-    return yield* planResolvedLandofile(landofile, appRoot);
-  }).pipe(Effect.mapError(toAppResolveError));
+): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
+  const sourcePath = join(appRoot, ".lando.yml");
+  const stateStore = yield* StateStore;
+  const landofile = yield* resolveLandofileIncludes({ landofile: shape, appRoot, sourcePath, stateStore });
+  yield* assertUserAppIdNotReserved(landofile);
+  yield* assertLandoVersionConstraint(landofile, { sourcePath });
+  return yield* planResolvedLandofile(landofile, appRoot);
+}, Effect.mapError(toAppResolveError));
 
-const planFromLandofileFile = (
+const planFromLandofileFile = Effect.fnUntraced(function* (
   filePath: string,
-): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
-  Effect.gen(function* () {
-    const landofile = yield* loadUserLandofileFile(filePath);
-    return yield* planResolvedLandofile(landofile, dirname(filePath));
-  }).pipe(Effect.mapError(toAppResolveError));
+): Effect.fn.Return<ResolvedLandofilePlan, unknown, ResolvePlanServices> {
+  const landofile = yield* loadUserLandofileFile(filePath);
+  return yield* planResolvedLandofile(landofile, dirname(filePath));
+}, Effect.mapError(toAppResolveError));
 
 const selectorMismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -236,17 +232,16 @@ const resolveTarget = (
  * Builds the branded `App` handle for an already-resolved target, capturing the
  * ambient runtime so handle methods need no further services.
  */
-export const buildAppHandle = (
+export const buildAppHandle = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
-): Effect.Effect<App, never, AppHandleRuntimeServices | Scope.Scope> =>
-  Effect.gen(function* () {
-    const runtime = yield* Effect.context<AppHandleRuntimeServices>();
-    const runtimeScope = yield* Effect.scope;
-    const handleScope = yield* Scope.fork(runtimeScope, "sequential");
-    const lifecycle = yield* makeAppLifecycle(handleScope);
-    const { appOperations } = yield* Effect.promise(() => import("@lando/engine/app/operations"));
-    return makeAppHandle(target, runtime, appOperations, lifecycle);
-  });
+): Effect.fn.Return<App, never, AppHandleRuntimeServices | Scope.Scope> {
+  const runtime = yield* Effect.context<AppHandleRuntimeServices>();
+  const runtimeScope = yield* Effect.scope;
+  const handleScope = yield* Scope.fork(runtimeScope, "sequential");
+  const lifecycle = yield* makeAppLifecycle(handleScope);
+  const { appOperations } = yield* Effect.promise(() => import("@lando/engine/app/operations"));
+  return makeAppHandle(target, runtime, appOperations, lifecycle);
+});
 
 /**
  * Resolves an app from an optional `AppSelector` and returns a stable, branded
@@ -255,11 +250,10 @@ export const buildAppHandle = (
  * re-discovering from the host's working directory. Selector precedence is
  * `id > landofile > root > cwd`.
  */
-export const resolveApp = (
+export const resolveApp = Effect.fn("LandoRuntime.resolveApp")(function* (
   selector?: AppSelector,
-): Effect.Effect<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> =>
-  Effect.gen(function* () {
-    const normalized = yield* Effect.fromResult(normalizeAppSelector(selector));
-    const target = yield* resolveTarget(normalized);
-    return yield* buildAppHandle(target);
-  });
+): Effect.fn.Return<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> {
+  const normalized = yield* Effect.fromResult(normalizeAppSelector(selector));
+  const target = yield* resolveTarget(normalized);
+  return yield* buildAppHandle(target);
+});

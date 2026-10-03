@@ -14,18 +14,19 @@ import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const stubEventService = (
   publish: (event: LandoEvent) => Effect.Effect<void, EventError>,
-): EventServiceShape => ({
-  publish,
-  subscribe: () => Stream.empty,
-  subscribeQueue: Effect.gen(function* () {
-    const queue = yield* Queue.unbounded<LandoEvent>();
-    yield* Effect.addFinalizer(() => Queue.shutdown(queue));
-    return queue;
-  }),
-  waitFor: () => Effect.never,
-  waitForAny: () => Effect.never,
-  query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
-});
+): EventServiceShape =>
+  EventService.of({
+    publish,
+    subscribe: () => Stream.empty,
+    subscribeQueue: Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<LandoEvent>();
+      yield* Effect.addFinalizer(() => Queue.shutdown(queue));
+      return queue;
+    }),
+    waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
+  });
 
 const makeRecordingEventLayer = (tags: string[]): Layer.Layer<EventService> =>
   Layer.succeed(

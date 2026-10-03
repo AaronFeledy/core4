@@ -75,7 +75,7 @@ const makeConfigService = (
     ...overrides,
   });
   const load = Effect.succeed(config);
-  return { load, get: (key) => Effect.map(load, (c) => c[key]) };
+  return ConfigService.of({ load, get: (key) => Effect.map(load, (c) => c[key]) });
 };
 
 const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
@@ -92,10 +92,10 @@ const buildSetupLayers = (
   httpFetch: typeof fetch = okProbeFetch,
 ) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, registry),
-    Layer.succeed(ConfigService, makeConfigService(configOverrides)),
-    Layer.succeed(Downloader, testDownloader.service),
-    Layer.succeed(InteractionService, testInteraction.service),
+    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
+    Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
+    Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
+    Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
     httpClientLayerWith({ fetch: httpFetch }),
   );
 
@@ -117,17 +117,21 @@ const buildSetupLayersWithHostIntegrations = (
 ) =>
   Layer.mergeAll(
     buildSetupLayers(registry, configOverrides),
-    Layer.succeed(CertificateAuthority, services.ca),
-    Layer.succeed(RouterService, services.proxy),
-    Layer.succeed(SshService, services.ssh),
-    Layer.succeed(FileSyncEngine, services.fileSync),
+    Layer.succeed(CertificateAuthority, CertificateAuthority.of(services.ca)),
+    Layer.succeed(RouterService, RouterService.of(services.proxy)),
+    Layer.succeed(SshService, SshService.of(services.ssh)),
+    Layer.succeed(FileSyncEngine, FileSyncEngine.of(services.fileSync)),
   );
 
 const buildSetupLayersWithPrivilege = (
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   privilege: Context.Service.Shape<typeof PrivilegeService>,
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
-) => Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
+) =>
+  Layer.mergeAll(
+    buildSetupLayers(registry, configOverrides),
+    Layer.succeed(PrivilegeService, PrivilegeService.of(privilege)),
+  );
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
@@ -446,11 +450,10 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: () =>
-        Effect.gen(function* () {
-          const trust = yield* Effect.serviceOption(NetworkTrust);
-          observed.push(trust._tag === "Some" ? trust.value : undefined);
-        }),
+      setup: Effect.fnUntraced(function* () {
+        const trust = yield* Effect.serviceOption(NetworkTrust);
+        observed.push(trust._tag === "Some" ? trust.value : undefined);
+      }),
     };
     const registry = {
       list: Effect.succeed([ProviderId.make("lando")]),
@@ -992,7 +995,10 @@ describe("meta:setup command", () => {
                 },
                 { userDataRoot },
               ),
-              Layer.succeed(CertificateAuthorityResolver, { resolve: Effect.fail(ambiguous) }),
+              Layer.succeed(
+                CertificateAuthorityResolver,
+                CertificateAuthorityResolver.of({ resolve: Effect.fail(ambiguous) }),
+              ),
             ),
           ),
         ),
@@ -1122,13 +1128,13 @@ describe("meta:setup command", () => {
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     };
-    const ca = {
+    const ca = CertificateAuthority.of({
       ...makeTestCertificateAuthority(),
       setup: (options: unknown) =>
         Effect.sync(() => {
           caSetupOptions.push(options);
         }),
-    };
+    });
 
     await Effect.runPromise(
       setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -2429,7 +2435,7 @@ describe("meta:setup command", () => {
   describe("provider selection precedence", () => {
     const recordingPrompter = (chosen: string): { prompter: InteractionServiceShape; calls: number } => {
       const state = { calls: 0 };
-      const prompter: InteractionServiceShape = {
+      const prompter: InteractionServiceShape = InteractionService.of({
         id: "test",
         isInteractive: Effect.succeed(true),
         prompt: () => Effect.die("unused"),
@@ -2441,7 +2447,7 @@ describe("meta:setup command", () => {
             return chosen as never;
           }),
         secret: () => Effect.die("unused"),
-      };
+      });
       return {
         prompter,
         get calls() {
@@ -2677,13 +2683,13 @@ describe("meta:setup command", () => {
             .pipe(
               Effect.provide(
                 Layer.mergeAll(
-                  Layer.succeed(RuntimeProviderRegistry, registry),
+                  Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
                   Layer.succeed(
                     ConfigService,
-                    makeConfigService({ defaultProviderId: ProviderId.make("docker") }),
+                    ConfigService.of(makeConfigService({ defaultProviderId: ProviderId.make("docker") })),
                   ),
-                  Layer.succeed(Downloader, testDownloader.service),
-                  Layer.succeed(InteractionService, recorder.prompter),
+                  Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
+                  Layer.succeed(InteractionService, InteractionService.of(recorder.prompter)),
                   httpClientLayerWith({ fetch: okProbeFetch }),
                 ),
               ),

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { makeLandoRuntime, openLandoRuntime } from "@lando/core";
 import { invokeOperation } from "@lando/core/cli/operations";
 import { createBufferedRendererIO } from "@lando/core/testing";
-import { makeJsonRendererServiceLive, makePlainRendererServiceLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { Cause, Effect, Exit } from "effect";
 import {
   ShellFailure,
@@ -20,7 +20,7 @@ describe("library shell failure characterization", () => {
           const io = createBufferedRendererIO();
           const exitCodeBefore = process.exitCode;
           const renderer =
-            format === "text" ? makePlainRendererServiceLive(io) : makeJsonRendererServiceLive(io);
+            format === "text" ? RendererRuntime.layerPlainService(io) : RendererRuntime.layerJsonService(io);
           const options = {
             renderer: format === "text" ? "plain" : "json",
             plugins: { policy: "bundled-only", layers: [renderer] },

@@ -46,11 +46,11 @@ const writeDiscoveredAuthority = async (root: string): Promise<string> => {
     [
       `import { Effect, Layer } from ${JSON.stringify(effectUrl)};`,
       `import { CertificateAuthority } from ${JSON.stringify(servicesUrl.href)};`,
-      "export const ca = Layer.succeed(CertificateAuthority, {",
+      "export const ca = Layer.succeed(CertificateAuthority, CertificateAuthority.of({",
       '  id: "custom-ca",',
       "  setup: () => Effect.void,",
       '  issueCert: () => Effect.succeed({ certPath: "/tmp/cert", keyPath: "/tmp/key", caPath: "/tmp/ca" }),',
-      "});",
+      "}));",
       "",
     ].join("\n"),
   );

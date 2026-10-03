@@ -44,33 +44,42 @@ const record = (failOnCommand?: string) => ({
 
 const layers = (rec: ReturnType<typeof record>) =>
   Layer.mergeAll(
-    Layer.succeed(ShellRunner, {
-      exec: (command: string) => {
-        rec.commands.push(command);
-        if (rec.failOnCommand === command) {
-          return Effect.fail(new ShellExecError({ message: "open failed", command, exitCode: 1 }));
-        }
-        return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
-      },
-      run: () => Effect.die("nu"),
-      runScript: () => Effect.die("nu"),
-      interactive: () => Effect.die("nu"),
-    }),
-    Layer.succeed(EventService, {
-      publish: (event: { _tag: string; url?: string }) => {
-        rec.events.push({ tag: event._tag, url: event.url ?? "" });
-        return Effect.void;
-      },
-      subscribe: () => Effect.die("nu") as never,
-      subscribeQueue: Effect.die("nu") as never,
-      waitFor: () => Effect.die("nu") as never,
-      waitForAny: () => Effect.die("nu") as never,
-      query: () => Effect.die("nu") as never,
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
-    }),
+    Layer.succeed(
+      ShellRunner,
+      ShellRunner.of({
+        exec: (command: string) => {
+          rec.commands.push(command);
+          if (rec.failOnCommand === command) {
+            return Effect.fail(new ShellExecError({ message: "open failed", command, exitCode: 1 }));
+          }
+          return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+        },
+        run: () => Effect.die("nu"),
+        runScript: () => Effect.die("nu"),
+        interactive: () => Effect.die("nu"),
+      }),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event: { _tag: string; url?: string }) => {
+          rec.events.push({ tag: event._tag, url: event.url ?? "" });
+          return Effect.void;
+        },
+        subscribe: () => Effect.die("nu") as never,
+        subscribeQueue: Effect.die("nu") as never,
+        waitFor: () => Effect.die("nu") as never,
+        waitForAny: () => Effect.die("nu") as never,
+        query: () => Effect.die("nu") as never,
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
+      }),
+    ),
   );
 
 const run = (plan: AppPlan, options: OpenAppOptions, rec: ReturnType<typeof record>) =>

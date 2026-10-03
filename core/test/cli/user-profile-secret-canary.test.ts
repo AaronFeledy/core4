@@ -72,7 +72,7 @@ test.each([
     const store = makeStateStore({
       privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
     });
-    const secretStore = {
+    const secretStore = SecretStore.of({
       id: "canary",
       get: (id: string) => {
         expect(id).toBe("OPAQUE");
@@ -80,7 +80,7 @@ test.each([
       },
       has: () => Effect.succeed(true),
       list: Effect.succeed(["OPAQUE"]),
-    };
+    });
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -130,33 +130,42 @@ test.each([
       PrivateFileAccessService.layer,
       Layer.succeed(PathsService, paths),
       Layer.succeed(StateStore, store),
-      Layer.succeed(ManagedFileTransactionGuard, {
-        ensureConsistent: () => Effect.void,
-        pending: () => Effect.succeed(null),
-      }),
+      Layer.succeed(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          ensureConsistent: () => Effect.void,
+          pending: () => Effect.succeed(null),
+        }),
+      ),
       Layer.succeed(SecretStore, secretStore),
-      Layer.succeed(RedactionService, makeRedactionService(secretStore)),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([ProviderId.make("lando")]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      }),
-      Layer.succeed(RouterService, TestRouterService),
+      Layer.succeed(RedactionService, RedactionService.of(makeRedactionService(secretStore))),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([ProviderId.make("lando")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
+      Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       BunShellRunner.layer(() => {
         throw new TypeError("No host shell is expected");
       }),
       GlobalAppServiceLayer.layer.pipe(
         Layer.provide(Layer.merge(LandoConfigService.layer, BunFileSystem.layer)),
       ),
-      Layer.succeed(LandofileService, {
-        discover: resolveLandofileIncludes({
-          landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
-          appRoot,
-          cacheRoot: paths.roots.userCacheRoot,
-          ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
-          stateStore: store,
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({
+          discover: resolveLandofileIncludes({
+            landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
+            appRoot,
+            cacheRoot: paths.roots.userCacheRoot,
+            ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
+            stateStore: store,
+          }),
         }),
-      }),
+      ),
     );
     const layer = Layer.mergeAll(
       dependencies,

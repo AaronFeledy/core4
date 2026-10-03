@@ -28,10 +28,11 @@ const tempRoot = async (): Promise<string> => {
 
 const configService = (
   load: Effect.Effect<GlobalConfig, ConfigError>,
-): Context.Service.Shape<typeof ConfigService> => ({
-  load,
-  get: (key) => Effect.map(load, (config) => config[key]),
-});
+): Context.Service.Shape<typeof ConfigService> =>
+  ConfigService.of({
+    load,
+    get: (key) => Effect.map(load, (config) => config[key]),
+  });
 
 const runStatus = (config: GlobalConfig, env: NodeJS.ProcessEnv) =>
   Effect.runPromise(

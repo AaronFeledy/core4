@@ -9,7 +9,7 @@ import { DownloadFetchError, RecipeManifestNotFoundError, RecipeSourceError } fr
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
-import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
+import * as RecipeManifestServiceLayer from "../../src/recipes/manifest/service.ts";
 import {
   type TarballRecipeFetcher,
   defaultTarballRecipeExtractor,
@@ -380,7 +380,7 @@ describe("resolveTarballRecipeSource", () => {
       expect(await Bun.file(source).exists()).toBe(true);
       const manifest = await Effect.runPromise(
         Effect.flatMap(RecipeManifestService, (svc) => svc.parse(source, manifestYaml)).pipe(
-          Effect.provide(RecipeManifestServiceLive),
+          Effect.provide(RecipeManifestServiceLayer.layer),
         ),
       );
       expect(manifest.id).toBe("remote-recipe");

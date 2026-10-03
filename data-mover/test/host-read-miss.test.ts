@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect";
 
-import { DataMoverLive } from "@lando/data-mover/service";
+import * as BunDataMover from "@lando/data-mover/service";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -17,23 +17,29 @@ const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunne
 
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 
-const silentEvents = Layer.succeed(EventService, {
-  publish: () => Effect.void,
-  subscribe: () => Stream.empty,
-  subscribeQueue: Effect.never,
-  waitFor: () => Effect.never,
-  waitForAny: () => Effect.never,
-  query: () => Effect.succeed([]),
-});
+const silentEvents = Layer.succeed(
+  EventService,
+  EventService.of({
+    publish: () => Effect.void,
+    subscribe: () => Stream.empty,
+    subscribeQueue: Effect.never,
+    waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
+  }),
+);
 
-const passthroughRedaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () =>
-    Effect.succeed({
-      redactString: (input: string) => input,
-      redactValue: (input: unknown) => input,
-    }),
-});
+const passthroughRedaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () =>
+      Effect.succeed({
+        redactString: (input: string) => input,
+        redactValue: (input: unknown) => input,
+      }),
+  }),
+);
 
 describe("byteStreamFromHost missing files", () => {
   test("fails with a host-file-not-found DataTransferError on ENOENT", async () => {
@@ -54,11 +60,11 @@ describe("byteStreamFromHost missing files", () => {
         ).pipe(
           Effect.provideService(RuntimeProvider, TestRuntimeProvider),
           Effect.provide(
-            DataMoverLive.pipe(
+            BunDataMover.layer.pipe(
               Layer.provide(
                 Layer.mergeAll(
                   stateStoreLayer,
-                  Layer.succeed(PathsService, makeLandoPaths()),
+                  Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
                   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
                   silentEvents,
                   passthroughRedaction,

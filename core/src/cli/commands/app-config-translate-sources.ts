@@ -125,22 +125,21 @@ export const discoverSourceFiles = (
   });
 
 /** --file may only select inside the extension-filtered discovered set. */
-export const rejectUndiscoveredSources = (
+export const rejectUndiscoveredSources = Effect.fnUntraced(function* (
   appRoot: string,
   discovered: ReadonlyArray<PortablePath>,
   explicit: ReadonlyArray<PortablePath>,
-): Effect.Effect<void, ConfigTranslateError> =>
-  Effect.gen(function* () {
-    const discoveredIds = new Set(discovered.map(String));
-    for (const path of explicit) {
-      if (discoveredIds.has(String(path))) continue;
-      yield* resolveContainedSourcePath(appRoot, path);
-      return yield* Effect.fail(
-        new ConfigTranslateError({
-          message: `Config translator source file "${path}" is not a discovered configuration document.`,
-          remediation:
-            "Pass --file with a .yml, .yaml, .json, or .toml path that discovery already selected inside the app root.",
-        }),
-      );
-    }
-  });
+): Effect.fn.Return<void, ConfigTranslateError> {
+  const discoveredIds = new Set(discovered.map(String));
+  for (const path of explicit) {
+    if (discoveredIds.has(String(path))) continue;
+    yield* resolveContainedSourcePath(appRoot, path);
+    return yield* Effect.fail(
+      new ConfigTranslateError({
+        message: `Config translator source file "${path}" is not a discovered configuration document.`,
+        remediation:
+          "Pass --file with a .yml, .yaml, .json, or .toml path that discovery already selected inside the app root.",
+      }),
+    );
+  }
+});

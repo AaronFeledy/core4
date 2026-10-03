@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
 
 import { TaskStartEvent } from "@lando/sdk/events";
 import { EventService, Renderer } from "@lando/sdk/services";
@@ -58,7 +58,7 @@ describe("bundled renderer resolution", () => {
           _tag: "task.start",
           taskId: "web",
           label: "start web",
-          timestamp: new Date().toISOString(),
+          timestamp: DateTime.formatIso(yield* DateTime.now),
         }),
       );
       yield* Effect.sleep("20 millis");

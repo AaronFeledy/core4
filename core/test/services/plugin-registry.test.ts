@@ -43,26 +43,32 @@ let originalCwd: string;
 let warnings: Array<string>;
 
 const fakeConfigService = (dataRoot: string | undefined) =>
-  Layer.succeed(ConfigService, {
-    load: Effect.succeed(
-      dataRoot === undefined
-        ? ({ userConfRoot: "unused" } as never)
-        : ({ userDataRoot: dataRoot, userConfRoot: join(dataRoot, "conf") } as never),
-    ),
-    get: <K extends string>(key: K) =>
-      Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
-  });
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load: Effect.succeed(
+        dataRoot === undefined
+          ? ({ userConfRoot: "unused" } as never)
+          : ({ userDataRoot: dataRoot, userConfRoot: join(dataRoot, "conf") } as never),
+      ),
+      get: <K extends string>(key: K) =>
+        Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+    }),
+  );
 
 const fakeLogger = (sink: Array<string>) =>
-  Layer.succeed(Logger, {
-    debug: () => Effect.void,
-    info: () => Effect.void,
-    warn: (message: string) =>
-      Effect.sync(() => {
-        sink.push(message);
-      }),
-    error: () => Effect.void,
-  });
+  Layer.succeed(
+    Logger,
+    Logger.of({
+      debug: () => Effect.void,
+      info: () => Effect.void,
+      warn: (message: string) =>
+        Effect.sync(() => {
+          sink.push(message);
+        }),
+      error: () => Effect.void,
+    }),
+  );
 
 const pluginRegistryTestLayer = (dataRoot: string | undefined) =>
   PluginRegistryLayer.layer.pipe(

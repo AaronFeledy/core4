@@ -134,35 +134,38 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
   }
 });
 
-export const doctorDeprecations = (): Effect.Effect<DoctorDeprecationReport, never, never> =>
-  Effect.gen(function* () {
-    yield* recordAuthoredMailhogUse;
-    const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
-    if (Option.isNone(maybeDeprecations)) return { entries: [] };
-    const deprecations = maybeDeprecations.value;
-    const summary = yield* deprecations.summary();
-    const entries: DoctorDeprecationEntry[] = [];
-    for (const entry of summary) {
-      const lookup = yield* deprecations.lookup(entry.kind, entry.id);
-      const notice = Option.getOrElse(lookup, () => entry.notice);
-      entries.push({
-        kind: entry.kind,
-        id: entry.id,
-        severity: notice.severity,
-        since: notice.since,
-        ...(notice.removeIn === undefined ? {} : { removeIn: notice.removeIn }),
-        ...(notice.replacement === undefined ? {} : { replacement: notice.replacement }),
-        note: notice.note,
-        ...(notice.docsUrl === undefined ? {} : { docsUrl: notice.docsUrl }),
-        source: sourceForDeprecation(entry),
-        count: entry.count,
-      });
-    }
-    entries.sort((left, right) =>
-      left.kind === right.kind ? left.id.localeCompare(right.id) : left.kind.localeCompare(right.kind),
-    );
-    return { entries };
-  });
+export const doctorDeprecations = Effect.fnUntraced(function* (): Effect.fn.Return<
+  DoctorDeprecationReport,
+  never,
+  never
+> {
+  yield* recordAuthoredMailhogUse;
+  const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
+  if (Option.isNone(maybeDeprecations)) return { entries: [] };
+  const deprecations = maybeDeprecations.value;
+  const summary = yield* deprecations.summary();
+  const entries: DoctorDeprecationEntry[] = [];
+  for (const entry of summary) {
+    const lookup = yield* deprecations.lookup(entry.kind, entry.id);
+    const notice = Option.getOrElse(lookup, () => entry.notice);
+    entries.push({
+      kind: entry.kind,
+      id: entry.id,
+      severity: notice.severity,
+      since: notice.since,
+      ...(notice.removeIn === undefined ? {} : { removeIn: notice.removeIn }),
+      ...(notice.replacement === undefined ? {} : { replacement: notice.replacement }),
+      note: notice.note,
+      ...(notice.docsUrl === undefined ? {} : { docsUrl: notice.docsUrl }),
+      source: sourceForDeprecation(entry),
+      count: entry.count,
+    });
+  }
+  entries.sort((left, right) =>
+    left.kind === right.kind ? left.id.localeCompare(right.id) : left.kind.localeCompare(right.kind),
+  );
+  return { entries };
+});
 
 const EMPTY_CHECKS = { checks: [] } as const;
 
@@ -192,143 +195,137 @@ export interface CollectDoctorReportInput<R> {
   readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;
 }
 
-export const collectDoctorReport = <R>(
-  input: CollectDoctorReportInput<R>,
-): Effect.Effect<DoctorReport, never, R | ConfigService> =>
-  makeDoctorTree(input.options).pipe(
-    Effect.flatMap((tree) =>
-      collectWithTree(input, tree).pipe(
-        Effect.onInterrupt(() => tree.settleInterrupt("doctor · interrupted")),
+export const collectDoctorReport = Effect.fn("Doctor.collectReport")(
+  <R>(input: CollectDoctorReportInput<R>): Effect.Effect<DoctorReport, never, R | ConfigService> =>
+    makeDoctorTree(input.options).pipe(
+      Effect.flatMap((tree) =>
+        collectWithTree(input, tree).pipe(
+          Effect.onInterrupt(() => tree.settleInterrupt("doctor · interrupted")),
+        ),
       ),
+      (effect) => interruptOnAbort(effect, input.options.signal),
     ),
-    (effect) => interruptOnAbort(effect, input.options.signal),
-  );
+);
 
-const collectWithTree = <R>(
+const collectWithTree = Effect.fnUntraced(function* <R>(
   input: CollectDoctorReportInput<R>,
   tree: TaskTreeController,
-): Effect.Effect<DoctorReport, never, R | ConfigService> =>
-  Effect.gen(function* () {
-    const options = input.options;
-    const sourceEnv = { ...(options.env ?? process.env) };
-    const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
-    const budgetMs = doctorSectionBudgetMs(sourceEnv);
-    const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
-    yield* tree.start;
+): Effect.fn.Return<DoctorReport, never, R | ConfigService> {
+  const options = input.options;
+  const sourceEnv = { ...(options.env ?? process.env) };
+  const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
+  const budgetMs = doctorSectionBudgetMs(sourceEnv);
+  const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
+  yield* tree.start;
 
-    // Each section is one task in the live tree: it spins while the section
-    // probes and settles as ✓ or ✗ from the section value, or as ✗ from the
-    // self check when doctor itself could not run the section.
-    const section = <A, E, SR>(
-      name: DoctorSectionId,
-      effect: Effect.Effect<A, E, SR>,
-      fallback: A,
-      outcome: (value: A) => DoctorSectionOutcome,
-    ): Effect.Effect<A, never, SR> =>
-      tree.startTask(name).pipe(
-        Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
-        Effect.flatMap((isolated) => {
-          if (isolated.self !== undefined) selfChecks.push(isolated.self);
-          const settled =
-            isolated.self === undefined ? outcome(isolated.value) : selfCheckOutcome(name, isolated.self);
-          return settleDoctorSection(tree, name, settled).pipe(Effect.as(isolated.value));
-        }),
-      );
+  // Each section is one task in the live tree: it spins while the section
+  // probes and settles as ✓ or ✗ from the section value, or as ✗ from the
+  // self check when doctor itself could not run the section.
+  const section = <A, E, SR>(
+    name: DoctorSectionId,
+    effect: Effect.Effect<A, E, SR>,
+    fallback: A,
+    outcome: (value: A) => DoctorSectionOutcome,
+  ): Effect.Effect<A, never, SR> =>
+    tree.startTask(name).pipe(
+      Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
+      Effect.flatMap((isolated) => {
+        if (isolated.self !== undefined) selfChecks.push(isolated.self);
+        const settled =
+          isolated.self === undefined ? outcome(isolated.value) : selfCheckOutcome(name, isolated.self);
+        return settleDoctorSection(tree, name, settled).pipe(Effect.as(isolated.value));
+      }),
+    );
 
-    // A provider sub-probe doctor could not run (e.g. a status timeout) fails
-    // the row the same way a whole-section self check does.
-    const provider = yield* section("provider", input.provider, EMPTY_CHECKS, (result) => {
-      const [self] = result.selfChecks ?? [];
-      return self === undefined
-        ? checksOutcome("provider", result.checks)
-        : selfCheckOutcome("provider", self);
-    });
-    // Provider-section self checks are lifted here so the report has one home for them.
-    selfChecks.push(...(provider.selfChecks ?? []));
-    const certs = yield* section(
-      "certificate-authority",
-      input.certs ?? certsDoctorStatus(redact),
-      UNRESOLVED_CERTS_STATUS,
-      certsOutcome,
-    );
-    const networkTrust = yield* section<NetworkTrustDoctorStatus | undefined, unknown, ConfigService>(
-      "network-trust",
-      networkTrustDoctorStatus(sourceEnv),
-      undefined,
-      (status) => checksOutcome("network-trust", status === undefined ? [] : [status]),
-    );
-    const subsystemOptions: SubsystemDoctorOptions = {
-      fix: options.fix === true,
-      certs,
-      ...(networkTrust === undefined ? {} : { networkTrust }),
-    };
-    const subsystems = yield* section(
-      "subsystems",
-      input.subsystems !== undefined
-        ? input.subsystems(subsystemOptions)
-        : subsystemDoctor(subsystemOptions).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
-      EMPTY_CHECKS,
-      (result) => checksOutcome("subsystems", result.checks),
-    );
-    const globalApp = yield* section(
-      "global-app",
-      globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer)),
-      EMPTY_CHECKS,
-      (result) => checksOutcome("global-app", result.checks),
-    );
-    const mcp = yield* section(
-      "mcp",
-      mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)),
-      EMPTY_CHECKS,
-      (result) => checksOutcome("mcp", result.checks),
-    );
-    const appVersionConstraints =
-      options.app === true
-        ? yield* section(
-            "app-version-constraints",
-            appVersionConstraintsForReport(),
-            EMPTY_CHECKS,
-            (result) => checksOutcome("app-version-constraints", result?.checks ?? []),
-          )
-        : undefined;
-    const deprecations =
-      options.deprecations === true
-        ? yield* section("deprecations", input.deprecations, { entries: [] }, deprecationsOutcome)
-        : undefined;
-    const appConfig =
-      options.app === true && input.appConfig !== undefined
-        ? yield* section("app-config", input.appConfig, undefined, appConfigOutcome)
-        : undefined;
-    const accelerated = yield* isolateDoctorSection({
-      section: "accelerated-starts",
-      effect: acceleratedStartsDoctor(redact),
-      fallback: [],
-      budgetMs,
-      redact,
-    });
-    if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
-    const missingRoots = yield* isolateDoctorSection({
-      section: "missing-app-roots",
-      effect: missingAppRootsDoctor(redact),
-      fallback: [],
-      budgetMs,
-      redact,
-    });
-    if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
-    const report: DoctorReport = {
-      version: CORE_VERSION,
-      provider: { checks: provider.checks },
-      subsystems: { checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value] },
-      globalApp,
-      mcp,
-      ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),
-      ...(deprecations === undefined ? {} : { deprecations }),
-      ...(appConfig === undefined ? {} : { appConfig }),
-      ...(selfChecks.length === 0 ? {} : { self: { checks: selfChecks } }),
-    };
-    yield* tree.close(doctorTreeSummary(countDoctorChecks(report)));
-    return report;
+  // A provider sub-probe doctor could not run (e.g. a status timeout) fails
+  // the row the same way a whole-section self check does.
+  const provider = yield* section("provider", input.provider, EMPTY_CHECKS, (result) => {
+    const [self] = result.selfChecks ?? [];
+    return self === undefined ? checksOutcome("provider", result.checks) : selfCheckOutcome("provider", self);
   });
+  // Provider-section self checks are lifted here so the report has one home for them.
+  selfChecks.push(...(provider.selfChecks ?? []));
+  const certs = yield* section(
+    "certificate-authority",
+    input.certs ?? certsDoctorStatus(redact),
+    UNRESOLVED_CERTS_STATUS,
+    certsOutcome,
+  );
+  const networkTrust = yield* section<NetworkTrustDoctorStatus | undefined, unknown, ConfigService>(
+    "network-trust",
+    networkTrustDoctorStatus(sourceEnv),
+    undefined,
+    (status) => checksOutcome("network-trust", status === undefined ? [] : [status]),
+  );
+  const subsystemOptions: SubsystemDoctorOptions = {
+    fix: options.fix === true,
+    certs,
+    ...(networkTrust === undefined ? {} : { networkTrust }),
+  };
+  const subsystems = yield* section(
+    "subsystems",
+    input.subsystems !== undefined
+      ? input.subsystems(subsystemOptions)
+      : subsystemDoctor(subsystemOptions).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+    EMPTY_CHECKS,
+    (result) => checksOutcome("subsystems", result.checks),
+  );
+  const globalApp = yield* section(
+    "global-app",
+    globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer)),
+    EMPTY_CHECKS,
+    (result) => checksOutcome("global-app", result.checks),
+  );
+  const mcp = yield* section(
+    "mcp",
+    mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)),
+    EMPTY_CHECKS,
+    (result) => checksOutcome("mcp", result.checks),
+  );
+  const appVersionConstraints =
+    options.app === true
+      ? yield* section("app-version-constraints", appVersionConstraintsForReport(), EMPTY_CHECKS, (result) =>
+          checksOutcome("app-version-constraints", result?.checks ?? []),
+        )
+      : undefined;
+  const deprecations =
+    options.deprecations === true
+      ? yield* section("deprecations", input.deprecations, { entries: [] }, deprecationsOutcome)
+      : undefined;
+  const appConfig =
+    options.app === true && input.appConfig !== undefined
+      ? yield* section("app-config", input.appConfig, undefined, appConfigOutcome)
+      : undefined;
+  const accelerated = yield* isolateDoctorSection({
+    section: "accelerated-starts",
+    effect: acceleratedStartsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
+  const missingRoots = yield* isolateDoctorSection({
+    section: "missing-app-roots",
+    effect: missingAppRootsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
+  const report: DoctorReport = {
+    version: CORE_VERSION,
+    provider: { checks: provider.checks },
+    subsystems: { checks: [...subsystems.checks, ...accelerated.value, ...missingRoots.value] },
+    globalApp,
+    mcp,
+    ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),
+    ...(deprecations === undefined ? {} : { deprecations }),
+    ...(appConfig === undefined ? {} : { appConfig }),
+    ...(selfChecks.length === 0 ? {} : { self: { checks: selfChecks } }),
+  };
+  yield* tree.close(doctorTreeSummary(countDoctorChecks(report)));
+  return report;
+});
 
 /**
  * Build the combined report against an already-provided runtime.
@@ -338,16 +335,18 @@ const collectWithTree = <R>(
  * so `lando doctor` always answers with a structured report. Only a user
  * interrupt stops the run.
  */
-export const doctorReport = (
-  options: DoctorOptions = {},
-): Effect.Effect<
-  DoctorReport,
-  never,
-  ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
-> =>
-  collectDoctorReport<ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry>({
-    options,
-    provider: doctor(options),
-    deprecations: doctorDeprecations(),
-    appConfig: appConfigForReport(),
-  });
+export const doctorReport = Effect.fn("Doctor.report")(
+  (
+    options: DoctorOptions = {},
+  ): Effect.Effect<
+    DoctorReport,
+    never,
+    ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
+  > =>
+    collectDoctorReport<ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry>({
+      options,
+      provider: doctor(options),
+      deprecations: doctorDeprecations(),
+      appConfig: appConfigForReport(),
+    }),
+);

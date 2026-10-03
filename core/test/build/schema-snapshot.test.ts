@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Predicate } from "effect";
 import { SchemaTransformation } from "effect";
 
 import { describe, expect, test } from "bun:test";
@@ -41,12 +42,10 @@ const DESCRIBED = "A described field used to prove annotation resolution.";
 // Correlate actual artifact nodes with their encoded source types. Effect emits
 // Undefined as JSON null too, but only source types accepting null justify it.
 const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly string[] => {
-  const isObject = (value: unknown): value is Record<string, unknown> =>
-    value !== null && typeof value === "object" && !Array.isArray(value);
   const visited = new WeakMap<AST.AST, WeakSet<object>>();
   const hasNullOrRef = (value: unknown): boolean => {
     if (Array.isArray(value)) return value.some(hasNullOrRef);
-    if (!isObject(value)) return false;
+    if (!Predicate.isObject(value)) return false;
     return (
       typeof value.$ref === "string" ||
       value.type === "null" ||
@@ -61,7 +60,7 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     path: string,
   ): ReadonlyArray<readonly [Record<string, unknown>, string]> => {
     if (Array.isArray(value)) return value.flatMap((child, index) => nullNodes(child, `${path}[${index}]`));
-    if (!isObject(value)) return [];
+    if (!Predicate.isObject(value)) return [];
     return [
       ...(value.type === "null" || (Array.isArray(value.type) && value.type.includes("null"))
         ? [[value, path] as const]
@@ -73,15 +72,15 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
   };
   const unexplained = new Map(nullNodes(document, "$"));
   const visit = (ast: AST.AST, target: unknown, path: string): void => {
-    if (!isObject(target) || !hasNullOrRef(target)) return;
+    if (!Predicate.isObject(target) || !hasNullOrRef(target)) return;
     if (typeof target.$ref === "string") {
       expect(target.$ref.startsWith("#/"), path).toBe(true);
       let resolved: unknown = document;
       for (const segment of target.$ref.slice(2).split("/")) {
         const key = decodeURIComponent(segment).replace(/~1/g, "/").replace(/~0/g, "~");
-        resolved = isObject(resolved) ? resolved[key] : undefined;
+        resolved = Predicate.isObject(resolved) ? resolved[key] : undefined;
       }
-      expect(isObject(resolved), `${path}: unresolved ${target.$ref}`).toBe(true);
+      expect(Predicate.isObject(resolved), `${path}: unresolved ${target.$ref}`).toBe(true);
       visit(ast, resolved, `${path}(${target.$ref})`);
       return;
     }
@@ -91,7 +90,7 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
     visited.set(ast, seen);
     if (unexplained.has(target) && Schema.is(Schema.make(ast))(null)) unexplained.delete(target);
     const projection = ast.annotations?.jsonSchemaProjection;
-    if (isObject(projection)) {
+    if (Predicate.isObject(projection)) {
       const explicitPaths = new Set(nullNodes(projection, path).map(([, candidate]) => candidate));
       for (const [node, candidate] of nullNodes(target, path)) {
         if (explicitPaths.has(candidate)) unexplained.delete(node);
@@ -130,11 +129,14 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
       for (const property of ast.propertySignatures) {
         if (typeof property.name !== "string") continue;
         const properties = target.properties;
-        if (isObject(properties)) visit(property.type, properties[property.name], `${path}.${property.name}`);
+        if (Predicate.isObject(properties))
+          visit(property.type, properties[property.name], `${path}.${property.name}`);
       }
       for (const signature of ast.indexSignatures) {
         const patterns = target.patternProperties;
-        const targets = isObject(patterns) ? Object.values(patterns) : [target.additionalProperties];
+        const targets = Predicate.isObject(patterns)
+          ? Object.values(patterns)
+          : [target.additionalProperties];
         for (const child of targets) visit(signature.type, child, `${path}.*`);
       }
     } else if (AST.isArrays(ast)) {

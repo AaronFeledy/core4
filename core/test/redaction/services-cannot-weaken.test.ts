@@ -39,18 +39,21 @@ const PATTERN_SOUP = `${SECRET_SOUP_FIXTURE.text.replace("superSecretTokenLonger
 const CANONICAL_SENTINEL = "[redacted]";
 const LEGACY_SENTINEL = "[REDACTED]";
 
-const secretStoreLayer = Layer.succeed(SecretStore, {
-  id: "redaction-proof-secrets",
-  get: (secret: string) => {
-    const index = Number(secret.replace("SECRET_", ""));
-    const value = SECRET_SOUP_FIXTURE.registeredSecrets[index];
-    return value === undefined
-      ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-      : Effect.succeed(value);
-  },
-  has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
-  list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
-} satisfies Context.Service.Shape<typeof SecretStore>);
+const secretStoreLayer = Layer.succeed(
+  SecretStore,
+  SecretStore.of({
+    id: "redaction-proof-secrets",
+    get: (secret: string) => {
+      const index = Number(secret.replace("SECRET_", ""));
+      const value = SECRET_SOUP_FIXTURE.registeredSecrets[index];
+      return value === undefined
+        ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
+        : Effect.succeed(value);
+    },
+    has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
+    list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
+  } satisfies Context.Service.Shape<typeof SecretStore>),
+);
 
 const realRedactionLayer = RedactionService.layer.pipe(Layer.provide(secretStoreLayer));
 const shellRunnerLive = BunShellRunner.layer(() => {
@@ -58,14 +61,17 @@ const shellRunnerLive = BunShellRunner.layer(() => {
 });
 
 const captureEventLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event) => Effect.sync(() => void events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  } satisfies Context.Service.Shape<typeof EventService>);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) => Effect.sync(() => void events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } satisfies Context.Service.Shape<typeof EventService>),
+  );
 
 const capturingDownloaderEvents = (): {
   readonly events: DownloaderEvents;

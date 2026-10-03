@@ -1,15 +1,18 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-import { Data } from "effect";
+import { Schema } from "effect";
 
 import type { ExportEntry } from "./plugin-build-package";
 
-export class PluginBuildMixedTreeError extends Data.TaggedError("PluginBuildMixedTreeError")<{
-  readonly message: string;
-  readonly remediation: string;
-  readonly path: string;
-}> {}
+export class PluginBuildMixedTreeError extends Schema.TaggedError<PluginBuildMixedTreeError>()(
+  "PluginBuildMixedTreeError",
+  {
+    message: Schema.String,
+    remediation: Schema.String,
+    path: Schema.String,
+  },
+) {}
 
 const isMissingPathError = (cause: unknown): boolean =>
   typeof cause === "object" &&

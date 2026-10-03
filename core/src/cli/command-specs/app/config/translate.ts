@@ -52,23 +52,22 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       default: "yaml",
     }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const flags = extractSpecFlags(input);
-      const files = Array.isArray(flags.file)
-        ? flags.file.filter((file): file is string => typeof file === "string")
-        : undefined;
-      const privateFileAccess = yield* PrivateFileAccessService;
-      return yield* appConfigTranslate({
-        write: flags.write === true,
-        list: flags.list === true,
-        detect: flags.detect === true,
-        ...(typeof flags.from === "string" ? { from: flags.from } : {}),
-        ...(typeof flags.to === "string" ? { to: flags.to } : {}),
-        ...(files === undefined ? {} : { files }),
-        privateFileAccess,
-      });
-    }),
+  run: Effect.fn("ConfigTranslateCommand.run")(function* (input: unknown) {
+    const flags = extractSpecFlags(input);
+    const files = Array.isArray(flags.file)
+      ? flags.file.filter((file): file is string => typeof file === "string")
+      : undefined;
+    const privateFileAccess = yield* PrivateFileAccessService;
+    return yield* appConfigTranslate({
+      write: flags.write === true,
+      list: flags.list === true,
+      detect: flags.detect === true,
+      ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+      ...(typeof flags.to === "string" ? { to: flags.to } : {}),
+      ...(files === undefined ? {} : { files }),
+      privateFileAccess,
+    });
+  }),
   documentOutput: {
     format: "yaml",
     reason:

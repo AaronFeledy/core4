@@ -21,17 +21,20 @@ const checkEventPayload = (check: LeakyCheck): Record<string, unknown> => ({
 });
 
 const secretStoreLayer = (values: Record<string, string>) =>
-  Layer.succeed(SecretStore, {
-    id: "test",
-    get: (secret: string) => {
-      const value = values[secret];
-      return value === undefined
-        ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-        : Effect.succeed(value);
-    },
-    has: (secret: string) => Effect.succeed(values[secret] !== undefined),
-    list: Effect.succeed(Object.keys(values)),
-  });
+  Layer.succeed(
+    SecretStore,
+    SecretStore.of({
+      id: "test",
+      get: (secret: string) => {
+        const value = values[secret];
+        return value === undefined
+          ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
+          : Effect.succeed(value);
+      },
+      has: (secret: string) => Effect.succeed(values[secret] !== undefined),
+      list: Effect.succeed(Object.keys(values)),
+    }),
+  );
 
 const secretsRedactor = (values: Record<string, string>) =>
   Effect.runPromise(

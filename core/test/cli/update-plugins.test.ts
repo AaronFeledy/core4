@@ -52,11 +52,14 @@ const makeTarball = async (name: string, version: string, postinstall = false): 
 
 const layerFor = (trustStore: typeof PluginTrustStore.Service) =>
   Layer.merge(
-    Layer.succeed(ConfigService, {
-      get: <K extends string>(key: K) =>
-        Effect.succeed(key === "userDataRoot" ? (root as never) : (undefined as never)),
-      getEffective: () => Effect.succeed({} as never),
-    } as never),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        get: <K extends string>(key: K) =>
+          Effect.succeed(key === "userDataRoot" ? (root as never) : (undefined as never)),
+        getEffective: () => Effect.succeed({} as never),
+      } as never),
+    ),
     Layer.succeed(PluginTrustStore, trustStore),
   );
 

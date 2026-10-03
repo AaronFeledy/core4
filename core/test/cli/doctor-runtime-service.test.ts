@@ -29,11 +29,12 @@ const steps = [
   },
 ] satisfies ReadonlyArray<SetupReadinessStep>;
 
-const buildRegistry = (provider: RuntimeServiceTestProvider) => ({
-  list: Effect.succeed([ProviderId.make(provider.id)]),
-  capabilities: Effect.succeed(provider.capabilities),
-  select: () => Effect.succeed(provider),
-});
+const buildRegistry = (provider: RuntimeServiceTestProvider) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
@@ -44,10 +45,10 @@ const buildConfigService = (
     ...overrides,
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const buildLayers = (
@@ -56,7 +57,7 @@ const buildLayers = (
 ): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry> =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-    Layer.succeed(ConfigService, buildConfigService(configOverrides)),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService(configOverrides))),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 

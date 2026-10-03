@@ -7,12 +7,8 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeStreamFrameSinkLive } from "@lando/renderer/output";
-import {
-  makeJsonRendererServiceLive,
-  makePlainRendererLive,
-  makePlainRendererServiceLive,
-} from "@lando/renderer/runtime";
+import * as RendererOutput from "@lando/renderer/output";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
@@ -21,17 +17,20 @@ const frames = [
   { _tag: "stdout", chunk: "ready", service: "web" },
   { _tag: "stderr", chunk: "warning", service: "web", source: "error-log" },
 ] satisfies readonly StreamFrameSinkFrame[];
-const redaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
-});
+const redaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
+  }),
+);
 
 describe("renderer finite stream completion", () => {
   for (const bodies of [[], ["queued-one", "queued-two"]]) {
     test(`event renderer closes promptly with ${bodies.length} buffered events`, async () => {
       // Given: a real event subscription and renderer, with a watchdog outside Effect finalization.
       const io = createBufferedRendererIO();
-      const layer = makePlainRendererLive(io).pipe(Layer.provideMerge(LandoEventService.layerWith()));
+      const layer = RendererRuntime.layerPlain(io).pipe(Layer.provideMerge(LandoEventService.layerWith()));
       const deadline = Promise.withResolvers<"deadline">();
       const timer = setTimeout(() => deadline.resolve("deadline"), 1000);
       try {
@@ -64,10 +63,10 @@ describe("renderer finite stream completion", () => {
     test(`${format} drains every frame and finalizes before returning`, async () => {
       const io = createBufferedRendererIO();
       let finalized = 0;
-      const layer = makeStreamFrameSinkLive(format).pipe(
+      const layer = RendererOutput.layerStreamFrameSink(format).pipe(
         Layer.provide(
           Layer.merge(
-            format === "json" ? makeJsonRendererServiceLive(io) : makePlainRendererServiceLive(io),
+            format === "json" ? RendererRuntime.layerJsonService(io) : RendererRuntime.layerPlainService(io),
             redaction,
           ),
         ),

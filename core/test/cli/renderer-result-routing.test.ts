@@ -5,7 +5,7 @@ import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
 
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeRendererServiceLiveForMode } from "@lando/renderer/output";
+import * as RendererOutput from "@lando/renderer/output";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
@@ -70,7 +70,7 @@ describe("command result vs message routing under --renderer=json", () => {
       Effect.gen(function* () {
         const renderer = yield* Renderer;
         yield* renderer.message.info("progress: 1 of 3");
-      }).pipe(Effect.provide(makeRendererServiceLiveForMode("json", landoRenderer, io))),
+      }).pipe(Effect.provide(RendererOutput.layerServiceForMode("json", landoRenderer, io))),
     );
     expect(io.stderr()).toContain("progress: 1 of 3");
     expect(io.stdout()).toBe("");

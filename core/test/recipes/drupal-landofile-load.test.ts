@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { LANDO4_TRANSLATOR_ID, configTranslators } from "@lando/lando4";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { createStandaloneRedactor } from "@lando/redaction/service";
+import type { ConfigTranslateError, RecipeDecomposeError } from "@lando/sdk/errors";
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -24,25 +25,24 @@ const loadTranslator = (): Effect.Effect<ConfigTranslatorShape> => {
   return Effect.promise(async () => loader());
 };
 
-const encodedDrupalLandofile = (
+const encodedDrupalLandofile = Effect.fnUntraced(function* (
   options: Readonly<Record<string, unknown>>,
   cms = false,
-): Effect.Effect<string> =>
-  Effect.gen(function* () {
-    const decomposer = cms
-      ? drupalCmsDecomposer({ redactor: createStandaloneRedactor("secrets") })
-      : drupalDecomposer({ redactor: createStandaloneRedactor("secrets") });
-    const decomposed = yield* decomposer.decompose({
-      producer: cms ? drupalCmsProducer : drupalProducer,
-      options,
-      secrets: {},
-    } as RecipeDecomposeInput);
-    const context = { name: "drupalload", ...(decomposed.fragment as Record<string, unknown>) };
-    const encode = (yield* loadTranslator()).encode;
-    if (encode === undefined) throw new Error("The lando4 translator must publish an encoder.");
-    const encoded = yield* encode({ context, fragment: context });
-    return encoded.text;
-  }).pipe(Effect.orDie);
+): Effect.fn.Return<string, ConfigTranslateError | RecipeDecomposeError> {
+  const decomposer = cms
+    ? drupalCmsDecomposer({ redactor: createStandaloneRedactor("secrets") })
+    : drupalDecomposer({ redactor: createStandaloneRedactor("secrets") });
+  const decomposed = yield* decomposer.decompose({
+    producer: cms ? drupalCmsProducer : drupalProducer,
+    options,
+    secrets: {},
+  } as RecipeDecomposeInput);
+  const context = { name: "drupalload", ...(decomposed.fragment as Record<string, unknown>) };
+  const encode = (yield* loadTranslator()).encode;
+  if (encode === undefined) throw new Error("The lando4 translator must publish an encoder.");
+  const encoded = yield* encode({ context, fragment: context });
+  return encoded.text;
+}, Effect.orDie);
 
 const withEncodedApp = async <A>(
   options: Readonly<Record<string, unknown>>,

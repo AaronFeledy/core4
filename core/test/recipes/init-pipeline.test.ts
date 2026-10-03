@@ -374,15 +374,18 @@ test("stdin is bound through the action runner, never answers, env, or argv", as
       return { executed: [] };
     },
   }).pipe(
-    Effect.provideService(ProcessRunner, {
-      run: (input) =>
-        Effect.sync(() => {
-          inputs.push(input);
-          return { exitCode: 0, stdout: "", stderr: "" };
-        }),
-      stream: () => Stream.empty,
-      streamWithExit: () => Stream.empty,
-    }),
+    Effect.provideService(
+      ProcessRunner,
+      ProcessRunner.of({
+        run: (input) =>
+          Effect.sync(() => {
+            inputs.push(input);
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }),
+        stream: () => Stream.empty,
+        streamWithExit: () => Stream.empty,
+      }),
+    ),
   );
   await Effect.runPromise(program);
   expect(inputs).toHaveLength(1);

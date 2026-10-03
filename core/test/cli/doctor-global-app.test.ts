@@ -19,60 +19,72 @@ import {
 const distLandofile = AbsolutePath.make("/tmp/lando-global/.lando.dist.yml");
 const userLandofile = AbsolutePath.make("/tmp/lando-global/.lando.yml");
 
-const globalAppLayer = Layer.succeed(GlobalAppService, {
-  id: "global",
-  root: Effect.succeed(AbsolutePath.make("/tmp/lando-global")),
-  ensureRoot: Effect.void,
-  paths: Effect.succeed({
-    root: AbsolutePath.make("/tmp/lando-global"),
-    distLandofile,
-    userLandofile,
-  }),
-  ensureUserLandofile: Effect.succeed({ path: userLandofile, created: false }),
-  ensureRunning: () => Effect.succeed([]),
-  regenerateDist: () => Effect.succeed({ path: distLandofile, status: "unchanged", serviceIds: [] }),
-} satisfies typeof GlobalAppService.Service);
+const globalAppLayer = Layer.succeed(
+  GlobalAppService,
+  GlobalAppService.of({
+    id: "global",
+    root: Effect.succeed(AbsolutePath.make("/tmp/lando-global")),
+    ensureRoot: Effect.void,
+    paths: Effect.succeed({
+      root: AbsolutePath.make("/tmp/lando-global"),
+      distLandofile,
+      userLandofile,
+    }),
+    ensureUserLandofile: Effect.succeed({ path: userLandofile, created: false }),
+    ensureRunning: () => Effect.succeed([]),
+    regenerateDist: () => Effect.succeed({ path: distLandofile, status: "unchanged", serviceIds: [] }),
+  } satisfies typeof GlobalAppService.Service),
+);
 
-const pluginRegistryLayer = Layer.succeed(PluginRegistry, {
-  list: Effect.succeed([]),
-  load: () => Effect.die("unused"),
-  loadServiceType: () => Effect.die("unused"),
-  loadServiceFeature: () => Effect.die("unused"),
-  loadAppFeature: () => Effect.die("unused"),
-} satisfies typeof PluginRegistry.Service);
+const pluginRegistryLayer = Layer.succeed(
+  PluginRegistry,
+  PluginRegistry.of({
+    list: Effect.succeed([]),
+    load: () => Effect.die("unused"),
+    loadServiceType: () => Effect.die("unused"),
+    loadServiceFeature: () => Effect.die("unused"),
+    loadAppFeature: () => Effect.die("unused"),
+  } satisfies typeof PluginRegistry.Service),
+);
 
-const unreadableFileSystemLayer = Layer.succeed(FileSystem, {
-  read: () =>
-    Stream.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
-  readText: () =>
-    Effect.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
-  write: () => Effect.void,
-  writeAtomic: () => Effect.void,
-  exists: () => Effect.succeed(true),
-  stat: () => Effect.succeed({ size: 10, mtimeMs: 0, isFile: true, isDirectory: false }),
-  lstat: () => Effect.succeed({ size: 10, mtimeMs: 0, isFile: true, isDirectory: false }),
-  mkdir: () => Effect.void,
-  remove: () => Effect.void,
-  readDir: () => Effect.succeed([]),
-  readFile: () =>
-    Effect.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
-  writeFile: () => Effect.void,
-} satisfies typeof FileSystem.Service);
+const unreadableFileSystemLayer = Layer.succeed(
+  FileSystem,
+  FileSystem.of({
+    read: () =>
+      Stream.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
+    readText: () =>
+      Effect.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
+    write: () => Effect.void,
+    writeAtomic: () => Effect.void,
+    exists: () => Effect.succeed(true),
+    stat: () => Effect.succeed({ size: 10, mtimeMs: 0, isFile: true, isDirectory: false }),
+    lstat: () => Effect.succeed({ size: 10, mtimeMs: 0, isFile: true, isDirectory: false }),
+    mkdir: () => Effect.void,
+    remove: () => Effect.void,
+    readDir: () => Effect.succeed([]),
+    readFile: () =>
+      Effect.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
+    writeFile: () => Effect.void,
+  } satisfies typeof FileSystem.Service),
+);
 
-const missingDistFileSystemLayer = Layer.succeed(FileSystem, {
-  read: () => Stream.empty,
-  readText: () => Effect.succeed(""),
-  write: () => Effect.void,
-  writeAtomic: () => Effect.void,
-  exists: () => Effect.succeed(false),
-  stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
-  lstat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
-  mkdir: () => Effect.void,
-  remove: () => Effect.void,
-  readDir: () => Effect.succeed([]),
-  readFile: () => Effect.succeed(""),
-  writeFile: () => Effect.void,
-} satisfies typeof FileSystem.Service);
+const missingDistFileSystemLayer = Layer.succeed(
+  FileSystem,
+  FileSystem.of({
+    read: () => Stream.empty,
+    readText: () => Effect.succeed(""),
+    write: () => Effect.void,
+    writeAtomic: () => Effect.void,
+    exists: () => Effect.succeed(false),
+    stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+    lstat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+    mkdir: () => Effect.void,
+    remove: () => Effect.void,
+    readDir: () => Effect.succeed([]),
+    readFile: () => Effect.succeed(""),
+    writeFile: () => Effect.void,
+  } satisfies typeof FileSystem.Service),
+);
 
 const layer = Layer.mergeAll(globalAppLayer, pluginRegistryLayer, unreadableFileSystemLayer);
 const notInstalledLayer = Layer.mergeAll(globalAppLayer, pluginRegistryLayer, missingDistFileSystemLayer);
@@ -148,10 +160,14 @@ describe("global-app doctor check", () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-global-doctor-plugins-"));
     try {
       await writeInstalledPlugin(join(userDataRoot, "plugins"), "@example/global-doctor-user-plugin");
-      const configLayer = Layer.succeed(ConfigService, {
-        load: Effect.succeed({ userDataRoot } as never),
-        get: (key) => Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
-      });
+      const configLayer = Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed({ userDataRoot } as never),
+          get: (key) =>
+            Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
+        }),
+      );
       const context = await Effect.runPromise(
         Effect.scoped(Layer.build(DefaultGlobalAppDoctorLayer.pipe(Layer.provide(configLayer)))),
       );

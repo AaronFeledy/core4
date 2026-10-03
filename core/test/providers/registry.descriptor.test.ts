@@ -56,17 +56,17 @@ const notRegistered = (id: string): PluginLoadError =>
 const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
   const load = Effect.succeed(config);
-  const configService: Context.Service.Shape<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
-  const pluginRegistry: Context.Service.Shape<typeof PluginRegistry> = {
+  });
+  const pluginRegistry: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
     list: Effect.succeed(manifests),
     load: (name) => Effect.fail(notRegistered(name)),
     loadServiceType: (id) => Effect.fail(notRegistered(id)),
     loadServiceFeature: (id) => Effect.fail(notRegistered(id)),
     loadAppFeature: (id) => Effect.fail(notRegistered(id)),
-  };
+  });
   const downloader = Effect.runSync(makeTestDownloader());
   const managedFiles = Effect.runSync(makeTestManagedFileStore());
   const stateStore = makeTestStateStore();
@@ -75,11 +75,11 @@ const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
     Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
   );
   return Layer.mergeAll(
-    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
+    Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     Layer.succeed(ConfigService, configService),
-    Layer.succeed(Downloader, downloader.service),
+    Layer.succeed(Downloader, Downloader.of(downloader.service)),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
     Layer.succeed(ManagedFileService, managedFiles.service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/descriptor-registry-test" })),
     Layer.succeed(PluginRegistry, pluginRegistry),

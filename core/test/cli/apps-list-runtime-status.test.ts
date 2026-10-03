@@ -66,10 +66,13 @@ for (const fixture of cases) {
               ownedAppIds: containers.length > 0 ? [appId] : [],
             }),
           }).pipe(
-            Effect.provideService(ConfigService, {
-              load: Effect.succeed(config),
-              get: (key) => Effect.succeed(config[key]),
-            }),
+            Effect.provideService(
+              ConfigService,
+              ConfigService.of({
+                load: Effect.succeed(config),
+                get: (key) => Effect.succeed(config[key]),
+              }),
+            ),
           ),
         );
 
@@ -114,10 +117,13 @@ for (const failure of ["missing socket", "rejected discovery"] as const) {
           userCacheRoot: root,
           discoverContainersEvidence,
         }).pipe(
-          Effect.provideService(ConfigService, {
-            load: Effect.succeed(config),
-            get: (key) => Effect.succeed(config[key]),
-          }),
+          Effect.provideService(
+            ConfigService,
+            ConfigService.of({
+              load: Effect.succeed(config),
+              get: (key) => Effect.succeed(config[key]),
+            }),
+          ),
         ),
       );
 

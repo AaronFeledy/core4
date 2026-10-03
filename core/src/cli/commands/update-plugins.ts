@@ -57,151 +57,149 @@ const loadManifest = (path: string): Effect.Effect<PluginManifest | undefined> =
     Effect.catch(() => Effect.succeed(undefined)),
   );
 
-const inventoryFor = (
+const inventoryFor = Effect.fnUntraced(function* (
   pluginsRoot: string,
   trustStore: typeof PluginTrustStore.Service,
   registryClient: NpmRegistryClient,
   resolveMetadata = true,
-): Effect.Effect<
+): Effect.fn.Return<
   ReadonlyArray<PluginUpdateInventoryItem & { readonly activation: InstalledPluginRegistryEntry }>
-> =>
-  Effect.gen(function* () {
-    const registry = yield* Effect.promise(() => readInstalledPluginRegistry(pluginsRoot));
-    return yield* Effect.forEach(
-      Object.values(registry),
-      (entry) =>
-        Effect.gen(function* () {
-          const manifest = yield* loadManifest(entry.path);
-          const trusted = yield* trustStore
-            .isPluginTrusted(entry.name)
-            .pipe(Effect.catch(() => Effect.succeed(false)));
-          const mayResolve =
-            resolveMetadata &&
-            entry.requestedSelector !== undefined &&
-            entry.source !== "linked" &&
-            manifest?.bundled !== true &&
-            trusted;
-          const packument = mayResolve
-            ? yield* Effect.tryPromise(() => registryClient.fetchPackument(entry.name)).pipe(
-                Effect.catch(() => Effect.succeed(undefined)),
-              )
-            : undefined;
-          return {
-            activation: entry,
-            name: entry.name,
-            currentVersion: entry.version,
-            ...(manifest?.requires === undefined ? {} : { currentRequires: manifest.requires }),
-            ...(entry.requestedSelector === undefined ? {} : { requestedSelector: entry.requestedSelector }),
-            ...(entry.source === undefined ? {} : { source: entry.source }),
-            ...(manifest?.bundled === undefined ? {} : { bundled: manifest.bundled }),
-            trusted,
-            ...(packument === undefined ? {} : { metadata: advertisedMetadata(packument) }),
-          };
-        }),
-      { concurrency: "unbounded" },
-    );
-  });
-
-export const makePluginUpdateRunner = (
-  options: PluginUpdateAdapterOptions = {},
-): Effect.Effect<PluginUpdateRunner, ConfigError | NotImplementedError, ConfigService | PluginTrustStore> =>
-  Effect.gen(function* () {
-    const config = yield* ConfigService;
-    const trustStore = yield* PluginTrustStore;
-    let userDataRoot = options.userDataRoot;
-    if (userDataRoot === undefined) userDataRoot = yield* config.get("userDataRoot");
-    const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
-    const pluginsRoot = options.pluginsRoot ?? paths.pluginsDir;
-    const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-    const registryClient = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
-
-    return (input) =>
+> {
+  const registry = yield* Effect.promise(() => readInstalledPluginRegistry(pluginsRoot));
+  return yield* Effect.forEach(
+    Object.values(registry),
+    (entry) =>
       Effect.gen(function* () {
-        const inventory = yield* inventoryFor(
-          pluginsRoot,
-          trustStore,
-          registryClient,
-          input.upgradePlugins !== false,
-        );
-        const plan = planUpdates({
-          currentCoreVersion: input.currentCoreVersion,
-          targetCoreVersion: input.targetCoreVersion,
-          selection: input.upgradePlugins === false ? "core" : input.combined ? "all" : "plugins",
-          plugins: inventory,
-        });
-        const plannedRows = plan.rows.filter((row): row is PluginUpdatePlanRow => row.kind === "plugin");
-        const plannedBlockCore = plan.rows.some((row) => row.kind === "core" && row.status === "blocked");
-        if (input.dryRun) {
-          return {
-            rows: plannedRows,
-            updatedPlugins: [],
-            blockCore: plannedBlockCore,
-            hasFailures: plan.hasFailures,
-          };
-        }
-
-        const updatedPlugins: string[] = [];
-        const rows: PluginUpdatePlanRow[] = [];
-        const expectedRegistry = Object.fromEntries(inventory.map((item) => [item.name, item.activation]));
-        for (const row of plannedRows) {
-          if (row.status !== "update" || row.targetVersion === undefined || row.selector === undefined) {
-            rows.push(row);
-            continue;
-          }
-          const item = inventory.find((candidate) => candidate.name === row.name);
-          const advertised = item?.metadata?.versions[row.targetVersion];
-          if (item === undefined || advertised === undefined) {
-            rows.push({ ...row, status: "failed", reason: "metadata-unavailable" });
-            continue;
-          }
-          const exit = yield* Effect.exit(
-            pluginAdd({
-              spec: `${row.name}@${row.targetVersion}`,
-              pluginsRoot,
-              ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-              registryUrl,
-              registryClient,
-              ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
-              ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
-              ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
-              trustStore: new Set(),
-              requestedSelector: row.selector,
-              expectedManifest: advertised,
-              expectedActivation: item.activation,
-              expectedRegistry,
-              nonInteractive: true,
-            }).pipe(
-              Effect.provideService(ConfigService, config),
-              Effect.provideService(PluginTrustStore, trustStore),
-            ),
-          );
-          if (Exit.isSuccess(exit)) {
-            expectedRegistry[row.name] = {
-              name: exit.value.pluginName,
-              version: exit.value.pluginVersion,
-              path: exit.value.entry,
-              requestedSelector: row.selector,
-            };
-            updatedPlugins.push(row.name);
-            rows.push(row);
-          } else {
-            rows.push({ ...row, status: "failed", reason: "apply-failed" });
-          }
-        }
-        const coreReplacementPrecondition = {
-          pluginsRoot,
-          currentCoreVersion: input.currentCoreVersion,
-          targetCoreVersion: input.targetCoreVersion,
-        };
-        const blockCore =
-          input.combined && (yield* Effect.isFailure(checkCoreReplacement(coreReplacementPrecondition)));
+        const manifest = yield* loadManifest(entry.path);
+        const trusted = yield* trustStore
+          .isPluginTrusted(entry.name)
+          .pipe(Effect.catch(() => Effect.succeed(false)));
+        const mayResolve =
+          resolveMetadata &&
+          entry.requestedSelector !== undefined &&
+          entry.source !== "linked" &&
+          manifest?.bundled !== true &&
+          trusted;
+        const packument = mayResolve
+          ? yield* Effect.tryPromise(() => registryClient.fetchPackument(entry.name)).pipe(
+              Effect.catch(() => Effect.succeed(undefined)),
+            )
+          : undefined;
         return {
-          rows,
-          updatedPlugins,
-          blockCore,
-          hasFailures: blockCore || plan.hasFailures || rows.some((row) => row.status === "failed"),
-          coreReplacementPrecondition,
-          guardCoreReplacement: (body) => guardCoreReplacement(coreReplacementPrecondition, body),
+          activation: entry,
+          name: entry.name,
+          currentVersion: entry.version,
+          ...(manifest?.requires === undefined ? {} : { currentRequires: manifest.requires }),
+          ...(entry.requestedSelector === undefined ? {} : { requestedSelector: entry.requestedSelector }),
+          ...(entry.source === undefined ? {} : { source: entry.source }),
+          ...(manifest?.bundled === undefined ? {} : { bundled: manifest.bundled }),
+          trusted,
+          ...(packument === undefined ? {} : { metadata: advertisedMetadata(packument) }),
         };
+      }),
+    { concurrency: "unbounded" },
+  );
+});
+
+export const makePluginUpdateRunner = Effect.fnUntraced(function* (
+  options: PluginUpdateAdapterOptions = {},
+): Effect.fn.Return<PluginUpdateRunner, ConfigError | NotImplementedError, ConfigService | PluginTrustStore> {
+  const config = yield* ConfigService;
+  const trustStore = yield* PluginTrustStore;
+  let userDataRoot = options.userDataRoot;
+  if (userDataRoot === undefined) userDataRoot = yield* config.get("userDataRoot");
+  const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
+  const pluginsRoot = options.pluginsRoot ?? paths.pluginsDir;
+  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
+  const registryClient = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
+
+  return (input) =>
+    Effect.gen(function* () {
+      const inventory = yield* inventoryFor(
+        pluginsRoot,
+        trustStore,
+        registryClient,
+        input.upgradePlugins !== false,
+      );
+      const plan = planUpdates({
+        currentCoreVersion: input.currentCoreVersion,
+        targetCoreVersion: input.targetCoreVersion,
+        selection: input.upgradePlugins === false ? "core" : input.combined ? "all" : "plugins",
+        plugins: inventory,
       });
-  });
+      const plannedRows = plan.rows.filter((row): row is PluginUpdatePlanRow => row.kind === "plugin");
+      const plannedBlockCore = plan.rows.some((row) => row.kind === "core" && row.status === "blocked");
+      if (input.dryRun) {
+        return {
+          rows: plannedRows,
+          updatedPlugins: [],
+          blockCore: plannedBlockCore,
+          hasFailures: plan.hasFailures,
+        };
+      }
+
+      const updatedPlugins: string[] = [];
+      const rows: PluginUpdatePlanRow[] = [];
+      const expectedRegistry = Object.fromEntries(inventory.map((item) => [item.name, item.activation]));
+      for (const row of plannedRows) {
+        if (row.status !== "update" || row.targetVersion === undefined || row.selector === undefined) {
+          rows.push(row);
+          continue;
+        }
+        const item = inventory.find((candidate) => candidate.name === row.name);
+        const advertised = item?.metadata?.versions[row.targetVersion];
+        if (item === undefined || advertised === undefined) {
+          rows.push({ ...row, status: "failed", reason: "metadata-unavailable" });
+          continue;
+        }
+        const exit = yield* Effect.exit(
+          pluginAdd({
+            spec: `${row.name}@${row.targetVersion}`,
+            pluginsRoot,
+            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+            registryUrl,
+            registryClient,
+            ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
+            ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
+            ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
+            trustStore: new Set(),
+            requestedSelector: row.selector,
+            expectedManifest: advertised,
+            expectedActivation: item.activation,
+            expectedRegistry,
+            nonInteractive: true,
+          }).pipe(
+            Effect.provideService(ConfigService, config),
+            Effect.provideService(PluginTrustStore, trustStore),
+          ),
+        );
+        if (Exit.isSuccess(exit)) {
+          expectedRegistry[row.name] = {
+            name: exit.value.pluginName,
+            version: exit.value.pluginVersion,
+            path: exit.value.entry,
+            requestedSelector: row.selector,
+          };
+          updatedPlugins.push(row.name);
+          rows.push(row);
+        } else {
+          rows.push({ ...row, status: "failed", reason: "apply-failed" });
+        }
+      }
+      const coreReplacementPrecondition = {
+        pluginsRoot,
+        currentCoreVersion: input.currentCoreVersion,
+        targetCoreVersion: input.targetCoreVersion,
+      };
+      const blockCore =
+        input.combined && (yield* Effect.isFailure(checkCoreReplacement(coreReplacementPrecondition)));
+      return {
+        rows,
+        updatedPlugins,
+        blockCore,
+        hasFailures: blockCore || plan.hasFailures || rows.some((row) => row.status === "failed"),
+        coreReplacementPrecondition,
+        guardCoreReplacement: (body) => guardCoreReplacement(coreReplacementPrecondition, body),
+      };
+    });
+});

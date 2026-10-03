@@ -3,12 +3,15 @@ import { ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 
-export const layerTransactionGuard = Layer.succeed(ManagedFileTransactionGuard, {
-  ensureConsistent: () => Effect.void,
-  pending: () => Effect.succeed(null),
-});
+export const layerTransactionGuard = Layer.succeed(
+  ManagedFileTransactionGuard,
+  ManagedFileTransactionGuard.of({
+    ensureConsistent: () => Effect.void,
+    pending: () => Effect.succeed(null),
+  }),
+);
 
-export const TestStateStoreLive = Layer.succeed(
+export const testStateStoreLayer = Layer.succeed(
   StateStore,
   makeStateStore({
     privateFileAccess: {
@@ -18,7 +21,7 @@ export const TestStateStoreLive = Layer.succeed(
   }),
 );
 
-const TestLandofileDependencies = Layer.merge(layerTransactionGuard, TestStateStoreLive);
+const TestLandofileDependencies = Layer.merge(layerTransactionGuard, testStateStoreLayer);
 
 export const layer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(TestLandofileDependencies));
 

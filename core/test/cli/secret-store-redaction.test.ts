@@ -43,37 +43,38 @@ test.each([false, true])(
       secretStores: new Map([
         [
           "fake-vault",
-          Layer.succeed(SecretStore, {
-            id: "fake-vault",
-            schemes: ["fake"],
-            get: (id) =>
-              Effect.sync(() => {
-                reads.push(id);
-                return value;
-              }),
-            has: () => Effect.succeed(true),
-            list: Effect.succeed([]),
-          }),
+          Layer.succeed(
+            SecretStore,
+            SecretStore.of({
+              id: "fake-vault",
+              schemes: ["fake"],
+              get: (id) =>
+                Effect.sync(() => {
+                  reads.push(id);
+                  return value;
+                }),
+              has: () => Effect.succeed(true),
+              list: Effect.succeed([]),
+            }),
+          ),
         ],
       ]),
     };
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
-      apply: (_plan, options) =>
-        Effect.gen(function* () {
-          const resolved =
-            options.serviceEnvironment?.[ServiceName.make("web")]?.DISPLAY_VALUE ?? "unresolved";
-          applied.push(resolved);
-          if (failApply)
-            return yield* Effect.fail(
-              new ProviderUnavailableError({
-                providerId: TestRuntimeProvider.id,
-                operation: "apply",
-                message: `Provider observed ${resolved}`,
-              }),
-            );
-          return { changed: true };
-        }),
+      apply: Effect.fnUntraced(function* (_plan, options) {
+        const resolved = options.serviceEnvironment?.[ServiceName.make("web")]?.DISPLAY_VALUE ?? "unresolved";
+        applied.push(resolved);
+        if (failApply)
+          return yield* Effect.fail(
+            new ProviderUnavailableError({
+              providerId: TestRuntimeProvider.id,
+              operation: "apply",
+              message: `Provider observed ${resolved}`,
+            }),
+          );
+        return { changed: true };
+      }),
       inspect: (target) =>
         Effect.succeed({
           app: target.app,
@@ -128,12 +129,15 @@ test.each([false, true])(
       redaction,
       TestLandofileLayers.layerTransactionGuard,
       Layer.succeed(StateStore, makeTestStateStore().service),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-      Layer.succeed(RouterService, TestRouterService),
-      Layer.succeed(BuildOrchestrator, {
-        build: (appPlan) => Effect.succeed(appPlan),
-        buildApp: () => Effect.void,
-      }),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+      Layer.succeed(
+        BuildOrchestrator,
+        BuildOrchestrator.of({
+          build: (appPlan) => Effect.succeed(appPlan),
+          buildApp: () => Effect.void,
+        }),
+      ),
       BunShellRunner.layer(() => {
         throw new TypeError("Start must not open an interactive shell.");
       }),
