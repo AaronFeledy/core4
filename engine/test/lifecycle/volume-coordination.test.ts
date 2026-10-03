@@ -6,7 +6,7 @@ import { DateTime, Deferred, Effect, Exit, Fiber } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 
 import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
 
@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 const liveStore = (): Promise<StateStoreShape> =>
-  Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+  Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
 
 describe("physical volume lifecycle coordination", () => {
   test("names the owning folder and recovery choices when another app owns a volume", async () => {

@@ -21,8 +21,8 @@ import {
   findDiscoveredLandofilePath,
   loadLandofileFile as loadLandofileFilePackage,
   loadLandofileLayers as loadLandofileLayersPackage,
-  makeLandofileServiceLive,
 } from "@lando/landofile/service";
+import * as LandofileServiceLayer from "@lando/landofile/service";
 import {
   type RenderLandofileTemplateOptions,
   buildTemplateEngineRegistry,
@@ -125,11 +125,12 @@ export const loadLandofileLayers = (appRoot: string, canonicalPath: string) =>
     ),
   );
 
-export const makeEngineLandofileServiceLive = (
+export const layer = (
   inputs: LandofileRuntimeInputs,
 ): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard | StateStore> =>
-  makeLandofileServiceLive(inputs);
+  LandofileServiceLayer.layer(inputs);
 
-export const LandofileServiceLive = Layer.unwrap(
-  Effect.map(scopedLandofileRuntimeInputs, makeLandofileServiceLive),
+/** Default layer: resolves scoped runtime inputs then builds the Landofile service. */
+export const layerDefault = Layer.unwrap(
+  Effect.map(scopedLandofileRuntimeInputs, LandofileServiceLayer.layer),
 );

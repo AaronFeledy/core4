@@ -154,187 +154,179 @@ const withTempCopySource = <A, E, R>(
     ({ directory }) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
   );
 
-export const runProviderDataPlaneContract = (
+export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   input: ProviderDataPlaneContractInput,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const provider = yield* input
-        .factory()
-        .pipe(
-          Effect.mapError(
-            mapProviderFailure(`${input.providerName ?? "provider"} data-plane factory resolves`),
-          ),
-        );
-      const store = nextContractRunId();
-      const volumePlan = {
-        ...makeTestAppPlan(ProviderId.make(provider.id)),
-        identity: {
-          appRoot: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
-          ownerKey: "lando-sdk-contract-myapp",
-        },
-        stores: [{ name: store, scope: "app" as const, kind: "data" as const }],
-      };
-      const volumeOwner = { app: TEST_APP_ID, plan: volumePlan };
-      const serviceTarget = {
+): Effect.fn.Return<void, ContractFailure, Scope.Scope> {
+  const provider = yield* input
+    .factory()
+    .pipe(
+      Effect.mapError(mapProviderFailure(`${input.providerName ?? "provider"} data-plane factory resolves`)),
+    );
+  const store = nextContractRunId();
+  const volumePlan = {
+    ...makeTestAppPlan(ProviderId.make(provider.id)),
+    identity: {
+      appRoot: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+      ownerKey: "lando-sdk-contract-myapp",
+    },
+    stores: [{ name: store, scope: "app" as const, kind: "data" as const }],
+  };
+  const volumeOwner = { app: TEST_APP_ID, plan: volumePlan };
+  const serviceTarget = {
+    app: TEST_APP_ID,
+    service: TEST_SERVICE_NAME,
+    plan: volumePlan,
+  };
+  const volumePayload = sampleBytes(0, 1, 2, 3, 128, 255);
+  const mutatedPayload = sampleBytes(255, 128, 3, 2, 1, 0);
+  const servicePayload = sampleBytes(9, 8, 7, 6, 5, 4);
+  const artifactPayload = sampleBytes(4, 5, 6, 7, 8, 9);
+
+  yield* requireContract(
+    provider.capabilities.volumeSnapshot !== "none",
+    "data-plane provider declares volume snapshot support",
+    provider.capabilities,
+  );
+  yield* requireContract(
+    provider.capabilities.serviceFileCopy !== "none",
+    "data-plane provider declares service file copy support",
+    provider.capabilities,
+  );
+  yield* requireContract(
+    provider.capabilities.artifactExport,
+    "data-plane provider declares artifact export support",
+    provider.capabilities,
+  );
+  yield* requireContract(
+    provider.capabilities.artifactImport,
+    "data-plane provider declares artifact import support",
+    provider.capabilities,
+  );
+
+  const unsupportedExit = yield* Effect.exit(
+    unsupportedDataPlanePair(
+      { _tag: "artifact", ref: "web:test" },
+      {
+        _tag: "servicePath",
         app: TEST_APP_ID,
         service: TEST_SERVICE_NAME,
-        plan: volumePlan,
-      };
-      const volumePayload = sampleBytes(0, 1, 2, 3, 128, 255);
-      const mutatedPayload = sampleBytes(255, 128, 3, 2, 1, 0);
-      const servicePayload = sampleBytes(9, 8, 7, 6, 5, 4);
-      const artifactPayload = sampleBytes(4, 5, 6, 7, 8, 9);
-
-      yield* requireContract(
-        provider.capabilities.volumeSnapshot !== "none",
-        "data-plane provider declares volume snapshot support",
-        provider.capabilities,
-      );
-      yield* requireContract(
-        provider.capabilities.serviceFileCopy !== "none",
-        "data-plane provider declares service file copy support",
-        provider.capabilities,
-      );
-      yield* requireContract(
-        provider.capabilities.artifactExport,
-        "data-plane provider declares artifact export support",
-        provider.capabilities,
-      );
-      yield* requireContract(
-        provider.capabilities.artifactImport,
-        "data-plane provider declares artifact import support",
-        provider.capabilities,
-      );
-
-      const unsupportedExit = yield* Effect.exit(
-        unsupportedDataPlanePair(
-          { _tag: "artifact", ref: "web:test" },
-          {
-            _tag: "servicePath",
-            app: TEST_APP_ID,
-            service: TEST_SERVICE_NAME,
-            path: TEST_VOLUME_PATH,
-          },
-        ),
-      );
-      yield* requireContract(
-        unsupportedExit._tag === "Failure" &&
-          unsupportedExit.cause.reasons.length === 1 &&
-          unsupportedExit.cause.reasons.some(
-            (reason) => reason._tag === "Fail" && reason.error instanceof DataEndpointUnsupportedError,
-          ),
-        "unrealizable transfer fails DataEndpointUnsupportedError",
-        unsupportedExit,
-      );
-
-      yield* requireGenericVolumeFallback(provider).pipe(
-        Effect.mapError((error) =>
-          contractFailure("data-plane contract without ephemeral mounts fails CapabilityError", error),
-        ),
-      );
-
-      yield* writeMountedVolume(provider, volumeOwner, store, volumePayload).pipe(
-        Effect.mapError(
-          mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds"),
-        ),
-      );
-      const targetVolumes = yield* provider
-        .listVolumes({ app: TEST_APP_ID, store })
-        .pipe(Effect.mapError(mapProviderFailure("listVolumes succeeds")));
-      const targetGeneration = targetVolumes.find((volume) => volume.ref.store === store)?.instanceId;
-      if (targetGeneration === undefined) {
-        return yield* contractFailure("created data-plane volume has a generation", targetVolumes);
-      }
-      const exportedVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
-        Effect.mapError(mapProviderFailure("volume export via runStream succeeds")),
-      );
-      yield* requireContract(
-        bytesEqual(exportedVolume, volumePayload),
-        "importVolume(exportVolume(x)) == x",
-        { expected: Array.from(volumePayload), actual: Array.from(exportedVolume) },
-      );
-
-      const snapshot = yield* provider
-        .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
-        .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
-      if (
-        provider.capabilities.volumeSnapshot === "native" &&
-        input.observations?.usedNativeVolumeSnapshot !== undefined
-      ) {
-        yield* requireContract(
-          input.observations.usedNativeVolumeSnapshot(),
-          "native volume snapshots use the provider-native path",
-          provider.capabilities,
-        );
-      }
-      if (
-        provider.capabilities.volumeSnapshot === "copy" &&
-        input.observations?.usedCopyVolumeSnapshot !== undefined
-      ) {
-        yield* requireContract(
-          input.observations.usedCopyVolumeSnapshot(),
-          "copy-mode volume snapshots use the verified archive path",
-          provider.capabilities,
-        );
-      }
-      yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
-        Effect.mapError(
-          mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
-        ),
-      );
-      yield* provider
-        .restoreVolume({
-          snapshot,
-          target: { app: TEST_APP_ID, store },
-          expectedTargetGeneration: targetGeneration,
-          overwrite: true,
-        })
-        .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
-      const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
-        Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
-      );
-      yield* requireContract(
-        bytesEqual(restoredVolume, volumePayload),
-        "snapshot -> mutate -> restore restores volume bytes",
-        { expected: Array.from(volumePayload), actual: Array.from(restoredVolume) },
-      );
-
-      yield* withTempCopySource(servicePayload, (sourcePath) =>
-        provider.copyToService(serviceTarget, { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true }),
-      ).pipe(Effect.mapError(mapProviderFailure("copyToService succeeds")));
-      if (
-        provider.capabilities.serviceFileCopy === "native" &&
-        input.observations?.usedNativeServiceFileCopy !== undefined
-      ) {
-        yield* requireContract(
-          input.observations.usedNativeServiceFileCopy(),
-          "native service file copy uses the provider-native path",
-          provider.capabilities,
-        );
-      }
-      const copiedServiceBytes = yield* collectByteStream(
-        provider.copyFromService(serviceTarget, { sourcePath: TEST_VOLUME_PATH }),
-      ).pipe(Effect.mapError(mapProviderFailure("copyFromService succeeds")));
-      yield* requireContract(
-        bytesEqual(copiedServiceBytes, servicePayload),
-        "copyToService/copyFromService round-trips bytes",
-        { expected: Array.from(servicePayload), actual: Array.from(copiedServiceBytes) },
-      );
-
-      const importedArtifact = yield* provider
-        .importArtifact(Stream.make(artifactPayload))
-        .pipe(Effect.mapError(mapProviderFailure("importArtifact succeeds")));
-      const exportedArtifact = yield* collectByteStream(provider.exportArtifact(importedArtifact)).pipe(
-        Effect.mapError(mapProviderFailure("exportArtifact succeeds")),
-      );
-      yield* requireContract(
-        bytesEqual(exportedArtifact, artifactPayload),
-        "artifact export/import round-trips bytes",
-        { expected: Array.from(artifactPayload), actual: Array.from(exportedArtifact) },
-      );
-    }),
+        path: TEST_VOLUME_PATH,
+      },
+    ),
   );
+  yield* requireContract(
+    unsupportedExit._tag === "Failure" &&
+      unsupportedExit.cause.reasons.length === 1 &&
+      unsupportedExit.cause.reasons.some(
+        (reason) => reason._tag === "Fail" && reason.error instanceof DataEndpointUnsupportedError,
+      ),
+    "unrealizable transfer fails DataEndpointUnsupportedError",
+    unsupportedExit,
+  );
+
+  yield* requireGenericVolumeFallback(provider).pipe(
+    Effect.mapError((error) =>
+      contractFailure("data-plane contract without ephemeral mounts fails CapabilityError", error),
+    ),
+  );
+
+  yield* writeMountedVolume(provider, volumeOwner, store, volumePayload).pipe(
+    Effect.mapError(mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds")),
+  );
+  const targetVolumes = yield* provider
+    .listVolumes({ app: TEST_APP_ID, store })
+    .pipe(Effect.mapError(mapProviderFailure("listVolumes succeeds")));
+  const targetGeneration = targetVolumes.find((volume) => volume.ref.store === store)?.instanceId;
+  if (targetGeneration === undefined) {
+    return yield* contractFailure("created data-plane volume has a generation", targetVolumes);
+  }
+  const exportedVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
+    Effect.mapError(mapProviderFailure("volume export via runStream succeeds")),
+  );
+  yield* requireContract(bytesEqual(exportedVolume, volumePayload), "importVolume(exportVolume(x)) == x", {
+    expected: Array.from(volumePayload),
+    actual: Array.from(exportedVolume),
+  });
+
+  const snapshot = yield* provider
+    .snapshotVolume({ volume: { app: TEST_APP_ID, store } })
+    .pipe(Effect.mapError(mapProviderFailure("snapshotVolume succeeds")));
+  if (
+    provider.capabilities.volumeSnapshot === "native" &&
+    input.observations?.usedNativeVolumeSnapshot !== undefined
+  ) {
+    yield* requireContract(
+      input.observations.usedNativeVolumeSnapshot(),
+      "native volume snapshots use the provider-native path",
+      provider.capabilities,
+    );
+  }
+  if (
+    provider.capabilities.volumeSnapshot === "copy" &&
+    input.observations?.usedCopyVolumeSnapshot !== undefined
+  ) {
+    yield* requireContract(
+      input.observations.usedCopyVolumeSnapshot(),
+      "copy-mode volume snapshots use the verified archive path",
+      provider.capabilities,
+    );
+  }
+  yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
+    Effect.mapError(
+      mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
+    ),
+  );
+  yield* provider
+    .restoreVolume({
+      snapshot,
+      target: { app: TEST_APP_ID, store },
+      expectedTargetGeneration: targetGeneration,
+      overwrite: true,
+    })
+    .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
+  const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
+    Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
+  );
+  yield* requireContract(
+    bytesEqual(restoredVolume, volumePayload),
+    "snapshot -> mutate -> restore restores volume bytes",
+    { expected: Array.from(volumePayload), actual: Array.from(restoredVolume) },
+  );
+
+  yield* withTempCopySource(servicePayload, (sourcePath) =>
+    provider.copyToService(serviceTarget, { sourcePath, targetPath: TEST_VOLUME_PATH, overwrite: true }),
+  ).pipe(Effect.mapError(mapProviderFailure("copyToService succeeds")));
+  if (
+    provider.capabilities.serviceFileCopy === "native" &&
+    input.observations?.usedNativeServiceFileCopy !== undefined
+  ) {
+    yield* requireContract(
+      input.observations.usedNativeServiceFileCopy(),
+      "native service file copy uses the provider-native path",
+      provider.capabilities,
+    );
+  }
+  const copiedServiceBytes = yield* collectByteStream(
+    provider.copyFromService(serviceTarget, { sourcePath: TEST_VOLUME_PATH }),
+  ).pipe(Effect.mapError(mapProviderFailure("copyFromService succeeds")));
+  yield* requireContract(
+    bytesEqual(copiedServiceBytes, servicePayload),
+    "copyToService/copyFromService round-trips bytes",
+    { expected: Array.from(servicePayload), actual: Array.from(copiedServiceBytes) },
+  );
+
+  const importedArtifact = yield* provider
+    .importArtifact(Stream.make(artifactPayload))
+    .pipe(Effect.mapError(mapProviderFailure("importArtifact succeeds")));
+  const exportedArtifact = yield* collectByteStream(provider.exportArtifact(importedArtifact)).pipe(
+    Effect.mapError(mapProviderFailure("exportArtifact succeeds")),
+  );
+  yield* requireContract(
+    bytesEqual(exportedArtifact, artifactPayload),
+    "artifact export/import round-trips bytes",
+    { expected: Array.from(artifactPayload), actual: Array.from(exportedArtifact) },
+  );
+}, Effect.scoped);
 
 const testVolumeBytes = new Map<string, Uint8Array>();
 const testSnapshotBytes = new Map<string, Uint8Array>();
@@ -394,31 +386,30 @@ const mountedVolumeKeyForSpec = (spec: Parameters<RuntimeProviderShape["run"]>[0
   return mount === undefined ? undefined : volumeKey({ app: TEST_APP_ID, store: mount.store });
 };
 
-const runTestEphemeral = (spec: Parameters<RuntimeProviderShape["run"]>[0]) =>
-  Effect.gen(function* () {
-    const command = spec.command.join(" ");
-    const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
+const runTestEphemeral = Effect.fnUntraced(function* (spec: Parameters<RuntimeProviderShape["run"]>[0]) {
+  const command = spec.command.join(" ");
+  const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
 
-    if (mountedVolumeKey !== undefined && command === "sh -c cat > /data/payload") {
-      const payload = yield* collectAsyncBytes(spec.stdinStream);
-      testVolumeBytes.set(mountedVolumeKey, cloneBytes(payload));
-      return { exitCode: 0, stdout: "", stderr: "" };
-    }
+  if (mountedVolumeKey !== undefined && command === "sh -c cat > /data/payload") {
+    const payload = yield* collectAsyncBytes(spec.stdinStream);
+    testVolumeBytes.set(mountedVolumeKey, cloneBytes(payload));
+    return { exitCode: 0, stdout: "", stderr: "" };
+  }
 
-    if (mountedVolumeKey !== undefined && command === "sh -c cat /data/payload") {
-      return {
-        exitCode: 0,
-        stdout: decodeUtf8(testVolumeBytes.get(mountedVolumeKey) ?? utf8("")),
-        stderr: "",
-      };
-    }
-
+  if (mountedVolumeKey !== undefined && command === "sh -c cat /data/payload") {
     return {
       exitCode: 0,
-      stdout: spec.command.join(" "),
+      stdout: decodeUtf8(testVolumeBytes.get(mountedVolumeKey) ?? utf8("")),
       stderr: "",
     };
-  });
+  }
+
+  return {
+    exitCode: 0,
+    stdout: spec.command.join(" "),
+    stderr: "",
+  };
+});
 
 /**
  * In-memory `RuntimeProvider` reference implementation for SDK contract tests.
@@ -649,12 +640,11 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   copyFromService: (target, spec) =>
     Stream.make(cloneBytes(testServicePathBytes.get(servicePathKey(target, spec.sourcePath)) ?? utf8(""))),
   exportArtifact: (ref) => Stream.make(cloneBytes(testArtifactBytes.get(ref.ref) ?? utf8(ref.ref))),
-  importArtifact: (data) =>
-    Effect.gen(function* () {
-      const payload = yield* collectByteStream(data);
-      testArtifactImportCount += 1;
-      const ref = `imported:${testArtifactImportCount}`;
-      testArtifactBytes.set(ref, cloneBytes(payload));
-      return { providerId: TEST_PROVIDER_ID, ref };
-    }),
+  importArtifact: Effect.fnUntraced(function* (data) {
+    const payload = yield* collectByteStream(data);
+    testArtifactImportCount += 1;
+    const ref = `imported:${testArtifactImportCount}`;
+    testArtifactBytes.set(ref, cloneBytes(payload));
+    return { providerId: TEST_PROVIDER_ID, ref };
+  }),
 };

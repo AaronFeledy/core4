@@ -55,15 +55,14 @@ const makeConcurrencyRecorder = () => {
   const calls: string[] = [];
   let active = 0;
   let peak = 0;
-  const run: ScheduleHandlers<string, never, never>["run"] = (node) =>
-    Effect.gen(function* () {
-      calls.push(node.id);
-      active += 1;
-      peak = Math.max(peak, active);
-      yield* Effect.yieldNow;
-      active -= 1;
-      return succeededOutcome;
-    });
+  const run: ScheduleHandlers<string, never, never>["run"] = Effect.fnUntraced(function* (node) {
+    calls.push(node.id);
+    active += 1;
+    peak = Math.max(peak, active);
+    yield* Effect.yieldNow;
+    active -= 1;
+    return succeededOutcome;
+  });
   return { calls, peak: () => peak, run };
 };
 

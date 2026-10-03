@@ -38,18 +38,8 @@ import type {
   RemoteSourceShape,
 } from "@lando/sdk/services";
 
-import { HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
-
-import type { HttpClientShape } from "@lando/http-client/service";
-
-const REMOTE_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 const TEST_REMOTE_SECRET = "REMOTE-CONTRACT-SECRET-493f61";
 const TEST_DATASET_SECRET = "DATASET-CONTRACT-SECRET-8d31f2";
@@ -87,7 +77,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-type RemoteEgressRecord = { readonly request: HttpRequest };
+type RemoteEgressRecord = { readonly request: { readonly url: string } };
 type ToolProvisionRecord = { readonly request: DownloadRequest };
 type DatasetDelegationRecord = {
   readonly operation: "fetch" | "send";
@@ -170,26 +160,12 @@ const makeRemoteSource = (input: {
     { id: supportedEnv, label: "Development", default: true, datasets: [supportedDataset] },
     { id: protectedEnv, label: "Production", protected: true, datasets: [supportedDataset] },
   ];
-  const http: HttpClientShape = {
-    id: `${input.id}-remote-http`,
-    capabilities: REMOTE_HTTP_CAPABILITIES,
-    request: (request) =>
-      Effect.sync(() => {
-        input.records.egress.push({ request });
-        return { status: 200, headers: [], contentLength: 0 };
-      }),
-    stream: (request) =>
-      Effect.sync(() => {
-        input.records.egress.push({ request });
-        return {
-          status: 200,
-          headers: [],
-          body: Stream.fromIterable([new Uint8Array()]),
-        };
-      }),
-    upload: (request) =>
-      Effect.fail(new HttpUploadError({ message: "upload not supported", urlOrigin: request.url })),
-  };
+  const http = HttpClient.make((request, url) =>
+    Effect.sync(() => {
+      input.records.egress.push({ request: { url: url.href } });
+      return HttpClientResponse.fromWeb(request, new Response(new Uint8Array(), { status: 200 }));
+    }),
+  );
   const downloader: DownloaderShape = {
     id: `${input.id}-tool-downloader`,
     capabilities: {
@@ -281,7 +257,7 @@ const makeRemoteSource = (input: {
               ),
             );
         }
-        yield* http.stream({ url: locator.endpoint ?? `https://remote.example.test/${input.id}/fetch` }).pipe(
+        yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/fetch`).pipe(
           Effect.mapError(
             (cause) =>
               new RemoteUnreachableError({
@@ -366,7 +342,7 @@ const makeRemoteSource = (input: {
             );
         }
         yield* http
-          .stream({ url: locator.endpoint ?? `https://remote.example.test/${input.id}/send` })
+          .get(locator.endpoint ?? `https://remote.example.test/${input.id}/send`)
           .pipe(
             Effect.mapError(
               (cause) =>

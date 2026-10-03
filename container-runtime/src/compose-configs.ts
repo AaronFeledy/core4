@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Predicate } from "effect";
 
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 
@@ -14,9 +15,6 @@ export type ComposeConfigMount = {
   readonly mode?: number;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const parseMode = (mode: unknown): number | undefined => {
   if (typeof mode === "number" && Number.isInteger(mode) && mode >= 0) return mode;
   if (typeof mode === "string" && mode.length > 0) {
@@ -28,14 +26,14 @@ const parseMode = (mode: unknown): number | undefined => {
 
 const projectConfigs = (plan: AppPlan): Record<string, unknown> => {
   const compose = plan.extensions.compose;
-  if (!isRecord(compose) || !isRecord(compose.configs)) return {};
+  if (!Predicate.isObject(compose) || !Predicate.isObject(compose.configs)) return {};
   return compose.configs;
 };
 
 const serviceGrants = (service: ServicePlan): ReadonlyArray<Record<string, unknown>> => {
   const compose = service.extensions.compose;
-  if (!isRecord(compose) || !Array.isArray(compose.configs)) return [];
-  return compose.configs.filter(isRecord);
+  if (!Predicate.isObject(compose) || !Array.isArray(compose.configs)) return [];
+  return compose.configs.filter(Predicate.isObject);
 };
 
 export const composeConfigMounts = (
@@ -48,7 +46,11 @@ export const composeConfigMounts = (
     const sourceName = grant.source;
     if (typeof sourceName !== "string" || sourceName.length === 0) continue;
     const definition = definitions[sourceName];
-    if (!isRecord(definition) || typeof definition.file !== "string" || definition.file.length === 0)
+    if (
+      !Predicate.isObject(definition) ||
+      typeof definition.file !== "string" ||
+      definition.file.length === 0
+    )
       continue;
     const source = resolve(plan.root, definition.file);
     const target =

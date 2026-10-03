@@ -124,10 +124,8 @@ const stateStoreContractCauseFailure = (assertion: string, cause: Cause.Cause<un
  * fail behavior; key/namespace containment rejection; and advisory-lock
  * concurrent update serialization plus optional stale lock takeover.
  */
-export const runStateStoreContract = (
-  harness: StateStoreContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
+export const runStateStoreContract = Effect.fnUntraced(
+  function* (harness: StateStoreContractHarness): Effect.fn.Return<void, ContractFailure> {
     const store = harness.store;
     const failWith =
       (assertion: string) =>
@@ -416,8 +414,8 @@ export const runStateStoreContract = (
         afterStale,
       );
     }
-  }).pipe(
-    Effect.catchCause((cause) =>
-      Effect.fail(stateStoreContractCauseFailure("StateStore contract completes without defects", cause)),
-    ),
-  );
+  },
+  Effect.catchCause((cause) =>
+    Effect.fail(stateStoreContractCauseFailure("StateStore contract completes without defects", cause)),
+  ),
+);

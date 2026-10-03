@@ -34,36 +34,39 @@ const makeFileSystemFake = () => {
   const directories = new Set<string>();
   const unsupported = (operation: string, path: string) =>
     Effect.fail(new FileIoError({ message: `fake FileSystem does not support ${operation}`, path }));
-  const layer = Layer.succeed(FileSystem, {
-    read: (path: string) => Stream.fail(new FileIoError({ message: "fake read", path })),
-    readText: (path: string) => unsupported("readText", path),
-    write: (path: string, content: string | Uint8Array) => {
-      calls.push({ operation: "write", path });
-      files.set(path, String(content));
-      return Effect.void;
-    },
-    writeAtomic: (path: string, content: string | Uint8Array) => {
-      calls.push({ operation: "writeAtomic", path });
-      files.set(path, String(content));
-      return Effect.void;
-    },
-    exists: (path: string) => Effect.succeed(files.has(path) || directories.has(path)),
-    stat: (path: string) => unsupported("stat", path),
-    lstat: (path: string) => unsupported("lstat", path),
-    mkdir: (path: string) => {
-      calls.push({ operation: "mkdir", path });
-      directories.add(path);
-      return Effect.void;
-    },
-    remove: (path: string) => unsupported("remove", path),
-    readDir: (path: string) => unsupported("readDir", path),
-    readFile: (path: string) => unsupported("readFile", path),
-    writeFile: (path: string, content: string) => {
-      calls.push({ operation: "writeFile", path });
-      files.set(path, content);
-      return Effect.void;
-    },
-  });
+  const layer = Layer.succeed(
+    FileSystem,
+    FileSystem.of({
+      read: (path: string) => Stream.fail(new FileIoError({ message: "fake read", path })),
+      readText: (path: string) => unsupported("readText", path),
+      write: (path: string, content: string | Uint8Array) => {
+        calls.push({ operation: "write", path });
+        files.set(path, String(content));
+        return Effect.void;
+      },
+      writeAtomic: (path: string, content: string | Uint8Array) => {
+        calls.push({ operation: "writeAtomic", path });
+        files.set(path, String(content));
+        return Effect.void;
+      },
+      exists: (path: string) => Effect.succeed(files.has(path) || directories.has(path)),
+      stat: (path: string) => unsupported("stat", path),
+      lstat: (path: string) => unsupported("lstat", path),
+      mkdir: (path: string) => {
+        calls.push({ operation: "mkdir", path });
+        directories.add(path);
+        return Effect.void;
+      },
+      remove: (path: string) => unsupported("remove", path),
+      readDir: (path: string) => unsupported("readDir", path),
+      readFile: (path: string) => unsupported("readFile", path),
+      writeFile: (path: string, content: string) => {
+        calls.push({ operation: "writeFile", path });
+        files.set(path, content);
+        return Effect.void;
+      },
+    }),
+  );
   return { calls, files, layer };
 };
 const appId = AppId.make("myapp");

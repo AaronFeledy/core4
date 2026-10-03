@@ -777,13 +777,6 @@ describe("PluginRegistryLive", () => {
                 {
                   id: "audited",
                   module: "./src/http-client.mjs",
-                  capabilities: {
-                    schemes: ["https"],
-                    streaming: true,
-                    upload: true,
-                    customCa: true,
-                    proxyAware: true,
-                  },
                 },
               ],
             },
@@ -1228,13 +1221,6 @@ describe("PluginRegistryLive", () => {
                 {
                   id: "escape",
                   module: "../../../outside.ts",
-                  capabilities: {
-                    schemes: ["https"],
-                    streaming: true,
-                    upload: true,
-                    customCa: false,
-                    proxyAware: true,
-                  },
                 },
               ],
             },

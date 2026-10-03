@@ -98,112 +98,113 @@ const classifyCoreRequirement = (requires: PluginManifest["requires"]): CoreRequ
   return "incompatible";
 };
 
-export const runPluginContract = (input: PluginContractInput): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const decodedManifest = Schema.decodeUnknownResult(PluginManifest)(input.manifest, {
-      onExcessProperty: "error",
-    });
-
-    yield* requirePluginContract(
-      Result.isSuccess(decodedManifest),
-      "manifest decodes as PluginManifest",
-      decodedManifest,
-    );
-    if (Result.isFailure(decodedManifest)) return;
-
-    const manifest = decodedManifest.success;
-
-    yield* requirePluginContract(
-      isNonEmptyString(manifest.name),
-      "manifest name is a non-empty string",
-      manifest,
-    );
-    yield* requirePluginContract(
-      isNonEmptyString(manifest.version),
-      "manifest version is a non-empty string",
-      manifest,
-    );
-    yield* requirePluginContract(manifest.api === 4, "manifest api is 4", manifest);
-
-    const coreCompatibility = classifyCoreRequirement(manifest.requires);
-    yield* requirePluginContract(coreCompatibility === "compatible", CORE_COMPATIBILITY_ASSERTION, {
-      reason: coreCompatibility,
-      declared: manifest.requires?.["@lando/core"],
-      remediation: CORE_COMPATIBILITY_REMEDIATION,
-    });
-
-    const contributions = manifest.contributes ?? {};
-
-    for (const [key, values] of Object.entries(contributions)) {
-      if (Array.isArray(values) && key !== "globalServices") {
-        yield* requirePluginContract(
-          hasNonEmptyContributionEntries(values),
-          `contribution ${key} contains only non-empty ids`,
-          values,
-        );
-      }
-    }
-
-    for (const { key, exportName } of pluginContributionLayerExports) {
-      const ids = contributions[key];
-      if (!Array.isArray(ids) || ids.length === 0) continue;
-
-      yield* requirePluginContract(
-        isLayer(input.layers?.[exportName]),
-        `contribution ${key} exposes Layer export ${exportName}`,
-        { exportName, ids },
-      );
-    }
-
-    for (const entry of contributions.globalServices ?? []) {
-      yield* requirePluginContract(
-        isNonEmptyString(entry.id),
-        "globalServices entries have non-empty ids",
-        entry,
-      );
-      yield* requirePluginContract(
-        Effect.isEffect(input.globalServices?.get(entry.id)),
-        `globalServices static map contains declared id ${entry.id}`,
-        entry,
-      );
-    }
-
-    for (const entry of contributions.serviceTypes ?? []) {
-      const id = contributionId(entry);
-      yield* requirePluginContract(
-        input.serviceTypes?.has(id) === true,
-        `serviceTypes static map contains declared id ${id}`,
-        { id },
-      );
-    }
-
-    for (const entry of contributions.templateEngines ?? []) {
-      const id = contributionId(entry);
-      yield* requirePluginContract(
-        input.templateEngines?.has(id) === true,
-        `templateEngines static map contains declared id ${id}`,
-        { id },
-      );
-    }
-
-    const loadError = new PluginLoadError({
-      message: "plugin contract load error",
-      pluginName: manifest.name,
-    });
-    const manifestError = new PluginManifestError({
-      message: "plugin contract manifest error",
-      pluginName: manifest.name,
-      issues: ["contract"],
-    });
-
-    yield* requirePluginContract(
-      loadError._tag === "PluginLoadError",
-      "PluginLoadError tag is constructible",
-      loadError,
-    );
-    yield* requirePluginContract(
-      manifestError._tag === "PluginManifestError",
-      "PluginManifestError tag is constructible",
-      manifestError,
-    );
+export const runPluginContract = Effect.fnUntraced(function* (
+  input: PluginContractInput,
+): Effect.fn.Return<void, ContractFailure> {
+  const decodedManifest = Schema.decodeUnknownResult(PluginManifest)(input.manifest, {
+    onExcessProperty: "error",
   });
+
+  yield* requirePluginContract(
+    Result.isSuccess(decodedManifest),
+    "manifest decodes as PluginManifest",
+    decodedManifest,
+  );
+  if (Result.isFailure(decodedManifest)) return;
+
+  const manifest = decodedManifest.success;
+
+  yield* requirePluginContract(
+    isNonEmptyString(manifest.name),
+    "manifest name is a non-empty string",
+    manifest,
+  );
+  yield* requirePluginContract(
+    isNonEmptyString(manifest.version),
+    "manifest version is a non-empty string",
+    manifest,
+  );
+  yield* requirePluginContract(manifest.api === 4, "manifest api is 4", manifest);
+
+  const coreCompatibility = classifyCoreRequirement(manifest.requires);
+  yield* requirePluginContract(coreCompatibility === "compatible", CORE_COMPATIBILITY_ASSERTION, {
+    reason: coreCompatibility,
+    declared: manifest.requires?.["@lando/core"],
+    remediation: CORE_COMPATIBILITY_REMEDIATION,
+  });
+
+  const contributions = manifest.contributes ?? {};
+
+  for (const [key, values] of Object.entries(contributions)) {
+    if (Array.isArray(values) && key !== "globalServices") {
+      yield* requirePluginContract(
+        hasNonEmptyContributionEntries(values),
+        `contribution ${key} contains only non-empty ids`,
+        values,
+      );
+    }
+  }
+
+  for (const { key, exportName } of pluginContributionLayerExports) {
+    const ids = contributions[key];
+    if (!Array.isArray(ids) || ids.length === 0) continue;
+
+    yield* requirePluginContract(
+      isLayer(input.layers?.[exportName]),
+      `contribution ${key} exposes Layer export ${exportName}`,
+      { exportName, ids },
+    );
+  }
+
+  for (const entry of contributions.globalServices ?? []) {
+    yield* requirePluginContract(
+      isNonEmptyString(entry.id),
+      "globalServices entries have non-empty ids",
+      entry,
+    );
+    yield* requirePluginContract(
+      Effect.isEffect(input.globalServices?.get(entry.id)),
+      `globalServices static map contains declared id ${entry.id}`,
+      entry,
+    );
+  }
+
+  for (const entry of contributions.serviceTypes ?? []) {
+    const id = contributionId(entry);
+    yield* requirePluginContract(
+      input.serviceTypes?.has(id) === true,
+      `serviceTypes static map contains declared id ${id}`,
+      { id },
+    );
+  }
+
+  for (const entry of contributions.templateEngines ?? []) {
+    const id = contributionId(entry);
+    yield* requirePluginContract(
+      input.templateEngines?.has(id) === true,
+      `templateEngines static map contains declared id ${id}`,
+      { id },
+    );
+  }
+
+  const loadError = new PluginLoadError({
+    message: "plugin contract load error",
+    pluginName: manifest.name,
+  });
+  const manifestError = new PluginManifestError({
+    message: "plugin contract manifest error",
+    pluginName: manifest.name,
+    issues: ["contract"],
+  });
+
+  yield* requirePluginContract(
+    loadError._tag === "PluginLoadError",
+    "PluginLoadError tag is constructible",
+    loadError,
+  );
+  yield* requirePluginContract(
+    manifestError._tag === "PluginManifestError",
+    "PluginManifestError tag is constructible",
+    manifestError,
+  );
+});

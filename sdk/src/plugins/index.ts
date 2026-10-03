@@ -3,6 +3,7 @@
  * the constrained plugin context (including the closed `publishRender` seam).
  */
 import type { Effect } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import type { EventError, StateStoreError } from "../errors/index.ts";
 import type { LandoEvent, RenderEvent } from "../events/index.ts";
@@ -63,6 +64,11 @@ export interface LandoPluginContext {
   readonly id: string;
   readonly managedFiles: PluginManagedFiles;
   readonly stateStore: PluginStateStore;
+  /**
+   * Host-owned Effect `HttpClient` for outbound HTTP. Plugins must use this
+   * client (or `Downloader`) rather than calling `fetch` directly.
+   */
+  readonly httpClient: HttpClient.HttpClient;
   readonly events: {
     readonly publishRender: PublishRender;
   };

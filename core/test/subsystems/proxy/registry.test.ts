@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
@@ -66,6 +68,10 @@ const privateFileAccessLayer = Layer.succeed(PrivateFileAccessService, {
   enforce: async () => undefined,
   verify: async () => undefined,
 });
+const stubHttpClient = HttpClient.make((request) =>
+  Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+);
+const httpClientLayer = Layer.succeed(HttpClient.HttpClient, stubHttpClient);
 
 const proxyModule = (
   id: string,
@@ -104,6 +110,7 @@ const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explici
               managedFileLayer,
               stateStoreLayer,
               privateFileAccessLayer,
+              httpClientLayer,
             ),
           ),
         ),
@@ -139,12 +146,14 @@ describe("RouterService registry selection", () => {
     // Given
     const fakeLayer = Layer.succeed(RouterService, service("fake"));
     let owningPluginId: string | undefined;
+    let contextHttpClient: unknown;
 
     // When
     const result = await runInjectedSelection(
       [
         proxyModule("fake", fakeLayer, (context) => {
           owningPluginId = context.id;
+          contextHttpClient = context.httpClient;
         }),
       ],
       "fake",
@@ -153,6 +162,8 @@ describe("RouterService registry selection", () => {
     // Then
     expect(Result.isSuccess(result)).toBe(true);
     expect(owningPluginId).toBe("@lando/proxy-test");
+    expect(contextHttpClient).toBeDefined();
+    expect(typeof (contextHttpClient as { get?: unknown }).get).toBe("function");
     if (Result.isSuccess(result)) expect(result.success.layer).toBe(fakeLayer);
   });
 

@@ -130,14 +130,17 @@ test("blocks pending transactions before inspecting legacy content", async () =>
   // When
   const result = await Effect.runPromise(
     load().pipe(
-      Effect.provideService(ManagedFileTransactionGuard, {
-        ensureConsistent: () =>
-          Effect.suspend(() => {
-            calls++;
-            return Effect.fail(failure);
-          }),
-        pending: () => Effect.succeed(null),
-      }),
+      Effect.provideService(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          ensureConsistent: () =>
+            Effect.suspend(() => {
+              calls++;
+              return Effect.fail(failure);
+            }),
+          pending: () => Effect.succeed(null),
+        }),
+      ),
       Effect.result,
     ),
   );

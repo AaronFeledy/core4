@@ -4,7 +4,7 @@ import { Effect } from "effect";
 
 import { NotImplementedError, StateStoreError } from "@lando/sdk/errors";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
-import { PrivateFileAccessLive, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 export const withPluginMutationLock = <A, E, R>(
   pluginsRoot: string,
@@ -29,5 +29,5 @@ export const withPluginMutationLock = <A, E, R>(
           })
         : cause,
     ),
-    Effect.provide(PrivateFileAccessLive),
+    Effect.provide(PrivateFileAccessService.layer),
   );

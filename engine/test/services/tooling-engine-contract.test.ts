@@ -20,7 +20,7 @@ import {
   type ToolingEngineContractHarness,
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { HostToolingEngineLive } from "../../src/services/host-tooling-engine";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
@@ -166,7 +166,7 @@ const inertProvider: RuntimeProviderShape = {
 
 const runEngineLayer = (live: typeof ProviderExecToolingEngineLive) =>
   Effect.runPromise(ToolingEngine.pipe(Effect.provide(live)));
-const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessLive));
+const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessService.layer));
 
 describe("ToolingEngine contract — built-in engines", () => {
   test("the built-in providerExec engine passes the contract", async () => {

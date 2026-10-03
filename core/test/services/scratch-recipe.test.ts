@@ -29,14 +29,14 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(
-  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessService.layer)),
 );
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -62,7 +62,7 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
 const redactionLive = Layer.succeed(RedactionService, {
@@ -203,8 +203,8 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
         });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
-    PrivateFileAccessLive,
-    landofileServiceLive,
+    PrivateFileAccessService.layer,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
     ScratchRegistryLive,
@@ -213,7 +213,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
+          stateStoreLayer,
           EventServiceLive,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),
@@ -225,7 +225,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   return Layer.mergeAll(
     scratchDeps,
     makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  ).pipe(Layer.provide(PrivateFileAccessLive));
+  ).pipe(Layer.provide(PrivateFileAccessService.layer));
 };
 
 const fileExists = async (path: string): Promise<boolean> => {

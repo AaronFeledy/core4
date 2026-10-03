@@ -1,8 +1,11 @@
 import { Data, Effect } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import type * as HttpClientError from "effect/http/HttpClientError";
 
+import { HttpTrustError } from "@lando/sdk/errors";
 import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
-import { HttpClient } from "@lando/sdk/services";
 
+import { RequestPolicy } from "@lando/http-client/live";
 import {
   type LoadedCaPem,
   NetworkTrust,
@@ -42,7 +45,7 @@ export interface ResolvedSetupNetworkTrust extends NetworkConfig {
 
 export type SetupNetworkTrustProbe = (
   network: ResolvedSetupNetworkTrust,
-) => Effect.Effect<void, SetupNetworkTrustError, HttpClient>;
+) => Effect.Effect<void, SetupNetworkTrustError, HttpClient.HttpClient>;
 
 const SETUP_NETWORK_PROBE_URL = "https://github.com/";
 
@@ -89,8 +92,34 @@ export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): Re
   };
 };
 
+const unwrapTransportCause = (error: unknown): unknown => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "_tag" in error &&
+    (error as { _tag: string })._tag === "HttpClientError"
+  ) {
+    const reason = (error as HttpClientError.HttpClientError).reason;
+    if (reason._tag === "TransportError") return reason.cause ?? error;
+  }
+  return error;
+};
+
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
-  const text = cause instanceof Error ? `${cause.name} ${cause.message}` : String(cause);
+  const unwrapped = unwrapTransportCause(cause);
+  if (
+    unwrapped instanceof HttpTrustError ||
+    (typeof unwrapped === "object" &&
+      unwrapped !== null &&
+      (unwrapped as { _tag?: string })._tag === "HttpTrustError")
+  ) {
+    return classifySetupNetworkFailure(
+      unwrapped instanceof Error
+        ? unwrapped
+        : new Error(String((unwrapped as { message?: unknown }).message ?? unwrapped)),
+    );
+  }
+  const text = unwrapped instanceof Error ? `${unwrapped.name} ${unwrapped.message}` : String(unwrapped);
   const lower = text.toLowerCase();
   if (lower.includes("407") || lower.includes("proxy authentication")) return proxyAuthError(cause);
   if (lower.includes("certificate") || lower.includes("tls") || lower.includes("self signed")) {
@@ -165,20 +194,11 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =
       network.ca.trustHost === false;
     if (!hasTrustToValidate) return;
 
-    const http = yield* HttpClient;
-    const response = yield* Effect.scoped(
-      http.request({ url: SETUP_NETWORK_PROBE_URL, method: "HEAD", redirect: "manual" }),
-    ).pipe(
+    const http = yield* HttpClient.HttpClient;
+    const response = yield* http.head(SETUP_NETWORK_PROBE_URL).pipe(
+      Effect.provideService(RequestPolicy, { redirect: "manual" }),
       Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
-      Effect.catch((error) => {
-        if (error._tag === "HttpTrustError") return Effect.fail(classifySetupNetworkFailure(error));
-        if (error._tag === "HttpRequestError") {
-          return Effect.fail(
-            error.status === 407 ? proxyAuthError() : classifySetupNetworkFailure(error.cause ?? error),
-          );
-        }
-        return Effect.fail(classifySetupNetworkFailure(error));
-      }),
+      Effect.catch((error) => Effect.fail(classifySetupNetworkFailure(error))),
     );
     if (response.status === 407) return yield* Effect.fail(proxyAuthError());
     if (response.status < 200 || response.status >= 400) {
@@ -189,7 +209,7 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =
 export const validateSetupNetworkTrust = (
   config: GlobalConfig,
   probe?: SetupNetworkTrustProbe,
-): Effect.Effect<ResolvedSetupNetworkTrust, SetupNetworkTrustError, HttpClient> =>
+): Effect.Effect<ResolvedSetupNetworkTrust, SetupNetworkTrustError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const resolved = yield* resolveSetupNetworkTrust(config);
     // The probe returns a classified SetupNetworkTrustError; re-classifying its

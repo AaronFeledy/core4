@@ -19,7 +19,7 @@ const downloaderErrorLeft = (value: unknown): { readonly _tag?: string; readonly
 
 /**
  * The harness a `Downloader` implementation provides so one suite can run
- * against `DownloaderLive`, `TestDownloader`, or a plugin-contributed
+ * against the verified Downloader layer, TestDownloader, or a plugin-contributed
  * downloader. `tempDir` is the destination directory the suite writes into;
  * `read`/`listDir` are relative to it. `serveSource` registers the bytes a
  * source URL resolves to. The optional `egress` hooks expose the byte/call
@@ -52,247 +52,242 @@ export interface DownloaderContractHarness {
  * file download leaves no temp file and the destination fully absent or fully
  * complete (never torn); lifecycle events are published and a secret in the URL
  * query / userinfo / caller fields never appears in any event; and (when the
- * harness exposes egress) a network miss issues exactly one stream call whose
+ * harness exposes egress) a network miss issues exactly one GET call whose
  * byte count equals the downloaded size.
  */
-export const runDownloaderContract = (
-  harness: DownloaderContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const service = harness.service;
-    const download = (
-      request: Parameters<DownloaderShape["download"]>[0],
-    ): Effect.Effect<DownloadResult, unknown> => Effect.scoped(service.download(request));
-    const failWith =
-      (assertion: string) =>
-      (cause: unknown): ContractFailure =>
-        downloaderContractFailure(assertion, cause);
-    const dir = harness.tempDir;
+export const runDownloaderContract = Effect.fnUntraced(function* (harness: DownloaderContractHarness) {
+  const service = harness.service;
+  const download = (
+    request: Parameters<DownloaderShape["download"]>[0],
+  ): Effect.Effect<DownloadResult, unknown> => Effect.scoped(service.download(request));
+  const failWith =
+    (assertion: string) =>
+    (cause: unknown): ContractFailure =>
+      downloaderContractFailure(assertion, cause);
+  const dir = harness.tempDir;
 
-    yield* requireDownloaderContract(
-      typeof service.id === "string" && service.id.length > 0,
-      "the downloader declares a non-empty id",
-      service.id,
-    );
-    yield* requireDownloaderContract(
-      Array.isArray(service.capabilities.schemes) && service.capabilities.schemes.includes("https"),
-      "capabilities declare the https scheme",
-      service.capabilities,
-    );
+  yield* requireDownloaderContract(
+    typeof service.id === "string" && service.id.length > 0,
+    "the downloader declares a non-empty id",
+    service.id,
+  );
+  yield* requireDownloaderContract(
+    Array.isArray(service.capabilities.schemes) && service.capabilities.schemes.includes("https"),
+    "capabilities declare the https scheme",
+    service.capabilities,
+  );
 
-    const payload = new TextEncoder().encode("contract artifact payload");
-    const expectedSha256 = sha256HexDigest(payload);
-    const okUrl = "https://contract.test/artifact.bin";
-    yield* harness.serveSource(okUrl, payload);
-    const created = yield* download({
-      url: okUrl,
-      destination: { kind: "file", directory: dir, filename: "artifact.bin" },
+  const payload = new TextEncoder().encode("contract artifact payload");
+  const expectedSha256 = sha256HexDigest(payload);
+  const okUrl = "https://contract.test/artifact.bin";
+  yield* harness.serveSource(okUrl, payload);
+  const created = yield* download({
+    url: okUrl,
+    destination: { kind: "file", directory: dir, filename: "artifact.bin" },
+    expectedSha256,
+    expectedSizeBytes: payload.length,
+    callerId: "contract",
+  }).pipe(Effect.mapError(failWith("a verified https download succeeds")));
+  yield* requireDownloaderContract(
+    created.fromCache === false && created.sha256 === expectedSha256 && created.sizeBytes === payload.length,
+    "the first download streams fresh bytes and returns sha256+size",
+    created,
+  );
+  const onDisk = yield* harness.read("artifact.bin");
+  yield* requireDownloaderContract(
+    onDisk !== null && onDisk.length === payload.length,
+    "the verified file is written to the destination",
+    onDisk?.length,
+  );
+
+  const cacheCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
+  const cached = yield* download({
+    url: okUrl,
+    destination: { kind: "file", directory: dir, filename: "artifact.bin" },
+    expectedSha256,
+    expectedSizeBytes: payload.length,
+  }).pipe(Effect.mapError(failWith("a cached re-request resolves")));
+  yield* requireDownloaderContract(
+    cached.fromCache === true,
+    "an identical re-request is served from the verified cache",
+    cached,
+  );
+  if (harness.egress) {
+    const cacheCallsAfter = yield* harness.egress.streamCallCount();
+    yield* requireDownloaderContract(cacheCallsAfter === cacheCallsBefore, "a cache hit issues no egress", {
+      cacheCallsBefore,
+      cacheCallsAfter,
+    });
+  }
+
+  const offlineUrl = "https://contract.test/offline.bin";
+  yield* harness.serveSource(offlineUrl, payload);
+  const offlineCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
+  const offlineResult = yield* Effect.result(
+    download({
+      url: offlineUrl,
+      destination: { kind: "file", directory: dir, filename: "offline.bin" },
       expectedSha256,
-      expectedSizeBytes: payload.length,
-      callerId: "contract",
-    }).pipe(Effect.mapError(failWith("a verified https download succeeds")));
+      offline: true,
+    }),
+  );
+  yield* requireDownloaderContract(
+    Result.isFailure(offlineResult) &&
+      downloaderErrorLeft(offlineResult.failure)._tag === "DownloadOfflineError",
+    "offline + uncached fails with DownloadOfflineError",
+    offlineResult,
+  );
+  if (harness.egress) {
+    const offlineCallsAfter = yield* harness.egress.streamCallCount();
     yield* requireDownloaderContract(
-      created.fromCache === false &&
-        created.sha256 === expectedSha256 &&
-        created.sizeBytes === payload.length,
-      "the first download streams fresh bytes and returns sha256+size",
-      created,
+      offlineCallsAfter === offlineCallsBefore,
+      "an offline cache miss issues no egress",
+      { offlineCallsBefore, offlineCallsAfter },
     );
-    const onDisk = yield* harness.read("artifact.bin");
-    yield* requireDownloaderContract(
-      onDisk !== null && onDisk.length === payload.length,
-      "the verified file is written to the destination",
-      onDisk?.length,
-    );
+  }
 
-    const cacheCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
-    const cached = yield* download({
+  const checksumUrl = "https://contract.test/checksum.bin";
+  yield* harness.serveSource(checksumUrl, payload);
+  const checksumResult = yield* Effect.result(
+    download({
+      url: checksumUrl,
+      destination: { kind: "memory" },
+      expectedSha256: "a".repeat(64),
+    }),
+  );
+  yield* requireDownloaderContract(
+    Result.isFailure(checksumResult) &&
+      downloaderErrorLeft(checksumResult.failure)._tag === "DownloadChecksumError",
+    "a checksum mismatch is rejected with DownloadChecksumError",
+    checksumResult,
+  );
+
+  const sizeUrl = "https://contract.test/size.bin";
+  yield* harness.serveSource(sizeUrl, payload);
+  const sizeResult = yield* Effect.result(
+    download({
+      url: sizeUrl,
+      destination: { kind: "memory" },
+      expectedSizeBytes: payload.length + 1,
+    }),
+  );
+  yield* requireDownloaderContract(
+    Result.isFailure(sizeResult) &&
+      downloaderErrorLeft(sizeResult.failure)._tag === "DownloadSizeMismatchError",
+    "a size mismatch is rejected with DownloadSizeMismatchError",
+    sizeResult,
+  );
+
+  const schemeResult = yield* Effect.result(
+    download({ url: "http://contract.test/insecure.bin", destination: { kind: "memory" } }),
+  );
+  yield* requireDownloaderContract(
+    Result.isFailure(schemeResult) &&
+      downloaderErrorLeft(schemeResult.failure)._tag === "DownloadSourceForbiddenError" &&
+      downloaderErrorLeft(schemeResult.failure).reason === "scheme",
+    "an http:// source is rejected with reason scheme",
+    schemeResult,
+  );
+
+  const fileResult = yield* Effect.result(
+    download({ url: "file:///tmp/contract.bin", destination: { kind: "memory" } }),
+  );
+  yield* requireDownloaderContract(
+    Result.isFailure(fileResult) &&
+      downloaderErrorLeft(fileResult.failure)._tag === "DownloadSourceForbiddenError" &&
+      downloaderErrorLeft(fileResult.failure).reason === "file-source",
+    "a bare file:// source is rejected with reason file-source",
+    fileResult,
+  );
+
+  const escapeResult = yield* Effect.result(
+    download({
       url: okUrl,
-      destination: { kind: "file", directory: dir, filename: "artifact.bin" },
+      destination: { kind: "file", directory: dir, filename: "../escape.bin" },
       expectedSha256,
-      expectedSizeBytes: payload.length,
-    }).pipe(Effect.mapError(failWith("a cached re-request resolves")));
-    yield* requireDownloaderContract(
-      cached.fromCache === true,
-      "an identical re-request is served from the verified cache",
-      cached,
-    );
-    if (harness.egress) {
-      const cacheCallsAfter = yield* harness.egress.streamCallCount();
-      yield* requireDownloaderContract(cacheCallsAfter === cacheCallsBefore, "a cache hit issues no egress", {
-        cacheCallsBefore,
-        cacheCallsAfter,
-      });
-    }
+    }),
+  );
+  yield* requireDownloaderContract(
+    Result.isFailure(escapeResult) &&
+      downloaderErrorLeft(escapeResult.failure)._tag === "DownloadSourceForbiddenError" &&
+      downloaderErrorLeft(escapeResult.failure).reason === "destination-escape",
+    "a destination filename escaping the directory is rejected",
+    escapeResult,
+  );
 
-    const offlineUrl = "https://contract.test/offline.bin";
-    yield* harness.serveSource(offlineUrl, payload);
-    const offlineCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
-    const offlineResult = yield* Effect.result(
-      download({
-        url: offlineUrl,
-        destination: { kind: "file", directory: dir, filename: "offline.bin" },
-        expectedSha256,
-        offline: true,
-      }),
-    );
-    yield* requireDownloaderContract(
-      Result.isFailure(offlineResult) &&
-        downloaderErrorLeft(offlineResult.failure)._tag === "DownloadOfflineError",
-      "offline + uncached fails with DownloadOfflineError",
-      offlineResult,
-    );
-    if (harness.egress) {
-      const offlineCallsAfter = yield* harness.egress.streamCallCount();
-      yield* requireDownloaderContract(
-        offlineCallsAfter === offlineCallsBefore,
-        "an offline cache miss issues no egress",
-        { offlineCallsBefore, offlineCallsAfter },
-      );
-    }
+  const afterSuccess = yield* harness.listDir();
+  yield* requireDownloaderContract(
+    afterSuccess.includes("artifact.bin") && !afterSuccess.some((f) => f.includes(".tmp-")),
+    "a successful download leaves the destination and no temp file",
+    afterSuccess,
+  );
 
-    const checksumUrl = "https://contract.test/checksum.bin";
-    yield* harness.serveSource(checksumUrl, payload);
-    const checksumResult = yield* Effect.result(
-      download({
-        url: checksumUrl,
-        destination: { kind: "memory" },
-        expectedSha256: "a".repeat(64),
-      }),
-    );
-    yield* requireDownloaderContract(
-      Result.isFailure(checksumResult) &&
-        downloaderErrorLeft(checksumResult.failure)._tag === "DownloadChecksumError",
-      "a checksum mismatch is rejected with DownloadChecksumError",
-      checksumResult,
-    );
+  const interruptUrl = "https://contract.test/interrupt.bin";
+  yield* harness.serveSource(interruptUrl, payload);
+  const fiber = yield* Effect.forkChild(
+    download({
+      url: interruptUrl,
+      destination: { kind: "file", directory: dir, filename: "interrupt.bin" },
+      expectedSha256,
+    }),
+  );
+  yield* Fiber.interrupt(fiber);
+  const afterInterrupt = yield* harness.listDir();
+  yield* requireDownloaderContract(
+    !afterInterrupt.some((f) => f.includes(".tmp-")),
+    "an interrupted download leaves no temp file",
+    afterInterrupt,
+  );
+  const interruptedFile = yield* harness.read("interrupt.bin");
+  yield* requireDownloaderContract(
+    interruptedFile === null || interruptedFile.length === payload.length,
+    "an interrupted download leaves the destination absent or complete, never torn",
+    interruptedFile?.length,
+  );
 
-    const sizeUrl = "https://contract.test/size.bin";
-    yield* harness.serveSource(sizeUrl, payload);
-    const sizeResult = yield* Effect.result(
-      download({
-        url: sizeUrl,
-        destination: { kind: "memory" },
-        expectedSizeBytes: payload.length + 1,
-      }),
-    );
-    yield* requireDownloaderContract(
-      Result.isFailure(sizeResult) &&
-        downloaderErrorLeft(sizeResult.failure)._tag === "DownloadSizeMismatchError",
-      "a size mismatch is rejected with DownloadSizeMismatchError",
-      sizeResult,
-    );
+  const secret = "ULW-DLC-SECRET-d41d8cd9f00b2";
+  const secretUrl = `https://user:${secret}@contract.test/s?token=${secret}`;
+  yield* harness.serveSource(secretUrl, payload);
+  yield* download({
+    url: secretUrl,
+    destination: { kind: "memory" },
+    expectedSha256,
+    callerId: `caller-${secret}`,
+    redactionTokens: [secret],
+  }).pipe(Effect.mapError(failWith("a secret-bearing download succeeds")));
+  const events = yield* harness.events();
+  yield* requireDownloaderContract(
+    events.some((e) => e._tag === "pre-download") && events.some((e) => e._tag === "post-download"),
+    "pre-download and post-download events are published",
+    events.map((e) => e._tag),
+  );
+  yield* requireDownloaderContract(
+    !JSON.stringify(events).includes(secret),
+    "a secret in the URL query / userinfo / caller fields never appears in an event",
+    { sample: events[0] },
+  );
 
-    const schemeResult = yield* Effect.result(
-      download({ url: "http://contract.test/insecure.bin", destination: { kind: "memory" } }),
-    );
-    yield* requireDownloaderContract(
-      Result.isFailure(schemeResult) &&
-        downloaderErrorLeft(schemeResult.failure)._tag === "DownloadSourceForbiddenError" &&
-        downloaderErrorLeft(schemeResult.failure).reason === "scheme",
-      "an http:// source is rejected with reason scheme",
-      schemeResult,
-    );
-
-    const fileResult = yield* Effect.result(
-      download({ url: "file:///tmp/contract.bin", destination: { kind: "memory" } }),
-    );
-    yield* requireDownloaderContract(
-      Result.isFailure(fileResult) &&
-        downloaderErrorLeft(fileResult.failure)._tag === "DownloadSourceForbiddenError" &&
-        downloaderErrorLeft(fileResult.failure).reason === "file-source",
-      "a bare file:// source is rejected with reason file-source",
-      fileResult,
-    );
-
-    const escapeResult = yield* Effect.result(
-      download({
-        url: okUrl,
-        destination: { kind: "file", directory: dir, filename: "../escape.bin" },
-        expectedSha256,
-      }),
-    );
-    yield* requireDownloaderContract(
-      Result.isFailure(escapeResult) &&
-        downloaderErrorLeft(escapeResult.failure)._tag === "DownloadSourceForbiddenError" &&
-        downloaderErrorLeft(escapeResult.failure).reason === "destination-escape",
-      "a destination filename escaping the directory is rejected",
-      escapeResult,
-    );
-
-    const afterSuccess = yield* harness.listDir();
-    yield* requireDownloaderContract(
-      afterSuccess.includes("artifact.bin") && !afterSuccess.some((f) => f.includes(".tmp-")),
-      "a successful download leaves the destination and no temp file",
-      afterSuccess,
-    );
-
-    const interruptUrl = "https://contract.test/interrupt.bin";
-    yield* harness.serveSource(interruptUrl, payload);
-    const fiber = yield* Effect.forkChild(
-      download({
-        url: interruptUrl,
-        destination: { kind: "file", directory: dir, filename: "interrupt.bin" },
-        expectedSha256,
-      }),
-    );
-    yield* Fiber.interrupt(fiber);
-    const afterInterrupt = yield* harness.listDir();
-    yield* requireDownloaderContract(
-      !afterInterrupt.some((f) => f.includes(".tmp-")),
-      "an interrupted download leaves no temp file",
-      afterInterrupt,
-    );
-    const interruptedFile = yield* harness.read("interrupt.bin");
-    yield* requireDownloaderContract(
-      interruptedFile === null || interruptedFile.length === payload.length,
-      "an interrupted download leaves the destination absent or complete, never torn",
-      interruptedFile?.length,
-    );
-
-    const secret = "ULW-DLC-SECRET-d41d8cd9f00b2";
-    const secretUrl = `https://user:${secret}@contract.test/s?token=${secret}`;
-    yield* harness.serveSource(secretUrl, payload);
-    yield* download({
-      url: secretUrl,
+  if (harness.egress) {
+    const egressUrl = "https://contract.test/egress.bin";
+    yield* harness.serveSource(egressUrl, payload);
+    const callsBefore = yield* harness.egress.streamCallCount();
+    const bytesBefore = yield* harness.egress.bytesStreamed();
+    const egressResult = yield* download({
+      url: egressUrl,
       destination: { kind: "memory" },
       expectedSha256,
-      callerId: `caller-${secret}`,
-      redactionTokens: [secret],
-    }).pipe(Effect.mapError(failWith("a secret-bearing download succeeds")));
-    const events = yield* harness.events();
+    }).pipe(Effect.mapError(failWith("an egress-observed download succeeds")));
+    const callsAfter = yield* harness.egress.streamCallCount();
+    const bytesAfter = yield* harness.egress.bytesStreamed();
     yield* requireDownloaderContract(
-      events.some((e) => e._tag === "pre-download") && events.some((e) => e._tag === "post-download"),
-      "pre-download and post-download events are published",
-      events.map((e) => e._tag),
+      callsAfter - callsBefore === 1,
+      "a network miss issues exactly one egress GET call",
+      { callsBefore, callsAfter },
     );
     yield* requireDownloaderContract(
-      !JSON.stringify(events).includes(secret),
-      "a secret in the URL query / userinfo / caller fields never appears in an event",
-      { sample: events[0] },
+      bytesAfter - bytesBefore === egressResult.sizeBytes,
+      "every downloaded byte flows through the resolved HttpClient",
+      { bytesBefore, bytesAfter, sizeBytes: egressResult.sizeBytes },
     );
-
-    if (harness.egress) {
-      const egressUrl = "https://contract.test/egress.bin";
-      yield* harness.serveSource(egressUrl, payload);
-      const callsBefore = yield* harness.egress.streamCallCount();
-      const bytesBefore = yield* harness.egress.bytesStreamed();
-      const egressResult = yield* download({
-        url: egressUrl,
-        destination: { kind: "memory" },
-        expectedSha256,
-      }).pipe(Effect.mapError(failWith("an egress-observed download succeeds")));
-      const callsAfter = yield* harness.egress.streamCallCount();
-      const bytesAfter = yield* harness.egress.bytesStreamed();
-      yield* requireDownloaderContract(
-        callsAfter - callsBefore === 1,
-        "a network miss issues exactly one egress stream call",
-        { callsBefore, callsAfter },
-      );
-      yield* requireDownloaderContract(
-        bytesAfter - bytesBefore === egressResult.sizeBytes,
-        "every downloaded byte flows through the resolved HttpClient",
-        { bytesBefore, bytesAfter, sizeBytes: egressResult.sizeBytes },
-      );
-    }
-  });
+  }
+});

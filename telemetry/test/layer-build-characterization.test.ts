@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { Telemetry } from "@lando/sdk/services";
 import { Context, Effect, Layer } from "effect";
-import { makeTelemetryLayer } from "../src/service.ts";
+import * as TelemetryLayer from "../src/service.ts";
 
 test("enabled telemetry builds once per runtime, reuses it for nested provide, and builds freshly in a new run", async () => {
   // Given: enabled telemetry constructs a real scoped queue and dispatcher, with no external sinks.
   const instances: Context.Service.Shape<typeof Telemetry>[] = [];
-  const layer = makeTelemetryLayer(true).pipe(
+  const layer = TelemetryLayer.layer(true).pipe(
     Layer.tap((context) => Effect.sync(() => instances.push(Context.get(context, Telemetry)))),
   );
   const graph = Layer.merge(layer, layer);

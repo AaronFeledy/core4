@@ -15,8 +15,15 @@ export interface TelemetrySink {
 }
 
 export class TelemetrySinks extends Context.Service<TelemetrySinks, ReadonlyArray<TelemetrySink>>()(
-  "@lando/core/TelemetrySinks",
-) {}
+  "@lando/telemetry/TelemetrySinks",
+) {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      return yield* Effect.sync(() => TelemetrySinks.of([]));
+    }),
+  );
+}
 
 export interface TelemetryTransportOptions {
   readonly capacity?: number;
@@ -26,10 +33,11 @@ export interface TelemetryTransportOptions {
 const DEFAULT_CAPACITY = 256;
 const DEFAULT_FLUSH_BUDGET_MILLIS = 2000;
 
-const makeDisabledTelemetry = (): Context.Service.Shape<typeof Telemetry> => ({
-  enabled: false,
-  record: () => Effect.void,
-});
+const makeDisabledTelemetry = (): Context.Service.Shape<typeof Telemetry> =>
+  Telemetry.of({
+    enabled: false,
+    record: Effect.fn("Telemetry.record")(() => Effect.void),
+  });
 
 const dispatchRecord = (
   sinks: ReadonlyArray<TelemetrySink>,
@@ -46,48 +54,45 @@ const dispatchRecord = (
     { discard: true },
   );
 
-const makeTransport = (
+const makeTransport = Effect.fnUntraced(function* (
   sinks: ReadonlyArray<TelemetrySink>,
   options: TelemetryTransportOptions | undefined,
-): Effect.Effect<Context.Service.Shape<typeof Telemetry>, never, Scope.Scope> =>
-  Effect.gen(function* () {
-    const capacity = options?.capacity ?? DEFAULT_CAPACITY;
-    const budget = Duration.millis(options?.flushBudgetMillis ?? DEFAULT_FLUSH_BUDGET_MILLIS);
-    const queue = yield* Queue.dropping<TelemetryRecord>(capacity);
+): Effect.fn.Return<Context.Service.Shape<typeof Telemetry>, never, Scope.Scope> {
+  const capacity = options?.capacity ?? DEFAULT_CAPACITY;
+  const budget = Duration.millis(options?.flushBudgetMillis ?? DEFAULT_FLUSH_BUDGET_MILLIS);
+  const queue = yield* Queue.dropping<TelemetryRecord>(capacity);
 
-    yield* Stream.fromQueue(queue).pipe(
-      Stream.runForEach((record) => dispatchRecord(sinks, budget, record)),
-      Effect.catchCause(() => Effect.void),
-      Effect.forkScoped,
-    );
+  yield* Stream.fromQueue(queue).pipe(
+    Stream.runForEach((record) => dispatchRecord(sinks, budget, record)),
+    Effect.catchCause(() => Effect.void),
+    Effect.forkScoped,
+  );
 
-    // Finalizers run uninterruptibly, which would mask the timeout below and
-    // let a hanging sink delay shutdown forever. `Effect.interruptible`
-    // re-enables interruption so the bounded flush can actually time out.
-    yield* Effect.addFinalizer(() =>
-      Effect.interruptible(
-        Queue.clear(queue).pipe(
-          Effect.flatMap((records) =>
-            Effect.forEach(records, (record) => dispatchRecord(sinks, budget, record), { discard: true }),
-          ),
-          Effect.timeout(budget),
+  // Finalizers run uninterruptibly, which would mask the timeout below and
+  // let a hanging sink delay shutdown forever. `Effect.interruptible`
+  // re-enables interruption so the bounded flush can actually time out.
+  yield* Effect.addFinalizer(() =>
+    Effect.interruptible(
+      Queue.clear(queue).pipe(
+        Effect.flatMap((records) =>
+          Effect.forEach(records, (record) => dispatchRecord(sinks, budget, record), { discard: true }),
         ),
-      ).pipe(Effect.catchCause(() => Effect.void)),
-    );
+        Effect.timeout(budget),
+      ),
+    ).pipe(Effect.catchCause(() => Effect.void)),
+  );
 
-    return {
-      enabled: true,
-      record: (event, data) =>
-        event.length === 0
-          ? Effect.void
-          : Queue.offer(queue, { event, data: redactTelemetryData(event, data) }).pipe(Effect.asVoid),
-    };
+  return Telemetry.of({
+    enabled: true,
+    record: Effect.fn("Telemetry.record")((event: string, data: Readonly<Record<string, unknown>>) =>
+      event.length === 0
+        ? Effect.void
+        : Queue.offer(queue, { event, data: redactTelemetryData(event, data) }).pipe(Effect.asVoid),
+    ),
   });
+});
 
-export const makeTelemetryLayer = (
-  enabled: boolean,
-  options?: TelemetryTransportOptions,
-): Layer.Layer<Telemetry> =>
+export const layer = (enabled: boolean, options?: TelemetryTransportOptions): Layer.Layer<Telemetry> =>
   enabled
     ? Layer.effect(
         Telemetry,

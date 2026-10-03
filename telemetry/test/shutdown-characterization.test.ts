@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Telemetry } from "@lando/sdk/services";
-import { type TelemetryRecord, TelemetrySinks, makeTelemetryLayer } from "@lando/telemetry/service";
+import * as TelemetryLayer from "@lando/telemetry/service";
+import { type TelemetryRecord, TelemetrySinks } from "@lando/telemetry/service";
 import { Clock, Deferred, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 
@@ -11,7 +12,7 @@ test("shutdown completes promptly when the telemetry queue is empty", async () =
   try {
     // When: close its scope without recording anything.
     const closed = Effect.runPromise(
-      Telemetry.pipe(Effect.provide(makeTelemetryLayer(true, { flushBudgetMillis: 10_000 }))),
+      Telemetry.pipe(Effect.provide(TelemetryLayer.layer(true, { flushBudgetMillis: 10_000 }))),
     ).then(() => "closed");
 
     // Then: empty drains finish without spending the sink budget.
@@ -27,7 +28,7 @@ test("shutdown drains queued records before interrupting the in-flight sink", as
   let interrupted = 0;
   const program = Effect.gen(function* () {
     const started = yield* Deferred.make<void>();
-    const layer = makeTelemetryLayer(true, { flushBudgetMillis: 250 }).pipe(
+    const layer = TelemetryLayer.layer(true, { flushBudgetMillis: 250 }).pipe(
       Layer.provide(
         Layer.succeed(TelemetrySinks, [
           {
@@ -73,7 +74,7 @@ test("shutdown drains queued records before interrupting the in-flight sink", as
 test("shutdown of a hanging queued sink completes at its virtual flush budget", async () => {
   const calls: string[] = [];
   let finalized = 0;
-  const layer = makeTelemetryLayer(true, { flushBudgetMillis: 250 }).pipe(
+  const layer = TelemetryLayer.layer(true, { flushBudgetMillis: 250 }).pipe(
     Layer.provide(
       Layer.succeed(TelemetrySinks, [
         {

@@ -1,4 +1,4 @@
-import { Result } from "effect";
+import { Predicate, Result } from "effect";
 
 import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
@@ -45,9 +45,9 @@ interface EmitState {
 // name always carries `/` and a scoped npm name leads with a reserved `@`.
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (!Predicate.isObject(value)) return false;
   const proto = Object.getPrototypeOf(value);
-  // Only literal records (and null-prototype records) are emittable maps. Dates,
+  // Predicate.isObject also accepts instances; only literal records (and null-prototype records) are emittable maps. Dates,
   // RegExps, Maps, class instances, and other exotic objects are rejected.
   return proto === Object.prototype || proto === null;
 };

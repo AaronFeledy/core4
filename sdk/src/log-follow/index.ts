@@ -21,7 +21,7 @@
  * A provider's `logs()` projects only `line` events into its `LogChunk` stream;
  * diagnostics are surfaced elsewhere (`lando info`), never as service log lines.
  */
-import { Clock, Duration, Effect, Option, Result, Stream } from "effect";
+import { Clock, DateTime, Duration, Effect, Option, Result, Stream } from "effect";
 
 import { ProviderUnavailableError } from "../errors/index.ts";
 import type { LogSource, LogSourceId, ServiceName } from "../schema/index.ts";
@@ -194,13 +194,19 @@ const parseFramed = (
   if (match === null) {
     return { chunk: { service, source: source.id, stream: source.stream, line: framed.text } };
   }
-  const timestamp = new Date(match[1] ?? "");
-  if (Number.isNaN(timestamp.getTime())) {
+  const parsedTimestamp = DateTime.make(match[1] ?? "");
+  if (Option.isNone(parsedTimestamp)) {
     return { chunk: { service, source: source.id, stream: source.stream, line: framed.text } };
   }
   return {
-    chunk: { service, source: source.id, stream: source.stream, line: match[2] ?? "", timestamp },
-    epochSeconds: Math.floor(timestamp.getTime() / 1000),
+    chunk: {
+      service,
+      source: source.id,
+      stream: source.stream,
+      line: match[2] ?? "",
+      timestamp: DateTime.toDate(parsedTimestamp.value),
+    },
+    epochSeconds: Math.floor(DateTime.toEpochMillis(parsedTimestamp.value) / 1000),
   };
 };
 
@@ -245,23 +251,22 @@ const appendLines = (
 // framer. Advances `state.offset`. Returns the complete lines produced. When a
 // tail window is supplied, only that many complete lines are retained while
 // reading so large historical logs do not allocate one object per old line.
-const readToEnd = (
+const readToEnd = Effect.fnUntraced(function* (
   state: FollowerState,
   framer: LineFramer,
   maxReadBytes: number,
   tail?: number,
-): Effect.Effect<ReadonlyArray<FramedLine>, ProviderError> =>
-  Effect.gen(function* () {
-    const lines: FramedLine[] = [];
-    let done = false;
-    while (!done) {
-      const read = yield* state.handle.read(state.offset, maxReadBytes);
-      state.offset = read.nextOffset;
-      if (read.bytes.length > 0) appendLines(lines, framer.feed(read.bytes), tail);
-      done = read.eof;
-    }
-    return lines;
-  });
+): Effect.fn.Return<ReadonlyArray<FramedLine>, ProviderError> {
+  const lines: FramedLine[] = [];
+  let done = false;
+  while (!done) {
+    const read = yield* state.handle.read(state.offset, maxReadBytes);
+    state.offset = read.nextOffset;
+    if (read.bytes.length > 0) appendLines(lines, framer.feed(read.bytes), tail);
+    done = read.eof;
+  }
+  return lines;
+});
 
 const applyTail = (lines: ReadonlyArray<FramedLine>, tail: number | undefined): ReadonlyArray<FramedLine> =>
   tail === undefined || lines.length <= tail ? lines : lines.slice(lines.length - tail);
@@ -269,22 +274,21 @@ const applyTail = (lines: ReadonlyArray<FramedLine>, tail: number | undefined): 
 // Bounded readiness wait: poll `stat` until the file appears or the deadline
 // passes. Clock-driven (TestClock-compatible) and gate-clean — no
 // Effect.retry/repeat/schedule/Schedule.
-const waitForFile = (
+const waitForFile = Effect.fnUntraced(function* (
   access: LogFileAccess,
   path: string,
   deadlineMillis: number,
   pollIntervalMillis: number,
-): Effect.Effect<Option.Option<LogFileStat>, ProviderError> =>
-  Effect.gen(function* () {
-    let current = yield* access.stat(path);
-    while (Option.isNone(current)) {
-      const now = yield* Clock.currentTimeMillis;
-      if (now >= deadlineMillis) return Option.none();
-      yield* Effect.sleep(Duration.millis(pollIntervalMillis));
-      current = yield* access.stat(path);
-    }
-    return current;
-  });
+): Effect.fn.Return<Option.Option<LogFileStat>, ProviderError> {
+  let current = yield* access.stat(path);
+  while (Option.isNone(current)) {
+    const now = yield* Clock.currentTimeMillis;
+    if (now >= deadlineMillis) return Option.none();
+    yield* Effect.sleep(Duration.millis(pollIntervalMillis));
+    current = yield* access.stat(path);
+  }
+  return current;
+});
 
 /**
  * Follow (or snapshot) a single declared `follow` source, emitting source-tagged
@@ -327,64 +331,63 @@ export const followLogSource = (
     const framer = makeLineFramer(maxLineBytes);
     const live: { handle?: LogFileHandle } = {};
 
-    const step = (
+    const step = Effect.fnUntraced(function* (
       current: BodyState,
-    ): Effect.Effect<readonly [ReadonlyArray<LogFollowEvent>, Option.Option<BodyState>], ProviderError> =>
-      Effect.gen(function* () {
-        if (current.kind === "open") {
-          const handle = yield* input.access.open(path);
-          live.handle = handle;
-          const state: FollowerState = { handle, dev: current.stat.dev, ino: current.stat.ino, offset: 0n };
-          const backfill = yield* readToEnd(state, framer, maxReadBytes, input.tail);
-          if (!follow) {
-            const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
-            return [lineEvents(tailed), Option.none<BodyState>()] as const;
-          }
-          const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
-          return [backfillEvents, Option.some<BodyState>({ kind: "poll", state })] as const;
+    ): Effect.fn.Return<readonly [ReadonlyArray<LogFollowEvent>, Option.Option<BodyState>], ProviderError> {
+      if (current.kind === "open") {
+        const handle = yield* input.access.open(path);
+        live.handle = handle;
+        const state: FollowerState = { handle, dev: current.stat.dev, ino: current.stat.ino, offset: 0n };
+        const backfill = yield* readToEnd(state, framer, maxReadBytes, input.tail);
+        if (!follow) {
+          const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
+          return [lineEvents(tailed), Option.none<BodyState>()] as const;
         }
+        const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
+        return [backfillEvents, Option.some<BodyState>({ kind: "poll", state })] as const;
+      }
 
-        const state = current.state;
-        yield* Effect.sleep(Duration.millis(pollIntervalMillis));
-        const stat = yield* input.access.stat(path);
-        if (Option.isNone(stat)) {
-          return [[], Option.some<BodyState>(current)] as const;
-        }
-        const next = stat.value;
-        const events: LogFollowEvent[] = [];
+      const state = current.state;
+      yield* Effect.sleep(Duration.millis(pollIntervalMillis));
+      const stat = yield* input.access.stat(path);
+      if (Option.isNone(stat)) {
+        return [[], Option.some<BodyState>(current)] as const;
+      }
+      const next = stat.value;
+      const events: LogFollowEvent[] = [];
 
-        if (next.dev !== state.dev || next.ino !== state.ino) {
-          events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
-          events.push(...lineEvents(framer.flush()));
-          events.push(
-            diagnostic(service, source, "rotated", `Log source "${String(source.id)}" rotated (${path}).`),
-          );
-          yield* state.handle.close;
-          const reopened = yield* input.access.open(path);
-          live.handle = reopened;
-          state.handle = reopened;
-          state.dev = next.dev;
-          state.ino = next.ino;
-          state.offset = 0n;
-          events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
-        } else if (next.size < state.offset) {
-          events.push(...lineEvents(framer.flush()));
-          events.push(
-            diagnostic(
-              service,
-              source,
-              "truncated",
-              `Log source "${String(source.id)}" was truncated (${path}).`,
-            ),
-          );
-          state.offset = 0n;
-          events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
-        } else if (next.size > state.offset) {
-          events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
-        }
+      if (next.dev !== state.dev || next.ino !== state.ino) {
+        events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
+        events.push(...lineEvents(framer.flush()));
+        events.push(
+          diagnostic(service, source, "rotated", `Log source "${String(source.id)}" rotated (${path}).`),
+        );
+        yield* state.handle.close;
+        const reopened = yield* input.access.open(path);
+        live.handle = reopened;
+        state.handle = reopened;
+        state.dev = next.dev;
+        state.ino = next.ino;
+        state.offset = 0n;
+        events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
+      } else if (next.size < state.offset) {
+        events.push(...lineEvents(framer.flush()));
+        events.push(
+          diagnostic(
+            service,
+            source,
+            "truncated",
+            `Log source "${String(source.id)}" was truncated (${path}).`,
+          ),
+        );
+        state.offset = 0n;
+        events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
+      } else if (next.size > state.offset) {
+        events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
+      }
 
-        return [events, Option.some<BodyState>(current)] as const;
-      });
+      return [events, Option.some<BodyState>(current)] as const;
+    });
 
     return Stream.paginate<BodyState, LogFollowEvent, ProviderError, never>(
       { kind: "open", stat: initialStat },

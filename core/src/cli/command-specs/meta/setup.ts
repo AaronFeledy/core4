@@ -7,11 +7,11 @@
  * App commands may still honor leftover config as a last-used hint.
  */
 import { Effect, Result } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import {
   ConfigService,
   type Downloader,
-  type HttpClient,
   InteractionService,
   PrivilegeService,
   RuntimeProviderRegistry,
@@ -90,7 +90,7 @@ const writeConfigDefaultProvider = (providerId: string): Effect.Effect<void, nev
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
-  ConfigService | RuntimeProviderRegistry | HttpClient | Downloader | InteractionService
+  ConfigService | RuntimeProviderRegistry | HttpClient.HttpClient | Downloader | InteractionService
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",

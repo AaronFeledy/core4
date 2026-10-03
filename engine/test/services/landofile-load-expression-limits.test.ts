@@ -9,7 +9,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 
 import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 import { IMPORTED_PEM, PEM, withApp } from "./landofile-load-expression-support.ts";
 
 test("enforces the configured recursion limit", async () => {
@@ -30,7 +30,7 @@ test("enforces the configured recursion limit", async () => {
     );
     const config = Schema.decodeUnknownSync(GlobalConfig)({ loadMaxRecursionDepth: 1 });
     const layer = Layer.merge(
-      LandofileServiceLive,
+      TestLandofileServiceLayer.layer,
       Layer.succeed(ConfigService, {
         load: Effect.succeed(config),
         get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),

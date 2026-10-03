@@ -1,10 +1,6 @@
 import { resolveLandoRoots } from "@lando/paths";
 import { ManagedFileTransactionGuard } from "@lando/sdk/services";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
 import { makeTransactionRecovery } from "./transaction-recovery.ts";
 
@@ -22,10 +18,13 @@ export const makeManagedFileTransactionGuard = (options: {
     journalRoot: options.journalRoot,
     privateFileAccess: options.privateFileAccess,
   });
-  return { ensureConsistent: recovery.ensureConsistent, pending: recovery.pending };
+  return ManagedFileTransactionGuard.of({
+    ensureConsistent: recovery.ensureConsistent,
+    pending: recovery.pending,
+  });
 };
 
-export const ManagedFileTransactionGuardWithPrivateFileAccessLive: Layer.Layer<
+export const layerWithPrivateFileAccess: Layer.Layer<
   ManagedFileTransactionGuard,
   never,
   PrivateFileAccessService
@@ -39,5 +38,6 @@ export const ManagedFileTransactionGuardWithPrivateFileAccessLive: Layer.Layer<
   ),
 );
 
-export const ManagedFileTransactionGuardLive: Layer.Layer<ManagedFileTransactionGuard> =
-  ManagedFileTransactionGuardWithPrivateFileAccessLive.pipe(Layer.provide(PrivateFileAccessLive));
+export const layer: Layer.Layer<ManagedFileTransactionGuard> = layerWithPrivateFileAccess.pipe(
+  Layer.provide(PrivateFileAccessService.layer),
+);

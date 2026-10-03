@@ -1,7 +1,7 @@
 import { readFile, rename } from "node:fs/promises";
 import { runProbe } from "@lando/sdk/probe";
 import { StateStore } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Duration, Effect, Result, Schema } from "effect";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
 import { CoreReplacementPreconditionSchema, guardCoreReplacement } from "./compatibility.ts";
@@ -134,4 +134,4 @@ export const runWindowsReplacementProcess = (requestPath: string, token: string)
           .pipe(Effect.as(false)),
       ),
     );
-  }).pipe(Effect.provide(StateStoreLive));
+  }).pipe(Effect.provide(StateStoreLayer.layer));

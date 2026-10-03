@@ -20,7 +20,7 @@ import {
 } from "@lando/sdk/services";
 
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
 interface EventSink {
@@ -90,7 +90,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     makeConfigServiceLayer(),
     Layer.succeed(Downloader, testDownloader.service),
     Layer.succeed(InteractionService, testInteraction.service),
-    makeHttpClientLive(okProbeFetch),
+    httpClientLayerWith({ fetch: okProbeFetch }),
   );
 };
 
@@ -221,7 +221,7 @@ describe("meta:setup task tree progress", () => {
         makeConfigServiceLayer(),
         Layer.succeed(Downloader, testDownloader.service),
         Layer.succeed(InteractionService, testInteraction.service),
-        makeHttpClientLive(okProbeFetch),
+        httpClientLayerWith({ fetch: okProbeFetch }),
       );
 
       const exit = await Effect.runPromiseExit(

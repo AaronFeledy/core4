@@ -22,7 +22,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -152,7 +152,7 @@ const makeToolingLayer = (options: {
     select: () => Effect.succeed(options.provider),
   });
   return Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
     registryLayer,

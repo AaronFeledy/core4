@@ -14,7 +14,7 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 
 export interface AppVersionConstraintDoctorCheck {
   readonly name: "app-version-constraint";
@@ -132,7 +132,7 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
     const discovered = discovery.success;
     const { appRoot, filePath } = discovered;
     const resolved = yield* Effect.result(
-      loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLive)),
+      loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLayer.layer)),
     );
     if (Result.isFailure(resolved)) {
       if (resolved.failure._tag === "LandofileParseError") {

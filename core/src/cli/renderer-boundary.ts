@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Result, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, References, Result, Schema } from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
@@ -6,7 +6,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
 import { type RendererIO, createStdioRendererIO, onStdioBrokenPipe } from "@lando/renderer/io";
 import {
@@ -149,13 +149,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
   const failureDiagnosticsLayer = Layer.mergeAll(
     rendererLayer,
-    RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
+    RedactionService.layer.pipe(Layer.provide(SecretStoreLive)),
   );
   // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
   const framedJson = options.streaming !== undefined && renderContext.format === "json";
   const liveStreaming = options.streamingMode === "live";
   const streamFrameSinkLayer = makeStreamFrameSinkLive(renderContext.format).pipe(
-    Layer.provide(Layer.merge(rendererLayer, RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)))),
+    Layer.provide(Layer.merge(rendererLayer, RedactionService.layer.pipe(Layer.provide(SecretStoreLive)))),
   );
   const commandLayer = (
     liveStreaming
@@ -304,7 +304,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         ? executeCommand
         : executeCommand.pipe(Effect.provide(eventConsumerLayer));
     // Build the command runtime in its own memo map. Effect 4 otherwise reuses the
-    // diagnostic fallback's `RedactionServiceLive`, bound to the env-only secret
+    // diagnostic fallback's `RedactionService.layer`, bound to the env-only secret
     // store, and secrets from the runtime's own store would render unredacted.
     const commandOutcome = yield* Effect.exit(
       withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(commandLayer, { local: true })),
@@ -351,6 +351,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       yield* writeResultLine(output);
     }
   });
-  const exit = await Effect.runPromiseExit(program.pipe(Effect.provide(failureDiagnosticsLayer)));
+  const exit = await Effect.runPromiseExit(
+    program.pipe(
+      Effect.provide(failureDiagnosticsLayer),
+      Effect.provideService(References.TracerEnabled, false),
+    ),
+  );
   if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
 };

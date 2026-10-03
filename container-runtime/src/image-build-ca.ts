@@ -42,37 +42,35 @@ const parseCaFiles = (
       );
 };
 
-const parseStep = (
+const parseStep = Effect.fnUntraced(function* (
   value: unknown,
   providerId: string,
-): Effect.Effect<PreparedBuildStep | undefined, ProviderInternalError> => {
-  if (!Predicate.isObject(value)) return Effect.succeed(undefined);
-  if (value.phase !== "build") return Effect.succeed(undefined);
+): Effect.fn.Return<PreparedBuildStep | undefined, ProviderInternalError> {
+  if (!Predicate.isObject(value)) return undefined;
+  if (value.phase !== "build") return undefined;
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
-  return Effect.gen(function* () {
-    const user =
-      "user" in value ? yield* validateDockerfileUser(value.user, "build step user", providerId) : undefined;
-    const files = yield* caFiles;
-    let command: PreparedBuildStep["command"];
-    if (typeof value.command === "string") {
-      command = value.command;
-    } else if (Array.isArray(value.command)) {
-      command = value.command.filter((part): part is string => typeof part === "string");
-      if (command.length !== value.command.length) return undefined;
-    } else if (Predicate.isObject(value.command) && "directories" in value.command) {
-      const decoded = Schema.decodeUnknownResult(ServiceBuildDirectoryCommand)(value.command);
-      if (Result.isFailure(decoded)) {
-        return yield* Effect.fail(
-          internalError(providerId, "Invalid image directory build command.", decoded.failure),
-        );
-      }
-      command = decoded.success;
-    } else {
-      return undefined;
+  const user =
+    "user" in value ? yield* validateDockerfileUser(value.user, "build step user", providerId) : undefined;
+  const files = yield* caFiles;
+  let command: PreparedBuildStep["command"];
+  if (typeof value.command === "string") {
+    command = value.command;
+  } else if (Array.isArray(value.command)) {
+    command = value.command.filter((part): part is string => typeof part === "string");
+    if (command.length !== value.command.length) return undefined;
+  } else if (Predicate.isObject(value.command) && "directories" in value.command) {
+    const decoded = Schema.decodeUnknownResult(ServiceBuildDirectoryCommand)(value.command);
+    if (Result.isFailure(decoded)) {
+      return yield* Effect.fail(
+        internalError(providerId, "Invalid image directory build command.", decoded.failure),
+      );
     }
-    return { command, phase: "build", ...(user === undefined ? {} : { user }), caFiles: files };
-  });
-};
+    command = decoded.success;
+  } else {
+    return undefined;
+  }
+  return { command, phase: "build", ...(user === undefined ? {} : { user }), caFiles: files };
+});
 
 const uniqueDescriptors = (
   steps: ReadonlyArray<PreparedBuildStep>,
@@ -117,32 +115,27 @@ const readCaEntry = (
     }),
   );
 
-export const prepareDerivedBuild = (
+export const prepareDerivedBuild = Effect.fn("RuntimeProvider.prepareDerivedBuild")(function* (
   service: ServicePlan,
   providerId: string,
-): Effect.Effect<PreparedDerivedBuild, ProviderInternalError> => {
+): Effect.fn.Return<PreparedDerivedBuild, ProviderInternalError> {
   const extension = service.extensions["@lando/core/service-features"];
   const rawSteps =
     Predicate.isObject(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
-  return Effect.gen(function* () {
-    const parsed = yield* Effect.forEach(rawSteps, (step) => parseStep(step, providerId));
-    const steps = parsed.filter((step) => step !== undefined);
-    const descriptors = yield* uniqueDescriptors(steps, providerId);
-    const caEntries = yield* Effect.forEach(
-      descriptors,
-      (descriptor) => readCaEntry(descriptor, providerId),
-      {
-        concurrency: "unbounded",
-      },
-    );
-    const directoryEntries: ReadonlyArray<BuildContextEntry> = steps.some(
-      (step) => typeof step.command === "object" && "directories" in step.command,
-    )
-      ? [{ kind: "directory", name: ".lando-empty/", mode: 0o755 }]
-      : [];
-    return { steps, caEntries: [...caEntries, ...directoryEntries] };
+
+  const parsed = yield* Effect.forEach(rawSteps, (step) => parseStep(step, providerId));
+  const steps = parsed.filter((step) => step !== undefined);
+  const descriptors = yield* uniqueDescriptors(steps, providerId);
+  const caEntries = yield* Effect.forEach(descriptors, (descriptor) => readCaEntry(descriptor, providerId), {
+    concurrency: "unbounded",
   });
-};
+  const directoryEntries: ReadonlyArray<BuildContextEntry> = steps.some(
+    (step) => typeof step.command === "object" && "directories" in step.command,
+  )
+    ? [{ kind: "directory", name: ".lando-empty/", mode: 0o755 }]
+    : [];
+  return { steps, caEntries: [...caEntries, ...directoryEntries] };
+});
 
 export const copyInstructions = (step: PreparedBuildStep): ReadonlyArray<string> =>
   [...new Set(step.caFiles.map(({ archiveName }) => archiveName))]

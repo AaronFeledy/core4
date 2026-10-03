@@ -10,7 +10,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { PrivateFileAccessLive, type PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Stream } from "effect";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { startGpgAgentSession, withStartedGpgAgent } from "../../src/operations/start-gpg-agent.ts";
@@ -25,7 +25,10 @@ import { makeHarness } from "./start-progress-topology-support.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, PathsService | PrivateFileAccessService>) =>
   Effect.runPromise(
-    effect.pipe(Effect.provideService(PathsService, makeLandoPaths()), Effect.provide(PrivateFileAccessLive)),
+    effect.pipe(
+      Effect.provideService(PathsService, makeLandoPaths()),
+      Effect.provide(PrivateFileAccessService.layer),
+    ),
   );
 
 const exec: RuntimeProviderShape["exec"] = () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
@@ -285,7 +288,7 @@ test("startGpgAgentSession leaves the exported keyring on disk once the worker o
       ).pipe(
         Effect.provideService(ProcessRunner, fakeGnuPg(0)),
         Effect.provideService(PathsService, paths),
-        Effect.provide(PrivateFileAccessLive),
+        Effect.provide(PrivateFileAccessService.layer),
       ),
     );
     // Then
@@ -322,7 +325,7 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
       ).pipe(
         Effect.provideService(ProcessRunner, fakeGnuPg(2)),
         Effect.provideService(PathsService, paths),
-        Effect.provide(PrivateFileAccessLive),
+        Effect.provide(PrivateFileAccessService.layer),
       ),
     );
     // Then

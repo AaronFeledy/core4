@@ -35,12 +35,12 @@ import { AppPlannerLive } from "@lando/engine/services/planner";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
@@ -67,7 +67,7 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
 const scratchInitAppPortLive = Layer.succeed(ScratchInitAppPort, {
   initApp: () => Promise.reject(new TypeError("scratch gc fixtures must not initialize recipes")),
@@ -169,7 +169,7 @@ const makeLayer = (
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(SecretStoreLive));
   const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -182,7 +182,7 @@ const makeLayer = (
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
-    landofileServiceLive,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
     eventLive,
@@ -193,7 +193,7 @@ const makeLayer = (
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
+          stateStoreLayer,
           eventLive,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),
@@ -209,7 +209,7 @@ const makeLayer = (
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(SecretStoreLive));
   return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
 };
 

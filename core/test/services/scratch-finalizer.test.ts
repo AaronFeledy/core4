@@ -32,11 +32,11 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(ProcessRunnerLive));
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -62,7 +62,7 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
 const redactionLive = Layer.succeed(RedactionService, {
@@ -226,7 +226,7 @@ const makeRecordingLayer = (
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
-    landofileServiceLive,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
     ScratchRegistryLive,
@@ -235,7 +235,7 @@ const makeRecordingLayer = (
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
+          stateStoreLayer,
           EventServiceLive,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),

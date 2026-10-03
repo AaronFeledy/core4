@@ -1,4 +1,6 @@
 import { Duration, Effect, Ref } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
+import type * as HttpClientError from "effect/http/HttpClientError";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { type ProbeOutcome, ProbeTimeoutError, runProbe } from "@lando/sdk/probe";
@@ -13,7 +15,7 @@ import type {
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanEndpoint } from "@lando/sdk/services";
 
-import type { HttpClientShape } from "@lando/http-client/service";
+import { RequestPolicy } from "@lando/http-client/live";
 
 export const SCANNER_ID = "http-probe";
 
@@ -21,9 +23,8 @@ export const SCANNER_ID = "http-probe";
  * Scanner tuning knobs. `retry` is the TOTAL attempt count including the
  * first attempt. A response is accepted (`green`) when its status is 2xx or
  * listed in `okCodes`; any other response is `yellow`; no response is `red`.
- * `HttpRequest` has no redirect-count cap, so `maxRedirects` is binary: `0`
- * sends `redirect: "manual"` (a redirect surfaces as its 3xx status), any
- * positive value sends `redirect: "follow"`.
+ * Redirect policy is binary: `0` sends `redirect: "manual"` (a redirect
+ * surfaces as its 3xx status), any positive value sends `redirect: "follow"`.
  */
 export interface UrlScanConfig {
   readonly enabled: boolean;
@@ -67,7 +68,7 @@ export type ScanSourceEndpoint = PublishedEndpoint & {
 };
 
 export interface UrlScannerDeps {
-  readonly stream: HttpClientShape["stream"];
+  readonly http: HttpClient.HttpClient;
   readonly listEndpoints: (appId: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
 }
 
@@ -110,6 +111,16 @@ export const scanTargets = (
       : [],
   );
 
+const transportMessage = (error: HttpClientError.HttpClientError): string => {
+  const reason = error.reason;
+  if (reason._tag === "TransportError") {
+    const cause = reason.cause;
+    if (cause instanceof Error) return cause.message;
+    if (typeof cause === "string") return cause;
+  }
+  return error.message;
+};
+
 const makeAttempt = (
   deps: UrlScannerDeps,
   config: UrlScanConfig,
@@ -122,15 +133,13 @@ const makeAttempt = (
       Effect.map(
         Effect.result(
           Effect.scoped(
-            deps
-              .stream({
-                url,
-                method: "GET",
-                timeoutMs,
+            deps.http.get(url).pipe(
+              Effect.provideService(RequestPolicy, {
                 redirect: config.maxRedirects > 0 ? "follow" : "manual",
                 callerId: "url-scanner",
-              })
-              .pipe(Effect.map((response) => response.status)),
+              }),
+              Effect.map((response) => response.status),
+            ),
           ),
         ),
         (result) => result,
@@ -144,7 +153,17 @@ const makeAttempt = (
     }
 
     if (completed._tag === "Failure") {
-      yield* Ref.set(status, { _tag: "transport", message: completed.failure.message });
+      const failure = completed.failure;
+      const message =
+        typeof failure === "object" &&
+        failure !== null &&
+        "_tag" in failure &&
+        (failure as { _tag: string })._tag === "HttpClientError"
+          ? transportMessage(failure as HttpClientError.HttpClientError)
+          : failure instanceof Error
+            ? failure.message
+            : String(failure);
+      yield* Ref.set(status, { _tag: "transport", message });
       return "red";
     }
 

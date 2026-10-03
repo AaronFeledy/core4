@@ -1,12 +1,16 @@
 import { expect } from "bun:test";
-import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option, Stream } from "effect";
+import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
 
-import { HttpRequestError, type ScannerError } from "@lando/sdk/errors";
-import { AppId, type HttpRequest, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
+import { RequestPolicy } from "@lando/http-client/live";
+
+import type { ScannerError } from "@lando/sdk/errors";
+import { AppId, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { HttpClientShape } from "@lando/http-client/service";
 import {
   RedactionService,
   type RedactionServiceShape,
@@ -99,61 +103,58 @@ export const httpSleep = (duration: Duration.Input, status: number): ScriptedReq
   status,
 });
 
-export interface FakeHttp {
-  readonly requests: HttpRequest[];
-  readonly stream: HttpClientShape["stream"];
+export interface FakeHttpRequest {
+  readonly url: string;
+  readonly method: string;
+  readonly redirect?: "follow" | "manual" | "error";
+  readonly callerId?: string;
 }
 
-const response = (status: number) => ({ status, headers: [], body: Stream.empty });
-
-const urlOrigin = (url: string): string => {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "unknown";
-  }
-};
+export interface FakeHttp {
+  readonly requests: FakeHttpRequest[];
+  readonly http: HttpClient.HttpClient;
+}
 
 export const requestSequence = (
   results: readonly [ScriptedRequestResult, ...ScriptedRequestResult[]],
 ): FakeHttp => {
   let attempt = 0;
-  const requests: HttpRequest[] = [];
-  return {
-    requests,
-    stream: (req) => {
-      requests.push(req);
-      const scripted = results[Math.min(attempt, results.length - 1)] ?? results[0];
-      attempt += 1;
-      switch (scripted.kind) {
-        case "status":
-          return Effect.succeed(response(scripted.status));
-        case "failure":
-          return Effect.fail(
-            new HttpRequestError({ message: scripted.message, urlOrigin: urlOrigin(req.url) }),
-          );
-        case "sleep":
-          return Effect.sleep(Duration.fromInputUnsafe(scripted.duration)).pipe(
-            Effect.as(response(scripted.status)),
-          );
-      }
-    },
-  };
+  const requests: FakeHttpRequest[] = [];
+  const http = HttpClient.make((request, url, _signal, fiber) => {
+    const policy = fiber.getRef(RequestPolicy);
+    requests.push({
+      url: url.href,
+      method: request.method,
+      ...(policy.redirect === undefined ? {} : { redirect: policy.redirect }),
+      ...(policy.callerId === undefined ? {} : { callerId: policy.callerId }),
+    });
+    const scripted = results[Math.min(attempt, results.length - 1)] ?? results[0];
+    attempt += 1;
+    switch (scripted.kind) {
+      case "status":
+        return Effect.succeed(
+          HttpClientResponse.fromWeb(request, new Response(null, { status: scripted.status })),
+        );
+      case "failure":
+        return Effect.fail(
+          new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({
+              request,
+              cause: scripted.message,
+              description: scripted.message,
+            }),
+          }),
+        );
+      case "sleep":
+        return Effect.sleep(Duration.fromInputUnsafe(scripted.duration)).pipe(
+          Effect.as(HttpClientResponse.fromWeb(request, new Response(null, { status: scripted.status }))),
+        );
+    }
+  });
+  return { requests, http };
 };
 
-export const asHttpClient = (fake: FakeHttp): HttpClientShape => ({
-  id: "test-scanner-http",
-  capabilities: {
-    schemes: ["https", "http"],
-    streaming: true,
-    upload: false,
-    customCa: true,
-    proxyAware: true,
-  },
-  request: () => Effect.die("scanner must not buffer response bodies"),
-  stream: fake.stream,
-  upload: () => Effect.die("scanner tests do not upload"),
-});
+export const asHttpClient = (fake: FakeHttp): HttpClient.HttpClient => fake.http;
 
 export const secret = "s3cr3t-token";
 export const marker = "[REDACTED]";

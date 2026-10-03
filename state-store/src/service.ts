@@ -1,9 +1,9 @@
-// Root resolution uses `@lando/paths` directly so `StateStoreLive` requires no
+// Root resolution uses `@lando/paths` directly so the default layer requires no
 // `PathsService` dependency that would be unavailable as a sibling layer.
 
 import { rename, stat } from "node:fs/promises";
 
-import { Effect, Layer } from "effect";
+import { Clock, Effect, Layer } from "effect";
 
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
@@ -19,11 +19,7 @@ import { writeFileAtomicScoped } from "./atomic.ts";
 import { type DecodedFrame, decodeFrame, encodeFrame, isCustomCodec, makeSchemaCodec } from "./codec.ts";
 import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "./private-file-access.ts";
+import { type PrivateFileAccess, PrivateFileAccessService } from "./private-file-access.ts";
 
 const ioError = (operation: string, path: string, cause: unknown): StateStoreError =>
   new StateStoreError({ reason: "io", operation, path, cause });
@@ -72,8 +68,10 @@ const buildBucket = <A, I>(
     ),
   );
 
-  const quarantine = Effect.promise(() =>
-    rename(file, `${file}.corrupt-${Date.now()}`).catch(() => undefined),
+  const quarantine = Clock.currentTimeMillis.pipe(
+    Effect.flatMap((now) =>
+      Effect.promise(() => rename(file, `${file}.corrupt-${now}`).catch(() => undefined)),
+    ),
   );
 
   const handleCorrupt = (cause: unknown): Effect.Effect<A | null, StateStoreError> => {
@@ -120,6 +118,7 @@ const buildBucket = <A, I>(
       }
       return decodeValue(frame.payload);
     }),
+    Effect.withSpan("StateBucket.get"),
   );
 
   const writeValue = (value: A): Effect.Effect<void, StateStoreError> => {
@@ -152,29 +151,35 @@ const buildBucket = <A, I>(
   ): Effect.Effect<B, E | StateStoreError> =>
     lockMode === "advisory" ? withAdvisoryLockUsing(privateFileAccess)(file, operation, effect) : effect;
 
-  const modify = <B>(f: (cur: A | null) => readonly [B, A]): Effect.Effect<B, StateStoreError> =>
-    lock(
-      "modify",
-      get.pipe(
-        Effect.flatMap((current) => {
-          const [result, next] = f(current);
-          return writeValue(next).pipe(Effect.as(result));
-        }),
+  const modify = Effect.fn("StateBucket.modify")(
+    <B>(f: (cur: A | null) => readonly [B, A]): Effect.Effect<B, StateStoreError> =>
+      lock(
+        "modify",
+        get.pipe(
+          Effect.flatMap((current) => {
+            const [result, next] = f(current);
+            return writeValue(next).pipe(Effect.as(result));
+          }),
+        ),
       ),
-    );
+  );
 
-  const update = (f: (cur: A | null) => A): Effect.Effect<A, StateStoreError> =>
-    lock(
-      "update",
-      get.pipe(
-        Effect.flatMap((current) => {
-          const next = f(current);
-          return writeValue(next).pipe(Effect.as(next));
-        }),
+  const update = Effect.fn("StateBucket.update")(
+    (f: (cur: A | null) => A): Effect.Effect<A, StateStoreError> =>
+      lock(
+        "update",
+        get.pipe(
+          Effect.flatMap((current) => {
+            const next = f(current);
+            return writeValue(next).pipe(Effect.as(next));
+          }),
+        ),
       ),
-    );
+  );
 
-  const set = (value: A): Effect.Effect<void, StateStoreError> => lock("set", writeValue(value));
+  const set = Effect.fn("StateBucket.set")(
+    (value: A): Effect.Effect<void, StateStoreError> => lock("set", writeValue(value)),
+  );
 
   const remove: Effect.Effect<void, StateStoreError> = lock(
     "remove",
@@ -200,7 +205,15 @@ const buildBucket = <A, I>(
     ),
   );
 
-  return { path, get, set, update, modify, remove, exists } satisfies StateBucket<A>;
+  return {
+    path,
+    get,
+    set,
+    update,
+    modify,
+    remove: remove.pipe(Effect.withSpan("StateBucket.remove")),
+    exists: exists.pipe(Effect.withSpan("StateBucket.exists")),
+  } satisfies StateBucket<A>;
 };
 
 /**
@@ -209,20 +222,24 @@ const buildBucket = <A, I>(
  */
 export const makeStateStore = (options: {
   readonly privateFileAccess: PrivateFileAccess;
-}): StateStoreShape => ({
-  open: <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
-    resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
-      Effect.map((resolved) => buildBucket(spec, resolved.file, options.privateFileAccess)),
+}): StateStoreShape =>
+  StateStore.of({
+    open: Effect.fn("StateStore.open")(
+      <A, I>(spec: StateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
+        resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
+          Effect.map((resolved) => buildBucket(spec, resolved.file, options.privateFileAccess)),
+        ),
     ),
-  withLock: <A, E>(key: string, body: Effect.Effect<A, E>) =>
-    resolveStatePath("userData", "operation-locks", key, "withLock").pipe(
-      Effect.flatMap((resolved) =>
-        withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body),
+    withLock: Effect.fn("StateStore.withLock")(<A, E>(key: string, body: Effect.Effect<A, E>) =>
+      resolveStatePath("userData", "operation-locks", key, "withLock").pipe(
+        Effect.flatMap((resolved) =>
+          withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body),
+        ),
       ),
     ),
-});
+  });
 
-export const StateStoreWithPrivateFileAccessLive: Layer.Layer<StateStore, never, PrivateFileAccessService> =
+export const layerWithPrivateFileAccess: Layer.Layer<StateStore, never, PrivateFileAccessService> =
   Layer.effect(
     StateStore,
     Effect.map(PrivateFileAccessService, (privateFileAccess) =>
@@ -232,6 +249,6 @@ export const StateStoreWithPrivateFileAccessLive: Layer.Layer<StateStore, never,
     ),
   );
 
-export const StateStoreLive: Layer.Layer<StateStore> = StateStoreWithPrivateFileAccessLive.pipe(
-  Layer.provide(PrivateFileAccessLive),
+export const layer: Layer.Layer<StateStore> = layerWithPrivateFileAccess.pipe(
+  Layer.provide(PrivateFileAccessService.layer),
 );

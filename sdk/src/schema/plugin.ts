@@ -4,7 +4,6 @@ import { Schema } from "effect";
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
-import { HttpClientCapabilities } from "./http-client.ts";
 import { BootstrapLevel, PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
 import { ProxyCapabilities } from "./proxy.ts";
@@ -73,14 +72,14 @@ export const DownloaderContribution = Schema.Struct({
 export type DownloaderContribution = typeof DownloaderContribution.Type;
 
 /**
- * Plugins use `httpClients:` to register HTTP client implementations for
- * runtime selection by the `HttpClient` service.
+ * Plugins use `httpClients:` to register HTTP client implementations that
+ * provide Effect's `effect/http` `HttpClient`. Capability discovery is no longer
+ * part of the contribution schema; the standard client surface is fixed.
  */
 export const HttpClientContribution = Schema.Struct({
   /** Unique across plugins. */
   id: Schema.String,
   module: Schema.optionalKey(Schema.String),
-  capabilities: Schema.optionalKey(HttpClientCapabilities),
   /** Initial enabled state when the plugin is first installed. */
   enabledByDefault: Schema.optionalKey(Schema.Boolean),
   /** One-line description surfaced in HTTP client listings / diagnostics. */

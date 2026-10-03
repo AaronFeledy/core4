@@ -39,13 +39,13 @@ import { AppPlannerLive } from "@lando/engine/services/planner";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRendererServiceLive } from "@lando/renderer/runtime";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(
-  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessService.layer)),
 );
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
@@ -63,7 +63,7 @@ import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -91,7 +91,7 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
 
 const capabilities: ProviderCapabilities = {
@@ -245,7 +245,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(SecretStoreLive));
   const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
@@ -255,8 +255,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
-    PrivateFileAccessLive,
-    landofileServiceLive,
+    PrivateFileAccessService.layer,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
     eventLive,
@@ -268,7 +268,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
+          stateStoreLayer,
           eventLive,
           redactionLive,
           pathsLive,
@@ -278,7 +278,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
   );
   const buildOrchestratorLive = BuildOrchestratorLive.pipe(
-    Layer.provide(Layer.mergeAll(eventLive, pathsLive, registryLive, StateStoreLive)),
+    Layer.provide(Layer.mergeAll(eventLive, pathsLive, registryLive, stateStoreLayer)),
   );
   return Layer.mergeAll(
     scratchDeps,
@@ -288,11 +288,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
     options.configLayer ?? ConfigServiceLive,
     SecretStoreLive,
-  ).pipe(Layer.provide(PrivateFileAccessLive));
+  ).pipe(Layer.provide(PrivateFileAccessService.layer));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(SecretStoreLive));
   return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
 };
 

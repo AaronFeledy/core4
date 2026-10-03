@@ -37,64 +37,63 @@ const onlyFragmentKeys = (emitted: unknown, fragment: unknown): boolean => {
   );
 };
 
-export const checkAuthoringLaws = (
+export const checkAuthoringLaws = Effect.fnUntraced(function* (
   harness: ConfigTranslatorContractHarness,
   result: ConfigTranslateResult,
   stableJson: (value: unknown) => string,
-) =>
-  Effect.gen(function* () {
-    const lower = Match.value(harness.translateInput).pipe(
-      Match.tag("recipe-request", () => []),
-      Match.tag("landofile-document-set", ({ currentLowerV4Fragments }) => currentLowerV4Fragments),
-      Match.exhaustive,
+) {
+  const lower = Match.value(harness.translateInput).pipe(
+    Match.tag("recipe-request", () => []),
+    Match.tag("landofile-document-set", ({ currentLowerV4Fragments }) => currentLowerV4Fragments),
+    Match.exhaustive,
+  );
+  const fragments = [
+    ...[...lower].sort((a, b) => layers[a.layerId] - layers[b.layerId]),
+    ...[...result.outputs].sort((a, b) => layers[a.targetLayer] - layers[b.targetLayer]),
+  ];
+  let cumulative: unknown = {};
+  for (const { fragment } of fragments) {
+    cumulative = merge(cumulative, fragment);
+    yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(cumulative, {
+      onExcessProperty: "error",
+    });
+  }
+  yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(cumulative, { onExcessProperty: "error" });
+  const encode = harness.translator.encode;
+  if (encode === undefined) return;
+  const samples = harness.encodeSamples;
+  if (samples === undefined || samples.length === 0)
+    return yield* Effect.fail(
+      new ContractFailure({
+        message: "Encoder requires nonempty encodeSamples.",
+        assertion: "encoder samples",
+      }),
     );
-    const fragments = [
-      ...[...lower].sort((a, b) => layers[a.layerId] - layers[b.layerId]),
-      ...[...result.outputs].sort((a, b) => layers[a.targetLayer] - layers[b.targetLayer]),
-    ];
-    let cumulative: unknown = {};
-    for (const { fragment } of fragments) {
-      cumulative = merge(cumulative, fragment);
-      yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(cumulative, {
-        onExcessProperty: "error",
-      });
-    }
-    yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(cumulative, { onExcessProperty: "error" });
-    const encode = harness.translator.encode;
-    if (encode === undefined) return;
-    const samples = harness.encodeSamples;
-    if (samples === undefined || samples.length === 0)
+  const decodeAuthoring =
+    harness.decodeAuthoring ??
+    ((text: string) => parseLandofile({ file: "lando.yml", content: text, cwd: "/" }));
+  for (const sample of samples) {
+    const emitted = yield* encode(sample);
+    const wire = yield* decodeAuthoring(emitted.text);
+    const decode =
+      sample.fragment === undefined
+        ? Schema.decodeUnknownEffect(LandofileAuthoringShape)
+        : Schema.decodeUnknownEffect(LandofileAuthoringFragment);
+    const actual = yield* decode(wire, { onExcessProperty: "error" });
+    const expected = yield* decode(sample.fragment ?? sample.context, {
+      onExcessProperty: "error",
+    });
+    if (
+      stableJson(actual) !== stableJson(expected) ||
+      (sample.fragment !== undefined && !onlyFragmentKeys(wire, sample.fragment))
+    ) {
       return yield* Effect.fail(
         new ContractFailure({
-          message: "Encoder requires nonempty encodeSamples.",
-          assertion: "encoder samples",
+          message: "Encoder must preserve canonical authoring values and emit only the requested fragment.",
+          assertion: "authoring encoder round trip",
+          details: { actual, expected },
         }),
       );
-    const decodeAuthoring =
-      harness.decodeAuthoring ??
-      ((text: string) => parseLandofile({ file: "lando.yml", content: text, cwd: "/" }));
-    for (const sample of samples) {
-      const emitted = yield* encode(sample);
-      const wire = yield* decodeAuthoring(emitted.text);
-      const decode =
-        sample.fragment === undefined
-          ? Schema.decodeUnknownEffect(LandofileAuthoringShape)
-          : Schema.decodeUnknownEffect(LandofileAuthoringFragment);
-      const actual = yield* decode(wire, { onExcessProperty: "error" });
-      const expected = yield* decode(sample.fragment ?? sample.context, {
-        onExcessProperty: "error",
-      });
-      if (
-        stableJson(actual) !== stableJson(expected) ||
-        (sample.fragment !== undefined && !onlyFragmentKeys(wire, sample.fragment))
-      ) {
-        return yield* Effect.fail(
-          new ContractFailure({
-            message: "Encoder must preserve canonical authoring values and emit only the requested fragment.",
-            assertion: "authoring encoder round trip",
-            details: { actual, expected },
-          }),
-        );
-      }
     }
-  });
+  }
+});

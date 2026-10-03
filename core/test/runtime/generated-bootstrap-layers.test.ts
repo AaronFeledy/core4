@@ -49,14 +49,14 @@ describe("generated bootstrap layers", () => {
     }
 
     expect(minimal).not.toContain("makePluginRegistryLive");
-    expect(minimal).toContain('from "@lando/managed-file/transaction"');
+    expect(minimal).toContain('from "@lando/managed-file/transaction-guard"');
     expect(minimal).toContain(
-      "    ManagedFileTransactionGuardWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+      "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLive)),",
     );
     expect(minimal).toContain(
-      "    StateStoreWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+      "    StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLive)),",
     );
-    expect(commands).toContain("makeEngineLandofileServiceLive");
+    expect(commands).toContain("EngineLandofileServiceLayer.layer");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
     expect(commands).toContain("Effect.map(PathsService");
     expect(commands).toContain("resolveUserIncludesDir: () => paths.userIncludesDir");

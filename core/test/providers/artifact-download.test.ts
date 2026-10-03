@@ -9,8 +9,8 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import { ProviderBundleChecksumError } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import * as LandoHttpClient from "@lando/http-client";
+import * as VerifiedDownloader from "@lando/http-client/downloader";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
@@ -55,7 +55,13 @@ const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trus
       allowFileSource: false,
     });
     return yield* trust === undefined ? effect : effect.pipe(Effect.provideService(NetworkTrust, trust));
-  }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(fetchImpl, () => [])))));
+  }).pipe(
+    Effect.provide(
+      VerifiedDownloader.layer.pipe(
+        Layer.provide(LandoHttpClient.layerWith({ fetch: fetchImpl, systemCaPems: () => [] })),
+      ),
+    ),
+  );
 
 const runArtifactDownload = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
   Effect.runPromise(artifactDownloadEffect(fetchImpl, directory, trust));

@@ -2,11 +2,7 @@ import { afterEach } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, type Scope } from "effect";
 import { type TransactionOptions, makeManagedFileTransactions } from "../src/transaction.ts";
 
@@ -16,7 +12,7 @@ export const ownerOnlyFileAccess: PrivateFileAccess = {
     Effect.runPromise(
       Effect.scoped(
         Effect.flatMap(PrivateFileAccessService, (access) => Effect.promise(() => access.enforce(path))).pipe(
-          Effect.provide(PrivateFileAccessLive),
+          Effect.provide(PrivateFileAccessService.layer),
         ),
       ),
     ),
@@ -24,7 +20,7 @@ export const ownerOnlyFileAccess: PrivateFileAccess = {
     Effect.runPromise(
       Effect.scoped(
         Effect.flatMap(PrivateFileAccessService, (access) => Effect.promise(() => access.verify(path))).pipe(
-          Effect.provide(PrivateFileAccessLive),
+          Effect.provide(PrivateFileAccessService.layer),
         ),
       ),
     ),

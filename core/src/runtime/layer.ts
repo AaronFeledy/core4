@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import { writeStdioLine } from "@lando/renderer/io";
 import { Effect, Layer, Result, Schema } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { LogLevel } from "@lando/sdk/schema";
@@ -19,7 +20,6 @@ import type {
   FileSyncEngine,
   FileSystem,
   GlobalAppService,
-  HttpClient,
   InteractionService,
   LandofileService,
   LogFileHelperAssets,
@@ -119,7 +119,7 @@ type MinimalRuntimeServices =
   | RedactionService
   | SecretStore
   | StateStore
-  | HttpClient
+  | HttpClient.HttpClient
   | Downloader
   | HostMaintenanceRegistry;
 type PluginRuntimeServices =

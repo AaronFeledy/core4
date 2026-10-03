@@ -43,7 +43,7 @@ import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
   artifactBuild: true,
@@ -1486,7 +1486,7 @@ describe("AppPlannerLive", () => {
       process.chdir(nested);
       const landofile = await Effect.runPromise(
         Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-          Effect.provide(LandofileServiceLive),
+          Effect.provide(TestLandofileServiceLayer.layer),
         ),
       );
 

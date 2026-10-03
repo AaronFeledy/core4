@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestDownloader } from "@lando/engine/testing/downloader";
@@ -58,6 +60,9 @@ describe("provider-lando plugin descriptor", () => {
     const paths = makeLandoPaths({ userDataRoot: "/tmp/provider-lando-plugin-descriptor" });
     const downloader = Effect.runSync(makeTestDownloader()).service;
     const stateStore = makeTestStateStore().service;
+    const httpClient = HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+    );
     const ctx: LandoPluginContext = {
       id: manifest.name,
       managedFiles: { pluginId: manifest.name },
@@ -66,6 +71,7 @@ describe("provider-lando plugin descriptor", () => {
         AbsolutePath.make("/tmp/provider-lando-plugin-descriptor/state"),
         ownerOnlyFileAccess,
       ),
+      httpClient,
       events: { publishRender: () => Effect.void },
     };
     const services = Layer.mergeAll(

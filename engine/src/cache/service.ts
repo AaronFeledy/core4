@@ -2,11 +2,7 @@ import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import { CacheService } from "@lando/sdk/services";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { writeAtomicCacheFile } from "./atomic.ts";
 
@@ -92,7 +88,7 @@ export const CacheServiceWithPrivateFileAccessLive: Layer.Layer<
 );
 
 export const CacheServiceLive = CacheServiceWithPrivateFileAccessLive.pipe(
-  Layer.provide(PrivateFileAccessLive),
+  Layer.provide(PrivateFileAccessService.layer),
 );
 
 export { CacheService };

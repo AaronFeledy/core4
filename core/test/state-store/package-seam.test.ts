@@ -30,7 +30,7 @@ const isStateStoreServiceModule = (value: unknown): value is StateStoreServiceMo
   isRuntimeModule(value) &&
   "makeStateStore" in value &&
   typeof value.makeStateStore === "function" &&
-  "StateStoreLive" in value;
+  "layer" in value;
 
 const repositoryRoot = new URL("../../../", import.meta.url);
 const pluginDirectory = new URL("../../../plugins/provider-lando/", import.meta.url).pathname;
@@ -92,7 +92,7 @@ describe("StateStore package seam", () => {
     const service = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* StateStore;
-      }).pipe(Effect.provide(serviceModule.StateStoreLive), Effect.provide(ProcessRunnerLive)),
+      }).pipe(Effect.provide(serviceModule.layer), Effect.provide(ProcessRunnerLive)),
     );
 
     // When a bucket key attempts to escape its assigned root

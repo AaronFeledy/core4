@@ -1,11 +1,12 @@
 import { LandofileExpressionEvalError } from "@lando/sdk/errors";
 import type { ExpressionHelperOverride } from "@lando/sdk/expressions";
 import type { FileRef } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 
 import type { LandofileFileSession } from "./load-expression-file.ts";
 
 const isFileRef = (value: unknown): value is FileRef =>
-  typeof value === "object" && value !== null && "_tag" in value && value._tag === "FileRef";
+  Predicate.isObjectOrArray(value) && "_tag" in value && value._tag === "FileRef";
 
 const requireRef = (args: ReadonlyArray<unknown>, decoder: string, sourcePath: string): FileRef => {
   const ref = args[0];
@@ -20,8 +21,7 @@ const requireRef = (args: ReadonlyArray<unknown>, decoder: string, sourcePath: s
 const TEMPORAL_TAG = /^\[object Temporal\./;
 
 const isTemporalLike = (value: unknown): value is { readonly toJSON: () => unknown } =>
-  typeof value === "object" &&
-  value !== null &&
+  Predicate.isObjectOrArray(value) &&
   "toJSON" in value &&
   typeof value.toJSON === "function" &&
   TEMPORAL_TAG.test(Object.prototype.toString.call(value));
@@ -33,7 +33,7 @@ const toJsonLike = (value: unknown): unknown => {
     return typeof json === "string" ? json : String(value);
   }
   if (Array.isArray(value)) return value.map(toJsonLike);
-  if (typeof value === "object" && value !== null) {
+  if (Predicate.isObject(value)) {
     return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, toJsonLike(entry)]));
   }
   return value;

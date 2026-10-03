@@ -123,39 +123,38 @@ const unparseablePlatformError = (ctx: ProviderErrorContext, platform: string): 
     remediation: "Use a platform pin such as linux/amd64 or linux/arm/v7.",
   });
 
-export const ensureImage = <E = never>(
+export const ensureImage = Effect.fn("RuntimeProvider.ensureImage")(function* <E = never>(
   api: EngineHttpApi,
   reference: string,
   options: EnsureImageOptions<E>,
-): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError | E> => {
+): Effect.fn.Return<void, ProviderUnavailableError | ProviderInternalError | E> {
   const platform = options.platform;
   const pin = platform === undefined ? undefined : parseImagePlatform(platform);
   if (platform !== undefined && pin === undefined) {
-    return Effect.fail(unparseablePlatformError(options.ctx, platform));
+    return yield* Effect.fail(unparseablePlatformError(options.ctx, platform));
   }
-  if (options.force === true) return pull(api, reference, options);
-  return Effect.gen(function* () {
-    const inspectResponse = yield* request(api, options.ctx, inspectRequest(options.dialect, reference));
-    if (inspectResponse.status === 404) {
-      yield* pull(api, reference, options);
-      return;
-    }
-    if (inspectResponse.status !== 200) {
-      return yield* Effect.fail(inspectFailure(options.ctx, inspectResponse));
-    }
-    if (platform === undefined || pin === undefined) return;
-    const decoded = yield* parseEngineJson(inspectResponse, options.ctx, "apply", {
-      message: "Container engine API returned malformed JSON.",
-      details: redactDetails(inspectResponse),
-    });
-    if (inspectMatchesPlatform(decoded, pin)) return;
-    if (inspectRepoDigests(decoded).length > 0) {
-      yield* pull(api, reference, options);
-      return;
-    }
-    return yield* Effect.fail(localBuildPlatformError(options.ctx, reference, platform, decoded));
+  if (options.force === true) return yield* pull(api, reference, options);
+
+  const inspectResponse = yield* request(api, options.ctx, inspectRequest(options.dialect, reference));
+  if (inspectResponse.status === 404) {
+    yield* pull(api, reference, options);
+    return;
+  }
+  if (inspectResponse.status !== 200) {
+    return yield* Effect.fail(inspectFailure(options.ctx, inspectResponse));
+  }
+  if (platform === undefined || pin === undefined) return;
+  const decoded = yield* parseEngineJson(inspectResponse, options.ctx, "apply", {
+    message: "Container engine API returned malformed JSON.",
+    details: redactDetails(inspectResponse),
   });
-};
+  if (inspectMatchesPlatform(decoded, pin)) return;
+  if (inspectRepoDigests(decoded).length > 0) {
+    yield* pull(api, reference, options);
+    return;
+  }
+  return yield* Effect.fail(localBuildPlatformError(options.ctx, reference, platform, decoded));
+});
 
 export const makeEnsureImage =
   <E = never>(

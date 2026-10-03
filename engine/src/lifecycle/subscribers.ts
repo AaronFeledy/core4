@@ -1,4 +1,5 @@
 import { type Context, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { EventError, PluginLoadError } from "@lando/sdk/errors";
 import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
@@ -156,6 +157,7 @@ export const makeSubscriberRuntimeLive = (
       const managedFiles = yield* ManagedFileService;
       const stateStore = yield* StateStore;
       const paths = yield* PathsService;
+      const httpClient = yield* HttpClient.HttpClient;
       const redaction = yield* RedactionService;
       const manifests = yield* plugins.list;
       const globalManifests = yield* globalPlugins.list;
@@ -184,6 +186,7 @@ export const makeSubscriberRuntimeLive = (
             stateStore,
             pluginStateRoot,
             privateFileAccess,
+            httpClient,
             publishRender: makePublishRender(events, redaction),
           });
           const getHandler = yield* makeCachedSubscriberHandler(

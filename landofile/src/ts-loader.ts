@@ -7,7 +7,7 @@
  */
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { Duration, Effect } from "effect";
+import { Clock, Duration, Effect, Predicate } from "effect";
 
 import { normalizeHostPlatform } from "@lando/paths";
 import { LandofileParseError, LandofileSandboxError, LandofileTimeoutError } from "@lando/sdk/errors";
@@ -195,8 +195,10 @@ const buildContext = (filePath: string): LandofileContext => {
   };
 };
 
+const isModuleObject: (value: unknown) => value is object = Predicate.isObjectOrArray;
+
 const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown> => {
-  if (module === null || typeof module !== "object") {
+  if (!isModuleObject(module)) {
     throw new LandofileParseError({
       message: `Programmatic Landofile at ${filePath} did not export a module object.`,
       filePath,
@@ -204,7 +206,7 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
       column: undefined,
     });
   }
-  const exported = (module as { default?: unknown }).default;
+  const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
   if (exported === undefined) {
     throw new LandofileParseError({
       message: `Programmatic Landofile at ${filePath} is missing a default export.`,
@@ -222,20 +224,21 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
 };
 
 export const resolveTsModuleResult = async (result: unknown): Promise<unknown> => {
-  if (result === null || typeof result !== "object") return result;
+  if (!isModuleObject(result)) return result;
   if (Effect.isEffect(result)) {
     return await Effect.runPromise(result as Effect.Effect<unknown, unknown>);
   }
-  if (typeof (result as { then?: unknown }).then === "function") {
-    return await resolveTsModuleResult(await (result as Promise<unknown>));
+  if (typeof Reflect.get(result, "then") === "function") {
+    return await resolveTsModuleResult(await Promise.resolve(result));
   }
   return result;
 };
 
-const evaluateImport = (filePath: string): Effect.Effect<unknown, LandofileParseError> =>
-  Effect.tryPromise({
+const evaluateImport = Effect.fnUntraced(function* (filePath: string) {
+  const importTime = yield* Clock.currentTimeMillis;
+  return yield* Effect.tryPromise({
     try: async () => {
-      const module = await import(`${filePath}?t=${Date.now()}`);
+      const module = await import(`${filePath}?t=${importTime}`);
       return await unwrapDefault(filePath, module);
     },
     catch: (cause) =>
@@ -251,6 +254,7 @@ const evaluateImport = (filePath: string): Effect.Effect<unknown, LandofileParse
             cause,
           }),
   });
+});
 
 export interface LoadLandofileTsOptions {
   readonly filePath: string;
@@ -259,23 +263,22 @@ export interface LoadLandofileTsOptions {
   readonly timeoutMs?: number;
 }
 
-export const loadLandofileTs = (
+export const loadLandofileTs = Effect.fnUntraced(function* (
   options: LoadLandofileTsOptions,
-): Effect.Effect<unknown, LandofileSandboxError | LandofileTimeoutError | LandofileParseError> =>
-  Effect.gen(function* () {
-    yield* sandboxScan(options.filePath, options.appRoot, options.content);
-    const timeoutMs = options.timeoutMs ?? resolveTimeoutMs();
-    return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
-      duration: Duration.millis(timeoutMs),
-      orElse: () =>
-        Effect.fail(
-          (() =>
-            new LandofileTimeoutError({
-              message: `Programmatic Landofile at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
-              filePath: options.filePath,
-              timeoutMs,
-              remediation: TIMEOUT_REMEDIATION,
-            }))(),
-        ),
-    });
+): Effect.fn.Return<unknown, LandofileSandboxError | LandofileTimeoutError | LandofileParseError> {
+  yield* sandboxScan(options.filePath, options.appRoot, options.content);
+  const timeoutMs = options.timeoutMs ?? resolveTimeoutMs();
+  return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
+    duration: Duration.millis(timeoutMs),
+    orElse: () =>
+      Effect.fail(
+        (() =>
+          new LandofileTimeoutError({
+            message: `Programmatic Landofile at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
+            filePath: options.filePath,
+            timeoutMs,
+            remediation: TIMEOUT_REMEDIATION,
+          }))(),
+      ),
   });
+});

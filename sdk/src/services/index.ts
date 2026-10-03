@@ -9,7 +9,16 @@ import type {
   AppId,
   AppPlan,
   AppRef,
+  ConfigTranslateDetectInput,
+  ConfigTranslateEncodeInput,
+  ConfigTranslateEncodeResult,
+  ConfigTranslateInput,
+  ConfigTranslateMatch,
+  ConfigTranslateResult,
   DataEndpoint,
+  DataTransferProgress,
+  DataTransferResult,
+  DataTransferSpec,
   DatasetApplyOptions,
   DatasetApplyResult,
   DatasetArtifactFormat,
@@ -21,6 +30,9 @@ import type {
   DeprecationSurfaceKind,
   DeprecationUse,
   DoctorResourceNameQuery,
+  DownloadRequest,
+  DownloadResult,
+  DownloaderCapabilities,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionFilter,
@@ -29,14 +41,10 @@ import type {
   FileSyncSessionSpec,
   FileSyncSetupOptions,
   GlobalConfig,
+  HealthcheckPlan,
   HostPlatform,
   HostProxyBridgeInput,
   HostProxyBridgeResult,
-  HttpClientCapabilities,
-  HttpRequest,
-  HttpResponse,
-  HttpStreamResponse,
-  HttpUploadRequest,
   LandofileShape,
   ManagedFile,
   ManagedFileInfo,
@@ -56,6 +64,9 @@ import type {
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  PrunePolicy,
+  RecipeDecomposeInput,
+  RecipeDecomposeResult,
   RecipeManifest,
   RemoteCapabilities,
   RemoteConfig,
@@ -70,6 +81,11 @@ import type {
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
+  SnapshotFilter,
+  SnapshotHandle,
+  SnapshotId,
+  SnapshotInfo,
+  SnapshotOptions,
   TunnelCapabilities,
   TunnelSession,
   TunnelSessionFilter,
@@ -89,8 +105,10 @@ import type {
 
 import type {
   AppResolveError,
+  CaError,
   CacheError,
   ConfigError,
+  ConfigTranslateError,
   ConfigTranslatorConflictError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
@@ -98,10 +116,7 @@ import type {
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
-  HttpClientUnavailableError,
-  HttpRequestError,
-  HttpTrustError,
-  HttpUploadError,
+  HostProxyError,
   LandofileVersionConstraintError,
   ManagedFileError,
   ManagedFileTransactionError,
@@ -110,12 +125,14 @@ import type {
   PluginDescriptorMismatchError,
   PluginLoadError,
   PluginManifestError,
+  PortCollisionError,
   ProcessExecError,
   ProcessTimeoutError,
   ProviderUnavailableError,
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
+  RecipeDecomposeError,
   RecipeExtendsError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
@@ -124,6 +141,7 @@ import type {
   RouterPortPinMismatch,
   RouterPortsExhausted,
   RouterWatcherError,
+  ScannerError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -132,6 +150,8 @@ import type {
   SecretStoreUnavailableError,
   ServiceTypeCollisionError,
   ShellExecError,
+  SshError,
+  StateStoreError,
   ToolingCompileError,
   ToolingExecError,
 } from "../errors/index.ts";
@@ -140,8 +160,8 @@ import type { FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
-import type { DataMoverShape } from "./data-transfer.ts";
-import type { DownloaderShape } from "./downloader.ts";
+import type { DataMoverError } from "./data-transfer.ts";
+import type { DownloadError } from "./downloader.ts";
 import type {
   EventFor,
   EventWaitAnyOptions,
@@ -160,14 +180,20 @@ import type {
   ManagedFileSelector,
   ManagedFileTransactionPendingReport,
 } from "./managed-file.ts";
-import type { LandoPaths } from "./paths.ts";
+import type { LandoRoots } from "./paths.ts";
 import type { AppPlannerError, BuildAppError, BuildError } from "./planner.ts";
 import type {
-  CertificateAuthorityShape,
-  HealthcheckRunnerShape,
-  HostProxyServiceShape,
-  SshServiceShape,
-  UrlScannerShape,
+  CaSetupOptions,
+  CertificateResult,
+  CertificateSpec,
+  HealthcheckResult,
+  HealthcheckRunError,
+  HostProxySetupOptions,
+  HostProxyStatus,
+  PortCollision,
+  ScanResult,
+  SshAgentSocket,
+  SshSetupOptions,
 } from "./platform.ts";
 import type { PluginTrustState } from "./plugin-trust.ts";
 import type { RegisteredCommand, ServiceType } from "./plugins.ts";
@@ -214,7 +240,6 @@ import type {
   ServiceSelector,
   WaitForExitOptions,
 } from "./provider.ts";
-import type { RecipeDecomposerShape } from "./recipe-decomposer.ts";
 import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
   ScratchAcquireInput,
@@ -227,8 +252,9 @@ import type {
   ScratchStartOptions,
   ScratchSummary,
 } from "./scratch.ts";
-import type { StateStoreShape } from "./state-store.ts";
+import type { StateBucket, StateBucketSpec } from "./state-store.ts";
 import type { TunnelError } from "./tunnel.ts";
+import type { VolumeInitialization } from "./volume-initialization.ts";
 
 export * from "./app-features.ts";
 export * from "./cache.ts";
@@ -244,7 +270,6 @@ export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
 export * from "./host-assets.ts";
-export * from "./http-client.ts";
 export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
@@ -264,143 +289,148 @@ export * from "./state-store.ts";
 export * from "./tunnel.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";
 
-export interface RuntimeProviderShape {
-  readonly id: string;
-  readonly displayName: string;
-  readonly version: string;
-  readonly platform: HostPlatform;
-  readonly capabilities: ProviderCapabilities;
+export declare class RuntimeProvider extends Context.Service<
+  RuntimeProvider,
+  {
+    readonly id: string;
+    readonly displayName: string;
+    readonly version: string;
+    readonly platform: HostPlatform;
+    readonly capabilities: ProviderCapabilities;
 
-  readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
-  readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
-  readonly planSetup: (
-    options: ProviderSetupInspectOptions,
-  ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
-  readonly setup: (
-    plan: ProviderSetupPlan,
-    options: ProviderSetupOptions,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
-  readonly ensureReady?: Effect.Effect<void, ProviderError>;
-  readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
-  readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
-  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
-  readonly occupiedPublishPorts?: (
-    ports: ReadonlyArray<PortNumber>,
-  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+    readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
+    readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
+    readonly planSetup: (
+      options: ProviderSetupInspectOptions,
+    ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
+    readonly setup: (
+      plan: ProviderSetupPlan,
+      options: ProviderSetupOptions,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+    readonly ensureReady?: Effect.Effect<void, ProviderError>;
+    readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
+    readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+    /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+    readonly occupiedPublishPorts?: (
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
 
-  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
-  readonly matchingPublishPorts?: (
-    containerId: string,
-    ports: ReadonlyArray<PortNumber>,
-  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
-  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
-  readonly openHostProxyBridge?: (
-    input: HostProxyBridgeInput,
-  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
-  readonly openAgentSocketBridge?: (
-    input: AgentSocketBridgeInput,
-  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
+    /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+    readonly matchingPublishPorts?: (
+      containerId: string,
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+    /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+    readonly openHostProxyBridge?: (
+      input: HostProxyBridgeInput,
+    ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+    readonly openAgentSocketBridge?: (
+      input: AgentSocketBridgeInput,
+    ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
-  readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-  readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
-  readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+    readonly buildArtifact: (
+      spec: ArtifactBuildSpec,
+    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
+    readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
 
-  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
-  readonly inspectAppliedFileSync?: (
-    plan: AppPlan,
-  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
-  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
-  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
-    {
-      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-      readonly rollback?: Effect.Effect<void, ProviderError>;
-    },
-    ProviderError
-  >;
+    /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+    readonly inspectAppliedFileSync?: (
+      plan: AppPlan,
+    ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+    /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
+    readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+      {
+        readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+        readonly rollback?: Effect.Effect<void, ProviderError>;
+      },
+      ProviderError
+    >;
 
-  readonly apply: (
-    plan: AppPlan,
-    options: ApplyOptions,
-  ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
-  readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly resume?: (
-    target: ServiceSelector,
-    identity: ServiceRuntimeIdentity,
-  ) => Effect.Effect<void, ProviderError>;
-  readonly suspend?: (
-    target: ServiceSelector,
-    identity: ServiceRuntimeIdentity,
-  ) => Effect.Effect<void, ProviderError>;
-  readonly waitForExit: (
-    target: ServiceSelector,
-    options?: WaitForExitOptions,
-  ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (
-    target: AppSelector,
-    options: DestroyOptions,
-  ) => Effect.Effect<DestroyOutcome, ProviderError>;
-  /**
-   * Stops and removes the single container behind one observation this provider reported from
-   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
-   * the identity they were observed under. An observation carrying no container id is `absent`.
-   */
-  readonly removeObservedService: (
-    observed: ServiceRuntimeInfo,
-  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
-  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
-  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
+    readonly apply: (
+      plan: AppPlan,
+      options: ApplyOptions,
+    ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
+    readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly resume?: (
+      target: ServiceSelector,
+      identity: ServiceRuntimeIdentity,
+    ) => Effect.Effect<void, ProviderError>;
+    readonly suspend?: (
+      target: ServiceSelector,
+      identity: ServiceRuntimeIdentity,
+    ) => Effect.Effect<void, ProviderError>;
+    readonly waitForExit: (
+      target: ServiceSelector,
+      options?: WaitForExitOptions,
+    ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
+    readonly destroy: (
+      target: AppSelector,
+      options: DestroyOptions,
+    ) => Effect.Effect<DestroyOutcome, ProviderError>;
+    /**
+     * Stops and removes the single container behind one observation this provider reported from
+     * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+     * the identity they were observed under. An observation carrying no container id is `absent`.
+     */
+    readonly removeObservedService: (
+      observed: ServiceRuntimeInfo,
+    ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+    /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+    readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
-  readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
-  readonly execStream: (
-    target: ExecTarget,
-    command: CommandSpec,
-  ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
-  readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
-  readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
-  readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
-  readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
-  readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+    readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
+    readonly execStream: (
+      target: ExecTarget,
+      command: CommandSpec,
+    ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+    readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
+    readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+    readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
+    readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
+    readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 
-  readonly snapshotVolume: (
-    spec: VolumeSnapshotSpec,
-  ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
-  readonly removeVolumeSnapshot?: (
-    snapshot: VolumeSnapshotRef,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
-  readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
-  readonly inspectResourceNames?: (
-    query: DoctorResourceNameQuery,
-  ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
-  readonly observeVolume?: (
-    target: ServiceSelector,
-    destination: PortablePath,
-  ) => Effect.Effect<VolumeInfo, ProviderError>;
-  readonly adoptVolume?: (
-    target: ServiceSelector,
-    destination: PortablePath,
-  ) => Effect.Effect<VolumeInfo, ProviderError>;
-  readonly removeVolume: (
-    ref: VolumeRef,
-    expectedGeneration: VolumeIdentity["generation"],
-  ) => Effect.Effect<void, ProviderError>;
-  readonly copyToService: (
-    target: ExecTarget,
-    spec: ServiceCopyInSpec,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly copyFromService: (
-    target: ExecTarget,
-    spec: ServiceCopyOutSpec,
-  ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-  readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-  readonly importArtifact: (
-    data: Stream.Stream<Uint8Array, ProviderError>,
-  ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-}
+    readonly snapshotVolume: (
+      spec: VolumeSnapshotSpec,
+    ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+    readonly removeVolumeSnapshot?: (
+      snapshot: VolumeSnapshotRef,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+    readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+    readonly inspectResourceNames?: (
+      query: DoctorResourceNameQuery,
+    ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
+    readonly observeVolume?: (
+      target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    readonly adoptVolume?: (
+      target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    readonly removeVolume: (
+      ref: VolumeRef,
+      expectedGeneration: VolumeIdentity["generation"],
+    ) => Effect.Effect<void, ProviderError>;
+    readonly copyToService: (
+      target: ExecTarget,
+      spec: ServiceCopyInSpec,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly copyFromService: (
+      target: ExecTarget,
+      spec: ServiceCopyOutSpec,
+    ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly importArtifact: (
+      data: Stream.Stream<Uint8Array, ProviderError>,
+    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+  }
+>()("@lando/core/RuntimeProvider") {}
 
 export declare class ConfigService extends Context.Service<
   ConfigService,
@@ -640,9 +670,7 @@ export declare class RuntimeProviderRegistry extends Context.Service<
   }
 >()("@lando/core/RuntimeProviderRegistry") {}
 
-export declare class RuntimeProvider extends Context.Service<RuntimeProvider, RuntimeProviderShape>()(
-  "@lando/core/RuntimeProvider",
-) {}
+export type RuntimeProviderShape = RuntimeProvider["Service"];
 
 export declare class AppPlanner extends Context.Service<
   AppPlanner,
@@ -837,7 +865,11 @@ export declare class CommandFramework extends Context.Service<
 
 export declare class CertificateAuthority extends Context.Service<
   CertificateAuthority,
-  CertificateAuthorityShape
+  {
+    readonly id: string;
+    readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
+    readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
+  }
 >()("@lando/core/CertificateAuthority") {}
 
 export declare class RouterService extends Context.Service<
@@ -868,21 +900,53 @@ export declare class RouterService extends Context.Service<
   }
 >()("@lando/core/RouterService") {}
 
-export declare class SshService extends Context.Service<SshService, SshServiceShape>()(
-  "@lando/core/SshService",
-) {}
+export declare class SshService extends Context.Service<
+  SshService,
+  {
+    readonly id: string;
+    readonly setup: (options: SshSetupOptions) => Effect.Effect<void, SshError>;
+    readonly getAgentSocket: (appId: AppId) => Effect.Effect<SshAgentSocket, SshError>;
+  }
+>()("@lando/core/SshService") {}
 
-export declare class HealthcheckRunner extends Context.Service<HealthcheckRunner, HealthcheckRunnerShape>()(
-  "@lando/core/HealthcheckRunner",
-) {}
+export declare class HealthcheckRunner extends Context.Service<
+  HealthcheckRunner,
+  {
+    readonly id: string;
+    readonly run: (
+      plan: HealthcheckPlan,
+      appId: AppId,
+      service: ServiceName,
+    ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
+  }
+>()("@lando/core/HealthcheckRunner") {}
 
-export declare class UrlScanner extends Context.Service<UrlScanner, UrlScannerShape>()(
-  "@lando/core/UrlScanner",
-) {}
+export declare class UrlScanner extends Context.Service<
+  UrlScanner,
+  {
+    readonly id: string;
+    readonly scan: (
+      appId: AppId,
+      options?: {
+        readonly plan?: AppPlan;
+        readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+      },
+    ) => Effect.Effect<ScanResult, ScannerError>;
+    readonly detectCollisions: (
+      appIds: ReadonlyArray<AppId>,
+    ) => Effect.Effect<ReadonlyArray<PortCollision>, ScannerError | PortCollisionError>;
+  }
+>()("@lando/core/UrlScanner") {}
 
-export declare class HostProxyService extends Context.Service<HostProxyService, HostProxyServiceShape>()(
-  "@lando/core/HostProxyService",
-) {}
+export declare class HostProxyService extends Context.Service<
+  HostProxyService,
+  {
+    readonly id: string;
+    readonly setup: (options: HostProxySetupOptions) => Effect.Effect<void, HostProxyError>;
+    readonly status: () => Effect.Effect<HostProxyStatus, HostProxyError>;
+    readonly teardown: () => Effect.Effect<void, HostProxyError>;
+  }
+>()("@lando/core/HostProxyService") {}
 
 export declare class PluginSource extends Context.Service<
   PluginSource,
@@ -942,50 +1006,104 @@ export declare class FileSyncEngine extends Context.Service<
   }
 >()("@lando/core/FileSyncEngine") {}
 
-export declare class Downloader extends Context.Service<Downloader, DownloaderShape>()(
-  "@lando/core/Downloader",
-) {}
-
-export declare class HttpClient extends Context.Service<
-  HttpClient,
+export declare class Downloader extends Context.Service<
+  Downloader,
   {
     readonly id: string;
-    readonly capabilities: HttpClientCapabilities;
-    readonly request: (
-      req: HttpRequest,
-    ) => Effect.Effect<
-      HttpResponse,
-      HttpRequestError | HttpTrustError | HttpClientUnavailableError,
-      Scope.Scope
-    >;
-    readonly stream: (req: HttpRequest) => Effect.Effect<
-      HttpStreamResponse & {
-        readonly body: Stream.Stream<Uint8Array, HttpRequestError | HttpTrustError>;
-      },
-      HttpRequestError | HttpTrustError | HttpClientUnavailableError,
-      Scope.Scope
-    >;
-    readonly upload: (
-      req: HttpUploadRequest,
-    ) => Effect.Effect<
-      HttpResponse,
-      HttpUploadError | HttpTrustError | HttpClientUnavailableError,
-      Scope.Scope
-    >;
+    readonly capabilities: DownloaderCapabilities;
+    readonly download: (
+      request: DownloadRequest,
+    ) => Effect.Effect<DownloadResult, DownloadError, Scope.Scope>;
   }
->()("@lando/core/HttpClient") {}
+>()("@lando/core/Downloader") {}
 
-export declare class DataMover extends Context.Service<DataMover, DataMoverShape>()(
-  "@lando/core/DataMover",
-) {}
+export declare class DataMover extends Context.Service<
+  DataMover,
+  {
+    readonly volumeInitialization?: (
+      identity: VolumeIdentity,
+    ) => Effect.Effect<VolumeInitialization, StateStoreError>;
+    readonly transfer: (
+      spec: DataTransferSpec,
+    ) => Effect.Effect<DataTransferResult, DataMoverError, Scope.Scope>;
+    readonly transferStream: (
+      spec: DataTransferSpec,
+    ) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
+    readonly snapshot: (
+      store: VolumeRef,
+      opts?: SnapshotOptions,
+    ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
+    readonly restore: (
+      handle: SnapshotHandle | SnapshotId,
+      store: VolumeRef,
+    ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
+    readonly listSnapshots: (
+      filter: SnapshotFilter,
+    ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+    readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
+    readonly pruneSnapshots: (
+      policy: PrunePolicy,
+    ) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
+  }
+>()("@lando/core/DataMover") {}
 
-export declare class PathsService extends Context.Service<PathsService, LandoPaths>()(
-  "@lando/core/PathsService",
-) {}
+export declare class PathsService extends Context.Service<
+  PathsService,
+  {
+    readonly roots: LandoRoots;
+    readonly platform: HostPlatform;
+    readonly pluginsDir: string;
+    readonly systemPluginsDir: string;
+    readonly pluginStateDir: (pluginId: string) => string;
+    readonly appPluginsDir: (appId: string) => string;
+    readonly pluginAuthFile: string;
+    readonly binDir: string;
+    readonly installRecordFile: string;
+    readonly keysDir: string;
+    readonly certsDir: string;
+    readonly runtimeDir: string;
+    readonly runtimeBinDir: string;
+    readonly runtimeRunDir: string;
+    readonly runtimeStorageDir: string;
+    readonly runtimeConfigDir: string;
+    readonly hostProxyRunRoot: string;
+    readonly hostProxyRunDir: (appId: string, appRoot: string) => string;
+    readonly agentRelayRunDir: (kind: "ssh" | "gpg", appId: string, appRoot: string) => string;
+    readonly providerSocketPath: string;
+    readonly providerPidPath: string;
+    readonly globalAppRoot: string;
+    readonly snapshotsDir: string;
+    readonly appSnapshotsDir: (appId: string) => string;
+    readonly managedFileLedger: (appId: string) => string;
+    readonly toolDownloadsDir: (toolId: string) => string;
+    readonly logsDir: string;
+    readonly scratchDir: string;
+    readonly scratchRegistryFile: string;
+    readonly scratchRegistryLockFile: string;
+    readonly tunnelRegistryFile: string;
+    readonly tunnelRunDir: string;
+    readonly appCacheDir: (appName: string, appRoot: string) => string;
+    readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
+    readonly shellHistoryFile: (appName: string, appRoot: string) => string;
+    readonly fileSyncSessionsDir: string;
+    readonly configFile: string;
+    readonly configDir: string;
+    readonly userIncludesDir: string;
+    readonly globalConfigFile: string;
+    readonly pluginTrustFile: string;
+  }
+>()("@lando/core/PathsService") {}
 
-export declare class StateStore extends Context.Service<StateStore, StateStoreShape>()(
-  "@lando/core/StateStore",
-) {}
+export declare class StateStore extends Context.Service<
+  StateStore,
+  {
+    readonly open: <A, I>(spec: StateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
+    readonly withLock: <A, E>(
+      key: string,
+      body: Effect.Effect<A, E>,
+    ) => Effect.Effect<A, E | StateStoreError>;
+  }
+>()("@lando/core/StateStore") {}
 
 export declare class AppPlanSanitizer extends Context.Service<
   AppPlanSanitizer,
@@ -1063,9 +1181,23 @@ export declare class TunnelService extends Context.Service<
   }
 >()("@lando/core/TunnelService") {}
 
-export declare class ConfigTranslator extends Context.Service<ConfigTranslator, ConfigTranslatorShape>()(
-  "@lando/core/ConfigTranslator",
-) {}
+export declare class ConfigTranslator extends Context.Service<
+  ConfigTranslator,
+  {
+    readonly id: string;
+    readonly summary: string;
+    readonly inputKinds: ReadonlyArray<string>;
+    readonly detect: (
+      input: ConfigTranslateDetectInput,
+    ) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never>;
+    readonly translate: (
+      input: ConfigTranslateInput,
+    ) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never>;
+    readonly encode?: (
+      input: ConfigTranslateEncodeInput,
+    ) => Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never>;
+  }
+>()("@lando/core/ConfigTranslator") {}
 
 export declare class ConfigTranslatorRegistry extends Context.Service<
   ConfigTranslatorRegistry,
@@ -1078,7 +1210,13 @@ export declare class ConfigTranslatorRegistry extends Context.Service<
   }
 >()("@lando/core/ConfigTranslatorRegistry") {}
 
-export declare class RecipeDecomposer extends Context.Service<RecipeDecomposer, RecipeDecomposerShape>()(
-  "@lando/core/RecipeDecomposer",
-) {}
+export declare class RecipeDecomposer extends Context.Service<
+  RecipeDecomposer,
+  {
+    readonly producer: RecipeDecomposeResult["provenance"]["producer"];
+    readonly decompose: (
+      input: RecipeDecomposeInput,
+    ) => Effect.Effect<RecipeDecomposeResult, RecipeDecomposeError, never>;
+  }
+>()("@lando/core/RecipeDecomposer") {}
 export type { VolumeInitialization } from "./volume-initialization.ts";

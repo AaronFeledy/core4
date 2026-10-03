@@ -5,8 +5,8 @@ import { join } from "node:path";
 
 import { Effect, Layer, Result, Schema } from "effect";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClientLive } from "@lando/http-client/live";
+import { layer as downloaderLayer } from "@lando/http-client/downloader";
+import { layer as httpClientLayer } from "@lando/http-client/live";
 import {
   type UpdateChannel,
   UpdateChannel as UpdateChannelSchema,
@@ -109,7 +109,7 @@ export const defaultFetchManifestBytes: UpdateManifestFetcher = (url) =>
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            DownloaderLive.pipe(Layer.provide(HttpClientLive.pipe(Layer.provide(EventServiceLive)))),
+            downloaderLayer.pipe(Layer.provide(httpClientLayer.pipe(Layer.provide(EventServiceLive)))),
             ConfigServiceLive,
           ),
         ),

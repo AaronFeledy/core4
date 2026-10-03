@@ -8,7 +8,7 @@ import {
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { SecretStoreUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -105,7 +105,7 @@ const renderStartFailure = async (reference: string) => {
     base.layer,
     paths,
     store,
-    RedactionServiceLive.pipe(Layer.provide(store)),
+    RedactionService.layer.pipe(Layer.provide(store)),
     NoopTransactionGuardLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),

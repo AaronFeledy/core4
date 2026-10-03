@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 /**
  * Pure Landofile version-constraint primitive for the top-level
  * `lando: <semver-range>` key.
@@ -59,7 +60,7 @@ export const isVersionConstraintEntryArray = (
 ): value is ReadonlyArray<VersionConstraintEntry> =>
   Array.isArray(value) &&
   value.every((entry) => {
-    if (typeof entry !== "object" || entry === null) return false;
+    if (!Predicate.isObjectOrArray(entry)) return false;
     if (!("range" in entry) || typeof entry.range !== "string") return false;
     if (!("source" in entry) || typeof entry.source !== "string") return false;
     if (!("layer" in entry) || !("order" in entry)) return false;

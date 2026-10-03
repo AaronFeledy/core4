@@ -2,7 +2,7 @@ import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises
 import { dirname } from "node:path";
 import { Semaphore } from "effect";
 
-import { Effect, Option, Schema } from "effect";
+import { Clock, DateTime, Effect, Option, Schema } from "effect";
 
 import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { PrivateFileAccess } from "./private-file-access.ts";
@@ -79,7 +79,7 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
   });
 
 export const makeLockToken = (): string =>
-  `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  `${process.pid}-${DateTime.toEpochMillis(DateTime.nowUnsafe())}-${Math.random().toString(36).slice(2)}`;
 
 export type AdvisoryLockRecord = LockRecord;
 
@@ -96,7 +96,7 @@ export interface AdvisoryLockWaitOptions {
   readonly onWait?: Effect.Effect<void>;
 }
 
-const acquire = (
+const acquire = Effect.fn("StateStore.acquireLock")(function* (
   lockPath: string,
   token: string,
   options: {
@@ -107,93 +107,94 @@ const acquire = (
     readonly onWait?: Effect.Effect<void>;
     readonly privateFileAccess: PrivateFileAccess;
   },
-): Effect.Effect<void, StateStoreError> =>
-  Effect.gen(function* () {
-    const retryMs = options.retryMs ?? LOCK_RETRY_MS;
-    const timeoutMs = options.timeoutMs ?? LOCK_ATTEMPTS * LOCK_RETRY_MS;
-    const deadline = Date.now() + timeoutMs;
-    let announced = false;
-    for (;;) {
-      const acquired = yield* Effect.tryPromise({
-        try: async () => {
+): Effect.fn.Return<void, StateStoreError> {
+  const retryMs = options.retryMs ?? LOCK_RETRY_MS;
+  const timeoutMs = options.timeoutMs ?? LOCK_ATTEMPTS * LOCK_RETRY_MS;
+  const deadline = (yield* Clock.currentTimeMillis) + timeoutMs;
+  let announced = false;
+  for (;;) {
+    const now = yield* Clock.currentTimeMillis;
+    const acquired = yield* Effect.tryPromise({
+      try: async () => {
+        try {
+          await mkdir(dirname(lockPath), { recursive: true });
+          const handle = await open(lockPath, "wx", 0o600);
           try {
-            await mkdir(dirname(lockPath), { recursive: true });
-            const handle = await open(lockPath, "wx", 0o600);
+            const identity = await handle.stat();
             try {
-              const identity = await handle.stat();
-              try {
-                await handle.chmod(0o600);
-                await options.privateFileAccess.enforce(lockPath);
-                await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: Date.now() }));
-                await handle.sync();
-              } catch (cause) {
-                const current = await lockIdentity(lockPath);
-                if (
-                  current?.dev === identity.dev &&
-                  current.ino === identity.ino &&
-                  !current.isSymbolicLink()
-                ) {
-                  await unlink(lockPath);
-                }
-                throw cause;
-              }
-            } finally {
-              await handle.close();
-            }
-            return true;
-          } catch (cause) {
-            if (!isErrnoCode(cause, "EEXIST")) throw cause;
-            const identity = await lockIdentity(lockPath);
-            if (identity === null) return false;
-            if (
-              !identity.isFile() ||
-              identity.isSymbolicLink() ||
-              identity.nlink !== 1 ||
-              (process.getuid !== undefined && identity.uid !== process.getuid())
-            )
-              return false;
-            await options.privateFileAccess.verify(lockPath);
-            const staleByMtime = Date.now() - identity.mtimeMs > LOCK_STALE_MS;
-            const current = await readLockRecord(lockPath).catch((error: unknown) => {
-              // A crashed exclusive create can leave owner-owned mode-000 bytes unreadable.
-              if (isErrnoCode(error, "EACCES")) return null;
-              throw error;
-            });
-            const takeover =
-              current === null
-                ? staleByMtime
-                : (options.expireLiveOwner !== false && Date.now() - current.createdAt > LOCK_STALE_MS) ||
-                  processIsDead(current.pid);
-            if (takeover) {
-              const latest = await lockIdentity(lockPath);
+              await handle.chmod(0o600);
+              await options.privateFileAccess.enforce(lockPath);
+              await handle.writeFile(JSON.stringify({ token, pid: process.pid, createdAt: now }));
+              await handle.sync();
+            } catch (cause) {
+              const current = await lockIdentity(lockPath);
               if (
-                latest?.dev === identity.dev &&
-                latest.ino === identity.ino &&
-                latest.uid === identity.uid &&
-                latest.mode === identity.mode &&
-                latest.nlink === 1 &&
-                latest.mtimeMs === identity.mtimeMs &&
-                latest.ctimeMs === identity.ctimeMs
+                current?.dev === identity.dev &&
+                current.ino === identity.ino &&
+                !current.isSymbolicLink()
               ) {
-                await unlink(lockPath).catch((error: unknown) => {
-                  if (!isErrnoCode(error, "ENOENT")) throw error;
-                });
+                await unlink(lockPath);
               }
+              throw cause;
             }
-            return false;
+          } finally {
+            await handle.close();
           }
-        },
-        catch: (cause) => lockError(options.operation, lockPath, cause),
-      });
-      if (acquired) return;
-      if (Date.now() >= deadline) return yield* Effect.fail(lockError(options.operation, lockPath));
-      if (!announced && options.onWait !== undefined) {
-        announced = true;
-        yield* options.onWait;
-      }
-      yield* Effect.sleep(`${retryMs} millis`);
+          return true;
+        } catch (cause) {
+          if (!isErrnoCode(cause, "EEXIST")) throw cause;
+          const identity = await lockIdentity(lockPath);
+          if (identity === null) return false;
+          if (
+            !identity.isFile() ||
+            identity.isSymbolicLink() ||
+            identity.nlink !== 1 ||
+            (process.getuid !== undefined && identity.uid !== process.getuid())
+          )
+            return false;
+          await options.privateFileAccess.verify(lockPath);
+          const staleByMtime = now - identity.mtimeMs > LOCK_STALE_MS;
+          const current = await readLockRecord(lockPath).catch((error: unknown) => {
+            // A crashed exclusive create can leave owner-owned mode-000 bytes unreadable.
+            if (isErrnoCode(error, "EACCES")) return null;
+            throw error;
+          });
+          const takeover =
+            current === null
+              ? staleByMtime
+              : (options.expireLiveOwner !== false && now - current.createdAt > LOCK_STALE_MS) ||
+                processIsDead(current.pid);
+          if (takeover) {
+            const latest = await lockIdentity(lockPath);
+            if (
+              latest?.dev === identity.dev &&
+              latest.ino === identity.ino &&
+              latest.uid === identity.uid &&
+              latest.mode === identity.mode &&
+              latest.nlink === 1 &&
+              latest.mtimeMs === identity.mtimeMs &&
+              latest.ctimeMs === identity.ctimeMs
+            ) {
+              await unlink(lockPath).catch((error: unknown) => {
+                if (!isErrnoCode(error, "ENOENT")) throw error;
+              });
+            }
+          }
+          return false;
+        }
+      },
+      catch: (cause) => lockError(options.operation, lockPath, cause),
+    });
+    if (acquired) return;
+    if ((yield* Clock.currentTimeMillis) >= deadline)
+      return yield* Effect.fail(lockError(options.operation, lockPath));
+    if (!announced && options.onWait !== undefined) {
+      announced = true;
+      yield* options.onWait;
     }
-  });
+    yield* Effect.sleep(`${retryMs} millis`);
+  }
+});
 
 const release = (
   lockPath: string,

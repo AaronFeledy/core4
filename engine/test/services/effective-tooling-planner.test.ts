@@ -24,7 +24,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -180,7 +180,7 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       }),
       emptyConfigServiceLayer,
       EventServiceLive,
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
     );
     const registryIds = await Effect.runPromise(
       Effect.flatMap(CommandRegistry, (registry) => registry.list).pipe(
@@ -368,7 +368,7 @@ test("fails runTooling reserved when Landofile authors run even if php also cont
         }),
         emptyConfigServiceLayer,
         EventServiceLive,
-        PrivateFileAccessLive,
+        PrivateFileAccessService.layer,
       );
 
       // When

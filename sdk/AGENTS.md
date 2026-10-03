@@ -7,8 +7,16 @@ The SDK is the public contract surface. Root rules apply; this file keeps SDK-sp
 - `src/schema/` is the canonical Effect Schema home, imported as `@lando/sdk/schema`.
 - `src/events/` contains lifecycle payload schemas; event discriminators live on `_tag`.
 - `src/errors/` contains Effect `TaggedError` classes.
-- `src/services/` contains `Context.Service` tags only; implementation layers belong in `@lando/core`.
+- `src/services/` contains `Context.Service` contracts only; implementation layers belong in their owning runtime packages, never the SDK.
 - `src/test/` is re-exported as `@lando/sdk/test` for contract helpers.
+
+## Effect service and operation idioms
+
+- SDK contracts use `export class X extends Context.Service<X, { ...inline shape... }>()("@lando/core/X") {}` with unchanged public ids. Keep a separate `XShape` only when the inline form reports TS2310/TS2506; the `services/index.ts` declare-class mirror always stays inline.
+- Package-private services carry `static readonly layer = Layer.effect(this, Effect.gen(...))`, build values with `X.of({...})`, expose static `layer<Variant>` members, and use `@lando/<package>/<Name>` ids. Cross-package SDK implementations export `layer`, `layer<Variant>`, or an options factory `layer(options)`; consume them through an implementation-named namespace, e.g. `import * as BunProcessRunner from "@lando/engine/services/process-runner"` then `BunProcessRunner.layer`. Do not introduce `*Live` or `make*Live` layer names.
+- Replace functions that only return `Effect.gen` with `Effect.fn("<Owner>.<method>")` for public service methods, engine operations, provider/runtime calls, planner phases, network egress, managed-file transactions, command lifecycle stages, and MCP calls. Use `Effect.fnUntraced` for schema helpers, per-frame renderer work, redaction, path math, and the tooling hot path. Pass combinators as extra function-builder arguments, not a trailing `.pipe`.
+- CLI composition provides `References.TracerEnabled` as false unless tracing is requested; embedding hosts retain their own setting. Span attributes never retain raw secrets, environment values, or file contents; pass attributes through `RedactionService` before retention/export. Secret-carrying values implement `Redactable` with safe JSON/string/inspection representations.
+- Use `Clock` for elapsed/current milliseconds and `DateTime` for instants/formatting in Effect code; convert `Date` only at host boundaries and preserve wire formats.
 
 ## Schema Conventions
 

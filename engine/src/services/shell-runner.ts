@@ -22,11 +22,7 @@ import {
 
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
@@ -184,7 +180,7 @@ export const makeShellRunnerService = (
 };
 
 export const makeShellRunnerLive = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner> =>
-  makeShellRunnerWithPrivateFileAccessLive(makeReplIO).pipe(Layer.provide(PrivateFileAccessLive));
+  makeShellRunnerWithPrivateFileAccessLive(makeReplIO).pipe(Layer.provide(PrivateFileAccessService.layer));
 
 export const makeShellRunnerWithPrivateFileAccessLive = (
   makeReplIO: () => ShellReplIO,

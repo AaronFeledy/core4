@@ -120,136 +120,135 @@ export interface RedactionContractHarness {
  * - idempotence: `redactString(redactString(t)) === redactString(t)` on a
  *   bearer-token-only text (which is idempotent for all three profiles).
  */
-export const runRedactionContract = (
+export const runRedactionContract = Effect.fnUntraced(function* (
   harness: RedactionContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const label = harness.name ?? "redactor";
-    const env: TranscriptRedactionEnv = {
-      home: "/home/alice",
-      tmp: "/tmp",
-      user: "alice",
-      host: "host.example.com",
-    };
-    const profiles: ReadonlyArray<RedactionProfile> = ["secrets", "telemetry", "transcript"];
+): Effect.fn.Return<void, ContractFailure> {
+  const label = harness.name ?? "redactor";
+  const env: TranscriptRedactionEnv = {
+    home: "/home/alice",
+    tmp: "/tmp",
+    user: "alice",
+    host: "host.example.com",
+  };
+  const profiles: ReadonlyArray<RedactionProfile> = ["secrets", "telemetry", "transcript"];
 
-    // --- golden output per profile ---
+  // --- golden output per profile ---
+  for (const profile of profiles) {
+    const r = harness.makeRedactor(profile, {
+      values: SECRET_SOUP_FIXTURE.registeredSecrets,
+      env,
+    });
+    const actual = r.redactString(SECRET_SOUP_FIXTURE.text);
+    const expected = harness.golden[profile].string;
+    yield* requireRedactionContract(
+      actual === expected,
+      `${label} ${profile} profile produces the expected golden output`,
+      { actual, expected },
+    );
+  }
+
+  // --- value-layer-before-pattern ---
+  // "abc.def.ghijklmnop" is both a registered secret AND matches the bearer-token
+  // pattern. The value layer must mask it first so no raw remnant survives.
+  const bearerText = "Authorization: Bearer abc.def.ghijklmnop";
+  const bearerR = harness.makeRedactor("secrets", {
+    values: SECRET_SOUP_FIXTURE.registeredSecrets,
+  });
+  const bearerResult = bearerR.redactString(bearerText);
+  yield* requireRedactionContract(
+    !bearerResult.includes("abc.def.ghijklmnop"),
+    "value-layer-before-pattern: registered bearer value leaves no raw remnant",
+    { input: bearerText, output: bearerResult },
+  );
+
+  // --- longest-first ---
+  // With both "superSecretToken" and "superSecretTokenLongerSuffix" registered,
+  // a string containing the longer value must be fully masked (no shorter residue).
+  const longerText = "superSecretTokenLongerSuffix is the full value";
+  const longestR = harness.makeRedactor("secrets", {
+    values: SECRET_SOUP_FIXTURE.registeredSecrets,
+  });
+  const longestResult = longestR.redactString(longerText);
+  yield* requireRedactionContract(
+    !longestResult.includes("superSecretToken"),
+    "longest-first: longer registered value is masked before shorter prefix",
+    { input: longerText, output: longestResult },
+  );
+
+  // --- structure-preserving redactValue ---
+  const valueR = harness.makeRedactor("secrets", {
+    values: SECRET_SOUP_FIXTURE.registeredSecrets,
+  });
+  const redacted = valueR.redactValue(SECRET_SOUP_FIXTURE.value) as Record<string, unknown>;
+
+  yield* requireRedactionContract(
+    Array.isArray(redacted.tags),
+    "redactValue preserves arrays as arrays",
+    redacted.tags,
+  );
+  yield* requireRedactionContract(
+    typeof redacted.nested === "object" &&
+      redacted.nested !== null &&
+      "api_key" in (redacted.nested as object),
+    "redactValue preserves object keys",
+    redacted.nested,
+  );
+  yield* requireRedactionContract(
+    typeof redacted.err === "object" &&
+      redacted.err !== null &&
+      "name" in (redacted.err as object) &&
+      "message" in (redacted.err as object),
+    "redactValue converts Error to {name, message}",
+    redacted.err,
+  );
+  yield* requireRedactionContract(
+    redacted.self === "[circular]",
+    "redactValue returns [circular] for cyclic references",
+    redacted.self,
+  );
+  yield* requireRedactionContract(
+    redacted.password === "[redacted]",
+    "redactValue masks secret-keyed fields",
+    redacted.password,
+  );
+  yield* requireRedactionContract(
+    redacted.token === "[redacted]",
+    "redactValue masks token-keyed fields",
+    redacted.token,
+  );
+
+  if (harness.goldenValue !== undefined) {
     for (const profile of profiles) {
-      const r = harness.makeRedactor(profile, {
+      const gvR = harness.makeRedactor(profile, {
         values: SECRET_SOUP_FIXTURE.registeredSecrets,
         env,
       });
-      const actual = r.redactString(SECRET_SOUP_FIXTURE.text);
-      const expected = harness.golden[profile].string;
+      const gvActual = gvR.redactValue(SECRET_SOUP_FIXTURE.value);
+      const gvExpected = harness.goldenValue[profile];
       yield* requireRedactionContract(
-        actual === expected,
-        `${label} ${profile} profile produces the expected golden output`,
-        { actual, expected },
+        JSON.stringify(gvActual) === JSON.stringify(gvExpected),
+        `${label} ${profile} profile redactValue matches goldenValue`,
+        { actual: gvActual, expected: gvExpected },
       );
     }
+  }
 
-    // --- value-layer-before-pattern ---
-    // "abc.def.ghijklmnop" is both a registered secret AND matches the bearer-token
-    // pattern. The value layer must mask it first so no raw remnant survives.
-    const bearerText = "Authorization: Bearer abc.def.ghijklmnop";
-    const bearerR = harness.makeRedactor("secrets", {
-      values: SECRET_SOUP_FIXTURE.registeredSecrets,
+  // --- idempotence (bearer-token-only text, idempotent for all profiles) ---
+  const idempotenceText = "Authorization: Bearer mytoken123 https://user:pass@host.com/path";
+  for (const profile of profiles) {
+    const iR = harness.makeRedactor(profile, {
+      values: [],
+      env: { home: "/home/alice", tmp: "/tmp", user: "alice", host: "host.com" },
     });
-    const bearerResult = bearerR.redactString(bearerText);
+    const once = iR.redactString(idempotenceText);
+    const twice = iR.redactString(once);
     yield* requireRedactionContract(
-      !bearerResult.includes("abc.def.ghijklmnop"),
-      "value-layer-before-pattern: registered bearer value leaves no raw remnant",
-      { input: bearerText, output: bearerResult },
+      once === twice,
+      `${label} ${profile} profile redactString is idempotent on bearer/userinfo text`,
+      { once, twice },
     );
-
-    // --- longest-first ---
-    // With both "superSecretToken" and "superSecretTokenLongerSuffix" registered,
-    // a string containing the longer value must be fully masked (no shorter residue).
-    const longerText = "superSecretTokenLongerSuffix is the full value";
-    const longestR = harness.makeRedactor("secrets", {
-      values: SECRET_SOUP_FIXTURE.registeredSecrets,
-    });
-    const longestResult = longestR.redactString(longerText);
-    yield* requireRedactionContract(
-      !longestResult.includes("superSecretToken"),
-      "longest-first: longer registered value is masked before shorter prefix",
-      { input: longerText, output: longestResult },
-    );
-
-    // --- structure-preserving redactValue ---
-    const valueR = harness.makeRedactor("secrets", {
-      values: SECRET_SOUP_FIXTURE.registeredSecrets,
-    });
-    const redacted = valueR.redactValue(SECRET_SOUP_FIXTURE.value) as Record<string, unknown>;
-
-    yield* requireRedactionContract(
-      Array.isArray(redacted.tags),
-      "redactValue preserves arrays as arrays",
-      redacted.tags,
-    );
-    yield* requireRedactionContract(
-      typeof redacted.nested === "object" &&
-        redacted.nested !== null &&
-        "api_key" in (redacted.nested as object),
-      "redactValue preserves object keys",
-      redacted.nested,
-    );
-    yield* requireRedactionContract(
-      typeof redacted.err === "object" &&
-        redacted.err !== null &&
-        "name" in (redacted.err as object) &&
-        "message" in (redacted.err as object),
-      "redactValue converts Error to {name, message}",
-      redacted.err,
-    );
-    yield* requireRedactionContract(
-      redacted.self === "[circular]",
-      "redactValue returns [circular] for cyclic references",
-      redacted.self,
-    );
-    yield* requireRedactionContract(
-      redacted.password === "[redacted]",
-      "redactValue masks secret-keyed fields",
-      redacted.password,
-    );
-    yield* requireRedactionContract(
-      redacted.token === "[redacted]",
-      "redactValue masks token-keyed fields",
-      redacted.token,
-    );
-
-    if (harness.goldenValue !== undefined) {
-      for (const profile of profiles) {
-        const gvR = harness.makeRedactor(profile, {
-          values: SECRET_SOUP_FIXTURE.registeredSecrets,
-          env,
-        });
-        const gvActual = gvR.redactValue(SECRET_SOUP_FIXTURE.value);
-        const gvExpected = harness.goldenValue[profile];
-        yield* requireRedactionContract(
-          JSON.stringify(gvActual) === JSON.stringify(gvExpected),
-          `${label} ${profile} profile redactValue matches goldenValue`,
-          { actual: gvActual, expected: gvExpected },
-        );
-      }
-    }
-
-    // --- idempotence (bearer-token-only text, idempotent for all profiles) ---
-    const idempotenceText = "Authorization: Bearer mytoken123 https://user:pass@host.com/path";
-    for (const profile of profiles) {
-      const iR = harness.makeRedactor(profile, {
-        values: [],
-        env: { home: "/home/alice", tmp: "/tmp", user: "alice", host: "host.com" },
-      });
-      const once = iR.redactString(idempotenceText);
-      const twice = iR.redactString(once);
-      yield* requireRedactionContract(
-        once === twice,
-        `${label} ${profile} profile redactString is idempotent on bearer/userinfo text`,
-        { once, twice },
-      );
-    }
-  });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // SecretStore contract suite
@@ -306,160 +305,155 @@ export interface SecretStoreContractHarness {
   };
 }
 
-export const runSecretStoreContractSuite = (
+export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
   harness: SecretStoreContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const label = harness.name ?? harness.store.id;
-    const store = harness.store;
+): Effect.fn.Return<void, ContractFailure> {
+  const label = harness.name ?? harness.store.id;
+  const store = harness.store;
 
-    yield* requireSecretStoreContract(
-      isNonEmptyString(store.id),
-      `${label}: store exposes a non-empty id`,
-      store.id,
-    );
-    yield* requireSecretStoreContract(
-      Effect.isEffect(store.get(harness.known.key)),
-      `${label}: get is Effect-typed`,
-    );
-    yield* requireSecretStoreContract(Effect.isEffect(store.list), `${label}: list is Effect-typed`);
+  yield* requireSecretStoreContract(
+    isNonEmptyString(store.id),
+    `${label}: store exposes a non-empty id`,
+    store.id,
+  );
+  yield* requireSecretStoreContract(
+    Effect.isEffect(store.get(harness.known.key)),
+    `${label}: get is Effect-typed`,
+  );
+  yield* requireSecretStoreContract(Effect.isEffect(store.list), `${label}: list is Effect-typed`);
 
-    // --- known secret resolves deterministically ---
-    const first = yield* store
-      .get(harness.known.key)
-      .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: get(known) resolves`, cause)));
-    yield* requireSecretStoreContract(
-      first === harness.known.value,
-      `${label}: get(known) returns the expected value`,
-      { actual: first, expected: harness.known.value },
+  // --- known secret resolves deterministically ---
+  const first = yield* store
+    .get(harness.known.key)
+    .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: get(known) resolves`, cause)));
+  yield* requireSecretStoreContract(
+    first === harness.known.value,
+    `${label}: get(known) returns the expected value`,
+    { actual: first, expected: harness.known.value },
+  );
+  const second = yield* store
+    .get(harness.known.key)
+    .pipe(
+      Effect.mapError((cause) => secretStoreContractFailure(`${label}: repeat get(known) resolves`, cause)),
     );
-    const second = yield* store
-      .get(harness.known.key)
+  yield* requireSecretStoreContract(
+    first === second,
+    `${label}: get(known) is deterministic across repeats`,
+    { first, second },
+  );
+
+  const hasKnown = yield* store
+    .has(harness.known.key)
+    .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(known) resolves`, cause)));
+  yield* requireSecretStoreContract(hasKnown === true, `${label}: has(known) is true`, hasKnown);
+
+  const listed = yield* store.list;
+  yield* requireSecretStoreContract(
+    listed.includes(harness.known.key),
+    `${label}: list includes the known secret id`,
+    listed,
+  );
+  const listedAgain = yield* store.list;
+  yield* requireSecretStoreContract(
+    JSON.stringify(listed) === JSON.stringify(listedAgain),
+    `${label}: list is deterministic across repeats`,
+    { listed, listedAgain },
+  );
+
+  // --- unknown secret fails with the tagged error ---
+  const unknownExit = yield* Effect.exit(store.get(harness.unknown));
+  yield* requireSecretStoreContract(Exit.isFailure(unknownExit), `${label}: get(unknown) fails`, unknownExit);
+  if (Exit.isFailure(unknownExit)) {
+    const failure = Cause.findErrorOption(unknownExit.cause);
+    yield* requireSecretStoreContract(
+      Option.isSome(failure) && failure.value instanceof SecretNotFoundError,
+      `${label}: get(unknown) fails with SecretNotFoundError`,
+      unknownExit.cause,
+    );
+    if (Option.isSome(failure) && failure.value instanceof SecretNotFoundError) {
+      yield* requireSecretStoreContract(
+        failure.value.secret === harness.unknown,
+        `${label}: SecretNotFoundError carries the requested secret id`,
+        failure.value,
+      );
+    }
+  }
+  const hasUnknown = yield* store
+    .has(harness.unknown)
+    .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(unknown) resolves`, cause)));
+  yield* requireSecretStoreContract(hasUnknown === false, `${label}: has(unknown) is false`, hasUnknown);
+
+  const invalid = yield* Effect.result(store.get(harness.invalidReference));
+  yield* requireSecretStoreContract(
+    Result.isFailure(invalid) &&
+      invalid.failure instanceof SecretReferenceInvalidError &&
+      invalid.failure.reference === harness.invalidReference,
+    `${label}: get(invalidReference) fails with SecretReferenceInvalidError carrying the reference`,
+  );
+
+  if (harness.unavailableStore) {
+    const { store: unavailable, reason } = harness.unavailableStore;
+    for (const result of [
+      yield* Effect.result(Effect.asVoid(unavailable.get(harness.known.key))),
+      yield* Effect.result(Effect.asVoid(unavailable.has(harness.known.key))),
+    ]) {
+      yield* requireSecretStoreContract(
+        Result.isFailure(result) &&
+          result.failure instanceof SecretStoreUnavailableError &&
+          result.failure.reason === reason &&
+          result.failure.storeId === unavailable.id,
+        `${label}: unavailable get/has preserves SecretStoreUnavailableError with store id and reason`,
+      );
+    }
+  }
+
+  // --- optional: resolved values register with the canonical redactor ---
+  if (harness.redactor) {
+    const redactor = harness.redactor([harness.known.value]);
+    const redacted = redactor.redactString(`token=${harness.known.value} trailing`);
+    yield* requireSecretStoreContract(
+      !redacted.includes(harness.known.value),
+      `${label}: resolved value is redacted from rendered output`,
+      { redacted },
+    );
+  }
+
+  // --- optional: missing-backend/auth failures surface tagged errors ---
+  if (harness.backendFailureStore) {
+    const failExit = yield* Effect.exit(harness.backendFailureStore.get(harness.known.key));
+    yield* requireSecretStoreContract(
+      Exit.isFailure(failExit),
+      `${label}: backend/auth failure surfaces a tagged error`,
+      failExit,
+    );
+    if (Exit.isFailure(failExit)) {
+      const failure = Cause.findErrorOption(failExit.cause);
+      yield* requireSecretStoreContract(
+        Option.isSome(failure) &&
+          (failure.value instanceof SecretNotFoundError ||
+            failure.value instanceof SecretStoreUnavailableError ||
+            failure.value instanceof SecretReferenceInvalidError),
+        `${label}: backend/auth failure is a SecretStoreError member`,
+        failExit.cause,
+      );
+    }
+  }
+
+  // --- optional: already-cached secrets resolve offline ---
+  if (harness.cachedOfflineStore) {
+    const cached = yield* harness.cachedOfflineStore.store
+      .get(harness.cachedOfflineStore.key)
       .pipe(
-        Effect.mapError((cause) => secretStoreContractFailure(`${label}: repeat get(known) resolves`, cause)),
+        Effect.mapError((cause) =>
+          secretStoreContractFailure(`${label}: cached offline get resolves`, cause),
+        ),
       );
     yield* requireSecretStoreContract(
-      first === second,
-      `${label}: get(known) is deterministic across repeats`,
-      { first, second },
+      cached === harness.cachedOfflineStore.value,
+      `${label}: already-cached secret resolves offline`,
+      { actual: cached, expected: harness.cachedOfflineStore.value },
     );
-
-    const hasKnown = yield* store
-      .has(harness.known.key)
-      .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(known) resolves`, cause)));
-    yield* requireSecretStoreContract(hasKnown === true, `${label}: has(known) is true`, hasKnown);
-
-    const listed = yield* store.list;
-    yield* requireSecretStoreContract(
-      listed.includes(harness.known.key),
-      `${label}: list includes the known secret id`,
-      listed,
-    );
-    const listedAgain = yield* store.list;
-    yield* requireSecretStoreContract(
-      JSON.stringify(listed) === JSON.stringify(listedAgain),
-      `${label}: list is deterministic across repeats`,
-      { listed, listedAgain },
-    );
-
-    // --- unknown secret fails with the tagged error ---
-    const unknownExit = yield* Effect.exit(store.get(harness.unknown));
-    yield* requireSecretStoreContract(
-      Exit.isFailure(unknownExit),
-      `${label}: get(unknown) fails`,
-      unknownExit,
-    );
-    if (Exit.isFailure(unknownExit)) {
-      const failure = Cause.findErrorOption(unknownExit.cause);
-      yield* requireSecretStoreContract(
-        Option.isSome(failure) && failure.value instanceof SecretNotFoundError,
-        `${label}: get(unknown) fails with SecretNotFoundError`,
-        unknownExit.cause,
-      );
-      if (Option.isSome(failure) && failure.value instanceof SecretNotFoundError) {
-        yield* requireSecretStoreContract(
-          failure.value.secret === harness.unknown,
-          `${label}: SecretNotFoundError carries the requested secret id`,
-          failure.value,
-        );
-      }
-    }
-    const hasUnknown = yield* store
-      .has(harness.unknown)
-      .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(unknown) resolves`, cause)));
-    yield* requireSecretStoreContract(hasUnknown === false, `${label}: has(unknown) is false`, hasUnknown);
-
-    const invalid = yield* Effect.result(store.get(harness.invalidReference));
-    yield* requireSecretStoreContract(
-      Result.isFailure(invalid) &&
-        invalid.failure instanceof SecretReferenceInvalidError &&
-        invalid.failure.reference === harness.invalidReference,
-      `${label}: get(invalidReference) fails with SecretReferenceInvalidError carrying the reference`,
-    );
-
-    if (harness.unavailableStore) {
-      const { store: unavailable, reason } = harness.unavailableStore;
-      for (const result of [
-        yield* Effect.result(Effect.asVoid(unavailable.get(harness.known.key))),
-        yield* Effect.result(Effect.asVoid(unavailable.has(harness.known.key))),
-      ]) {
-        yield* requireSecretStoreContract(
-          Result.isFailure(result) &&
-            result.failure instanceof SecretStoreUnavailableError &&
-            result.failure.reason === reason &&
-            result.failure.storeId === unavailable.id,
-          `${label}: unavailable get/has preserves SecretStoreUnavailableError with store id and reason`,
-        );
-      }
-    }
-
-    // --- optional: resolved values register with the canonical redactor ---
-    if (harness.redactor) {
-      const redactor = harness.redactor([harness.known.value]);
-      const redacted = redactor.redactString(`token=${harness.known.value} trailing`);
-      yield* requireSecretStoreContract(
-        !redacted.includes(harness.known.value),
-        `${label}: resolved value is redacted from rendered output`,
-        { redacted },
-      );
-    }
-
-    // --- optional: missing-backend/auth failures surface tagged errors ---
-    if (harness.backendFailureStore) {
-      const failExit = yield* Effect.exit(harness.backendFailureStore.get(harness.known.key));
-      yield* requireSecretStoreContract(
-        Exit.isFailure(failExit),
-        `${label}: backend/auth failure surfaces a tagged error`,
-        failExit,
-      );
-      if (Exit.isFailure(failExit)) {
-        const failure = Cause.findErrorOption(failExit.cause);
-        yield* requireSecretStoreContract(
-          Option.isSome(failure) &&
-            (failure.value instanceof SecretNotFoundError ||
-              failure.value instanceof SecretStoreUnavailableError ||
-              failure.value instanceof SecretReferenceInvalidError),
-          `${label}: backend/auth failure is a SecretStoreError member`,
-          failExit.cause,
-        );
-      }
-    }
-
-    // --- optional: already-cached secrets resolve offline ---
-    if (harness.cachedOfflineStore) {
-      const cached = yield* harness.cachedOfflineStore.store
-        .get(harness.cachedOfflineStore.key)
-        .pipe(
-          Effect.mapError((cause) =>
-            secretStoreContractFailure(`${label}: cached offline get resolves`, cause),
-          ),
-        );
-      yield* requireSecretStoreContract(
-        cached === harness.cachedOfflineStore.value,
-        `${label}: already-cached secret resolves offline`,
-        { actual: cached, expected: harness.cachedOfflineStore.value },
-      );
-    }
-  });
+  }
+});
 
 export const makeSecretStoreContractSuite = runSecretStoreContractSuite;

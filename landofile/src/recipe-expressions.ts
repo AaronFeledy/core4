@@ -5,7 +5,7 @@ import {
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
-import { Result } from "effect";
+import { Predicate, Result } from "effect";
 
 /**
  * Expression scopes a loaded Landofile may still carry after the load walk.
@@ -104,9 +104,9 @@ const recipeOptionScope = (
   merged: Record<string, unknown>,
 ): Readonly<Record<string, unknown>> | undefined => {
   const recipe = merged.recipe;
-  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) return undefined;
+  if (!Predicate.isObject(recipe)) return undefined;
   const options = (recipe as { readonly options?: unknown }).options;
-  if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
+  if (!Predicate.isObject(options)) return undefined;
   return options as Readonly<Record<string, unknown>>;
 };
 
@@ -159,7 +159,7 @@ export const materializeLoadScopeExpressions = (
       return evaluated.success;
     }
     if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
-    if (typeof value === "object" && value !== null) {
+    if (Predicate.isObjectOrArray(value)) {
       return Object.fromEntries(
         Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
           key,

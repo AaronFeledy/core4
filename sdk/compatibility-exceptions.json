@@ -2308,5 +2308,53 @@
     "changeKind": "unsupported-construct",
     "path": "$.networks.anyOf",
     "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:HttpClientCapabilities",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpRequest",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpResponse",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpStreamResponse",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpUploadRequest",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpClientContribution",
+    "changeKind": "property-removed",
+    "path": "$.capabilities",
+    "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "property-removed",
+    "path": "$.httpClients.items.capabilities",
+    "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "property-removed",
+    "path": "$.contributes.httpClients.items.capabilities",
+    "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
   }
 ]

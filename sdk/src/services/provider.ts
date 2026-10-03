@@ -291,144 +291,149 @@ export type AppliedFileSyncInspection =
       readonly engineId: string;
       readonly sessions: ReadonlyArray<FileSyncSessionSpec>;
     };
-export interface RuntimeProviderShape {
-  readonly id: string;
-  readonly displayName: string;
-  readonly version: string;
-  readonly platform: HostPlatform;
-  readonly capabilities: ProviderCapabilities;
+export class RuntimeProvider extends Context.Service<
+  RuntimeProvider,
+  {
+    readonly id: string;
+    readonly displayName: string;
+    readonly version: string;
+    readonly platform: HostPlatform;
+    readonly capabilities: ProviderCapabilities;
 
-  readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
-  readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
-  readonly planSetup: (
-    options: ProviderSetupInspectOptions,
-  ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
-  readonly setup: (
-    plan: ProviderSetupPlan,
-    options: ProviderSetupOptions,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
-  readonly ensureReady?: Effect.Effect<void, ProviderError>;
-  readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
-  readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
-  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
-  readonly occupiedPublishPorts?: (
-    ports: ReadonlyArray<PortNumber>,
-  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+    readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
+    readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
+    readonly planSetup: (
+      options: ProviderSetupInspectOptions,
+    ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
+    readonly setup: (
+      plan: ProviderSetupPlan,
+      options: ProviderSetupOptions,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+    readonly ensureReady?: Effect.Effect<void, ProviderError>;
+    readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
+    readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+    /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+    readonly occupiedPublishPorts?: (
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
 
-  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
-  readonly matchingPublishPorts?: (
-    containerId: string,
-    ports: ReadonlyArray<PortNumber>,
-  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
-  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
-  readonly openHostProxyBridge?: (
-    input: HostProxyBridgeInput,
-  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
-  /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
-  readonly openAgentSocketBridge?: (
-    input: AgentSocketBridgeInput,
-  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
+    /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+    readonly matchingPublishPorts?: (
+      containerId: string,
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+    /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+    readonly openHostProxyBridge?: (
+      input: HostProxyBridgeInput,
+    ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+    /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
+    readonly openAgentSocketBridge?: (
+      input: AgentSocketBridgeInput,
+    ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
-  readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-  readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
-  readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+    readonly buildArtifact: (
+      spec: ArtifactBuildSpec,
+    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
+    readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
 
-  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
-  readonly inspectAppliedFileSync?: (
-    plan: AppPlan,
-  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
-  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. Rollback is available only when the provider can safely reverse preparation; otherwise startup retains its recovery journal on failure. */
-  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
-    {
-      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-      readonly rollback?: Effect.Effect<void, ProviderError>;
-    },
-    ProviderError
-  >;
+    /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+    readonly inspectAppliedFileSync?: (
+      plan: AppPlan,
+    ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+    /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. Rollback is available only when the provider can safely reverse preparation; otherwise startup retains its recovery journal on failure. */
+    readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+      {
+        readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+        readonly rollback?: Effect.Effect<void, ProviderError>;
+      },
+      ProviderError
+    >;
 
-  readonly apply: (
-    plan: AppPlan,
-    options: ApplyOptions,
-  ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
-  readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly resume?: (
-    target: ServiceSelector,
-    identity: ServiceRuntimeIdentity,
-  ) => Effect.Effect<void, ProviderError>;
-  readonly suspend?: (
-    target: ServiceSelector,
-    identity: ServiceRuntimeIdentity,
-  ) => Effect.Effect<void, ProviderError>;
-  readonly waitForExit: (
-    target: ServiceSelector,
-    options?: WaitForExitOptions,
-  ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (
-    target: AppSelector,
-    options: DestroyOptions,
-  ) => Effect.Effect<DestroyOutcome, ProviderError>;
-  /**
-   * Stops and removes the single container behind one observation this provider reported from
-   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
-   * the identity they were observed under. An observation carrying no container id is `absent`.
-   */
-  readonly removeObservedService: (
-    observed: ServiceRuntimeInfo,
-  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
-  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
-  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
+    readonly apply: (
+      plan: AppPlan,
+      options: ApplyOptions,
+    ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
+    readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly resume?: (
+      target: ServiceSelector,
+      identity: ServiceRuntimeIdentity,
+    ) => Effect.Effect<void, ProviderError>;
+    readonly suspend?: (
+      target: ServiceSelector,
+      identity: ServiceRuntimeIdentity,
+    ) => Effect.Effect<void, ProviderError>;
+    readonly waitForExit: (
+      target: ServiceSelector,
+      options?: WaitForExitOptions,
+    ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
+    readonly destroy: (
+      target: AppSelector,
+      options: DestroyOptions,
+    ) => Effect.Effect<DestroyOutcome, ProviderError>;
+    /**
+     * Stops and removes the single container behind one observation this provider reported from
+     * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+     * the identity they were observed under. An observation carrying no container id is `absent`.
+     */
+    readonly removeObservedService: (
+      observed: ServiceRuntimeInfo,
+    ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+    /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+    readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
-  readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
-  readonly execStream: (
-    target: ExecTarget,
-    command: CommandSpec,
-  ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
-  readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
-  readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
-  readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
-  readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
-  readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+    readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
+    readonly execStream: (
+      target: ExecTarget,
+      command: CommandSpec,
+    ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+    readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
+    readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+    readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
+    readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
+    readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 
-  readonly snapshotVolume: (
-    spec: VolumeSnapshotSpec,
-  ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
-  readonly removeVolumeSnapshot?: (
-    snapshot: VolumeSnapshotRef,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
-  readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
-  readonly inspectResourceNames?: (
-    query: DoctorResourceNameQuery,
-  ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
-  readonly observeVolume?: (
-    target: ServiceSelector,
-    destination: PortablePath,
-  ) => Effect.Effect<VolumeInfo, ProviderError>;
-  readonly adoptVolume?: (
-    target: ServiceSelector,
-    destination: PortablePath,
-  ) => Effect.Effect<VolumeInfo, ProviderError>;
-  readonly removeVolume: (
-    ref: VolumeRef,
-    expectedGeneration: VolumeIdentity["generation"],
-  ) => Effect.Effect<void, ProviderError>;
-  readonly copyToService: (
-    target: ExecTarget,
-    spec: ServiceCopyInSpec,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly copyFromService: (
-    target: ExecTarget,
-    spec: ServiceCopyOutSpec,
-  ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-  readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-  readonly importArtifact: (
-    data: Stream.Stream<Uint8Array, ProviderError>,
-  ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-}
+    readonly snapshotVolume: (
+      spec: VolumeSnapshotSpec,
+    ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+    readonly removeVolumeSnapshot?: (
+      snapshot: VolumeSnapshotRef,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+    readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+    readonly inspectResourceNames?: (
+      query: DoctorResourceNameQuery,
+    ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
+    readonly observeVolume?: (
+      target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    readonly adoptVolume?: (
+      target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    readonly removeVolume: (
+      ref: VolumeRef,
+      expectedGeneration: VolumeIdentity["generation"],
+    ) => Effect.Effect<void, ProviderError>;
+    readonly copyToService: (
+      target: ExecTarget,
+      spec: ServiceCopyInSpec,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly copyFromService: (
+      target: ExecTarget,
+      spec: ServiceCopyOutSpec,
+    ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly importArtifact: (
+      data: Stream.Stream<Uint8Array, ProviderError>,
+    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+  }
+>()("@lando/core/RuntimeProvider") {}
 
 export interface DestroyOptions {
   readonly volumes: boolean;
@@ -447,6 +452,4 @@ export type DestroyOutcome =
 /** Whether `removeObservedService` removed the container behind an observation, or found none. */
 export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
-export class RuntimeProvider extends Context.Service<RuntimeProvider, RuntimeProviderShape>()(
-  "@lando/core/RuntimeProvider",
-) {}
+export type RuntimeProviderShape = RuntimeProvider["Service"];

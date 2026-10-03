@@ -12,7 +12,7 @@ import { AppPlannerLive } from "@lando/engine/services/planner";
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
@@ -145,7 +145,7 @@ const discoverFrom = async (cwd: string): Promise<LandofileShape> => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-        Effect.provide(LandofileServiceLive),
+        Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );
   } finally {

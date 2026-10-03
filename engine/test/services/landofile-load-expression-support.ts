@@ -13,7 +13,7 @@ import { CacheServiceLive } from "../../src/cache/service";
 import { PluginRegistryLive } from "../../src/plugins/registry";
 import { FileSystemLive } from "../../src/services/file-system";
 import { AppPlannerLive } from "../../src/services/planner";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 export const PEM = "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n";
 export const IMPORTED_PEM = "-----BEGIN CERTIFICATE-----\nimported\n-----END CERTIFICATE-----\n";
@@ -31,7 +31,7 @@ export const withApp = async <A>(run: (appRoot: string) => Promise<A>): Promise<
 };
 
 const discoverEffect = Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-  Effect.provide(LandofileServiceLive),
+  Effect.provide(TestLandofileServiceLayer.layer),
 );
 
 export const discover = () => Effect.runPromise(discoverEffect);
@@ -45,7 +45,7 @@ export const discoverFailure = async () => {
 export const planDiscoveredEffect = (input: { readonly appRoot: string; readonly cacheRoot: string }) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ userCacheRoot: input.cacheRoot });
   const dependencies = Layer.mergeAll(
-    LandofileServiceLive,
+    TestLandofileServiceLayer.layer,
     CacheServiceLive,
     PluginRegistryLive,
     FileSystemLive,

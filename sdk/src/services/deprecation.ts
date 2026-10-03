@@ -15,8 +15,6 @@ export type DeprecatedCallable<
   readonly deprecation: DeprecationNotice;
 };
 
-const nowUtc = () => DateTime.nowUnsafe();
-
 export function markDeprecated<
   Args extends ReadonlyArray<unknown>,
   Return extends Effect.Effect<unknown, unknown, unknown>,
@@ -47,7 +45,11 @@ export function markDeprecated<
       Effect.flatMap((deprecations) =>
         deprecations._tag === "None"
           ? Effect.void
-          : deprecations.value.use({ kind: "export", id, notice, timestamp: nowUtc() }),
+          : DateTime.now.pipe(
+              Effect.flatMap((timestamp) =>
+                deprecations.value.use({ kind: "export", id, notice, timestamp }),
+              ),
+            ),
       ),
       Effect.andThen(result),
     );

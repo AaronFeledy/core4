@@ -51,7 +51,7 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
@@ -174,7 +174,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
@@ -233,7 +233,7 @@ const makeRestartLayer = (
   };
 
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     TestStateStoreLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({

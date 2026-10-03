@@ -81,11 +81,6 @@ describe("@lando/sdk package exports", () => {
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
     expect(schema.DownloaderCapabilities).toBeDefined();
-    expect(schema.HttpRequest).toBeDefined();
-    expect(schema.HttpResponse).toBeDefined();
-    expect(schema.HttpStreamResponse).toBeDefined();
-    expect(schema.HttpUploadRequest).toBeDefined();
-    expect(schema.HttpClientCapabilities).toBeDefined();
     expect(schema.HttpClientContribution).toBeDefined();
     expect(schema.PreHttpCallEvent).toBeDefined();
     expect(schema.PostHttpCallEvent).toBeDefined();
@@ -341,10 +336,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DownloadOfflineError).toBeDefined();
     expect(errors.DownloadSourceForbiddenError).toBeDefined();
     expect(errors.DownloaderUnavailableError).toBeDefined();
-    expect(errors.HttpRequestError).toBeDefined();
-    expect(errors.HttpUploadError).toBeDefined();
     expect(errors.HttpTrustError).toBeDefined();
-    expect(errors.HttpClientUnavailableError).toBeDefined();
     expect(errors.DataTransferError).toBeDefined();
     expect(errors.DataEndpointUnsupportedError).toBeDefined();
     expect(errors.DataChecksumMismatchError).toBeDefined();
@@ -514,7 +506,6 @@ describe("@lando/sdk package exports", () => {
     expect(services.ConfigTranslator).toBeDefined();
     expect(services.ConfigTranslatorRegistry).toBeDefined();
     expect(services.Downloader).toBeDefined();
-    expect(services.HttpClient).toBeDefined();
     expect(services.DataMover).toBeDefined();
     expect(services.PathsService).toBeDefined();
     expect(services.RemoteSource).toBeDefined();
@@ -663,6 +654,13 @@ describe("@lando/sdk package exports", () => {
     const sdkTest = await import("@lando/sdk/test");
 
     expect(sdkTest.runDownloaderContract).toBeDefined();
+  });
+
+  test("test entry point exports the http client contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runHttpClientContract).toBeDefined();
+    expect(sdkTest.makeHttpClientContractSuite).toBeDefined();
   });
 
   test("test entry point exports the remote-sync contract suites", async () => {

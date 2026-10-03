@@ -210,3 +210,81 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none. Later stories are not started.
 - Verification: typecheck, lint, and schema compatibility pass (0 breaking, 0 unknown, 69 accepted). Spot checks pass: effect pin and telemetry shutdown (7), renderer queue drains (28).
 ---
+
+## 2026-10-03 04:05 CDT - Babysit
+- PR: #1141 https://github.com/AaronFeledy/core4/pull/1141
+- CI outcome: fail (provider-integration-linux-x64: plugins/provider-docker/test/applied-state.integration.test.ts "removeAppliedPlan propagates state-store failures" still asserts the Effect 3 Exit string)
+- Review feedback: fixed (Effect 4 excess-key test now asserts issue path; field descriptions for dependsOn/environment/healthcheck/labels/envFile/ports/expose restored to the published JSON Schema)
+- Drift check: clean
+- Merge: deferred (provider-integration red; port that test like 07b5c6705 and check the other integration tests for Exit-string asserts)
+---
+## 2026-10-03 04:04 - Babysit
+- [looper] Babysit blocked: provider-integration-linux-x64 red: applied-state.integration.test.ts asserts Effect 3 Exit string (applied-state.remove); triage round 3 stalled before fixing
+---
+## 2026-10-03 04:05 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-10-03 04:05 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-10-03 04:05 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-10-03 04:05 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-10-03 04:05 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-10-03 04:05 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-10-03 04:50 CDT - Babysit
+- PR: #1141 https://github.com/AaronFeledy/core4/pull/1141
+- CI outcome: pass (after fix; initial run failed provider-integration-linux-x64)
+- Review feedback: fixed (docker/podman applied-state remove tests assert the ProviderUnavailableError operation and StateStoreError cause structurally instead of the Effect 3 Exit string)
+- Merge: merged (squash)
+---
+
+## 2026-10-03 05:55 CDT - US-663 (Build)
+- Lando's own `HttpClient` contract is gone. `@lando/http-client` now provides Effect's `effect/http` `HttpClient` built with `HttpClient.make` over the existing Bun fetch and direct egress; trust still resolves per request from the calling fiber's `ConfigService` (an injected `NetworkTrust` wins). Lando-only request policy (caller, on-behalf-of, redaction tokens, file sources, offline, redirect) travels in the fiber-scoped `RequestPolicy` reference instead of request fields. Downloader keeps its SDK contract and checksum verification over the new client. Every consumer moved (JSON bridge, Downloader, healthcheck, scanner, update manifest, plugin loader, ca-mkcert, setup/doctor/tarball, test doubles), and `LandoPluginContext.httpClient` hands plugins the host client. New guide: making HTTP requests from a plugin.
+- Each request is a span with method and a redacted URL (userinfo and every query value stripped, then the redactor). Effect's stock client span records `url.full` and `url.query` raw before transport code runs, so the stock span is disabled and the client opens its own.
+- The `network` boundary rule also rejects `FetchHttpClient` imports outside `http-client/src/**`. A private-CA fixture server passes with the CA from config or `LANDO_NETWORK_CA_CERTS` and fails closed without it.
+- Idiom pass over sdk, state-store, redaction, http-client, managed-file, telemetry, landofile, container-runtime: no generator-only wrappers (traced `Effect.fn` at service, transaction, provider and egress boundaries; `fnUntraced` elsewhere), no `*Live` exports (namespace `layer`/`layer<Variant>` or static `X.layer`), Clock/DateTime with byte-identical persisted timestamps, `ByteSize.format`, `Predicate` guards where semantics match, and `Graph` for service start scheduling with unchanged cycle messages. Secret-carrying SDK redactors and registered redaction values implement `Redactable`; logs and inspection show `[redacted]`.
+- The CLI composition provides `References.TracerEnabled` false; a dispatched command records zero spans while a host run records one. Removed and renamed exports, plus two accepted schema removals (`httpClients[].capabilities`), are in `sdk/API_COMPATIBILITY.md` and the compatibility exceptions. Durable service-shape, layer-naming and tracing rules are in `sdk/AGENTS.md`/`core/AGENTS.md`.
+- Measure (sandbox, one run each): tooling hot path warm p95 87.8 ms, cold p95 102.9 ms; startup p95 7.0 ms, first output p95 6.4 ms. All within the US-662 bands.
+- Verification: `gate:pr` passed; schema compatibility 0 breaking / 0 unknown / 8 accepted; guide lint, coverage and public transcripts passed; the new guide passed `dev:guides --once` (1 test). Spot checks: 262 tests across HTTP, redaction, plugin-abstraction coverage, SDK library, downloader, scanner and plugin context; 293 across touched primitive-package tests and the tracer test; 142 kit tests after the final contract-kit conversion.
+- **Learnings for future iterations:**
+  - `runtime-provider-registry.test.ts` (3 Docker-selection cases) and the stop/destroy missing-Landofile scenario cases (5) time out at 5 s on this host on unchanged `main` too. They are host-load/socket timeouts, not regressions; do not chase them inside an idiom story.
+  - The Edit tool can reject a valid single replacement in this session; a scripted replace works.
+  - A JSX template-literal `code` prop in a guide cannot contain escaped backticks; build URLs with string concatenation.
+---
+
+## 2026-10-03 06:01 CDT - US-663 Review
+- The verified-stream failure fixture now uses `Schema.TaggedError`, the form the idiom pass requires. The plugin HTTP guide names the egress span `HttpClient.request` and says lifecycle events carry origin and method, not a raw URL.
+- Review notes (deferred/rejected): Bugbot reported no bugs. Landofile YAML emit keeps a stricter plain-object check than `Predicate.isObject` because class instances, Dates, and Maps are not YAML maps. Lock-test `Date.now` and `utimes` calls are host filesystem clocks, not Effect time. A local `TestStateStoreLive` binding is not a `*Live` export. Engine idiom, MCP, and command spans stay with later stories.
+- Verification: `gate:pr` passed. Guide lint, coverage, public transcripts, and drift against `origin/main` passed. The HTTP guide passed once (1 test). Spot checks passed: verified-stream, tracer, redaction inspection, plugin-abstraction coverage, network-boundary fixtures (34), plus private-CA trust and span redaction (5).
+---
+
+## 2026-10-03 06:15 CDT - US-663 Review
+- HTTP span URLs now go through `RedactionService` when the requesting fiber has one, so a secret that lives only in the path is not kept in `url.full`. `NetworkTrust` is a fiber reference with an unset default, not a fourth service class. `@lando/http-client` depends on `@lando/redaction` for that tag.
+- Review notes (deferred/rejected): the gate review also asked for `Effect.fn` on every remaining provider arrow (`RuntimeProvider.start`, `ProviderDataPlane.run`, `PodmanApiClient.request`, plus helpers such as `collectByteStream`). The idiom pass already replaced Effect.gen-only bodies, and operation/provider span trees are US-664. Wrapping those arrows here would start that story.
+- Verification: http-client and core typecheck passed. Package DAG passed. Span redaction, private-CA, and injected-trust tests passed (the new path-secret case included).
+---
+
+## 2026-10-03 06:23 CDT - US-663 Drift Audit
+- Trigger: 3 cycles, 339 files (+12977/−12300), 5 commits
+- Scope: no later story started. Changes outside the idiom packages are HTTP migration and layer renames. Scheduling Graph stays in container-runtime. The PRD index is unchanged.
+- Weakened proof: the direct-transport compression check allowed an empty success when Bun fetch failed. It again requires the same success or failure as fetch.
+- Ceremony: one-importer downloader helpers keep real logic, so they stay. Three same-file-only exports are no longer exported.
+- Contract drift: the network-trust note still named removed HttpClientLive as a current consumer. It now names the http-client package.
+- Deferred notes re-checked: the YAML plain-object guard stays because Predicate.isObject accepts instances; provider Effect.fn arrows are not gen-only wrappers and remain US-664. No owned regression was left deferred.
+- Fixed: compression parity restored; dead exports unexported; live-test imports sorted so lint matches the claimed gate; compatibility note corrected.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (67 tests: compression parity, downloader, egress spans, tracer suppression).
+---
+
+## 2026-10-03 06:33 CDT - US-663 Verify
+- Compiled-binary setup, lamp init/start, and live HTTP and HTTPS returned the PHP body. Tooling, logs, app config, and doctor exited 0; doctor network-trust passed, and info showed database passwords as `[redacted]`. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us663v-appserver`, `lando-us663v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after the app and runtime were already stopped. Expected no processes for that app. Same class as the US-662 note. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-663 acceptance failure.
+---

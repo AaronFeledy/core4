@@ -1,42 +1,15 @@
-import type { ReadStream } from "node:fs";
-/**
- * `HttpClientLive` — the real outbound-egress chokepoint.
- *
- * Implements the published `@lando/sdk` `HttpClient` contract (`request` /
- * `stream` / `upload` / `capabilities`) over Bun `fetch`. Every Lando-owned
- * fetch issues through this adapter, so it is the single place that applies
- * outbound proxy/CA trust and publishes redacted `pre-http-call` /
- * `post-http-call` lifecycle events.
- *
- * Trust precedence: an injected `NetworkTrust` (resolved by `lando setup`
- * preflight) wins; otherwise the client self-resolves from `ConfigService` plus
- * the environment and reads configured CA PEMs; otherwise the fetch stays bare.
- * `ConfigService` is resolved with `Effect.serviceOption`, so the client never
- * widens the bootstrap `minimal` requirement set.
- *
- * `stream` returns a non-buffering `Stream<Uint8Array>`; the connection is
- * opened under an `AbortController` bound to the ambient `Scope`, so an
- * `Effect.interrupt` aborts the in-flight transfer. An unsupported scheme (or a
- * disallowed `file://`) fails before any connection opens.
- */
-import { type FileHandle, open } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { Cause, type Context, DateTime, Effect, Exit, Layer, Option, type Scope, Stream } from "effect";
-
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
+import { RedactionService } from "@lando/redaction/service";
+import { HttpTrustError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
-import type {
-  HttpClientCapabilities,
-  HttpRequest,
-  HttpResponse,
-  HttpStreamResponse,
-  HttpUploadRequest,
-} from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
-import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
-
+import { REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { ConfigService, EventService } from "@lando/sdk/services";
+import { Clock, Context, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { type DirectHttpTransport, directHttpRequest } from "./direct-http.ts";
-import { type HttpTransports, requestWithNetworkTrust } from "./network-request.ts";
+import { requestWithNetworkTrust } from "./network-request.ts";
 import {
   NetworkTrust,
   type ResolvedNetworkTrust,
@@ -46,458 +19,206 @@ import {
   resolveNetworkTrustPlan,
   withWindowsHostTrust,
 } from "./network-trust.ts";
-import { HttpClient, type HttpClientShape } from "./service.ts";
-import { applyHttpStreamTimeout, applyHttpTimeout } from "./timeout.ts";
+import { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
+import { requestBody } from "./request-body.ts";
+import { failureDetail, observeResponse } from "./response-events.ts";
 
-type HttpHeaderRecord = HttpResponse["headers"][number];
+export { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 
-interface FileStreamResource {
-  readonly handle: FileHandle;
-  readonly stream: ReadStream;
+export interface ClientOptions {
+  readonly fetch?: typeof fetch;
+  readonly systemCaPems?: SystemCaProvider;
+  readonly direct?: DirectHttpTransport;
 }
 
-type WebBodyReadResult =
-  | { readonly done: true; readonly value?: Uint8Array }
-  | { readonly done: false; readonly value: Uint8Array };
-
-interface WebBodyReader {
-  readonly cancel: () => Promise<void>;
-  readonly read: () => Promise<WebBodyReadResult>;
-  readonly releaseLock: () => void;
-}
-
-interface ReadWebBodyChunkInput {
-  readonly request: HttpRequest;
-  readonly response: Response;
-  readonly reader: WebBodyReader;
-  readonly startedAt: number;
-}
-
-const CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
+/** Strip credentials and all query values before a URL reaches telemetry. */
+const redactedUrl = (url: URL, policy: RequestPolicyShape): string => {
+  const safe = new URL(url);
+  safe.username = "";
+  safe.password = "";
+  for (const key of new Set(safe.searchParams.keys())) safe.searchParams.set(key, REDACTED);
+  safe.hash = "";
+  return createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString(safe.href);
 };
 
-const messageFromCause = (cause: unknown, fallback: string): string =>
-  cause instanceof Error && cause.message.length > 0 ? cause.message : fallback;
+const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unknown) =>
+  new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
 
-const urlOrigin = (url: string): string => {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.length > 0 ? `${parsed.protocol}//${parsed.host}` : parsed.protocol;
-  } catch {
-    return "unknown";
-  }
-};
-
-const requestError = (url: string, message: string, cause: unknown, status?: number): HttpRequestError =>
-  new HttpRequestError(
-    status === undefined
-      ? { message: messageFromCause(cause, message), urlOrigin: urlOrigin(url), cause }
-      : { message: messageFromCause(cause, message), urlOrigin: urlOrigin(url), status, cause },
-  );
-
-const unsupportedScheme = (url: string): HttpRequestError =>
-  new HttpRequestError({ message: "unsupported scheme", urlOrigin: urlOrigin(url) });
-
-const fileSourceNotPermitted = (url: string): HttpRequestError =>
-  new HttpRequestError({ message: "file:// source not permitted", urlOrigin: urlOrigin(url) });
-
-const offlineRequest = (url: string): HttpRequestError =>
-  new HttpRequestError({
-    message: "offline-only request cannot open a connection",
-    urlOrigin: urlOrigin(url),
+const resolveTrust = Effect.fnUntraced(function* (
+  context: Context.Context<never>,
+  injected: ResolvedNetworkTrust | undefined,
+) {
+  if (injected !== undefined) return injected;
+  const config = Context.getOption(context, ConfigService);
+  if (Option.isNone(config)) return undefined;
+  const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
+  const plan = yield* Effect.try({
+    try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
+    catch: (cause) =>
+      new HttpTrustError({
+        message: cause instanceof Error ? cause.message : "Could not resolve network trust",
+        urlOrigin: "unknown",
+        kind: "missing-custom-ca",
+        remediation: "Check network.ca.certs and LANDO_NETWORK_CA_CERTS.",
+        cause,
+      }),
   });
-
-const parseUrl = (url: string): URL | undefined => {
-  try {
-    return new URL(url);
-  } catch {
-    return undefined;
-  }
-};
-
-const headerRecords = (headers: Headers): ReadonlyArray<HttpHeaderRecord> =>
-  Array.from(headers.entries(), ([name, value]) => ({ name, value }));
-
-const remainingHttpTimeoutMs = (request: HttpRequest, startedAt: number): number | undefined =>
-  request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt);
-
-const readWebBodyChunk = ({
-  request,
-  response,
-  reader,
-  startedAt,
-}: ReadWebBodyChunkInput): Effect.Effect<Uint8Array, HttpRequestError | Cause.Done> =>
-  applyHttpTimeout(
-    request,
-    Effect.tryPromise({
-      try: () => reader.read(),
-      catch: (cause) =>
-        requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause, response.status),
-    }),
-    remainingHttpTimeoutMs(request, startedAt),
-  ).pipe(
-    Effect.flatMap((chunk) =>
-      chunk.done || chunk.value === undefined ? Cause.done() : Effect.succeed(chunk.value),
-    ),
-  );
-
-const releaseWebReader = (reader: WebBodyReader) =>
-  Effect.promise(async () => {
-    try {
-      await reader.cancel();
-    } catch (cause) {
-      void cause;
-    }
-    try {
-      reader.releaseLock();
-    } catch (cause) {
-      void cause;
-    }
-  });
-
-/** Resolve trust for a request: injected `NetworkTrust` wins, else config+env. */
-const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpRequestError> =>
-  Effect.gen(function* () {
-    const injected = yield* Effect.serviceOption(NetworkTrust);
-    if (Option.isSome(injected)) return injected.value;
-
-    const config = yield* Effect.serviceOption(ConfigService);
-    if (Option.isNone(config)) return undefined;
-
-    const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
-    const plan = yield* Effect.try({
-      try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
-      catch: (cause) =>
-        new HttpRequestError({
-          message: messageFromCause(cause, "Failed to resolve outbound network trust"),
+  const loaded = yield* loadCaPems(plan.caCertPaths).pipe(
+    Effect.mapError(
+      (cause) =>
+        new HttpTrustError({
+          message: cause.message,
           urlOrigin: "unknown",
+          kind: "missing-custom-ca",
+          remediation: cause.remediation,
           cause,
         }),
-    });
-    const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
-      Effect.mapError(
-        (error) =>
-          new HttpRequestError({
-            message: error.message,
-            urlOrigin: "unknown",
-            remediation: error.remediation,
-            cause: error,
-          }),
-      ),
-    );
-    return { proxy: plan.proxy, caPems: loadedCerts.map((cert) => cert.pem), trustHost: plan.trustHost };
-  });
-
-interface HttpCallEvents {
-  readonly redact: (text: string) => string;
-  readonly publish: (event: LandoEvent) => Effect.Effect<void>;
-}
-
-const makeHttpCallEvents = (
-  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
-  request: HttpRequest | HttpUploadRequest,
-): HttpCallEvents => {
-  const redact = createRedactor("secrets", { values: request.redactionTokens ?? [] }).redactString;
-  const publish: HttpCallEvents["publish"] = Option.isSome(eventService)
-    ? (event) => eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
-    : () => Effect.void;
-  return { redact, publish };
-};
-
-const preEvent = (
-  request: HttpRequest | HttpUploadRequest,
-  origin: string,
-  redact: (text: string) => string,
-): LandoEvent =>
-  PreHttpCallEvent.make({
-    eventName: "pre-http-call",
-    urlOrigin: origin,
-    ...(request.method === undefined ? {} : { method: request.method }),
-    ...(request.callerId === undefined ? {} : { callerId: redact(request.callerId) }),
-    ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-    timestamp: DateTime.nowUnsafe(),
-  });
-
-interface PostEventInput {
-  readonly request: HttpRequest | HttpUploadRequest;
-  readonly origin: string;
-  readonly outcome: "success" | "failure";
-  readonly status: number | undefined;
-  readonly durationMs: number;
-  readonly failureDetail: string | undefined;
-  readonly redact: (text: string) => string;
-}
-
-const postEvent = (input: PostEventInput): LandoEvent =>
-  PostHttpCallEvent.make({
-    eventName: "post-http-call",
-    urlOrigin: input.origin,
-    ...(input.request.method === undefined ? {} : { method: input.request.method }),
-    ...(input.status === undefined ? {} : { status: input.status }),
-    ...(input.request.callerId === undefined ? {} : { callerId: input.redact(input.request.callerId) }),
-    ...(input.request.onBehalfOf === undefined ? {} : { onBehalfOf: input.request.onBehalfOf }),
-    outcome: input.outcome,
-    durationMs: input.durationMs,
-    ...(input.failureDetail === undefined ? {} : { failureDetail: input.redact(input.failureDetail) }),
-    timestamp: DateTime.nowUnsafe(),
-  });
-
-interface FetchOutcome {
-  readonly response: Response;
-}
-
-const openConnection = (
-  transports: HttpTransports,
-  systemCaPems: SystemCaProvider,
-  request: HttpRequest,
-): Effect.Effect<FetchOutcome, HttpRequestError, Scope.Scope> =>
-  Effect.gen(function* () {
-    const resolvedTrust = yield* resolveTrust();
-    const hostCaPems = process.platform === "win32" || resolvedTrust !== undefined ? systemCaPems() : [];
-    const trust = withWindowsHostTrust(resolvedTrust, hostCaPems);
-    const controller = new AbortController();
-    yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()));
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        requestWithNetworkTrust(
-          request,
-          {
-            transports,
-            trust,
-            systemCaPems: trust === undefined ? [] : hostCaPems,
-          },
-          controller.signal,
-        ),
-      catch: (cause) => requestError(request.url, `Failed to fetch ${urlOrigin(request.url)}`, cause),
-    });
-    return { response };
-  });
-
-const responseBodyStream = (
-  request: HttpRequest,
-  response: Response,
-  startedAt: number,
-): Effect.Effect<Stream.Stream<Uint8Array, HttpRequestError>, never, Scope.Scope> => {
-  const responseBody = response.body;
-  if (responseBody === null) return Effect.succeed(Stream.empty);
-  return Effect.map(
-    Effect.acquireRelease(
-      Effect.sync(() => responseBody.getReader() as unknown as WebBodyReader),
-      releaseWebReader,
     ),
-    (reader) => Stream.fromEffectRepeat(readWebBodyChunk({ request, response, reader, startedAt })),
   );
-};
+  return { proxy: plan.proxy, caPems: loaded.map((cert) => cert.pem), trustHost: plan.trustHost };
+});
 
-const bodyFailureDetail = (exit: Exit.Exit<unknown, unknown>): string => {
-  if (!("cause" in exit)) return "body-read-failed";
-  const failure = Cause.findErrorOption(exit.cause);
-  if (Option.isSome(failure)) return messageFromCause(failure.value, "body-read-failed");
-  return Cause.hasInterruptsOnly(exit.cause) ? "body-read-interrupted" : "body-read-failed";
-};
-
-const filePathFromUrl = (url: URL): Effect.Effect<string, HttpRequestError> =>
-  Effect.try({
-    try: () => fileURLToPath(url),
-    catch: (cause) => requestError(url.href, `Failed to resolve ${urlOrigin(url.href)}`, cause),
-  });
-
-const acquireFileStream = (url: string, path: string): Effect.Effect<FileStreamResource, HttpRequestError> =>
-  Effect.map(
-    Effect.tryPromise({
-      try: () => open(path, "r"),
-      catch: (cause) => requestError(url, `Failed to open ${urlOrigin(url)}`, cause),
-    }),
-    (handle) => ({ handle, stream: handle.createReadStream({ autoClose: false }) }),
-  );
-
-const releaseFileStream = ({ handle, stream }: FileStreamResource) =>
-  Effect.promise(async () => {
-    stream.destroy();
-    try {
-      await handle.close();
-    } catch (cause) {
-      void cause;
-    }
-  });
-
-const streamFile = (
-  request: HttpRequest,
-  url: URL,
-): Effect.Effect<
-  HttpStreamResponse & { readonly body: Stream.Stream<Uint8Array, HttpRequestError> },
-  HttpRequestError,
-  Scope.Scope
-> => {
-  if (request.allowFileSource !== true) return Effect.fail(fileSourceNotPermitted(request.url));
-  const startedAt = Date.now();
-  return applyHttpTimeout(
-    request,
+export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.HttpClient> => {
+  const transports = {
+    fetch: options.fetch ?? globalThis.fetch,
+    direct: options.direct ?? directHttpRequest,
+  };
+  const systemCaPems = options.systemCaPems ?? defaultSystemCaPems;
+  return Layer.effect(
+    HttpClient.HttpClient,
     Effect.gen(function* () {
-      const path = yield* filePathFromUrl(url);
-      const resource = yield* Effect.acquireRelease(acquireFileStream(request.url, path), releaseFileStream);
-      return {
-        status: 200,
-        headers: [],
-        body: Stream.suspend(() =>
-          applyHttpStreamTimeout(
-            request,
-            Stream.fromAsyncIterable(resource.stream as AsyncIterable<Uint8Array>, (cause) =>
-              requestError(request.url, `Failed to read ${urlOrigin(request.url)}`, cause),
-            ),
-            remainingHttpTimeoutMs(request, startedAt),
-          ),
-        ),
-      };
-    }),
-  );
-};
-
-const makeStream =
-  (
-    transports: HttpTransports,
-    systemCaPems: SystemCaProvider,
-    eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
-  ): HttpClientShape["stream"] =>
-  (request) =>
-    Effect.gen(function* () {
-      const url = parseUrl(request.url);
-      if (url === undefined) return yield* Effect.fail(unsupportedScheme(request.url));
-      if (url.protocol === "file:") return yield* streamFile(request, url);
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        return yield* Effect.fail(unsupportedScheme(request.url));
-      }
-      if (request.offline === true) return yield* Effect.fail(offlineRequest(request.url));
-
-      const events = makeHttpCallEvents(eventService, request);
-      const origin = urlOrigin(request.url);
-      const startedAt = Date.now();
-      yield* events.publish(preEvent(request, origin, events.redact));
-
-      const result = yield* Effect.result(
-        applyHttpTimeout(
-          request,
-          openConnection(transports, systemCaPems, request),
-          remainingHttpTimeoutMs(request, startedAt),
-        ),
-      );
-      if (result._tag === "Failure") {
-        yield* events.publish(
-          postEvent({
-            request,
-            origin,
-            outcome: "failure",
-            status: result.failure.status,
-            durationMs: Date.now() - startedAt,
-            failureDetail: result.failure.message,
-            redact: events.redact,
-          }),
-        );
-        return yield* Effect.fail(result.failure);
-      }
-
-      const { response } = result.success;
-      let postPublished = false;
-      const publishPost = (outcome: "success" | "failure", failureDetail: string | undefined) =>
-        Effect.suspend(() => {
-          if (postPublished) return Effect.void;
-          postPublished = true;
-          return events.publish(
-            postEvent({
-              request,
-              origin,
-              outcome,
-              status: response.status,
-              durationMs: Date.now() - startedAt,
-              failureDetail,
-              redact: events.redact,
+      const layerEvents = yield* Effect.serviceOption(EventService);
+      const client = HttpClient.make((request, url, signal, fiber) => {
+        const policy = fiber.getRef(RequestPolicy);
+        const safeUrl = redactedUrl(url, policy);
+        const safeRequest = HttpClientRequest.setUrlParams(HttpClientRequest.setUrl(request, safeUrl), []);
+        const redact = createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString;
+        const eventService = Option.orElse(Context.getOption(fiber.context, EventService), () => layerEvents);
+        const publish = (event: Parameters<EventService["Service"]["publish"]>[0]) =>
+          Option.isSome(eventService)
+            ? eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
+            : Effect.void;
+        const execute = Effect.fn("HttpClient.request")(function* () {
+          const canonical = Context.getOption(fiber.context, RedactionService);
+          const spanUrl = Option.isNone(canonical)
+            ? safeUrl
+            : (yield* canonical.value.forProfile("secrets", {
+                redactionTokens: policy.redactionTokens,
+              })).redactString(safeUrl);
+          yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": spanUrl });
+          const startedAt = yield* Clock.currentTimeMillis;
+          const timestamp = yield* DateTime.now;
+          const correlation = {
+            ...(policy.callerId === undefined ? {} : { callerId: redact(policy.callerId) }),
+            ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: redact(policy.onBehalfOf) }),
+          };
+          yield* publish(
+            PreHttpCallEvent.make({
+              eventName: "pre-http-call",
+              urlOrigin: url.origin,
+              method: request.method,
+              timestamp,
+              ...correlation,
             }),
           );
-        }).pipe(Effect.uninterruptible);
-
-      const body = yield* responseBodyStream(request, response, startedAt);
-      yield* Effect.addFinalizer((exit) =>
-        Exit.isSuccess(exit)
-          ? publishPost("success", undefined)
-          : publishPost("failure", bodyFailureDetail(exit)),
+          const controller = new AbortController();
+          const scoped = yield* Effect.serviceOption(Scope.Scope);
+          let published = false;
+          let status: number | undefined = undefined;
+          const complete = Effect.fnUntraced(function* (exit: Exit.Exit<unknown, unknown>) {
+            if (published) return;
+            published = true;
+            const endedAt = yield* Clock.currentTimeMillis;
+            const timestamp = yield* DateTime.now;
+            yield* publish(
+              PostHttpCallEvent.make({
+                eventName: "post-http-call",
+                urlOrigin: url.origin,
+                method: request.method,
+                timestamp,
+                durationMs: endedAt - startedAt,
+                ...correlation,
+                ...(status === undefined ? {} : { status }),
+                ...(Exit.isSuccess(exit)
+                  ? { outcome: "success" as const }
+                  : { outcome: "failure" as const, failureDetail: redact(failureDetail(exit)) }),
+              }),
+            );
+          }, Effect.uninterruptible);
+          if (Option.isSome(scoped))
+            yield* Scope.addFinalizerExit(scoped.value, (exit) =>
+              Effect.andThen(
+                Effect.sync(() => controller.abort()),
+                complete(exit),
+              ),
+            );
+          const response = yield* Effect.gen(function* () {
+            if (policy.offline === true)
+              return yield* Effect.fail(
+                transportError(safeRequest, "offline-only request cannot open a connection"),
+              );
+            if (url.protocol === "file:") {
+              if (policy.allowFileSource !== true)
+                return yield* Effect.fail(transportError(safeRequest, "file:// source not permitted"));
+              const file = Bun.file(url);
+              const exists = yield* Effect.promise(() => file.exists());
+              if (!exists)
+                return yield* Effect.fail(transportError(safeRequest, "file source does not exist"));
+              return HttpClientResponse.fromWeb(safeRequest, new Response(file.stream()));
+            }
+            if (url.protocol !== "http:" && url.protocol !== "https:")
+              return yield* Effect.fail(transportError(safeRequest, "unsupported scheme"));
+            const resolved = yield* resolveTrust(fiber.context, fiber.getRef(NetworkTrust)).pipe(
+              Effect.mapError((cause) => transportError(safeRequest, cause)),
+            );
+            const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];
+            const trust = withWindowsHostTrust(resolved, hostCaPems);
+            const body = yield* requestBody(request);
+            const web = yield* Effect.tryPromise({
+              try: () =>
+                requestWithNetworkTrust(
+                  {
+                    url: url.href,
+                    method: request.method,
+                    headers: request.headers,
+                    body,
+                    redirect: policy.redirect ?? "follow",
+                  },
+                  { transports, trust, systemCaPems: hostCaPems },
+                  AbortSignal.any([signal, controller.signal]),
+                ),
+              catch: (cause) =>
+                transportError(
+                  safeRequest,
+                  url.protocol === "https:" &&
+                    cause instanceof Error &&
+                    /cert|tls|ssl|self.signed|issuer/i.test(cause.message)
+                    ? new HttpTrustError({
+                        message: "TLS trust verification failed",
+                        urlOrigin: url.origin,
+                        kind: "missing-custom-ca",
+                        remediation:
+                          "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS.",
+                        cause,
+                      })
+                    : cause,
+                ),
+            });
+            return HttpClientResponse.fromWeb(safeRequest, web);
+          }).pipe(Effect.onExit((exit) => (Exit.isFailure(exit) ? complete(exit) : Effect.void)));
+          status = response.status;
+          return observeResponse(response, complete);
+        });
+        return execute();
+      });
+      // The standard runner records raw URL attributes before invoking its transport.
+      // Disable those spans and use the redacted egress span above instead.
+      return HttpClient.transformResponse(
+        client,
+        Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
       );
-      const bodyWithTelemetry = body.pipe(
-        (stream) => applyHttpStreamTimeout(request, stream, remainingHttpTimeoutMs(request, startedAt)),
-        Stream.onExit((exit) =>
-          Exit.isSuccess(exit)
-            ? publishPost("success", undefined)
-            : publishPost("failure", bodyFailureDetail(exit)),
-        ),
-      );
-      return { status: response.status, headers: headerRecords(response.headers), body: bodyWithTelemetry };
-    });
-
-const makeRequest =
-  (
-    transports: HttpTransports,
-    systemCaPems: SystemCaProvider,
-    eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
-  ): HttpClientShape["request"] =>
-  (request) =>
-    Effect.gen(function* () {
-      const streamResponse = yield* makeStream(transports, systemCaPems, eventService)(request);
-      const bytes = yield* Stream.runCollect(streamResponse.body).pipe(
-        Effect.map((chunks) => {
-          const arr = Array.from(chunks);
-          const total = arr.reduce((n, chunk) => n + chunk.length, 0);
-          const out = new Uint8Array(total);
-          let offset = 0;
-          for (const chunk of arr) {
-            out.set(chunk, offset);
-            offset += chunk.length;
-          }
-          return out;
-        }),
-      );
-      return {
-        status: streamResponse.status,
-        headers: streamResponse.headers,
-        contentLength: bytes.length,
-      } satisfies HttpResponse;
-    });
-
-const makeUpload = (): HttpClientShape["upload"] => (request) =>
-  Effect.fail(
-    new HttpUploadError({
-      message: "upload is not supported by the core HttpClient",
-      urlOrigin: urlOrigin(request.url),
     }),
   );
+};
 
-/**
- * Construct `HttpClientLive`. `EventService` is resolved once at layer build via
- * `Effect.serviceOption` (so it stays optional and does not widen the published
- * service requirements) and baked into the closure; trust is still applied
- * per-request from the injected `NetworkTrust` tag or self-resolved from
- * `ConfigService`. `fetchImpl` is injectable for tests.
- */
-export const makeHttpClientLive = (
-  fetchImpl: typeof fetch = fetch,
-  systemCaPems: SystemCaProvider = defaultSystemCaPems,
-  directImpl: DirectHttpTransport = directHttpRequest,
-): Layer.Layer<HttpClient> =>
-  Layer.effect(
-    HttpClient,
-    Effect.gen(function* () {
-      const eventService = yield* Effect.serviceOption(EventService);
-      return {
-        id: "core-http-client",
-        capabilities: CAPABILITIES,
-        request: makeRequest({ fetch: fetchImpl, direct: directImpl }, systemCaPems, eventService),
-        stream: makeStream({ fetch: fetchImpl, direct: directImpl }, systemCaPems, eventService),
-        upload: makeUpload(),
-      };
-    }),
-  );
-
-export const HttpClientLive: Layer.Layer<HttpClient> = makeHttpClientLive();
+export const layer = layerWith();

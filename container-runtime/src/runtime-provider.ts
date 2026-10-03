@@ -166,8 +166,10 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.locateVolume(ref)))),
       ),
     observeVolume: (target, destination) =>
-      resolveTarget(target, "observeVolume", (plan) =>
-        Effect.gen(function* () {
+      resolveTarget(
+        target,
+        "observeVolume",
+        Effect.fn("RuntimeProvider.observeVolume")(function* (plan) {
           const runtime = yield* input.service.inspect(plan, target);
           if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
           const dataPlane = yield* requireDataPlane("observeVolume");
@@ -179,8 +181,10 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
         }),
       ),
     adoptVolume: (target, destination) =>
-      resolveTarget(target, "adoptVolume", (plan) =>
-        Effect.gen(function* () {
+      resolveTarget(
+        target,
+        "adoptVolume",
+        Effect.fn("RuntimeProvider.adoptVolume")(function* (plan) {
           if (!plan.identity) return yield* Effect.fail(unavailable("adoptVolume"));
           const runtime = yield* input.service.inspect(plan, target);
           if (!runtime.containerId) return yield* Effect.fail(unavailable("adoptVolume"));

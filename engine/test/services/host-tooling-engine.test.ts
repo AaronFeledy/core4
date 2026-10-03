@@ -21,7 +21,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   HostToolingEngineLive,
@@ -31,11 +31,11 @@ import {
   runHostToolingWith,
 } from "../../src/services/host-tooling-engine";
 
-const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessLive));
+const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessService.layer));
 const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
-  runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessLive));
+  runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
 const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
-  evaluateHostVarEffect(...args).pipe(Effect.provide(PrivateFileAccessLive));
+  evaluateHostVarEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
 
 const providerId = ProviderId.make("lando");
 

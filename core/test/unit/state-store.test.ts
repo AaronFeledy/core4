@@ -1,5 +1,5 @@
 /**
- * `StateStoreLive` / `makeStateStore` durable-store behavior: framed json/binary
+ * Disk-backed `StateStore` / `makeStateStore` behavior: framed json/binary
  * codecs, custom raw codecs, atomic replace, corruption quarantine/discard/fail,
  * version-mismatch discard/migrator, realpath containment, advisory cross-process
  * locking, and availability at the `minimal` bootstrap layer.

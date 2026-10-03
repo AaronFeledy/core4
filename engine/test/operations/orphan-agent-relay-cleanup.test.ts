@@ -15,7 +15,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Stream } from "effect";
 
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
@@ -70,7 +70,7 @@ const layerFor = (root: string) => {
   return {
     paths,
     layer: Layer.mergeAll(
-      PrivateFileAccessLive,
+      PrivateFileAccessService.layer,
       Layer.succeed(StateStore, makeTestStateStore().service),
       Layer.succeed(PathsService, paths),
       Layer.succeed(LandofileService, {

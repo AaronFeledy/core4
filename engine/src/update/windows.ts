@@ -3,7 +3,7 @@ import { copyFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { StateStore } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect } from "effect";
 import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import { type StoredUpdateResult, makeUpdateHandoff } from "./handoff.ts";
@@ -108,4 +108,4 @@ export const scheduleWindowsReplacement = (
   });
 
 export const defaultWindowsReplacement: UpdateWindowsReplacement = (input) =>
-  scheduleWindowsReplacement(input).pipe(Effect.provide(StateStoreLive));
+  scheduleWindowsReplacement(input).pipe(Effect.provide(StateStoreLayer.layer));

@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
@@ -81,6 +83,9 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
   const dependencies = Layer.mergeAll(
     Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
     Layer.succeed(PluginRegistry, {
@@ -91,6 +96,7 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
       loadAppFeature: unsupported,
     }),
     Layer.succeed(Downloader, Effect.runSync(makeTestDownloader()).service),
+    Layer.succeed(HttpClient.HttpClient, httpClient),
     Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
