@@ -200,7 +200,11 @@ const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Arra
   )
   .annotate({ description: COMPOSE_ENVIRONMENT_DESCRIPTION });
 
+const COMPOSE_LABELS_DESCRIPTION =
+  "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.";
+
 const ComposeLabelsInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+  .annotate({ description: COMPOSE_LABELS_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
       StringRecord,
@@ -226,12 +230,13 @@ const ComposeLabelsInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Sch
       }),
     ),
   )
-  .annotate({
-    description:
-      "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
-  });
+  .annotate({ description: COMPOSE_LABELS_DESCRIPTION });
+
+const COMPOSE_ENV_FILE_DESCRIPTION =
+  "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.";
 
 const ComposeEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)])
+  .annotate({ description: COMPOSE_ENV_FILE_DESCRIPTION })
   .pipe(
     Schema.decodeTo(
       Schema.Array(Schema.String),
@@ -241,10 +246,7 @@ const ComposeEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.Str
       }),
     ),
   )
-  .annotate({
-    description:
-      "One or more env-file paths whose KEY=value lines seed the service environment. String or string list.",
-  });
+  .annotate({ description: COMPOSE_ENV_FILE_DESCRIPTION });
 
 const TOP_LEVEL_ENV_FILE_DESCRIPTION =
   "One or more app-root-relative env-file paths applied to every service below service-level envFile and environment overrides.";
@@ -650,25 +652,13 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
     environment: Schema.optionalKey(ComposeEnvironmentInput),
-    envFile: Schema.optionalKey(ComposeEnvFileInput).annotate({
-      description:
-        "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
-    }),
-    labels: Schema.optionalKey(ComposeLabelsInput).annotate({
-      description:
-        "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
-    }),
+    envFile: Schema.optionalKey(ComposeEnvFileInput),
+    labels: Schema.optionalKey(ComposeLabelsInput),
 
     ...ComposeServiceKnobFields,
 
-    ports: Schema.optionalKey(ComposePortsField).annotate({
-      description:
-        'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.',
-    }),
-    expose: Schema.optionalKey(ComposeExposeField).annotate({
-      description:
-        "Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints.",
-    }),
+    ports: Schema.optionalKey(ComposePortsField),
+    expose: Schema.optionalKey(ComposeExposeField),
     volumes: Schema.optionalKey(ComposeVolumesField).annotate({
       description:
         'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',

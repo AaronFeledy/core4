@@ -135,94 +135,110 @@ const ComposePortInput = Schema.Union([
   ComposePortCanonicalInput,
 ]);
 
-export const ComposePortsField = Schema.Array(ComposePortInput).pipe(
-  Schema.decodeTo(
-    Schema.Array(ComposePortEntry),
-    SchemaTransformation.transformEffect<
-      ReadonlyArray<typeof ComposePortEntry.Encoded>,
-      ReadonlyArray<typeof ComposePortInput.Type>
-    >({
-      decode: (input, _options) => {
-        const entries: Array<ComposePortEntry> = [];
-        for (const [index, entry] of input.entries()) {
-          const fail = (actual: unknown, message: string) =>
-            Effect.fail(
-              new SchemaIssue.Pointer([index], new SchemaIssue.InvalidValue({ message: message }, actual)),
-            );
-          if (typeof entry === "string") {
-            const parsed = parseShortPort(entry);
-            if (Result.isFailure(parsed)) return fail(entry, parsed.failure);
-            entries.push(...parsed.success);
-            continue;
-          }
-          if (typeof entry === "number") {
-            const target = decodePort(entry);
-            if (target === undefined) return fail(entry, "Expected a port number from 1 through 65535.");
-            entries.push({ target, protocol: "tcp" });
-            continue;
-          }
-          if (typeof entry.published === "string" && entry.published.includes("-")) {
-            return fail(entry.published, "Published port ranges in long form must enumerate scalar entries.");
-          }
-          const published = entry.published === undefined ? undefined : decodePort(entry.published);
-          if (entry.published !== undefined && published === undefined) {
-            return fail(entry.published, "Expected a published port number from 1 through 65535.");
-          }
-          const hostIp = entry.hostIp ?? entry.host_ip;
-          const appProtocol = entry.appProtocol ?? entry.app_protocol;
-          entries.push({
-            target: entry.target,
-            ...(published === undefined ? {} : { published }),
-            ...(hostIp === undefined ? {} : { hostIp }),
-            protocol: entry.protocol ?? "tcp",
-            ...(entry.name === undefined ? {} : { name: entry.name }),
-            ...(appProtocol === undefined ? {} : { appProtocol }),
-          });
-        }
-        return Effect.succeed(entries);
-      },
-      encode: (entries: ReadonlyArray<typeof ComposePortEntry.Encoded>) =>
-        Effect.succeed(
-          entries.map((entry) => ({
-            target: entry.target,
-            ...(entry.published === undefined ? {} : { published: entry.published }),
-            ...(entry.hostIp === undefined ? {} : { host_ip: entry.hostIp }),
-            protocol: entry.protocol,
-            ...(entry.name === undefined ? {} : { name: entry.name }),
-            ...(entry.appProtocol === undefined ? {} : { app_protocol: entry.appProtocol }),
-          })),
-        ),
-    }),
-  ),
-);
+// JSON Schema publishes the encoded side, so both sides of each field carry the description.
+const COMPOSE_PORTS_DESCRIPTION =
+  'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.';
 
-export const ComposeExposeField = Schema.Array(Schema.Union([Schema.String, Schema.Number])).pipe(
-  Schema.decodeTo(
-    Schema.Array(PortNumber),
-    SchemaTransformation.transformEffect<
-      ReadonlyArray<typeof PortNumber.Encoded>,
-      ReadonlyArray<string | number>
-    >({
-      decode: (input, _options) => {
-        const ports: Array<PortNumber> = [];
-        for (const [index, entry] of input.entries()) {
-          const decoded = typeof entry === "number" ? decodePort(entry) : decodePortRange(entry);
-          if (decoded === undefined) {
-            return Effect.fail(
-              new SchemaIssue.Pointer(
-                [index],
-                new SchemaIssue.InvalidValue(
-                  { message: "Expected a container port or ascending port range." },
-                  entry,
-                ),
-              ),
-            );
+export const ComposePortsField = Schema.Array(ComposePortInput)
+  .annotate({ description: COMPOSE_PORTS_DESCRIPTION })
+  .pipe(
+    Schema.decodeTo(
+      Schema.Array(ComposePortEntry),
+      SchemaTransformation.transformEffect<
+        ReadonlyArray<typeof ComposePortEntry.Encoded>,
+        ReadonlyArray<typeof ComposePortInput.Type>
+      >({
+        decode: (input, _options) => {
+          const entries: Array<ComposePortEntry> = [];
+          for (const [index, entry] of input.entries()) {
+            const fail = (actual: unknown, message: string) =>
+              Effect.fail(
+                new SchemaIssue.Pointer([index], new SchemaIssue.InvalidValue({ message: message }, actual)),
+              );
+            if (typeof entry === "string") {
+              const parsed = parseShortPort(entry);
+              if (Result.isFailure(parsed)) return fail(entry, parsed.failure);
+              entries.push(...parsed.success);
+              continue;
+            }
+            if (typeof entry === "number") {
+              const target = decodePort(entry);
+              if (target === undefined) return fail(entry, "Expected a port number from 1 through 65535.");
+              entries.push({ target, protocol: "tcp" });
+              continue;
+            }
+            if (typeof entry.published === "string" && entry.published.includes("-")) {
+              return fail(
+                entry.published,
+                "Published port ranges in long form must enumerate scalar entries.",
+              );
+            }
+            const published = entry.published === undefined ? undefined : decodePort(entry.published);
+            if (entry.published !== undefined && published === undefined) {
+              return fail(entry.published, "Expected a published port number from 1 through 65535.");
+            }
+            const hostIp = entry.hostIp ?? entry.host_ip;
+            const appProtocol = entry.appProtocol ?? entry.app_protocol;
+            entries.push({
+              target: entry.target,
+              ...(published === undefined ? {} : { published }),
+              ...(hostIp === undefined ? {} : { hostIp }),
+              protocol: entry.protocol ?? "tcp",
+              ...(entry.name === undefined ? {} : { name: entry.name }),
+              ...(appProtocol === undefined ? {} : { appProtocol }),
+            });
           }
-          ports.push(...(typeof decoded === "number" ? [decoded] : decoded));
-        }
-        return Effect.succeed(ports);
-      },
-      encode: (ports) => Effect.succeed(ports),
-    }),
-  ),
-);
+          return Effect.succeed(entries);
+        },
+        encode: (entries: ReadonlyArray<typeof ComposePortEntry.Encoded>) =>
+          Effect.succeed(
+            entries.map((entry) => ({
+              target: entry.target,
+              ...(entry.published === undefined ? {} : { published: entry.published }),
+              ...(entry.hostIp === undefined ? {} : { host_ip: entry.hostIp }),
+              protocol: entry.protocol,
+              ...(entry.name === undefined ? {} : { name: entry.name }),
+              ...(entry.appProtocol === undefined ? {} : { app_protocol: entry.appProtocol }),
+            })),
+          ),
+      }),
+    ),
+  )
+  .annotate({ description: COMPOSE_PORTS_DESCRIPTION });
+
+const COMPOSE_EXPOSE_DESCRIPTION =
+  "Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints.";
+
+export const ComposeExposeField = Schema.Array(Schema.Union([Schema.String, Schema.Number]))
+  .annotate({ description: COMPOSE_EXPOSE_DESCRIPTION })
+  .pipe(
+    Schema.decodeTo(
+      Schema.Array(PortNumber),
+      SchemaTransformation.transformEffect<
+        ReadonlyArray<typeof PortNumber.Encoded>,
+        ReadonlyArray<string | number>
+      >({
+        decode: (input, _options) => {
+          const ports: Array<PortNumber> = [];
+          for (const [index, entry] of input.entries()) {
+            const decoded = typeof entry === "number" ? decodePort(entry) : decodePortRange(entry);
+            if (decoded === undefined) {
+              return Effect.fail(
+                new SchemaIssue.Pointer(
+                  [index],
+                  new SchemaIssue.InvalidValue(
+                    { message: "Expected a container port or ascending port range." },
+                    entry,
+                  ),
+                ),
+              );
+            }
+            ports.push(...(typeof decoded === "number" ? [decoded] : decoded));
+          }
+          return Effect.succeed(ports);
+        },
+        encode: (ports) => Effect.succeed(ports),
+      }),
+    ),
+  )
+  .annotate({ description: COMPOSE_EXPOSE_DESCRIPTION });
