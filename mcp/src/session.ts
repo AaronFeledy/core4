@@ -23,7 +23,7 @@ import { guardStdio } from "./stdio-guard";
 import { DEFAULT_MCP_MAX_CONCURRENT, MAX_OUTSTANDING_REQUESTS, stdioTransportError } from "./stdio-limits";
 import { commandResult, rejectionResult, toolOutputSchema } from "./tool-result";
 
-export interface McpSession {
+interface McpSession {
   readonly config: McpRuntimeConfigShape;
   readonly catalog: McpCatalog;
   readonly options: McpServeOptions;

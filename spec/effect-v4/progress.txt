@@ -365,3 +365,14 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - `makeLandoRuntime({...})` silently falls through to its `unknown` overload, which returns `RuntimeLayer` with no services, when an option is an unbranded string (`config.user*Root` needs `AbsolutePath.make`, `defaultProviderId` needs `ProviderId.make`). The symptom is "Type 'X' is not assignable to type 'never'" far from the options object. Branding the inputs fixes it.
   - `--exec` runs one command through `.local/bin/lando4-dev`, and a bash coproc drives a piped `lando mcp` session from there with no Bun in the sandbox. Read the coproc fd only in `$(recv)`; a pipe after `recv` loses the fd in the subshell.
 ---
+
+## 2026-10-03 12:19 CDT - US-665 Drift Audit
+- Trigger: 2 cycles, +3097/−2943, 4 commits
+- Dead exports: the deleted stdio writer and cancellation queue left three unread caps (partial buffer, pending cancellations, outbound message count). New MCP modules also exported symbols nothing outside the file imported.
+- Contract drift: the guide still described a 1024-message outbound queue. That queue left with the hand-written writer. Per-payload 8 MiB serialization and the 5 second write deadline still fail closed.
+- Idiom: the MCP JSON bounder still had a named `isPlainObject` helper. The same prototype check now sits at the one call site, so class instances and `toJSON` still fail closed.
+- Re-checked deferrals: unknown tools stay unregistered (`-32602`, no call events) because that is the §10.14 amendment, and dispatch still publishes both events for rejections that reach it. The combined frame bound inside dispatch stays; it is what makes an oversize result emit a failing `post-mcp-call`. No other story was started. No SDK surface was added.
+- Fixed: deleted the unread caps, stopped exporting file-local symbols, inlined the plain-object check, and corrected the guide bounds sentence.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Guide lint passes. Spot checks pass (50 tests on bounds, framing, resources, confirmation, and renderer stdio).
+---

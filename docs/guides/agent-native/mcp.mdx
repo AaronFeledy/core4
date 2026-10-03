@@ -333,12 +333,12 @@ reads the complete resolved Landofile. Umbrella and write-capable ids:
 `app:config:validate` are not MCP tools, even through explicit allow
 configuration.
 
-Protocol input and output stay bounded: a complete inbound frame and a
-partial inbound buffer are each capped at 1 MiB. At most 256 unresolved tool
-calls are retained; request 257 gets a tool result with `isError: true` whose
-text is a `McpTransportError` reading `Server busy`, and it carries no
-`structuredContent`. The outbound queue, queued bytes, and blocked-write
-duration are bounded too (1024 messages / 8 MiB / 5 seconds).
+Protocol input and output stay bounded. An inbound frame, including one
+still being read, is capped at 1 MiB. At most 256 unresolved tool calls are
+retained; request 257 gets a tool result with `isError: true` whose text is
+a `McpTransportError` reading `Server busy`, and it carries no
+`structuredContent`. Each serialized JSON payload is capped at 8 MiB, and a
+stdout write that does not finish fails after 5 seconds.
 
   <Scenario id="bounded-read-only-regressions" render>
     <Step name="verify-read-only-tools">

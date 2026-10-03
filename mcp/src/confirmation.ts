@@ -4,7 +4,7 @@ import { Duration, Effect, Option } from "effect";
 import { McpServerClient } from "effect/ai/McpSchema";
 import * as McpServer from "effect/ai/McpServer";
 
-export const ELICITATION_TIMEOUT = Duration.seconds(120);
+const ELICITATION_TIMEOUT = Duration.seconds(120);
 
 const elicitConfirmation = Effect.fn("McpService.elicitConfirmation")(
   function* (message: string) {
@@ -35,7 +35,7 @@ const elicitConfirmation = Effect.fn("McpService.elicitConfirmation")(
 );
 
 /** The tool call a confirmation belongs to; the elicitation message names both. */
-export interface ConfirmationTarget {
+interface ConfirmationTarget {
   readonly toolId: string;
   /** Directory of the app the call targets. */
   readonly app: string;

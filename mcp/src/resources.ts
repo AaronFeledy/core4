@@ -15,7 +15,7 @@ export interface McpResourceEntry {
   readonly redactionTokens?: (value: unknown) => ReadonlyArray<string>;
 }
 
-export const resourceError = Effect.fnUntraced(function* (error: unknown, redactor: Redactor) {
+const resourceError = Effect.fnUntraced(function* (error: unknown, redactor: Redactor) {
   const data = {
     _tag:
       Predicate.hasProperty(error, "_tag") && Predicate.isString(error._tag)

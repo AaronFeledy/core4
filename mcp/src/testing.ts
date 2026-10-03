@@ -1,7 +1,7 @@
 import { type Cause, Deferred, Effect, Layer, Predicate, Queue, Schema, Sink, Stdio, Stream } from "effect";
 import type { McpToolCallRequest } from "./dispatch";
 
-export type JsonRpcMessage = Schema.JsonObject;
+type JsonRpcMessage = Schema.JsonObject;
 
 export const startStdioClient = Effect.fnUntraced(function* (
   serve: Effect.Effect<void, import("@lando/sdk/errors").McpTransportError, Stdio.Stdio>,
