@@ -16,7 +16,7 @@ lando plugin:add <tunnel-service-plugin>
 
 Or `lando setup --provider=<provider-with-tunnels>`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`.
 
-`lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan.
+`lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan. On a TTY, text output also prints a QR for the public URL; JSON and pipes stay URL-only.
 
 ```sh
 lando share

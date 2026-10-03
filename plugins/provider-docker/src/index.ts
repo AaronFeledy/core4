@@ -27,6 +27,7 @@ import {
 } from "@lando/container-runtime/dialect";
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
@@ -334,31 +335,8 @@ export const emitCompose = (
 export const composePath = (plan: AppPlan, options: EmitComposeOptions): string =>
   runtimeComposePath(plan, { ...options, ctx: DOCKER_CTX });
 
-const dockerEnsureImage =
-  (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
-  ({ ref, force }) =>
-    force
-      ? pullImage(api, ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect }).pipe(Effect.asVoid)
-      : Effect.gen(function* () {
-          const inspectResponse = yield* request(api, "apply", {
-            method: "GET",
-            path: `/images/${encodeURIComponent(ref)}/json`,
-          });
-          if (inspectResponse.status === 200) return;
-          if (inspectResponse.status === 404) {
-            yield* pullImage(api, ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
-            return;
-          }
-          yield* Effect.fail(
-            unavailable(
-              "apply",
-              `Docker image inspect failed with HTTP ${inspectResponse.status}.`,
-              inspectResponse,
-              undefined,
-              DOCKER_CTX.remediation,
-            ),
-          );
-        });
+const dockerEnsureImage = (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
+  makeEnsureImage(api, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
 
 const isMissingImageDetails = (details: unknown): boolean => {
   if (typeof details !== "object" || details === null) return false;

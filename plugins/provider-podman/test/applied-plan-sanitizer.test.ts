@@ -118,6 +118,12 @@ const makePodmanApi = (): PodmanApiClient => {
   const running = new Set<string>();
   const request = (input: EngineHttpRequest) =>
     Effect.sync(() => {
+      if (input.method === "GET" && input.path.includes("/images/") && input.path.endsWith("/json")) {
+        return {
+          status: 200,
+          body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
+        };
+      }
       if (input.method === "GET" && input.path.startsWith("/networks/")) return { status: 200, body: "{}" };
       const container = input.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start)?$/u)?.[1];
       if (input.method === "GET" && input.path.endsWith("/json") && container !== undefined) {

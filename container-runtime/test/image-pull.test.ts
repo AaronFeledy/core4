@@ -214,6 +214,10 @@ describe("docker image pull dialect", () => {
     const traefik = buildImagePullRequest("traefik:v3.3", dockerPullDialect);
     expect(traefik.path).toContain("fromImage=traefik");
     expect(traefik.path).toContain("tag=v3.3");
+    expect(buildImagePullRequest(reference, dockerPullDialect, { platform: "linux/amd64" }).path).toContain(
+      "platform=linux%2Famd64",
+    );
+    expect(buildImagePullRequest(reference, dockerPullDialect).path).not.toContain("platform=");
   });
 
   test("splits tags and digests for Docker Engine requests", () => {
@@ -308,6 +312,11 @@ describe("libpod image pull dialect", () => {
     expect(buildImagePullRequest(reference, libpodPullDialect).path).toBe(
       `/libpod/images/pull?reference=${encodeURIComponent(reference)}&pullProgress=true`,
     );
+    expect(buildImagePullRequest(reference, libpodPullDialect, { platform: "linux/amd64" }).path).toBe(
+      `/libpod/images/pull?reference=${encodeURIComponent(reference)}&pullProgress=true&OS=linux&Arch=amd64`,
+    );
+    expect(buildImagePullRequest(reference, libpodPullDialect).path).not.toContain("OS=");
+    expect(buildImagePullRequest(reference, libpodPullDialect).path).not.toContain("platform=");
     expect(parseImagePullFrame('{"error":"manifest unknown"}', libpodPullDialect)).toEqual({
       kind: "error",
       message: "manifest unknown",

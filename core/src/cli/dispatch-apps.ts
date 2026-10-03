@@ -81,7 +81,7 @@ const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
   const runtime = makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
   );
-  const render = (value: ListServicesResult) => renderAppsListResult(value, format);
+  const render = (value: ListServicesResult, ctx: RenderContext) => renderAppsListResult(value, format, ctx);
   if (prune) {
     return runCompiledCommand(listServicesWithPrune(options), runtime, render);
   }

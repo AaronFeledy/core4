@@ -243,6 +243,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
+| — | — | LAMP recipe day-to-day workflow | `docs/guides/recipes/lamp-workflow.mdx` | Shipped |
 | — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
 | — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
@@ -258,6 +259,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Jekyll recipe day-to-day workflow | `docs/guides/recipes/jekyll-workflow.mdx` | Shipped |
 | — | — | Backdrop recipe day-to-day workflow | `docs/guides/recipes/backdrop-workflow.mdx` | Shipped |
 | — | — | WordPress recipe day-to-day workflow | `docs/guides/recipes/wordpress-workflow.mdx` | Shipped |
+| — | — | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | — | — | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | — | — | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
@@ -284,3 +286,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
 | — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
+| — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
