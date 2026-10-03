@@ -17,12 +17,12 @@ describe("Landofile flow collections", () => {
     // Given
     const content = `value: ${text}\n`;
     // When
-    const result = Effect.runSync(Effect.either(parseLandofile({ file, content, cwd: "/app" })));
+    const result = Effect.runSync(Effect.result(parseLandofile({ file, content, cwd: "/app" })));
     // Then
-    expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") throw new Error("Expected a parse failure, not fragmented scalar values");
-    expect(result.left).toMatchObject({ _tag: "LandofileParseError", filePath: file, line: 1, column });
-    expect(result.left.remediation).toMatch(/block/i);
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("Expected a parse failure, not fragmented scalar values");
+    expect(result.failure).toMatchObject({ _tag: "LandofileParseError", filePath: file, line: 1, column });
+    expect(result.failure.remediation).toMatch(/block/i);
   });
 
   test.each([...mappings])("legacy mode parses nested flow collections in $text", ({ text, value }) => {

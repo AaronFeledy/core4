@@ -512,7 +512,7 @@ describe("watcher diagnostics", () => {
   const watcherFailure = (exit: Exit.Exit<unknown, unknown>) => {
     expect(exit._tag).toBe("Failure");
     const failure = Exit.match(exit, {
-      onFailure: (cause) => Option.getOrUndefined(Cause.failureOption(cause)),
+      onFailure: (cause) => Option.getOrUndefined(Cause.findErrorOption(cause)),
       onSuccess: () => undefined,
     });
     expect(failure).toMatchObject({ _tag: "RouterWatcherError" });
@@ -521,9 +521,9 @@ describe("watcher diagnostics", () => {
         _tag: Schema.Literal("RouterWatcherError"),
         failureClass: Schema.Literal("inotify-limit"),
         proxyId: Schema.Literal("traefik"),
-        watcherHost: Schema.NonEmptyTrimmedString,
-        detail: Schema.NonEmptyTrimmedString,
-        remediation: Schema.NonEmptyTrimmedString,
+        watcherHost: Schema.Trimmed.check(Schema.isNonEmpty()),
+        detail: Schema.Trimmed.check(Schema.isNonEmpty()),
+        remediation: Schema.Trimmed.check(Schema.isNonEmpty()),
       }),
     )(failure);
   };

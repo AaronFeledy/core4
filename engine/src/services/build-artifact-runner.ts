@@ -9,10 +9,10 @@ const CA_BUNDLE_PATH = "/etc/lando/certs/ca-bundle.pem" as const;
 
 const hasTrustStoreBuild = (service: ServicePlan): boolean => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!Predicate.isRecord(extension) || !Array.isArray(extension.buildSteps)) return false;
+  if (!Predicate.isObject(extension) || !Array.isArray(extension.buildSteps)) return false;
   return extension.buildSteps.some(
     (step) =>
-      Predicate.isRecord(step) &&
+      Predicate.isObject(step) &&
       step.id === "lando.security:trust-store" &&
       step.phase === "build" &&
       Array.isArray(step.caFiles) &&

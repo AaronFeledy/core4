@@ -73,7 +73,7 @@ const withRefreshFixture = async <T>(
       stores: [],
       fileSync: [],
       metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-08-15T00:00:00Z"),
+        resolvedAt: DateTime.makeUnsafe("2026-08-15T00:00:00Z"),
         source: "app-cache-alias-validation.test",
         runtime: 4,
       },

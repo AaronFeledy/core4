@@ -11,9 +11,9 @@ import { VOLUME_WITNESS_MOUNT, volumeWitnessCommand } from "./volume-witness-hel
 
 export const NativeVolumeSchema = Schema.Struct({
   Name: Schema.NonEmptyString,
-  Driver: Schema.optional(Schema.String),
-  Options: Schema.optional(Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }))),
-  Labels: Schema.optional(Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }))),
+  Driver: Schema.optionalKey(Schema.String),
+  Options: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
+  Labels: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
 });
 
 export type NativeVolume = typeof NativeVolumeSchema.Type;
@@ -54,7 +54,7 @@ type WitnessTarget =
 
 const Witness = Schema.Struct({
   version: Schema.Literal(1),
-  generation: Schema.UUID,
+  generation: Schema.String.check(Schema.isUUID()),
   ownerRoot: AbsolutePath,
 });
 
@@ -74,8 +74,8 @@ export const volumeCoordinationKey = (provider: VolumeObservationProvider, name:
     if (request) {
       const info = yield* request({ method: "GET", path: "/info" });
       if (info.status === 200) {
-        const daemon = yield* Schema.decodeUnknown(
-          Schema.parseJson(Schema.Struct({ ID: Schema.optional(Schema.NonEmptyString) })),
+        const daemon = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(Schema.Struct({ ID: Schema.optionalKey(Schema.NonEmptyString) })),
         )(info.body);
         if (daemon.ID) return JSON.stringify([daemon.ID, name]);
       }
@@ -105,7 +105,7 @@ const runWitness = (
     if (result.exitCode !== 0 || result.stdout.length > 8192) {
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     }
-    return yield* Schema.decodeUnknown(Schema.parseJson(Schema.NullOr(Witness)))(result.stdout);
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.NullOr(Witness)))(result.stdout);
   }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
 
 const supportsWitness = (volume: NativeVolume) =>
@@ -126,7 +126,7 @@ export const resolveNativeVolumeIdentity = (
         ...(key === undefined
           ? {}
           : {
-              identity: yield* Schema.decodeUnknown(VolumeIdentity)({
+              identity: yield* Schema.decodeUnknownEffect(VolumeIdentity)({
                 coordinationKey: key,
                 nativeName: volume.Name,
                 generation,
@@ -153,7 +153,7 @@ export const resolveNativeVolumeIdentity = (
       ...(key === undefined
         ? {}
         : {
-            identity: yield* Schema.decodeUnknown(VolumeIdentity)({
+            identity: yield* Schema.decodeUnknownEffect(VolumeIdentity)({
               coordinationKey: key,
               nativeName: volume.Name,
               generation: witness.generation,

@@ -21,7 +21,7 @@
  * A provider's `logs()` projects only `line` events into its `LogChunk` stream;
  * diagnostics are surfaced elsewhere (`lando info`), never as service log lines.
  */
-import { Chunk, Clock, Duration, Effect, Option, Stream } from "effect";
+import { Clock, Duration, Effect, Option, Result, Stream } from "effect";
 
 import { ProviderUnavailableError } from "../errors/index.ts";
 import type { LogSource, LogSourceId, ServiceName } from "../schema/index.ts";
@@ -329,7 +329,7 @@ export const followLogSource = (
 
     const step = (
       current: BodyState,
-    ): Effect.Effect<readonly [Chunk.Chunk<LogFollowEvent>, Option.Option<BodyState>], ProviderError> =>
+    ): Effect.Effect<readonly [ReadonlyArray<LogFollowEvent>, Option.Option<BodyState>], ProviderError> =>
       Effect.gen(function* () {
         if (current.kind === "open") {
           const handle = yield* input.access.open(path);
@@ -338,20 +338,17 @@ export const followLogSource = (
           const backfill = yield* readToEnd(state, framer, maxReadBytes, input.tail);
           if (!follow) {
             const tailed = applyTail([...backfill, ...framer.flush()], input.tail);
-            return [Chunk.fromIterable(lineEvents(tailed)), Option.none<BodyState>()] as const;
+            return [lineEvents(tailed), Option.none<BodyState>()] as const;
           }
           const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
-          return [
-            Chunk.fromIterable(backfillEvents),
-            Option.some<BodyState>({ kind: "poll", state }),
-          ] as const;
+          return [backfillEvents, Option.some<BodyState>({ kind: "poll", state })] as const;
         }
 
         const state = current.state;
         yield* Effect.sleep(Duration.millis(pollIntervalMillis));
         const stat = yield* input.access.stat(path);
         if (Option.isNone(stat)) {
-          return [Chunk.empty<LogFollowEvent>(), Option.some<BodyState>(current)] as const;
+          return [[], Option.some<BodyState>(current)] as const;
         }
         const next = stat.value;
         const events: LogFollowEvent[] = [];
@@ -386,10 +383,10 @@ export const followLogSource = (
           events.push(...lineEvents(yield* readToEnd(state, framer, maxReadBytes)));
         }
 
-        return [Chunk.fromIterable(events), Option.some<BodyState>(current)] as const;
+        return [events, Option.some<BodyState>(current)] as const;
       });
 
-    return Stream.paginateChunkEffect<BodyState, LogFollowEvent, ProviderError, never>(
+    return Stream.paginate<BodyState, LogFollowEvent, ProviderError, never>(
       { kind: "open", stat: initialStat },
       step,
     ).pipe(
@@ -498,7 +495,9 @@ export const logFollowLineChunks = <E, R>(
   events: Stream.Stream<LogFollowEvent, E, R>,
 ): Stream.Stream<LogChunk, E, R> =>
   events.pipe(
-    Stream.filterMap((event) => (event._tag === "line" ? Option.some(event.chunk) : Option.none())),
+    Stream.filterMap((event) =>
+      event._tag === "line" ? Result.succeed(event.chunk) : Result.fail(undefined),
+    ),
   );
 
 export { makeMemoryLogFileAccess } from "./memory.ts";

@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 
 import { Cause, Effect, Exit, Fiber, Layer, Schema } from "effect";
 
@@ -24,7 +23,6 @@ import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/c
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const roots: string[] = [];
-const repoRoot = resolve(import.meta.dirname, "../../..");
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -32,8 +30,8 @@ afterEach(async () => {
 
 type CommandsBootstrapLayer = ReturnType<typeof makeCommandsBootstrapLayer>;
 type SelfContainedBootstrapLayer = Layer.Layer<
-  Layer.Layer.Success<CommandsBootstrapLayer>,
-  Layer.Layer.Error<CommandsBootstrapLayer>
+  Layer.Success<CommandsBootstrapLayer>,
+  Layer.Error<CommandsBootstrapLayer>
 >;
 
 /**
@@ -119,7 +117,7 @@ const writeCommandSubscriberPlugin = async (
     })}\n`,
   );
   await writeFile(join(packageRoot, "index.js"), "export {};\n");
-  const effectModuleUrl = pathToFileURL(join(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  const effectModuleUrl = import.meta.resolve("effect");
   await writeFile(
     join(packageRoot, "src", "subscriber.mjs"),
     [
@@ -168,7 +166,7 @@ const writeToolingBootstrapSubscriberPlugin = async (
     })}\n`,
   );
   await writeFile(join(packageRoot, "index.js"), "export {};\n");
-  const effectModuleUrl = pathToFileURL(join(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  const effectModuleUrl = import.meta.resolve("effect");
   await writeFile(
     join(packageRoot, "src", "subscriber.mjs"),
     [
@@ -273,7 +271,7 @@ describe("subscriber runtime integration", () => {
     // Then: cwd-independent validation identifies the entry and its remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -316,7 +314,7 @@ describe("subscriber runtime integration", () => {
     // Then: validation fails identically despite app discovery finding that tooling id.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -422,7 +420,7 @@ describe("subscriber runtime integration", () => {
     expect(observed.markerValue).toBe("app");
     expect(Exit.isFailure(observed.invalidExit)).toBe(true);
     if (Exit.isFailure(observed.invalidExit)) {
-      const failure = Cause.failureOption(observed.invalidExit.cause);
+      const failure = Cause.findErrorOption(observed.invalidExit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -515,7 +513,7 @@ describe("subscriber runtime integration", () => {
     // Then: registration reports the exact invalid entry and remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const value: unknown = failure.value;
@@ -553,7 +551,7 @@ describe("subscriber runtime integration", () => {
     // Then: absence of tooling reports the same exact entry and remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);

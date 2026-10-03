@@ -4,7 +4,19 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, type Scope, Stream } from "effect";
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
 
 import { providerImages } from "@lando/data-mover/provider-images";
 import {
@@ -144,10 +156,10 @@ const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): P
 
 const pinnedHelper = providerImages.images.dataHelper;
 
-const verifyingPullArtifact: Context.Tag.Service<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
+const verifyingPullArtifact: Context.Service.Shape<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
   Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
 
-const providerLayer = (overrides: Partial<Context.Tag.Service<typeof RuntimeProvider>> = {}) =>
+const providerLayer = (overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {}) =>
   Layer.mergeAll(
     StateStoreLive,
     Layer.succeed(PathsService, makeLandoPaths()),
@@ -185,7 +197,7 @@ const captureEvents = () => {
             event.eventName === name && (filter?.(event as EventFor<Name>) ?? true),
         ),
       ),
-  } satisfies Context.Tag.Service<typeof EventService>);
+  } satisfies Context.Service.Shape<typeof EventService>);
   return { layer: serviceLayer, events: () => [...captured] };
 };
 
@@ -196,7 +208,7 @@ const redactionLayer = Layer.succeed(RedactionService, {
       redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
       redactValue: (input: unknown) => input,
     }),
-} satisfies Context.Tag.Service<typeof RedactionService>);
+} satisfies Context.Service.Shape<typeof RedactionService>);
 
 const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
   const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-mover-"));
@@ -368,13 +380,14 @@ describe("DataMoverLive", () => {
 
     // Then: decompression fails before collecting an unbounded buffer.
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
-      expect(exit.cause.error).toMatchObject({ format: "tar.gz", archivePath: "payload.tar.gz" });
-      expect(exit.cause.error.message).toContain("decompressed size exceeded");
-      expect(exit.cause.error.message).toContain(String(capBytes));
-      expect(exit.cause.error.message).toContain("tar.gz");
-      expect(exit.cause.error.remediation).toContain("smaller archive");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ArchiveFormatError);
+      expect(error).toMatchObject({ format: "tar.gz", archivePath: "payload.tar.gz" });
+      expect(error.message).toContain("decompressed size exceeded");
+      expect(error.message).toContain(String(capBytes));
+      expect(error.message).toContain("tar.gz");
+      expect(error.remediation).toContain("smaller archive");
     }
   });
 
@@ -395,13 +408,14 @@ describe("DataMoverLive", () => {
 
     // Then: decompression fails before collecting an unbounded buffer.
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
-      expect(exit.cause.error).toMatchObject({ format: "tar.zst", archivePath: "payload.tar.zst" });
-      expect(exit.cause.error.message).toContain("decompressed size exceeded");
-      expect(exit.cause.error.message).toContain(String(capBytes));
-      expect(exit.cause.error.message).toContain("tar.zst");
-      expect(exit.cause.error.remediation).toContain("smaller archive");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ArchiveFormatError);
+      expect(error).toMatchObject({ format: "tar.zst", archivePath: "payload.tar.zst" });
+      expect(error.message).toContain("decompressed size exceeded");
+      expect(error.message).toContain(String(capBytes));
+      expect(error.message).toContain("tar.zst");
+      expect(error.remediation).toContain("smaller archive");
     }
   });
 
@@ -539,8 +553,8 @@ describe("DataMoverLive", () => {
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ArchiveFormatError);
       }
       expect(await readFile(target, "utf8")).toBe("old");
     });
@@ -748,7 +762,7 @@ describe("DataMoverLive", () => {
             Layer.succeed(RuntimeProvider, {
               ...TestRuntimeProvider,
               pullArtifact: verifyingPullArtifact,
-              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
             }),
             captureEvents().layer,
             redactionLayer,
@@ -882,8 +896,10 @@ describe("DataMoverLive", () => {
 
       for (const exit of exits) {
         expect(exit._tag).toBe("Failure");
-        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        if (exit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+            DataChecksumMismatchError,
+          );
         }
       }
       expect(copyToServiceCalls).toBe(0);
@@ -925,10 +941,10 @@ describe("DataMoverLive", () => {
 
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        expect(exit.cause._tag).toBe("Fail");
-        if (exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
-        }
+        expect(Cause.hasFails(exit.cause)).toBe(true);
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataChecksumMismatchError,
+        );
       }
       expect(await readFile(archive, "utf8")).toBe("old");
 
@@ -948,8 +964,10 @@ describe("DataMoverLive", () => {
         ),
       );
       expect(unsupported._tag).toBe("Failure");
-      if (unsupported._tag === "Failure" && unsupported.cause._tag === "Fail") {
-        expect(unsupported.cause.error).toBeInstanceOf(DataEndpointUnsupportedError);
+      if (unsupported._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(unsupported.cause))).toBeInstanceOf(
+          DataEndpointUnsupportedError,
+        );
       }
     });
   });
@@ -981,8 +999,10 @@ describe("DataMoverLive", () => {
         );
 
         expect(outsideExit._tag).toBe("Failure");
-        if (outsideExit._tag === "Failure" && outsideExit.cause._tag === "Fail") {
-          expect(outsideExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+        if (outsideExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(outsideExit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
         }
 
         await Effect.runPromise(
@@ -1022,8 +1042,10 @@ describe("DataMoverLive", () => {
         );
 
         expect(traversalExit._tag).toBe("Failure");
-        if (traversalExit._tag === "Failure" && traversalExit.cause._tag === "Fail") {
-          expect(traversalExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+        if (traversalExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(traversalExit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
         }
         const escapedReadExit = await Effect.runPromiseExit(
           Effect.tryPromise(() => readFile(escapedTarget, "utf8")),
@@ -1051,8 +1073,10 @@ describe("DataMoverLive", () => {
         );
 
         expect(existsExit._tag).toBe("Failure");
-        if (existsExit._tag === "Failure" && existsExit.cause._tag === "Fail") {
-          expect(existsExit.cause.error).toBeInstanceOf(DataTargetExistsError);
+        if (existsExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(existsExit.cause))).toBeInstanceOf(
+            DataTargetExistsError,
+          );
         }
       });
     } finally {
@@ -1102,8 +1126,10 @@ describe("DataMoverLive", () => {
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataSourceOutsideRootError,
+        );
       }
     });
   });
@@ -1332,8 +1358,10 @@ describe("DataMoverLive", () => {
 
         // Then: archive verification fails and the existing target bytes remain unchanged.
         expect(exit._tag).toBe("Failure");
-        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        if (exit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+            DataChecksumMismatchError,
+          );
         }
         expect(await readFile(restored, "utf8")).toBe("target-must-survive");
       } finally {
@@ -2026,7 +2054,7 @@ describe("DataMoverLive", () => {
                     const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
                     yield* Effect.addFinalizer(() =>
                       (TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void).pipe(
-                        Effect.catchAll(() => Effect.void),
+                        Effect.catch(() => Effect.void),
                       ),
                     );
                     return ref;
@@ -2108,7 +2136,7 @@ describe("DataMoverLive", () => {
         StateStore,
       );
       let removeNativeCalls = 0;
-      const failingStateStore: Context.Tag.Service<typeof StateStore> = {
+      const failingStateStore: Context.Service.Shape<typeof StateStore> = {
         ...testStore,
         open: (spec) =>
           testStore.open(spec).pipe(
@@ -2201,8 +2229,11 @@ describe("DataMoverLive", () => {
       })();
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toMatchObject({ _tag: "SnapshotNotFoundError", snapshotId: "missing" });
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+          _tag: "SnapshotNotFoundError",
+          snapshotId: "missing",
+        });
       }
     });
   });
@@ -2320,7 +2351,7 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
         counters.runStream += 1;
         return TestRuntimeProvider.runStream(spec);
       },
-    } satisfies Context.Tag.Service<typeof RuntimeProvider>);
+    } satisfies Context.Service.Shape<typeof RuntimeProvider>);
 
   const runWithScratchDir = <A, E>(
     scratchDir: string,
@@ -2505,8 +2536,10 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataSourceOutsideRootError,
+        );
       }
     });
   });
@@ -2540,8 +2573,10 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataSourceOutsideRootError,
+        );
       }
     });
   });
@@ -2552,7 +2587,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
   const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: true });
   const volumeCapsWithoutPull = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: false });
 
-  const importToVolume = (dataMover: Context.Tag.Service<typeof DataMover>, source: string) =>
+  const importToVolume = (dataMover: Context.Service.Shape<typeof DataMover>, source: string) =>
     dataMover.transfer({
       from: { _tag: "hostPath", path: absolute(source) },
       to: { _tag: "volume", app, store: "data" },

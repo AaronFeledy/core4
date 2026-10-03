@@ -40,7 +40,7 @@ const IncludeUpdateEntrySchema = Schema.Struct({
   source: Schema.String,
   resolved: Schema.String,
   checksum: Schema.String,
-  status: Schema.Union(Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")),
+  status: Schema.Union([Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")]),
 });
 
 export const AppIncludesUpdateResultSchema = Schema.Struct({

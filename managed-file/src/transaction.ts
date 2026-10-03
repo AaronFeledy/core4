@@ -60,20 +60,20 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
           checkpoint: (point: string, index: number) =>
             Effect.suspend(
               () => options.checkpoint?.(point as TransactionCheckpoint, index) ?? Effect.void,
-            ).pipe(Effect.catchAllCause(() => Effect.fail(transactionError("checkpoint", "recover")))),
+            ).pipe(Effect.catchCause(() => Effect.fail(transactionError("checkpoint", "recover")))),
         }),
   });
   const leases = new WeakMap<
     PreparedTransaction,
     {
       readonly journal: Journal;
-      readonly store: Effect.Effect.Success<ReturnType<typeof openJournal>>;
+      readonly store: Effect.Success<ReturnType<typeof openJournal>>;
       readonly readConditions: TransactionRequest["readConditions"];
     }
   >();
   const checkpoint = (point: TransactionCheckpoint, index = -1) =>
     Effect.suspend(() => options.checkpoint?.(point, index) ?? Effect.void).pipe(
-      Effect.catchAllCause(() =>
+      Effect.catchCause(() =>
         Effect.fail(
           transactionError(
             "checkpoint",
@@ -85,7 +85,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
 
   const prepare = (input: TransactionRequest) =>
     Effect.gen(function* () {
-      const request = yield* Schema.decodeUnknown(TransactionRequest)(input).pipe(
+      const request = yield* Schema.decodeUnknownEffect(TransactionRequest)(input).pipe(
         Effect.mapError(() => transactionError("path", "prepare")),
       );
       const root = yield* transactionIO("prepare", () => canonicalRoot(request.appRoot));
@@ -147,7 +147,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
                   privateFileAccess: options.privateFileAccess,
                 }),
               );
-              entries.push({ ...plan.entry, stage: created });
+              entries.push({ ...plan.entry, ...(created === undefined ? {} : { stage: created }) });
               yield* checkpoint("stage-created", index);
             } else entries.push(plan.entry);
           }

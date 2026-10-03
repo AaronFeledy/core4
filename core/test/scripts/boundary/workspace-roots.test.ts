@@ -45,7 +45,7 @@ const workspacePackageDirs = async (): Promise<readonly string[]> => {
   const rootManifest: unknown = await Bun.file(resolve(repoRoot, "package.json")).json();
   const workspaces =
     typeof rootManifest === "object" && rootManifest !== null && "workspaces" in rootManifest
-      ? (rootManifest as { workspaces: readonly string[] }).workspaces
+      ? (rootManifest as { workspaces: { packages: readonly string[] } }).workspaces.packages
       : [];
   const dirs: string[] = [];
   for (const workspace of workspaces) {

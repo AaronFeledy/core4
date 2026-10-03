@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { Effect, Either, Fiber } from "effect";
+import { Effect, Fiber, Result } from "effect";
 
 import type { AbsolutePath, DownloadResult } from "../schema/index.ts";
 import type { DownloaderShape, LandoEvent } from "../services/index.ts";
@@ -128,7 +128,7 @@ export const runDownloaderContract = (
     const offlineUrl = "https://contract.test/offline.bin";
     yield* harness.serveSource(offlineUrl, payload);
     const offlineCallsBefore = harness.egress ? yield* harness.egress.streamCallCount() : 0;
-    const offlineResult = yield* Effect.either(
+    const offlineResult = yield* Effect.result(
       download({
         url: offlineUrl,
         destination: { kind: "file", directory: dir, filename: "offline.bin" },
@@ -137,7 +137,8 @@ export const runDownloaderContract = (
       }),
     );
     yield* requireDownloaderContract(
-      Either.isLeft(offlineResult) && downloaderErrorLeft(offlineResult.left)._tag === "DownloadOfflineError",
+      Result.isFailure(offlineResult) &&
+        downloaderErrorLeft(offlineResult.failure)._tag === "DownloadOfflineError",
       "offline + uncached fails with DownloadOfflineError",
       offlineResult,
     );
@@ -152,7 +153,7 @@ export const runDownloaderContract = (
 
     const checksumUrl = "https://contract.test/checksum.bin";
     yield* harness.serveSource(checksumUrl, payload);
-    const checksumResult = yield* Effect.either(
+    const checksumResult = yield* Effect.result(
       download({
         url: checksumUrl,
         destination: { kind: "memory" },
@@ -160,15 +161,15 @@ export const runDownloaderContract = (
       }),
     );
     yield* requireDownloaderContract(
-      Either.isLeft(checksumResult) &&
-        downloaderErrorLeft(checksumResult.left)._tag === "DownloadChecksumError",
+      Result.isFailure(checksumResult) &&
+        downloaderErrorLeft(checksumResult.failure)._tag === "DownloadChecksumError",
       "a checksum mismatch is rejected with DownloadChecksumError",
       checksumResult,
     );
 
     const sizeUrl = "https://contract.test/size.bin";
     yield* harness.serveSource(sizeUrl, payload);
-    const sizeResult = yield* Effect.either(
+    const sizeResult = yield* Effect.result(
       download({
         url: sizeUrl,
         destination: { kind: "memory" },
@@ -176,34 +177,35 @@ export const runDownloaderContract = (
       }),
     );
     yield* requireDownloaderContract(
-      Either.isLeft(sizeResult) && downloaderErrorLeft(sizeResult.left)._tag === "DownloadSizeMismatchError",
+      Result.isFailure(sizeResult) &&
+        downloaderErrorLeft(sizeResult.failure)._tag === "DownloadSizeMismatchError",
       "a size mismatch is rejected with DownloadSizeMismatchError",
       sizeResult,
     );
 
-    const schemeResult = yield* Effect.either(
+    const schemeResult = yield* Effect.result(
       download({ url: "http://contract.test/insecure.bin", destination: { kind: "memory" } }),
     );
     yield* requireDownloaderContract(
-      Either.isLeft(schemeResult) &&
-        downloaderErrorLeft(schemeResult.left)._tag === "DownloadSourceForbiddenError" &&
-        downloaderErrorLeft(schemeResult.left).reason === "scheme",
+      Result.isFailure(schemeResult) &&
+        downloaderErrorLeft(schemeResult.failure)._tag === "DownloadSourceForbiddenError" &&
+        downloaderErrorLeft(schemeResult.failure).reason === "scheme",
       "an http:// source is rejected with reason scheme",
       schemeResult,
     );
 
-    const fileResult = yield* Effect.either(
+    const fileResult = yield* Effect.result(
       download({ url: "file:///tmp/contract.bin", destination: { kind: "memory" } }),
     );
     yield* requireDownloaderContract(
-      Either.isLeft(fileResult) &&
-        downloaderErrorLeft(fileResult.left)._tag === "DownloadSourceForbiddenError" &&
-        downloaderErrorLeft(fileResult.left).reason === "file-source",
+      Result.isFailure(fileResult) &&
+        downloaderErrorLeft(fileResult.failure)._tag === "DownloadSourceForbiddenError" &&
+        downloaderErrorLeft(fileResult.failure).reason === "file-source",
       "a bare file:// source is rejected with reason file-source",
       fileResult,
     );
 
-    const escapeResult = yield* Effect.either(
+    const escapeResult = yield* Effect.result(
       download({
         url: okUrl,
         destination: { kind: "file", directory: dir, filename: "../escape.bin" },
@@ -211,9 +213,9 @@ export const runDownloaderContract = (
       }),
     );
     yield* requireDownloaderContract(
-      Either.isLeft(escapeResult) &&
-        downloaderErrorLeft(escapeResult.left)._tag === "DownloadSourceForbiddenError" &&
-        downloaderErrorLeft(escapeResult.left).reason === "destination-escape",
+      Result.isFailure(escapeResult) &&
+        downloaderErrorLeft(escapeResult.failure)._tag === "DownloadSourceForbiddenError" &&
+        downloaderErrorLeft(escapeResult.failure).reason === "destination-escape",
       "a destination filename escaping the directory is rejected",
       escapeResult,
     );
@@ -227,7 +229,7 @@ export const runDownloaderContract = (
 
     const interruptUrl = "https://contract.test/interrupt.bin";
     yield* harness.serveSource(interruptUrl, payload);
-    const fiber = yield* Effect.fork(
+    const fiber = yield* Effect.forkChild(
       download({
         url: interruptUrl,
         destination: { kind: "file", directory: dir, filename: "interrupt.bin" },

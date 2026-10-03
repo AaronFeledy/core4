@@ -204,7 +204,7 @@ const withTempProject = async <T>(
 };
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch fork test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch fork test provider should not call ${operation}`));
 
 const pathExists = async (path: string): Promise<boolean> => {
   try {
@@ -371,12 +371,12 @@ describe("ScratchAppServiceLive fork acquire", () => {
               },
             }),
           ),
-          Effect.either,
+          Effect.result,
         ),
       );
 
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") expect(outcome.left._tag).toBe("LandofileVersionConstraintError");
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("LandofileVersionConstraintError");
       expect(capabilitiesCalls).toBe(0);
     });
   });
@@ -602,11 +602,11 @@ describe("ScratchAppServiceLive fork acquire", () => {
           Effect.provide(
             makeScratchForkLayer(appliedPlans, destroyCalls, { failSecondRegistryUpsert: true }),
           ),
-          Effect.either,
+          Effect.result,
         ),
       );
 
-      expect(outcome._tag).toBe("Left");
+      expect(outcome._tag).toBe("Failure");
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
         { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
@@ -619,11 +619,11 @@ describe("ScratchAppServiceLive fork acquire", () => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
-        ).pipe(Effect.provide(makeScratchForkLayer([])), Effect.either),
+        ).pipe(Effect.provide(makeScratchForkLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchSourceUnresolvedError");
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchSourceUnresolvedError");
     });
   });
 });

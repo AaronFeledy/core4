@@ -113,11 +113,13 @@ const toolingSpec = (
   resultSchema: Schema.Unknown,
   run: (input) =>
     Effect.flatMap(
-      serializeToolingInput(declaration, {
-        flags: input.flags,
-        args: input.args,
-        passthroughArgv: input.argv,
-      }),
+      Effect.fromResult(
+        serializeToolingInput(declaration, {
+          flags: input.flags,
+          args: input.args,
+          passthroughArgv: input.argv,
+        }),
+      ),
       (raw) => runEventToolingCommand(plan, declaration.name, task, raw),
     ),
   successExitCode: (result) =>
@@ -224,7 +226,7 @@ export const resolveEventCommandTarget = (
   const task = toolingName === undefined ? undefined : tooling?.[toolingName];
   if (task !== undefined && plan !== undefined && toolingName !== undefined) {
     return Effect.map(
-      normalizeToolingTask(toolingName, task, { path: plan.metadata.source }),
+      Effect.fromResult(normalizeToolingTask(toolingName, task, { path: plan.metadata.source })),
       (declaration): EventCommandTarget => ({
         kind: "tooling",
         spec: toolingSpec(declaration, task, plan),

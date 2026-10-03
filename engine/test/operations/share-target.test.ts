@@ -26,7 +26,7 @@ const routedPlan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00.000Z"),
     source: "share-target.test",
     runtime: 4,
   },

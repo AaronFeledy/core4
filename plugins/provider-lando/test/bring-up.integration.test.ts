@@ -26,7 +26,7 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringupapp");
 const appRoot = AbsolutePath.make("/tmp/lando-bringup-app");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "bring-up.integration.test",
   runtime: 4 as const,
 };
@@ -69,17 +69,18 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? nodeCommand : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  appMount:
-    name === "node"
-      ? {
+  ...(name === "node"
+    ? {
+        appMount: {
           source: appRoot,
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: [],
           includes: [],
           realization: "passthrough",
-        }
-      : undefined,
+        },
+      }
+    : {}),
   mounts: [],
   storage: [],
   endpoints:
@@ -511,10 +512,10 @@ describe("provider-lando bringUp", () => {
 
   test("fails passthrough bind mounts without a source before creating the container", async () => {
     const fake = makeFakeApi();
+    const { appMount: _omitAppMount, ...nodeWithoutAppMount } = node;
     const invalidNode: ServicePlan = {
-      ...node,
+      ...nodeWithoutAppMount,
       dependsOn: [],
-      appMount: undefined,
       mounts: [
         {
           type: "bind",
@@ -634,7 +635,7 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
+    const failures = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
     const startError = failures.find(
       (error) =>
         typeof error === "object" &&
@@ -668,7 +669,7 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
+    const failures = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
     const networkError = failures.find(
       (error) =>
         typeof error === "object" &&
@@ -697,7 +698,7 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
+    const failures = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
     const startError = failures.find(
       (error) =>
         typeof error === "object" &&
@@ -727,7 +728,9 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -750,7 +753,9 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -769,7 +774,7 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
+    const failures = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
     const startError = failures.find(
       (error) =>
         typeof error === "object" &&
@@ -840,7 +845,7 @@ describe("provider-lando bringUp", () => {
       } finally {
         for (const service of Object.values(plan.services)) {
           await Effect.runPromise(
-            Effect.either(
+            Effect.result(
               liveRequest({
                 method: "POST",
                 path: `/containers/lando-${plan.slug}-${service.name}/stop`,
@@ -848,7 +853,7 @@ describe("provider-lando bringUp", () => {
             ),
           );
           await Effect.runPromise(
-            Effect.either(
+            Effect.result(
               liveRequest({
                 method: "DELETE",
                 path: `/containers/lando-${plan.slug}-${service.name}?force=true`,
@@ -902,7 +907,7 @@ describe("provider-lando bringUp", () => {
         expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
         expect(server.authorization()).toBe(`Bearer ${token}`);
       } finally {
-        await Effect.runPromise(Effect.either(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await Effect.runPromise(Effect.result(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
         await server.close();
       }
     },

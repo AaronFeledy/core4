@@ -160,7 +160,7 @@ const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> 
 };
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch finalizer test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch finalizer test provider should not call ${operation}`));
 
 const makeRecordingLayer = (
   appliedPlans: AppPlan[],
@@ -183,7 +183,7 @@ const makeRecordingLayer = (
     removeArtifact: () => Effect.void,
     apply: (plan) =>
       Effect.sync(() => appliedPlans.push(plan)).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           options.failApply === true
             ? Effect.fail(
                 new ProviderUnavailableError({
@@ -283,13 +283,13 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
               detached: true,
               keepOnFailure: true,
             }),
-          ).pipe(Effect.either);
+          ).pipe(Effect.result);
           const entries = yield* registry.list();
           return { outcome, entries };
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { failApply: true }))),
       );
 
-      expect(retained.outcome._tag).toBe("Left");
+      expect(retained.outcome._tag).toBe("Failure");
       expect(retained.entries).toHaveLength(1);
       expect(retained.entries[0]?.status).toBe("acquiring");
       expect(destroyCalls).toEqual([]);
@@ -352,21 +352,22 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
       const exit = await Effect.runPromise(
         Effect.gen(function* () {
           const ready = yield* Deferred.make<void>();
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             Effect.scoped(
               Effect.flatMap(ScratchAppService, (service) =>
                 service
                   .acquire({ source: { kind: "fork" }, detached: false })
-                  .pipe(Effect.zipRight(Deferred.succeed(ready, undefined)), Effect.zipRight(Effect.never)),
+                  .pipe(Effect.andThen(Deferred.succeed(ready, undefined)), Effect.andThen(Effect.never)),
               ),
             ),
           );
           yield* Deferred.await(ready);
-          return yield* Fiber.interrupt(fiber);
+          yield* Fiber.interrupt(fiber);
+          return yield* Fiber.await(fiber);
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
       );
 
-      expect(Exit.isInterrupted(exit)).toBe(true);
+      expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toHaveLength(1);
       expect(destroyCalls[0]?.app).toBe(String(appliedPlans.at(0)?.id));
@@ -381,7 +382,7 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
       const controller = new AbortController();
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          const fiber = yield* Effect.fork(scratchStart({ fork: true, signal: controller.signal }));
+          const fiber = yield* Effect.forkChild(scratchStart({ fork: true, signal: controller.signal }));
           yield* waitUntil(() => io.stdout().includes("started:"));
           yield* Effect.sync(() => controller.abort());
           return yield* Fiber.join(fiber);

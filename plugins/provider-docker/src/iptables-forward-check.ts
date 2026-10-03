@@ -36,7 +36,7 @@ const systemReaders: IptablesForwardReaders = {
 
 const optionalRead = (read: () => Promise<string | undefined>): Effect.Effect<string | undefined, never> =>
   Effect.tryPromise({ try: read, catch: () => undefined }).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 const hasDropPolicy = (output: string | undefined): boolean => {

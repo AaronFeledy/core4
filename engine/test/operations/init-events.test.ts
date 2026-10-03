@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Layer, Stream } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -29,7 +29,7 @@ const eventPlan = (): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"),
     source: "test",
     runtime: 4,
   },
@@ -45,7 +45,7 @@ const eventRuntime = (
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => void published.push(event._tag)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),
@@ -136,7 +136,7 @@ describe("app initialization lifecycle events", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected post-init failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure).toMatchObject({
       _tag: "Some",
       value: {

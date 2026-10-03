@@ -66,7 +66,7 @@ describe("CA setup resolver", () => {
         Effect.sync(() => {
           sequence.push(`event: ${event.body ?? event._tag}`);
         }),
-    } as unknown as Context.Tag.Service<typeof EventService>;
+    } as unknown as Context.Service.Shape<typeof EventService>;
     const { recorder } = makeRecorder();
 
     await Effect.runPromise(

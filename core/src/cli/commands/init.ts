@@ -155,7 +155,7 @@ const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
     ).pipe(Effect.provide(RecipeManifestServiceLive)),
   );
   if (Exit.isSuccess(exit)) return exit.value;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag === "Some") throw failure.value;
   throw new Error(Cause.pretty(exit.cause));
 };
@@ -163,7 +163,7 @@ const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
 const loadRecipe = async (recipeRef: string, cwd: string) => {
   const exit = await Effect.runPromiseExit(resolveRecipeRef(recipeRef, { cwd }));
   if (Exit.isSuccess(exit)) return parseResolvedRecipe(exit.value);
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag === "Some") throw failure.value;
   throw new Error(Cause.pretty(exit.cause));
 };

@@ -396,7 +396,7 @@ const writeWatcherRecord = async (observedAt: string): Promise<void> => {
 
 const failingWatcherObservation = (observedAt: string) =>
   Effect.promise(() => writeWatcherRecord(observedAt)).pipe(
-    Effect.zipRight(
+    Effect.andThen(
       Effect.fail(
         new RouterWatcherError({
           message: "Router file-provider watcher failed.",
@@ -419,7 +419,7 @@ const parseDist = async (path: string) => {
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
@@ -590,7 +590,7 @@ describe("meta:global command effects", () => {
         eventName: "pre-app-start",
         appRef: { kind: "user", id: "myapp", root: "/srv/apps/myapp" },
         providerId: "lando",
-        timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-31T07:30:00Z")),
+        timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-31T07:30:00Z")),
       });
 
       const layer = Layer.mergeAll(harness.layer, EventServiceLive);

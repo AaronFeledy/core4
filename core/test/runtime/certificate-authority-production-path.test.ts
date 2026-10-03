@@ -63,7 +63,7 @@ test("bundled mkcert setup issues certs through the production app planner", asy
       }),
     stream: () => Stream.empty,
     streamWithExit: () => Stream.empty,
-  } satisfies Context.Tag.Service<typeof ProcessRunner>;
+  } satisfies Context.Service.Shape<typeof ProcessRunner>;
 
   try {
     await mkdir(appRoot, { recursive: true });

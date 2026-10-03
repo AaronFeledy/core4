@@ -65,17 +65,20 @@ describe("HttpClient contract suite", () => {
 
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
-        Effect.timeoutFail(
+        Effect.timeoutOrElse(
           Effect.flatMap(handle.service.stream({ url, timeoutMs: 10 }), (response) =>
             Stream.runDrain(response.body),
           ),
-          { duration: Duration.millis(100), onTimeout: () => new Error("test body did not time out") },
+          {
+            duration: Duration.millis(100),
+            orElse: () => Effect.fail((() => new Error("test body did not time out"))()),
+          },
         ),
       ),
     );
 
     expect(exit._tag).toBe("Failure");
-    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    const failure = exit._tag === "Failure" ? Cause.findErrorOption(exit.cause) : undefined;
     expect(failure?._tag).toBe("Some");
     const error = failure?._tag === "Some" ? (failure.value as { readonly message?: string }) : undefined;
     expect(error?.message).toBe("request exceeded timeoutMs=10");
@@ -224,7 +227,7 @@ describe("HttpClient contract suite", () => {
         _tag: "pre-http-call",
         eventName: "pre-http-call",
         urlOrigin: origin(request.url),
-        timestamp: DateTime.unsafeMake(Date.now()),
+        timestamp: DateTime.makeUnsafe(Date.now()),
       } as unknown as LandoEvent);
       events.push({
         _tag: "post-http-call",
@@ -233,7 +236,7 @@ describe("HttpClient contract suite", () => {
         status,
         outcome: "success",
         durationMs: 0,
-        timestamp: DateTime.unsafeMake(Date.now()),
+        timestamp: DateTime.makeUnsafe(Date.now()),
       } as unknown as LandoEvent);
     };
     const contributed: HttpClientShape = {

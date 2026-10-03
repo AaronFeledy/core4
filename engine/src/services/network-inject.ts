@@ -31,7 +31,7 @@ interface ResolveSecurityFeatureInput {
   readonly network?: NetworkConfig | undefined;
   readonly networkPlan: NetworkTrustPlan;
   readonly globalCas: ReadonlyArray<LoadedCaPem>;
-  readonly fileSystem?: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly paths?: LandoPaths | undefined;
 }
 

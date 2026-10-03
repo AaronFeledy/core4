@@ -27,7 +27,7 @@ const identity: VolumeIdentity = {
   origin: "created",
 };
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"),
   source: "test",
   runtime: 4 as const,
 };
@@ -116,7 +116,7 @@ test("created-volume persistence reuses the active lifecycle volume lock", async
       withLock: (_key, body) =>
         Effect.sync(() => {
           lockCalls += 1;
-        }).pipe(Effect.zipRight(body)),
+        }).pipe(Effect.andThen(body)),
     };
     const coordinatedPlan: AppPlan = {
       ...plan,

@@ -130,6 +130,6 @@ export const makeEngineLandofileServiceLive = (
 ): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard | StateStore> =>
   makeLandofileServiceLive(inputs);
 
-export const LandofileServiceLive = Layer.unwrapEffect(
+export const LandofileServiceLive = Layer.unwrap(
   Effect.map(scopedLandofileRuntimeInputs, makeLandofileServiceLive),
 );

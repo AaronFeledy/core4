@@ -31,7 +31,7 @@ const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValida
   if (!Exit.isFailure(exit)) {
     throw new Error("expected Landofile discovery to fail");
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") {
     throw new Error("expected a typed failure cause");

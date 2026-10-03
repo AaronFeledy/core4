@@ -31,7 +31,7 @@ const servicePlan = (name: string, compose?: Record<string, unknown>): ServicePl
   dependsOn: [],
   hostAliases: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00.000Z"),
     source: "compose-knobs.test",
     runtime: 4,
   },

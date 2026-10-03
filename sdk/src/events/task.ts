@@ -7,7 +7,7 @@ export const TaskTreeStartEvent = Schema.TaggedStruct("task.tree.start", {
   parentId: Schema.String,
   label: Schema.String,
   children: Schema.Array(Schema.String),
-  mode: Schema.optional(Schema.Literal("list", "grid")),
+  mode: Schema.optional(Schema.Literals(["list", "grid"])),
   timestamp: Timestamp,
 });
 export type TaskTreeStartEvent = typeof TaskTreeStartEvent.Type;
@@ -27,7 +27,7 @@ export type TaskStartEvent = typeof TaskStartEvent.Type;
  */
 export const TaskDetailEvent = Schema.TaggedStruct("task.detail", {
   taskId: Schema.String,
-  stream: Schema.Literal("stdout", "stderr"),
+  stream: Schema.Literals(["stdout", "stderr"]),
   line: Schema.String,
   timestamp: Timestamp,
 });
@@ -57,7 +57,7 @@ export const TaskCompleteEvent = Schema.TaggedStruct("task.complete", {
   taskId: Schema.String,
   summary: Schema.optional(Schema.String),
   outcome: Schema.optional(
-    Schema.Literal("ok", "warn").annotations({
+    Schema.Literals(["ok", "warn"]).annotate({
       description:
         "Whether the task finished cleanly or with warnings the reader should look at; absent means ok.",
     }),

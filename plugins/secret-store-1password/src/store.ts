@@ -33,7 +33,7 @@ export const makeOnePasswordSecretStore = (options: {
   const cache = new Map<string, string>();
   const get: SecretStoreShape["get"] = (reference) =>
     Effect.gen(function* () {
-      const parsed = yield* parseSecretReference(reference);
+      const parsed = yield* Effect.fromResult(parseSecretReference(reference));
       if (parsed.scheme !== ONEPASSWORD_SCHEME)
         return yield* Effect.fail(
           new SecretReferenceInvalidError({

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceTypeHostFacts } from "@lando/sdk/services";
@@ -87,7 +87,9 @@ describe("lando base composition", () => {
     expect(
       Schema.decodeUnknownSync(
         Schema.Struct({
-          buildSteps: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+          buildSteps: Schema.optionalKey(
+            Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String) })),
+          ),
         }),
       )(plan.extensions["@lando/core/service-features"]).buildSteps ?? [],
     ).not.toContainEqual({ id: "lando.security:trust-store" });
@@ -206,9 +208,10 @@ describe("lando base composition", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("ServiceFeatureError");
-      expect(exit.cause.error.feature).toBe("lando.env");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error._tag).toBe("ServiceFeatureError");
+      expect(error.feature).toBe("lando.env");
     }
   });
 });

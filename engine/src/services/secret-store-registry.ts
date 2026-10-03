@@ -13,7 +13,7 @@ import {
   SecretStore,
   type SecretStoreShape,
 } from "@lando/sdk/services";
-import { Context, Effect, Either, Layer, Scope } from "effect";
+import { Context, Effect, Layer, Result, Scope } from "effect";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import { SecretStoreLive } from "./secret-store.ts";
 
@@ -23,13 +23,13 @@ export interface SecretStoreRegistration {
   readonly layer: SecretStoreContributionLayer;
 }
 
-export class SecretStoreRegistry extends Context.Tag("@lando/core/SecretStoreRegistry")<
+export class SecretStoreRegistry extends Context.Service<
   SecretStoreRegistry,
   {
     readonly list: Effect.Effect<readonly SecretStoreRegistration[]>;
     readonly select: (id: string) => Effect.Effect<SecretStoreRegistration, SecretReferenceInvalidError>;
   }
->() {}
+>()("@lando/core/SecretStoreRegistry") {}
 
 const invalidReference = (reference: string) =>
   new SecretReferenceInvalidError({
@@ -64,9 +64,11 @@ export const makeSecretStoreRegistryLive = (modules: readonly LandoPluginModule[
   Layer.effect(
     SecretStoreRegistry,
     Effect.gen(function* () {
-      const index = yield* makePluginCapabilityIndex(modules).pipe(
-        Either.mapLeft((cause) =>
-          bootstrapError("Invalid secret store plugin descriptor. Repair the plugin descriptor.", cause),
+      const index = yield* Effect.fromResult(
+        makePluginCapabilityIndex(modules).pipe(
+          Result.mapError((cause) =>
+            bootstrapError("Invalid secret store plugin descriptor. Repair the plugin descriptor.", cause),
+          ),
         ),
       );
       const registrations = new Map<string, SecretStoreRegistration>([
@@ -108,7 +110,7 @@ export const makeSecretStoreRegistryLive = (modules: readonly LandoPluginModule[
     }),
   );
 
-export const RoutedSecretStoreLive = Layer.scoped(
+export const RoutedSecretStoreLive = Layer.effect(
   SecretStore,
   Effect.gen(function* () {
     const registry = yield* SecretStoreRegistry;
@@ -130,7 +132,7 @@ export const RoutedSecretStoreLive = Layer.scoped(
     }
     const select = (raw: string) =>
       Effect.gen(function* () {
-        const reference = yield* parseSecretReference(raw);
+        const reference = yield* Effect.fromResult(parseSecretReference(raw));
         const id =
           reference.scheme === undefined
             ? ((yield* config

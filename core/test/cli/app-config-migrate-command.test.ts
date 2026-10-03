@@ -50,12 +50,12 @@ test("fails closed when selectable hunks lack non-interactive approval", async (
   const input = await setup();
   // When
   const result = await Effect.runPromise(
-    appConfigMigrate({ ...input, nonInteractive: true }).pipe(Effect.either),
+    appConfigMigrate({ ...input, nonInteractive: true }).pipe(Effect.result),
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "AppConfigMigrateError", reason: "confirmation-required" },
+    _tag: "Failure",
+    failure: { _tag: "AppConfigMigrateError", reason: "confirmation-required" },
   });
 });
 
@@ -81,13 +81,13 @@ test("preserves an edit made while migration approval is pending", async () => {
 
   // When the first confirmation edits the file before transaction preparation
   const result = await Effect.runPromise(
-    appConfigMigrate(input).pipe(Effect.provideService(InteractionService, service), Effect.either),
+    appConfigMigrate(input).pipe(Effect.provideService(InteractionService, service), Effect.result),
   );
 
   // Then prepare reports a conflict and the concurrent bytes survive
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "AppConfigMigrateCommitError", phase: "prepare", reason: "conflict" },
+    _tag: "Failure",
+    failure: { _tag: "AppConfigMigrateCommitError", phase: "prepare", reason: "conflict" },
   });
   expect(await Bun.file(path).text()).toBe(concurrent);
 });
@@ -113,14 +113,14 @@ test("inspects pending recovery without locking when dry-run input is invalid", 
           }),
         pending: () => Effect.succeed(report),
       }),
-      Effect.either,
+      Effect.result,
     ),
   );
   // Then
   expect(ensured).toBe(false);
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "ManagedFileTransactionError", reason: "blocked", phase: "inspect" },
+    _tag: "Failure",
+    failure: { _tag: "ManagedFileTransactionError", reason: "blocked", phase: "inspect" },
   });
 });
 
@@ -221,8 +221,8 @@ test("fails closed when a valid recorded recipe is absent from the injected sour
   const input = await setup();
   // When
   const result = await Effect.runPromise(
-    appConfigMigrate({ ...input, recipes: new Map(), dryRun: true }).pipe(Effect.either),
+    appConfigMigrate({ ...input, recipes: new Map(), dryRun: true }).pipe(Effect.result),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "unknown-recipe" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "unknown-recipe" } });
 });

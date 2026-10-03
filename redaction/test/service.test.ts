@@ -60,7 +60,7 @@ describe("RedactionServiceLive", () => {
         listReads += 1;
         return ["LATER"];
       }),
-    } satisfies Context.Tag.Service<typeof SecretStore>;
+    } satisfies Context.Service.Shape<typeof SecretStore>;
 
     const program = Effect.gen(function* () {
       const service = yield* RedactionService;
@@ -86,7 +86,7 @@ describe("RedactionServiceLive", () => {
           : Effect.succeed("stillsecret"),
       has: () => Effect.succeed(true),
       list: Effect.succeed(["MISSING", "PRESENT"]),
-    } satisfies Context.Tag.Service<typeof SecretStore>;
+    } satisfies Context.Service.Shape<typeof SecretStore>;
 
     const redactor = await Effect.runPromise(
       Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")).pipe(

@@ -229,7 +229,7 @@ describe("generic CLI command lifecycle", () => {
   test("publishes the terminal lifecycle event before scope finalizers", async () => {
     const ordering: Array<string> = [];
     const harness = makeRecordingHarness(ordering);
-    const finalizerLayer = Layer.scopedDiscard(
+    const finalizerLayer = Layer.effectDiscard(
       Effect.addFinalizer(() => Effect.sync(() => ordering.push("finalizer"))),
     );
     const options = {

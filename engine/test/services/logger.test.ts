@@ -105,7 +105,7 @@ const runWithLogger = (effect: Effect.Effect<void, unknown, Logger>, options: Lo
     effect.pipe(Effect.provide(LoggerLive({ writeLine: writeStderrLine, stderrIsTTY: true, ...options }))),
   );
 
-const logProgram = (run: (logger: Context.Tag.Service<typeof Logger>) => Effect.Effect<void, unknown>) =>
+const logProgram = (run: (logger: Context.Service.Shape<typeof Logger>) => Effect.Effect<void, unknown>) =>
   Effect.flatMap(Logger, run);
 
 describe("LoggerLive characterization", () => {
@@ -234,7 +234,7 @@ describe("LoggerLive logLevel and stderr", () => {
 
     const stderrText = captured.stderr.join("");
     expect(stderrText).toContain("structured-marker");
-    expect(stderrText).toContain('"logLevel"');
+    expect(stderrText).toContain('"level"');
     expect(captured.stdout.join("")).not.toContain("structured-marker");
   });
 
@@ -252,7 +252,7 @@ describe("LoggerLive logLevel and stderr", () => {
 
     const stderrText = captured.stderr.join("");
     expect(stderrText).toContain("pretty-marker");
-    expect(stderrText).not.toContain('"logLevel"');
+    expect(stderrText).not.toContain('"level"');
   });
 
   test("passes message and data through when RedactionService is absent", async () => {

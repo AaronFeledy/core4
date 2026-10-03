@@ -12,8 +12,8 @@ const producer = {
 } as const;
 
 const authoringDecoders = [
-  ["complete shape", Schema.decodeUnknownEither(Public.LandofileAuthoringShape)],
-  ["fragment", Schema.decodeUnknownEither(Public.LandofileAuthoringFragment)],
+  ["complete shape", Schema.decodeUnknownResult(Public.LandofileAuthoringShape)],
+  ["fragment", Schema.decodeUnknownResult(Public.LandofileAuthoringFragment)],
 ] as const;
 
 const provenanceWithServices = (services: Readonly<Record<string, string>>) => ({
@@ -41,7 +41,7 @@ describe("authoring container refinements", () => {
       const result = decode(input);
 
       // Then
-      expect(result._tag).toBe("Left");
+      expect(result._tag).toBe("Failure");
     },
   );
 
@@ -58,7 +58,7 @@ describe("authoring container refinements", () => {
       const result = decode(input);
 
       // Then
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     },
   );
 });

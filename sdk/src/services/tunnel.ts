@@ -37,7 +37,6 @@ export interface TunnelServiceShape {
   readonly list: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
 }
 
-export class TunnelService extends Context.Tag("@lando/core/TunnelService")<
-  TunnelService,
-  TunnelServiceShape
->() {}
+export class TunnelService extends Context.Service<TunnelService, TunnelServiceShape>()(
+  "@lando/core/TunnelService",
+) {}

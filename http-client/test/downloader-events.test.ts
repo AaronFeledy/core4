@@ -55,7 +55,7 @@ const makeFakeHttpClient = (bodies: Record<string, () => Stream.Stream<Uint8Arra
 
 const makeCapturingEventService = () => {
   const captured: LandoEvent[] = [];
-  const service: Context.Tag.Service<typeof EventService> = {
+  const service: Context.Service.Shape<typeof EventService> = {
     publish: (event) => Effect.sync(() => void captured.push(event)),
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),

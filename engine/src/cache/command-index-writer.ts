@@ -389,7 +389,7 @@ const writeAppCommandCacheTask = async (
 export const writeAppCommandCache = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, never> =>
-  writeAppCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writeAppCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export interface WritePluginCommandCacheOptions {
   readonly manifests?: ReadonlyArray<PluginManifest>;
@@ -648,7 +648,7 @@ export const writePluginCommandCacheStrict = (
 export const writePluginCommandCache = (
   options: WritePluginCommandCacheOptions = {},
 ): Effect.Effect<string | undefined, never> =>
-  writePluginCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writePluginCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export const invalidatePluginCommandCache = (
   options: { readonly cacheRoot?: string } = {},

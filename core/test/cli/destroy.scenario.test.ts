@@ -99,7 +99,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "destroy.scenario.test",
   runtime: 4 as const,
 };
@@ -269,7 +269,7 @@ const makeDestroyLayer = (
           }
         }
       }).pipe(
-        Effect.zipRight(options.providerDestroyEffect ?? Effect.void),
+        Effect.andThen(options.providerDestroyEffect ?? Effect.void),
         Effect.as({ kind: "destroyed" as const }),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -296,7 +296,7 @@ const makeDestroyLayer = (
     applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
     removeRoutes: (app) =>
       Effect.sync(() => void routeRemovals.push(String(app))).pipe(
-        Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
+        Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
       ),
     status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
     stop: Effect.void,
@@ -341,7 +341,7 @@ const makeDestroyLayer = (
         events.push(event._tag);
         publishedEvents.push(event);
       }),
-    subscribe: () => Effect.die("not used"),
+    subscribe: () => Stream.die("not used"),
     subscribeQueue: Effect.die("not used"),
     waitFor: () => Effect.die("not used"),
     waitForAny: () => Effect.die("not used"),
@@ -411,10 +411,10 @@ describe("lando destroy", () => {
     await withTempCwd(async (root) => {
       const harness = makeDestroyLayer();
       const result = await Effect.runPromise(
-        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer), Effect.either),
+        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
-      expect(result.left).toMatchObject({
+      if (result._tag !== "Failure") throw new TypeError("expected existing-root refusal");
+      expect(result.failure).toMatchObject({
         _tag: "AppResolveError",
         reason: "mismatch",
         detail: "root-exists",
@@ -539,7 +539,7 @@ describe("lando destroy", () => {
     expect(harness.routeRemovals).toEqual([String(plan.id)]);
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(Array.from(Cause.failures(exit.cause))).toEqual(
+    expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
       expect.arrayContaining([providerFailure, proxyFailure]),
     );
   });
@@ -863,7 +863,7 @@ describe("lando destroy", () => {
       mountKey: index === 0 ? "app-mount" : "cache-mount",
       spec: testSessionSpec(index === 0 ? "app-mount" : "cache-mount"),
       status: "running",
-      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     }));
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
@@ -947,7 +947,7 @@ describe("lando destroy", () => {
       mountKey: "app-mount",
       spec: testSessionSpec("app-mount"),
       status: "running",
-      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     };
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
@@ -967,7 +967,7 @@ describe("lando destroy", () => {
         Effect.sync(() => {
           callLog.push("flush");
         }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.fail(
               new FileSyncStopError({
                 engineId: "mutagen",
@@ -1020,7 +1020,7 @@ describe("lando destroy", () => {
       mountKey: "app-mount",
       spec: testSessionSpec("app-mount"),
       status: "running",
-      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     };
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {

@@ -200,7 +200,7 @@ describe("agent relay worker runtime", () => {
       // Then no ready value exists and both acquired resources are released.
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toMatchObject({

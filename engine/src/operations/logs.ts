@@ -256,7 +256,7 @@ const logOptionsForService = (
 };
 
 const waitForAbort = (signal: AbortSignal): Effect.Effect<void> =>
-  Effect.async<void>((resume) => {
+  Effect.callback<void>((resume) => {
     if (signal.aborted) {
       resume(Effect.void);
       return;

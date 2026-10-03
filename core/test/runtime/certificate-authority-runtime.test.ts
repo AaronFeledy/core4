@@ -51,7 +51,7 @@ describe("runtime certificate authority contributions", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof NoCertificateAuthorityError).toBe(true);
     }
   });
@@ -75,7 +75,7 @@ describe("runtime certificate authority contributions", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof AmbiguousCertificateAuthoritiesError).toBe(
         true,
       );
@@ -127,7 +127,7 @@ describe("runtime certificate authority contributions", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof NoCertificateAuthorityError).toBe(true);
     }
   });

@@ -6,7 +6,7 @@
  * setup precedence is `--provider > LANDO_PROVIDER > capability default (lando)`.
  * App commands may still honor leftover config as a last-used hint.
  */
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import {
   ConfigService,
@@ -79,13 +79,13 @@ const writeConfigDefaultProvider = (providerId: string): Effect.Effect<void, nev
       const tree = existing.length > 0 ? (parseMinimalYaml(existing) as Record<string, unknown>) : {};
       tree.defaultProviderId = providerId;
       const emitted = emitConfigYaml({ file: configPath, value: tree, path: "defaultProviderId" });
-      if (Either.isLeft(emitted)) return;
+      if (Result.isFailure(emitted)) return;
       mkdirSync(confRoot, { recursive: true });
-      yield* Effect.promise(() => writeFileAtomicViaRename(configPath, emitted.right));
+      yield* Effect.promise(() => writeFileAtomicViaRename(configPath, emitted.success));
     } catch {
       // Silently fail - config persistence is optional
     }
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,

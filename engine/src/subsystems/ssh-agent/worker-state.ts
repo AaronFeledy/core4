@@ -61,7 +61,7 @@ export const writeAgentRelayWorkerRecord = (
     record,
   ).pipe(
     Effect.mapError(stateError),
-    Effect.zipRight(
+    Effect.andThen(
       Effect.tryPromise({
         try: () => ensureAgentRelayRunRoot(sshAgentSessionPaths(app, options.paths, options.kind).stateDir),
         catch: stateError,

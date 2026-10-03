@@ -55,7 +55,7 @@ const TEST_REMOTE_SECRET = "REMOTE-CONTRACT-SECRET-493f61";
 const TEST_DATASET_SECRET = "DATASET-CONTRACT-SECRET-8d31f2";
 const testSecretRedactor = createSecretRedactor([TEST_REMOTE_SECRET, TEST_DATASET_SECRET]);
 const INTERRUPT_DIGEST = "interrupt-contract";
-const TIMESTAMP = DateTime.unsafeMake("2026-06-01T00:00:00.000Z");
+const TIMESTAMP = DateTime.makeUnsafe("2026-06-01T00:00:00.000Z");
 
 const app = AppId.make("remote-contract-app");
 const provider = ProviderId.make("test");
@@ -392,7 +392,7 @@ const makeRemoteSource = (input: {
     test: (_cfg, env) =>
       Effect.sync(() => {
         input.records.probes.push(env === undefined ? { remote: input.id } : { remote: input.id, env });
-        return { ok: true, env, message: "ready" };
+        return { ok: true, ...(env === undefined ? {} : { env }), message: "ready" };
       }),
   };
 };

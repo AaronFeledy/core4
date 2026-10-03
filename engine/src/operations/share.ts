@@ -1,4 +1,4 @@
-import { Effect, type ParseResult, Schema, type Scope } from "effect";
+import { Effect, Schema, type Scope } from "effect";
 
 import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
 import { type StateStoreError, TunnelProviderUnavailableError } from "@lando/sdk/errors";
@@ -26,7 +26,7 @@ import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } fro
 
 export const ShareStopResultSchema = Schema.Struct({
   sessionId: Schema.String,
-  provider: Schema.optional(Schema.String),
+  provider: Schema.optionalKey(Schema.String),
   status: TunnelStatus,
 });
 export type ShareStopResult = typeof ShareStopResultSchema.Type;
@@ -59,7 +59,7 @@ export type ShareCommandError =
   | AppPlanResolutionError
   | TunnelError
   | TunnelProviderUnavailableError
-  | ParseResult.ParseError
+  | Schema.SchemaError
   | StateStoreError;
 
 export type ShareListCommandError =
@@ -71,14 +71,10 @@ export type ShareListCommandError =
 export type ShareStopCommandError =
   | TunnelError
   | TunnelProviderUnavailableError
-  | ParseResult.ParseError
+  | Schema.SchemaError
   | StateStoreError;
 
-type ShareRuntimeError =
-  | TunnelError
-  | TunnelProviderUnavailableError
-  | ParseResult.ParseError
-  | StateStoreError;
+type ShareRuntimeError = TunnelError | TunnelProviderUnavailableError | Schema.SchemaError | StateStoreError;
 type ShareListRuntimeError = TunnelError | TunnelProviderUnavailableError | StateStoreError;
 
 const unavailable = (requested?: string): TunnelProviderUnavailableError =>
@@ -139,7 +135,7 @@ const appShareWithPlan = <E, R>(
   Effect.gen(function* () {
     const service = yield* resolveTunnelService(options.provider);
     const plan = yield* planEffect;
-    const tunnelTarget = yield* Schema.decodeUnknown(TunnelTarget)(
+    const tunnelTarget = yield* Schema.decodeUnknownEffect(TunnelTarget)(
       options.target ?? defaultTunnelTarget(plan),
     );
     const start = service.start({
@@ -157,9 +153,7 @@ const appShareWithPlan = <E, R>(
 
     const session = yield* start;
     yield* recordTunnelSession(session);
-    yield* Effect.addFinalizer(() =>
-      removeTunnelSession(session.id).pipe(Effect.catchAll(() => Effect.void)),
-    );
+    yield* Effect.addFinalizer(() => removeTunnelSession(session.id).pipe(Effect.catch(() => Effect.void)));
     return session;
   });
 
@@ -213,7 +207,7 @@ export const appShareStop = (
   options: ShareStopOptions,
 ): Effect.Effect<ShareStopResult, ShareStopCommandError, StateStore> =>
   Effect.gen(function* () {
-    const stopRequest = yield* Schema.decodeUnknown(TunnelStopRequest)({
+    const stopRequest = yield* Schema.decodeUnknownEffect(TunnelStopRequest)({
       sessionId: options.sessionId,
       ...(options.provider === undefined ? {} : { provider: options.provider }),
       ...(options.force === undefined ? {} : { force: options.force }),

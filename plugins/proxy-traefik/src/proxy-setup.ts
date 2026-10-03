@@ -55,10 +55,10 @@ export const publishFallbackWarn = (
         MessageWarnEvent.make({
           _tag: "message.warn",
           body,
-          timestamp: DateTime.unsafeNow(),
+          timestamp: DateTime.nowUnsafe(),
         }),
       )
-      .pipe(Effect.catchAll(() => Effect.void));
+      .pipe(Effect.catch(() => Effect.void));
   });
 
 export const assertAdvertisedForward = (
@@ -78,8 +78,8 @@ export const assertAdvertisedForward = (
         MessageWarnEvent.make({
           _tag: "message.warn",
           body: `Advertised proxy ports ${String(advertised.http)}/${String(advertised.https)} did not answer HTTP. Run \`lando doctor\`, then \`lando global:restart\`.`,
-          timestamp: DateTime.unsafeNow(),
+          timestamp: DateTime.nowUnsafe(),
         }),
       )
-      .pipe(Effect.catchAll(() => Effect.void));
+      .pipe(Effect.catch(() => Effect.void));
   });

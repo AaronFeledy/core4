@@ -6,7 +6,7 @@ import { Schema } from "effect";
 // shape is unchanged apart from the additive `editor` prompt type.
 
 /** Prompt control type — the eight published prompt types. */
-export const PromptType = Schema.Literal(
+export const PromptType = Schema.Literals([
   "text",
   "select",
   "multiselect",
@@ -15,47 +15,47 @@ export const PromptType = Schema.Literal(
   "secret",
   "path",
   "editor",
-);
+]);
 export type PromptType = typeof PromptType.Type;
 
 /** Dynamic-choices source — run a canonical Lando command and parse its stdout into choices. */
 export const ChoicesFrom = Schema.Struct({
   command: Schema.String,
-  args: Schema.optional(Schema.Array(Schema.String)),
-  parse: Schema.Literal("json", "lines"),
+  args: Schema.optionalKey(Schema.Array(Schema.String)),
+  parse: Schema.Literals(["json", "lines"]),
 });
 export type ChoicesFrom = typeof ChoicesFrom.Type;
 
 /** Prompt choice — bare value or labeled object. */
-export const PromptChoice = Schema.Union(
+export const PromptChoice = Schema.Union([
   Schema.String,
   Schema.Number,
   Schema.Boolean,
   Schema.Struct({
-    value: Schema.Union(Schema.String, Schema.Number, Schema.Boolean),
-    label: Schema.optional(Schema.String),
-    description: Schema.optional(Schema.String),
+    value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+    label: Schema.optionalKey(Schema.String),
+    description: Schema.optionalKey(Schema.String),
   }),
-);
+]);
 export type PromptChoice = typeof PromptChoice.Type;
 
 /** Prompt validation — per-type validator keys. */
 export const PromptValidate = Schema.Struct({
-  pattern: Schema.optional(Schema.String),
-  message: Schema.optional(Schema.String),
-  min: Schema.optional(Schema.Number),
-  max: Schema.optional(Schema.Number),
-  exists: Schema.optional(Schema.Boolean),
+  pattern: Schema.optionalKey(Schema.String),
+  message: Schema.optionalKey(Schema.String),
+  min: Schema.optionalKey(Schema.Number),
+  max: Schema.optionalKey(Schema.Number),
+  exists: Schema.optionalKey(Schema.Boolean),
 });
 export type PromptValidate = typeof PromptValidate.Type;
 
 /** Resolved prompt answer — a scalar or a list of scalars (for `multiselect`). */
-export const PromptAnswer = Schema.Union(
+export const PromptAnswer = Schema.Union([
   Schema.String,
   Schema.Number,
   Schema.Boolean,
-  Schema.Array(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
-);
+  Schema.Array(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+]);
 export type PromptAnswer = typeof PromptAnswer.Type;
 
 /** Generalized prompt specification — the published prompting vocabulary. */
@@ -63,10 +63,10 @@ export const PromptSpec = Schema.Struct({
   name: Schema.String,
   type: PromptType,
   message: Schema.String,
-  default: Schema.optional(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
-  validate: Schema.optional(PromptValidate),
-  choices: Schema.optional(Schema.Array(PromptChoice)),
-  choicesFrom: Schema.optional(ChoicesFrom),
+  default: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+  validate: Schema.optionalKey(PromptValidate),
+  choices: Schema.optionalKey(Schema.Array(PromptChoice)),
+  choicesFrom: Schema.optionalKey(ChoicesFrom),
 });
 export type PromptSpec = typeof PromptSpec.Type;
 

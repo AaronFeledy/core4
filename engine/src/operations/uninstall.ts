@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, Effect, Either, Option, Schema } from "effect";
+import { type Context, Effect, Option, Result, Schema } from "effect";
 
 import { PrivilegeService } from "@lando/sdk/services";
 
@@ -73,10 +73,10 @@ export const UninstallPlanStepSchema = Schema.Struct({
   label: Schema.String,
   target: Schema.String,
   destructive: Schema.Boolean,
-  status: Schema.Literal("owned", "user-owned", "skipped", "manual"),
+  status: Schema.Literals(["owned", "user-owned", "skipped", "manual"]),
   detail: Schema.String,
-  outcome: Schema.optional(Schema.Literal("completed", "failed", "manual", "skipped")),
-  error: Schema.optional(Schema.String),
+  outcome: Schema.optionalKey(Schema.Literals(["completed", "failed", "manual", "skipped"])),
+  error: Schema.optionalKey(Schema.String),
 });
 
 export interface DiscoveredApp {
@@ -135,9 +135,9 @@ export interface UninstallResult {
 export const UninstallResultSchema = Schema.Struct({
   dryRun: Schema.Boolean,
   refused: Schema.Boolean,
-  mode: Schema.Literal("keep-data", "purge"),
+  mode: Schema.Literals(["keep-data", "purge"]),
   failed: Schema.Boolean,
-  reportPath: Schema.optional(Schema.String),
+  reportPath: Schema.optionalKey(Schema.String),
   steps: Schema.Array(UninstallPlanStepSchema),
 });
 
@@ -158,14 +158,14 @@ const installedBinaryStep = (recordFile: string, destination?: string): Uninstal
     ...(destination === undefined ? {} : { destination }),
   });
   const base = { id: "installed-binary", label: "installed binary", destructive: true };
-  if (Either.isRight(ownership))
+  if (Result.isSuccess(ownership))
     return {
       ...base,
-      target: ownership.right.path,
+      target: ownership.success.path,
       status: "owned",
       detail: `The install record ${recordFile} proves ownership of this Lando 4 executable.`,
     };
-  const error = ownership.left;
+  const error = ownership.failure;
   const target = error.destination ?? recordFile;
   const detail = `${error.reason}: ${error.message} ${error.remediation}`;
   switch (error.reason) {
@@ -213,14 +213,14 @@ const uninstallShellProfiles = (options: UninstallOptions): ReadonlyArray<string
   }).installRecordFile;
   const text = tryReadText(recordFile, defaultReadText);
   const record =
-    text === undefined ? undefined : Effect.runSync(Effect.either(decodeInstallRecord(text, recordFile)));
+    text === undefined ? undefined : Effect.runSync(Effect.result(decodeInstallRecord(text, recordFile)));
   return [
     ...new Set([
       ...(normalizeHostPlatform() === "win32" && options.shellProfilePath === undefined
         ? []
         : [options.shellProfilePath ?? defaultPosixShellProfilePath()]),
-      ...(record !== undefined && Either.isRight(record)
-        ? record.right.data.shellProfiles.map((profile) => profile.path)
+      ...(record !== undefined && Result.isSuccess(record)
+        ? record.success.data.shellProfiles.map((profile) => profile.path)
         : []),
     ]),
   ];
@@ -333,7 +333,7 @@ const defaultTeardownHostProxySessions = async (
     const directory = join(paths.hostProxyRunRoot, entry.name);
     const text = tryReadText(join(directory, "worker.json"), defaultReadText);
     if (text === undefined) continue;
-    const record = Schema.decodeUnknownOption(Schema.parseJson(AgentRelayWorkerRecord))(text);
+    const record = Schema.decodeUnknownOption(Schema.fromJsonString(AgentRelayWorkerRecord))(text);
     if (Option.isNone(record) || record.value.kind !== kind) continue;
     const app = { id: record.value.appId, root: record.value.appRoot };
     if (paths.agentRelayRunDir(kind, app.id, app.root) !== directory) continue;
@@ -346,7 +346,7 @@ const defaultTeardownHostProxySessions = async (
 };
 
 const defaultTeardownRuntimeService = (
-  registry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
+  registry: Option.Option<Context.Service.Shape<typeof HostMaintenanceRegistry>>,
   userDataRoot: string,
 ): Promise<{ readonly terminated: boolean; readonly pid?: number }> => {
   const platform = normalizeHostPlatform();
@@ -734,11 +734,11 @@ export const buildUninstallPlan = async (
       label: "install record",
       target: paths.installRecordFile,
       destructive: true,
-      status: Either.match(
+      status: Result.match(
         inspectOwnedExecutable({ recordFile: paths.installRecordFile, platform: paths.platform }),
         {
-          onLeft: (error) => (error.reason === "no-record" ? ("skipped" as const) : ("owned" as const)),
-          onRight: () => "owned" as const,
+          onFailure: (error) => (error.reason === "no-record" ? ("skipped" as const) : ("owned" as const)),
+          onSuccess: () => "owned" as const,
         },
       ),
       detail:
@@ -789,7 +789,7 @@ const binDirHoldsPreservedEntry = (binDir: string): boolean => {
 const executeUninstall = async (
   options: UninstallOptions,
   mode: UninstallMode,
-  hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
+  hostMaintenanceRegistry: Option.Option<Context.Service.Shape<typeof HostMaintenanceRegistry>>,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();

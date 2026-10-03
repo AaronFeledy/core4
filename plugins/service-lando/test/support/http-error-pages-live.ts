@@ -189,9 +189,9 @@ export const startErrorPageStack = async ({
   const built: Array<Parameters<typeof provider.removeArtifact>[0]> = [];
   let activePlan: AppPlan = plan;
   const stop = async () => {
-    await Effect.runPromise(Effect.either(bringDown(activePlan, { api })));
+    await Effect.runPromise(Effect.result(bringDown(activePlan, { api })));
     for (const artifact of built) {
-      await Effect.runPromise(Effect.either(provider.removeArtifact(artifact)));
+      await Effect.runPromise(Effect.result(provider.removeArtifact(artifact)));
     }
     await rm(root, { recursive: true, force: true });
   };

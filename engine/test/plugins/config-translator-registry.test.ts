@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Cause, Context, Effect, Layer, Option, Schema } from "effect";
 
 import {
   ConfigTranslatorConflictError,
@@ -136,7 +136,7 @@ describe("ConfigTranslatorRegistry", () => {
     // Then: the collision is tagged, names both plugins, and no loader ran.
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ConfigTranslatorConflictError);
       if (error instanceof ConfigTranslatorConflictError) {
         expect(error.id).toBe("lando3");
@@ -157,7 +157,7 @@ describe("ConfigTranslatorRegistry", () => {
     // Then: the mismatch is a plugin load error attributed to the producer.
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(PluginLoadError);
       if (error instanceof PluginLoadError) expect(error.pluginName).toBe("@lando/bundled");
     }
@@ -193,7 +193,7 @@ describe("ConfigTranslatorRegistry", () => {
     // Then: the disagreement is a descriptor mismatch and no loader ran.
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(PluginDescriptorMismatchError);
       if (error instanceof PluginDescriptorMismatchError) {
         expect(error.kind).toBe("configTranslators");
@@ -224,7 +224,7 @@ describe("ConfigTranslatorRegistry", () => {
     // Then: the missing loader is a descriptor mismatch, not a silent empty list.
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(PluginDescriptorMismatchError);
       if (error instanceof PluginDescriptorMismatchError) {
         expect(error.declared).toEqual(["terraform"]);

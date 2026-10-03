@@ -132,9 +132,9 @@ export const lowerV4LayerFragments = (args: {
       const content = new TextDecoder().decode(document.bytes);
       return parseLandofile({ file: filePath, content, cwd: args.appRoot }).pipe(
         Effect.flatMap((value) =>
-          Schema.decodeUnknown(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+          Schema.decodeUnknownEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
         ),
-        Effect.flatMap(Schema.encode(LandofileAuthoringFragment)),
+        Effect.flatMap(Schema.encodeEffect(LandofileAuthoringFragment)),
         Effect.mapError(invalidFragment),
         Effect.map((fragment): ConfigTranslateLayerFragment => ({ layerId: layer, fragment })),
       );

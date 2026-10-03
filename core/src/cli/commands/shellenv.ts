@@ -200,5 +200,5 @@ export const shellProfileInstallCommand = (
 
 export const installShellProfileIntegration = (
   userDataRoot: string,
-  privilege: Context.Tag.Service<typeof PrivilegeService>,
+  privilege: Context.Service.Shape<typeof PrivilegeService>,
 ): Effect.Effect<ProcessResult, never> => privilege.elevate(shellProfileInstallCommand(userDataRoot));

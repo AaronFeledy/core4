@@ -24,8 +24,8 @@ export const GlobalServiceListEntrySchema = Schema.Struct({
   id: Schema.String,
   plugin: Schema.String,
   enabled: Schema.Boolean,
-  state: Schema.Literal("enabled", "disabled", "blocked"),
-  summary: Schema.optional(Schema.String),
+  state: Schema.Literals(["enabled", "disabled", "blocked"]),
+  summary: Schema.optionalKey(Schema.String),
   commands: Schema.Array(Schema.String),
 });
 

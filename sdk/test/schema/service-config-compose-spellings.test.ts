@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   LandofileShape,
@@ -33,9 +33,9 @@ const reservedKeyRecord = (value: unknown): Record<string, unknown> =>
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const expectReservedKeyRejection = (result: Either.Either<unknown, unknown>): void => {
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
+const expectReservedKeyRejection = (result: Result.Result<unknown, unknown>): void => {
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(String(result.failure)).toContain("__proto__");
 };
 
 describe("ServiceConfig compose spellings and alternate forms", () => {
@@ -54,18 +54,18 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     });
 
     test("bare list entry without '=' fails with KEY=value remediation", () => {
-      const result = Schema.decodeUnknownEither(ServiceConfig)({ environment: ["NODE_ENV"] });
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(String(result.left)).toContain("KEY=value");
+      const result = Schema.decodeUnknownResult(ServiceConfig)({ environment: ["NODE_ENV"] });
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(String(result.failure)).toContain("KEY=value");
       }
     });
 
     test("null map value fails with host-environment remediation", () => {
-      const result = Schema.decodeUnknownEither(ServiceConfig)({ environment: { NODE_ENV: null } });
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(String(result.left)).toContain("host-environment interpolation is unsupported");
+      const result = Schema.decodeUnknownResult(ServiceConfig)({ environment: { NODE_ENV: null } });
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(String(result.failure)).toContain("host-environment interpolation is unsupported");
       }
     });
 
@@ -73,7 +73,7 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
       ["map", reservedKeyRecord("polluted")],
       ["list", ["__proto__=polluted"]],
     ])("reserved __proto__ key in %s form is rejected", (_form, environment) => {
-      expectReservedKeyRejection(Schema.decodeUnknownEither(ServiceConfig)({ environment }));
+      expectReservedKeyRejection(Schema.decodeUnknownResult(ServiceConfig)({ environment }));
     });
   });
 
@@ -101,7 +101,7 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
       ["map", reservedKeyRecord("polluted")],
       ["list", ["__proto__=polluted"]],
     ])("reserved __proto__ key in %s form is rejected", (_form, labels) => {
-      expectReservedKeyRejection(Schema.decodeUnknownEither(ServiceConfig)({ labels }));
+      expectReservedKeyRejection(Schema.decodeUnknownResult(ServiceConfig)({ labels }));
     });
   });
 
@@ -133,9 +133,9 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     );
 
     test("condition-map rejects an entry without condition", () => {
-      expect(Either.isLeft(Schema.decodeUnknownEither(ServiceConfig)({ dependsOn: { database: {} } }))).toBe(
-        true,
-      );
+      expect(
+        Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ dependsOn: { database: {} } })),
+      ).toBe(true);
     });
 
     test("encoding a non-bare dependency defaults its condition", () => {
@@ -148,18 +148,18 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
 
     test("reserved __proto__ map key is rejected on decode", () => {
       expectReservedKeyRejection(
-        Schema.decodeUnknownEither(ServiceConfig)({
+        Schema.decodeUnknownResult(ServiceConfig)({
           dependsOn: reservedKeyRecord({ condition: "service_started" }),
         }),
       );
     });
 
     test("reserved __proto__ service is rejected on dependency-map encode", () => {
-      const result = Schema.encodeEither(ServiceConfig)({
+      const result = Schema.encodeResult(ServiceConfig)({
         dependsOn: [{ service: "__proto__", condition: "service_healthy" }],
       });
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) expect(String(result.failure)).toContain("__proto__");
     });
   });
 
@@ -232,19 +232,19 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
 
   describe("rejected sub-forms", () => {
     test("env_file long-object form is rejected", () => {
-      const result = Schema.decodeUnknownEither(ServiceConfigInput)(
+      const result = Schema.decodeUnknownResult(ServiceConfigInput)(
         { env_file: { path: "./.env", required: false } },
         { onExcessProperty: "error" },
       );
-      expect(Either.isLeft(result)).toBe(true);
+      expect(Result.isFailure(result)).toBe(true);
     });
 
     test("depends_on entry extension (x-*) is rejected", () => {
-      const result = Schema.decodeUnknownEither(ServiceConfigInput)(
+      const result = Schema.decodeUnknownResult(ServiceConfigInput)(
         { depends_on: { database: { condition: "service_healthy", "x-lando": true } } },
         { onExcessProperty: "error" },
       );
-      expect(Either.isLeft(result)).toBe(true);
+      expect(Result.isFailure(result)).toBe(true);
     });
   });
 

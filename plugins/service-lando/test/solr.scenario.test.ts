@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Result, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
@@ -205,7 +205,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
       });
 
       const outcome = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
             Effect.provide(Layer.merge(services, AppPlannerLive)),
             Effect.provide(PluginRegistryLive),
@@ -213,10 +213,10 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
         ),
       );
 
-      expect(Either.isLeft(outcome)).toBe(true);
-      if (Either.isLeft(outcome)) {
-        expect(outcome.left._tag).toBe("LandofileValidationError");
-        const failure = outcome.left as LandofileValidationError;
+      expect(Result.isFailure(outcome)).toBe(true);
+      if (Result.isFailure(outcome)) {
+        expect(outcome.failure._tag).toBe("LandofileValidationError");
+        const failure = outcome.failure as LandofileValidationError;
         expect(failure.file.endsWith("/.lando.yml")).toBe(true);
         expect(failure.issues).toEqual(["services.search"]);
         expect(failure.message).toContain(`services.search.cores[0] ${JSON.stringify(core)}`);

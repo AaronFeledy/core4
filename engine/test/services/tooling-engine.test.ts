@@ -27,7 +27,7 @@ import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine
 
 const providerId = ProviderId.make("lando");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "tooling-engine.test",
   runtime: 4 as const,
 };
@@ -405,7 +405,7 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(provider.calls.length).toBe(0);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");
@@ -443,7 +443,7 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(provider.calls.length).toBe(0);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");

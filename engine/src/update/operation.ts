@@ -90,13 +90,13 @@ export interface UpdateOptions {
 
 export interface UpdateResult {
   readonly coreReplacementPending?: boolean;
-  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type | undefined;
+  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type;
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
-  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow> | undefined;
-  readonly hasFailures?: boolean | undefined;
-  readonly coreBlocked?: boolean | undefined;
-  readonly coreUpdateAvailable?: boolean | undefined;
+  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow>;
+  readonly hasFailures?: boolean;
+  readonly coreBlocked?: boolean;
+  readonly coreUpdateAvailable?: boolean;
 }
 
 export interface PluginUpdateRunInput {
@@ -252,15 +252,15 @@ const applyPosixSelfUpdate = ({
             });
             yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
             yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.catchAll(() => Effect.void),
+                  Effect.catch(() => Effect.void),
                   Effect.flatMap(() => Effect.fail(error)),
                 ),
               ),
             );
             yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.tryPromise({
                   try: () => selfUpdate.rename(backupPath, executablePath),
                   catch: (rollbackFailure) =>
@@ -294,9 +294,9 @@ const applyPosixSelfUpdate = ({
                   releaseVersion: attemptedVersion,
                 }),
               ),
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.zipRight(Effect.fail(error)),
+                  Effect.andThen(Effect.fail(error)),
                 ),
               ),
             );
@@ -592,10 +592,10 @@ const defaultUpdate = (
             : pendingResult,
       };
     }).pipe(
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.gen(function* () {
           if (handoffToken !== undefined && options.handoff !== undefined) {
-            yield* options.handoff.consume(handoffToken).pipe(Effect.catchAll(() => Effect.void));
+            yield* options.handoff.consume(handoffToken).pipe(Effect.catch(() => Effect.void));
           }
           if (pluginExecution === undefined) return yield* Effect.fail(error);
           return {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Semaphore } from "effect";
 
 import { Duration, Effect } from "effect";
 
@@ -29,7 +30,7 @@ describe("ensureRuntime launch serialization", () => {
       let terminations = 0;
       let activeLocks = 0;
       const readinessLockStates: boolean[] = [];
-      const lock = Effect.unsafeMakeSemaphore(1);
+      const lock = Semaphore.makeUnsafe(1);
       const withLaunchLock = <A, E>(body: Effect.Effect<A, E>) =>
         lock.withPermits(1)(
           Effect.acquireUseRelease(
@@ -55,7 +56,7 @@ describe("ensureRuntime launch serialization", () => {
       const serviceRunner: PodmanServiceRunner = {
         launch: () =>
           Effect.gen(function* () {
-            yield* Effect.yieldNow();
+            yield* Effect.yieldNow;
             launches += 1;
             alive = true;
             return 9100 + launches;
@@ -103,7 +104,7 @@ describe("ensureRuntime launch serialization", () => {
       let launches = 0;
       let activeLocks = 0;
       let maximumActiveLocks = 0;
-      const lock = Effect.unsafeMakeSemaphore(1);
+      const lock = Semaphore.makeUnsafe(1);
       const withLaunchLock = <A, E>(body: Effect.Effect<A, E>) =>
         lock.withPermits(1)(
           Effect.acquireUseRelease(
@@ -157,7 +158,7 @@ describe("ensureRuntime launch serialization", () => {
 
   for (const platform of ["darwin", "win32"] as const) {
     test(`${platform} healthy machine ensures skip the launch lock`, async () => {
-      const lock = Effect.unsafeMakeSemaphore(1);
+      const lock = Semaphore.makeUnsafe(1);
       let active = 0;
       let maximumActive = 0;
       let lockCalls = 0;
@@ -167,7 +168,7 @@ describe("ensureRuntime launch serialization", () => {
             active += 1;
             maximumActive = Math.max(maximumActive, active);
           }),
-          () => Effect.yieldNow().pipe(Effect.as("running" as const)),
+          () => Effect.yieldNow.pipe(Effect.as("running" as const)),
           () =>
             Effect.sync(() => {
               active -= 1;

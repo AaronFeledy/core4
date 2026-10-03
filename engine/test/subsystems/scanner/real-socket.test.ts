@@ -72,7 +72,7 @@ const planWith = (scanner: ScanPlan): AppPlan =>
     networks: [],
     stores: [],
     fileSync: [],
-    metadata: { resolvedAt: DateTime.unsafeMake(0), source: "real-socket.test", runtime: 4 },
+    metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "real-socket.test", runtime: 4 },
     extensions: {},
     services: { [web]: { name: web, scanner } },
   }) as unknown as AppPlan;

@@ -28,19 +28,19 @@ import { makeStateStore } from "@lando/state-store/service";
 
 const REGISTRY_VERSION = 1 as const;
 
-const ScratchSourceSchema = Schema.Union(
+const ScratchSourceSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("fork") }),
   Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String }),
-);
+]);
 
 const RegistryEntrySchema = Schema.Struct({
   id: Schema.String,
   source: ScratchSourceSchema,
-  isolate: Schema.Literal("full", "baked", "cwd"),
+  isolate: Schema.Literals(["full", "baked", "cwd"]),
   detached: Schema.Boolean,
-  ownerPid: Schema.optional(Schema.Number),
+  ownerPid: Schema.optionalKey(Schema.Number),
   rootPath: Schema.String,
-  status: Schema.Literal("acquiring", "running", "stopping", "destroyed-pending-cleanup"),
+  status: Schema.Literals(["acquiring", "running", "stopping", "destroyed-pending-cleanup"]),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -48,11 +48,11 @@ const RegistryEntrySchema = Schema.Struct({
 const LegacyRegistryEntrySchema = Schema.Struct({
   id: Schema.String,
   source: ScratchSourceSchema,
-  isolate: Schema.Literal("none", "full", "baked", "cwd"),
+  isolate: Schema.Literals(["none", "full", "baked", "cwd"]),
   detached: Schema.Boolean,
-  ownerPid: Schema.optional(Schema.Number),
+  ownerPid: Schema.optionalKey(Schema.Number),
   rootPath: Schema.String,
-  status: Schema.Literal("acquiring", "running", "stopping", "destroyed-pending-cleanup"),
+  status: Schema.Literals(["acquiring", "running", "stopping", "destroyed-pending-cleanup"]),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -153,7 +153,7 @@ const migrateLegacyEnvelope = (privateFileAccess: PrivateFileAccess): Effect.Eff
       });
 
       const rewriteLegacyEnvelope = (entries: RegistryEntries) =>
-        Schema.encode(RegistryEntriesSchema)(entries).pipe(
+        Schema.encodeEffect(RegistryEntriesSchema)(entries).pipe(
           Effect.map((encoded) => encodeFrame("json", REGISTRY_VERSION, encoded, entries)),
           Effect.flatMap((body) =>
             writeFileAtomicScoped(registryFile, body, {
@@ -206,10 +206,9 @@ export interface ScratchRegistryService {
   readonly get: (id: string) => Effect.Effect<ScratchRegistryEntry | undefined, ScratchAppError>;
 }
 
-export class ScratchRegistry extends Context.Tag("@lando/core/ScratchRegistry")<
-  ScratchRegistry,
-  ScratchRegistryService
->() {}
+export class ScratchRegistry extends Context.Service<ScratchRegistry, ScratchRegistryService>()(
+  "@lando/core/ScratchRegistry",
+) {}
 
 const openRegistryBucket = (
   privateFileAccess: PrivateFileAccess,
@@ -240,7 +239,7 @@ export const makeScratchRegistry = (privateFileAccess: PrivateFileAccess): Scrat
     use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
     migrateLegacyEnvelope(privateFileAccess).pipe(
-      Effect.zipRight(
+      Effect.andThen(
         openRegistryBucket(privateFileAccess).pipe(
           Effect.flatMap((bucket) =>
             use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),

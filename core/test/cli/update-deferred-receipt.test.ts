@@ -8,7 +8,7 @@ import { makeUpdateHandoff } from "@lando/engine/operations/update";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -116,7 +116,7 @@ test("the next CLI run surfaces the helper's canonical ownership refusal", async
   const installRecordFile = join(root, "record.json");
   await writeFile(executablePath, "foreign");
   const expected = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       resolveOwnedExecutable({
         recordFile: installRecordFile,
         platform: "win32",
@@ -124,7 +124,7 @@ test("the next CLI run surfaces the helper's canonical ownership refusal", async
       }),
     ),
   );
-  if (Either.isRight(expected)) throw new Error("Expected ownership refusal");
+  if (Result.isSuccess(expected)) throw new Error("Expected ownership refusal");
   const requestPath = join(root, "request.json");
   await writeFile(
     requestPath,
@@ -173,8 +173,8 @@ test("the next CLI run surfaces the helper's canonical ownership refusal", async
       hasFailures: true,
       coreFailure: {
         tag: "InstallOwnershipError",
-        message: expected.left.message,
-        remediation: expected.left.remediation,
+        message: expected.failure.message,
+        remediation: expected.failure.remediation,
       },
     },
   });

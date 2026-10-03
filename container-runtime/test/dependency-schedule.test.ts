@@ -60,7 +60,7 @@ const makeConcurrencyRecorder = () => {
       calls.push(node.id);
       active += 1;
       peak = Math.max(peak, active);
-      yield* Effect.yieldNow();
+      yield* Effect.yieldNow;
       active -= 1;
       return succeededOutcome;
     });
@@ -295,19 +295,20 @@ describe("dependency schedule", () => {
     const runDependencySchedule = await loadScheduler();
     const started = await Effect.runPromise(Deferred.make<void>());
     const schedule = runDependencySchedule(makeGraph(["node"]), {
-      run: () => Deferred.succeed(started, undefined).pipe(Effect.zipRight(Effect.never)),
+      run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
     });
 
     // When
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(schedule);
+        const fiber = yield* Effect.forkChild(schedule);
         yield* Deferred.await(started);
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
 
     // Then
-    expect(Exit.match(exit, { onFailure: Cause.isInterruptedOnly, onSuccess: () => false })).toBe(true);
+    expect(Exit.match(exit, { onFailure: Cause.hasInterruptsOnly, onSuccess: () => false })).toBe(true);
   });
 });

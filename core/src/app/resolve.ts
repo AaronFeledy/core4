@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { Effect, ExecutionStrategy, Scope } from "effect";
+import { Effect, Scope } from "effect";
 
 import type { App, AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
@@ -215,7 +215,7 @@ const resolveTarget = (
 ): Effect.Effect<ResolvedAppTarget, AppResolveError, ResolvePlanServices> =>
   resolvePlan(selector).pipe(
     Effect.map(targetFromResolved),
-    Effect.catchAll((desiredError) => {
+    Effect.catch((desiredError) => {
       if (desiredError.reason !== "not-found") return Effect.fail(desiredError);
       const root = appliedFallbackRoot(selector);
       if (root === undefined) return Effect.fail(desiredError);
@@ -240,9 +240,9 @@ export const buildAppHandle = (
   target: ResolvedAppTarget,
 ): Effect.Effect<App, never, AppHandleRuntimeServices | Scope.Scope> =>
   Effect.gen(function* () {
-    const runtime = yield* Effect.runtime<AppHandleRuntimeServices>();
+    const runtime = yield* Effect.context<AppHandleRuntimeServices>();
     const runtimeScope = yield* Effect.scope;
-    const handleScope = yield* Scope.fork(runtimeScope, ExecutionStrategy.sequential);
+    const handleScope = yield* Scope.fork(runtimeScope, "sequential");
     const lifecycle = yield* makeAppLifecycle(handleScope);
     const { appOperations } = yield* Effect.promise(() => import("@lando/engine/app/operations"));
     return makeAppHandle(target, runtime, appOperations, lifecycle);
@@ -259,7 +259,7 @@ export const resolveApp = (
   selector?: AppSelector,
 ): Effect.Effect<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> =>
   Effect.gen(function* () {
-    const normalized = yield* normalizeAppSelector(selector);
+    const normalized = yield* Effect.fromResult(normalizeAppSelector(selector));
     const target = yield* resolveTarget(normalized);
     return yield* buildAppHandle(target);
   });

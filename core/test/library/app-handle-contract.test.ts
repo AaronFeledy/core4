@@ -54,7 +54,7 @@ const landofileYaml = (name = "embedded-app"): string =>
   `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  cache:\n    type: redis\n    primary: true\n`;
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-06-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-06-22T00:00:00Z"),
   source: "app-handle-contract.test",
   runtime: 4 as const,
 };
@@ -215,7 +215,7 @@ describe("@lando/core App-handle library contract", () => {
                   ...acc,
                   logsStream: typeof app.logs,
                   eventsStream: typeof app.events.subscribe,
-                  logsIsStream: Stream.StreamTypeId in (app.logs() as object),
+                  logsIsStream: Stream.TypeId in (app.logs() as object),
                 })),
               ),
             ),

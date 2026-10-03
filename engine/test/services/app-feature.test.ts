@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import type { AppFeatureContext, AppFeatureDefinition, ServiceAppMountIntent } from "@lando/sdk/services";
 
@@ -188,8 +188,8 @@ describe("composeAppFeatures selectors", () => {
     const exit = await runExit(inputFor(services, [feature(f)]));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("SelectorMatchedNothing");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))._tag).toBe("SelectorMatchedNothing");
     }
   });
 
@@ -286,8 +286,8 @@ describe("composeAppFeatures idempotency and conflicts", () => {
     const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("MutationConflict");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))._tag).toBe("MutationConflict");
     }
   });
 
@@ -324,10 +324,11 @@ describe("composeAppFeatures idempotency and conflicts", () => {
     const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("MutationConflict");
-      if (exit.cause.error._tag === "MutationConflict") {
-        expect(exit.cause.error.field).toBe("command");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error._tag).toBe("MutationConflict");
+      if (error._tag === "MutationConflict") {
+        expect(error.field).toBe("command");
       }
     }
   });
@@ -357,8 +358,8 @@ describe("composeAppFeatures idempotency and conflicts", () => {
     const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("MutationConflict");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))._tag).toBe("MutationConflict");
     }
   });
 
@@ -423,11 +424,12 @@ describe("composeAppFeatures cycle detection", () => {
     const exit = await runExit(inputFor(services, [feature(a), feature(b)]));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("CycleDetected");
-      if (exit.cause.error._tag === "CycleDetected") {
-        expect(exit.cause.error.cycle).toContain("feat-a");
-        expect(exit.cause.error.cycle).toContain("feat-b");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error._tag).toBe("CycleDetected");
+      if (error._tag === "CycleDetected") {
+        expect(error.cycle).toContain("feat-a");
+        expect(error.cycle).toContain("feat-b");
       }
     }
   });

@@ -38,7 +38,7 @@ export const startupScanUrls = (
       }));
   });
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 const resolveRedactor = Effect.gen(function* () {
   const redaction = yield* Effect.serviceOption(RedactionService);
@@ -71,21 +71,21 @@ export const runPostStartScan = (input: PostStartScanInput): Effect.Effect<void>
     const warn = (body: string) =>
       input.events
         .publish(MessageWarnEvent.make({ body: redactor.redactString(body), timestamp: now() }))
-        .pipe(Effect.catchAllCause(() => Effect.void));
+        .pipe(Effect.catchCause(() => Effect.void));
 
-    const scanned = yield* Effect.either(
+    const scanned = yield* Effect.result(
       input.scanner.scan(input.plan.id, {
         plan: input.plan,
         ...(input.urls === undefined ? {} : { urls: input.urls }),
       }),
     );
-    if (scanned._tag === "Left") {
-      yield* warn(`URL scan did not run: ${scanned.left.message}`);
+    if (scanned._tag === "Failure") {
+      yield* warn(`URL scan did not run: ${scanned.failure.message}`);
       return;
     }
 
     yield* Effect.forEach(
-      scanned.right.endpoints.filter((endpoint) => !passed(endpoint)),
+      scanned.success.endpoints.filter((endpoint) => !passed(endpoint)),
       (endpoint) => warn(endpointWarning(endpoint)),
       { discard: true },
     );

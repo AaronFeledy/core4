@@ -8,7 +8,7 @@ import {
   RecipeSecretSinkError,
   RecipeSnapshotError,
 } from "@lando/sdk/errors";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 describe("recipe provenance errors", () => {
   test("RecipeSecretSinkError carries only structural fields", () => {
@@ -86,21 +86,21 @@ describe("recipe provenance errors", () => {
   });
 
   test("closed reason literals reject an unknown reason", () => {
-    const decompose = Schema.decodeUnknownEither(RecipeDecomposeError)({
+    const decompose = Schema.decodeUnknownResult(RecipeDecomposeError)({
       _tag: "RecipeDecomposeError",
       message: "Invalid decomposition.",
       remediation: "Check the recipe options.",
       recipeId: "example",
       reason: "unknown-reason",
     });
-    const provenance = Schema.decodeUnknownEither(RecipeProvenanceError)({
+    const provenance = Schema.decodeUnknownResult(RecipeProvenanceError)({
       _tag: "RecipeProvenanceError",
       message: "Invalid provenance.",
       remediation: "Regenerate recipe provenance.",
       reason: "unknown-reason",
     });
 
-    expect(Either.isLeft(decompose)).toBe(true);
-    expect(Either.isLeft(provenance)).toBe(true);
+    expect(Result.isFailure(decompose)).toBe(true);
+    expect(Result.isFailure(provenance)).toBe(true);
   });
 });

@@ -64,7 +64,7 @@ const emitArray = (items: ReadonlyArray<unknown>, indent: number): ReadonlyArray
   if (items.length === 0) return [`${prefix}[]`];
 
   return items.flatMap((item) => {
-    if (Predicate.isRecord(item)) {
+    if (Predicate.isObject(item)) {
       const entries = sortedEntries(item);
       if (entries.length === 0) return [`${prefix}- {}`];
       const firstEntry = entries[0];
@@ -86,7 +86,7 @@ const emitValue = (key: string, value: unknown, indent: number, marker = ""): Re
     if (value.length === 0) return [`${prefix} []`];
     return [prefix, ...emitArray(value, indent + marker.length + 2)];
   }
-  if (Predicate.isRecord(value)) {
+  if (Predicate.isObject(value)) {
     const entries = sortedEntries(value);
     if (entries.length === 0) return [prefix];
     return [
@@ -158,9 +158,9 @@ const embeddedDistHash = (content: string): string | undefined =>
     .trim();
 
 const makeGlobalAppService = (
-  configService: Context.Tag.Service<typeof ConfigService>,
-  fileSystem: Context.Tag.Service<typeof FileSystem>,
-): Context.Tag.Service<typeof GlobalAppService> => {
+  configService: Context.Service.Shape<typeof ConfigService>,
+  fileSystem: Context.Service.Shape<typeof FileSystem>,
+): Context.Service.Shape<typeof GlobalAppService> => {
   const root = configService.get("userDataRoot").pipe(
     Effect.mapError(
       (cause) =>

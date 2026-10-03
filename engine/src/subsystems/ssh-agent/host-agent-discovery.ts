@@ -51,7 +51,7 @@ const nodeInspect = (path: string): Effect.Effect<HostAgentPathKind, never> =>
       if (stats.isSocket()) return "socket";
       return "other";
     }),
-    Effect.catchAll((cause) => {
+    Effect.catch((cause) => {
       const kind: HostAgentPathKind = isErrnoCode(cause, "ENOENT") ? "missing" : "other";
       return Effect.succeed(kind);
     }),
@@ -64,7 +64,7 @@ const existsInspect =
       try: () => exists(path),
       catch: () => false,
     }).pipe(
-      Effect.catchAll(() => Effect.succeed(false)),
+      Effect.catch(() => Effect.succeed(false)),
       Effect.map((present): HostAgentPathKind => (present ? "socket" : "missing")),
     );
 
@@ -95,7 +95,7 @@ const readGpgSocket = (options: HostAgentDiscoveryOptions): Effect.Effect<string
         args: ["--list-dirs", "agent-ssh-socket"],
         timeoutMs: options.gpgTimeoutMs ?? 5_000,
       })
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+      .pipe(Effect.catch(() => Effect.succeed(undefined)));
     if (result === undefined || result.exitCode !== 0) return undefined;
     return nonempty(result.stdout);
   });
@@ -144,8 +144,8 @@ export const discoverHostSshAgent = (
             return yield* Effect.fail(unavailable("socket-missing", path));
           if (!authoritative && kind === "missing") return undefined;
         }
-        const probed = yield* probe(upstream).pipe(Effect.either);
-        if (probed._tag === "Right") return { upstream, identities: probed.right.identities };
+        const probed = yield* probe(upstream).pipe(Effect.result);
+        if (probed._tag === "Success") return { upstream, identities: probed.success.identities };
         if (authoritative) return yield* Effect.fail(unavailable("socket-missing", path));
         return undefined;
       });

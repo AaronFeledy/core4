@@ -5,7 +5,7 @@ import { ProviderId, ServiceName } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
 const BuildStepSkipAppRef = Schema.Struct({
-  kind: Schema.Literal("scratch", "user"),
+  kind: Schema.Literals(["scratch", "user"]),
   id: Schema.String,
 });
 
@@ -100,10 +100,10 @@ export const BuildStepSkipEvent = Schema.TaggedStruct("build-step-skip", {
   appRef: BuildStepSkipAppRef,
   serviceName: ServiceName,
   providerId: ProviderId,
-  phase: Schema.Literal("artifact", "app"),
+  phase: Schema.Literals(["artifact", "app"]),
   buildKey: Schema.String,
   cached: Schema.Boolean,
-  reason: Schema.Literal("up-to-date", "phase-aborted"),
+  reason: Schema.Literals(["up-to-date", "phase-aborted"]),
   timestamp: Timestamp,
 });
 export type BuildStepSkipEvent = typeof BuildStepSkipEvent.Type;

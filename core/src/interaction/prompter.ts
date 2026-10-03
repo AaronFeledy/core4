@@ -54,7 +54,7 @@ export const makePromiseInteractionPrompter = (service: InteractionServiceShape)
 const runPromiseUnwrapped = <A>(effect: Effect.Effect<A, InteractionError, never>): Promise<A> =>
   Effect.runPromiseExit(effect).then((exit) => {
     if (Exit.isSuccess(exit)) return exit.value;
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     if (Option.isSome(failure)) return Promise.reject(failure.value);
     return Promise.reject(new Error(Cause.pretty(exit.cause)));
   });

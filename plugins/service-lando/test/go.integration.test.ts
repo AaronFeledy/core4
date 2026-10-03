@@ -31,7 +31,7 @@ const appId = AppId.make("gointtest");
 const GO_PORT = 31082;
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-27T00:00:00Z"),
   source: "go.integration.test",
   runtime: 4 as const,
 };
@@ -218,7 +218,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           expect(result.exitCode).toBe(0);
           expect(result.stdout).toMatch(/go version go1\.22/u);
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

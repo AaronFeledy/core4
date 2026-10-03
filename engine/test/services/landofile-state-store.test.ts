@@ -17,7 +17,7 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 test("requires StateStore in every engine Landofile wrapper environment", () => {
   // Given the inferred environments of all five wrappers
   type RequiresStore<F extends (...args: never[]) => Effect.Effect<unknown, unknown, unknown>> =
-    StateStore extends Effect.Effect.Context<ReturnType<F>> ? true : false;
+    StateStore extends Effect.Services<ReturnType<F>> ? true : false;
   const requirements = {
     resolve: true satisfies RequiresStore<typeof resolveLandofileIncludes>,
     update: true satisfies RequiresStore<typeof updateLandofileIncludes>,

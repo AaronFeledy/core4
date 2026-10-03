@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { renderRestartAppResult, restartApp } from "@lando/core/cli/operations";
 import {
@@ -102,7 +102,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "restart.scenario.test",
   runtime: 4 as const,
 };
@@ -239,7 +239,9 @@ const makeRestartLayer = (
       discover: Effect.succeed({
         name: "test-restart",
         services: {},
-        events: effectiveEventsForPlan(plannedApp),
+        ...(effectiveEventsForPlan(plannedApp) === undefined
+          ? {}
+          : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,
@@ -268,7 +270,7 @@ const makeRestartLayer = (
     }),
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => events.push(event._tag)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),

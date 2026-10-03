@@ -57,7 +57,7 @@ export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemL
   message: Schema.String,
   path: Schema.String,
   remediation: Schema.String,
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 export interface LoadedCaPem {
@@ -173,7 +173,6 @@ export const withWindowsHostTrust = (
  * object. Provided by callers that resolved trust (setup preflight); consumed
  * by `HttpClientLive`.
  */
-export class NetworkTrust extends Context.Tag("@lando/core/NetworkTrust")<
-  NetworkTrust,
-  ResolvedNetworkTrust
->() {}
+export class NetworkTrust extends Context.Service<NetworkTrust, ResolvedNetworkTrust>()(
+  "@lando/core/NetworkTrust",
+) {}

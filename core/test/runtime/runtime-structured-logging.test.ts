@@ -87,8 +87,9 @@ describe("makeLandoRuntime structured logging", () => {
     );
 
     const stderrText = captured.stderr.join("");
-    expect(stderrText).toContain("json-debug-marker");
-    expect(stderrText).toContain('"logLevel"');
+    const markerLine = stderrText.split("\n").find((line) => line.includes("json-debug-marker"));
+    expect(markerLine).toBeDefined();
+    expect(JSON.parse(markerLine ?? "")).toMatchObject({ message: "json-debug-marker", level: "DEBUG" });
     expect(captured.stdout.join("")).not.toContain("json-debug-marker");
   });
 

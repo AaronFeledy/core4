@@ -62,8 +62,8 @@ export interface DoctorCheckResult {
  */
 export class DoctorCheckError extends Schema.TaggedError<DoctorCheckError>()("DoctorCheckError", {
   message: Schema.String,
-  check: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Unknown),
+  check: Schema.optionalKey(Schema.String),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 const doctorCheckContractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -451,7 +451,7 @@ export const runToolingEngineContractSuite = (
       execErrorExit,
     );
     if (Exit.isFailure(execErrorExit)) {
-      const failure = Cause.failureOption(execErrorExit.cause);
+      const failure = Cause.findErrorOption(execErrorExit.cause);
       yield* requireToolingEngineContract(
         Option.isSome(failure) && failure.value instanceof ToolingExecError,
         `${label}: failure is a tagged ToolingExecError`,
@@ -480,10 +480,10 @@ export const runToolingEngineContractSuite = (
     // --- optional: interruption cancels in-flight work and finalizes children ---
     if (harness.interruptionProbe) {
       const probe = harness.interruptionProbe;
-      const fiber = yield* Effect.fork(
-        engine.run(probe.invocation, probe.plan, probe.provider).pipe(Effect.either),
+      const fiber = yield* Effect.forkChild(
+        engine.run(probe.invocation, probe.plan, probe.provider).pipe(Effect.result),
       );
-      yield* Effect.yieldNow();
+      yield* Effect.yieldNow;
       yield* Fiber.interrupt(fiber);
       const finalized = yield* probe.assertFinalized;
       yield* requireToolingEngineContract(
@@ -635,7 +635,7 @@ export const runPluginSourceContractSuite = <Spec>(
       escapeExit,
     );
     if (Exit.isFailure(escapeExit)) {
-      const failure = Cause.failureOption(escapeExit.cause);
+      const failure = Cause.findErrorOption(escapeExit.cause);
       yield* requirePluginSourceContract(
         Option.isSome(failure) && typeof (failure.value as { _tag?: unknown })._tag === "string",
         `${label}: escape failure is a tagged error (carries _tag)`,

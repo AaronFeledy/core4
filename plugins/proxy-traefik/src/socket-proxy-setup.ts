@@ -41,7 +41,7 @@ const consentToInstall = (
         message: "Install a systemd socket proxy so Lando can serve http://*.lndo.site on ports 80 and 443?",
         default: true,
       }),
-    ).pipe(Effect.catchAll(() => Effect.succeed(true)));
+    ).pipe(Effect.catch(() => Effect.succeed(true)));
   });
 };
 
@@ -90,7 +90,7 @@ export const resolveNeedsHelper = (
     }
     return { decision: helperDecision("needs-helper"), helperInstalled: true, socketsActive: false };
   }).pipe(
-    Effect.catchAll(() =>
+    Effect.catch(() =>
       Effect.succeed({
         decision: helperDecision("needs-helper"),
         helperInstalled: false,

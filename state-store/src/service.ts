@@ -79,7 +79,7 @@ const buildBucket = <A, I>(
   const handleCorrupt = (cause: unknown): Effect.Effect<A | null, StateStoreError> => {
     if (onCorrupt === "fail") return Effect.fail(decodeError("get", file, cause));
     const recover = Effect.succeed<A | null>(fallback);
-    return onCorrupt === "quarantine" ? quarantine.pipe(Effect.zipRight(recover)) : recover;
+    return onCorrupt === "quarantine" ? quarantine.pipe(Effect.andThen(recover)) : recover;
   };
 
   const applyVersionMismatch = (
@@ -99,7 +99,7 @@ const buildBucket = <A, I>(
   const decodeValue = (payload: unknown): Effect.Effect<A | null, StateStoreError> =>
     schema.decode(payload).pipe(
       Effect.map((value): A | null => value),
-      Effect.catchAll((cause) => handleCorrupt(cause)),
+      Effect.catch((cause) => handleCorrupt(cause)),
     );
 
   const get: Effect.Effect<A | null, StateStoreError> = readBytes.pipe(

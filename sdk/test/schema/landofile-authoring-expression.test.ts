@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as expressions from "@lando/sdk/expressions";
 import * as authoring from "@lando/sdk/schema";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 // ==== Authoring expression contracts through public SDK exports.
 describe("authoring expression slots", () => {
@@ -17,11 +17,11 @@ describe("authoring expression slots", () => {
     const source = '{{ env.X | default("a") }}';
     const slot = authoring.authoringExpressionSlot("string");
     // When
-    const result = Schema.decodeUnknownEither(slot)(source);
+    const result = Schema.decodeUnknownResult(slot)(source);
     // Then
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right).toMatchObject({
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).toMatchObject({
         _tag: "AuthoringExpression",
         form: "whole",
         expectedType: "string",
@@ -54,9 +54,9 @@ describe("authoring expression slots", () => {
     // Given
     const slot = authoring.authoringExpressionSlot(kind);
     // When
-    const result = Schema.decodeUnknownEither(slot)(source);
+    const result = Schema.decodeUnknownResult(slot)(source);
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("classifies escaped interpolation as plain when parsing yields literals", () => {
@@ -82,28 +82,28 @@ describe("authoring expression slots", () => {
     const stringSlot = authoring.authoringExpressionSlot("string");
     const booleanSlot = authoring.authoringExpressionSlot("boolean");
     // When / Then
-    expect(Either.isRight(Schema.decodeUnknownEither(stringSlot)('{{ and(true, "x") }}'))).toBe(true);
-    expect(Either.isRight(Schema.decodeUnknownEither(booleanSlot)("{{ and(true, true) }}"))).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(stringSlot)("{{ not(false) }}"))).toBe(true);
+    expect(Result.isSuccess(Schema.decodeUnknownResult(stringSlot)('{{ and(true, "x") }}'))).toBe(true);
+    expect(Result.isSuccess(Schema.decodeUnknownResult(booleanSlot)("{{ and(true, true) }}"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(stringSlot)("{{ not(false) }}"))).toBe(true);
   });
 
   test("does not classify regexMatch as a boolean helper", () => {
     // Given
     const stringSlot = authoring.authoringExpressionSlot("string");
     // When
-    const result = Schema.decodeUnknownEither(stringSlot)('{{ regexMatch("abc", "a") }}');
+    const result = Schema.decodeUnknownResult(stringSlot)('{{ regexMatch("abc", "a") }}');
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
   test("accepts a composite when shell parameter syntax occupies a string site", () => {
     // Given
     const slot = authoring.authoringExpressionSlot("string");
     // When
-    const result = Schema.decodeUnknownEither(slot)("${VAR:-x}");
+    const result = Schema.decodeUnknownResult(slot)("${VAR:-x}");
     // Then
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) {
-      expect(result.right).toMatchObject({ form: "composite", scopes: ["env"] });
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).toMatchObject({ form: "composite", scopes: ["env"] });
     }
   });
 });

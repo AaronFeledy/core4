@@ -8,7 +8,7 @@ export const expectMcpTransportFailure = (
 ): McpTransportError | undefined => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isSuccess(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(failure)).toBe(true);
   if (Option.isNone(failure)) return undefined;
   expect(failure.value).toBeInstanceOf(McpTransportError);

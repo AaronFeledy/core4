@@ -53,8 +53,8 @@ export const RecipesPromptSchema = Schema.Struct({
   name: Schema.String,
   type: Schema.String,
   message: Schema.String,
-  default: Schema.optional(Schema.String),
-  choices: Schema.optional(Schema.Array(Schema.String)),
+  default: Schema.optionalKey(Schema.String),
+  choices: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 export const RecipesDescribeResultSchema = Schema.Struct({

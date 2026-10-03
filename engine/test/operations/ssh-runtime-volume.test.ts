@@ -134,7 +134,7 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
       : ssh;
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       resolveSshAgentUpstream({
         appId: plan.id,
         provider: ProviderId.make(provider === "missing-volume" ? "lando" : provider),
@@ -146,6 +146,6 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "sidecar-not-running" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "sidecar-not-running" } });
   expect(selected).toEqual([]);
 });

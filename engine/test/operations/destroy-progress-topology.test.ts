@@ -53,7 +53,7 @@ const syncSession: FileSyncSessionInfo = {
     excludes: [],
   },
   status: "running",
-  lastUpdatedAt: DateTime.unsafeMake("2026-09-23T00:00:00Z"),
+  lastUpdatedAt: DateTime.makeUnsafe("2026-09-23T00:00:00Z"),
 };
 describe("destroy progress topology", () => {
   test("publishes one destroy tree between pre-destroy and post-destroy", async () => {
@@ -490,7 +490,7 @@ describe("destroy progress topology", () => {
     const harness = makeHarness({
       destroyEffect: Effect.sync(() => {
         signalStarted();
-      }).pipe(Effect.zipRight(Effect.never)),
+      }).pipe(Effect.andThen(Effect.never)),
     });
 
     // When

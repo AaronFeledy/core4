@@ -84,6 +84,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register n
 - Manual host-safe CLI verification runs `bun core/bin/lando.ts <command>` from inside the target app directory. `bun core/src/cli/index.ts <command>` exits 0 and prints nothing, so it silently looks like a passing command.
 - `--renderer`/`--help`/`--version` are stripped before command dispatch; command-scoped unknown flags still need exit-2 rejection.
 - Main-binary compilation must use `scripts/build-compiled-binary.ts`; its ESM bytecode format is required by OpenTUI's top-level await, and cross-target release builds need a frozen `bun install --os=* --cpu=*` first so every locked native optional package is present.
+- Compare binary size and RSS with the same Bun compiler on both revisions, and record its version: even Bun patch releases can materially change bytecode size. Keep lazy Effect imports on concrete subpaths (`effect/Effect`, `effect/Schema`, etc.); a dynamic `import("effect")` retains unused modules in the binary.
 - Topic/write-verb commands need **explicit canonical ids** in the registry (not greedy multi-token parsing). After registry edits, regen command-manifest + `codegen:schema-snapshot`.
 - `--format` is stripped pre-parse and reinjected as `flags.format`; the real allow-list is `RESULT_FORMATS` in `core/src/cli/format-flags.ts`.
 - `--json` is optional-valued; `-j` is not; bare `--json` lists keys and skips run.

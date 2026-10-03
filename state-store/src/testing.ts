@@ -1,3 +1,4 @@
+import { Semaphore } from "effect";
 // In-memory `StateStore` test double. Mirrors `StateStoreLive` semantics (codec
 // framing, version mismatch, corruption policy, path containment, advisory
 // serialization) against a `Map` of absolute paths to bytes so
@@ -43,12 +44,12 @@ const versionError = (operation: string, path: string, cause: unknown): StateSto
     remediation: "The durable state version could not be migrated.",
   });
 
-const inProcessGuards = new Map<string, Effect.Semaphore>();
+const inProcessGuards = new Map<string, Semaphore.Semaphore>();
 
-const guardFor = (file: string): Effect.Semaphore => {
+const guardFor = (file: string): Semaphore.Semaphore => {
   const existing = inProcessGuards.get(file);
   if (existing !== undefined) return existing;
-  const created = Effect.unsafeMakeSemaphore(1);
+  const created = Semaphore.makeUnsafe(1);
   inProcessGuards.set(file, created);
   return created;
 };
@@ -83,7 +84,7 @@ const buildInMemoryBucket = <A, I>(
   const handleCorrupt = (cause: unknown): Effect.Effect<A | null, StateStoreError> => {
     if (onCorrupt === "fail") return Effect.fail(decodeError("get", file, cause));
     const recover = Effect.succeed<A | null>(fallback);
-    return onCorrupt === "quarantine" ? quarantine.pipe(Effect.zipRight(recover)) : recover;
+    return onCorrupt === "quarantine" ? quarantine.pipe(Effect.andThen(recover)) : recover;
   };
 
   const applyVersionMismatch = (
@@ -103,7 +104,7 @@ const buildInMemoryBucket = <A, I>(
   const decodeValue = (payload: unknown): Effect.Effect<A | null, StateStoreError> =>
     schema.decode(payload).pipe(
       Effect.map((value): A | null => value),
-      Effect.catchAll((cause) => handleCorrupt(cause)),
+      Effect.catch((cause) => handleCorrupt(cause)),
     );
 
   const get: Effect.Effect<A | null, StateStoreError> = readBytes.pipe(

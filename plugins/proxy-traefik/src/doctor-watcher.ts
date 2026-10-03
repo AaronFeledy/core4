@@ -24,7 +24,7 @@ const readStoredRecord = (paths: ProxyPaths): Effect.Effect<WatcherDiagnosticRec
         catch: (error) => error,
       }),
     ),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 const watcherReport = (record: WatcherDiagnosticRecord): PluginDoctorReport =>

@@ -19,7 +19,7 @@ import {
   type RecipeDecomposerFactory,
 } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Either, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
 import {
   type RecipeAuxiliaryContentSource,
@@ -37,7 +37,7 @@ export class RecipeInitBlockedError extends Schema.TaggedError<RecipeInitBlocked
   "RecipeInitBlockedError",
   {
     message: Schema.String,
-    stage: Schema.Literal("secret-prompts", "translate", "validate", "encode", "diagnostics"),
+    stage: Schema.Literals(["secret-prompts", "translate", "validate", "encode", "diagnostics"]),
     remediation: Schema.String,
   },
 ) {}
@@ -122,8 +122,8 @@ const encodeRecipeLandofile = (
 ): Effect.Effect<EncodedRecipeLandofile, RecipeInitBlockedError, never> =>
   Effect.gen(function* () {
     const validated = validateRecipeSecretPrompts(request.manifest);
-    if (Either.isLeft(validated)) return yield* Effect.fail(blocked("secret-prompts"));
-    const raw = validated.right
+    if (Result.isFailure(validated)) return yield* Effect.fail(blocked("secret-prompts"));
+    const raw = validated.success
       .filter(({ disposition }) => disposition.kind === "init-only")
       .map(({ promptName }) => request.secretAnswers?.[promptName])
       .filter((value): value is string => value !== undefined && value.length > 0);
@@ -136,21 +136,21 @@ const encodeRecipeLandofile = (
         request.appName,
         request.landofileBasename,
       ]) ||
-      validated.right.some(({ promptName }) => Object.hasOwn(request.answers, promptName))
+      validated.success.some(({ promptName }) => Object.hasOwn(request.answers, promptName))
     ) {
       return yield* Effect.fail(blocked("secret-prompts"));
     }
     const references = yield* Effect.try({
       try: () =>
         Object.fromEntries(
-          validated.right.map(({ promptName, disposition }) => [
+          validated.success.map(({ promptName, disposition }) => [
             promptName,
             secretReference(disposition, request.secretAnswers?.[promptName]),
           ]),
         ),
       catch: () => blocked("secret-prompts"),
     });
-    const input = yield* Schema.decodeUnknown(ConfigTranslateRecipeRequestInput)({
+    const input = yield* Schema.decodeUnknownEffect(ConfigTranslateRecipeRequestInput)({
       _tag: "recipe-request",
       recipe: { id: request.manifest.id, version: request.manifest.version },
       sourceId: `recipe:${request.manifest.id}@${request.manifest.version}`,
@@ -182,23 +182,23 @@ const encodeRecipeLandofile = (
     const translator = translators.find(({ id }) => id === RECIPE_TRANSLATOR_ID);
     if (translator === undefined) return yield* Effect.fail(blocked("translate"));
     const translated = yield* Effect.suspend(() => runConfigTranslator(translator, input)).pipe(
-      Effect.catchAll(() => Effect.fail(blocked("translate"))),
+      Effect.catch(() => Effect.fail(blocked("translate"))),
     );
     const output = translated.outputs[0];
     if (translated.outputs.length !== 1 || output?.targetLayer !== "canonical")
       return yield* Effect.fail(blocked("validate"));
-    const mapping = yield* Schema.decodeUnknown(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
+    const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
       output.fragment,
     ).pipe(Effect.mapError(() => blocked("validate")));
     const context = mergeLandofiles([mapping, { name: request.appName }]);
-    yield* Schema.decodeUnknown(LandofileAuthoringFragment)(context, { onExcessProperty: "error" }).pipe(
-      Effect.mapError(() => blocked("validate")),
-    );
+    yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
+      onExcessProperty: "error",
+    }).pipe(Effect.mapError(() => blocked("validate")));
     if (containsSecret(context)) return yield* Effect.fail(blocked("validate"));
     const encode = request.encoder.encode;
     if (encode === undefined) return yield* Effect.fail(blocked("encode"));
     const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
-      Effect.catchAll(() => Effect.fail(blocked("encode"))),
+      Effect.catch(() => Effect.fail(blocked("encode"))),
     );
     const diagnostics = [...translated.diagnostics, ...encoded.diagnostics].map((diagnostic) => ({
       ...diagnostic,

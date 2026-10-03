@@ -50,7 +50,7 @@ const streamAndCollect = (request: HttpRequest) =>
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
@@ -127,7 +127,7 @@ describe("HttpClientLive streaming", () => {
       Effect.flatMap(HttpClient, (client) =>
         Effect.flatMap(
           client.stream({ url: pathToFileURL(file).href, allowFileSource: true, timeoutMs: 10 }),
-          (response) => Effect.sleep(Duration.millis(25)).pipe(Effect.zipRight(collectBody(response))),
+          (response) => Effect.sleep(Duration.millis(25)).pipe(Effect.andThen(collectBody(response))),
         ),
       ),
     );
@@ -245,7 +245,7 @@ describe("HttpClientLive streaming", () => {
       publish: (event: LandoEvent) =>
         event._tag === "pre-http-call"
           ? Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 20))).pipe(
-              Effect.zipRight(Effect.sync(() => void events.push(event))),
+              Effect.andThen(Effect.sync(() => void events.push(event))),
             )
           : Effect.sync(() => void events.push(event)),
       subscribe: () => Stream.empty,
@@ -670,7 +670,9 @@ describe("HttpClientLive lifecycle events", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const fiber = yield* streamAndCollect({ url: "https://evt.test/interrupted" }).pipe(Effect.fork);
+          const fiber = yield* streamAndCollect({ url: "https://evt.test/interrupted" }).pipe(
+            Effect.forkChild,
+          );
           yield* Effect.sleep(Duration.millis(10));
           yield* Fiber.interrupt(fiber);
         }).pipe(Effect.provide(makeHttpClientLive(hangingBodyFetch).pipe(Layer.provide(cap.layer)))),

@@ -136,7 +136,7 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
 };
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch recipe test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch recipe test provider should not call ${operation}`));
 
 const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: boolean[]) => {
   const provider: RuntimeProviderShape = {
@@ -342,16 +342,18 @@ describe("ScratchAppServiceLive recipe acquire", () => {
               answers: { php: "9.0" },
             }),
           ),
-        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.either),
+        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") {
-        expect(outcome.left._tag).toBe("ScratchAppError");
-        expect(outcome.left.message).toContain('recipe prompt "php"');
-        expect(outcome.left.message).toContain('Invalid value for prompt "php"');
-        expect(outcome.left.message).not.toContain("Unable to render the recipe into the scratch app root");
-        expect(outcome.left.remediation).toBe(
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") {
+        expect(outcome.failure._tag).toBe("ScratchAppError");
+        expect(outcome.failure.message).toContain('recipe prompt "php"');
+        expect(outcome.failure.message).toContain('Invalid value for prompt "php"');
+        expect(outcome.failure.message).not.toContain(
+          "Unable to render the recipe into the scratch app root",
+        );
+        expect(outcome.failure.remediation).toBe(
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
       }
@@ -372,13 +374,13 @@ describe("ScratchAppServiceLive recipe acquire", () => {
               nonInteractive: true,
             }),
           ),
-        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.either),
+        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") {
-        expect(outcome.left._tag).toBe("ScratchSourceUnresolvedError");
-        expect(outcome.left.remediation).toBe(
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") {
+        expect(outcome.failure._tag).toBe("ScratchSourceUnresolvedError");
+        expect(outcome.failure.remediation).toBe(
           "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
         );
       }

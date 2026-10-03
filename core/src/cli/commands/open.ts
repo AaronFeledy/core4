@@ -39,19 +39,19 @@ import { appendTerminalQr } from "../terminal-qr";
 export const OpenTargetSchema = Schema.Struct({
   service: Schema.String,
   hostname: Schema.String,
-  scheme: Schema.Literal("http", "https"),
+  scheme: Schema.Literals(["http", "https"]),
   url: Schema.String,
 });
 export type OpenTarget = typeof OpenTargetSchema.Type;
 
-export const OpenLaunchOutcome = Schema.Literal("opened", "printed", "headless-degraded");
+export const OpenLaunchOutcome = Schema.Literals(["opened", "printed", "headless-degraded"]);
 export type OpenLaunchOutcome = typeof OpenLaunchOutcome.Type;
 
 export const OpenAppResultSchema = Schema.Struct({
   app: Schema.String,
   targets: Schema.Array(OpenTargetSchema),
   launch: OpenLaunchOutcome,
-  note: Schema.optional(Schema.String),
+  note: Schema.optionalKey(Schema.String),
 });
 export type OpenAppResult = typeof OpenAppResultSchema.Type;
 
@@ -216,7 +216,7 @@ const HEADLESS_NOTE = "No display server detected; printing the URL instead of o
 
 const openAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-const openNow = () => DateTime.unsafeNow();
+const openNow = () => DateTime.nowUnsafe();
 
 export const openForPlan = (
   plan: AppPlan,

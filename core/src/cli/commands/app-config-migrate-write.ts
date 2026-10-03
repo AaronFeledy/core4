@@ -12,7 +12,12 @@ export class AppConfigMigrateError extends Schema.TaggedError<AppConfigMigrateEr
   "AppConfigMigrateError",
   {
     message: Schema.String,
-    reason: Schema.Literal("unknown-recipe", "identity-mismatch", "confirmation-required", "encode-failed"),
+    reason: Schema.Literals([
+      "unknown-recipe",
+      "identity-mismatch",
+      "confirmation-required",
+      "encode-failed",
+    ]),
     remediation: Schema.String,
   },
 ) {}
@@ -68,7 +73,7 @@ export const writeRecipeMigration = ({
   privateFileAccess,
 }: WriteRecipeMigrationRequest) =>
   Effect.gen(function* () {
-    const content = yield* emitLandofileYamlEither(document).pipe(
+    const content = yield* Effect.fromResult(emitLandofileYamlEither(document)).pipe(
       Effect.mapError(
         () =>
           new AppConfigMigrateError({

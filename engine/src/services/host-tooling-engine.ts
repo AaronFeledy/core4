@@ -101,7 +101,7 @@ const hostStepCommand = (
 };
 
 const hostRun = (
-  shell: Context.Tag.Service<typeof ShellRunner>,
+  shell: Context.Service.Shape<typeof ShellRunner>,
   invocation: ToolingInvocation,
   _plan: AppPlan,
   _provider: RuntimeProviderShape,
@@ -120,7 +120,7 @@ const hostRun = (
         argv: command.argv,
       };
       const result = yield* shell.exec(command.source, options).pipe(
-        Effect.catchAll((cause) =>
+        Effect.catch((cause) =>
           cause.exitCode !== undefined
             ? Effect.succeed({
                 exitCode: cause.exitCode,
@@ -146,14 +146,14 @@ const hostRun = (
   });
 
 export const runHostToolingWith = (
-  shell: Context.Tag.Service<typeof ShellRunner>,
+  shell: Context.Service.Shape<typeof ShellRunner>,
   invocation: ToolingInvocation,
   plan: AppPlan,
   provider: RuntimeProviderShape,
 ): Effect.Effect<ToolingEngineResult, ToolingCompileError | ToolingExecError> =>
   hostRun(shell, invocation, plan, provider);
 
-const makeHostToolingEngine = (shell: Context.Tag.Service<typeof ShellRunner>) => ({
+const makeHostToolingEngine = (shell: Context.Service.Shape<typeof ShellRunner>) => ({
   id: "host",
   run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
     hostRun(shell, invocation, plan, provider),

@@ -58,7 +58,7 @@ export const recoveryHarness = (
         ref: FileSyncSessionRef.make("old"),
         spec: session,
         status: "running",
-        lastUpdatedAt: DateTime.unsafeMake("2026-01-01"),
+        lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
       },
     ];
     if (options.extraSession)
@@ -68,7 +68,7 @@ export const recoveryHarness = (
         ref: FileSyncSessionRef.make("unknown"),
         spec: { ...session, mountKey: "unknown" },
         status: "running",
-        lastUpdatedAt: DateTime.unsafeMake("2026-01-01"),
+        lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
       });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -114,7 +114,7 @@ export const recoveryHarness = (
               ref,
               spec,
               status: "running",
-              lastUpdatedAt: DateTime.unsafeMake("2026-01-01"),
+              lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
             });
             return ref;
           }),
@@ -122,7 +122,7 @@ export const recoveryHarness = (
           Effect.sync(() => {
             calls.push(`flush:${ref}`);
           }).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               options.failFlush
                 ? Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "reseed failed" }))
                 : Effect.void,

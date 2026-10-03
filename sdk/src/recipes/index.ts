@@ -1,5 +1,5 @@
 /** Pure recipe identity, snapshot, migration, option, and secret contract logic. */
-import { Either } from "effect";
+import { Result } from "effect";
 import type { RecipeSourceKind } from "../schema/recipe-identity.ts";
 import type { RecipeManifest } from "../schema/recipe.ts";
 import { validateMigrationChain } from "./migration-chain.ts";
@@ -27,7 +27,7 @@ export const fullRecipeMigratability = (manifest: RecipeManifest, sourceKind: Re
   const result = recipeMigratability(manifest, sourceKind);
   if (result.status === "nonmigratable" || manifest.snapshot === undefined) return result;
   const chain = validateMigrationChain(manifest.snapshot.identity, manifest.migrations ?? []);
-  return Either.isLeft(chain)
-    ? { status: "nonmigratable" as const, reason: chain.left.reason, error: chain.left }
+  return Result.isFailure(chain)
+    ? { status: "nonmigratable" as const, reason: chain.failure.reason, error: chain.failure }
     : result;
 };

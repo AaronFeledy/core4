@@ -1,4 +1,4 @@
-import { type Context, DateTime, Effect, FiberRef, Layer } from "effect";
+import { Context, DateTime, Effect, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -29,16 +29,21 @@ import { makeBuildTranscriptPath } from "./build-transcript.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
-const timestamp = () => DateTime.unsafeNow();
+const timestamp = () => DateTime.nowUnsafe();
 
 const isScratchPlan = (plan: AppPlan): boolean => String(plan.id).startsWith("scratch-");
 
-const selectedProvider = FiberRef.unsafeMake<RuntimeProviderShape | undefined>(undefined);
+const SelectedProvider = Context.Reference<RuntimeProviderShape | undefined>(
+  "@lando/engine/SelectedBuildProvider",
+  {
+    defaultValue: (): RuntimeProviderShape | undefined => undefined,
+  },
+);
 
 export const withBuildProvider = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   provider: RuntimeProviderShape,
-): Effect.Effect<A, E, R> => effect.pipe(Effect.locally(selectedProvider, provider));
+): Effect.Effect<A, E, R> => effect.pipe(Effect.provideService(SelectedProvider, provider));
 
 const buildStepFor = (
   provider: RuntimeProviderShape,
@@ -105,14 +110,14 @@ const sourceIdentityMatches = (
 };
 
 const buildService = (input: {
-  readonly events: Context.Tag.Service<typeof EventService>;
-  readonly paths: Context.Tag.Service<typeof PathsService>;
+  readonly events: Context.Service.Shape<typeof EventService>;
+  readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly provider: RuntimeProviderShape;
   readonly progress: BuildTaskProgress;
   readonly plan: AppPlan;
   readonly redactionTokens: ReadonlyArray<string>;
   readonly service: ServicePlan;
-  readonly stateStore: Context.Tag.Service<typeof StateStore>;
+  readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }) =>
   Effect.gen(function* () {
     const { events, paths, progress, provider, plan, redactionTokens, service, stateStore } = input;
@@ -256,7 +261,7 @@ export const BuildOrchestratorLive = Layer.effect(
     return {
       build: (plan) =>
         Effect.gen(function* () {
-          const provider = (yield* FiberRef.get(selectedProvider)) ?? (yield* registry.select(plan));
+          const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
           const servicePlans = Object.values(plan.services);
           const redactionTokens = collectAppPlanRedactionTokens(plan);
           const progress = makeBuildTaskProgress(events, plan);
@@ -300,7 +305,7 @@ export const BuildOrchestratorLive = Layer.effect(
         }),
       buildApp: (plan, options) =>
         Effect.gen(function* () {
-          const provider = (yield* FiberRef.get(selectedProvider)) ?? (yield* registry.select(plan));
+          const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
           const redaction = yield* Effect.serviceOption(RedactionService);
           const redactor =
             redaction._tag === "Some"

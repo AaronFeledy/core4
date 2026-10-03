@@ -240,7 +240,7 @@ const waitForExecCompletion = (
       },
       inspectExecState(session, execId).pipe(
         Effect.map((exitCode): ExecPollOutcome => (exitCode === undefined ? "running" : { exitCode })),
-        Effect.catchAll((error) => Effect.succeed({ error } as const)),
+        Effect.catch((error) => Effect.succeed({ error } as const)),
         Effect.tap((outcome) => Ref.set(last, outcome)),
       ),
     ).pipe(
@@ -313,7 +313,7 @@ const resizeExec = (
 const interruptOnSignal = (signal: AbortSignal | undefined): Effect.Effect<void> =>
   signal === undefined
     ? Effect.never
-    : Effect.async<void>((resume) => {
+    : Effect.callback<void>((resume) => {
         if (signal.aborted) {
           resume(Effect.void);
           return;
@@ -382,7 +382,7 @@ export const execStream = (
           if (command.terminalSize !== undefined) {
             // Podman requires the exec to be started before resize; a pre-start
             // resize must not fail the session.
-            yield* resizeExec(session, execId, command.terminalSize).pipe(Effect.catchAll(() => Effect.void));
+            yield* resizeExec(session, execId, command.terminalSize).pipe(Effect.catch(() => Effect.void));
           }
           yield* resizeEvents.pipe(
             Stream.runForEach((size) => resizeExec(session, execId, size)),
@@ -404,7 +404,7 @@ export const execStream = (
                       lastOutputAt,
                     ),
                   ),
-                  Stream.catchAll((error) =>
+                  Stream.catch((error) =>
                     Stream.fromEffect(Ref.get(completedExitCode)).pipe(
                       Stream.flatMap((exitCode) =>
                         exitCode !== undefined &&
@@ -435,7 +435,7 @@ export const execStream = (
                             completionAbort,
                             lastOutputAt,
                           ).pipe(
-                            Effect.zipRight(Ref.get(completedExitCode)),
+                            Effect.andThen(Ref.get(completedExitCode)),
                             Effect.map((exitCode) => exitCode ?? 1),
                           )
                         : inspectExec(session, execId),

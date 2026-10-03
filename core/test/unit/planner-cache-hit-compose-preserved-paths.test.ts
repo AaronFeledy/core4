@@ -18,7 +18,7 @@ import { AppPlannerLive } from "@lando/engine/services/planner";
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected planning to fail");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(failure)).toBe(true);
   if (!Option.isSome(failure)) throw new Error("Expected a typed planning failure");
   return failure.value;

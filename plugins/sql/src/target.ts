@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 
@@ -27,8 +27,8 @@ export const sqlCandidates = (plan: SqlTargetPlan): ReadonlyArray<SqlTarget> =>
 const notFound = (
   available: ReadonlyArray<string>,
   service: string | undefined,
-): Either.Either<SqlTarget, SqlServiceNotFoundError> =>
-  Either.left(
+): Result.Result<SqlTarget, SqlServiceNotFoundError> =>
+  Result.fail(
     new SqlServiceNotFoundError({
       message: service === undefined ? "No SQL service is available." : `No SQL service named ${service}.`,
       ...(service === undefined ? {} : { service }),
@@ -40,20 +40,20 @@ const notFound = (
 export const resolveSqlTarget = (
   plan: SqlTargetPlan,
   requested?: string,
-): Either.Either<SqlTarget, SqlServiceNotFoundError | SqlServiceAmbiguousError> => {
+): Result.Result<SqlTarget, SqlServiceNotFoundError | SqlServiceAmbiguousError> => {
   const candidates = sqlCandidates(plan);
   const available = candidates.map((candidate) => candidate.name);
   if (candidates.length === 0) return notFound(available, requested);
 
   if (requested !== undefined) {
     const match = candidates.find((candidate) => candidate.name === requested);
-    return match === undefined ? notFound(available, requested) : Either.right(match);
+    return match === undefined ? notFound(available, requested) : Result.succeed(match);
   }
 
   const [only] = candidates;
-  if (candidates.length === 1 && only !== undefined) return Either.right(only);
+  if (candidates.length === 1 && only !== undefined) return Result.succeed(only);
 
-  return Either.left(
+  return Result.fail(
     new SqlServiceAmbiguousError({
       message: "Multiple SQL services are available.",
       available,

@@ -118,7 +118,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "start.scenario.test",
   runtime: 4 as const,
 };
@@ -402,11 +402,11 @@ const makeStartLayer = (
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () =>
       Effect.sync(() => void buildOrder.push("proxy-setup")).pipe(
-        Effect.zipRight(options.proxySetupEffect ?? Effect.void),
+        Effect.andThen(options.proxySetupEffect ?? Effect.void),
       ),
     applyRoutes: (routes: AppPlan["routes"], app: AppPlan["id"]) =>
       Effect.sync(() => void buildOrder.push("proxy-apply")).pipe(
-        Effect.zipRight(options.proxyApplyEffect ?? Effect.void),
+        Effect.andThen(options.proxyApplyEffect ?? Effect.void),
         Effect.as({
           app,
           appliedRoutes: routes,
@@ -421,7 +421,7 @@ const makeStartLayer = (
       ),
     removeRoutes: () =>
       Effect.sync(() => void buildOrder.push("proxy-remove")).pipe(
-        Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
+        Effect.andThen(options.proxyRemoveEffect ?? Effect.void),
       ),
     status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
     stop: Effect.void,
@@ -480,7 +480,7 @@ const makeStartLayer = (
           removeState: destroyOptions.removeState ?? false,
         });
       }).pipe(
-        Effect.zipRight(options.destroyEffect ?? Effect.void),
+        Effect.andThen(options.destroyEffect ?? Effect.void),
         Effect.as({ kind: "destroyed" as const }),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -491,7 +491,7 @@ const makeStartLayer = (
       Effect.sync(() => {
         if (options.recordReadiness === true) buildOrder.push(`inspect:${String(target.service)}`);
       }).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           options.inspectEffect ??
             (options.inspectFailure === undefined
               ? Effect.succeed<ServiceRuntimeInfo>({
@@ -515,7 +515,9 @@ const makeStartLayer = (
       discover: Effect.succeed({
         name: "test-start",
         services: {},
-        events: effectiveEventsForPlan(plannedApp),
+        ...(effectiveEventsForPlan(plannedApp) === undefined
+          ? {}
+          : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,
@@ -564,7 +566,7 @@ const makeStartLayer = (
             return;
           }
         }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             event._tag === "task.tree.start" &&
               event.label === `Apply ${plannedApp.name}` &&
               options.blockTreeStart !== undefined
@@ -574,7 +576,7 @@ const makeStartLayer = (
                 : Effect.void,
           ),
         ),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),
@@ -586,7 +588,7 @@ const makeStartLayer = (
       build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
       buildApp: () =>
         Effect.sync(() => void buildOrder.push("app")).pipe(
-          Effect.zipRight(options.buildAppEffect ?? Effect.void),
+          Effect.andThen(options.buildAppEffect ?? Effect.void),
         ),
     }),
   );
@@ -611,7 +613,7 @@ const globalServiceType = makeLegacyServiceTypeFake({
         publication: { hostPort: 8080 },
       },
     ],
-    metadata: { ...metadata, resolvedAt: DateTime.unsafeMake(metadata.resolvedAt) },
+    metadata: { ...metadata, resolvedAt: DateTime.makeUnsafe(metadata.resolvedAt) },
   }),
 });
 
@@ -677,7 +679,6 @@ const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
     networks: [],
     stores: [],
     fileSync: [],
-    requires: undefined,
   };
 };
 
@@ -788,7 +789,9 @@ const makeAutoStartLayer = async (options: {
       discover: Effect.succeed({
         name: options.userPlan.name,
         services: {},
-        events: effectiveEventsForPlan(options.userPlan),
+        ...(effectiveEventsForPlan(options.userPlan) === undefined
+          ? {}
+          : { events: effectiveEventsForPlan(options.userPlan) ?? {} }),
       }),
     }),
     makeTestStateStore().layer,
@@ -847,7 +850,7 @@ const makeAutoStartLayer = async (options: {
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
@@ -1146,7 +1149,7 @@ describe("lando start", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(Array.from(Cause.failures(exit.cause))).toEqual(
+    expect(Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual(
       expect.arrayContaining([postFailure, cleanupFailure, providerCleanupFailure]),
     );
     expect(harness.buildOrder).toContain("proxy-remove");
@@ -1463,8 +1466,8 @@ describe("lando start", () => {
       const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+      if (Exit.isFailure(exit)) {
+        expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProxyTransportUnavailableError);
       }
       expect(harness.applyPlans).toHaveLength(0);
     });
@@ -1677,7 +1680,7 @@ describe("lando start", () => {
       });
       const harness = makeStartLayer({
         plannedApp: eligiblePlan,
-        inspectEffect: Effect.sync(() => markInspectEntered?.()).pipe(Effect.zipRight(Effect.never)),
+        inspectEffect: Effect.sync(() => markInspectEntered?.()).pipe(Effect.andThen(Effect.never)),
       });
       const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
 
@@ -1707,7 +1710,7 @@ describe("lando start", () => {
       });
       const harness = makeStartLayer({
         plannedApp: eligiblePlan,
-        applyEffect: Effect.sync(() => markApplyEntered?.()).pipe(Effect.zipRight(Effect.never)),
+        applyEffect: Effect.sync(() => markApplyEntered?.()).pipe(Effect.andThen(Effect.never)),
       });
       const fiber = Effect.runFork(startApp().pipe(Effect.provide(harness.layer)));
 
@@ -2081,7 +2084,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2129,7 +2132,7 @@ describe("lando start", () => {
       mountKey: "app-mount",
       spec: existingSpec,
       status: "paused",
-      lastUpdatedAt: DateTime.unsafeMake("2026-06-17T12:00:00.000Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-06-17T12:00:00.000Z"),
     };
     const calls: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
@@ -2220,7 +2223,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2353,7 +2356,7 @@ describe("lando start", () => {
           Effect.sync(() => {
             events.push(event);
           }),
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2491,7 +2494,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2640,7 +2643,7 @@ describe("lando start", () => {
           Effect.sync(() => {
             events.push(event);
           }),
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2818,7 +2821,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
@@ -2880,7 +2883,7 @@ describe("lando start", () => {
       mountKey: "app-mount",
       spec: existingSpec,
       status: "paused",
-      lastUpdatedAt: DateTime.unsafeMake("2026-06-17T12:00:00.000Z"),
+      lastUpdatedAt: DateTime.makeUnsafe("2026-06-17T12:00:00.000Z"),
     };
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
@@ -2897,7 +2900,7 @@ describe("lando start", () => {
       setup: () => Effect.void,
       createSession: (spec: FileSyncSessionSpec) =>
         Effect.sync(() => callLog.push(`create:${spec.mountKey}`)).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "sync failed" })),
           ),
         ),
@@ -2979,7 +2982,7 @@ describe("lando start", () => {
       }),
       Layer.succeed(EventService, {
         publish: () => Effect.void,
-        subscribe: () => Effect.die("not used"),
+        subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),

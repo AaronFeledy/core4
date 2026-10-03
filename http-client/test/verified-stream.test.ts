@@ -148,19 +148,23 @@ describe("persistVerifiedStream", () => {
       const body = Stream.concat(Stream.fromIterable([bytes("chunk")]), Stream.never);
 
       const program = Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(persistVerifiedStream({ body, destinationPath: target })),
         );
         // wait until the temp file appears
-        yield* Effect.iterate(0, {
-          while: (n) => n < 200,
-          body: (n) =>
+        let attempts = 0;
+        yield* Effect.whileLoop({
+          while: () => attempts < 200,
+          body: () =>
             Effect.gen(function* () {
               const temps = yield* Effect.promise(() => tempFiles(dir, target));
               if (temps.length > 0) return 1000;
               yield* Effect.sleep("5 millis");
-              return n + 1;
+              return attempts + 1;
             }),
+          step: (next) => {
+            attempts = next;
+          },
         });
         yield* Fiber.interrupt(fiber);
       });

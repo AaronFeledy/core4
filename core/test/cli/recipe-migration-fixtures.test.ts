@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { renderRecipeSnapshot, sameRecipeVersion, validateMigrationChain } from "@lando/sdk/recipes";
 import { RecipeMigration, RecipeSnapshot } from "@lando/sdk/schema";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import {
   customizedOptionLandofile,
   makeMigrationFixture,
@@ -19,7 +19,7 @@ describe("recipe migration fixture consistency", () => {
     // When
     const result = validateMigrationChain(target.identity, migrations);
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
     expect(snapshots.every(Schema.is(RecipeSnapshot))).toBe(true);
     expect(migrations.every(Schema.is(RecipeMigration))).toBe(true);
     expect(new Set(snapshots.map((snapshot) => snapshot.identity.contentDigest)).size).toBe(3);
@@ -42,8 +42,8 @@ describe("recipe migration fixture consistency", () => {
         const before = renderRecipeSnapshot(edge.fromSnapshot, options);
         const after = renderRecipeSnapshot(edge.toSnapshot, options);
         // Then: narrowing also makes a render failure fail this test immediately.
-        if (Either.isLeft(before)) throw before.left;
-        if (Either.isLeft(after)) throw after.left;
+        if (Result.isFailure(before)) throw before.failure;
+        if (Result.isFailure(after)) throw after.failure;
         switch (hunk.kind) {
           case "option-default":
             expect(getAtPath({ recipe: { options: edge.fromSnapshot.defaults } }, hunk.path)).toEqual(
@@ -52,23 +52,23 @@ describe("recipe migration fixture consistency", () => {
             expect(getAtPath({ recipe: { options: edge.toSnapshot.defaults } }, hunk.path)).toEqual(hunk.new);
             break;
           case "add":
-            expect(getAtPath(before.right, hunk.path)).toBeUndefined();
-            expect(getAtPath(after.right, hunk.path)).toEqual(hunk.new);
+            expect(getAtPath(before.success, hunk.path)).toBeUndefined();
+            expect(getAtPath(after.success, hunk.path)).toEqual(hunk.new);
             break;
           case "remove":
-            expect(getAtPath(before.right, hunk.path)).toEqual(hunk.old);
-            expect(getAtPath(after.right, hunk.path)).toBeUndefined();
+            expect(getAtPath(before.success, hunk.path)).toEqual(hunk.old);
+            expect(getAtPath(after.success, hunk.path)).toBeUndefined();
             break;
           case "replace":
-            expect(getAtPath(before.right, hunk.path)).toEqual(hunk.old);
-            expect(getAtPath(after.right, hunk.path)).toEqual(hunk.new);
+            expect(getAtPath(before.success, hunk.path)).toEqual(hunk.old);
+            expect(getAtPath(after.success, hunk.path)).toEqual(hunk.new);
             break;
           case "rename":
             expect(hunk.path).toBe(hunk.old);
-            expect(getAtPath(before.right, hunk.old)).toBeDefined();
-            expect(getAtPath(before.right, hunk.new)).toBeUndefined();
-            expect(getAtPath(after.right, hunk.old)).toBeUndefined();
-            expect(getAtPath(after.right, hunk.new)).toEqual(getAtPath(before.right, hunk.old));
+            expect(getAtPath(before.success, hunk.old)).toBeDefined();
+            expect(getAtPath(before.success, hunk.new)).toBeUndefined();
+            expect(getAtPath(after.success, hunk.old)).toBeUndefined();
+            expect(getAtPath(after.success, hunk.new)).toEqual(getAtPath(before.success, hunk.old));
             break;
           default:
             hunk satisfies never;
@@ -85,9 +85,9 @@ describe("recipe migration fixture consistency", () => {
       // When
       const result = validateMigrationChain(target.identity, malformed[reason]);
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isRight(result)) throw new Error("Malformed fixture was accepted");
-      expect(result.left.reason).toBe(reason);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isSuccess(result)) throw new Error("Malformed fixture was accepted");
+      expect(result.failure.reason).toBe(reason);
     },
   );
 
@@ -98,9 +98,9 @@ describe("recipe migration fixture consistency", () => {
     // When
     const rendered = renderRecipeSnapshot(snapshots[0], provenance.options);
     // Then
-    if (Either.isLeft(rendered)) throw rendered.left;
+    if (Result.isFailure(rendered)) throw rendered.failure;
     const { name: _name, recipe: _recipe, ...authoring } = document;
-    expect(rendered.right).toEqual(authoring);
+    expect(rendered.success).toEqual(authoring);
     expect(provenance.producer).toEqual(snapshots[0].identity);
   });
 

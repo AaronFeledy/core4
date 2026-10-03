@@ -49,7 +49,7 @@ describe("runWithRendererHandling", () => {
     severity: "info",
     note: "Prefer the new surface when convenient.",
   };
-  const timestamp = DateTime.unsafeMake("2026-06-12T12:00:00.000Z");
+  const timestamp = DateTime.makeUnsafe("2026-06-12T12:00:00.000Z");
   const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
   test("writes render(value) to stdout on success", async () => {

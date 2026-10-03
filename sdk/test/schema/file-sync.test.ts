@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, JSONSchema, Schema } from "effect";
+import { JsonSchema, Result, Schema } from "effect";
 
 import {
   type AppRef,
@@ -23,7 +23,7 @@ const APP_REF: typeof AppRef.Encoded = {
 
 describe("FileSyncEngineCapabilities", () => {
   test("decodes the canonical Mutagen capability matrix", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncEngineCapabilities)({
+    const decoded = Schema.decodeUnknownResult(FileSyncEngineCapabilities)({
       modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
       remoteAgentDeployment: "auto",
       exclusionPatterns: true,
@@ -31,20 +31,20 @@ describe("FileSyncEngineCapabilities", () => {
       progressReporting: true,
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.modes).toEqual([
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.modes).toEqual([
         "two-way-safe",
         "two-way-resolved",
         "one-way-safe",
         "one-way-replica",
       ]);
-      expect(decoded.right.remoteAgentDeployment).toBe("auto");
+      expect(decoded.success.remoteAgentDeployment).toBe("auto");
     }
   });
 
   test("rejects an unknown sync mode literal", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncEngineCapabilities)({
+    const decoded = Schema.decodeUnknownResult(FileSyncEngineCapabilities)({
       modes: ["lol-unknown-mode"],
       remoteAgentDeployment: "auto",
       exclusionPatterns: false,
@@ -52,11 +52,11 @@ describe("FileSyncEngineCapabilities", () => {
       progressReporting: false,
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("rejects an empty mode list", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncEngineCapabilities)({
+    const decoded = Schema.decodeUnknownResult(FileSyncEngineCapabilities)({
       modes: [],
       remoteAgentDeployment: "auto",
       exclusionPatterns: true,
@@ -64,11 +64,11 @@ describe("FileSyncEngineCapabilities", () => {
       progressReporting: true,
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("rejects an unknown remoteAgentDeployment literal", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncEngineCapabilities)({
+    const decoded = Schema.decodeUnknownResult(FileSyncEngineCapabilities)({
       modes: ["two-way-safe"],
       remoteAgentDeployment: "wishful",
       exclusionPatterns: true,
@@ -76,11 +76,11 @@ describe("FileSyncEngineCapabilities", () => {
       progressReporting: true,
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("produces stable JSON Schema output for the snapshot gate", () => {
-    const jsonSchema = JSONSchema.make(FileSyncEngineCapabilities);
+    const jsonSchema = JsonSchema.toDocumentDraft07(Schema.toJsonSchemaDocument(FileSyncEngineCapabilities));
     expect(jsonSchema).toBeDefined();
     const fromRegistry = getJsonSchema("FileSyncEngineCapabilities");
     expect(fromRegistry).toBeDefined();
@@ -93,7 +93,7 @@ describe("FileSyncEngineCapabilities", () => {
 
 describe("FileSyncSessionSpec", () => {
   test("decodes a volume-target session spec round-trip", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionSpec)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionSpec)({
       app: APP_REF,
       service: "web",
       mountKey: "app-root",
@@ -103,17 +103,17 @@ describe("FileSyncSessionSpec", () => {
       excludes: ["node_modules", "vendor"],
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.mountKey).toBe("app-root");
-      expect(decoded.right.mode).toBe("two-way-safe");
-      expect(decoded.right.excludes).toEqual(["node_modules", "vendor"]);
-      expect(decoded.right.target._tag).toBe("volume");
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.mountKey).toBe("app-root");
+      expect(decoded.success.mode).toBe("two-way-safe");
+      expect(decoded.success.excludes).toEqual(["node_modules", "vendor"]);
+      expect(decoded.success.target._tag).toBe("volume");
     }
   });
 
   test("decodes a service-target session spec with optional permissions", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionSpec)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionSpec)({
       app: APP_REF,
       service: "web",
       mountKey: "vendor",
@@ -124,16 +124,16 @@ describe("FileSyncSessionSpec", () => {
       permissions: { owner: "www-data", mode: "0755" },
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.target._tag).toBe("service");
-      expect(decoded.right.permissions?.owner).toBe("www-data");
-      expect(decoded.right.permissions?.mode).toBe("0755");
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.target._tag).toBe("service");
+      expect(decoded.success.permissions?.owner).toBe("www-data");
+      expect(decoded.success.permissions?.mode).toBe("0755");
     }
   });
 
   test("rejects an unknown sync mode", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionSpec)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionSpec)({
       app: APP_REF,
       service: "web",
       mountKey: "app-root",
@@ -143,11 +143,11 @@ describe("FileSyncSessionSpec", () => {
       excludes: [],
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("rejects an unknown target tag", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionSpec)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionSpec)({
       app: APP_REF,
       service: "web",
       mountKey: "app-root",
@@ -157,7 +157,7 @@ describe("FileSyncSessionSpec", () => {
       excludes: [],
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("produces stable JSON Schema output for the snapshot gate", () => {
@@ -175,14 +175,14 @@ describe("FileSyncSessionRef", () => {
     const ref = FileSyncSessionRef.make("myapp-web-app-root");
     expect(ref).toBe(FileSyncSessionRef.make("myapp-web-app-root"));
 
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionRef)("myapp-web-app-root");
-    expect(Either.isRight(decoded)).toBe(true);
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionRef)("myapp-web-app-root");
+    expect(Result.isSuccess(decoded)).toBe(true);
   });
 });
 
 describe("FileSyncSessionInfo", () => {
   test("decodes a paused session snapshot", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionInfo)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionInfo)({
       ref: "myapp-web-app-root",
       app: APP_REF,
       service: "web",
@@ -200,17 +200,17 @@ describe("FileSyncSessionInfo", () => {
       lastUpdatedAt: "2026-05-28T18:51:00Z",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.status).toBe("paused");
-      expect(decoded.right.ref).toBe(FileSyncSessionRef.make("myapp-web-app-root"));
-      expect(decoded.right.service).toBe(ServiceName.make("web"));
-      expect(decoded.right.spec.source).toBe(FileSyncSessionSpec.fields.source.make("/srv/apps/myapp"));
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.status).toBe("paused");
+      expect(decoded.success.ref).toBe(FileSyncSessionRef.make("myapp-web-app-root"));
+      expect(decoded.success.service).toBe(ServiceName.make("web"));
+      expect(decoded.success.spec.source).toBe(FileSyncSessionSpec.fields.source.make("/srv/apps/myapp"));
     }
   });
 
   test("rejects an unknown session status literal", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionInfo)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionInfo)({
       ref: "x",
       app: APP_REF,
       service: "web",
@@ -218,34 +218,34 @@ describe("FileSyncSessionInfo", () => {
       status: "unknown",
       lastUpdatedAt: "2026-05-28T18:51:00Z",
     });
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });
 
 describe("FileSyncSessionFilter", () => {
   test("decodes empty filter", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionFilter)({});
-    expect(Either.isRight(decoded)).toBe(true);
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionFilter)({});
+    expect(Result.isSuccess(decoded)).toBe(true);
   });
 
   test("decodes filter narrowed by app and service", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSessionFilter)({
+    const decoded = Schema.decodeUnknownResult(FileSyncSessionFilter)({
       app: APP_REF,
       service: "web",
     });
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.service).toBe(ServiceName.make("web"));
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.service).toBe(ServiceName.make("web"));
     }
   });
 });
 
 describe("FileSyncSetupOptions", () => {
   test("decodes a force=false setup invocation", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncSetupOptions)({ force: false });
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.force).toBe(false);
+    const decoded = Schema.decodeUnknownResult(FileSyncSetupOptions)({ force: false });
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.force).toBe(false);
     }
   });
 });
@@ -253,8 +253,8 @@ describe("FileSyncSetupOptions", () => {
 describe("FileSyncEventChunk", () => {
   test("decodes progress, conflict, and info chunks", () => {
     expect(
-      Either.isRight(
-        Schema.decodeUnknownEither(FileSyncEventChunk)({
+      Result.isSuccess(
+        Schema.decodeUnknownResult(FileSyncEventChunk)({
           _tag: "progress",
           sessionRef: "myapp-web-app-root",
           phase: "watching",
@@ -263,8 +263,8 @@ describe("FileSyncEventChunk", () => {
       ),
     ).toBe(true);
     expect(
-      Either.isRight(
-        Schema.decodeUnknownEither(FileSyncEventChunk)({
+      Result.isSuccess(
+        Schema.decodeUnknownResult(FileSyncEventChunk)({
           _tag: "conflict",
           sessionRef: "myapp-web-app-root",
           conflictedPaths: ["README.md"],
@@ -272,8 +272,8 @@ describe("FileSyncEventChunk", () => {
       ),
     ).toBe(true);
     expect(
-      Either.isRight(
-        Schema.decodeUnknownEither(FileSyncEventChunk)({
+      Result.isSuccess(
+        Schema.decodeUnknownResult(FileSyncEventChunk)({
           _tag: "info",
           sessionRef: "myapp-web-app-root",
           message: "ready",
@@ -283,13 +283,13 @@ describe("FileSyncEventChunk", () => {
   });
 
   test("rejects out-of-range progress completion", () => {
-    const decoded = Schema.decodeUnknownEither(FileSyncEventChunk)({
+    const decoded = Schema.decodeUnknownResult(FileSyncEventChunk)({
       _tag: "progress",
       sessionRef: "myapp-web-app-root",
       phase: "watching",
       completed: 1.5,
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });

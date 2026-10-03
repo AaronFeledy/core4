@@ -37,10 +37,12 @@ const PRECREATE_WITH_CONFIG_SCRIPT =
  * precreate or overlay config outside its own data directory.
  */
 export const SolrCoreName = Schema.String.pipe(
-  Schema.filter((core) => CORE_NAME.test(core) && !RESERVED_CORE_NAMES.has(core), {
-    identifier: "SolrCoreName",
-    description: "Solr core name resolving to a single directory under /var/solr/data.",
-  }),
+  Schema.check(
+    Schema.makeFilter((core) => CORE_NAME.test(core) && !RESERVED_CORE_NAMES.has(core), {
+      identifier: "SolrCoreName",
+      description: "Solr core name resolving to a single directory under /var/solr/data.",
+    }),
+  ),
 );
 
 const isSolrCoreName = Schema.is(SolrCoreName);

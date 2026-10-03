@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type { HostPlatform } from "@lando/sdk/schema";
 import { PluginDoctorReport } from "@lando/sdk/schema";
@@ -133,8 +133,8 @@ describe("makeWslMountPropagationCheck", () => {
       command: "sudo mount --make-rshared /",
     });
     expect(reports[0]?.solutions[1]?.description).toContain("/etc/wsl.conf");
-    const decoded = Schema.decodeUnknownEither(PluginDoctorReport, { onExcessProperty: "error" })(reports[0]);
-    expect(Either.isRight(decoded)).toBe(true);
+    const decoded = Schema.decodeUnknownResult(PluginDoctorReport, { onExcessProperty: "error" })(reports[0]);
+    expect(Result.isSuccess(decoded)).toBe(true);
   });
 
   test("returns no reports on WSL when root propagation is shared", async () => {

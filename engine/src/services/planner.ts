@@ -79,6 +79,6 @@ export const AppPlannerLive = Layer.effect(
             ),
           ),
         ),
-    } satisfies Context.Tag.Service<typeof AppPlanner>;
+    } satisfies Context.Service.Shape<typeof AppPlanner>;
   }),
 );

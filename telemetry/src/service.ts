@@ -14,10 +14,9 @@ export interface TelemetrySink {
   readonly record: (event: string, data: Readonly<Record<string, unknown>>) => Effect.Effect<void, unknown>;
 }
 
-export class TelemetrySinks extends Context.Tag("@lando/core/TelemetrySinks")<
-  TelemetrySinks,
-  ReadonlyArray<TelemetrySink>
->() {}
+export class TelemetrySinks extends Context.Service<TelemetrySinks, ReadonlyArray<TelemetrySink>>()(
+  "@lando/core/TelemetrySinks",
+) {}
 
 export interface TelemetryTransportOptions {
   readonly capacity?: number;
@@ -27,7 +26,7 @@ export interface TelemetryTransportOptions {
 const DEFAULT_CAPACITY = 256;
 const DEFAULT_FLUSH_BUDGET_MILLIS = 2000;
 
-const makeDisabledTelemetry = (): Context.Tag.Service<typeof Telemetry> => ({
+const makeDisabledTelemetry = (): Context.Service.Shape<typeof Telemetry> => ({
   enabled: false,
   record: () => Effect.void,
 });
@@ -42,7 +41,7 @@ const dispatchRecord = (
     (sink) =>
       sink.record(record.event, record.data).pipe(
         Effect.timeout(sinkTimeout),
-        Effect.catchAllCause(() => Effect.void),
+        Effect.catchCause(() => Effect.void),
       ),
     { discard: true },
   );
@@ -50,7 +49,7 @@ const dispatchRecord = (
 const makeTransport = (
   sinks: ReadonlyArray<TelemetrySink>,
   options: TelemetryTransportOptions | undefined,
-): Effect.Effect<Context.Tag.Service<typeof Telemetry>, never, Scope.Scope> =>
+): Effect.Effect<Context.Service.Shape<typeof Telemetry>, never, Scope.Scope> =>
   Effect.gen(function* () {
     const capacity = options?.capacity ?? DEFAULT_CAPACITY;
     const budget = Duration.millis(options?.flushBudgetMillis ?? DEFAULT_FLUSH_BUDGET_MILLIS);
@@ -58,7 +57,7 @@ const makeTransport = (
 
     yield* Stream.fromQueue(queue).pipe(
       Stream.runForEach((record) => dispatchRecord(sinks, budget, record)),
-      Effect.catchAllCause(() => Effect.void),
+      Effect.catchCause(() => Effect.void),
       Effect.forkScoped,
     );
 
@@ -67,13 +66,13 @@ const makeTransport = (
     // re-enables interruption so the bounded flush can actually time out.
     yield* Effect.addFinalizer(() =>
       Effect.interruptible(
-        Queue.takeAll(queue).pipe(
+        Queue.clear(queue).pipe(
           Effect.flatMap((records) =>
             Effect.forEach(records, (record) => dispatchRecord(sinks, budget, record), { discard: true }),
           ),
           Effect.timeout(budget),
         ),
-      ).pipe(Effect.catchAllCause(() => Effect.void)),
+      ).pipe(Effect.catchCause(() => Effect.void)),
     );
 
     return {
@@ -90,7 +89,7 @@ export const makeTelemetryLayer = (
   options?: TelemetryTransportOptions,
 ): Layer.Layer<Telemetry> =>
   enabled
-    ? Layer.scoped(
+    ? Layer.effect(
         Telemetry,
         Effect.flatMap(Effect.serviceOption(TelemetrySinks), (sinks) =>
           makeTransport(

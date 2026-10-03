@@ -257,12 +257,12 @@ const resolvePluginOwnedFromGraph = (commandId: string) =>
   Effect.gen(function* () {
     const graph = yield* PluginContributionGraph;
     const context = Context.make(PluginContributionGraph, graph);
-    const exit = yield* Effect.either(resolveEventCommandTarget(commandId, context, builtInCommandEntries));
-    if (exit._tag === "Left") {
-      if (exit.left instanceof ToolingCommandLookupError) return undefined;
-      return yield* Effect.fail(exit.left);
+    const exit = yield* Effect.result(resolveEventCommandTarget(commandId, context, builtInCommandEntries));
+    if (exit._tag === "Failure") {
+      if (exit.failure instanceof ToolingCommandLookupError) return undefined;
+      return yield* Effect.fail(exit.failure);
     }
-    return exit.right.kind === "plugin" ? exit.right.spec : undefined;
+    return exit.success.kind === "plugin" ? exit.success.spec : undefined;
   });
 
 const dispatchPluginOwnedCommand = async (

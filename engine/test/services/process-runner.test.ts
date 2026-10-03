@@ -25,9 +25,9 @@ const captureEventsLayer = (events: LandoEvent[]) =>
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies Context.Tag.Service<typeof EventService>);
+  } satisfies Context.Service.Shape<typeof EventService>);
 
-const runProcess = (input: Parameters<Context.Tag.Service<typeof ProcessRunner>["run"]>[0]) =>
+const runProcess = (input: Parameters<Context.Service.Shape<typeof ProcessRunner>["run"]>[0]) =>
   Effect.runPromise(
     Effect.flatMap(ProcessRunner, (processRunner) => processRunner.run(input)).pipe(
       Effect.provide(ProcessRunnerLive),
@@ -70,7 +70,7 @@ describe("ProcessRunnerLive", () => {
         );
         expect(Exit.isFailure(exit)).toBe(true);
         if (Exit.isFailure(exit) && mode === "timeout") {
-          const error = Cause.failureOption(exit.cause);
+          const error = Cause.findErrorOption(exit.cause);
           expect(error._tag === "Some" && error.value instanceof ProcessTimeoutError).toBe(true);
         }
         expect(() => process.kill(childPid, 0)).toThrow();
@@ -357,7 +357,7 @@ describe("ProcessRunnerLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProcessExecError);
@@ -379,7 +379,7 @@ describe("ProcessRunnerLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProcessExecError);
@@ -404,7 +404,7 @@ describe("ProcessRunnerLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProcessTimeoutError);
@@ -432,7 +432,7 @@ describe("ProcessRunnerLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProcessTimeoutError);
@@ -551,7 +551,7 @@ describe("ProcessRunnerLive cgroup", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProcessExecError);

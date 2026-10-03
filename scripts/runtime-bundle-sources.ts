@@ -17,59 +17,65 @@ const linuxHostKeys = new Set(["linux-x64", "linux-arm64"]);
 const uidmapInstallNames = new Set(["bin/newuidmap", "bin/newgidmap"]);
 
 const Sha256 = Schema.String.pipe(
-  Schema.pattern(/^[0-9a-f]{64}$/u),
-  Schema.filter((value) =>
-    /^0+$/u.test(value) ? "placeholder (all-zero) sha256 is not allowed" : undefined,
+  Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+  Schema.check(
+    Schema.makeFilter((value) =>
+      /^0+$/u.test(value) ? "placeholder (all-zero) sha256 is not allowed" : undefined,
+    ),
   ),
 );
 
-const HttpsUrl = Schema.String.pipe(Schema.pattern(/^https:\/\//u));
-const RuntimeVersion = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u));
+const HttpsUrl = Schema.String.pipe(Schema.check(Schema.isPattern(/^https:\/\//u)));
+const RuntimeVersion = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)));
 
 const RuntimeBundleSourceInput = Schema.Struct({
-  name: Schema.Literal("source", "vendor"),
+  name: Schema.Literals(["source", "vendor"]),
   url: HttpsUrl,
   sha256: Sha256,
-  archive: Schema.Literal("tar.gz", "tar.xz"),
+  archive: Schema.Literals(["tar.gz", "tar.xz"]),
 });
 
 const RuntimeBundleSourceOutput = Schema.Struct({
-  source: Schema.String.pipe(Schema.minLength(1)),
-  installName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u)),
-  mode: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+  source: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  installName: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u))),
+  mode: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
 const RuntimeBundleBinaryComponent = Schema.Struct({
-  name: Schema.String.pipe(Schema.minLength(1)),
-  version: Schema.String.pipe(Schema.minLength(1)),
+  name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  version: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   url: HttpsUrl,
   sha256: Sha256,
-  archive: Schema.Literal("none", "gz", "tar.gz", "zip"),
-  member: Schema.optional(Schema.String.pipe(Schema.minLength(1))),
-  installName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u)),
-  mode: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
-  sourceBuild: Schema.optional(Schema.Literal(LinuxPodmanSourceBuild)),
+  archive: Schema.Literals(["none", "gz", "tar.gz", "zip"]),
+  member: Schema.optionalKey(Schema.String.pipe(Schema.check(Schema.isMinLength(1)))),
+  installName: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u))),
+  mode: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  sourceBuild: Schema.optionalKey(Schema.Literal(LinuxPodmanSourceBuild)),
 });
 
 const RuntimeBundleSourceComponent = Schema.Struct({
-  name: Schema.String.pipe(Schema.minLength(1)),
-  version: Schema.String.pipe(Schema.minLength(1)),
-  sourceBuild: Schema.Literal(LinuxNetavarkSourceBuild, LinuxAardvarkDnsSourceBuild, LinuxPasstSourceBuild),
-  inputs: Schema.Array(RuntimeBundleSourceInput).pipe(Schema.minItems(1)),
-  outputs: Schema.Array(RuntimeBundleSourceOutput).pipe(Schema.minItems(1)),
+  name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  version: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  sourceBuild: Schema.Literals([
+    LinuxNetavarkSourceBuild,
+    LinuxAardvarkDnsSourceBuild,
+    LinuxPasstSourceBuild,
+  ]),
+  inputs: Schema.Array(RuntimeBundleSourceInput).pipe(Schema.check(Schema.isMinLength(1))),
+  outputs: Schema.Array(RuntimeBundleSourceOutput).pipe(Schema.check(Schema.isMinLength(1))),
 });
 
-const RuntimeBundleComponent = Schema.Union(RuntimeBundleBinaryComponent, RuntimeBundleSourceComponent);
+const RuntimeBundleComponent = Schema.Union([RuntimeBundleBinaryComponent, RuntimeBundleSourceComponent]);
 
 const RuntimeBundleGroup = Schema.Struct({
-  components: Schema.Array(RuntimeBundleComponent).pipe(Schema.minItems(1)),
+  components: Schema.Array(RuntimeBundleComponent).pipe(Schema.check(Schema.isMinLength(1))),
 });
 
 export const RuntimeBundleSources = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   runtimeVersion: RuntimeVersion,
-  hostProvidedHelpers: Schema.optional(Schema.Array(Schema.Literal("newuidmap", "newgidmap"))),
-  bundles: Schema.Record({ key: Schema.String, value: RuntimeBundleGroup }),
+  hostProvidedHelpers: Schema.optionalKey(Schema.Array(Schema.Literals(["newuidmap", "newgidmap"]))),
+  bundles: Schema.Record(Schema.String, RuntimeBundleGroup),
 });
 
 export type RuntimeBundleSources = Schema.Schema.Type<typeof RuntimeBundleSources>;

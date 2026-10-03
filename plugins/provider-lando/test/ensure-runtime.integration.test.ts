@@ -38,7 +38,7 @@ const appId = AppId.make("ensureapp");
 const appRoot = AbsolutePath.make("/tmp/lando-ensure-runtime-app");
 const serviceName = ServiceName.make("node");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "ensure-runtime.integration.test",
   runtime: 4 as const,
 };

@@ -58,7 +58,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
     source: "worker.test",
     runtime: 4,
   },
@@ -86,7 +86,7 @@ const servicePlan = (name: string, target: string, eligible = true): ServicePlan
   dependsOn: [],
   hostAliases: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
     source: "worker.test",
     runtime: 4,
   },

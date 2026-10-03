@@ -14,7 +14,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { JSONSchema, Schema } from "effect";
+import { Schema } from "effect";
 
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
@@ -24,6 +24,7 @@ import {
   assertJsonSchemaDeprecationsValid,
   assertPublicSchemaAnnotations,
   getJsonSchema,
+  getJsonSchemaWithDeprecations,
   publicSchemaMetadataIndex,
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
@@ -85,7 +86,7 @@ const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifa
       return {
         commandId,
         artifactPath: `dist/command-schemas/${filename}`,
-        schema: stable(JSONSchema.make(spec.resultSchema)),
+        schema: stable(getJsonSchemaWithDeprecations(spec.resultSchema)),
       };
     } catch (cause) {
       throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });

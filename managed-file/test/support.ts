@@ -8,7 +8,7 @@ import type { ManagedFileService } from "@lando/sdk/services";
 import { type LedgerEntry, type ManagedFileBackend, makeManagedFileService } from "../src/service.ts";
 
 export interface TestManagedFileStore {
-  readonly service: Context.Tag.Service<typeof ManagedFileService>;
+  readonly service: Context.Service.Shape<typeof ManagedFileService>;
   readonly read: (relPath: string) => string | null;
   readonly seed: (relPath: string, content: string) => void;
   readonly ledger: () => ReadonlyArray<LedgerEntry>;

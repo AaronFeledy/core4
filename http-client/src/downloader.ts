@@ -197,11 +197,11 @@ const noopDownloaderEvents: DownloaderEvents = {
 
 /** Build a redacted, fail-open event seam from an optional `EventService`. */
 export const makeLiveDownloaderEvents = (
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
 ): DownloaderEvents => {
   const redactText = createRedactor("secrets").redactString;
   const publish: DownloaderEvents["publish"] = Option.isSome(eventService)
-    ? (event) => eventService.value.publish(event).pipe(Effect.catchAllCause(() => Effect.void))
+    ? (event) => eventService.value.publish(event).pipe(Effect.catchCause(() => Effect.void))
     : () => Effect.void;
   return { redactText, publish };
 };
@@ -233,9 +233,9 @@ const isDownloadError = (value: unknown): value is DownloadError =>
 
 /** Map a failed/interrupted exit cause to a controlled, content-free detail. */
 const failureDetailFromExitCause = (cause: Cause.Cause<DownloadError>): string => {
-  const failure = Option.getOrUndefined(Cause.failureOption(cause));
+  const failure = Option.getOrUndefined(Cause.findErrorOption(cause));
   if (failure !== undefined && isDownloadError(failure)) return failureDetailForError(failure);
-  if (Cause.isInterrupted(cause)) return "interrupted";
+  if (Cause.hasInterrupts(cause)) return "interrupted";
   return "error";
 };
 
@@ -257,7 +257,7 @@ interface PostEventInput {
  * `EventService` keep working byte-for-byte.
  */
 export const makeDownloaderService = (
-  http: Context.Tag.Service<typeof HttpClient>,
+  http: Context.Service.Shape<typeof HttpClient>,
   events: DownloaderEvents = noopDownloaderEvents,
 ): DownloaderShape => ({
   id: "core-downloader",
@@ -274,7 +274,7 @@ export const makeDownloaderService = (
         urlOrigin: origin,
         ...(callerId === undefined ? {} : { callerId: redact(callerId) }),
         ...(request.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: request.expectedSizeBytes }),
-        timestamp: DateTime.unsafeNow(),
+        timestamp: DateTime.nowUnsafe(),
       });
 
     const progressEvent = (bytesDownloaded: number): LandoEvent =>
@@ -284,7 +284,7 @@ export const makeDownloaderService = (
         ...(callerId === undefined ? {} : { callerId: redact(callerId) }),
         bytesDownloaded,
         ...(request.expectedSizeBytes === undefined ? {} : { totalBytes: request.expectedSizeBytes }),
-        timestamp: DateTime.unsafeNow(),
+        timestamp: DateTime.nowUnsafe(),
       });
 
     const postEvent = (input: PostEventInput): LandoEvent =>
@@ -298,7 +298,7 @@ export const makeDownloaderService = (
         durationMs: input.durationMs,
         outcome: input.outcome,
         ...(input.failureDetail === undefined ? {} : { failureDetail: input.redact(input.failureDetail) }),
-        timestamp: DateTime.unsafeNow(),
+        timestamp: DateTime.nowUnsafe(),
       });
 
     return Effect.gen(function* () {

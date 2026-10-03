@@ -27,7 +27,7 @@ import {
   withoutHostRuntimes,
 } from "./install-lifecycle-support.ts";
 
-const DryRunEnvelope = Schema.parseJson(
+const DryRunEnvelope = Schema.fromJsonString(
   Schema.Struct({
     ok: Schema.Boolean,
     result: Schema.Struct({

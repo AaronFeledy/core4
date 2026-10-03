@@ -1,17 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import * as schema from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
-import { type Effect, Either, Schema } from "effect";
+import { type Effect, Result, Schema } from "effect";
 
 // ==== Static service contract
 type Assert<T extends true> = T;
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type TranslateRequiresNothing = Assert<
-  Equal<Effect.Effect.Context<ReturnType<ConfigTranslatorShape["translate"]>>, never>
+  Equal<Effect.Services<ReturnType<ConfigTranslatorShape["translate"]>>, never>
 >;
 
 // ==== Snapshot wire contracts
 describe("config translation schemas", () => {
+  test("retains the base string projection when publishing document bytes", () => {
+    // Given the historical wire contract without format assertions.
+    // When the owning bytes field is projected.
+    const projected = schema.getJsonSchema("ConfigTranslateDocumentBytes");
+    // Then publication preserves the wire contract and field description.
+    expect(projected).toEqual({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "string",
+      description: "Bounded raw source bytes, encoded as base64 on the wire.",
+    });
+  });
+
+  test.each(["!invalid!", "A", 42, null])("rejects invalid byte input %j", (input) => {
+    // Given an input outside the existing base64 decoder contract.
+    // When decoded at the document-byte boundary.
+    const result = Schema.decodeUnknownResult(schema.ConfigTranslateDocumentBytes)(input);
+    // Then projection customization does not relax decoding.
+    expect(Result.isFailure(result)).toBe(true);
+  });
   test("requires no ambient services for translation", () => {
     const requiresNothing: TranslateRequiresNothing = true;
     expect(requiresNothing).toBe(true);
@@ -55,36 +74,36 @@ describe("config translation schemas", () => {
     ],
   ])("decodes the tagged input %j", (wire, accepted) => {
     // Given / When
-    const result = Schema.decodeUnknownEither(schema.ConfigTranslateInput)(wire);
+    const result = Schema.decodeUnknownResult(schema.ConfigTranslateInput)(wire);
     // Then
-    expect(Either.isRight(result)).toBe(accepted);
+    expect(Result.isSuccess(result)).toBe(accepted);
   });
   test("rejects filesystem context when detecting snapshots", () => {
     // Given / When
-    const result = Schema.decodeUnknownEither(schema.ConfigTranslateDetectInput)(
+    const result = Schema.decodeUnknownResult(schema.ConfigTranslateDetectInput)(
       { documents: [], appRoot: "/x" },
       { onExcessProperty: "error" },
     );
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
   test.each(["generated", "dropped", "rewritten", "unsupported", "non-portable", "needs-review", "info"])(
     "checks diagnostic kind %s",
     (kind) => {
       // Given / When
-      const result = Schema.decodeUnknownEither(schema.ConfigTranslateDiagnosticKind)(kind);
+      const result = Schema.decodeUnknownResult(schema.ConfigTranslateDiagnosticKind)(kind);
       // Then
-      expect(Either.isRight(result)).toBe(kind !== "info");
+      expect(Result.isSuccess(result)).toBe(kind !== "info");
     },
   );
   test("rejects malformed content digests", () => {
     // Given / When
-    const result = Schema.decodeUnknownEither(schema.ConfigTranslateDocument)({
+    const result = Schema.decodeUnknownResult(schema.ConfigTranslateDocument)({
       ...document,
       contentDigest: "abc",
     });
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
   test.each([
     "",
@@ -94,20 +113,20 @@ describe("config translation schemas", () => {
     "x${secret:API_KEY}",
     "${secret:a}${secret:b}",
   ])("rejects the noncanonical stored-secret reference %s", (reference) => {
-    const result = Schema.decodeUnknownEither(schema.ConfigTranslateSecretReference)({
+    const result = Schema.decodeUnknownResult(schema.ConfigTranslateSecretReference)({
       disposition: "secret-store",
       reference,
     });
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
   test.each(["${secret:API_KEY}", "${secret:team/database}"])(
     "accepts the canonical secret-store reference %s",
     (reference) => {
-      const result = Schema.decodeUnknownEither(schema.ConfigTranslateSecretReference)({
+      const result = Schema.decodeUnknownResult(schema.ConfigTranslateSecretReference)({
         disposition: "secret-store",
         reference,
       });
-      expect(Either.isRight(result)).toBe(true);
+      expect(Result.isSuccess(result)).toBe(true);
     },
   );
 });

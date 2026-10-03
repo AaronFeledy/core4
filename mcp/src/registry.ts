@@ -21,7 +21,7 @@ export interface McpCommandSpec {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: McpRunInput) => Effect.Effect<unknown, unknown, unknown>;
-  readonly resultSchema: Schema.Schema.AnyNoContext;
+  readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly streamFrames?: (result: unknown) => ReadonlyArray<McpProgressFrame>;
   readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
   readonly successExitCode?: {

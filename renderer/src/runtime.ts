@@ -19,7 +19,7 @@ type LineFormatter = (event: LandoEvent) => string | null;
 const makeEventConsumerRendererLive = (
   handle: (event: LandoEvent) => void,
 ): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const queue = yield* events.subscribeQueue;
@@ -32,7 +32,7 @@ const makeEventConsumerRendererLive = (
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* Fiber.interrupt(fiber);
-          const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) handle(event);
           }
@@ -92,7 +92,7 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, io, "stderr", events);
 
-const nowTimestamp = (): DateTime.Utc => DateTime.unsafeNow();
+const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
 /**
  * Build a renderer's `message.{info,warn,error}` contract: each severity is

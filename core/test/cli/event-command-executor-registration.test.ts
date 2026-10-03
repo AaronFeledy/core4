@@ -22,7 +22,7 @@ test.each(["service", "standalone"] as const)(
       capabilities: RENDERER_CAPABILITIES_NONE,
       message: { info: write, warn: write, error: write },
       output: { stdout: write, stderr: write },
-    } satisfies Context.Tag.Service<typeof Renderer>;
+    } satisfies Context.Service.Shape<typeof Renderer>;
     const service = makeRedactionService({
       id: "empty",
       get: () => Effect.succeed(""),
@@ -30,7 +30,7 @@ test.each(["service", "standalone"] as const)(
       list: Effect.succeed([]),
     });
     const delegated: string[] = [];
-    const base = Context.make(Context.GenericTag<unknown>("test/runtime"), {}).pipe(
+    const base = Context.make(Context.Service<unknown>("test/runtime"), {}).pipe(
       Context.add(Renderer, renderer),
     );
     const context =

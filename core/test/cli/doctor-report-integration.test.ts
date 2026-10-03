@@ -38,12 +38,12 @@ const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSy
 const configService = (
   load: Effect.Effect<GlobalConfig, ConfigError>,
   fallback: GlobalConfig,
-): Context.Tag.Service<typeof ConfigService> => ({
+): Context.Service.Shape<typeof ConfigService> => ({
   load,
   get: (key) => Effect.succeed(fallback[key]),
 });
 
-const registryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
+const registryService: Context.Service.Shape<typeof RuntimeProviderRegistry> = {
   list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),

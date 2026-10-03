@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
 import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
@@ -84,8 +84,8 @@ describe("openForPlan", () => {
     const rec = record();
     const exit = await run(makePlan([], ["web", "db"]), { platform: "linux", env: { DISPLAY: ":0" } }, rec);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         _tag: string;
         message: string;
         services?: string[];
@@ -109,8 +109,8 @@ describe("openForPlan", () => {
 
     // Then: the diagnostic names the real cause and the real way out.
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
         readonly remediation?: string;
@@ -148,8 +148,8 @@ describe("openForPlan", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
         readonly remediation?: string;
@@ -168,8 +168,8 @@ describe("openForPlan", () => {
     const rec = record();
     const exit = await run(httpsPlan(), { service: "api", platform: "linux", env: { DISPLAY: ":0" } }, rec);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
         readonly remediation?: string;
@@ -190,8 +190,8 @@ describe("openForPlan", () => {
       rec,
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
       };

@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -89,13 +89,13 @@ export const doctor = (
     }
     const resolution = resolveProviderSelection(gathered.inputs);
     const selection = buildSelectionRecord(resolution);
-    const stateDirEither = yield* Effect.either(resolveStateDir(configService));
-    if (Either.isLeft(stateDirEither)) recordConfigFailure("provider-state-dir", stateDirEither.left);
-    const userDataRootEither = yield* Effect.either(configService.get("userDataRoot"));
-    if (Either.isLeft(userDataRootEither)) {
-      recordConfigFailure("provider-user-data-root", userDataRootEither.left);
+    const stateDirEither = yield* Effect.result(resolveStateDir(configService));
+    if (Result.isFailure(stateDirEither)) recordConfigFailure("provider-state-dir", stateDirEither.failure);
+    const userDataRootEither = yield* Effect.result(configService.get("userDataRoot"));
+    if (Result.isFailure(userDataRootEither)) {
+      recordConfigFailure("provider-user-data-root", userDataRootEither.failure);
     }
-    const userDataRootRaw = Either.isRight(userDataRootEither) ? userDataRootEither.right : undefined;
+    const userDataRootRaw = Result.isSuccess(userDataRootEither) ? userDataRootEither.success : undefined;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     if (userDataRoot !== undefined) {
@@ -136,7 +136,7 @@ export const doctor = (
         resources,
         executables,
         platform,
-        stateDir: Either.isRight(stateDirEither) ? stateDirEither.right : undefined,
+        stateDir: Result.isSuccess(stateDirEither) ? stateDirEither.success : undefined,
         env: options.env ?? process.env,
         userDataRoot,
         binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
@@ -163,23 +163,23 @@ export const doctor = (
       );
     }
 
-    const selected = yield* Effect.either(
+    const selected = yield* Effect.result(
       registry.select({
         provider: resolution.providerId,
       } as never),
     );
-    if (Either.isLeft(selected)) {
+    if (Result.isFailure(selected)) {
       const providerId = String(resolution.providerId);
       const stub = providerStubFor(providerId);
       return withSelfChecks([
-        providerUnavailableCheck({ providerId, platform, selection, cause: selected.left, redact }),
+        providerUnavailableCheck({ providerId, platform, selection, cause: selected.failure, redact }),
         ...reports
           .filter((entry) => entry.relevant === undefined)
           .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider: stub, selection })),
       ]);
     }
 
-    const provider = selected.right;
+    const provider = selected.success;
     const statusOutcome = yield* isolateDoctorSection({
       section: "provider-status",
       effect: provider.getStatus,
@@ -189,7 +189,7 @@ export const doctor = (
     });
     if (statusOutcome.self !== undefined) selfChecks.push(statusOutcome.self);
     const status = statusOutcome.value ?? { running: false };
-    const versions = yield* provider.getVersions.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const versions = yield* provider.getVersions.pipe(Effect.catch(() => Effect.succeed(undefined)));
     const diagnosis = diagnosePrimaryProvider({
       provider,
       status,

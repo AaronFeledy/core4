@@ -103,12 +103,15 @@ export const loadRecipeTs = (
       ),
     );
     const timeoutMs = options.timeoutMs ?? resolveRecipeTimeoutMs();
-    return yield* Effect.timeoutFail(evaluateImport(options.filePath), {
+    return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
       duration: Duration.millis(timeoutMs),
-      onTimeout: () =>
-        parseError(
-          options.filePath,
-          `recipe.ts at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
+      orElse: () =>
+        Effect.fail(
+          (() =>
+            parseError(
+              options.filePath,
+              `recipe.ts at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
+            ))(),
         ),
     });
   });

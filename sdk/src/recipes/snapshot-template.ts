@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 import { RecipeSnapshotError } from "../errors/recipe.ts";
 import type { ExpressionNode, PathSegment } from "../expressions/ast.ts";
 import { evaluateExpressionEither } from "../expressions/evaluator.ts";
@@ -136,11 +136,11 @@ export const collectSnapshotTemplateViolations = (node: ExpressionNode): Readonl
 export const validateSnapshotTemplate = (
   recipeId: string,
   template: RecipeSnapshotTemplate,
-): Either.Either<RecipeSnapshotTemplate, RecipeSnapshotError> => {
+): Result.Result<RecipeSnapshotTemplate, RecipeSnapshotError> => {
   const violation = collectSnapshotTemplateViolations(template.expression)[0];
   return violation === undefined
-    ? Either.right(template)
-    : Either.left(
+    ? Result.succeed(template)
+    : Result.fail(
         new RecipeSnapshotError({
           recipeId,
           ...violation,
@@ -186,7 +186,7 @@ const withinInputBudget = (value: unknown): boolean => {
 export const renderRecipeSnapshot = (
   snapshot: RecipeSnapshot,
   options: Record<string, RecipeOptionValue>,
-): Either.Either<unknown, RecipeSnapshotError> => {
+): Result.Result<unknown, RecipeSnapshotError> => {
   const recipeId = snapshot.identity.recipeId;
   const fail = (reason: "budget-exceeded" | "render-output-invalid") =>
     new RecipeSnapshotError({
@@ -196,16 +196,16 @@ export const renderRecipeSnapshot = (
       remediation: "Correct the snapshot expression or reduce its input and output sizes.",
     });
   const validation = validateSnapshotTemplate(recipeId, snapshot.template);
-  if (Either.isLeft(validation)) return validation;
+  if (Result.isFailure(validation)) return validation;
   const merged = { ...snapshot.defaults, ...options };
   if (!withinInputBudget(snapshot.template) || !withinInputBudget(merged))
-    return Either.left(fail("budget-exceeded"));
+    return Result.fail(fail("budget-exceeded"));
   return evaluateExpressionEither(
     snapshot.template.expression,
     { options: merged },
     { budget: SNAPSHOT_RENDER_BUDGET },
   ).pipe(
-    Either.mapLeft((error) =>
+    Result.mapError((error) =>
       fail(/budget/i.test(error.message) ? "budget-exceeded" : "render-output-invalid"),
     ),
   );

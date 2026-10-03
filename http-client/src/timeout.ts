@@ -28,9 +28,9 @@ export const applyHttpTimeout = <A, R>(
   if (timeoutMs === undefined || timeoutMs <= 0) return effect;
   if (remainingMs === undefined || remainingMs <= 0)
     return Effect.fail(httpTimeoutError(request.url, timeoutMs));
-  return Effect.timeoutFail(effect, {
+  return Effect.timeoutOrElse(effect, {
     duration: Duration.millis(remainingMs),
-    onTimeout: () => httpTimeoutError(request.url, timeoutMs),
+    orElse: () => Effect.fail((() => httpTimeoutError(request.url, timeoutMs))()),
   });
 };
 

@@ -150,13 +150,13 @@ export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<
   const name = toolingName(token);
   if (name === undefined) return false;
 
-  const resolution = await Effect.runPromise(Effect.either(resolveToolingRoute(token)));
-  if (resolution._tag === "Left") {
-    await runDynamicToolingFailure(name, argv.slice(1), resolution.left);
+  const resolution = await Effect.runPromise(Effect.result(resolveToolingRoute(token)));
+  if (resolution._tag === "Failure") {
+    await runDynamicToolingFailure(name, argv.slice(1), resolution.failure);
     return true;
   }
 
-  return routeResolvedTooling(resolution.right, argv.slice(1));
+  return routeResolvedTooling(resolution.success, argv.slice(1));
 };
 
 export const routeResolvedTooling = async (

@@ -20,20 +20,20 @@ const DECOMPRESSION_TIMEOUT_MS = 30_000;
 const MAX_DECOMPRESSION_STDERR_BYTES = 64 * 1024;
 
 const NftPackageSchema = Schema.Struct({
-  name: Schema.String.pipe(Schema.minLength(1)),
-  url: Schema.String.pipe(Schema.pattern(/^https:\/\//u)),
-  sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
-  filename: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._+-]*$/u)),
-  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+  name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  url: Schema.String.pipe(Schema.check(Schema.isPattern(/^https:\/\//u))),
+  sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
+  filename: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._+-]*$/u))),
+  sizeBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
 const NftManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  toolVersion: Schema.String.pipe(Schema.minLength(1)),
-  packages: Schema.Record({
-    key: Schema.String,
-    value: Schema.Array(NftPackageSchema).pipe(Schema.minItems(1)),
-  }),
+  toolVersion: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  packages: Schema.Record(
+    Schema.String,
+    Schema.Array(NftPackageSchema).pipe(Schema.check(Schema.isMinLength(1))),
+  ),
 });
 
 export type NftPackage = Schema.Schema.Type<typeof NftPackageSchema>;

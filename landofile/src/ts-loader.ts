@@ -265,14 +265,17 @@ export const loadLandofileTs = (
   Effect.gen(function* () {
     yield* sandboxScan(options.filePath, options.appRoot, options.content);
     const timeoutMs = options.timeoutMs ?? resolveTimeoutMs();
-    return yield* Effect.timeoutFail(evaluateImport(options.filePath), {
+    return yield* Effect.timeoutOrElse(evaluateImport(options.filePath), {
       duration: Duration.millis(timeoutMs),
-      onTimeout: () =>
-        new LandofileTimeoutError({
-          message: `Programmatic Landofile at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
-          filePath: options.filePath,
-          timeoutMs,
-          remediation: TIMEOUT_REMEDIATION,
-        }),
+      orElse: () =>
+        Effect.fail(
+          (() =>
+            new LandofileTimeoutError({
+              message: `Programmatic Landofile at ${options.filePath} did not produce a value within ${timeoutMs}ms.`,
+              filePath: options.filePath,
+              timeoutMs,
+              remediation: TIMEOUT_REMEDIATION,
+            }))(),
+        ),
     });
   });

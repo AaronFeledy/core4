@@ -181,9 +181,9 @@ export const makeStdioMcpTransport = (
 
     const handleFrame = (line: string): Effect.Effect<void, McpTransportError> =>
       parseJsonLine(line.trim()).pipe(
-        Effect.catchAll(() => {
+        Effect.catch(() => {
           const error = stdioTransportError("MCP stdio received malformed JSON.");
-          return writeError(null, -32700, "Parse error").pipe(Effect.zipRight(Effect.fail(error)));
+          return writeError(null, -32700, "Parse error").pipe(Effect.andThen(Effect.fail(error)));
         }),
         Effect.flatMap((parsed) => (isJsonObject(parsed) ? handleMessage(parsed) : Effect.void)),
       );
@@ -201,9 +201,9 @@ export const makeStdioMcpTransport = (
     yield* Scope.addFinalizer(
       yield* Effect.scope,
       Deferred.succeed(terminal, undefined).pipe(
-        Effect.zipRight(Queue.shutdown(requests)),
-        Effect.zipRight(Queue.shutdown(cancellations)),
-        Effect.zipRight(Effect.promise(() => reader.cancel()).pipe(Effect.ignore)),
+        Effect.andThen(Queue.shutdown(requests)),
+        Effect.andThen(Queue.shutdown(cancellations)),
+        Effect.andThen(Effect.promise(() => reader.cancel()).pipe(Effect.ignore)),
       ),
     );
 

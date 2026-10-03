@@ -36,7 +36,7 @@ const makeRecordingEventLayer = (tags: string[]): Layer.Layer<EventService> =>
 describe("runtime bootstrap lifecycle", () => {
   test("emits the app bootstrap sequence and before-exit before host finalizers", async () => {
     const ordering: string[] = [];
-    const hostFinalizer = Layer.scopedDiscard(
+    const hostFinalizer = Layer.effectDiscard(
       Effect.addFinalizer(() => Effect.sync(() => ordering.push("host-finalizer"))),
     );
 
@@ -111,7 +111,7 @@ describe("runtime bootstrap lifecycle", () => {
     );
     await Effect.runPromise(tracker.complete("minimal", events));
     await Effect.runPromise(tracker.complete("plugins", events));
-    const failingResource = Layer.fail("plugin bootstrap failed");
+    const failingResource = Layer.effectDiscard(Effect.fail("plugin bootstrap failed"));
 
     await Effect.runPromiseExit(
       Layer.build(superviseBootstrapLayer(failingResource, tracker)).pipe(Effect.scoped),
@@ -163,9 +163,9 @@ describe("runtime bootstrap lifecycle", () => {
     await Effect.runPromise(tracker.useBaseEventService(service));
 
     await Effect.runPromiseExit(
-      Layer.build(superviseBootstrapLayer(Layer.fail("minimal bootstrap failed"), tracker)).pipe(
-        Effect.scoped,
-      ),
+      Layer.build(
+        superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("minimal bootstrap failed")), tracker),
+      ).pipe(Effect.scoped),
     );
 
     expect(events).toEqual(["before-exit"]);
@@ -203,9 +203,9 @@ describe("runtime bootstrap lifecycle", () => {
     await Effect.runPromise(tracker.complete("minimal", service));
 
     await Effect.runPromiseExit(
-      Layer.build(superviseBootstrapLayer(Layer.fail("plugin bootstrap failed"), tracker)).pipe(
-        Effect.scoped,
-      ),
+      Layer.build(
+        superviseBootstrapLayer(Layer.effectDiscard(Effect.fail("plugin bootstrap failed")), tracker),
+      ).pipe(Effect.scoped),
     );
 
     expect(events.map((event) => event._tag)).toEqual(["pre-bootstrap-minimal", "before-exit"]);

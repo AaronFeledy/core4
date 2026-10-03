@@ -80,7 +80,7 @@ export interface ExecutableCommandSpec<
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;
   readonly strict?: boolean;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;
-  readonly resultSchema: Schema.Schema.AnyNoContext;
+  readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly successExitCode?: (result: A, input?: Input) => number | undefined;
   /**
    * Optional post-run render hook. Receives the validated input, result, and

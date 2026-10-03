@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { Schema } from "effect";
 
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
@@ -14,11 +15,11 @@ import { TunnelServiceContribution } from "./tunnel.ts";
 
 export const DeprecatedContributionRef = Schema.Struct({
   id: Schema.String,
-  deprecated: Schema.optional(DeprecationNotice),
+  deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type DeprecatedContributionRef = typeof DeprecatedContributionRef.Type;
 
-export const ContributionRef = Schema.Union(Schema.String, DeprecatedContributionRef);
+export const ContributionRef = Schema.Union([Schema.String, DeprecatedContributionRef]);
 export type ContributionRef = typeof ContributionRef.Type;
 
 // ====
@@ -34,23 +35,23 @@ export const GlobalServiceContribution = Schema.Struct({
   /** Service id inside the global Landofile. MUST be unique across plugins. */
   id: Schema.String,
   /** Path to the module that produces the Effect returning a ServiceConfig. */
-  module: Schema.optional(Schema.String),
+  module: Schema.optionalKey(Schema.String),
   /** Initial enabled state in `global.config.yml` when the plugin is first installed. */
-  enabledByDefault: Schema.optional(Schema.Boolean),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean),
   /** Provider/global-app dependencies that must be satisfied for materialization. */
-  requires: Schema.optional(
+  requires: Schema.optionalKey(
     Schema.Struct({
       /** ProviderCapabilities keys the active provider MUST satisfy. */
-      providerCapabilities: Schema.optional(Schema.Array(Schema.String)),
+      providerCapabilities: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
   ),
   /** Other global service ids that cannot coexist with this contribution. */
-  conflicts: Schema.optional(Schema.Array(Schema.String)),
+  conflicts: Schema.optionalKey(Schema.Array(Schema.String)),
   /** One-line description surfaced in `meta:global:list` / `info`. */
-  summary: Schema.optional(Schema.String),
+  summary: Schema.optionalKey(Schema.String),
   /** Canonical command ids contributed by the same plugin that operate on this service. */
-  commands: Schema.optional(Schema.Array(Schema.String)),
-  deprecated: Schema.optional(DeprecationNotice),
+  commands: Schema.optionalKey(Schema.Array(Schema.String)),
+  deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
 
@@ -61,13 +62,13 @@ export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
 export const DownloaderContribution = Schema.Struct({
   /** Unique across plugins. */
   id: Schema.String,
-  module: Schema.optional(Schema.String),
-  capabilities: Schema.optional(DownloaderCapabilities),
+  module: Schema.optionalKey(Schema.String),
+  capabilities: Schema.optionalKey(DownloaderCapabilities),
   /** Initial enabled state when the plugin is first installed. */
-  enabledByDefault: Schema.optional(Schema.Boolean),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean),
   /** One-line description surfaced in downloader listings / diagnostics. */
-  summary: Schema.optional(Schema.String),
-  deprecated: Schema.optional(DeprecationNotice),
+  summary: Schema.optionalKey(Schema.String),
+  deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type DownloaderContribution = typeof DownloaderContribution.Type;
 
@@ -78,13 +79,13 @@ export type DownloaderContribution = typeof DownloaderContribution.Type;
 export const HttpClientContribution = Schema.Struct({
   /** Unique across plugins. */
   id: Schema.String,
-  module: Schema.optional(Schema.String),
-  capabilities: Schema.optional(HttpClientCapabilities),
+  module: Schema.optionalKey(Schema.String),
+  capabilities: Schema.optionalKey(HttpClientCapabilities),
   /** Initial enabled state when the plugin is first installed. */
-  enabledByDefault: Schema.optional(Schema.Boolean),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean),
   /** One-line description surfaced in HTTP client listings / diagnostics. */
-  summary: Schema.optional(Schema.String),
-  deprecated: Schema.optional(DeprecationNotice),
+  summary: Schema.optionalKey(Schema.String),
+  deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type HttpClientContribution = typeof HttpClientContribution.Type;
 
@@ -96,9 +97,11 @@ export type HttpClientContribution = typeof HttpClientContribution.Type;
 export const InteractionServiceContribution = Schema.Struct({
   /** Unique across plugins; `stdio` is reserved. */
   id: Schema.String.pipe(
-    Schema.filter((id) => id !== "stdio", {
-      message: () => "Interaction service id `stdio` is reserved by core.",
-    }),
+    Schema.check(
+      Schema.makeFilter((id) => id !== "stdio", {
+        message: "Interaction service id `stdio` is reserved by core.",
+      }),
+    ),
   ),
   module: Schema.String,
   capabilities: Schema.Struct({
@@ -110,76 +113,76 @@ export const InteractionServiceContribution = Schema.Struct({
     secretRedaction: Schema.Boolean,
   }),
   /** Initial enabled state when the plugin is first installed. */
-  enabledByDefault: Schema.optional(Schema.Boolean),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean),
   /** One-line description surfaced in interaction-service listings / diagnostics. */
-  summary: Schema.optional(Schema.String),
-  deprecated: Schema.optional(DeprecationNotice),
+  summary: Schema.optionalKey(Schema.String),
+  deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type InteractionServiceContribution = typeof InteractionServiceContribution.Type;
 
 export const RouterServiceContribution = Schema.Struct({
-  id: Schema.propertySignature(Schema.String).annotations({
+  id: Schema.String.annotateKey({
     description: "Unique RouterService implementation id.",
   }),
-  module: Schema.propertySignature(Schema.String).annotations({
+  module: Schema.String.annotateKey({
     description: "Contained plugin module exporting the RouterService Layer.",
   }),
-  capabilities: Schema.optional(ProxyCapabilities).annotations({
+  capabilities: Schema.optionalKey(ProxyCapabilities).annotate({
     description: "Static capability declaration available before loading the implementation.",
   }),
-  defaultFor: Schema.optional(
+  defaultFor: Schema.optionalKey(
     Schema.Struct({
-      platform: Schema.optional(Schema.Array(Schema.String)),
+      platform: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
-  ).annotations({ description: "Host matchers that nominate this implementation as a default." }),
-  enabledByDefault: Schema.optional(Schema.Boolean).annotations({
+  ).annotate({ description: "Host matchers that nominate this implementation as a default." }),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Whether this contribution starts enabled after installation.",
   }),
-  summary: Schema.optional(Schema.String).annotations({
+  summary: Schema.optionalKey(Schema.String).annotate({
     description: "One-line implementation description for listings and diagnostics.",
   }),
-  deprecated: Schema.optional(DeprecationNotice).annotations({
+  deprecated: Schema.optionalKey(DeprecationNotice).annotate({
     description: "Optional lifecycle notice for this contribution.",
   }),
 });
 export type RouterServiceContribution = typeof RouterServiceContribution.Type;
 
 export const SshServiceContribution = Schema.Struct({
-  id: Schema.propertySignature(Schema.String).annotations({
+  id: Schema.String.annotateKey({
     description: "Unique SshService implementation id.",
   }),
-  module: Schema.propertySignature(Schema.String).annotations({
+  module: Schema.String.annotateKey({
     description: "Contained plugin module exporting the SshService Layer.",
   }),
-  defaultFor: Schema.optional(
+  defaultFor: Schema.optionalKey(
     Schema.Struct({
-      platform: Schema.optional(Schema.Array(Schema.String)),
+      platform: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
-  ).annotations({ description: "Host matchers that nominate this implementation as a default." }),
-  enabledByDefault: Schema.optional(Schema.Boolean).annotations({
+  ).annotate({ description: "Host matchers that nominate this implementation as a default." }),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Whether this contribution starts enabled after installation.",
   }),
-  summary: Schema.optional(Schema.String).annotations({
+  summary: Schema.optionalKey(Schema.String).annotate({
     description: "One-line implementation description for listings and diagnostics.",
   }),
-  deprecated: Schema.optional(DeprecationNotice).annotations({
+  deprecated: Schema.optionalKey(DeprecationNotice).annotate({
     description: "Optional lifecycle notice for this contribution.",
   }),
 });
 export type SshServiceContribution = typeof SshServiceContribution.Type;
 
 export const SecretStoreContribution = Schema.Struct({
-  id: Schema.String.annotations({ description: "Unique SecretStore implementation id across plugins." }),
-  module: Schema.String.annotations({
+  id: Schema.String.annotate({ description: "Unique SecretStore implementation id across plugins." }),
+  module: Schema.String.annotate({
     description: "Contained plugin module exporting the SecretStore Layer.",
   }),
-  schemes: Schema.Array(Schema.String).annotations({
+  schemes: Schema.Array(Schema.String).annotate({
     description: "Secret-reference schemes owned by this store, without the :// separator.",
   }),
-  summary: Schema.optional(Schema.String).annotations({
+  summary: Schema.optionalKey(Schema.String).annotate({
     description: "One-line implementation description for listings and diagnostics.",
   }),
-  deprecated: Schema.optional(DeprecationNotice).annotations({
+  deprecated: Schema.optionalKey(DeprecationNotice).annotate({
     description: "Optional lifecycle notice for this contribution.",
   }),
 });
@@ -191,26 +194,26 @@ export type SecretStoreContribution = typeof SecretStoreContribution.Type;
  * request; the manifest metadata here never triggers loading.
  */
 export const ConfigTranslatorContribution = Schema.Struct({
-  id: Schema.propertySignature(Schema.String).annotations({
+  id: Schema.String.annotateKey({
     description: "Unique ConfigTranslator id across every plugin source.",
   }),
-  module: Schema.propertySignature(Schema.String).annotations({
+  module: Schema.String.annotateKey({
     description: "Contained plugin module exporting the translator factory.",
   }),
-  inputKinds: Schema.propertySignature(Schema.Array(Schema.String)).annotations({
+  inputKinds: Schema.Array(Schema.String).annotateKey({
     description: "Input kinds the translator decodes, for listings and explicit selection.",
   }),
-  detects: Schema.optional(Schema.Array(Schema.String)).annotations({
+  detects: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
       "Advisory glob patterns for help and explicit conversion matching; detect() stays authoritative.",
   }),
-  optionsSchema: Schema.optional(Schema.String).annotations({
+  optionsSchema: Schema.optionalKey(Schema.String).annotate({
     description: "Optional contained module path exporting the translator-specific options schema.",
   }),
-  summary: Schema.optional(Schema.String).annotations({
+  summary: Schema.optionalKey(Schema.String).annotate({
     description: "One-line translator description for listings and diagnostics.",
   }),
-  deprecated: Schema.optional(DeprecationNotice).annotations({
+  deprecated: Schema.optionalKey(DeprecationNotice).annotate({
     description: "Optional lifecycle notice for this contribution.",
   }),
 });
@@ -218,55 +221,55 @@ export type ConfigTranslatorContribution = typeof ConfigTranslatorContribution.T
 
 export const PluginSetupFlagContribution = Schema.Struct({
   name: Schema.String,
-  type: Schema.Literal("boolean", "option"),
-  description: Schema.optional(Schema.String),
-  options: Schema.optional(Schema.Array(Schema.String)),
-  deprecated: Schema.optional(DeprecationNotice),
+  type: Schema.Literals(["boolean", "option"]),
+  description: Schema.optionalKey(Schema.String),
+  options: Schema.optionalKey(Schema.Array(Schema.String)),
+  deprecated: Schema.optionalKey(DeprecationNotice),
 });
 export type PluginSetupFlagContribution = typeof PluginSetupFlagContribution.Type;
 
 export const PluginSetupContribution = Schema.Struct({
-  flags: Schema.optional(Schema.Array(PluginSetupFlagContribution)),
+  flags: Schema.optionalKey(Schema.Array(PluginSetupFlagContribution)),
 });
 export type PluginSetupContribution = typeof PluginSetupContribution.Type;
 
 export const PluginContribution = Schema.Struct({
-  secretStores: Schema.optional(Schema.Array(SecretStoreContribution)).annotations({
+  secretStores: Schema.optionalKey(Schema.Array(SecretStoreContribution)).annotate({
     description: "SecretStore implementations and their owned reference schemes registered by this plugin.",
   }),
-  serviceTypes: Schema.optional(Schema.Array(ContributionRef)),
-  serviceFeatures: Schema.optional(Schema.Array(ContributionRef)),
-  appFeatures: Schema.optional(Schema.Array(ContributionRef)),
-  providers: Schema.optional(Schema.Array(ContributionRef)),
-  routerServices: Schema.optional(Schema.Array(RouterServiceContribution)).annotations({
+  serviceTypes: Schema.optionalKey(Schema.Array(ContributionRef)),
+  serviceFeatures: Schema.optionalKey(Schema.Array(ContributionRef)),
+  appFeatures: Schema.optionalKey(Schema.Array(ContributionRef)),
+  providers: Schema.optionalKey(Schema.Array(ContributionRef)),
+  routerServices: Schema.optionalKey(Schema.Array(RouterServiceContribution)).annotate({
     description: "RouterService implementations registered by this plugin.",
   }),
-  sshServices: Schema.optional(Schema.Array(SshServiceContribution)).annotations({
+  sshServices: Schema.optionalKey(Schema.Array(SshServiceContribution)).annotate({
     description: "SshService implementations registered by this plugin.",
   }),
-  loggers: Schema.optional(Schema.Array(ContributionRef)),
-  renderers: Schema.optional(Schema.Array(ContributionRef)),
-  templateEngines: Schema.optional(Schema.Array(ContributionRef)),
-  fileSyncEngines: Schema.optional(Schema.Array(ContributionRef)),
-  certificateAuthorities: Schema.optional(Schema.Array(CertificateAuthorityContribution)).annotations({
+  loggers: Schema.optionalKey(Schema.Array(ContributionRef)),
+  renderers: Schema.optionalKey(Schema.Array(ContributionRef)),
+  templateEngines: Schema.optionalKey(Schema.Array(ContributionRef)),
+  fileSyncEngines: Schema.optionalKey(Schema.Array(ContributionRef)),
+  certificateAuthorities: Schema.optionalKey(Schema.Array(CertificateAuthorityContribution)).annotate({
     description: "CertificateAuthority implementations registered by this plugin.",
   }),
-  commands: Schema.optional(Schema.Array(ContributionRef)),
-  configTranslators: Schema.optional(Schema.Array(ConfigTranslatorContribution)).annotations({
+  commands: Schema.optionalKey(Schema.Array(ContributionRef)),
+  configTranslators: Schema.optionalKey(Schema.Array(ConfigTranslatorContribution)).annotate({
     description:
       "ConfigTranslator implementations registered by this plugin; loaded only on explicit conversion.",
   }),
-  globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
-  downloaders: Schema.optional(Schema.Array(DownloaderContribution)),
-  httpClients: Schema.optional(Schema.Array(HttpClientContribution)),
-  interactionServices: Schema.optional(Schema.Array(InteractionServiceContribution)),
-  remoteSources: Schema.optional(Schema.Array(RemoteSourceContribution)),
-  datasets: Schema.optional(Schema.Array(DatasetContribution)),
-  tunnelServices: Schema.optional(Schema.Array(TunnelServiceContribution)),
-  rendererPanels: Schema.optional(Schema.Array(RendererPanelManifestEntry)).annotations({
+  globalServices: Schema.optionalKey(Schema.Array(GlobalServiceContribution)),
+  downloaders: Schema.optionalKey(Schema.Array(DownloaderContribution)),
+  httpClients: Schema.optionalKey(Schema.Array(HttpClientContribution)),
+  interactionServices: Schema.optionalKey(Schema.Array(InteractionServiceContribution)),
+  remoteSources: Schema.optionalKey(Schema.Array(RemoteSourceContribution)),
+  datasets: Schema.optionalKey(Schema.Array(DatasetContribution)),
+  tunnelServices: Schema.optionalKey(Schema.Array(TunnelServiceContribution)),
+  rendererPanels: Schema.optionalKey(Schema.Array(RendererPanelManifestEntry)).annotate({
     description: "Renderer panel contributions for named default-renderer slots.",
   }),
-  setup: Schema.optional(PluginSetupContribution),
+  setup: Schema.optionalKey(PluginSetupContribution),
 });
 export type PluginContribution = typeof PluginContribution.Type;
 
@@ -274,18 +277,18 @@ export const PluginManifest = Schema.Struct({
   name: PluginName,
   version: Schema.String,
   api: Schema.Literal(4),
-  bootstrap: Schema.optionalWith(BootstrapLevel, { default: () => "app" as const }),
-  description: Schema.optional(Schema.String),
-  enabled: Schema.optional(Schema.Boolean),
-  bundled: Schema.optional(Schema.Boolean),
+  bootstrap: BootstrapLevel.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "app" as const))),
+  description: Schema.optionalKey(Schema.String),
+  enabled: Schema.optionalKey(Schema.Boolean),
+  bundled: Schema.optionalKey(Schema.Boolean),
   /** Whole-plugin deprecation notice registered by DeprecationService. */
-  deprecated: Schema.optional(DeprecationNotice),
-  contributes: Schema.optional(PluginContribution),
-  subscribers: Schema.optional(Schema.Array(SubscriberManifestEntry)).annotations({
+  deprecated: Schema.optionalKey(DeprecationNotice),
+  contributes: Schema.optionalKey(PluginContribution),
+  subscribers: Schema.optionalKey(Schema.Array(SubscriberManifestEntry)).annotate({
     description: "Event subscribers (shape at manifest read; selector semantics after registration).",
   }),
   /** Entry module path relative to plugin package root. */
-  entry: Schema.optional(Schema.String),
-  requires: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  entry: Schema.optionalKey(Schema.String),
+  requires: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 export type PluginManifest = typeof PluginManifest.Type;

@@ -29,7 +29,7 @@ import type {
 
 import { type PluginStateStore, makePluginStateStore } from "./context-state.ts";
 
-type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
+type ManagedFileServiceImpl = Context.Service.Shape<typeof ManagedFileService>;
 
 /** A `ManagedFile` a plugin declares; the `owner` and base are supplied by the surface. */
 export type PluginManagedFile = Omit<ManagedFile, "owner" | "base"> & {
@@ -138,24 +138,24 @@ export const makePluginManagedFiles = (
 
   const plan: PluginManagedFiles["plan"] = (files) =>
     rejectDeclaredForeignOwner(files, "plan").pipe(
-      Effect.zipRight(
+      Effect.andThen(
         assertNoForeignPath(
           files.map((file) => file.path),
           "plan",
         ),
       ),
-      Effect.zipRight(service.plan(files.map(withOwner))),
+      Effect.andThen(service.plan(files.map(withOwner))),
     );
 
   const apply: PluginManagedFiles["apply"] = (files, opts) =>
     rejectDeclaredForeignOwner(files, "apply").pipe(
-      Effect.zipRight(
+      Effect.andThen(
         assertNoForeignPath(
           files.map((file) => file.path),
           "apply",
         ),
       ),
-      Effect.zipRight(service.apply(files.map(withOwner), opts)),
+      Effect.andThen(service.apply(files.map(withOwner), opts)),
     );
 
   const remove: PluginManagedFiles["remove"] = (selector = {}) => {
@@ -187,7 +187,7 @@ export const makePluginManagedFiles = (
     };
     const pathCheck =
       normalizedPath === undefined ? Effect.void : assertNoForeignPath([normalizedPath], "remove");
-    return pathCheck.pipe(Effect.zipRight(service.remove(scoped)));
+    return pathCheck.pipe(Effect.andThen(service.remove(scoped)));
   };
 
   const status: PluginManagedFiles["status"] = service.status.pipe(
@@ -196,15 +196,13 @@ export const makePluginManagedFiles = (
 
   const adopt: PluginManagedFiles["adopt"] = (path) => {
     const normalizedPath = normalizeManagedPath(path) as PortablePath;
-    return assertNoForeignPath([normalizedPath], "adopt").pipe(
-      Effect.zipRight(service.adopt(normalizedPath)),
-    );
+    return assertNoForeignPath([normalizedPath], "adopt").pipe(Effect.andThen(service.adopt(normalizedPath)));
   };
 
   const release: PluginManagedFiles["release"] = (path) => {
     const normalizedPath = normalizeManagedPath(path) as PortablePath;
     return assertNoForeignPath([normalizedPath], "release").pipe(
-      Effect.zipRight(service.release(normalizedPath)),
+      Effect.andThen(service.release(normalizedPath)),
     );
   };
 

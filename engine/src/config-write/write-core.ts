@@ -1,4 +1,4 @@
-import { Either, Predicate, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
@@ -14,10 +14,10 @@ const pathRemediation =
 export const parseConfigPath = (
   key: string,
   file: string,
-): Either.Either<ReadonlyArray<PathSegment>, LandofileWriteValidationError> => {
+): Result.Result<ReadonlyArray<PathSegment>, LandofileWriteValidationError> => {
   const segments = parsePathSegments(key);
   if (segments === undefined) {
-    return Either.left(
+    return Result.fail(
       new LandofileWriteValidationError({
         message: `\`${key}\` is not a valid config path.`,
         file,
@@ -27,31 +27,31 @@ export const parseConfigPath = (
       }),
     );
   }
-  return Either.right(segments);
+  return Result.succeed(segments);
 };
 
 export const parseConfigValue = (
   raw: string,
   type: ValueType,
   file: string,
-): Either.Either<unknown, LandofileWriteValidationError> => {
+): Result.Result<unknown, LandofileWriteValidationError> => {
   const parsed = parseTypedValue(raw, type);
-  if (Either.isLeft(parsed)) {
-    return Either.left(
+  if (Result.isFailure(parsed)) {
+    return Result.fail(
       new LandofileWriteValidationError({
-        message: parsed.left.message,
+        message: parsed.failure.message,
         file,
-        issues: [parsed.left.message],
+        issues: [parsed.failure.message],
         remediation: `Provide a valid \`${type}\` value, or choose a different \`--type\`.`,
       }),
     );
   }
-  return Either.right(parsed.right);
+  return Result.succeed(parsed.success);
 };
 
-export const decodeIssues = (decoded: Either.Either<unknown, unknown>): ReadonlyArray<string> => {
-  if (Either.isRight(decoded)) return [];
-  const cause = decoded.left;
+export const decodeIssues = (decoded: Result.Result<unknown, unknown>): ReadonlyArray<string> => {
+  if (Result.isSuccess(decoded)) return [];
+  const cause = decoded.failure;
   const rendered = cause instanceof Error ? cause.message : String(cause);
   return rendered
     .split("\n")
@@ -69,14 +69,14 @@ export interface SetMutationInput {
 
 export const applySetMutation = (
   input: SetMutationInput,
-): Either.Either<{ readonly next: unknown; readonly value: unknown }, LandofileWriteValidationError> => {
+): Result.Result<{ readonly next: unknown; readonly value: unknown }, LandofileWriteValidationError> => {
   const pathResult = parseConfigPath(input.key, input.file);
-  if (Either.isLeft(pathResult)) return Either.left(pathResult.left);
+  if (Result.isFailure(pathResult)) return Result.fail(pathResult.failure);
   const valueResult = parseConfigValue(input.raw, input.type, input.file);
-  if (Either.isLeft(valueResult)) return Either.left(valueResult.left);
-  return Either.right({
-    next: setAtPath(input.tree, input.key, valueResult.right),
-    value: valueResult.right,
+  if (Result.isFailure(valueResult)) return Result.fail(valueResult.failure);
+  return Result.succeed({
+    next: setAtPath(input.tree, input.key, valueResult.success),
+    value: valueResult.success,
   });
 };
 
@@ -88,10 +88,10 @@ export interface UnsetMutationInput {
 
 export const applyUnsetMutation = (
   input: UnsetMutationInput,
-): Either.Either<{ readonly next: unknown; readonly changed: boolean }, LandofileWriteValidationError> => {
+): Result.Result<{ readonly next: unknown; readonly changed: boolean }, LandofileWriteValidationError> => {
   const pathResult = parseConfigPath(input.key, input.file);
-  if (Either.isLeft(pathResult)) return Either.left(pathResult.left);
-  return Either.right(unsetAtPath(input.tree, input.key));
+  if (Result.isFailure(pathResult)) return Result.fail(pathResult.failure);
+  return Result.succeed(unsetAtPath(input.tree, input.key));
 };
 
 export const writeValidationErrorFromIssues = (input: {
@@ -111,9 +111,9 @@ export const emitConfigYaml = (input: {
   readonly file: string;
   readonly value: unknown;
   readonly path?: string;
-}): Either.Either<string, LandofileWriteValidationError> => {
-  if (!Predicate.isRecord(input.value)) {
-    return Either.left(
+}): Result.Result<string, LandofileWriteValidationError> => {
+  if (!Predicate.isObject(input.value)) {
+    return Result.fail(
       writeValidationErrorFromIssues({
         file: input.file,
         issues: ["The resulting config root must be a YAML map."],
@@ -122,24 +122,24 @@ export const emitConfigYaml = (input: {
     );
   }
   const emitted = emitLandofileYamlEither(input.value);
-  if (Either.isRight(emitted)) return Either.right(emitted.right);
-  return Either.left(
+  if (Result.isSuccess(emitted)) return Result.succeed(emitted.success);
+  return Result.fail(
     writeValidationErrorFromIssues({
       file: input.file,
-      issues: [emitted.left.message],
+      issues: [emitted.failure.message],
       ...(input.path === undefined ? {} : { path: input.path }),
     }),
   );
 };
 
 export const ConfigWriteResultFields = {
-  subcommand: Schema.optional(Schema.String),
-  key: Schema.optional(Schema.String),
-  value: Schema.optional(Schema.Unknown),
-  path: Schema.optional(Schema.String),
-  changed: Schema.optional(Schema.Boolean),
-  dryRun: Schema.optional(Schema.Boolean),
-  valid: Schema.optional(Schema.Boolean),
-  issues: Schema.optional(Schema.Array(Schema.String)),
-  filePath: Schema.optional(Schema.String),
+  subcommand: Schema.optionalKey(Schema.String),
+  key: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.Unknown),
+  path: Schema.optionalKey(Schema.String),
+  changed: Schema.optionalKey(Schema.Boolean),
+  dryRun: Schema.optionalKey(Schema.Boolean),
+  valid: Schema.optionalKey(Schema.Boolean),
+  issues: Schema.optionalKey(Schema.Array(Schema.String)),
+  filePath: Schema.optionalKey(Schema.String),
 } as const;

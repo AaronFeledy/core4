@@ -152,7 +152,7 @@ describe("provider pullArtifact", () => {
 const applyProviderId = ProviderId.make("lando");
 const applyAppId = AppId.make("mailpit-app");
 const applyMetadata = {
-  resolvedAt: DateTime.unsafeMake("2026-10-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"),
   source: "provider-lando/image-pull-provider.test.ts",
   runtime: 4 as const,
 };

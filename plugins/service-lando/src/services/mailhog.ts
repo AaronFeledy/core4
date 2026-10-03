@@ -78,9 +78,9 @@ export const mailhogServiceType: ServiceType = {
             id: "mailhog",
             notice: MAILHOG_DEPRECATION_NOTICE,
             ...(input.appName === undefined ? {} : { app: input.appName }),
-            timestamp: DateTime.unsafeNow(),
+            timestamp: DateTime.nowUnsafe(),
           })
-          .pipe(Effect.catchAll(() => Effect.void));
+          .pipe(Effect.catch(() => Effect.void));
       }
       return {
         base: "lando" as const,

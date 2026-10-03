@@ -61,7 +61,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
   source: "exec.scenario.test",
   runtime: 4 as const,
 };
@@ -76,19 +76,12 @@ const makeService = (
   provider: providerId,
   primary,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: undefined,
-  entrypoint: undefined,
   environment,
-  user: undefined,
-  workingDirectory: undefined,
-  appMount: undefined,
   mounts: [],
   storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
-  healthcheck: undefined,
-  certs: undefined,
   hostAliases: [],
   metadata,
   extensions: {},

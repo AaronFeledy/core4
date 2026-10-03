@@ -17,7 +17,7 @@ export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileE
     message: Schema.String,
     event: Schema.String,
     index: Schema.Number,
-    kind: Schema.Literal("cmd", "task", "command"),
+    kind: Schema.Literals(["cmd", "task", "command"]),
     service: Schema.optional(Schema.String),
     exitCode: Schema.Number,
     outputTail: Schema.String,

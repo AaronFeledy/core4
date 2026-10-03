@@ -44,7 +44,7 @@ test("enforces the configured recursion limit", async () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected limit failure");
-    expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toBeInstanceOf(LandofileLoadLimitError);
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(LandofileLoadLimitError);
   });
 });
 
@@ -75,7 +75,7 @@ test("enforces the file-byte limit", async () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected load limit");
-    expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toMatchObject({ kind: "file-bytes" });
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({ kind: "file-bytes" });
   });
 });
 
@@ -137,7 +137,7 @@ test("enforces the per-expression file-count limit", async () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected load limit");
-    expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toMatchObject({
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
       kind: "files-per-expression",
     });
   });

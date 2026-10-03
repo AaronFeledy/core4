@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { Deferred, Effect, Exit, Fiber, Option, Schema } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { StateStoreError } from "@lando/sdk/errors";
@@ -22,8 +22,9 @@ const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
 
 const failure = async <A, E>(effect: Effect.Effect<A, E, never>): Promise<StateStoreError> => {
   const exit = await Effect.runPromiseExit(Effect.scoped(effect));
-  if (Exit.isFailure(exit) && exit.cause._tag === "Fail" && exit.cause.error instanceof StateStoreError) {
-    return exit.cause.error;
+  if (Exit.isFailure(exit)) {
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    if (error instanceof StateStoreError) return error;
   }
   throw new Error(`expected a StateStoreError failure, got ${JSON.stringify(exit)}`);
 };
@@ -76,17 +77,17 @@ describe("LandoPluginContext stateStore scoping", () => {
         const firstEntered = yield* Deferred.make<void>();
         const releaseFirst = yield* Deferred.make<void>();
         const secondEntered = yield* Deferred.make<void>();
-        const first = yield* Effect.fork(
+        const first = yield* Effect.forkChild(
           plugin.stateStore.withLock(
             "runtime-launch",
-            Deferred.succeed(firstEntered, undefined).pipe(Effect.zipRight(Deferred.await(releaseFirst))),
+            Deferred.succeed(firstEntered, undefined).pipe(Effect.andThen(Deferred.await(releaseFirst))),
           ),
         );
         yield* Deferred.await(firstEntered);
-        const second = yield* Effect.fork(
+        const second = yield* Effect.forkChild(
           plugin.stateStore.withLock("runtime-launch", Deferred.succeed(secondEntered, undefined)),
         );
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         const observed = yield* Deferred.poll(secondEntered);
         yield* Deferred.succeed(releaseFirst, undefined);
         yield* Fiber.join(first);

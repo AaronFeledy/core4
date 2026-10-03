@@ -236,7 +236,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
   test("rejects routed apps for a provider without sharedCrossAppNetwork", async () => {
     const result = planUserApp(baseCapabilities({ sharedCrossAppNetwork: false }));
 
-    await expect(result).rejects.toHaveProperty("name", "(FiberFailure) CapabilityError");
+    await expect(result).rejects.toHaveProperty("name", "CapabilityError");
     await expect(result).rejects.toHaveProperty(
       "message",
       "Routes require provider capability sharedCrossAppNetwork.",

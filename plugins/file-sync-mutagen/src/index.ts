@@ -148,7 +148,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 
     isAvailable: client.version.pipe(
       Effect.as(true),
-      Effect.catchAll(() => Effect.succeed(false)),
+      Effect.catch(() => Effect.succeed(false)),
     ),
     setup: options.setup ?? (() => Effect.void),
 
@@ -213,7 +213,7 @@ export const fileSyncCheck: PluginDoctorCheckContribution = {
       const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
       const clientReady =
         selectedEngine._tag === "Some" && selectedEngine.value.id === ENGINE_ID
-          ? yield* selectedEngine.value.isAvailable.pipe(Effect.catchAll(() => Effect.succeed(false)))
+          ? yield* selectedEngine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false)))
           : false;
       const ready = isCurrent && clientReady;
 

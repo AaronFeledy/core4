@@ -167,7 +167,7 @@ export const withStartedHostProxy = <A, E, R>(
           .pipe(
             Effect.tap(() =>
               Ref.set(keepSession, true).pipe(
-                Effect.zipRight(
+                Effect.andThen(
                   session === undefined || options.managed === undefined
                     ? Effect.void
                     : Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(

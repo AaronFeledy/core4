@@ -8,7 +8,7 @@ import { $ } from "bun";
  * (dynamic `import("@opentui/core")` only). Do not add `@opentui/core` here
  * or use `Bun.Terminal` in compiled cold-start files.
  */
-import { type Context, Effect, FiberRef, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
 import {
@@ -31,7 +31,9 @@ import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
 const decoder = new TextDecoder();
-const shellRedactionTokens = FiberRef.unsafeMake<ReadonlyArray<string>>([]);
+const ShellRedactionTokens = Context.Reference<ReadonlyArray<string>>("@lando/engine/ShellRedactionTokens", {
+  defaultValue: (): ReadonlyArray<string> => [],
+});
 
 interface ShellOutput {
   readonly exitCode: number;
@@ -68,7 +70,7 @@ const redactorForOptions = (options: ShellCommandOptions | undefined) =>
   Effect.gen(function* () {
     const redaction = yield* Effect.serviceOption(RedactionService);
     if (redaction._tag === "None") return identityRedactor;
-    const redactionTokens = yield* FiberRef.get(shellRedactionTokens);
+    const redactionTokens = yield* ShellRedactionTokens;
     return yield* redaction.value.forProfile("secrets", {
       sourceEnv: { ...process.env, ...(options?.env ?? {}) },
       redactionTokens,
@@ -78,7 +80,7 @@ const redactorForOptions = (options: ShellCommandOptions | undefined) =>
 export const withShellRedactionTokens = <A, E, R>(
   redactionTokens: ReadonlyArray<string>,
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> => effect.pipe(Effect.locally(shellRedactionTokens, redactionTokens));
+): Effect.Effect<A, E, R> => effect.pipe(Effect.provideService(ShellRedactionTokens, redactionTokens));
 
 const publishShellEvent = (event: LandoEvent): Effect.Effect<void> =>
   Effect.serviceOption(EventService).pipe(
@@ -153,8 +155,8 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
 export const makeShellRunnerService = (
   makeReplIO: () => ShellReplIO,
   privateFileAccess: PrivateFileAccess,
-): Context.Tag.Service<typeof ShellRunner> => {
-  const service: Context.Tag.Service<typeof ShellRunner> = {
+): Context.Service.Shape<typeof ShellRunner> => {
+  const service: Context.Service.Shape<typeof ShellRunner> = {
     exec: (command, options) =>
       Effect.gen(function* () {
         yield* publishRedactedShellEvent(options, {
@@ -164,7 +166,7 @@ export const makeShellRunnerService = (
         const result = yield* Effect.tryPromise({
           try: () => execShell(command, options),
           catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
-        }).pipe(Effect.catchAll((error) => Effect.flatMap(redactShellError(options, error), Effect.fail)));
+        }).pipe(Effect.catch((error) => Effect.flatMap(redactShellError(options, error), Effect.fail)));
         yield* publishRedactedShellEvent(options, {
           _tag: "post-shell-exec",
           ...shellEventShape(command, options),

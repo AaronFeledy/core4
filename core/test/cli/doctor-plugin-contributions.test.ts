@@ -13,7 +13,7 @@ import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 
-const buildConfigService = (): Context.Tag.Service<typeof ConfigService> => {
+const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },

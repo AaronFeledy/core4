@@ -61,7 +61,7 @@ const builtInEventNames = (): Set<string> => {
   const names = new Set<string>();
   if (!AST.isUnion(LandoEvent.ast)) return names;
   for (const member of LandoEvent.ast.types) {
-    if (!AST.isTypeLiteral(member)) continue;
+    if (!AST.isObjects(member)) continue;
     const tag = member.propertySignatures.find((property) => property.name === "_tag")?.type;
     if (tag !== undefined && AST.isLiteral(tag) && typeof tag.literal === "string") {
       names.add(tag.literal);

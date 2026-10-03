@@ -80,7 +80,7 @@ export const guardOrdinaryFileSyncFallback = (
   Effect.gen(function* () {
     if (inspectPrior === undefined) return;
     const prior = yield* inspectPrior().pipe(
-      Effect.catchAll(() => Effect.succeed({ status: "unknown" } as const)),
+      Effect.catch(() => Effect.succeed({ status: "unknown" } as const)),
     );
     if (prior.status === "missing" || prior.status === "ordinary") return;
     return yield* Effect.fail(
@@ -132,7 +132,7 @@ export const resolveFileSyncMountPlan = (
       engine._tag === "Some" &&
       hasCompleteFileSyncCoverage(plan) &&
       plan.fileSync.every((entry) => entry.engineId === engine.value.id) &&
-      (yield* engine.value.isAvailable.pipe(Effect.catchAll(() => Effect.succeed(false))))
+      (yield* engine.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))))
     ) {
       return plan;
     }

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, rename } from "node:fs/promises";
+import { Result } from "effect";
 
 import { Cause, DateTime, Effect, Exit } from "effect";
 
@@ -44,7 +45,7 @@ import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
 import { prepareWindowsDockerCli } from "./windows-docker-cli.ts";
 
-const nowUtc = () => DateTime.unsafeNow();
+const nowUtc = () => DateTime.nowUnsafe();
 
 const PROVIDER_ID = "lando";
 const WINDOWS_MACHINE_HELPERS = ["gvproxy.exe", "win-sshproxy.exe"] as const;
@@ -850,7 +851,7 @@ ConvertTo-Json -InputObject $rows -Compress`;
             }),
         }),
       ),
-      Effect.catchAll((cause) => {
+      Effect.catch((cause) => {
         const raw = cause.cause;
         if (typeof raw !== "object" || raw === null) {
           return Effect.fail(cause);
@@ -1188,7 +1189,7 @@ const failureMessage = (cause: unknown): string =>
 const failureDetails = (
   cause: Cause.Cause<unknown>,
 ): { readonly summary: string; readonly remediation?: string } => {
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (failure._tag === "Some") {
     return {
       summary: failureMessage(failure.value),
@@ -1197,8 +1198,8 @@ const failureDetails = (
         : {}),
     };
   }
-  if (Cause.isInterruptedOnly(cause)) return { summary: "Setup interrupted." };
-  const defect = Cause.dieOption(cause);
+  if (Cause.hasInterruptsOnly(cause)) return { summary: "Setup interrupted." };
+  const defect = Result.getSuccess(Cause.findDefect(cause));
   return {
     summary: defect._tag === "Some" ? failureMessage(defect.value) : Cause.pretty(cause),
   };
@@ -1288,7 +1289,7 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
                         runtimeBinDir,
                         platform,
                       }).pipe(
-                        Effect.zipRight(
+                        Effect.andThen(
                           family === "win32"
                             ? prepareWindowsDockerCli(runtimeBinDir, platform, { repairExisting: true }).pipe(
                                 Effect.asVoid,

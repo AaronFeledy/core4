@@ -46,14 +46,14 @@ export const runtimeServiceReadinessFor = (provider: {
     const status = yield* statusEffect;
     if (status.socketPath === undefined || status.socketPath.length === 0) return null;
 
-    const versions = yield* provider.getVersions.pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
+    const versions = yield* provider.getVersions.pipe(Effect.catchCause(() => Effect.succeed(undefined)));
     return {
       running: status.running,
       socketPath: status.socketPath,
       ...(status.pid === undefined ? {} : { pid: status.pid }),
       ...(versions?.runtime === undefined ? {} : { runtimeVersion: versions.runtime }),
     };
-  }).pipe(Effect.catchAllCause(() => Effect.succeed(null)));
+  }).pipe(Effect.catchCause(() => Effect.succeed(null)));
 };
 
 export class ShellProfileIntegrationError extends Data.TaggedError("ShellProfileIntegrationError")<{
@@ -79,7 +79,7 @@ const recordDeferredFileSyncSetup = (userDataRoot: string): Effect.Effect<void, 
       `${JSON.stringify({ status: "deferred", engineId: "mutagen", resumeCommand: "lando setup" })}\n`,
       "utf-8",
     );
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 export interface SetupReadinessRecorder {
   readonly record: (step: SetupReadinessStep) => Effect.Effect<void, never>;
@@ -161,7 +161,7 @@ export const runFileSyncSetupStep = (
         Effect.sync(() => {
           fileSyncStatus = "installed";
         }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             recorder.record({
               id: "file-sync",
               status: "installed",
@@ -181,7 +181,7 @@ export const runFileSyncSetupStep = (
           );
           fileSync = yield* Effect.serviceOption(FileSyncEngine).pipe(
             Effect.provide(SetupFileSyncEngineLive.pipe(Layer.provide(dependencies))),
-            Effect.catchAllCause(() => Effect.succeed(Option.none())),
+            Effect.catchCause(() => Effect.succeed(Option.none())),
           );
         }
       }
@@ -191,7 +191,7 @@ export const runFileSyncSetupStep = (
           Effect.tapError((cause) => recorder.recordFailure("file-sync", cause)),
         );
         const liveClientAvailable = yield* fileSync.value.isAvailable.pipe(
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.catch(() => Effect.succeed(false)),
         );
         if (liveClientAvailable) {
           yield* recordInstalledFileSync(

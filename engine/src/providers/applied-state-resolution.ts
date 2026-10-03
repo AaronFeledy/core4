@@ -83,7 +83,7 @@ const groupOrphans = (
   return Array.from(groups.values());
 };
 
-type RuntimeEvidence = Effect.Effect.Success<ReturnType<typeof runtimeEvidence>>;
+type RuntimeEvidence = Effect.Success<ReturnType<typeof runtimeEvidence>>;
 
 const gatherAppliedPlans = (provider: AppliedStateProvider) =>
   (provider.appliedPlans ?? Effect.succeed([])).pipe(

@@ -12,15 +12,15 @@ import { Timestamp } from "./_shared.ts";
  * every global-app start (including the warm `ensureRunning` no-op, signalled
  * by `cached: true`).
  */
-export const GlobalStartTriggeredBy = Schema.Literal(
+export const GlobalStartTriggeredBy = Schema.Literals([
   "meta:global:start",
   "apps:poweroff",
   "ensure-running",
   "meta:setup",
-);
+]);
 export type GlobalStartTriggeredBy = typeof GlobalStartTriggeredBy.Type;
 
-export const GlobalStopTriggeredBy = Schema.Literal("meta:global:stop", "apps:poweroff");
+export const GlobalStopTriggeredBy = Schema.Literals(["meta:global:stop", "apps:poweroff"]);
 export type GlobalStopTriggeredBy = typeof GlobalStopTriggeredBy.Type;
 
 export const PreGlobalStartEvent = Schema.TaggedStruct("pre-global-start", {

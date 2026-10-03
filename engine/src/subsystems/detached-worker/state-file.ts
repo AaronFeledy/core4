@@ -5,7 +5,7 @@ import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 
-export const readDetachedWorkerRecord = <A, I>(path: string, schema: Schema.Schema<A, I>) =>
+export const readDetachedWorkerRecord = <A, I>(path: string, schema: Schema.Codec<A, I>) =>
   Effect.tryPromise({
     try: async () => {
       const file = Bun.file(path);
@@ -19,7 +19,7 @@ export const readDetachedWorkerRecord = <A, I>(path: string, schema: Schema.Sche
 export const writeDetachedWorkerRecord = <A, I>(
   options: {
     readonly path: string;
-    readonly schema: Schema.Schema<A, I>;
+    readonly schema: Schema.Codec<A, I>;
     readonly privateFileAccess: PrivateFileAccess;
     readonly directoryMode?: number;
   },
@@ -29,7 +29,7 @@ export const writeDetachedWorkerRecord = <A, I>(
     try: () => mkdir(dirname(options.path), { recursive: true, mode: options.directoryMode ?? 0o700 }),
     catch: (cause) => cause,
   }).pipe(
-    Effect.zipRight(
+    Effect.andThen(
       Effect.try(() => `${JSON.stringify(Schema.encodeSync(options.schema)(record), null, 2)}\n`),
     ),
     Effect.flatMap((body) =>

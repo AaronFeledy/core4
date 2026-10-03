@@ -61,7 +61,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Perf budget | Compiled-artifact tests enforce §2.1 end-to-end, first-paint, hot-path, concurrency, and runtime-reuse budgets. |
 | End-to-end | The relocated compiled binary runs against real operating systems, providers, plugins, routes, files, and offline-after-build state. |
 
-**Effect testing rules:** tests MUST inject mocks with Layers, provide them per test, use `TestClock` and `TestRandom` for nondeterminism, and feed stream services with deterministic Streams. Tests MUST NOT patch globals.
+**Effect testing rules:** tests MUST inject mocks with Layers, provide them per test, use `TestClock` from `effect/testing` (provided with `TestClock.layer()`) and `TestRandom` for nondeterminism, and feed stream services with deterministic Streams. Tests MUST NOT patch globals.
 
 **Provider contract suite:** every provider plugin MUST prove capability truthfulness, idempotent `apply`, complete `destroy`, tagged missing-service errors, terminating log Streams, capability-correct mount/endpoint/storage/route behavior, actionable remediation, and rollback on interruption. Bundled providers MUST run the same suite; no provider-specific substitute is acceptable.
 

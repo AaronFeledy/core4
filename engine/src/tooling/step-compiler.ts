@@ -1,4 +1,4 @@
-import { Data, Effect, Either } from "effect";
+import { Data, Effect, Result } from "effect";
 
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
@@ -135,23 +135,26 @@ const commandInputHasDynamicExpression = (
   tool: string,
 ): Effect.Effect<boolean, ToolingCompileError> => {
   if (Array.isArray(value)) {
-    return Effect.reduce(value, false, (found, entry) =>
-      commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
+    return Effect.reduce(
+      value,
+      () => false,
+      (found, entry) =>
+        commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
     );
   }
   if (typeof value !== "string") return Effect.succeed(false);
   const parsed = parseExpressionEither(value, { filePath: "<event-step-command>" });
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     return Effect.fail(
       new ToolingCompileError({
-        message: parsed.left.message,
+        message: parsed.failure.message,
         tool,
-        remediation: parsed.left.remediation,
-        cause: parsed.left,
+        remediation: parsed.failure.remediation,
+        cause: parsed.failure,
       }),
     );
   }
-  return Effect.succeed(parsed.right.segments.some((segment) => segment.kind !== "LiteralSegment"));
+  return Effect.succeed(parsed.success.segments.some((segment) => segment.kind !== "LiteralSegment"));
 };
 
 const commandLeafHasDynamicInput = (
@@ -163,8 +166,11 @@ const commandLeafHasDynamicInput = (
     ...Object.values(leaf.args),
     ...leaf.raw,
   ];
-  return Effect.reduce(values, false, (found, value) =>
-    commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
+  return Effect.reduce(
+    values,
+    () => false,
+    (found, value) =>
+      commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
   );
 };
 

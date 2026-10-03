@@ -71,14 +71,14 @@ const LedgerEntrySchema = Schema.Struct({
   id: Schema.String,
   owner: Schema.String,
   path: Schema.String,
-  mode: Schema.Literal("file", "block", "keys"),
+  mode: Schema.Literals(["file", "block", "keys"]),
   format: FileFormatSchema,
   marker: Schema.String,
   lastWrittenChecksum: Schema.String,
   sourceHash: Schema.String,
-  state: Schema.Literal("managed", "adopted"),
-  base: Schema.optional(Schema.String),
-  backup: Schema.optional(Schema.String),
+  state: Schema.Literals(["managed", "adopted"]),
+  base: Schema.optionalKey(Schema.String),
+  backup: Schema.optionalKey(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -242,8 +242,8 @@ const buildEntry = (
   lastWrittenChecksum,
   sourceHash,
   state,
-  base: mf.base,
-  backup,
+  ...(mf.base === undefined ? {} : { base: mf.base }),
+  ...(backup === undefined ? {} : { backup }),
   createdAt: existing?.createdAt ?? nowIso(),
   updatedAt: nowIso(),
 });
@@ -484,7 +484,7 @@ const decideOne = (
     const disk = pendingDisk?.has(abs)
       ? (pendingDisk.get(abs) ?? null)
       : yield* backend.readMaybe(abs, operation);
-    const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path: mf.path, base: mf.base }));
+    const entry = entries.find((candidate) => sameLedgerTarget(candidate, mf));
     const decision =
       mf.mode === "file"
         ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
@@ -528,7 +528,7 @@ const makeLifecycleEvent = (
     readonly summary: string;
   },
 ): LandoEvent => {
-  const timestamp = DateTime.unsafeNow();
+  const timestamp = DateTime.nowUnsafe();
   const payload = { eventName: kind, ...fields, timestamp } as const;
   switch (kind) {
     case "pre-managed-file-write":
@@ -548,7 +548,7 @@ const makeLifecycleEvent = (
 export const makeManagedFileService = (
   backend: ManagedFileBackend,
   events: ManagedFileEvents = noopManagedFileEvents,
-): Effect.Effect<Context.Tag.Service<typeof ManagedFileService>> =>
+): Effect.Effect<Context.Service.Shape<typeof ManagedFileService>> =>
   Effect.sync(() => {
     const publishLifecycle = (
       kind: ManagedFileEventKind,
@@ -627,7 +627,7 @@ export const makeManagedFileService = (
               id: mf.id,
               path: decision.relPath as PortablePath,
               action: decision.action,
-              backup,
+              ...(backup === undefined ? {} : { backup }),
             });
           }
           for (const { mf, decision } of prepared) {
@@ -712,7 +712,7 @@ export const makeManagedFileService = (
     const adopt = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
       backend.mutateLedger("adopt", (entries) =>
         Effect.gen(function* () {
-          const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path, base: undefined }));
+          const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path }));
           const base = yield* backend.resolveBase(entry?.base, "adopt");
           const abs = yield* backend.resolveTarget(base, path, "adopt");
           const disk = yield* backend.readMaybe(abs, "adopt");
@@ -732,14 +732,14 @@ export const makeManagedFileService = (
 
     const release = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
       backend.mutateLedger("release", (entries) => {
-        const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path, base: undefined }));
+        const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path }));
         return Effect.succeed([
           undefined,
           entry ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }) : entries,
         ] as const);
       });
 
-    return { plan, apply, remove, status, adopt, release } satisfies Context.Tag.Service<
+    return { plan, apply, remove, status, adopt, release } satisfies Context.Service.Shape<
       typeof ManagedFileService
     >;
   });
@@ -842,7 +842,7 @@ export const makeDiskBackend = (options: {
         try: () => mkdir(dir, { recursive: true }),
         catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
       }).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           stateStore.open({
             root: { path: dir as AbsolutePath },
             key,
@@ -949,7 +949,7 @@ const deriveAppId = (base: string): string => {
 };
 
 const makeLiveManagedFileEvents = (
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
   redactText: (text: string) => string,
 ): ManagedFileEvents => ({
   redactText,
@@ -958,7 +958,7 @@ const makeLiveManagedFileEvents = (
     onSome:
       (service) =>
       (event): Effect.Effect<void> =>
-        service.publish(event).pipe(Effect.catchAllCause(() => Effect.void)),
+        service.publish(event).pipe(Effect.catchCause(() => Effect.void)),
   }),
 });
 
@@ -997,7 +997,7 @@ export const ManagedFileServiceWithPrivateFileAccessLive: Layer.Layer<
   ManagedFileService,
   never,
   PrivateFileAccessService
-> = Layer.unwrapEffect(Effect.map(PrivateFileAccessService, makeManagedFileServiceLive));
+> = Layer.unwrap(Effect.map(PrivateFileAccessService, makeManagedFileServiceLive));
 
 export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> =
   ManagedFileServiceWithPrivateFileAccessLive.pipe(Layer.provide(PrivateFileAccessLive));

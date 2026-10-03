@@ -17,10 +17,10 @@ export interface HostProxyDoctorFileSystemShape {
   ) => Effect.Effect<{ readonly type: "socket" | "other"; readonly mode: number } | undefined>;
 }
 
-export class HostProxyDoctorFileSystem extends Context.Tag("@lando/core/HostProxyDoctorFileSystem")<
+export class HostProxyDoctorFileSystem extends Context.Service<
   HostProxyDoctorFileSystem,
   HostProxyDoctorFileSystemShape
->() {}
+>()("@lando/core/HostProxyDoctorFileSystem") {}
 
 export const HostProxyDoctorFileSystemLive = Layer.succeed(HostProxyDoctorFileSystem, {
   readRoot: (path) =>

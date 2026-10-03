@@ -132,12 +132,12 @@ export const scopedAgentRelayWorker = (input: AgentRelayWorkerInput, options: Ag
             stores: [],
             fileSync: [],
             extensions: {},
-            metadata: { resolvedAt: DateTime.unsafeNow(), source: input.app.root, runtime: 4 },
+            metadata: { resolvedAt: DateTime.nowUnsafe(), source: input.app.root, runtime: 4 },
           };
           const provider = yield* registry.select(plan).pipe(Effect.mapError(workerError("bridge")));
           if (provider.openAgentSocketBridge === undefined)
             return yield* Effect.fail(workerError("bridge")(undefined));
-          const upstream = yield* Schema.decodeUnknown(AgentSocketUpstream)({
+          const upstream = yield* Schema.decodeUnknownEffect(AgentSocketUpstream)({
             ...relay.address,
             ...(token === undefined ? {} : { token }),
           }).pipe(Effect.mapError(workerError("broker")));
@@ -222,7 +222,7 @@ export const runAgentRelayWorkerProcess = async (
   try {
     const readInput = options.readInput ?? (() => Bun.stdin.text());
     const input = await Effect.runPromise(
-      Schema.decodeUnknown(Schema.parseJson(AgentRelayWorkerInput))(await readInput()).pipe(
+      Schema.decodeUnknownEffect(Schema.fromJsonString(AgentRelayWorkerInput))(await readInput()).pipe(
         Effect.mapError(workerError("worker")),
       ),
     );

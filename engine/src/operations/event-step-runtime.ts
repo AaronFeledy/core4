@@ -45,9 +45,9 @@ interface EventRedactionScope {
 interface EventRuntimeOptions {
   readonly plan: AppPlan;
   readonly event: LandofileEventName;
-  readonly events: Context.Tag.Service<typeof EventService>;
+  readonly events: Context.Service.Shape<typeof EventService>;
   readonly privateFileAccess: PrivateFileAccess;
-  readonly hostRunner?: Context.Tag.Service<typeof ShellRunner>;
+  readonly hostRunner?: Context.Service.Shape<typeof ShellRunner>;
   readonly redactor: Redactor;
   readonly redactorFor: (
     records: ReadonlyArray<Readonly<Record<string, unknown>> | undefined>,
@@ -260,7 +260,7 @@ const finish = (options: EventRuntimeOptions, execution: EventLeafResult) => {
   const failure = Effect.fail(
     nonzeroFailure({ ...options, redactor: execution.redactor }, execution.leaf, execution.result),
   );
-  return execution.leaf.silent ? failure : publish(options, execution).pipe(Effect.zipRight(failure));
+  return execution.leaf.silent ? failure : publish(options, execution).pipe(Effect.andThen(failure));
 };
 
 export const makeEventStepRunners = (
@@ -271,7 +271,7 @@ export const makeEventStepRunners = (
     effect: Effect.Effect<EventLeafResult, unknown>,
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
     effect.pipe(
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         isEventRuntimeError(error) ? Effect.fail(error) : Effect.fail(stepFailure(options, leaf, error)),
       ),
       Effect.flatMap((execution) => finish(options, execution)),

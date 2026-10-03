@@ -9,7 +9,7 @@ import {
   ManagedFileTransactionGuard,
   StateStore,
 } from "@lando/sdk/services";
-import { Context, Effect, Either, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import { withResolvedCwd } from "../src/app-resolution.ts";
 import { loadLandofileFile, loadLandofileLayers, makeLandofileServiceLive } from "../src/service.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -85,12 +85,12 @@ test("preserves the blocked error before reading a missing file set", async () =
           load: Effect.die("Global configuration must not be read before the guard"),
           get: () => Effect.die("Global configuration must not be read before the guard"),
         }),
-        Effect.either,
+        Effect.result,
       ),
     );
 
     // Then
-    expect(Either.isLeft(result) && result.left).toBe(failure);
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
   });
 });
 
@@ -122,10 +122,10 @@ test("captures the required guard in Live while discover remains context-free", 
     );
 
     // When: no services are provided to discover itself.
-    const result = await Effect.runPromise(withResolvedCwd(root, service.discover).pipe(Effect.either));
+    const result = await Effect.runPromise(withResolvedCwd(root, service.discover).pipe(Effect.result));
 
     // Then: catchAllCause preserves the exact transaction failure.
-    expect(Either.isLeft(result) && result.left).toBe(failure);
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
   });
 });
 
@@ -160,12 +160,12 @@ test("consults a context guard when callers omit transactionGuard inputs", async
           ensureConsistent: () => Effect.fail(failure),
           pending: () => Effect.succeed(null),
         }),
-        Effect.either,
+        Effect.result,
       ),
     );
 
     // Then
-    expect(Either.isLeft(result) && result.left).toBe(failure);
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
   });
 });
 
@@ -183,12 +183,12 @@ test("consults a context guard before reading a single Landofile file", async ()
           ensureConsistent: () => Effect.fail(failure),
           pending: () => Effect.succeed(null),
         }),
-        Effect.either,
+        Effect.result,
       ),
     );
 
     // Then
-    expect(Either.isLeft(result) && result.left).toBe(failure);
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
   });
 });
 

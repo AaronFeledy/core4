@@ -189,13 +189,13 @@ export const runPostAppEvent = (
   payload?: ExpressionContext["event"],
 ) =>
   runAppEvent(plan, event, payload).pipe(
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       EventService.pipe(
         Effect.flatMap((events) =>
           events.publish(
             MessageWarnEvent.make({
               body: [error.message, error.remediation].join(" "),
-              timestamp: DateTime.unsafeNow(),
+              timestamp: DateTime.nowUnsafe(),
             }),
           ),
         ),
@@ -207,10 +207,10 @@ export const runAppInitEvents = (plan: AppPlan) =>
   Effect.gen(function* () {
     const events = yield* EventService;
     const app = { kind: "user" as const, id: plan.id, root: plan.root };
-    const pre = PreInitEvent.make({ app, timestamp: DateTime.unsafeNow() });
+    const pre = PreInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
     yield* events.publish(pre);
     yield* runAppEvent(plan, "pre-init", pre);
-    const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeNow() });
+    const post = PostInitEvent.make({ app, timestamp: DateTime.nowUnsafe() });
     yield* events.publish(post);
     yield* runAppEvent(plan, "post-init", post);
   });

@@ -185,7 +185,7 @@ export const applyLinuxRuntimeGenerationState = (
     Effect.mapError((cause) =>
       generationError("Failed to reset the stale Lando runtime runroot.", { runRoot: deps.runRoot }, cause),
     ),
-    Effect.zipRight(
+    Effect.andThen(
       deps.generationStore
         .set(state.generation)
         .pipe(

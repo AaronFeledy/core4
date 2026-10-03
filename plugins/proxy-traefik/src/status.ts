@@ -38,7 +38,7 @@ export const persistedStatus = (dependencies: TraefikProxyDependencies) =>
           ),
           authorities: persistedAuthorities(content, ports),
         })),
-        Effect.catchAll((cause) =>
+        Effect.catch((cause) =>
           isConcurrentRemoval(cause) ? Effect.succeed(undefined) : Effect.fail(cause),
         ),
       ),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Either, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
@@ -108,12 +108,12 @@ const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explici
           ),
         ),
       ),
-      Effect.either,
+      Effect.result,
     ),
   );
 
 const buildSelectedProxy = (
-  registry: Context.Tag.Service<typeof RouterServiceRegistry>,
+  registry: Context.Service.Shape<typeof RouterServiceRegistry>,
   resolver: CertificateAuthorityResolverShape,
 ) =>
   Effect.scoped(
@@ -151,9 +151,9 @@ describe("RouterService registry selection", () => {
     );
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
     expect(owningPluginId).toBe("@lando/proxy-test");
-    if (Either.isRight(result)) expect(result.right.layer).toBe(fakeLayer);
+    if (Result.isSuccess(result)) expect(result.success.layer).toBe(fakeLayer);
   });
 
   test("preserves the typed selection error for an id absent from injected modules", async () => {
@@ -164,11 +164,11 @@ describe("RouterService registry selection", () => {
     const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "missing");
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(ProxyError);
-      expect(result.left.proxyId).toBe("missing");
-      expect(result.left.message).toBe("Router service missing is not installed.");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(ProxyError);
+      expect(result.failure.proxyId).toBe("missing");
+      expect(result.failure.message).toBe("Router service missing is not installed.");
     }
   });
 

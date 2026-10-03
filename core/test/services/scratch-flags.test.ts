@@ -156,7 +156,7 @@ const withScratchEnv = async <T>(
 };
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch flags test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch flags test provider should not call ${operation}`));
 
 const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   const capabilities = makeCapabilities(sharedCrossAppNetwork);
@@ -287,10 +287,10 @@ describe("ScratchAppServiceLive --mount-cwd transform", () => {
           Effect.scoped(
             service.acquire({ source: { kind: "fork" }, detached: true, isolate: "full", mountCwd: {} }),
           ),
-        ).pipe(Effect.provide(makeLayer(appliedPlans)), Effect.either),
+        ).pipe(Effect.provide(makeLayer(appliedPlans)), Effect.result),
       );
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchIsolationConflictError");
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchIsolationConflictError");
       expect(appliedPlans).toHaveLength(0);
     });
   });
@@ -319,10 +319,10 @@ describe("ScratchAppServiceLive --share-global-storage transform", () => {
           Effect.scoped(
             service.acquire({ source: { kind: "fork" }, detached: true, shareGlobalStorage: true }),
           ),
-        ).pipe(Effect.provide(makeLayer(appliedPlans, false)), Effect.either),
+        ).pipe(Effect.provide(makeLayer(appliedPlans, false)), Effect.result),
       );
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchAppError");
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ScratchAppError");
     });
   });
 });

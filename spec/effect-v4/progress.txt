@@ -1,0 +1,212 @@
+# Effect 4 upgrade progress
+
+Append one entry per step. This file is the narrative record; `git log` is the
+file-level record. An entry says what changed about the **product** and what it
+**cost**, never which files were touched, and never a restatement of the entry
+above it.
+
+**Belongs here:** measurements (baseline and after, per spec §12); spec §8
+findings with their tests and any intended difference; defects the work exposed;
+work deliberately deferred, with the reason; anything a future agent would
+otherwise rediscover.
+
+**Does not belong here:** file lists, line counts, formatting-only changes, or a
+gate reporting that it skipped.
+
+Entry shapes: Build (what shipped, verification, learnings), Measure (benchmark
+numbers against the baseline), Review (blockers fixed, deferrals with reasons).
+
+## Codebase Patterns
+
+- Effect 4 `Queue.takeAll` waits for at least one item; polling buffered events and draining during shutdown must use `Queue.clear`. An empty `takeAll` inside an uninterruptible finalizer can block both scope closure and cancellation.
+- Persisted timestamps need `Schema.DateTimeUtcFromString`. `Schema.DateTimeUtc` accepts DateTime instances on both sides; after JSON serialization, decoding its ISO string fails and a quarantine-on-corrupt bucket silently returns its default.
+- Effect 4's concurrent traversal can observe an immediate failure before a sibling callback starts. Tests of already-concurrent work should coordinate that start with a `Deferred`, not assume the scheduler eagerly starts every callback.
+
+Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
+`effect@4.0.0` (`dist/*.d.ts`, runtime exports, shipped `AGENTS.md`).
+
+- Effect 3 and Effect 4 types cannot coexist across `@lando/sdk`, so US-662 switches every package in one PR. Old forms that still compile on Effect 4 are left to the per-area idiom passes (US-663, US-664, US-666, US-667) so each area is rewritten once.
+- Same name, different meaning:
+  - Effect 3 `Effect.catch` takes a discriminator (`Effect.catch("_tag", { failure, onFailure })`); Effect 4 `Effect.catch` is catch-all.
+  - Effect 3 `Predicate.isRecord` (plain objects only) maps to Effect 4 `Predicate.isObject`. Effect 3 `Predicate.isObject` also accepts arrays and functions.
+  - Never rename either by name alone.
+- Removed modules in Effect 4: `Either` (use `Result`), `ParseResult` (`SchemaIssue`, `SchemaParser`), `JSONSchema` (`JsonSchema` plus `Schema.toJsonSchemaDocument`), `FiberRef` (`Context.Reference`, `References`), root-level `TestClock`/`TestContext` (`effect/testing` `TestClock`; `TestClock.layer()`), `FastCheck` (`effect/Arbitrary`), `ExecutionStrategy`, and `FiberId` (fiber ids are numbers).
+- Also removed, though they look present by analogy:
+  - `Layer`: `scoped`, `scopedDiscard`, `unwrapEffect`, `unwrapScoped`, `mapError`, `fail`, `extendScope`, `memoize`;
+  - `Effect`: `either`, `zipRight`, `zipLeft`, `async`, `timeoutFail`, `timeoutTo`, `dieMessage`, `tapErrorCause`, `fork`, `runtime`, `iterate`, `orElse`, `whenEffect`, `makeSemaphore`, `makeLatch`;
+  - `Stream`: `async`, `catchAll`, `repeatEffect`, `acquireRelease`, `unwrapScoped`;
+  - `Fiber.poll` (use the `pollUnsafe()` method);
+  - `Scope.extend` and `Scope.CloseableScope` (use `Scope.Closeable`);
+  - `Option.fromNullable` (use `fromNullishOr`);
+  - `Duration.decode` (use `fromInputUnsafe`).
+- `Context.Reference` keeps the same shape across versions, and Effect 3 Context.Tag classes already have `of`, so the `FiberRef` and `X.of` rewrites need no intermediate form.
+- Effect 4 `Schema.Struct` takes one argument. An index-signature extension record moves to `Schema.StructWithRest(Struct(fields), [record])`, which keeps `.fields`, so `landofile/src/service.ts` can still build its key allowlist from it.
+- Effect 4 emits `Schema.optional(X)` into JSON Schema as `anyOf [X, null]` while the decoder rejects `null`. `Schema.optionalKey(X)` emits a plain optional property, so authored input uses `optionalKey`.
+- `Schema.toJsonSchemaDocument(schema, { onExcessProperty: "error" })` emits `additionalProperties: false`. `generateDescriptions: true` adds descriptions such as "a value between 1 and 65535". Documents are draft 2020-12 (`{ dialect, schema, definitions }`). `JsonSchema.toDocumentDraft07` converts and throws on unrepresentable keywords.
+- `SchemaRepresentation.fromJsonSchemaDocument(doc)` returns a decodable `Schema`, which lets US-668 test editor parity without a JSON Schema validator dependency.
+- `Schema.decodeUnknownResult(S)(input, { onExcessProperty: "error", errors: "all" })` reports every issue. `SchemaIssue.makeFormatterStandardSchemaV1()(error.issue)` yields `{ issues: [{ path: ["services","web","port"], message }] }`.
+- Effect 4 has no `SchemaTransformation.transformOrFail`. Fallible transformations use `SchemaTransformation.transformEffect({ decode, encode })`, whose callbacks get `(input, options)` and return `Effect.succeed(value)` or `Effect.fail(new SchemaIssue.InvalidValue({ message }, input, options))`. `ParseResult.isParseError` becomes `Schema.isSchemaError`.
+- Effect 4 filters are `Schema.is*` checks: `isPattern`, `isInt`, `isMinLength`, `isMaxLength`, `isBetween`, `isGreaterThan`, `isGreaterThanOrEqualTo`, `isLessThanOrEqualTo`, `isStartingWith`, `isUUID`, `isNonEmpty`, `isTrimmed`. There is no `isPositive`, `isNonNegative`, `isMinItems`, `isMaxItems`, or `isStartsWith`.
+- Layer memoization in Effect 4: a nested `Effect.provide` forks the parent memo map (`Layer.CurrentMemoMap.forkOrCreate`), reusing layers the parent already built and keeping new allocations in the child. Each top-level `Effect.runPromise` starts a fresh map, so test isolation between runs holds.
+- `effect/ai` `McpServer` registers tools at runtime with `addTool({ tool, annotations, handle })`, and `Tool.dynamic` accepts raw JSON Schema parameters. `McpServer.layerStdio` needs an Effect `Stdio` service. `McpServer.elicit` and `clientCapabilities` exist. Protocols: 2024-11-05, 2025-03-26, 2025-06-18.
+- `@effect/platform-bun@4.0.0` re-exports `@effect/platform-node-shared`, whose spawner uses `node:child_process` and which depends on `ws`. Not adopted (spec §10).
+- `effect/observability` OTLP layers need an `HttpClient` service and an `OtlpSerialization` layer (`layerJson` or `layerProtobuf`). They read `OTEL_*` env vars only when built with `layerFromConfig`.
+- Biome is 1.9.4, which has no GritQL plugins, so the US-667 idiom guard is a boundary rule.
+- Main-tree sizes at 3.21.2:
+  - about 575 named functions in shipped code that only return `Effect.gen` (engine 205, core 168, plugins 118, others about 85);
+  - 104 `*Live` exports and 31 `make*Live` factories;
+  - 133 `Context.Tag` service classes in source;
+  - 8 `FiberRef`s in 7 files (`volume-coordination.ts` holds two), all bound with `Effect.locally` and read with `FiberRef.get`, never `set`;
+  - `Either` 1,981 and `Effect.either` 1,070 references, mostly in tests.
+
+## 2026-10-02 01:27 CDT - US-662 baseline (Measure, effect@3.21.2, base 15133ee26)
+- `bench:tooling-hot-path` (`lando bench` from the hot-path fixture, 30 warm runs each), three runs: p50 222.6 / 207.8 / 205.0 ms; p95 253.0 / 260.4 / 238.0 ms (script-reported warm p95 243.8 / 246.9 / 237.2 ms); cold 210 / 233 / 227 ms. Noise band on p95 about 22 ms.
+- `bench:opentui-startup` (`--version`, 20 runs each), three runs: startup p95 10.4 / 10.1 / 25.7 ms; first-output p95 9.3 / 9.3 / 10.1 ms. The 25.7 ms run is a single outlier; the noise band on startup p95 is wide.
+- linux-x64 compiled binary (`core/dist/lando`, minified, sanitized): 200,709,600 bytes.
+- `lando app:config --format=json` against the hot-path fixture: peak RSS 215,844 KB, 0.43 s wall.
+- `test:unit` wall time is not measured locally (the full suite runs in CI only); compare CI shard durations on the base and the switch PR instead.
+---
+
+## 2026-10-02 02:40 CDT - US-662 (Build, pass 1: characterization and partial switch; not implemented)
+- Characterization tests for every applicable §8 row are committed and pass on Effect 3 (130 tests across 25 files): layer build counts for EventService, telemetry transport, MCP service, the core testing event bus, doctor layers, and the app lifecycle and app handle factories; bootstrap resource lifetime; both shells' text and JSON failure output and exit codes for a tagged failure, a defect, an interrupt, and combined failures; the scenario reporter; process exit with a hanging telemetry sink; `runProbe` attempts and virtual time per profile; telemetry drain; MCP stdio shutdown; log-follow and renderer stream completion; JSON log keys; and behavior of all eight fiber-local refs.
+- Recorded zeros: no shipped use of `HashSet`, `HashMap`, `Array.dedupe`/`union`/`contains`, `Equal.equals`, `Data.struct`, `Array.partition`/`separate`, `Either.partition`, or ISO duration parsing.
+- The catalog switch is committed (object `workspaces` form, `catalog.effect` `4.0.0`, every workspace on `catalog:`, TypeScript `^5.9.0`) with a pin test in `core/test/build/`. The canonical toolchain, testing, and tenets sections carry the Effect 4 rules.
+- Per-package port commits are work in progress and do not compile yet. A TypeScript-compiler codemod applied the mechanical §4.1-§4.5 and §7 renames repo-wide. All eight `FiberRef`s are now `Context.Reference`s, and the CLI shell runs through `runPromiseExit`. Typecheck at the cut (`bun run typecheck`, 02:33): `sdk/src` compiles (`tsc -b --force` clean). The root run reports 240 errors: engine 100, core 87, plugins 24, landofile 18, managed-file 6, data-mover 3, mcp 1, container-runtime 1. Downstream test projects may be hidden behind these. Two families dominate. Under `exactOptionalPropertyTypes`, `optionalKey` fields reject explicit `undefined` (`{ base: undefined }`, `digest: string | undefined`), so build the objects without the key. `SchemaIssue` paths are optional (`issue.path` possibly undefined), and the lint/landofile issue mappers need their types adjusted.
+- Remaining for the next Build pass: check that `sdk/src/events/_shared.ts` `Schema.DateTimeUtc` still accepts ISO-string wire input (the command-lifecycle events depend on it); port the schema AST walkers and JSON Schema pipeline, which the codemod skipped (`sdk/src/schema/json-schema*.ts`, `landofile-authoring*.ts`, `deprecation.ts`, `plugins/lando3/src/model.ts`, `engine/src/lifecycle/subscriber-index.ts`, `scripts/build-schema-snapshot.ts`); handle the codemod's `Predicate.isObject` flags (for example `core/src/recipes/manifest/flatten.ts`); then compile every package in DAG order. After that, port the characterization tests to Effect 4 APIs and reconcile them (the layer-count tests pin Effect 3 nested-provide rebuilds; the library tests pin `FiberFailure` rejection text), regenerate derived outputs, add the schema-compatibility normalizer and the no-`null` authored-input test, update `sdk/API_COMPATIBILITY.md`, the SDK surface fixture, and the AGENTS.md lines that name Effect 3 forms, run the full gate set, and take post-switch measurements.
+- **Learnings for future iterations:**
+  - Effect 4.0.0's installed typings expose `Context.Reference<Shape>(id, { defaultValue })`, not a curried class form. Providing a captured context after `provideService` overwrites the newly bound reference. `app-mutation-lock.ts` therefore provides the reference last, or nested lock re-entrancy breaks.
+  - On Effect 3, providing the same layer again through a nested `Effect.provide` rebuilds it (counts go 1, 2, 3 across graph, nested, and fresh run). Effect 4 reuses it through the forked memo map, so those characterization tests will flag the change. Either restore the rebuild with `Layer.fresh` or `{ local: true }`, or record the difference as intended.
+  - The library entry points (`makeLandoRuntime` returns a Layer, `openLandoRuntime` and `runtime.run` return Effects) have no imperative promise runner. Only `core/src/cli/run.ts` and `core/src/cli/renderer-boundary.ts` run effects to a promise.
+  - The codemod lives outside the repo at `.local/us662/codemod/` (`run.ts`, `transform.ts`, `maps.ts`) and is idempotent. Rerun it after porting the skipped files, then check with `check-packages.ts`.
+  - Tests load gitignored generated sources (`core/src/plugins/generated`, `core/src/runtime/generated`, and others). Run `bun run codegen` once the generators compile on Effect 4.
+---
+## 2026-10-02 02:33 - Build
+- [looper] Build handed the story back at building: Effect 4 switch partially ported: characterization tests and catalog pin committed, but packages do not compile yet (sdk 34 errors; schema AST/JSON Schema walkers unported; downstream packages blocked). Characterization tests still need Effect 4 ports; gates, codegen, compat artifacts, docs, and post-switch measurements remain.
+---
+## 2026-10-02 02:33 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-02 02:45 CDT - US-662 Drift Audit
+- Trigger: 2 cycles, 13511 insertions, 23 commits
+- Scope absorption: none. Later stories are not started, and the PRD index was not changed after the plan commit.
+- Weakened proofs: characterization tests hit production symbols. One scratch helper cast `Effect.result` back to Either `Left`/`Right`; restored to `Result`. Existing assertion diffs are renames, not looser matchers. Layer-count tests still pin Effect 3 rebuilds; the Effect 4 memo-map difference stays recorded, not blessed as a pass.
+- Dual path: tooling plan resolution and generated guide runs checked Either after switching to `Effect.result`. Both now use `Result`. Remaining `Effect.either` sites and Left/Right expectations are unported and still fail typecheck; they are not a second compatibility path. `Predicate.isObject` matches the Effect 4 plain-object check; not a defect.
+- Ceremony: the schema-compatibility normalizer is the classifier helper this story requires, and the no-null artifact test is already present and passing.
+- Collateral: canonical spec edits match the US-662 amendments only.
+- Contract drift: fresh typecheck is 237 errors and `sdk` is still clean. The handback line's "sdk 34 errors" does not match. `docs` imported `effect` with no catalog declaration; it now uses `catalog:`.
+- Deferred work left with the next Build pass, not laundered: the remaining compile errors, characterization ports onto Effect 4, gates, compatibility notes, and post-switch measurements.
+- Fixed: Result/Either half-ports on tooling and guide runs; the scratch failure helper no longer lies about `Result`; docs declares `effect` through the catalog.
+- Split/excise: none.
+- Verification: typecheck fails (237 errors; the tooling dual-shape errors are gone). Effect pin and schema-artifact tests pass (9). The scratch namespace suite does not load (`Logger.replace` is still unported). Lint fails (414 diagnostics, formatter debt from the port, not these fixes).
+---
+## 2026-10-02 02:42 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-10-02 02:42 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-02 02:42 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-10-02 02:42 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-10-02 12:57 CDT - US-662 (Build, resumed; not implemented)
+- Completed shell and generated-guide failure ports. Boundaries retain combined causes instead of dropping cleanup failures. Effect 4 native promise rejection names no longer carry `FiberFailure`; library and reporter characterization checks both native rejection and complete `Exit`. Native CLI interruption keeps its human message. Historical reporter text fixtures remain parser inputs, not current-runtime expectations.
+- Fixed two runtime regressions compilation missed. Empty renderer/telemetry shutdown drains use `Queue.clear`; the previous renderer finalizer could block cancellation indefinitely. Provider bootstrap shares its commands graph through `Layer.suspend`: Effect 4 memoizes leaf acquisition but otherwise repeatedly traversed the composite graph. A retained runtime that exceeded 15 seconds (one diagnostic run took 9m20s) now constructs and releases in about 906 ms; the embedding lifecycle guide completes in about 470 ms.
+- Restored ISO-string codecs for persisted build-result timestamps, recovering five cache-reuse/scratch-skip failures. Buffered event assertions now drain nonblockingly. The concurrent failure test explicitly waits for the sibling to start, retaining its exact call-list and original-error assertions rather than relying on Effect 3's eager callback scheduling.
+- All eight generated plugin templates compile and test on Effect 4. Release manifest preparation resolves `catalog:` to concrete versions. SDK signature fixtures, compatibility notes, and API instructions describe Effect 4. The testing-runtime guide now executes three real library scenarios.
+- Restored required-field reference metadata from the encoded AST. The blanket null-artifact check incorrectly rejected 24 explicitly nullable nodes already present on the base (Compose deploy/logging/networks, provider/proxy settings, recipe literals). Its replacement checks every emitted null node against encoded-source acceptance or explicit source projection intent, with regressions for optional-undefined pollution and unmatched nullable nodes; no path exemptions. Stock wording changes are the exact regex description (`matching the RegExp`), shell/reporter characterization, and the routed-provider `CapabilityError` rejection name. Custom schema messages remain unchanged.
+- Verification: final `gate:pr` passed, including actual guide drift. SDK spot checks passed 220 tests; build-cache checks 27; native failure/reporter/shutdown 15; retained library shell 21; reference/lifetime and layer/stream/probe 92; doctor report 30; docs 90; both nightly-tier files 26. All four required guides passed with positive counts (3, 3, 2, 2). Docs check, guide lint/coverage, public transcripts, and telemetry inventory passed. Sandbox compiled build/relocation passed; a real CLI-generated plugin compiled and passed its generated test. Five live provider suites passed 46 tests, with only the existing Windows-only and opt-in destructive-prune cases skipped. No full local suite was run, as required by the loop contract.
+- Still blocking implementation: schema compatibility against `origin/main` reports **425 unknown, 0 breaking, 33 already accepted, 0 skipped**. Findings need semantic classification or fixes; no blanket exceptions were added. Binary-size and RSS regressions below also remain unexplained and owned by US-662. The full CI test gate has not run. Continue this story on the retained branch.
+- **Learnings for future iterations:**
+  - Green compilation does not prove persisted DateTime round trips, empty-queue finalization, or bounded composite-layer traversal. The characterization and actual library paths exposed all three.
+  - Tests requiring concurrently started tasks should synchronize startup with `Deferred`, preserving assertions rather than depending on scheduler order.
+  - CLI/provider execution stayed in persistent `lando4-dev` tmux using existing shared `.local/bin/bun`. Missing Node/Postgres fixture images were pulled there before rerunning live tests.
+---
+
+## 2026-10-02 12:57 CDT - US-662 post-switch measurements (Measure, effect@4.0.0)
+- After the provider-graph fix, the same sandbox benchmark and fixture produced three warm runs of 30 samples: p50 **167.4 / 177.5 / 186.5 ms**, script-reported p95 **180.0 / 199.9 / 200.6 ms** (index `floor((n-1)*p)`); cold **168.7 / 180.5 / 180.7 ms**. The p95 noise band is **20.6 ms**. All improve on the Effect 3 script-reported p95 **243.8 / 246.9 / 237.2 ms**.
+- Startup, 20 samples per run: startup p95 **13.3 / 20.0 / 14.2 ms**, first-output p95 **12.3 / 18.7 / 12.9 ms**. Startup noise band **6.6 ms**. All met the script's 50 ms budgets; retain the raw comparison with the noisier baseline rather than claiming startup improved.
+- Sanitized linux-x64 binary: **234,374,344 bytes**, versus **200,709,600** (**+16.8%**). `app:config --format=json` exited 0 in **0.54 s**, peak RSS **339,912 KB**, versus **215,844 KB** (**+57.5%**) and 0.43 s at baseline. Both exceed the 5% threshold. Module/allocation causes are not yet isolated: **US-662 retains ownership**, with no waiver or downstream deferral.
+- Discard earlier pre-fix measurements as final performance evidence. Full unit-suite wall time remains a CI measurement; no full local suite was run.
+---
+
+## 2026-10-03 00:25 CDT - US-662 blocker repairs (direct follow-up)
+- Resolved all 425 unexplained schema findings. Draft-07 artifacts retain optional-key omission, native map constraints, reserved-key diagnostic precedence, and existing container-only result/guide contracts. Validated authoring keeps its checks; structural wire schemas preserve the actual Effect 3 encoded transport behavior. The compatibility normalizer recognizes only proved identities, with negative tests for genuine constraint changes.
+- The historical embedded `x-*` producer applied extension-only key validation to declared names, rejecting valid runtime documents. Kept the corrected artifacts and documented 68 exact exceptions backed by captured-base, whole-subtree, wrong-path, and unrelated-mutation proofs. No blanket exception was added. Final schema compatibility against `origin/main`: **0 breaking, 0 unknown, 69 accepted (68 proved artifact corrections plus one pre-existing exception), 0 skipped**.
+- Final review exposed a callback bug in the initial projection repair: explicit tuple-form `toJsonSchema` callbacks could be mistaken for upstream defaults. Removed that inference. Canonical SDK checks now declare exact projections at construction, retaining their original RegExp sources and flags. Both failing counterexamples now pass; all **406 generated SDK artifacts remain byte-identical** to the pre-callback-fix snapshot. The read-only delta review approved the correction.
+- Binary/RSS comparison had mixed Bun compiler versions. Rebuilt the unchanged Effect 3 base with identical release flags: **239,076,552 bytes on Bun 1.4.0**, versus **200,705,504 on Bun 1.4.2**, within 4,096 bytes of the old unversioned record. The final pinned-Bun-1.4.0 Effect 4 binary is **227,497,160 bytes**, about **4.8% smaller** than its matched base. Compiler pin, bytecode, source maps, splitting, and bundled assets are unchanged. Narrow lazy Effect subpath imports avoid retaining unused modules.
+- Memoizing already-constructed, factory-local minimal/provider dependency graphs avoids repeated composite traversal without delaying input capture or changing overrides. Matched Bun 1.4.0 base peak RSS: **318,220 / 315,256 / 318,784 KB**; final Effect 4: **247,560 / 227,056 / 237,816 KB**, all command exits 0. Final hot-path p95 **237.1 ms** remains within the matched-base **239.0 / 253.1 / 294.3 ms** runs. Earlier paired current runs were **174.2 / 180.5 / 184.2 ms**; retain the noise rather than claiming a fixed speedup.
+- Verification: final `gate:pr` passed (typecheck, lint, codegen drift, boundaries, and actual guide drift); **422 tests passed across 15 focused schema/docs/proof files**. Refreshed sandbox compile/relocation, retained lifecycle, uninstall guard, and library-shell checks: **43 passed**. Earlier final four owned guides passed with positive counts, both nightly-tier files passed 26 tests, docs checks/test and guide gates passed, and the live Compose-knob test passed against the connecting sandbox socket. Manual help/version, valid JSON config, and missing-config tagged failure/exit 1 passed. No full local suite was run; full CI coverage remains a separate gate.
+- **Learnings for future iterations:** record the Bun compiler version with every binary/RSS baseline; patch releases materially change bytecode size. Projection callbacks belong to the schema author and must not be inferred from returned fragments. Artifact guards must inspect explicit declaration JSON codecs without excusing undeclared nullable values.
+- These follow-up changes remain uncommitted. No push, PR action, or additional loop signal was performed.
+---
+## 2026-10-03 00:33 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-03 00:33 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-10-03 00:33 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-03 00:33 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-10-03 00:33 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+## 2026-10-03 00:33 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-10-03 00:50 CDT - US-662 (Build, completion)
+- Committed the blocker repairs from the direct follow-up: the schema-compatibility identities, x-extension artifact corrections with their proofs, exact-projection SDK checks, lazy concrete Effect subpath imports, and memoized bootstrap dependency graphs. No new behavior beyond that follow-up.
+- Verification: `gate:pr` passed (typecheck, lint, codegen drift, boundaries, actual guide drift against `origin/main`). Schema compatibility against `origin/main`: 0 breaking, 0 unknown, 69 accepted, 0 skipped. Spot checks: 422 tests across 15 schema, compatibility, docs, and pin files passed. Sandbox CLI: `--version` and `--help` exit 0, `app:config --format=json` emits a valid envelope (exit 0), and a missing Landofile returns tagged `LandofileNotFoundError` JSON (exit 1). The full `bun run test` suite is left to CI.
+- **Learnings for future iterations:**
+  - Under `lando4-dev --exec`, piping CLI output into `head` can fail with EAGAIN on the interop stdout. Redirect to files under the repo and read them from the host.
+---
+
+## 2026-10-03 00:50 CDT - US-662 Drift Audit
+- Trigger: 6 cycles, 1492 files, +29497/−12599, 57 commits
+- No scope absorption, weakened proof, Effect 3/4 dual path, ceremony forwarder, collateral story edit, or laundered regression. Removed Effect 3 APIs are gone; later stories are unstarted; characterization still exercises production behavior, including the recorded Effect 4 differences.
+- Fixed: none.
+- Split/excise: none.
+- Verification: typecheck and lint passed. Spot checks passed: 56 tests across the effect pin, schema-artifact null guard, shell-failure, layer-memo, telemetry-shutdown, and MCP-shutdown proofs.
+---
+
+## 2026-10-03 01:00 CDT - US-662 Verify
+- Compiled-binary setup, `lando init` lamp, and `lando start` succeeded on a reset sandbox. Both proxy URLs returned the PHP body; `php` tooling, logs, `app:config`, and `doctor` exited 0. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us662v-appserver` and `lando-us662v-database`, parented to `/init`, after the app was already destroyed. Expected no processes for that app. Suspected area: runtime shutdown vs in-flight exec monitors. Not a US-662 acceptance failure.
+---
+
+## 2026-10-03 01:55 CDT - Babysit
+- PR: #1141 https://github.com/AaronFeledy/core4/pull/1141
+- CI outcome: fail. After merging origin/main (conflict was core/package.json; main's SQL compression and image-pull tests ported to Effect 4), the unit shards 1-3, the library-api tests, and the static-checks audit fail. The failures are 61 tests (workspaces object-form readers, Effect 4 Schema/Logger/Cause behavior, managed-file transaction recovery, SecretStore redaction, docs:scenario exit code), plus `bun audit` high: http-cache-semantics@4.2.0 via docs > astro.
+- Review feedback: none from Bugbot. Triage round 1 was aborted mid-run. It left 6 local, unpushed fix commits on the branch (Landofile remediation path, network inject SchemaError cause, renderer-boundary memo map, yaml conformance sampling, structured log parsing, applied-state failure detail). These need verification before push.
+- Merge: deferred (CI red; returned to Build)
+---
+## 2026-10-03 01:55 - Babysit
+- [looper] Babysit handed the story back at building: PR #1141 CI red after merging main: 61 unit/library test failures from Effect 4 behavior changes and object-form workspaces readers, plus bun audit high (http-cache-semantics via astro); partial triage fixes committed locally (unpushed) on branch
+---
+
+## 2026-10-03 02:20 CDT - US-662 (Build, CI-failure repair)
+- Verified all 13 local fix commits left by the aborted Babysit triage against the PR's 61 failing CI tests across 24 files; every failure is covered. Effect 4 port gaps in tests: Result-shaped matchers, the object-form root `workspaces.packages`, `SchemaError` causes, structured JSON log lines, `TestClock` timer settling, applied-state failure detail, and well-formed string samples for YAML. Two product fixes: Landofile remediation issues keep their path, and the renderer boundary builds the command layer in a local memo map. Without the memo map, Effect 4 reuses the diagnostic fallback's env-only `RedactionServiceLive`, and SecretStore values render unredacted; `redaction-ac6` fails when the fix is reverted.
+- The audit ignore covers GHSA-ch52-4w7c-c8xp (`http-cache-semantics@4.2.0` via docs > astro). The advisory is also on `main` (same lockfile entry), and npm has no patched release; the dependency is docs-only.
+- The mixed compose/non-compose Landofile case no longer lists the uninformative Effect 3 `services` issue. The decoder reports the first offending path. Non-compose unsupported keys are still rejected on their own (verified via CLI, exit 1).
+- Verification: `gate:pr` passed (with real guide drift against `origin/main`). All 24 CI-failing files passed locally (252 tests). The 29 non-integration test files touched by the main merge passed (533 tests), plus the docs sidebar test (12). The compiled binary rebuilt. In the sandbox, `global:start` brought up the managed runtime; the five main-merge live provider suites passed (bringUp/inspect 21 after pulling the node/postgres fixture images, contract and cross-process green; only the Windows-only case skipped). `app:config` JSON/plain failures and missing-Landofile failures exit 1 with tagged errors. The runtime was then powered off.
+- **Learnings for future iterations:**
+  - Effect 4 `Effect.provide(layer)` inside an already-provided effect reuses services from the parent memo map. Use `{ local: true }` when an inner runtime must build its own instance of a layer the outer scope already built, such as redaction bound to a different secret store.
+  - A sandbox reset drops the live-test fixture images. Pull `node:22-alpine` and `postgres:16-alpine` through the managed socket (`libpod/images/pull`) before blaming bringUp/inspect failures.
+---
+
+## 2026-10-03 02:25 CDT - US-662 Drift Audit
+- Trigger: 8 cycles, 1502 files (+29628/−12668), 76 commits
+- Dual path: renderer finalizers drained with a takeUnsafe loop that stops when the queue is done and drops the remaining events. They now use Queue.clear, the same nonblocking drain as the other renderer.
+- Deferred conmon processes after destroy/poweroff: re-checked against the acceptance criteria. No Effect-port change owns that shutdown, so it stays out of scope.
+- Fixed: deleted the takeUnsafe drain wrapper. Finalizers and test collectors use Queue.clear.
+- Split/excise: none. Later stories are not started.
+- Verification: typecheck, lint, and schema compatibility pass (0 breaking, 0 unknown, 69 accepted). Spot checks pass: effect pin and telemetry shutdown (7), renderer queue drains (28).
+---

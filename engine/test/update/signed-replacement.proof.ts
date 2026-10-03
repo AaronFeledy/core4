@@ -15,7 +15,7 @@ import { join, resolve } from "node:path";
 
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
 import { resolveUpdateManifestUrl } from "../../src/update/manifest.ts";
@@ -160,12 +160,12 @@ for (const scenario of cases) {
                 execCalls.push(input);
               }),
           },
-        }).pipe(Effect.provideService(ProcessRunner, observed), Effect.either);
+        }).pipe(Effect.provideService(ProcessRunner, observed), Effect.result);
         // Then: actual bytes and executed process observations, not just planned assertions.
         const targetHash = sha256(yield* Effect.promise(() => Bun.file(installed).bytes()));
         if (scenario.tag === undefined) {
-          assert.ok(Either.isRight(outcome));
-          assert.equal(outcome.right.updatedCore, true);
+          assert.ok(Result.isSuccess(outcome));
+          assert.equal(outcome.success.updatedCore, true);
           assert.equal(targetHash, candidateHash);
           const backupHash = sha256(yield* Effect.promise(() => Bun.file(`${installed}.bak`).bytes()));
           assert.equal(backupHash, oldHash);
@@ -188,15 +188,15 @@ for (const scenario of cases) {
           assert.deepEqual(receipt.updatedPlugins, []);
           return { targetHash, backupHash, receipt, reexecArgv: exec.argv, probes };
         }
-        assert.ok(Either.isLeft(outcome));
-        assert.equal(outcome.left._tag, scenario.tag);
+        assert.ok(Result.isFailure(outcome));
+        assert.equal(outcome.failure._tag, scenario.tag);
         assert.equal(targetHash, oldHash);
         assert.equal(execCalls.length, 0);
         assert.equal(probes.length, scenario.name === "post-swap-launch-failure" ? 2 : 0);
         const restored = yield* live.run({ cmd: installed, args: ["--version"], timeoutMs: 15_000 });
         assert.equal(restored.exitCode, 0);
         assert.ok(restored.stdout.includes(oldVersion));
-        return { targetHash, tag: outcome.left._tag, probes, restored: restored.stdout.trim() };
+        return { targetHash, tag: outcome.failure._tag, probes, restored: restored.stdout.trim() };
       }).pipe(
         Effect.provide(ProcessRunnerLive),
         Effect.provide(StateStoreLive),

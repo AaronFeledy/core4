@@ -28,7 +28,7 @@ describe("library makeLandoRuntime managed-file surface", () => {
             mode: "file",
             format: "text",
             content: { kind: "text", value: "managed by host\n" },
-            base: base as ManagedFile["base"],
+            base: base as NonNullable<ManagedFile["base"]>,
           };
           const applied = yield* Effect.scoped(managed.apply([file]));
           const status = yield* managed.status;

@@ -6,7 +6,7 @@ import { ConfigTranslateError } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { appConfigTranslateWithOwnerOnlyFileAccess as appConfigTranslate } from "../_support/private-file-access.ts";
 
 const dirs: string[] = [];
@@ -48,7 +48,7 @@ const makeTranslators = (includes: IncludeEntries): readonly ConfigTranslatorSha
     encode: ({ fragment }) =>
       Effect.succeed({
         text: emitLandofileYaml(
-          Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(fragment),
+          Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(fragment),
         ),
         diagnostics: [],
       }),
@@ -141,7 +141,7 @@ test("refuses write without changing files when the compose target is missing", 
   const cwd = await makeApp();
   // When: writing the translation.
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       appConfigTranslate({
         cwd,
         write: true,
@@ -150,10 +150,10 @@ test("refuses write without changing files when the compose target is missing", 
     ),
   );
   // Then: the diagnostic blocks the transaction, including backups.
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left._tag).toBe("ConfigTranslateError");
-    expect(result.left.message).toContain("unsupported");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure._tag).toBe("ConfigTranslateError");
+    expect(result.failure.message).toContain("unsupported");
   }
   expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(original);
   expect(await readdir(cwd)).toEqual([".lando.yml"]);

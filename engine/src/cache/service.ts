@@ -24,12 +24,12 @@ const removeKey = (entries: ReadonlyMap<string, CacheEntry>, key: string): Map<s
   return next;
 };
 
-const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Schema<A, I>) => {
+const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A, I>) => {
   if (schema === undefined) {
     return Effect.succeed(value as A);
   }
 
-  return Schema.decodeUnknown(schema)(value).pipe(
+  return Schema.decodeUnknownEffect(schema)(value).pipe(
     Effect.mapError(
       (decodeError) =>
         new CacheError({
@@ -44,8 +44,8 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Schema<
 const makeCacheService = (
   entries: Ref.Ref<ReadonlyMap<string, CacheEntry>>,
   privateFileAccess: PrivateFileAccess,
-): Context.Tag.Service<typeof CacheService> => ({
-  read: <A, I>(key: string, schema?: Schema.Schema<A, I>) =>
+): Context.Service.Shape<typeof CacheService> => ({
+  read: <A, I>(key: string, schema?: Schema.Codec<A, I>) =>
     Effect.gen(function* () {
       const nowMs = yield* Clock.currentTimeMillis;
       const entry = (yield* Ref.get(entries)).get(key);
@@ -87,7 +87,7 @@ export const CacheServiceWithPrivateFileAccessLive: Layer.Layer<
   CacheService,
   never,
   PrivateFileAccessService
-> = Layer.unwrapEffect(
+> = Layer.unwrap(
   Effect.map(PrivateFileAccessService, (privateFileAccess) => makeCacheServiceLayer(privateFileAccess)),
 );
 

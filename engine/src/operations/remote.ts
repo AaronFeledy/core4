@@ -117,7 +117,7 @@ interface LoadedRemoteLandofile {
   readonly landofile: typeof LandofileShape.Type;
 }
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 
 const unavailable = (requested?: string): RemoteProviderUnavailableError =>
   new RemoteProviderUnavailableError({
@@ -177,18 +177,18 @@ const loadRemoteLandofile = (
     });
     const parsed = yield* parseLandofile({ file, content, cwd: root });
     const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Left") {
+    if (decoded._tag === "Failure") {
       return yield* Effect.fail(
         new LandofileParseError({
-          message: `Landofile ${file} is not valid: ${String(decoded.left)}`,
+          message: `Landofile ${file} is not valid: ${String(decoded.failure)}`,
           filePath: file,
           line: undefined,
           column: undefined,
-          cause: decoded.left,
+          cause: decoded.failure,
         }),
       );
     }
-    return { file, root, landofile: decoded.right };
+    return { file, root, landofile: decoded.success };
   });
 
 const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>
@@ -455,14 +455,19 @@ const appPullWithPlan = <E, R>(
     yield* confirmDestructive(`Pull ${kinds.join(", ")} from ${entry.name}@${env}?`, options, confirm);
     for (const kind of kinds) {
       const locator = yield* source.resolve(entry.config, env, kind);
-      const artifact = yield* Effect.scoped(source.fetch(locator, { force: options.force }));
+      const artifact = yield* Effect.scoped(
+        source.fetch(locator, options.force === undefined ? {} : { force: options.force }),
+      );
       artifacts.push(artifact);
       const ctx = datasetContext(plan, kind, loaded.landofile);
       const localStore = yield* dataset.value.localStore(ctx);
       const snapshot = yield* snapshotBeforeApply(localStore, options);
       if (snapshot !== undefined) snapshots.push(snapshot);
       const applied = yield* Effect.scoped(
-        dataset.value.apply(ctx, artifact, { force: options.force, snapshot: options.noSnapshot !== true }),
+        dataset.value.apply(ctx, artifact, {
+          ...(options.force === undefined ? {} : { force: options.force }),
+          snapshot: options.noSnapshot !== true,
+        }),
       );
       changed = changed || applied.changed;
     }
@@ -544,7 +549,7 @@ const appPushWithPlan = <E, R>(
       const locator = yield* source.resolve(entry.config, env, kind);
       yield* Effect.scoped(
         source.send(locator, artifact, {
-          force: options.force,
+          ...(options.force === undefined ? {} : { force: options.force }),
           protectedEnvConfirmed: options.force === true,
         }),
       );

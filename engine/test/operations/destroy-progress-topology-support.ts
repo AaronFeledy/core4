@@ -39,7 +39,7 @@ export { destroyTreeId };
 const providerId = ProviderId.make("lando");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "destroy-progress-topology.test",
   runtime: 4 as const,
 };
@@ -147,7 +147,7 @@ export const makeHarness = (
               events.push(event);
             })
           : Effect.die(new TypeError(`Unexpected event in destroy progress topology test: ${event._tag}`)),
-      subscribe: () => Effect.die("not used"),
+      subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
       waitForAny: () => Effect.die("not used"),

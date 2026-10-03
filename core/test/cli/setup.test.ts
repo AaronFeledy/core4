@@ -68,7 +68,7 @@ import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
@@ -87,7 +87,7 @@ const testDownloader = Effect.runSync(makeTestDownloader());
 const testInteraction = makeTestInteractionService({ answers: { provider: "lando" } });
 
 const buildSetupLayers = (
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
   httpFetch: typeof fetch = okProbeFetch,
 ) =>
@@ -106,12 +106,12 @@ const testRuntimeProviderRegistry = {
 };
 
 const buildSetupLayersWithHostIntegrations = (
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   services: {
-    readonly ca: Context.Tag.Service<typeof CertificateAuthority>;
-    readonly proxy: Context.Tag.Service<typeof RouterService>;
-    readonly ssh: Context.Tag.Service<typeof SshService>;
-    readonly fileSync: Context.Tag.Service<typeof FileSyncEngine>;
+    readonly ca: Context.Service.Shape<typeof CertificateAuthority>;
+    readonly proxy: Context.Service.Shape<typeof RouterService>;
+    readonly ssh: Context.Service.Shape<typeof SshService>;
+    readonly fileSync: Context.Service.Shape<typeof FileSyncEngine>;
   },
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
 ) =>
@@ -124,8 +124,8 @@ const buildSetupLayersWithHostIntegrations = (
   );
 
 const buildSetupLayersWithPrivilege = (
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
-  privilege: Context.Tag.Service<typeof PrivilegeService>,
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
+  privilege: Context.Service.Shape<typeof PrivilegeService>,
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
 ) => Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
 
@@ -1000,7 +1000,7 @@ describe("meta:setup command", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected SetupStepFailedError");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected SetupStepFailedError");
       expect(failure.value).toBeInstanceOf(SetupStepFailedError);
@@ -1262,7 +1262,7 @@ describe("meta:setup command", () => {
         expect(elevations).toBe(reason === "nonzero exit" ? 1 : 0);
         expect(Exit.isFailure(exit)).toBe(true);
         if (!Exit.isFailure(exit)) throw new Error("expected shell profile integration failure");
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         expect(failure._tag === "Some" ? (failure.value as { readonly _tag?: string })._tag : undefined).toBe(
           "ShellProfileIntegrationError",
@@ -1760,7 +1760,7 @@ describe("meta:setup command", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected setup network trust failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     const error = failure.value as {
@@ -1827,7 +1827,7 @@ describe("meta:setup command", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected proxy authentication failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     expect(failure.value.kind).toBe("proxy-authentication");
@@ -1905,7 +1905,7 @@ describe("meta:setup command", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected proxy authentication failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     const error = failure.value as {
@@ -1950,7 +1950,7 @@ describe("meta:setup command", () => {
 
       expect(exit._tag).toBe("Failure");
       if (exit._tag !== "Failure") throw new Error("expected failure");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected a typed failure");
       const error = failure.value as {
@@ -2177,7 +2177,7 @@ describe("meta:setup command", () => {
 
         expect(exit._tag).toBe("Failure");
         if (exit._tag !== "Failure") throw new Error("expected failure");
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag !== "Some") throw new Error("expected a typed failure");
         const error = failure.value as {
@@ -2495,7 +2495,7 @@ describe("meta:setup command", () => {
 
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBe(cancellation);
       }

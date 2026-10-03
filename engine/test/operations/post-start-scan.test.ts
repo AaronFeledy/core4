@@ -122,9 +122,9 @@ describe("runPostStartScan", () => {
   test("warns once and never fails when the scan itself fails", async () => {
     const events = collector();
     const result = await Effect.runPromise(
-      Effect.either(runPostStartScan({ scanner: failingScanner(), plan, events })),
+      Effect.result(runPostStartScan({ scanner: failingScanner(), plan, events })),
     );
-    expect(result._tag).toBe("Right");
+    expect(result._tag).toBe("Success");
     expect(events.published).toHaveLength(1);
     expect(warnBody(events.published[0])).toContain("scan blew up");
   });
@@ -135,8 +135,8 @@ describe("runPostStartScan", () => {
     const events: Pick<EventServiceShape, "publish"> = {
       publish: () => Effect.die(new Error("bus down")),
     };
-    const result = await Effect.runPromise(Effect.either(runPostStartScan({ scanner, plan, events })));
-    expect(result._tag).toBe("Right");
+    const result = await Effect.runPromise(Effect.result(runPostStartScan({ scanner, plan, events })));
+    expect(result._tag).toBe("Success");
   });
 
   test("propagates scan interruption so a cancelled start can stop", async () => {
@@ -147,7 +147,7 @@ describe("runPostStartScan", () => {
       detectCollisions: () => Effect.succeed([]),
     };
     const exit = await Effect.runPromise(Effect.exit(runPostStartScan({ scanner, plan, events })));
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(events.published).toHaveLength(0);
   });
 });

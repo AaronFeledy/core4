@@ -33,7 +33,7 @@ import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
-const fixedDateTime = DateTime.unsafeMake("2026-06-22T00:00:00Z");
+const fixedDateTime = DateTime.makeUnsafe("2026-06-22T00:00:00Z");
 
 const metadata = {
   resolvedAt: fixedDateTime,
@@ -486,16 +486,16 @@ describe("App handle managed lifecycle scopes", () => {
               hideSessions = true;
               const result =
                 method === "stop"
-                  ? yield* app.stop().pipe(Effect.either)
-                  : yield* app.destroy().pipe(Effect.either);
+                  ? yield* app.stop().pipe(Effect.result)
+                  : yield* app.destroy().pipe(Effect.result);
               return { result, sessions: tracking.sessions.size };
             }),
           ).pipe(Effect.provide(appLayer(engine, dir))),
         );
 
-        expect(insideScope.result._tag).toBe("Left");
-        if (insideScope.result._tag === "Left") {
-          expect(insideScope.result.left._tag).toBe("FileSyncStopError");
+        expect(insideScope.result._tag).toBe("Failure");
+        if (insideScope.result._tag === "Failure") {
+          expect(insideScope.result.failure._tag).toBe("FileSyncStopError");
         }
         expect(insideScope.sessions).toBe(1);
         expect(tracking.sessions.size).toBe(0);
@@ -511,7 +511,7 @@ describe("App handle managed lifecycle scopes", () => {
         destroy: (selector, options) =>
           Effect.sync(() => {
             destroys.push({ volumes: options.volumes, removeState: options.removeState });
-          }).pipe(Effect.zipRight(TestRuntimeProvider.destroy(selector, options))),
+          }).pipe(Effect.andThen(TestRuntimeProvider.destroy(selector, options))),
       };
       const secondStop = await Effect.runPromise(
         Effect.scoped(
@@ -519,13 +519,13 @@ describe("App handle managed lifecycle scopes", () => {
             const app = yield* resolveApp();
             yield* app.start();
             yield* app.stop();
-            return yield* app.stop().pipe(Effect.either);
+            return yield* app.stop().pipe(Effect.result);
           }),
         ).pipe(Effect.provide(appLayer(tracking.engine, dir, planWithFileSync(dir), provider))),
       );
 
-      expect(secondStop._tag).toBe("Left");
-      if (secondStop._tag === "Left") expect(secondStop.left._tag).toBe("FileSyncStopError");
+      expect(secondStop._tag).toBe("Failure");
+      if (secondStop._tag === "Failure") expect(secondStop.failure._tag).toBe("FileSyncStopError");
       expect(destroys).toEqual([{ volumes: false, removeState: false }]);
       expect(tracking.sessions.size).toBe(0);
     });
@@ -591,7 +591,7 @@ describe("App handle managed lifecycle scopes", () => {
             Effect.gen(function* () {
               const app = yield* resolveApp();
               yield* app.start();
-              const failed = yield* app[method]().pipe(Effect.either);
+              const failed = yield* app[method]().pipe(Effect.result);
               return {
                 destroyCalls,
                 failed: failed._tag,
@@ -604,7 +604,7 @@ describe("App handle managed lifecycle scopes", () => {
 
         expect(insideScope).toEqual({
           destroyCalls: 1,
-          failed: "Left",
+          failed: "Failure",
           finalizerCalls: 0,
           sessions: 1,
         });
@@ -833,13 +833,13 @@ describe("App handle managed lifecycle scopes", () => {
           Effect.gen(function* () {
             const app = yield* resolveApp();
             yield* app.start();
-            const failedReuse = yield* app.start().pipe(Effect.either);
-            const blockedRetry = yield* app.start().pipe(Effect.either);
+            const failedReuse = yield* app.start().pipe(Effect.result);
+            const blockedRetry = yield* app.start().pipe(Effect.result);
             return {
               createCalls,
               failedReuse: failedReuse._tag,
               blockedRetry: blockedRetry._tag,
-              blockedMessage: blockedRetry._tag === "Left" ? blockedRetry.left.message : "",
+              blockedMessage: blockedRetry._tag === "Failure" ? blockedRetry.failure.message : "",
               finalizerCalls,
               flushCalls,
               sessions: sessions.size,
@@ -848,8 +848,8 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(engine, dir))),
       );
 
-      expect(insideScope.failedReuse).toBe("Left");
-      expect(insideScope.blockedRetry).toBe("Left");
+      expect(insideScope.failedReuse).toBe("Failure");
+      expect(insideScope.blockedRetry).toBe("Failure");
       expect(insideScope.blockedMessage).toContain("automatic recovery is not available");
       expect(insideScope.createCalls).toBe(1);
       expect(insideScope.flushCalls).toBe(2);
@@ -931,14 +931,14 @@ describe("App handle managed lifecycle scopes", () => {
           Effect.gen(function* () {
             const app = yield* resolveApp();
             yield* app.start();
-            const failedReuse = yield* app.start().pipe(Effect.either);
-            const blockedRetry = yield* app.start().pipe(Effect.either);
+            const failedReuse = yield* app.start().pipe(Effect.result);
+            const blockedRetry = yield* app.start().pipe(Effect.result);
             return {
               applyCalls,
               createCalls,
               failedReuse: failedReuse._tag,
               blockedRetry: blockedRetry._tag,
-              blockedMessage: blockedRetry._tag === "Left" ? blockedRetry.left.message : "",
+              blockedMessage: blockedRetry._tag === "Failure" ? blockedRetry.failure.message : "",
               finalizerCalls,
               sessions: sessions.size,
             };
@@ -949,8 +949,8 @@ describe("App handle managed lifecycle scopes", () => {
       expect(insideScope).toEqual({
         applyCalls: 2,
         createCalls: 1,
-        failedReuse: "Left",
-        blockedRetry: "Left",
+        failedReuse: "Failure",
+        blockedRetry: "Failure",
         blockedMessage: expect.stringContaining("automatic recovery is not available"),
         finalizerCalls: 0,
         sessions: 1,

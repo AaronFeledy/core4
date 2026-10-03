@@ -165,7 +165,7 @@ describe("meilisearch service type — live integration: index create + document
           expect(searchBody.hits.length).toBeGreaterThan(0);
           expect(searchBody.hits[0]?.title).toBe("Casablanca");
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

@@ -52,7 +52,7 @@ const eventPlan = (): AppPlan => ({
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 });
 
@@ -218,7 +218,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected depth failure");
-    expect(Cause.failureOption(exit.cause)).toMatchObject({
+    expect(Cause.findErrorOption(exit.cause)).toMatchObject({
       _tag: "Some",
       value: {
         _tag: "LandofileEventInvocationDepthError",
@@ -270,7 +270,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected cycle failure");
-    expect(Cause.failureOption(exit.cause)).toMatchObject({
+    expect(Cause.findErrorOption(exit.cause)).toMatchObject({
       _tag: "Some",
       value: { _tag: "LandofileEventLifecycleReentryError" },
     });
@@ -444,7 +444,7 @@ describe("runAppEvent tooling-step kernel", () => {
       run: (command: string) => Effect.succeed({ exitCode: 0, stdout: command, stderr: "" }),
       runScript: (path: string) => Effect.succeed({ exitCode: 0, stdout: path, stderr: "" }),
       interactive: () => Effect.die("unused"),
-    } satisfies Context.Tag.Service<typeof ShellRunner>;
+    } satisfies Context.Service.Shape<typeof ShellRunner>;
 
     // When
     await Effect.runPromise(
@@ -475,7 +475,7 @@ describe("runAppEvent tooling-step kernel", () => {
       run: (command: string) => Effect.succeed({ exitCode: 0, stdout: command, stderr: "" }),
       runScript: (path: string) => Effect.succeed({ exitCode: 0, stdout: path, stderr: "" }),
       interactive: () => Effect.die("unused"),
-    } satisfies Context.Tag.Service<typeof ShellRunner>;
+    } satisfies Context.Service.Shape<typeof ShellRunner>;
 
     // When
     const error = await Effect.runPromise(

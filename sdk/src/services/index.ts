@@ -1,6 +1,6 @@
 import type { Context, Effect, Option, Queue, Redacted, Schema, Scope, Stream } from "effect";
 
-export type _ServiceTagCompatContext = typeof Context.Tag;
+export type _ServiceTagCompatContext = typeof Context.Service;
 
 import type {
   AbsolutePath,
@@ -402,25 +402,23 @@ export interface RuntimeProviderShape {
   ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
 }
 
-export declare class ConfigService extends Context.Tag("@lando/core/ConfigService")<
+export declare class ConfigService extends Context.Service<
   ConfigService,
   {
     readonly load: Effect.Effect<GlobalConfig, ConfigError>;
     readonly get: <K extends keyof GlobalConfig>(key: K) => Effect.Effect<GlobalConfig[K], ConfigError>;
   }
->() {}
+>()("@lando/core/ConfigService") {}
 
-export declare class LandofileService extends Context.Tag("@lando/core/LandofileService")<
+export declare class LandofileService extends Context.Service<
   LandofileService,
   {
     /** Includes Lando3LandofileDetected and LandofileDialectMixError from native load failures. */
     readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
   }
->() {}
+>()("@lando/core/LandofileService") {}
 
-export declare class ManagedFileTransactionGuard extends Context.Tag(
-  "@lando/core/ManagedFileTransactionGuard",
-)<
+export declare class ManagedFileTransactionGuard extends Context.Service<
   ManagedFileTransactionGuard,
   {
     readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
@@ -428,9 +426,9 @@ export declare class ManagedFileTransactionGuard extends Context.Tag(
       appRoot: string,
     ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
   }
->() {}
+>()("@lando/core/ManagedFileTransactionGuard") {}
 
-export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService")<
+export declare class GlobalAppService extends Context.Service<
   GlobalAppService,
   {
     readonly id: "global";
@@ -467,9 +465,9 @@ export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalApp
       GlobalAppError | GlobalDistConflictError
     >;
   }
->() {}
+>()("@lando/core/GlobalAppService") {}
 
-export declare class ScratchAppService extends Context.Tag("@lando/core/ScratchAppService")<
+export declare class ScratchAppService extends Context.Service<
   ScratchAppService,
   {
     readonly kind: "scratch";
@@ -503,9 +501,9 @@ export declare class ScratchAppService extends Context.Tag("@lando/core/ScratchA
     ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
     readonly gc: (options?: ScratchGcOptions) => Effect.Effect<ScratchGcReport, ScratchAppError>;
   }
->() {}
+>()("@lando/core/ScratchAppService") {}
 
-export declare class ManagedFileService extends Context.Tag("@lando/core/ManagedFileService")<
+export declare class ManagedFileService extends Context.Service<
   ManagedFileService,
   {
     readonly plan: (files: ReadonlyArray<ManagedFile>) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
@@ -518,9 +516,9 @@ export declare class ManagedFileService extends Context.Tag("@lando/core/Managed
     readonly adopt: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
     readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
   }
->() {}
+>()("@lando/core/ManagedFileService") {}
 
-export declare class InteractionService extends Context.Tag("@lando/core/InteractionService")<
+export declare class InteractionService extends Context.Service<
   InteractionService,
   {
     readonly id: string;
@@ -538,9 +536,9 @@ export declare class InteractionService extends Context.Tag("@lando/core/Interac
       spec: SecretSpec,
     ) => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
   }
->() {}
+>()("@lando/core/InteractionService") {}
 
-export declare class RecipeManifestService extends Context.Tag("@lando/core/RecipeManifestService")<
+export declare class RecipeManifestService extends Context.Service<
   RecipeManifestService,
   {
     readonly parse: (
@@ -556,9 +554,9 @@ export declare class RecipeManifestService extends Context.Tag("@lando/core/Reci
       | NotImplementedError
     >;
   }
->() {}
+>()("@lando/core/RecipeManifestService") {}
 
-export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
+export declare class PluginRegistry extends Context.Service<
   PluginRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
@@ -573,16 +571,16 @@ export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegis
       id: string,
     ) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>;
   }
->() {}
+>()("@lando/core/PluginRegistry") {}
 
-export declare class CommandRegistry extends Context.Tag("@lando/core/CommandRegistry")<
+export declare class CommandRegistry extends Context.Service<
   CommandRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<RegisteredCommand>, never>;
   }
->() {}
+>()("@lando/core/CommandRegistry") {}
 
-export declare class PluginTrustStore extends Context.Tag("@lando/core/PluginTrustStore")<
+export declare class PluginTrustStore extends Context.Service<
   PluginTrustStore,
   {
     readonly read: Effect.Effect<PluginTrustState, ConfigError>;
@@ -592,13 +590,13 @@ export declare class PluginTrustStore extends Context.Tag("@lando/core/PluginTru
     readonly isAuthoringRootTrusted: (path: string) => Effect.Effect<boolean, ConfigError>;
     readonly trustAuthoringRoot: (path: string) => Effect.Effect<void, ConfigError>;
   }
->() {}
+>()("@lando/core/PluginTrustStore") {}
 
 export interface DeprecationSummaryEntry extends DeprecationUse {
   readonly count: number;
 }
 
-export declare class DeprecationService extends Context.Tag("@lando/core/DeprecationService")<
+export declare class DeprecationService extends Context.Service<
   DeprecationService,
   {
     readonly use: (use: DeprecationUse) => Effect.Effect<void, DeprecatedSurfaceError>;
@@ -621,9 +619,9 @@ export declare class DeprecationService extends Context.Tag("@lando/core/Depreca
       aliasNotice?: DeprecationNotice,
     ) => Effect.Effect<void, DeprecationContradictionError>;
   }
->() {}
+>()("@lando/core/DeprecationService") {}
 
-export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
+export declare class RuntimeProviderRegistry extends Context.Service<
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
@@ -640,14 +638,13 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
       AppResolveError | ProviderError | NoProviderInstalledError
     >;
   }
->() {}
+>()("@lando/core/RuntimeProviderRegistry") {}
 
-export declare class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
-  RuntimeProvider,
-  RuntimeProviderShape
->() {}
+export declare class RuntimeProvider extends Context.Service<RuntimeProvider, RuntimeProviderShape>()(
+  "@lando/core/RuntimeProvider",
+) {}
 
-export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
+export declare class AppPlanner extends Context.Service<
   AppPlanner,
   {
     readonly plan: (
@@ -655,22 +652,22 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       providerCapabilities: ProviderCapabilities,
     ) => Effect.Effect<AppPlan, AppPlannerError>;
   }
->() {}
+>()("@lando/core/AppPlanner") {}
 
 export interface BuildAppOptions {
   readonly force?: boolean;
   readonly signal?: AbortSignal;
 }
 
-export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
+export declare class BuildOrchestrator extends Context.Service<
   BuildOrchestrator,
   {
     readonly build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>;
     readonly buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildAppError>;
   }
->() {}
+>()("@lando/core/BuildOrchestrator") {}
 
-export declare class EventService extends Context.Tag("@lando/core/EventService")<
+export declare class EventService extends Context.Service<
   EventService,
   {
     readonly publish: (event: LandoEvent) => Effect.Effect<void, EventError>;
@@ -689,19 +686,19 @@ export declare class EventService extends Context.Tag("@lando/core/EventService"
       filter?: (event: EventFor<Name>) => boolean,
     ) => Effect.Effect<ReadonlyArray<EventFor<Name>>, never>;
   }
->() {}
+>()("@lando/core/EventService") {}
 
-export declare class CacheService extends Context.Tag("@lando/core/CacheService")<
+export declare class CacheService extends Context.Service<
   CacheService,
   {
-    readonly read: <A, I>(key: string, schema?: Schema.Schema<A, I>) => Effect.Effect<A | null, CacheError>;
+    readonly read: <A, I>(key: string, schema?: Schema.Codec<A, I>) => Effect.Effect<A | null, CacheError>;
     readonly write: <A>(key: string, value: A, ttlMs?: number) => Effect.Effect<void, CacheError>;
     readonly writeAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, CacheError>;
     readonly invalidate: (key: string) => Effect.Effect<void, CacheError>;
   }
->() {}
+>()("@lando/core/CacheService") {}
 
-export declare class FileSystem extends Context.Tag("@lando/core/FileSystem")<
+export declare class FileSystem extends Context.Service<
   FileSystem,
   {
     readonly read: (path: string) => Stream.Stream<Uint8Array, FileSystemError>;
@@ -720,9 +717,9 @@ export declare class FileSystem extends Context.Tag("@lando/core/FileSystem")<
     readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
     readonly writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>;
   }
->() {}
+>()("@lando/core/FileSystem") {}
 
-export declare class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
+export declare class ProcessRunner extends Context.Service<
   ProcessRunner,
   {
     readonly run: (
@@ -735,9 +732,9 @@ export declare class ProcessRunner extends Context.Tag("@lando/core/ProcessRunne
       options: ProcessSpawnOptions,
     ) => Stream.Stream<ProcessStreamEvent, ProcessExecError | ProcessTimeoutError>;
   }
->() {}
+>()("@lando/core/ProcessRunner") {}
 
-export declare class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
+export declare class ShellRunner extends Context.Service<
   ShellRunner,
   {
     readonly exec: (
@@ -756,16 +753,16 @@ export declare class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
       spec: ShellInteractiveSpec,
     ) => Effect.Effect<ShellInteractiveResult, ShellExecError>;
   }
->() {}
+>()("@lando/core/ShellRunner") {}
 
-export declare class PrivilegeService extends Context.Tag("@lando/core/PrivilegeService")<
+export declare class PrivilegeService extends Context.Service<
   PrivilegeService,
   {
     readonly elevate: (command: ReadonlyArray<string>) => Effect.Effect<ProcessResult, never>;
   }
->() {}
+>()("@lando/core/PrivilegeService") {}
 
-export declare class Logger extends Context.Tag("@lando/core/Logger")<
+export declare class Logger extends Context.Service<
   Logger,
   {
     readonly debug: (
@@ -785,9 +782,9 @@ export declare class Logger extends Context.Tag("@lando/core/Logger")<
       data?: Readonly<Record<string, unknown>>,
     ) => Effect.Effect<void, EventError>;
   }
->() {}
+>()("@lando/core/Logger") {}
 
-export declare class Renderer extends Context.Tag("@lando/core/Renderer")<
+export declare class Renderer extends Context.Service<
   Renderer,
   {
     readonly id: string;
@@ -802,17 +799,17 @@ export declare class Renderer extends Context.Tag("@lando/core/Renderer")<
       readonly stderr: (chunk: string) => Effect.Effect<void>;
     };
   }
->() {}
+>()("@lando/core/Renderer") {}
 
-export declare class Telemetry extends Context.Tag("@lando/core/Telemetry")<
+export declare class Telemetry extends Context.Service<
   Telemetry,
   {
     readonly enabled: boolean;
     readonly record: (event: string, data: Readonly<Record<string, unknown>>) => Effect.Effect<void, never>;
   }
->() {}
+>()("@lando/core/Telemetry") {}
 
-export declare class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
+export declare class ToolingEngine extends Context.Service<
   ToolingEngine,
   {
     readonly id: string;
@@ -822,28 +819,28 @@ export declare class ToolingEngine extends Context.Tag("@lando/core/ToolingEngin
       provider: RuntimeProviderShape,
     ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingCompileError | ToolingExecError>;
   }
->() {}
+>()("@lando/core/ToolingEngine") {}
 
-export declare class SchemaValidator extends Context.Tag("@lando/core/SchemaValidator")<
+export declare class SchemaValidator extends Context.Service<
   SchemaValidator,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/SchemaValidator") {}
 
-export declare class CommandFramework extends Context.Tag("@lando/core/CommandFramework")<
+export declare class CommandFramework extends Context.Service<
   CommandFramework,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/CommandFramework") {}
 
-export declare class CertificateAuthority extends Context.Tag("@lando/core/CertificateAuthority")<
+export declare class CertificateAuthority extends Context.Service<
   CertificateAuthority,
   CertificateAuthorityShape
->() {}
+>()("@lando/core/CertificateAuthority") {}
 
-export declare class RouterService extends Context.Tag("@lando/core/RouterService")<
+export declare class RouterService extends Context.Service<
   RouterService,
   {
     readonly id: string;
@@ -869,43 +866,39 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;
     readonly stop: Effect.Effect<void, ProxyError>;
   }
->() {}
+>()("@lando/core/RouterService") {}
 
-export declare class SshService extends Context.Tag("@lando/core/SshService")<
-  SshService,
-  SshServiceShape
->() {}
+export declare class SshService extends Context.Service<SshService, SshServiceShape>()(
+  "@lando/core/SshService",
+) {}
 
-export declare class HealthcheckRunner extends Context.Tag("@lando/core/HealthcheckRunner")<
-  HealthcheckRunner,
-  HealthcheckRunnerShape
->() {}
+export declare class HealthcheckRunner extends Context.Service<HealthcheckRunner, HealthcheckRunnerShape>()(
+  "@lando/core/HealthcheckRunner",
+) {}
 
-export declare class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<
-  UrlScanner,
-  UrlScannerShape
->() {}
+export declare class UrlScanner extends Context.Service<UrlScanner, UrlScannerShape>()(
+  "@lando/core/UrlScanner",
+) {}
 
-export declare class HostProxyService extends Context.Tag("@lando/core/HostProxyService")<
-  HostProxyService,
-  HostProxyServiceShape
->() {}
+export declare class HostProxyService extends Context.Service<HostProxyService, HostProxyServiceShape>()(
+  "@lando/core/HostProxyService",
+) {}
 
-export declare class PluginSource extends Context.Tag("@lando/core/PluginSource")<
+export declare class PluginSource extends Context.Service<
   PluginSource,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/PluginSource") {}
 
-export declare class UpdateService extends Context.Tag("@lando/core/UpdateService")<
+export declare class UpdateService extends Context.Service<
   UpdateService,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/UpdateService") {}
 
-export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
+export declare class SecretStore extends Context.Service<
   SecretStore,
   {
     readonly id: string;
@@ -914,9 +907,9 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
     readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
     readonly list: Effect.Effect<ReadonlyArray<string>>;
   }
->() {}
+>()("@lando/core/SecretStore") {}
 
-export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
+export declare class FileSyncEngine extends Context.Service<
   FileSyncEngine,
   {
     readonly id: string;
@@ -947,14 +940,13 @@ export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEng
     ) => Effect.Effect<ReadonlyArray<FileSyncSessionInfo>, FileSyncError>;
     readonly streamEvents: (ref: FileSyncSessionRef) => Stream.Stream<FileSyncEventChunk, FileSyncError>;
   }
->() {}
+>()("@lando/core/FileSyncEngine") {}
 
-export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
-  Downloader,
-  DownloaderShape
->() {}
+export declare class Downloader extends Context.Service<Downloader, DownloaderShape>()(
+  "@lando/core/Downloader",
+) {}
 
-export declare class HttpClient extends Context.Tag("@lando/core/HttpClient")<
+export declare class HttpClient extends Context.Service<
   HttpClient,
   {
     readonly id: string;
@@ -981,40 +973,40 @@ export declare class HttpClient extends Context.Tag("@lando/core/HttpClient")<
       Scope.Scope
     >;
   }
->() {}
+>()("@lando/core/HttpClient") {}
 
-export declare class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}
+export declare class DataMover extends Context.Service<DataMover, DataMoverShape>()(
+  "@lando/core/DataMover",
+) {}
 
-export declare class PathsService extends Context.Tag("@lando/core/PathsService")<
-  PathsService,
-  LandoPaths
->() {}
+export declare class PathsService extends Context.Service<PathsService, LandoPaths>()(
+  "@lando/core/PathsService",
+) {}
 
-export declare class StateStore extends Context.Tag("@lando/core/StateStore")<
-  StateStore,
-  StateStoreShape
->() {}
+export declare class StateStore extends Context.Service<StateStore, StateStoreShape>()(
+  "@lando/core/StateStore",
+) {}
 
-export declare class AppPlanSanitizer extends Context.Tag("@lando/core/AppPlanSanitizer")<
+export declare class AppPlanSanitizer extends Context.Service<
   AppPlanSanitizer,
   {
     readonly sanitizeForPersistence: (plan: AppPlan) => AppPlan;
   }
->() {}
+>()("@lando/core/AppPlanSanitizer") {}
 
-export declare class LogFileHelperAssets extends Context.Tag("@lando/core/LogFileHelperAssets")<
+export declare class LogFileHelperAssets extends Context.Service<
   LogFileHelperAssets,
   {
     readonly payloads: Effect.Effect<Readonly<Record<string, Uint8Array>>, never>;
   }
->() {}
+>()("@lando/core/LogFileHelperAssets") {}
 
-export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<
+export declare class RemoteSource extends Context.Service<
   RemoteSource,
   {
     readonly id: string;
     readonly capabilities: RemoteCapabilities;
-    readonly configSchema: Schema.Schema<unknown>;
+    readonly configSchema: Schema.Codec<unknown>;
     readonly listEnvironments: (
       cfg: RemoteConfig,
     ) => Effect.Effect<ReadonlyArray<RemoteEnvironment>, RemoteSourceError>;
@@ -1037,9 +1029,9 @@ export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource"
       env?: RemoteEnvId,
     ) => Effect.Effect<RemoteTestResult, RemoteSourceError>;
   }
->() {}
+>()("@lando/core/RemoteSource") {}
 
-export declare class Dataset extends Context.Tag("@lando/core/Dataset")<
+export declare class Dataset extends Context.Service<
   Dataset,
   {
     readonly id: string;
@@ -1057,9 +1049,9 @@ export declare class Dataset extends Context.Tag("@lando/core/Dataset")<
     ) => Effect.Effect<DatasetApplyResult, DatasetServiceError, Scope.Scope>;
     readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetServiceError>;
   }
->() {}
+>()("@lando/core/Dataset") {}
 
-export declare class TunnelService extends Context.Tag("@lando/core/TunnelService")<
+export declare class TunnelService extends Context.Service<
   TunnelService,
   {
     readonly id: string;
@@ -1069,14 +1061,13 @@ export declare class TunnelService extends Context.Tag("@lando/core/TunnelServic
     readonly status: (request: TunnelStatusRequest) => Effect.Effect<TunnelStatus, TunnelError>;
     readonly list: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
   }
->() {}
+>()("@lando/core/TunnelService") {}
 
-export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
-  ConfigTranslator,
-  ConfigTranslatorShape
->() {}
+export declare class ConfigTranslator extends Context.Service<ConfigTranslator, ConfigTranslatorShape>()(
+  "@lando/core/ConfigTranslator",
+) {}
 
-export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/ConfigTranslatorRegistry")<
+export declare class ConfigTranslatorRegistry extends Context.Service<
   ConfigTranslatorRegistry,
   {
     readonly list: Effect.Effect<
@@ -1085,10 +1076,9 @@ export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/C
       never
     >;
   }
->() {}
+>()("@lando/core/ConfigTranslatorRegistry") {}
 
-export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDecomposer")<
-  RecipeDecomposer,
-  RecipeDecomposerShape
->() {}
+export declare class RecipeDecomposer extends Context.Service<RecipeDecomposer, RecipeDecomposerShape>()(
+  "@lando/core/RecipeDecomposer",
+) {}
 export type { VolumeInitialization } from "./volume-initialization.ts";

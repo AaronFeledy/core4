@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import { type DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
@@ -35,7 +35,7 @@ const eventUseId = (event: unknown): unknown => {
   return typeof use === "object" && use !== null && "id" in use ? use.id : undefined;
 };
 
-const timestamp = DateTime.unsafeMake("2026-06-11T16:00:00.000Z");
+const timestamp = DateTime.makeUnsafe("2026-06-11T16:00:00.000Z");
 const DeprecationServiceWithEventsLive = DeprecationServiceLive.pipe(Layer.provide(EventServiceLive));
 
 describe("DeprecationServiceLive", () => {
@@ -108,7 +108,7 @@ describe("DeprecationServiceLive", () => {
           const exit = yield* Effect.exit(
             deprecations.use({ kind: "command", id: "app:legacy", notice: errorNotice, timestamp }),
           );
-          const eventsAfterFailure = yield* Queue.takeAll(queue);
+          const eventsAfterFailure = yield* Queue.clear(queue);
           return {
             exit,
             events: Array.from(eventsAfterFailure),
@@ -133,7 +133,7 @@ describe("DeprecationServiceLive", () => {
           const events = yield* EventService;
           yield* events.subscribe("deprecation-used").pipe(
             Stream.runForEach(() => Effect.fail(new Error("subscriber failed"))),
-            Effect.fork,
+            Effect.forkChild,
           );
           yield* deprecations.use({ kind: "command", id: "app:start", notice: warningNotice, timestamp });
           return yield* deprecations.summary();
@@ -153,7 +153,7 @@ describe("DeprecationServiceLive", () => {
       record: (event: string, data: Readonly<Record<string, unknown>>) =>
         Effect.sync(() => {
           recorded.push({ event, data });
-        }).pipe(Effect.zipRight(Deferred.succeed(recordedOnce, undefined))),
+        }).pipe(Effect.andThen(Deferred.succeed(recordedOnce, undefined))),
     };
     const telemetryDeps = Layer.mergeAll(EventServiceLive, Layer.succeed(Telemetry, telemetry));
 
@@ -252,7 +252,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(DeprecatedSurfaceError);
     }
   });
@@ -268,7 +268,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(DeprecationContradictionError);
     }
   });
@@ -354,7 +354,7 @@ describe("DeprecationServiceLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect((failure as { _tag?: string } | undefined)?._tag).toBe("SetupFlagCollisionError");
     }
   });

@@ -120,7 +120,7 @@ const hostSideEnvelope = (
       : {
           outcome: {
             _tag: "failure" as const,
-            error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
+            error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
               _tag: "HostProxyDispatchError",
               message: Cause.pretty(outcome.cause),
             })),
@@ -261,7 +261,7 @@ describe("in-container lando open host-proxy round-trip", () => {
     const result = await exit;
     expect(Exit.isFailure(result)).toBe(true);
     if (Exit.isFailure(result)) {
-      const error = result.cause._tag === "Fail" ? result.cause.error : undefined;
+      const error = Cause.squash(result.cause);
       expect(error).toBeInstanceOf(HostProxyCommandNotAllowedError);
     }
   });

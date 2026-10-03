@@ -1,11 +1,11 @@
 import { Schema } from "effect";
 
-const HttpTrustErrorKind = Schema.Literal(
+const HttpTrustErrorKind = Schema.Literals([
   "proxy-authentication",
   "tls-interception",
   "missing-custom-ca",
   "blocked-endpoint",
-);
+]);
 
 export class HttpRequestError extends Schema.TaggedError<HttpRequestError>()("HttpRequestError", {
   message: Schema.String,

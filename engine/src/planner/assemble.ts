@@ -23,7 +23,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Either } from "effect";
+import { type Context, DateTime, Effect, Result } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -82,12 +82,12 @@ import {
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
 export const planApp = (
-  pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
-  cacheService: Context.Tag.Service<typeof CacheService> | undefined,
-  configService: Context.Tag.Service<typeof ConfigService> | undefined,
-  fileSystem: Context.Tag.Service<typeof FileSystem> | undefined,
-  pathsService: Context.Tag.Service<typeof PathsService> | undefined,
-  certificateAuthorityResolver: Context.Tag.Service<typeof CertificateAuthorityResolver> | undefined,
+  pluginRegistry: Context.Service.Shape<typeof PluginRegistry>,
+  cacheService: Context.Service.Shape<typeof CacheService> | undefined,
+  configService: Context.Service.Shape<typeof ConfigService> | undefined,
+  fileSystem: Context.Service.Shape<typeof FileSystem> | undefined,
+  pathsService: Context.Service.Shape<typeof PathsService> | undefined,
+  certificateAuthorityResolver: Context.Service.Shape<typeof CertificateAuthorityResolver> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<AppPlan, AppPlannerError> =>
@@ -120,7 +120,7 @@ export const planApp = (
     const appId = AppId.make(appSlug);
     const metadata: ServicePlan["metadata"] = {
       ...encodedMetadata,
-      resolvedAt: DateTime.unsafeMake(encodedMetadata.resolvedAt),
+      resolvedAt: DateTime.makeUnsafe(encodedMetadata.resolvedAt),
     };
     const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
     const networkPlan = yield* Effect.try({
@@ -137,7 +137,7 @@ export const planApp = (
       providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
     const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
-      Effect.catchAll(() => Effect.succeed(undefined)),
+      Effect.catch(() => Effect.succeed(undefined)),
     );
     const appFeatureRefs: Array<{ readonly id: string; readonly pluginId: string }> = [];
     const seenAppFeatureIds = new Set<string>();
@@ -205,9 +205,9 @@ export const planApp = (
         typeSources: resolution.logSources ?? [],
         userSources: service.logs ?? [],
       });
-      const logSources = yield* Either.isLeft(mergedLogSources)
-        ? Effect.fail(mergedLogSources.left)
-        : Effect.succeed(mergedLogSources.right);
+      const logSources = yield* Result.isFailure(mergedLogSources)
+        ? Effect.fail(mergedLogSources.failure)
+        : Effect.succeed(mergedLogSources.success);
       const resolutionFeatureIds = new Set(resolution.features.map((feature) => feature.id));
       const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter(
         (id) => !resolutionFeatureIds.has(id),
@@ -339,7 +339,7 @@ export const planApp = (
     });
     if (cacheService !== undefined) {
       const cached = yield* readCachedAppPlan({ cacheRoot, appName: appSlug, appRoot, key: cacheKey }).pipe(
-        Effect.catchAll(() => Effect.succeed(null)),
+        Effect.catch(() => Effect.succeed(null)),
       );
       if (cached !== null) {
         yield* validateServiceDependencies(appRoot, cached.services);
@@ -475,7 +475,7 @@ export const planApp = (
         versionConstraints,
       }).pipe(
         Effect.provideService(CacheService, cacheService),
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
       );
     }
     return plan;

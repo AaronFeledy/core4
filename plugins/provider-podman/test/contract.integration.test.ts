@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Chunk, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
@@ -47,7 +47,7 @@ const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
 const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
 
 const metadata: PlanMetadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-27T00:00:00Z"),
   source: "provider-podman contract test",
   runtime: 4,
 };
@@ -752,10 +752,13 @@ describe("provider-podman RuntimeProvider contract", () => {
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
-      expect(exit.cause.error._tag).toBe("ServiceCopyError");
-      expect(exit.cause.error.providerId).toBe("podman");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ServiceCopyError);
+      if (error instanceof ServiceCopyError) {
+        expect(error._tag).toBe("ServiceCopyError");
+        expect(error.providerId).toBe("podman");
+      }
     }
   });
 
@@ -780,7 +783,9 @@ describe("provider-podman RuntimeProvider contract", () => {
     );
 
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    const failures = Exit.isFailure(exit)
+      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
+      : [];
     expect(failures).toContainEqual(
       expect.objectContaining({
         _tag: "ServiceStartError",
@@ -856,7 +861,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     const chunks = await Effect.runPromise(
       Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
     );
-    expect(Chunk.toReadonlyArray(chunks).length).toBeGreaterThan(0);
+    expect(chunks.length).toBeGreaterThan(0);
     expect(fake.calls.some((call) => call.path.includes(`/containers/${containerName}/logs?`))).toBe(true);
 
     await Effect.runPromise(provider.destroy({ app: appId, plan }, { volumes: false }));

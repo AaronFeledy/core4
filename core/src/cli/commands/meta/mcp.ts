@@ -13,7 +13,7 @@ import { serializeToolingInput } from "@lando/landofile/tooling-input";
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, type Either, Layer, Predicate, Schema } from "effect";
+import { Effect, Layer, Predicate, type Result, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError, type ToolingInputError } from "@lando/sdk/errors";
@@ -90,10 +90,10 @@ export const toolingArgvFromInput = (
   id: string,
   declaration: ToolingInput,
   input: unknown,
-): Either.Either<ReadonlyArray<string>, ToolingInputError> => {
-  const record = Predicate.isRecord(input) ? input : {};
-  const flags = Predicate.isRecord(record.flags) ? record.flags : {};
-  const args = Predicate.isRecord(record.args) ? record.args : {};
+): Result.Result<ReadonlyArray<string>, ToolingInputError> => {
+  const record = Predicate.isObject(input) ? input : {};
+  const flags = Predicate.isObject(record.flags) ? record.flags : {};
+  const args = Predicate.isObject(record.args) ? record.args : {};
   return serializeToolingInput({ ...declaration, name: toolingTaskName(id) }, { flags, args });
 };
 
@@ -103,7 +103,7 @@ const ToolingMcpResultSchema = Schema.Struct({
   exitCode: Schema.Number,
   stdout: Schema.String,
   stderr: Schema.String,
-  rendered: Schema.optional(Schema.Boolean),
+  rendered: Schema.optionalKey(Schema.Boolean),
 });
 
 const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
@@ -158,7 +158,7 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
     run: (input) =>
       command.input === undefined
         ? runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true })
-        : Effect.flatMap(toolingArgvFromInput(command.id, command.input, input), (args) =>
+        : Effect.flatMap(Effect.fromResult(toolingArgvFromInput(command.id, command.input, input)), (args) =>
             runTooling({ name: command.id, args, renderProgress: true }),
           ),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),

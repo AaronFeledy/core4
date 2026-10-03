@@ -192,7 +192,7 @@ describe("McpService.serve cancellation", () => {
         }),
         reply: (reply: McpTransportReply) =>
           Effect.sync(() => replies.push(reply)).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               replies.length === 0
                 ? Deferred.succeed(firstReply, undefined)
                 : Deferred.succeed(secondReply, undefined),
@@ -248,7 +248,7 @@ describe("McpService.serve cancellation", () => {
           return Option.some(requestId);
         }),
         reply: (reply: McpTransportReply) =>
-          Effect.sync(() => replies.push(reply)).pipe(Effect.zipRight(Deferred.succeed(replied, undefined))),
+          Effect.sync(() => replies.push(reply)).pipe(Effect.andThen(Deferred.succeed(replied, undefined))),
         notify: () => Effect.void,
       };
 

@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import { RecipeDecomposeError } from "../errors/recipe.ts";
 import { RecipeOptionValue, type RecipeSourceKind } from "../schema/recipe-identity.ts";
 import type { RecipeOptionType } from "../schema/recipe-snapshot.ts";
@@ -62,10 +62,10 @@ export const validateOptionValues = (
   optionTypes: Readonly<Record<string, RecipeOptionType>>,
   defaults: Readonly<Record<string, RecipeOptionValue>>,
   values: Readonly<Record<string, unknown>>,
-): Either.Either<Record<string, RecipeOptionValue>, RecipeDecomposeError> => {
+): Result.Result<Record<string, RecipeOptionValue>, RecipeDecomposeError> => {
   const merged = { ...defaults, ...values };
   const fail = (path: string, reason: "unsupported-option" | "option-type") =>
-    Either.left(
+    Result.fail(
       new RecipeDecomposeError({
         recipeId: "",
         path,
@@ -84,7 +84,7 @@ export const validateOptionValues = (
     if (!Schema.is(RecipeOptionValue)(value)) return fail(name, "option-type");
     Object.defineProperty(result, name, { value, enumerable: true, writable: true, configurable: true });
   }
-  return Either.right(result);
+  return Result.succeed(result);
 };
 
 /**
@@ -118,9 +118,9 @@ export const recipeMigratability = (
     return { status: "nonmigratable", reason: "identity-mismatch" };
   if (manifest.prompts?.some((prompt) => prompt.choicesFrom !== undefined))
     return { status: "nonmigratable", reason: "unsupported-option-type" };
-  if (Either.isLeft(validateOptionValues(manifest.snapshot.optionTypes, {}, manifest.snapshot.defaults)))
+  if (Result.isFailure(validateOptionValues(manifest.snapshot.optionTypes, {}, manifest.snapshot.defaults)))
     return { status: "nonmigratable", reason: "unsupported-option-type" };
-  if (Either.isLeft(validateSnapshotTemplate(manifest.id, manifest.snapshot.template)))
+  if (Result.isFailure(validateSnapshotTemplate(manifest.id, manifest.snapshot.template)))
     return { status: "nonmigratable", reason: "invalid-template" };
   return { status: "migratable" };
 };

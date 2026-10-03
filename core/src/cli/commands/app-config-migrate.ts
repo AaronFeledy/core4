@@ -17,7 +17,7 @@ import {
 } from "@lando/sdk/schema";
 import { InteractionService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Either, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
@@ -108,38 +108,39 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
       const originalBytes = yield* Effect.tryPromise({
         try: () => Bun.file(landofilePath).bytes(),
         catch: () => "Cannot read the canonical Landofile.",
-      }).pipe(Effect.either);
-      if (Either.isLeft(originalBytes)) return blocked("invalid-provenance", "Canonical YAML is unreadable.");
+      }).pipe(Effect.result);
+      if (Result.isFailure(originalBytes))
+        return blocked("invalid-provenance", "Canonical YAML is unreadable.");
       const parsed = yield* parseLandofile({
         file: landofilePath,
-        content: new TextDecoder().decode(originalBytes.right),
+        content: new TextDecoder().decode(originalBytes.success),
         cwd: appRoot,
-      }).pipe(Effect.either);
-      if (Either.isLeft(parsed)) return blocked("invalid-provenance", "Canonical YAML is unreadable.");
-      const document: Record<string, unknown> = yield* Schema.decodeUnknown(
-        Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-      )(parsed.right).pipe(Effect.orElseSucceed(() => ({})));
+      }).pipe(Effect.result);
+      if (Result.isFailure(parsed)) return blocked("invalid-provenance", "Canonical YAML is unreadable.");
+      const document: Record<string, unknown> = yield* Schema.decodeUnknownEffect(
+        Schema.Record(Schema.String, Schema.Unknown),
+      )(parsed.success).pipe(Effect.orElseSucceed(() => ({})));
       const validated = validateLandofileRecipeProvenance(document.recipe);
       const facts = provenanceWithoutServiceMap(document.recipe);
       const target =
         facts === undefined ? unresolvedTarget : (recipes.get(facts.id)?.snapshot.identity ?? facts.producer);
       if (document.includes !== undefined)
         return blocked("includes-present", "Included documents are never followed for migration.", target);
-      if (Either.isLeft(validated))
+      if (Result.isFailure(validated))
         return blocked(
           facts === undefined ? "invalid-provenance" : "invalid-service-map",
           "Recipe provenance or its service map is invalid.",
           target,
         );
-      if (isBareRecipeReference(validated.right)) {
-        const source = recipes.get(validated.right);
+      if (isBareRecipeReference(validated.success)) {
+        const source = recipes.get(validated.success);
         return blocked(
           source === undefined ? "unknown-recipe" : "bare-provenance",
           "A recipe id alone does not identify the producer or its options.",
           source?.snapshot.identity,
         );
       }
-      const provenance = validated.right;
+      const provenance = validated.success;
       const source = recipes.get(provenance.id);
       if (source === undefined)
         return yield* new AppConfigMigrateError({
@@ -158,8 +159,8 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
         (sameRecipeVersion(provenance.producer, source.snapshot.identity) ? source.snapshot : undefined);
       if (oldSnapshot !== undefined && provenance.services !== undefined) {
         const rendered = renderRecipeSnapshot(oldSnapshot, provenance.options);
-        if (Either.isRight(rendered)) {
-          const names = generatedServiceNames(rendered.right);
+        if (Result.isSuccess(rendered)) {
+          const names = generatedServiceNames(rendered.success);
           const mappings = provenance.services;
           const destinations = [...names].map((name) => mappings[name] ?? name);
           const renamed = new Map(
@@ -240,7 +241,7 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
         yield* writeRecipeMigration({
           appRoot,
           document: analysis.document,
-          expectedBefore: originalBytes.right,
+          expectedBefore: originalBytes.success,
           privateFileAccess: options.privateFileAccess,
         });
       }

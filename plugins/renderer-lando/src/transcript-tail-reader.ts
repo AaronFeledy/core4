@@ -44,10 +44,9 @@ class InvalidTranscriptFileError extends Error {
   }
 }
 
-export class TranscriptTailReader extends Context.Tag("@lando/renderer-lando/TranscriptTailReader")<
-  TranscriptTailReader,
-  TranscriptTailReaderShape
->() {}
+export class TranscriptTailReader extends Context.Service<TranscriptTailReader, TranscriptTailReaderShape>()(
+  "@lando/renderer-lando/TranscriptTailReader",
+) {}
 
 type FileIdentity = {
   readonly key: string;
@@ -220,7 +219,7 @@ const openReader = (userDataRoot: string, path: AbsolutePath, onChange: Effect.E
       }),
       (watcher) => Effect.sync(() => watcher.close()),
     );
-    yield* Effect.forkScoped(Effect.forever(Queue.take(notifications).pipe(Effect.zipRight(onChange))));
+    yield* Effect.forkScoped(Effect.forever(Queue.take(notifications).pipe(Effect.andThen(onChange))));
     return makeSession(userDataRoot, path);
   });
 

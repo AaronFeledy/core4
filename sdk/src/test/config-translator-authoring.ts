@@ -16,7 +16,7 @@ export interface ConfigTranslatorEncodeSample {
 }
 
 const merge = (lower: unknown, upper: unknown): unknown => {
-  if (!Predicate.isRecord(lower) || !Predicate.isRecord(upper)) return upper;
+  if (!Predicate.isObject(lower) || !Predicate.isObject(upper)) return upper;
   return Object.fromEntries(
     [...new Set([...Object.keys(lower), ...Object.keys(upper)])].map((key) => [
       key,
@@ -28,9 +28,9 @@ const layers = { base: 0, dist: 1, upstream: 2, canonical: 3, local: 4, user: 5 
 const onlyFragmentKeys = (emitted: unknown, fragment: unknown): boolean => {
   if (Array.isArray(emitted) && Array.isArray(fragment))
     return emitted.every((item, index) => onlyFragmentKeys(item, fragment[index]));
-  if (!Predicate.isRecord(emitted)) return true;
+  if (!Predicate.isObject(emitted)) return true;
   return (
-    Predicate.isRecord(fragment) &&
+    Predicate.isObject(fragment) &&
     Object.keys(emitted).every(
       (key) => Object.hasOwn(fragment, key) && onlyFragmentKeys(emitted[key], fragment[key]),
     )
@@ -55,9 +55,11 @@ export const checkAuthoringLaws = (
     let cumulative: unknown = {};
     for (const { fragment } of fragments) {
       cumulative = merge(cumulative, fragment);
-      yield* Schema.decodeUnknown(LandofileAuthoringFragment)(cumulative, { onExcessProperty: "error" });
+      yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(cumulative, {
+        onExcessProperty: "error",
+      });
     }
-    yield* Schema.decodeUnknown(LandofileAuthoringShape)(cumulative, { onExcessProperty: "error" });
+    yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(cumulative, { onExcessProperty: "error" });
     const encode = harness.translator.encode;
     if (encode === undefined) return;
     const samples = harness.encodeSamples;
@@ -76,8 +78,8 @@ export const checkAuthoringLaws = (
       const wire = yield* decodeAuthoring(emitted.text);
       const decode =
         sample.fragment === undefined
-          ? Schema.decodeUnknown(LandofileAuthoringShape)
-          : Schema.decodeUnknown(LandofileAuthoringFragment);
+          ? Schema.decodeUnknownEffect(LandofileAuthoringShape)
+          : Schema.decodeUnknownEffect(LandofileAuthoringFragment);
       const actual = yield* decode(wire, { onExcessProperty: "error" });
       const expected = yield* decode(sample.fragment ?? sample.context, {
         onExcessProperty: "error",

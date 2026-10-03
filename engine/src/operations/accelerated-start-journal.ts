@@ -221,8 +221,8 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
           cause,
         });
         const saved = yield* Effect.exit(phase("retained"));
-        const failure = Cause.sequential(Cause.fail(retained), original);
-        return Exit.isFailure(saved) ? Cause.sequential(failure, saved.cause) : failure;
+        const failure = Cause.combine(Cause.fail(retained), original);
+        return Exit.isFailure(saved) ? Cause.combine(failure, saved.cause) : failure;
       }).pipe(Effect.uninterruptible);
     return {
       phase,

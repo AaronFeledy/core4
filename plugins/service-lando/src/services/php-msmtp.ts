@@ -15,7 +15,7 @@ export type MsmtpBaseFamily = (typeof MSMTP_SUPPORTED_FAMILIES)[number];
 
 const MsmtpArtifact = Schema.Struct({
   file: Schema.String,
-  sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
+  sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
   sizeBytes: Schema.Number,
   url: Schema.String,
 });
@@ -25,7 +25,7 @@ const MsmtpFamilyPinSchema = Schema.Struct({
   snapshot: Schema.String,
   package: Schema.String,
   version: Schema.String,
-  artifacts: Schema.Record({ key: Schema.String, value: MsmtpArtifact }),
+  artifacts: Schema.Record(Schema.String, MsmtpArtifact),
 });
 
 export const MsmtpPinManifest = Schema.Struct({

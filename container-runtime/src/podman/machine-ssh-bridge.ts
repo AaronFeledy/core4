@@ -48,8 +48,11 @@ const Machine = Schema.Struct({
   Created: Schema.NonEmptyString,
   SSHConfig: Schema.Struct({
     IdentityPath: Schema.NonEmptyString,
-    Port: Schema.Number.pipe(Schema.int(), Schema.between(1, 65535)),
-    RemoteUsername: Schema.String.pipe(Schema.pattern(/^[a-z_][a-z0-9_-]*$/u)),
+    Port: Schema.Number.pipe(
+      Schema.check(Schema.isInt()),
+      Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+    ),
+    RemoteUsername: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-z_][a-z0-9_-]*$/u))),
   }),
 });
 
@@ -73,7 +76,9 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
       throw new BridgeCommandError("Guest socket name must be a filename.");
     const inspected = await host.run(options.podmanBin, ["machine", "inspect", options.machineName]);
     if (inspected.exitCode !== 0) throw new BridgeCommandError("Podman machine inspect failed.");
-    const machine = Schema.decodeUnknownSync(Schema.parseJson(Schema.Array(Machine)))(inspected.stdout)[0];
+    const machine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Machine)))(
+      inspected.stdout,
+    )[0];
     if (machine === undefined || machine.Name !== options.machineName)
       throw new BridgeCommandError("The selected Podman machine is not running.");
     const knownHostsDir = join(options.stateDir, "host-proxy");

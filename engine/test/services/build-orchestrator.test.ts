@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { type Context, DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -42,7 +42,7 @@ const appId = AppId.make("myapp");
 const appRoot = AbsolutePath.make("/srv/apps/myapp");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "build-orchestrator.test",
   runtime: 4 as const,
 };
@@ -294,7 +294,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(6), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(6), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
             Effect.map(orchestrator.build(concurrentPlan), (builtPlan) => {
@@ -342,7 +342,7 @@ describe("BuildOrchestratorLive", () => {
             const queue = yield* eventService.subscribeQueue;
             const orchestrator = yield* BuildOrchestrator;
             yield* orchestrator.build(plan);
-            return [...(yield* Queue.takeAll(queue))];
+            return [...(yield* Queue.clear(queue))];
           }),
         ).pipe(Effect.provide(layer(provider))),
       );
@@ -401,7 +401,7 @@ describe("BuildOrchestratorLive", () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.build(scratchPlan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(layer(TestRuntimeProvider, failingStateStore))),
     );
@@ -473,7 +473,7 @@ describe("BuildOrchestratorLive", () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.build(scratchPlan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(layer(provider, failingStateStore))),
     );
@@ -493,13 +493,16 @@ describe("BuildOrchestratorLive", () => {
       message: "build failed",
     });
     const calls: string[] = [];
+    const siblingStarted = Deferred.makeUnsafe<void>();
     const provider = {
       ...TestRuntimeProvider,
       buildArtifact: (spec: ArtifactBuildSpec) => {
         calls.push(String(spec.service));
         return spec.service === ServiceName.make("web")
-          ? Effect.fail(failure)
-          : Effect.succeed({ providerId, ref: `${spec.service}:test` });
+          ? Deferred.await(siblingStarted).pipe(Effect.andThen(Effect.fail(failure)))
+          : Deferred.succeed(siblingStarted, undefined).pipe(
+              Effect.as({ providerId, ref: `${spec.service}:test` }),
+            );
       },
     };
 
@@ -654,7 +657,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
           return yield* Fiber.join(subscriber);
@@ -702,7 +705,7 @@ describe("BuildOrchestratorLive", () => {
       registerValues: registerRedactionValues,
       forProfile: (_profile, options) =>
         Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
-    } satisfies Context.Tag.Service<typeof RedactionService>);
+    } satisfies Context.Service.Shape<typeof RedactionService>);
 
     try {
       const events = await Effect.runPromise(
@@ -711,7 +714,7 @@ describe("BuildOrchestratorLive", () => {
             const subscriber = yield* eventService
               .subscribe("*")
               .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-              .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+              .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
             yield* Effect.sleep("10 millis");
             yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
             return yield* Fiber.join(subscriber);
@@ -762,7 +765,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* orchestrator.build(secretPlan);
           return yield* Fiber.join(subscriber);
@@ -1173,7 +1176,7 @@ describe("BuildOrchestratorLive", () => {
       await Effect.runPromise(
         Effect.flatMap(BuildOrchestrator, (orchestrator) =>
           Effect.gen(function* () {
-            yield* Effect.either(orchestrator.build(planWithRedirect("/logs/failure.log")));
+            yield* Effect.result(orchestrator.build(planWithRedirect("/logs/failure.log")));
             yield* orchestrator.build(planWithRedirect("/logs/failure.log"));
           }),
         ).pipe(Effect.provide(layer(failingProvider))),

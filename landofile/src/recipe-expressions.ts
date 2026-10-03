@@ -5,7 +5,7 @@ import {
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
-import { Either } from "effect";
+import { Result } from "effect";
 
 /**
  * Expression scopes a loaded Landofile may still carry after the load walk.
@@ -132,21 +132,21 @@ export const materializeLoadScopeExpressions = (
     if (typeof value === "string") {
       if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
-      if (Either.isLeft(parsed)) return value;
-      if (!resolvableAtLoad(value, parsed.right)) return value;
-      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.right, ["env"]);
+      if (Result.isFailure(parsed)) return value;
+      if (!resolvableAtLoad(value, parsed.success)) return value;
+      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.success, ["env"]);
       if (needsOptions && options === undefined) {
         unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
         return value;
       }
       const evaluated = evaluateTemplateEither(
-        parsed.right,
+        parsed.success,
         options === undefined ? { env } : { env, recipe: options },
         { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );
-      if (Either.isLeft(evaluated)) {
+      if (Result.isFailure(evaluated)) {
         let reason: string;
-        if (evaluated.left.message.startsWith("Expression budget exceeded")) {
+        if (evaluated.failure.message.startsWith("Expression budget exceeded")) {
           reason = "it exceeds the load-time expression budget";
         } else if (needsOptions) {
           reason = "it references a recipe option the Landofile does not set";
@@ -156,7 +156,7 @@ export const materializeLoadScopeExpressions = (
         unresolved.push({ path: path.join("."), reason });
         return value;
       }
-      return evaluated.right;
+      return evaluated.success;
     }
     if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
     if (typeof value === "object" && value !== null) {

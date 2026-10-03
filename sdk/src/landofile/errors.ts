@@ -13,5 +13,5 @@ import { Schema } from "effect";
  */
 export class LandofileEmitError extends Schema.TaggedError<LandofileEmitError>()("LandofileEmitError", {
   message: Schema.String,
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}

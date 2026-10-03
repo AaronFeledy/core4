@@ -26,4 +26,4 @@ export interface DownloaderShape {
   readonly download: (request: DownloadRequest) => Effect.Effect<DownloadResult, DownloadError, Scope.Scope>;
 }
 
-export class Downloader extends Context.Tag("@lando/core/Downloader")<Downloader, DownloaderShape>() {}
+export class Downloader extends Context.Service<Downloader, DownloaderShape>()("@lando/core/Downloader") {}

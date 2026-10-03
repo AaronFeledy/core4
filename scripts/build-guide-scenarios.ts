@@ -4,7 +4,7 @@ import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
@@ -431,14 +431,14 @@ const renderRun = (
   if ("command" in component.props) {
     const answers = component.props.answers ?? {};
     return [
-      `    const runAttempt = yield* Effect.either(context.runCli(${quote(interpolate(component.props.command, variables))}, {`,
+      `    const runAttempt = yield* Effect.result(context.runCli(${quote(interpolate(component.props.command, variables))}, {`,
       `      answers: ${JSON.stringify(answers)},`,
       "    }));",
-      "    if (Either.isLeft(runAttempt)) {",
-      "      lastFailure = runAttempt.left;",
+      "    if (Result.isFailure(runAttempt)) {",
+      "      lastFailure = runAttempt.failure;",
       "    } else {",
-      "      lastRun = runAttempt.right;",
-      `      expect(runAttempt.right.exitCode, \`stdout:\\n\${runAttempt.right.stdout}\\nstderr:\\n\${runAttempt.right.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
+      "      lastRun = runAttempt.success;",
+      `      expect(runAttempt.success.exitCode, \`stdout:\\n\${runAttempt.success.stdout}\\nstderr:\\n\${runAttempt.success.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
       "    }",
     ].join("\n");
   }
@@ -651,7 +651,7 @@ ${scenario.render === false ? "// @render: false\n" : ""}${variantHeader}${varia
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 ${
   usesLibraryRuntime
     ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";'
@@ -684,7 +684,7 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
 };
 
 ${testFnExpression}(${testNameExpression}, async () => {
-  await Effect.runPromise(
+  const exit = await Effect.runPromiseExit(
     ${contextRunner}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;
@@ -693,6 +693,7 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
       }),
     ),
   );
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
 }${testTimeoutArg});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };
@@ -764,20 +765,20 @@ const propsOf = (node: MdxNode): Record<string, unknown> => {
 };
 
 const decodeOrThrow = <A>(
-  either: Either.Either<A, unknown>,
+  either: Result.Result<A, unknown>,
   sourcePath: string,
   component: string,
   props: Record<string, unknown>,
 ): A => {
-  if (Either.isRight(either)) return either.right;
-  if (either.left instanceof NotImplementedError) throw either.left;
+  if (Result.isSuccess(either)) return either.success;
+  if (either.failure instanceof NotImplementedError) throw either.failure;
   const firstField = Object.keys(props).sort()[0] ?? component;
   throw new GuideFrontmatterValidationError({
     message: `<${component}> props are invalid at ${sourcePath}.`,
     sourcePath,
     field: firstField,
     rejectedValue: props[firstField],
-    issues: [String(either.left)],
+    issues: [String(either.failure)],
     remediation: `Fix <${component}> prop \`${firstField}\` in ${sourcePath}.`,
   });
 };
@@ -790,9 +791,9 @@ const fieldFromParseIssue = (issue: string): string => {
 const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): GuideFrontmatter => {
   const { diataxis: _diataxis, ...schemaFrontmatter } = input;
   const decoded = decodeGuideFrontmatterEither(schemaFrontmatter);
-  if (Either.isRight(decoded)) return decoded.right;
-  if (decoded.left instanceof NotImplementedError) throw decoded.left;
-  const issue = String(decoded.left);
+  if (Result.isSuccess(decoded)) return decoded.success;
+  if (decoded.failure instanceof NotImplementedError) throw decoded.failure;
+  const issue = String(decoded.failure);
   const firstField = fieldFromParseIssue(issue);
   throw new GuideFrontmatterValidationError({
     message: `Guide frontmatter is invalid at ${sourcePath}.`,
@@ -1259,15 +1260,15 @@ export class UnsafeGuideClearTargetError extends Schema.TaggedError<UnsafeGuideC
 
 /** Decode a CLI/clear guide id through the canonical SDK GuideId schema. */
 export const decodeGuideIdArg = (value: string): typeof GuideId.Type => {
-  const decoded = Schema.decodeUnknownEither(GuideId)(value);
-  if (Either.isLeft(decoded)) {
+  const decoded = Schema.decodeUnknownResult(GuideId)(value);
+  if (Result.isFailure(decoded)) {
     throw new UnsafeGuideIdError({
       message: `Invalid guide id: ${value}`,
       guideId: value,
       remediation: GUIDE_ID_ARG_REMEDIATION,
     });
   }
-  return decoded.right;
+  return decoded.success;
 };
 
 const isStrictlyInside = (root: string, candidate: string): boolean => {

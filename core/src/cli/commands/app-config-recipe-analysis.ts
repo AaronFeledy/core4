@@ -4,7 +4,7 @@ import { LandofileFormConflictError } from "@lando/sdk/errors";
 import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } from "@lando/sdk/expressions";
 import { isBareRecipeReference, validateLandofileRecipeProvenance } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { findDiscoveredLandofilePath } from "@lando/engine/services/landofile-live";
 
@@ -88,10 +88,10 @@ export const collectRecipeSites = (value: unknown, filePath: string): ReadonlyAr
     if (typeof current === "string") {
       if (!current.includes("{{")) return;
       const parsed = parseExpressionEither(current, { filePath });
-      if (Either.isLeft(parsed)) return;
-      const options = recipeOptionsInTemplate(parsed.right);
+      if (Result.isFailure(parsed)) return;
+      const options = recipeOptionsInTemplate(parsed.success);
       if (options.size === 0) return;
-      sites.push({ path: dotPath(path), source: current, template: parsed.right, options });
+      sites.push({ path: dotPath(path), source: current, template: parsed.success, options });
       return;
     }
     if (Array.isArray(current)) {
@@ -134,8 +134,8 @@ export const provenanceWithoutServiceMap = (raw: unknown): LandofileRecipeProven
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
   const rest = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== "services"));
   const retried = validateLandofileRecipeProvenance(rest);
-  if (Either.isLeft(retried) || isBareRecipeReference(retried.right)) return undefined;
-  return retried.right;
+  if (Result.isFailure(retried) || isBareRecipeReference(retried.success)) return undefined;
+  return retried.success;
 };
 
 export const discoverRecipeAnalysisRoot = async (

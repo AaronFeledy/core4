@@ -111,7 +111,7 @@ const GLOBAL_LOG_SELECT_PLAN: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("1970-01-01T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00.000Z"),
     source: "global-app",
     runtime: 4,
   },
@@ -153,10 +153,10 @@ const observeWatcherStartup = (dependencies: TraefikProxyDependencies) =>
       watcherHost,
       failureClass: hit.failureClass,
       detail,
-    }).pipe(Effect.catchAll(() => Effect.void));
+    }).pipe(Effect.catch(() => Effect.void));
     yield* dependencies.fileSystem
       .remove(routingStateFile(dependencies.paths))
-      .pipe(Effect.catchAll(() => Effect.void));
+      .pipe(Effect.catch(() => Effect.void));
     return yield* Effect.fail(error);
   });
 

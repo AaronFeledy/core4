@@ -91,9 +91,9 @@ export const globalAppDoctor = (): Effect.Effect<
     const pluginRegistry = yield* PluginRegistry;
     const fileSystem = yield* FileSystem;
 
-    const paths = yield* globalApp.paths.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const paths = yield* globalApp.paths.pipe(Effect.catch(() => Effect.succeed(undefined)));
 
-    const manifests = yield* pluginRegistry.list.pipe(Effect.catchAll(() => Effect.succeed([])));
+    const manifests = yield* pluginRegistry.list.pipe(Effect.catch(() => Effect.succeed([])));
 
     const contributingPlugins = manifests
       .filter((manifest) => (manifest.contributes?.globalServices ?? []).length > 0)
@@ -114,7 +114,7 @@ export const globalAppDoctor = (): Effect.Effect<
 
     const exists = yield* fileSystem
       .exists(paths.distLandofile)
-      .pipe(Effect.catchAll(() => Effect.succeed(false)));
+      .pipe(Effect.catch(() => Effect.succeed(false)));
 
     if (!exists) {
       const context: Record<string, string> = {
@@ -136,17 +136,17 @@ export const globalAppDoctor = (): Effect.Effect<
 
     const stat = yield* fileSystem
       .lstat(paths.distLandofile)
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+      .pipe(Effect.catch(() => Effect.succeed(undefined)));
 
-    const content = yield* Effect.either(fileSystem.readText(paths.distLandofile));
+    const content = yield* Effect.result(fileSystem.readText(paths.distLandofile));
     const lastInstallTimestamp = stat !== undefined ? new Date(stat.mtimeMs).toISOString() : undefined;
 
-    if (content._tag === "Left") {
+    if (content._tag === "Failure") {
       const context: Record<string, string> = {
         installed: "true",
         distLandofilePath: String(paths.distLandofile),
         userLandofilePath: String(paths.userLandofile),
-        readError: content.left.message,
+        readError: content.failure.message,
       };
       if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
       if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
@@ -167,7 +167,7 @@ export const globalAppDoctor = (): Effect.Effect<
       return { checks: [check] };
     }
 
-    const serviceIds = parseServiceIds(content.right);
+    const serviceIds = parseServiceIds(content.success);
 
     const context: Record<string, string> = {
       installed: "true",

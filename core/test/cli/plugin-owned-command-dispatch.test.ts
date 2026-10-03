@@ -21,7 +21,7 @@ import {
 
 const DbImportResult = Schema.Struct({
   imported: Schema.Boolean,
-  host: Schema.optional(Schema.String),
+  host: Schema.optionalKey(Schema.String),
 });
 
 const makeDbImportSpec = (): ExecutableCommandSpec => ({
@@ -77,7 +77,7 @@ const silentRenderer = {
   capabilities: RENDERER_CAPABILITIES_NONE,
   message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
   output: { stdout: () => Effect.void, stderr: () => Effect.void },
-} satisfies Context.Tag.Service<typeof Renderer>;
+} satisfies Context.Service.Shape<typeof Renderer>;
 
 const makeDbImportPlugin = () => {
   const spec = makeDbImportSpec();

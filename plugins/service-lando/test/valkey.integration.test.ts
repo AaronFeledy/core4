@@ -158,7 +158,7 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
           const getOutput = await sendValkeyCommand(VALKEY_PORT, "GET foo\r\n");
           expect(getOutput).toBe("$3\r\nbar\r\n");
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

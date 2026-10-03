@@ -39,7 +39,7 @@ export const encodeProgressFrame = (
 export const makeStreamFrameSink = (
   notify: McpNotify,
   redactorForFrame: Redactor,
-): Context.Tag.Service<typeof StreamFrameSink> => ({
+): Context.Service.Shape<typeof StreamFrameSink> => ({
   emit: (frame: StreamFrameSinkFrame) =>
     encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
 });

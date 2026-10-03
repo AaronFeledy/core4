@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import {
   AgentEnvPatternError,
@@ -79,28 +79,28 @@ export interface ConfigResult {
 }
 
 export const ConfigResultSchema = Schema.Struct({
-  config: Schema.optional(GlobalConfigView),
-  subcommand: Schema.optional(Schema.String),
-  key: Schema.optional(Schema.String),
-  value: Schema.optional(Schema.Unknown),
-  path: Schema.optional(Schema.String),
-  format: Schema.Union(Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")),
-  telemetry: Schema.optional(
+  config: Schema.optionalKey(GlobalConfigView),
+  subcommand: Schema.optionalKey(Schema.String),
+  key: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.Unknown),
+  path: Schema.optionalKey(Schema.String),
+  format: Schema.Union([Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")]),
+  telemetry: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean,
-      source: Schema.Union(
+      source: Schema.Union([
         Schema.Literal("flag"),
         Schema.Literal("env"),
         Schema.Literal("config"),
         Schema.Literal("default"),
-      ),
+      ]),
     }),
   ),
-  changed: Schema.optional(Schema.Boolean),
-  dryRun: Schema.optional(Schema.Boolean),
-  valid: Schema.optional(Schema.Boolean),
-  issues: Schema.optional(Schema.Array(Schema.String)),
-  configPath: Schema.optional(Schema.String),
+  changed: Schema.optionalKey(Schema.Boolean),
+  dryRun: Schema.optionalKey(Schema.Boolean),
+  valid: Schema.optionalKey(Schema.Boolean),
+  issues: Schema.optionalKey(Schema.Array(Schema.String)),
+  configPath: Schema.optionalKey(Schema.String),
 });
 
 const translateRemediation =
@@ -200,13 +200,13 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
     catch: (cause) => configWriteError(path, cause),
   });
 
-const decodeGlobalConfig = Schema.decodeUnknownEither(GlobalConfig);
+const decodeGlobalConfig = Schema.decodeUnknownResult(GlobalConfig);
 
 const agentEnvPatternError = (
   decoded: ReturnType<typeof decodeGlobalConfig>,
 ): AgentEnvPatternError | undefined => {
-  if (Either.isLeft(decoded)) return undefined;
-  const agentEnv = decoded.right.agentEnv;
+  if (Result.isFailure(decoded)) return undefined;
+  const agentEnv = decoded.success.agentEnv;
   if (agentEnv === undefined) return undefined;
   const patterns = findAgentEnvPatternNames([...(agentEnv.allow ?? []), ...(agentEnv.deny ?? [])]);
   if (patterns.length === 0) return undefined;
@@ -245,8 +245,8 @@ const metaConfigSet = (
     const path = resolveConfigWritePath(options);
     const tree = yield* readConfigTree(path);
     const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
+    if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+    const next = mutation.success.next;
     const decoded = decodeGlobalConfig(next);
     const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
@@ -255,13 +255,13 @@ const metaConfigSet = (
     const dryRun = options.dryRun === true;
     if (!dryRun) {
       const emitted = emitConfigYaml({ file: path, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeConfigAtomic(path, emitted.right);
+      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+      yield* writeConfigAtomic(path, emitted.success);
     }
     return {
       subcommand: "set",
       key,
-      value: mutation.right.value,
+      value: mutation.success.value,
       changed: true,
       dryRun,
       configPath: path,
@@ -287,23 +287,23 @@ const metaConfigUnset = (
     const path = resolveConfigWritePath(options);
     const tree = yield* readConfigTree(path);
     const mutation = applyUnsetMutation({ tree, key, file: path });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
+    if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+    const next = mutation.success.next;
     const decoded = decodeGlobalConfig(next);
     const issues = decodeIssues(decoded);
     if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
     const patternError = agentEnvPatternError(decoded);
     if (patternError !== undefined) return yield* Effect.fail(patternError);
     const dryRun = options.dryRun === true;
-    if (!dryRun && mutation.right.changed) {
+    if (!dryRun && mutation.success.changed) {
       const emitted = emitConfigYaml({ file: path, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeConfigAtomic(path, emitted.right);
+      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+      yield* writeConfigAtomic(path, emitted.success);
     }
     return {
       subcommand: "unset",
       key,
-      changed: mutation.right.changed,
+      changed: mutation.success.changed,
       dryRun,
       configPath: path,
       format: options.format ?? "table",

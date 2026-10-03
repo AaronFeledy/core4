@@ -118,25 +118,24 @@ const makeAttempt = (
 ): Effect.Effect<ProbeOutcome> =>
   Effect.gen(function* () {
     const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
-    const completed = yield* Effect.timeoutTo(
-      Effect.either(
-        Effect.scoped(
-          deps
-            .stream({
-              url,
-              method: "GET",
-              timeoutMs,
-              redirect: config.maxRedirects > 0 ? "follow" : "manual",
-              callerId: "url-scanner",
-            })
-            .pipe(Effect.map((response) => response.status)),
+    const completed = yield* Effect.timeoutOrElse(
+      Effect.map(
+        Effect.result(
+          Effect.scoped(
+            deps
+              .stream({
+                url,
+                method: "GET",
+                timeoutMs,
+                redirect: config.maxRedirects > 0 ? "follow" : "manual",
+                callerId: "url-scanner",
+              })
+              .pipe(Effect.map((response) => response.status)),
+          ),
         ),
+        (result) => result,
       ),
-      {
-        duration: Duration.millis(timeoutMs),
-        onSuccess: (result) => result,
-        onTimeout: () => "timeout" as const,
-      },
+      { duration: Duration.millis(timeoutMs), orElse: () => Effect.succeed((() => "timeout" as const)()) },
     );
 
     if (completed === "timeout") {
@@ -144,13 +143,13 @@ const makeAttempt = (
       return "red";
     }
 
-    if (completed._tag === "Left") {
-      yield* Ref.set(status, { _tag: "transport", message: completed.left.message });
+    if (completed._tag === "Failure") {
+      yield* Ref.set(status, { _tag: "transport", message: completed.failure.message });
       return "red";
     }
 
-    yield* Ref.set(status, { _tag: "response", status: completed.right });
-    return isAccepted(completed.right, config.okCodes) ? "green" : "yellow";
+    yield* Ref.set(status, { _tag: "response", status: completed.success });
+    return isAccepted(completed.success, config.okCodes) ? "green" : "yellow";
   });
 
 const probeRunError = (url: string, cause: unknown, redactor: Redactor): ScannerError =>

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { FileSystem } from "@lando/sdk/services";
 
@@ -28,7 +28,7 @@ for (const separator of separators) {
         const result = await Effect.runPromise(
           Effect.gen(function* () {
             const fileSystem = yield* FileSystem;
-            return yield* Effect.either(
+            return yield* Effect.result(
               loadServiceTypeProjectFiles({
                 appRoot,
                 serviceName: "web",
@@ -40,10 +40,10 @@ for (const separator of separators) {
           }).pipe(Effect.provide(FileSystemLive)),
         );
         // Then containment fails in the typed error channel.
-        expect(Either.isLeft(result)).toBe(true);
-        if (Either.isLeft(result)) {
-          expect(result.left._tag).toBe("LandofileValidationError");
-          expect(result.left.message).toContain("escapes the app root");
+        expect(Result.isFailure(result)).toBe(true);
+        if (Result.isFailure(result)) {
+          expect(result.failure._tag).toBe("LandofileValidationError");
+          expect(result.failure.message).toContain("escapes the app root");
         }
       } finally {
         await rm(directory, { recursive: true, force: true });
@@ -80,7 +80,7 @@ for (const separator of separators) {
         const result = await Effect.runPromise(
           Effect.gen(function* () {
             const fileSystem = yield* FileSystem;
-            return yield* Effect.either(
+            return yield* Effect.result(
               loadServiceTypeProjectFiles({
                 appRoot,
                 serviceName: "web",
@@ -92,10 +92,10 @@ for (const separator of separators) {
           }).pipe(Effect.provide(FileSystemLive)),
         );
         // Then no inference input is returned through the symlink.
-        expect(Either.isLeft(result)).toBe(true);
-        if (Either.isLeft(result)) {
-          expect(result.left._tag).toBe("LandofileValidationError");
-          expect(result.left.message).toContain("is a symbolic link");
+        expect(Result.isFailure(result)).toBe(true);
+        if (Result.isFailure(result)) {
+          expect(result.failure._tag).toBe("LandofileValidationError");
+          expect(result.failure.message).toContain("is a symbolic link");
         }
       } finally {
         await rm(directory, { recursive: true, force: true });
@@ -129,7 +129,7 @@ test.each([
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const fileSystem = available ? yield* FileSystem : undefined;
-        return yield* Effect.either(
+        return yield* Effect.result(
           loadServiceTypeProjectFiles({
             appRoot,
             serviceName: "web",
@@ -141,10 +141,10 @@ test.each([
       }).pipe(Effect.provide(FileSystemLive)),
     );
     // Then the condition is rejected without an Effect defect or inferred data.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("LandofileValidationError");
-      expect(result.left.message).toContain(message);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("LandofileValidationError");
+      expect(result.failure.message).toContain(message);
     }
   } finally {
     await rm(appRoot, { recursive: true, force: true });
@@ -155,7 +155,7 @@ test("reports project traversal as a typed failure rather than an Effect defect"
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem;
-      return yield* Effect.either(
+      return yield* Effect.result(
         loadServiceTypeProjectFiles({
           appRoot: "/app",
           serviceName: "web",
@@ -167,8 +167,8 @@ test("reports project traversal as a typed failure rather than an Effect defect"
     }).pipe(Effect.provide(FileSystemLive)),
   );
 
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) expect(result.left._tag).toBe("LandofileValidationError");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) expect(result.failure._tag).toBe("LandofileValidationError");
 });
 
 test("fingerprints original file bytes including a UTF-8 BOM", async () => {

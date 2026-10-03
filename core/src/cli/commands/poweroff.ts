@@ -40,7 +40,7 @@ export const PoweroffResultSchema = Schema.Struct({
   keptGlobalApp: Schema.Boolean,
   keptScratchApps: Schema.Number,
   runtimeServiceStopped: Schema.Boolean,
-  runtimeServicePid: Schema.optional(Schema.Number),
+  runtimeServicePid: Schema.optionalKey(Schema.Number),
 });
 
 const GLOBAL_APP_ID = "global";
@@ -150,7 +150,7 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
 };
 
 const stopManagedRuntimeService = (
-  registry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
+  registry: Option.Option<Context.Service.Shape<typeof HostMaintenanceRegistry>>,
   userDataRoot: string,
 ): Promise<RuntimeServiceStopResult> => {
   const platform = normalizeHostPlatform();

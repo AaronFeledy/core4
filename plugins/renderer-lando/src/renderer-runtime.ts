@@ -84,7 +84,7 @@ const makeNotificationConsumerLive = (
   triggerNotification: ((message: string, title?: string) => boolean) | undefined,
   flushNotifications: (() => Promise<void>) | undefined,
 ): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const queue = yield* events.subscribeQueue;
@@ -98,7 +98,7 @@ const makeNotificationConsumerLive = (
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* Fiber.interrupt(fiber);
-          const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) consume(event);
           }

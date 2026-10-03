@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
@@ -110,21 +110,21 @@ describe("Windows published facts production HTTP adapter", () => {
       }),
     });
     const attachmentResult = await Effect.runPromise(
-      Effect.either(missingAttachment.match("router", [38080])),
+      Effect.result(missingAttachment.match("router", [38080])),
     );
-    expect(Either.isLeft(attachmentResult)).toBe(true);
-    if (Either.isLeft(attachmentResult)) {
-      const error = attachmentResult.left;
+    expect(Result.isFailure(attachmentResult)).toBe(true);
+    if (Result.isFailure(attachmentResult)) {
+      const error = attachmentResult.failure;
       if (error._tag !== "ProviderUnavailableError") throw new Error(`Unexpected ${error._tag}`);
       expect(error.operation).toBe("matchingPublishPorts");
     }
     expect(missingAttachment.calls).toEqual(["/containers/router/json"]);
 
     const missingInventory = await makeHarness({ networkList: "[]" });
-    const inventoryResult = await Effect.runPromise(Effect.either(missingInventory.match("router", [38080])));
-    expect(Either.isLeft(inventoryResult)).toBe(true);
-    if (Either.isLeft(inventoryResult)) {
-      const error = inventoryResult.left;
+    const inventoryResult = await Effect.runPromise(Effect.result(missingInventory.match("router", [38080])));
+    expect(Result.isFailure(inventoryResult)).toBe(true);
+    if (Result.isFailure(inventoryResult)) {
+      const error = inventoryResult.failure;
       if (error._tag !== "ProviderUnavailableError") throw new Error(`Unexpected ${error._tag}`);
       expect(error.operation).toBe("matchingPublishPorts");
     }
@@ -137,11 +137,11 @@ describe("Windows published facts production HTTP adapter", () => {
   ] as const)("tags malformed %s bodies", async (_label, bodies) => {
     const harness = await makeHarness(bodies);
 
-    const result = await Effect.runPromise(Effect.either(harness.match("router", [38080])));
+    const result = await Effect.runPromise(Effect.result(harness.match("router", [38080])));
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      const error = result.left;
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const error = result.failure;
       if (error._tag !== "ProviderUnavailableError") throw new Error(`Unexpected ${error._tag}`);
       expect(error.operation).toBe("matchingPublishPorts");
     }

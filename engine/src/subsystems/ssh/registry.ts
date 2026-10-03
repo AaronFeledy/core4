@@ -1,4 +1,4 @@
-import { Context, Effect, Either, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -27,10 +27,9 @@ interface SshServiceRegistryShape {
   readonly select: (selection?: SshServiceSelection) => Effect.Effect<SshServiceRegistration, SshError>;
 }
 
-export class SshServiceRegistry extends Context.Tag("@lando/core/SshServiceRegistry")<
-  SshServiceRegistry,
-  SshServiceRegistryShape
->() {}
+export class SshServiceRegistry extends Context.Service<SshServiceRegistry, SshServiceRegistryShape>()(
+  "@lando/core/SshServiceRegistry",
+) {}
 
 const selectionError = (message: string, sshId: string): SshError =>
   new SshError({
@@ -43,9 +42,9 @@ const registrationsFromModules = (
 ): Effect.Effect<ReadonlyArray<SshServiceRegistration>, SshError> =>
   Effect.gen(function* () {
     const indexResult = makePluginCapabilityIndex(modules);
-    if (Either.isLeft(indexResult))
+    if (Result.isFailure(indexResult))
       return yield* Effect.fail(selectionError("Unable to discover SshService contributions.", "unknown"));
-    const index = indexResult.right;
+    const index = indexResult.success;
     const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.sshServices ?? []);
     return yield* Effect.forEach(contributions, (contribution) => {
       const layer = index.sshServices?.get(contribution.id);
@@ -98,7 +97,7 @@ export const makeSshServiceRegistryLive = (modules: ReadonlyArray<LandoPluginMod
 
 export const SshServiceRegistryLive = Layer.suspend(() => makeSshServiceRegistryLive(bundledPluginModules()));
 
-export const SelectedSshServiceLive = Layer.unwrapEffect(
+export const SelectedSshServiceLive = Layer.unwrap(
   Effect.flatMap(SshServiceRegistry, (registry) =>
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0

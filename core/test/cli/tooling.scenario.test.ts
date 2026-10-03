@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
 import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
@@ -80,7 +80,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
   source: "tooling.scenario.test",
   runtime: 4 as const,
 };
@@ -91,19 +91,12 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   provider: providerId,
   primary,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: undefined,
-  entrypoint: undefined,
   environment: {},
-  user: undefined,
-  workingDirectory: undefined,
-  appMount: undefined,
   mounts: [],
   storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
-  healthcheck: undefined,
-  certs: undefined,
   hostAliases: [],
   metadata,
   extensions: {},
@@ -974,8 +967,8 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
 
       // Then
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBe(planError);
+      if (exit._tag === "Failure") {
+        expect(Cause.squash(exit.cause)).toBe(planError);
       }
     });
   });

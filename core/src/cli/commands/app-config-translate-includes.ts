@@ -1,7 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { type ConfigTranslateDiagnostic, type ConfigTranslateOutput, PortablePath } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { resolveContainedSourcePath } from "./app-config-translate-sources.ts";
 
 const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
@@ -56,12 +56,12 @@ export const validateTranslatedIncludeTargets = (
         const problem = yield* Effect.gen(function* () {
           const path = containedIncludePath(entry.source);
           if (path === undefined) return "target must be a relative path inside the app root";
-          const metadata = yield* Effect.either(Effect.tryPromise(() => lstat(resolve(appRoot, path))));
-          if (Either.isLeft(metadata)) return "target does not exist";
-          if (metadata.right.isSymbolicLink()) return "target is a symbolic link";
-          if (!metadata.right.isFile()) return "target is not a regular file";
-          const contained = yield* Effect.either(resolveContainedSourcePath(appRoot, path));
-          return Either.isLeft(contained) ? "target resolves outside the app root" : undefined;
+          const metadata = yield* Effect.result(Effect.tryPromise(() => lstat(resolve(appRoot, path))));
+          if (Result.isFailure(metadata)) return "target does not exist";
+          if (metadata.success.isSymbolicLink()) return "target is a symbolic link";
+          if (!metadata.success.isFile()) return "target is not a regular file";
+          const contained = yield* Effect.result(resolveContainedSourcePath(appRoot, path));
+          return Result.isFailure(contained) ? "target resolves outside the app root" : undefined;
         });
         if (problem !== undefined)
           diagnostics.push({

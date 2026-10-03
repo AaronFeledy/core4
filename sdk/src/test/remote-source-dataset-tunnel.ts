@@ -1,4 +1,4 @@
-import { Duration, Effect, Either, Fiber } from "effect";
+import { Duration, Effect, Fiber, Result } from "effect";
 
 import {
   DatasetBindingError,
@@ -169,20 +169,21 @@ export const runRemoteSourceContract = (
       { locator, locatorAgain },
     );
 
-    const missingEnv = yield* Effect.either(
+    const missingEnv = yield* Effect.result(
       source.resolve(harness.config, harness.missingEnv, harness.supportedDataset),
     );
     yield* requireRemoteSyncContract(
-      Either.isLeft(missingEnv) && missingEnv.left instanceof RemoteEnvNotFoundError,
+      Result.isFailure(missingEnv) && missingEnv.failure instanceof RemoteEnvNotFoundError,
       "unknown env fails RemoteEnvNotFoundError",
       missingEnv,
     );
 
-    const unsupportedDataset = yield* Effect.either(
+    const unsupportedDataset = yield* Effect.result(
       source.resolve(harness.config, harness.supportedEnv, harness.unsupportedDataset),
     );
     yield* requireRemoteSyncContract(
-      Either.isLeft(unsupportedDataset) && unsupportedDataset.left instanceof RemoteDatasetUnsupportedError,
+      Result.isFailure(unsupportedDataset) &&
+        unsupportedDataset.failure instanceof RemoteDatasetUnsupportedError,
       "unknown dataset fails RemoteDatasetUnsupportedError",
       unsupportedDataset,
     );
@@ -231,7 +232,7 @@ export const runRemoteSourceContract = (
     );
 
     const fetchInterruptFinalizersBefore = (yield* harness.observations.finalizers()).length;
-    const fetchFiber = yield* Effect.fork(
+    const fetchFiber = yield* Effect.forkChild(
       Effect.scoped(source.fetch(locator, { expectedDigest: "interrupt-contract" })),
     );
     yield* Effect.sleep(Duration.millis(1));
@@ -245,11 +246,11 @@ export const runRemoteSourceContract = (
     const noPushLocator = yield* harness.noPushSource
       .resolve(harness.config, harness.supportedEnv, harness.supportedDataset)
       .pipe(Effect.mapError(mapRemoteSyncFailure("no-push source resolves supported locator")));
-    const noPushSend = yield* Effect.either(
+    const noPushSend = yield* Effect.result(
       Effect.scoped(harness.noPushSource.send(noPushLocator, harness.artifact)),
     );
     yield* requireRemoteSyncContract(
-      Either.isLeft(noPushSend) && noPushSend.left instanceof RemoteDatasetUnsupportedError,
+      Result.isFailure(noPushSend) && noPushSend.failure instanceof RemoteDatasetUnsupportedError,
       "push is rejected when capabilities.push is false",
       noPushSend,
     );
@@ -257,11 +258,12 @@ export const runRemoteSourceContract = (
     const protectedLocator = yield* source
       .resolve(harness.config, harness.protectedEnv, harness.supportedDataset)
       .pipe(Effect.mapError(mapRemoteSyncFailure("resolve returns a protected locator")));
-    const protectedWithoutForce = yield* Effect.either(
+    const protectedWithoutForce = yield* Effect.result(
       Effect.scoped(source.send(protectedLocator, harness.artifact)),
     );
     yield* requireRemoteSyncContract(
-      Either.isLeft(protectedWithoutForce) && protectedWithoutForce.left instanceof RemoteProtectedEnvError,
+      Result.isFailure(protectedWithoutForce) &&
+        protectedWithoutForce.failure instanceof RemoteProtectedEnvError,
       "protected env push requires explicit confirmation",
       protectedWithoutForce,
     );
@@ -296,7 +298,7 @@ export const runRemoteSourceContract = (
     );
 
     const sendInterruptFinalizersBefore = (yield* harness.observations.finalizers()).length;
-    const sendFiber = yield* Effect.fork(
+    const sendFiber = yield* Effect.forkChild(
       Effect.scoped(
         source.send(protectedLocator, harness.artifact, {
           protectedEnvConfirmed: true,
@@ -430,15 +432,15 @@ export const runDatasetContract = (harness: DatasetContractHarness): Effect.Effe
       replay,
     );
 
-    const codeTreeCapture = yield* Effect.either(Effect.scoped(dataset.capture(harness.codeTreeContext)));
-    const codeTreeApply = yield* Effect.either(
+    const codeTreeCapture = yield* Effect.result(Effect.scoped(dataset.capture(harness.codeTreeContext)));
+    const codeTreeApply = yield* Effect.result(
       Effect.scoped(dataset.apply(harness.codeTreeContext, artifact)),
     );
     yield* requireRemoteSyncContract(
-      Either.isLeft(codeTreeCapture) &&
-        codeTreeCapture.left instanceof DatasetBindingError &&
-        Either.isLeft(codeTreeApply) &&
-        codeTreeApply.left instanceof DatasetBindingError,
+      Result.isFailure(codeTreeCapture) &&
+        codeTreeCapture.failure instanceof DatasetBindingError &&
+        Result.isFailure(codeTreeApply) &&
+        codeTreeApply.failure instanceof DatasetBindingError,
       "code-tree-targeting bindings fail DatasetBindingError",
       { codeTreeCapture, codeTreeApply },
     );
@@ -521,11 +523,11 @@ export const runTunnelServiceContract = (
       service.capabilities,
     );
 
-    const unsupportedStart = yield* Effect.either(
+    const unsupportedStart = yield* Effect.result(
       Effect.scoped(service.start({ app: TEST_APP_ID, target: harness.unsupportedTarget })),
     );
     yield* requireTunnelContract(
-      Either.isLeft(unsupportedStart) && unsupportedStart.left instanceof TunnelTargetUnresolvedError,
+      Result.isFailure(unsupportedStart) && unsupportedStart.failure instanceof TunnelTargetUnresolvedError,
       "unsupported app target fails TunnelTargetUnresolvedError",
       unsupportedStart,
     );
@@ -616,7 +618,7 @@ export const runTunnelServiceContract = (
     }
 
     const finalizersBeforeInterrupt = (yield* harness.observations.finalizers()).length;
-    const fiber = yield* Effect.fork(Effect.scoped(service.start({ app: TEST_APP_ID, target })));
+    const fiber = yield* Effect.forkChild(Effect.scoped(service.start({ app: TEST_APP_ID, target })));
     yield* Effect.sleep(Duration.millis(1));
     yield* Fiber.interrupt(fiber);
     yield* requireTunnelContract(

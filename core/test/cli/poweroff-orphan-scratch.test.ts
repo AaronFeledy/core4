@@ -109,7 +109,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
             return { terminated: true };
           },
         }).pipe(
-          Effect.either,
+          Effect.result,
           Effect.provide(
             Layer.mergeAll(
               ConfigServiceLive,
@@ -125,19 +125,23 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
       switch (mode) {
         case "orphan":
         case "registered":
-          expect(result._tag).toBe("Right");
-          if (result._tag === "Right") expect(result.right.appsPoweredOff).toEqual([id]);
+          expect(result._tag).toBe("Success");
+          if (result._tag === "Success") expect(result.success.appsPoweredOff).toEqual([id]);
           expect(calls).toEqual(mode === "orphan" ? ["destroy", "prune", "runtime"] : ["destroy", "runtime"]);
           break;
         case "prune-failure":
         case "destroy-failure":
-          expect(result._tag).toBe("Left");
-          if (result._tag === "Left") {
-            expect(result.left).toMatchObject({ _tag: "PoweroffStopError", appId: id, providerId: "lando" });
-            if (result.left._tag === "PoweroffStopError") {
-              expect(result.left.remediation).toContain("lando scratch gc --prune");
+          expect(result._tag).toBe("Failure");
+          if (result._tag === "Failure") {
+            expect(result.failure).toMatchObject({
+              _tag: "PoweroffStopError",
+              appId: id,
+              providerId: "lando",
+            });
+            if (result.failure._tag === "PoweroffStopError") {
+              expect(result.failure.remediation).toContain("lando scratch gc --prune");
               if (mode === "prune-failure")
-                expect(result.left.cause).toMatchObject({ cause: providerFailure });
+                expect(result.failure.cause).toMatchObject({ cause: providerFailure });
             }
           }
           expect(calls).toEqual(mode === "prune-failure" ? ["destroy", "prune"] : ["destroy"]);

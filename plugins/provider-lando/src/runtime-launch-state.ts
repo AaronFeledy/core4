@@ -19,10 +19,10 @@ export const launchStatePath = (pidPath: string): string => `${pidPath}.launch.j
 const parseRuntimeLaunchState = (raw: string): RuntimeLaunchState | undefined => {
   const parsed: unknown = JSON.parse(raw);
   if (
-    !Predicate.isRecord(parsed) ||
+    !Predicate.isObject(parsed) ||
     typeof parsed.pid !== "number" ||
     !Number.isInteger(parsed.pid) ||
-    !Predicate.isRecord(parsed.env)
+    !Predicate.isObject(parsed.env)
   ) {
     return undefined;
   }
@@ -42,7 +42,7 @@ const readLaunchState = (pidPath: string): Effect.Effect<RuntimeLaunchState | un
   Effect.tryPromise({
     try: async () => parseRuntimeLaunchState(await readFile(launchStatePath(pidPath), "utf8")),
     catch: () => undefined,
-  }).pipe(Effect.catchAll((state) => Effect.succeed(state)));
+  }).pipe(Effect.catch((state) => Effect.succeed(state)));
 
 const pathPrefix = (value: string): string => value.split(delimiter)[0] ?? value;
 

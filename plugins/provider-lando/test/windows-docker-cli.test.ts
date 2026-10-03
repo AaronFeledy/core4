@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
@@ -49,12 +49,12 @@ describe("prepareWindowsDockerCli", () => {
     const binDir = await fixture();
     await rm(join(binDir, ".runtime-installed-version"));
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(binDir, "win32")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(binDir, "win32")))),
     ).toBe(true);
     await writeFile(join(binDir, ".runtime-installed-version"), "6.0.0\n");
     await rm(join(binDir, "podman.exe"));
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(binDir, "win32")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(binDir, "win32")))),
     ).toBe(true);
   });
 
@@ -63,7 +63,7 @@ describe("prepareWindowsDockerCli", () => {
     const alias = await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32"));
     await writeFile(alias, "untrusted");
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(binDir, "win32")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(binDir, "win32")))),
     ).toBe(true);
     expect(await readFile(alias, "utf8")).toBe("untrusted");
   });
@@ -73,7 +73,7 @@ describe("prepareWindowsDockerCli", () => {
     const alias = await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32"));
     await writeFile(join(binDir, "podman.exe"), "changed-podman");
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(binDir, "win32")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(binDir, "win32")))),
     ).toBe(true);
     expect(await readFile(alias, "utf8")).toBe("owned-podman-binary");
   });
@@ -122,7 +122,7 @@ describe("prepareWindowsDockerCli", () => {
     await rm(join(sourceDir, "podman.exe"));
     await symlink(join(sourceDir, ".runtime-installed-version"), join(sourceDir, "podman.exe"));
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(sourceDir, "win32")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(sourceDir, "win32")))),
     ).toBe(true);
 
     const aliasDir = await fixture();
@@ -130,12 +130,12 @@ describe("prepareWindowsDockerCli", () => {
     await rm(alias);
     await symlink(join(aliasDir, "podman.exe"), alias);
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(aliasDir, "win32")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(aliasDir, "win32")))),
     ).toBe(true);
     expect(
-      Either.isLeft(
+      Result.isFailure(
         await Effect.runPromise(
-          Effect.either(prepareWindowsDockerCli(aliasDir, "win32", { repairExisting: true })),
+          Effect.result(prepareWindowsDockerCli(aliasDir, "win32", { repairExisting: true })),
         ),
       ),
     ).toBe(true);
@@ -145,14 +145,16 @@ describe("prepareWindowsDockerCli", () => {
     await mkdir(join(targetDir, "redirected"));
     await symlink(join(targetDir, "redirected"), join(redirectedDir, "docker-compat"));
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(redirectedDir, "win32")))),
+      Result.isFailure(
+        await Effect.runPromise(Effect.result(prepareWindowsDockerCli(redirectedDir, "win32"))),
+      ),
     ).toBe(true);
   });
 
   test("does not prepare a Windows alias for another host family", async () => {
     const binDir = await fixture();
     expect(
-      Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(binDir, "linux")))),
+      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(binDir, "linux")))),
     ).toBe(true);
   });
 });

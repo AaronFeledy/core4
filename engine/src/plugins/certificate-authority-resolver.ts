@@ -1,4 +1,4 @@
-import { Context, Effect, Either, Layer, Scope } from "effect";
+import { Context, Effect, Layer, Result, Scope } from "effect";
 
 import {
   AmbiguousCertificateAuthoritiesError,
@@ -31,14 +31,14 @@ export const selectCertificateAuthorityCandidate = <
 >(
   candidates: ReadonlyArray<Candidate>,
   platform: HostPlatform,
-): Either.Either<Candidate, SelectionError> => {
+): Result.Result<Candidate, SelectionError> => {
   const defaults = candidates.filter(
     (candidate) => candidate.defaultFor?.platform?.includes(hostPlatformFamily(platform)) === true,
   );
   const soleDefault = defaults[0];
-  if (defaults.length === 1 && soleDefault !== undefined) return Either.right(soleDefault);
+  if (defaults.length === 1 && soleDefault !== undefined) return Result.succeed(soleDefault);
   if (defaults.length > 1) {
-    return Either.left(
+    return Result.fail(
       new AmbiguousCertificateAuthoritiesError({
         message: `Multiple certificate authorities declare defaultFor platform ${platform}.`,
         candidates: defaults.map(candidateContext),
@@ -47,9 +47,9 @@ export const selectCertificateAuthorityCandidate = <
     );
   }
   const soleCandidate = candidates[0];
-  if (candidates.length === 1 && soleCandidate !== undefined) return Either.right(soleCandidate);
+  if (candidates.length === 1 && soleCandidate !== undefined) return Result.succeed(soleCandidate);
   if (candidates.length === 0) {
-    return Either.left(
+    return Result.fail(
       new NoCertificateAuthorityError({
         message: "No certificate authority is available.",
         candidates: [],
@@ -57,7 +57,7 @@ export const selectCertificateAuthorityCandidate = <
       }),
     );
   }
-  return Either.left(
+  return Result.fail(
     new AmbiguousCertificateAuthoritiesError({
       message: "Multiple certificate authorities are available and none is the platform default.",
       candidates: candidates.map(candidateContext),
@@ -69,14 +69,15 @@ export const selectCertificateAuthorityCandidate = <
 
 export interface CertificateAuthorityResolverShape {
   readonly resolve: Effect.Effect<
-    Context.Tag.Service<typeof CertificateAuthority>,
+    Context.Service.Shape<typeof CertificateAuthority>,
     SelectionError | PluginLoadError
   >;
 }
 
-export class CertificateAuthorityResolver extends Context.Tag(
-  "@lando/core/private/CertificateAuthorityResolver",
-)<CertificateAuthorityResolver, CertificateAuthorityResolverShape>() {}
+export class CertificateAuthorityResolver extends Context.Service<
+  CertificateAuthorityResolver,
+  CertificateAuthorityResolverShape
+>()("@lando/core/private/CertificateAuthorityResolver") {}
 
 const isModuleRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null;
@@ -117,7 +118,7 @@ const loadContributionLayer = (
   );
 };
 
-export const CertificateAuthorityResolverLive = Layer.scoped(
+export const CertificateAuthorityResolverLive = Layer.effect(
   CertificateAuthorityResolver,
   Effect.gen(function* () {
     const graph = yield* PluginContributionGraph;
@@ -127,11 +128,11 @@ export const CertificateAuthorityResolverLive = Layer.scoped(
     const scope = yield* Scope.Scope;
     const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, paths.platform);
     const acquire: Effect.Effect<
-      Context.Tag.Service<typeof CertificateAuthority>,
+      Context.Service.Shape<typeof CertificateAuthority>,
       SelectionError | PluginLoadError
-    > = Either.match(selected, {
-      onLeft: Effect.fail,
-      onRight: (selection) =>
+    > = Result.match(selected, {
+      onFailure: Effect.fail,
+      onSuccess: (selection) =>
         loadContributionLayer(selection).pipe(
           Effect.flatMap((layer) =>
             Layer.buildWithScope(

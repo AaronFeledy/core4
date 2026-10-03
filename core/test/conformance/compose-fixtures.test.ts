@@ -110,7 +110,7 @@ const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 
 const failureOf = <A, E>(exit: Exit.Exit<A, E>): E | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some" ? failure.value : undefined;
 };
 

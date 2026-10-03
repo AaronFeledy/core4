@@ -18,7 +18,7 @@ const ReceiptSchema = Schema.Struct({
   volumeCreatedAt: Schema.NullOr(Schema.String),
   helperNonce: Schema.String,
   containerId: Schema.NullOr(Schema.String),
-  removing: Schema.optional(Schema.Boolean),
+  removing: Schema.optionalKey(Schema.Boolean),
 });
 type Receipt = typeof ReceiptSchema.Type;
 const nonce = (): string => randomBytes(32).toString("hex");

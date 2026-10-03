@@ -93,7 +93,7 @@ describe("lando renderer (TTY keybindings)", () => {
       base.injectKey("\x1b");
       yield* Effect.sleep("40 millis");
 
-      const drained = yield* Queue.takeAll(collector);
+      const drained = yield* Queue.clear(collector);
       return [...drained];
     });
 
@@ -139,7 +139,7 @@ describe("lando renderer (TTY keybindings)", () => {
       base.injectKey("\x03");
       yield* Effect.sleep("20 millis");
 
-      return [...(yield* Queue.takeAll(collector))];
+      return [...(yield* Queue.clear(collector))];
     });
     const layer = Layer.provideMerge(makeLandoEventConsumer(io, deps), EventServiceLive);
     const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
@@ -165,7 +165,7 @@ describe("lando renderer (TTY keybindings)", () => {
         base.injectKey(raw);
         yield* Effect.sleep("20 millis");
 
-        return [...(yield* Queue.takeAll(collector))];
+        return [...(yield* Queue.clear(collector))];
       });
       const layer = Layer.provideMerge(
         makeLandoEventConsumer(io, {

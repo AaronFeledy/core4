@@ -113,7 +113,7 @@ type StartAppServices =
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 /** Private preflight shared by start, restart, and rebuild before any app hook or provider action. */
 export const ensureStartTransactionConsistent = (target: ResolvedAppTarget) =>
@@ -152,7 +152,7 @@ export const preflightStartAppDrain = (
     if (
       Option.isNone(maybeFileSync) ||
       maybeFileSync.value.id !== prior.engineId ||
-      !(yield* maybeFileSync.value.isAvailable.pipe(Effect.catchAll(() => Effect.succeed(false))))
+      !(yield* maybeFileSync.value.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))))
     ) {
       return yield* Effect.fail(
         new FileSyncStartError({
@@ -472,7 +472,7 @@ export const startAppForTargetUnlocked = (
                     return yield* pendingStart?.retained === undefined
                       ? finishStart
                       : finishStart.pipe(
-                          Effect.catchAllCause((cause) =>
+                          Effect.catchCause((cause) =>
                             pendingStart.retainTargets(cause).pipe(Effect.flatMap(Effect.failCause)),
                           ),
                         );
@@ -503,7 +503,7 @@ export const startAppForTargetUnlocked = (
                         }),
                       );
                       if (Exit.isFailure(cleanupExit)) {
-                        const failure = Cause.parallel(exit.cause, cleanupExit.cause);
+                        const failure = Cause.combine(exit.cause, cleanupExit.cause);
                         // Without provider rollback, prepared targets survive any cleanup failure.
                         if (
                           sessionLease.rollbackTargets &&

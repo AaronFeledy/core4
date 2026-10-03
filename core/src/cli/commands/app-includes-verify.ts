@@ -37,16 +37,16 @@ export type {
 
 export type AppIncludesVerifyFormat = "text" | "json";
 
-const IncludeVerifyNullableStringSchema = Schema.Union(Schema.String, Schema.Literal(null));
+const IncludeVerifyNullableStringSchema = Schema.Union([Schema.String, Schema.Null]);
 
 const IncludeVerifyEntrySchema = Schema.Struct({
   source: Schema.String,
-  status: Schema.Union(
+  status: Schema.Union([
     Schema.Literal("ok"),
     Schema.Literal("mismatch"),
     Schema.Literal("missing"),
     Schema.Literal("stale"),
-  ),
+  ]),
   expected: IncludeVerifyNullableStringSchema,
   actual: IncludeVerifyNullableStringSchema,
 });
@@ -83,7 +83,7 @@ export type AppIncludesVerifyError =
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 
 /**
  * Read-only check that the current app's `.lando.lock.yml` matches its resolved
@@ -122,19 +122,19 @@ export const appIncludesVerify = (
     const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
     yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
     const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Left") {
+    if (decoded._tag === "Failure") {
       return yield* Effect.fail(
         new LandofileParseError({
-          message: `Landofile ${filePath} is not valid: ${String(decoded.left)}`,
+          message: `Landofile ${filePath} is not valid: ${String(decoded.failure)}`,
           filePath,
           line: undefined,
           column: undefined,
-          cause: decoded.left,
+          cause: decoded.failure,
         }),
       );
     }
     return yield* verifyLandofileIncludes({
-      landofile: decoded.right,
+      landofile: decoded.success,
       appRoot,
       ...(options.deps === undefined ? {} : { deps: options.deps }),
     });

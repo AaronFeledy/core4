@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Chunk, type Context, DateTime, Effect, Fiber, Layer, Option, Queue, Schema } from "effect";
+import { type Context, DateTime, Effect, Layer, Queue, Schema } from "effect";
 
 import { DownloadProgressEvent } from "@lando/sdk/events";
 import { GlobalConfig } from "@lando/sdk/schema";
@@ -19,7 +19,7 @@ const progressEvent = (bytesDownloaded: number): DownloadProgressEvent =>
     eventName: "download-progress",
     urlOrigin: "https://example.com",
     bytesDownloaded,
-    timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-07-19T20:00:00Z")),
+    timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-07-19T20:00:00Z")),
   });
 
 describe("EventService bounded delivery", () => {
@@ -27,7 +27,7 @@ describe("EventService bounded delivery", () => {
     const loaded = Schema.decodeUnknownSync(GlobalConfig)({
       events: { deliveryQueueCapacity: 1 },
     });
-    const configService: Context.Tag.Service<typeof ConfigService> = {
+    const configService: Context.Service.Shape<typeof ConfigService> = {
       load: Effect.succeed(loaded),
       get: (key) => Effect.succeed(loaded[key]),
     };
@@ -40,7 +40,7 @@ describe("EventService bounded delivery", () => {
             const queue = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             yield* events.publish(progressEvent(2));
-            return Chunk.toReadonlyArray(yield* Queue.takeAll(queue));
+            return yield* Queue.clear(queue);
           }),
         ),
       ).pipe(Effect.provide(layer)),
@@ -61,10 +61,10 @@ describe("EventService bounded delivery", () => {
             const queue = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             yield* events.publish(progressEvent(2));
-            const publishFiber = yield* events.publish(progressEvent(3)).pipe(Effect.fork);
-            yield* Effect.yieldNow();
-            const publishExit = yield* Fiber.poll(publishFiber);
-            const delivered = Chunk.toReadonlyArray(yield* Queue.takeAll(queue));
+            const publishFiber = yield* events.publish(progressEvent(3)).pipe(Effect.forkChild);
+            yield* Effect.yieldNow;
+            const publishExit = publishFiber.pollUnsafe();
+            const delivered = yield* Queue.clear(queue);
             const snapshot = yield* metrics.snapshot;
             return { publishExit, delivered, snapshot };
           }),
@@ -72,7 +72,7 @@ describe("EventService bounded delivery", () => {
       }).pipe(Effect.provide(layer)),
     );
 
-    expect(Option.isSome(outcome.publishExit)).toBe(true);
+    expect(outcome.publishExit).not.toBeUndefined();
     expect(outcome.delivered.map((event) => event.bytesDownloaded)).toEqual([1, 2]);
     expect(outcome.snapshot).toEqual({ capacity: 2, droppedEvents: 1 });
   });
@@ -109,17 +109,17 @@ describe("EventService bounded delivery", () => {
             const draining = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             const first = yield* Queue.take(draining);
-            const secondTake = yield* Queue.take(draining).pipe(Effect.fork);
+            const secondTake = yield* Queue.take(draining).pipe(Effect.forkChild);
             yield* events.publish(progressEvent(2));
-            yield* Effect.yieldNow();
-            return { first, second: yield* Fiber.poll(secondTake) };
+            yield* Effect.yieldNow;
+            return { first, second: secondTake.pollUnsafe() };
           }),
         );
       }).pipe(Effect.provide(makeEventServiceLive(0, {}, 1))),
     );
 
     expect(outcome.first.bytesDownloaded).toBe(1);
-    expect(Option.isSome(outcome.second)).toBe(true);
+    expect(outcome.second).not.toBeUndefined();
   });
 
   test("one overflow rejected by two stalled subscribers increments accounting by two", async () => {
@@ -160,7 +160,7 @@ describe("EventService bounded delivery", () => {
             const queue = yield* events.subscribeQueue;
             yield* events.publish(progressEvent(1));
             yield* events.publish(progressEvent(2));
-            const delivered = Chunk.toReadonlyArray(yield* Queue.takeAll(queue));
+            const delivered = yield* Queue.clear(queue);
             const history = yield* events.query("download-progress");
             return { delivered, history };
           }),

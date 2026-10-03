@@ -1,7 +1,7 @@
 import { findMissingAppRoots } from "@lando/engine/operations/missing-app-roots";
 import { shellArg } from "@lando/engine/services/shell-quote";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Either, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export const missingAppRootsDoctor = (redact: (text: string) => string) =>
@@ -12,10 +12,10 @@ export const missingAppRootsDoctor = (redact: (text: string) => string) =>
     const inventory = yield* findMissingAppRoots.pipe(
       Effect.provideService(RuntimeProviderRegistry, registry.value),
       Effect.provideService(FileSystem, fs.value),
-      Effect.either,
+      Effect.result,
     );
-    if (Either.isLeft(inventory)) {
-      const message = inventory.left.message;
+    if (Result.isFailure(inventory)) {
+      const message = inventory.failure.message;
       return [
         {
           name: "missing-app-root-scan",
@@ -34,7 +34,7 @@ export const missingAppRootsDoctor = (redact: (text: string) => string) =>
         } satisfies DoctorSubsystemCheck,
       ];
     }
-    return inventory.right.map((record): DoctorSubsystemCheck => {
+    return inventory.success.map((record): DoctorSubsystemCheck => {
       const command = `lando destroy --root ${shellArg(record.root)} --volumes${record.cacheVolumes.length > 0 ? " --purge-caches" : ""}`;
       const runtimeGuidance = record.runtimeObserved
         ? ""

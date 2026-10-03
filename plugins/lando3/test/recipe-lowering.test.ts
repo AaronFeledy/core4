@@ -112,11 +112,11 @@ test.each([
 ])("fails closed for %s", async (content, reason) => {
   const folded = await views([["dist", content]]);
   const result = await Effect.runPromise(
-    Effect.either(lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets") }, folded)),
+    Effect.result(lowerRecipeViews({ ...fakeDecomposers(), redactor: createRedactor("secrets") }, folded)),
   );
-  expect(result._tag).toBe("Left");
-  if (result._tag === "Left")
-    expect(result.left.cause).toMatchObject({
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure")
+    expect(result.failure.cause).toMatchObject({
       _tag: "Lando3UnsupportedRecipeError",
       reason,
       sourceLayer: "dist",

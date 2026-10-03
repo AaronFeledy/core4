@@ -1,4 +1,4 @@
-import { Duration, Effect, Either, Fiber, type Scope } from "effect";
+import { Duration, Effect, Fiber, Result, type Scope } from "effect";
 
 import type { HttpRequest } from "../schema/index.ts";
 import type { HttpClientShape, LandoEvent } from "../services/index.ts";
@@ -147,21 +147,21 @@ export const runHttpClientContract = <TrustObject>(
     );
 
     if (service.capabilities.upload) {
-      const uploadResult = yield* Effect.either(
+      const uploadResult = yield* Effect.result(
         Effect.scoped(service.upload({ url: "https://contract.test/upload", source: { kind: "inline" } })),
       );
       yield* requireHttpClientContract(
-        Either.isRight(uploadResult) || httpErrorLeft(uploadResult.left)._tag !== undefined,
+        Result.isSuccess(uploadResult) || httpErrorLeft(uploadResult.failure)._tag !== undefined,
         "upload either succeeds or fails with a tagged error when advertised",
         uploadResult,
       );
     }
 
-    const schemeResult = yield* Effect.either(
+    const schemeResult = yield* Effect.result(
       Effect.scoped(service.request(httpRequest({ url: "ftp://contract.test/x" }))),
     );
     yield* requireHttpClientContract(
-      Either.isLeft(schemeResult),
+      Result.isFailure(schemeResult),
       "an unsupported scheme is rejected",
       schemeResult,
     );
@@ -277,12 +277,12 @@ export const runHttpClientContract = <TrustObject>(
       const offlineUrl = "https://contract.test/offline.bin";
       yield* harness.serveSource(offlineUrl, payload);
       const before = yield* offline.connectCount();
-      const offlineResult = yield* Effect.either(
+      const offlineResult = yield* Effect.result(
         Effect.scoped(service.request(httpRequest({ url: offlineUrl, offline: true }))),
       );
       const after = yield* offline.connectCount();
       yield* requireHttpClientContract(
-        Either.isLeft(offlineResult),
+        Result.isFailure(offlineResult),
         "an offline-only request fails",
         offlineResult,
       );
@@ -292,11 +292,11 @@ export const runHttpClientContract = <TrustObject>(
         { before, after },
       );
 
-      const unavailableResult = yield* Effect.either(
+      const unavailableResult = yield* Effect.result(
         offline.withOffline(Effect.scoped(service.request(httpRequest({ url: offlineUrl })))),
       );
       yield* requireHttpClientContract(
-        Either.isLeft(unavailableResult),
+        Result.isFailure(unavailableResult),
         "a transport-level offline failure is surfaced as a tagged error",
         unavailableResult,
       );
@@ -304,7 +304,7 @@ export const runHttpClientContract = <TrustObject>(
 
     if (harness.interruption) {
       const probe = harness.interruption;
-      const fiber = yield* Effect.fork(Effect.scoped(probe.run()));
+      const fiber = yield* Effect.forkChild(Effect.scoped(probe.run()));
       yield* Effect.sleep(Duration.millis(10));
       yield* Fiber.interrupt(fiber);
       const finalized = yield* probe.finalized();
@@ -317,14 +317,14 @@ export const runHttpClientContract = <TrustObject>(
 
     if (harness.timeout) {
       const probe = harness.timeout;
-      const timeoutResult = yield* Effect.either(Effect.scoped(probe.run(10)));
+      const timeoutResult = yield* Effect.result(Effect.scoped(probe.run(10)));
       yield* requireHttpClientContract(
-        Either.isLeft(timeoutResult),
+        Result.isFailure(timeoutResult),
         "a request exceeding timeoutMs fails with a tagged error",
         timeoutResult,
       );
       yield* requireHttpClientContract(
-        Either.isLeft(timeoutResult) && typeof httpErrorLeft(timeoutResult.left)._tag === "string",
+        Result.isFailure(timeoutResult) && typeof httpErrorLeft(timeoutResult.failure)._tag === "string",
         "a timed-out request fails with a tagged http error",
         timeoutResult,
       );

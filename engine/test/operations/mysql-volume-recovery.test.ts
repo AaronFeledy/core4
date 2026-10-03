@@ -124,12 +124,12 @@ describe("MySQL volume identity recovery before lifecycle coordination", () => {
 
     // When
     const result = await Effect.runPromise(
-      startApp({}, target).pipe(Effect.provide(harness.layer), Effect.either),
+      startApp({}, target).pipe(Effect.provide(harness.layer), Effect.result),
     );
 
     // Then
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") expect(result.left).toBeInstanceOf(ProviderUnavailableError);
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(ProviderUnavailableError);
     expect(applied).toBe(false);
   });
 });

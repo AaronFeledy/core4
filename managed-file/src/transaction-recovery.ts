@@ -19,7 +19,7 @@ export interface RecoveryOptions {
   readonly privateFileAccess: PrivateFileAccess;
 }
 
-type JournalStore = Effect.Effect.Success<ReturnType<typeof openJournal>>;
+type JournalStore = Effect.Success<ReturnType<typeof openJournal>>;
 
 const blocking = new Set<ManagedFileTransactionError["reason"]>(["conflict", "path"]);
 
@@ -123,9 +123,7 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
         Effect.catchIf(
           (error) => blocking.has(error.reason),
           (error) =>
-            store.block.pipe(
-              Effect.zipRight(Effect.fail(transactionError("blocked", "recover", error.path))),
-            ),
+            store.block.pipe(Effect.andThen(Effect.fail(transactionError("blocked", "recover", error.path)))),
         ),
       );
       yield* cleanupStages(journal);

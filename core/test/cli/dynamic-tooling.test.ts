@@ -54,8 +54,8 @@ test.each(["json", "yaml"])(
     const observed = Schema.decodeUnknownSync(
       Schema.Struct({
         terminalCalls: Schema.Number,
-        invocation: Schema.Struct({ tty: Schema.Boolean, hostTerminal: Schema.optional(Schema.Unknown) }),
-        options: Schema.Struct({ streamingMode: Schema.optional(Schema.String) }),
+        invocation: Schema.Struct({ tty: Schema.Boolean, hostTerminal: Schema.optionalKey(Schema.Unknown) }),
+        options: Schema.Struct({ streamingMode: Schema.optionalKey(Schema.String) }),
       }),
     )(JSON.parse(stdout));
     expect(observed).toEqual({ terminalCalls: 0, invocation: { tty: false }, options: {} });

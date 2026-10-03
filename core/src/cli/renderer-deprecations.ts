@@ -116,13 +116,13 @@ export const renderDeprecationDiagnostics = (
     if (enabled) {
       for (const entry of summary) {
         if (entry.notice.severity === "warn") {
-          yield* renderer.message.warn(warningText(entry)).pipe(Effect.catchAll(() => Effect.void));
+          yield* renderer.message.warn(warningText(entry)).pipe(Effect.catch(() => Effect.void));
         }
       }
     }
 
     const infoEntries = summary.filter((entry) => entry.notice.severity === "info");
     if (infoEntries.length > 0) {
-      yield* renderer.message.info(infoSummaryText(infoEntries)).pipe(Effect.catchAll(() => Effect.void));
+      yield* renderer.message.info(infoSummaryText(infoEntries)).pipe(Effect.catch(() => Effect.void));
     }
   });

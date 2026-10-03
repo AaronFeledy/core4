@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
@@ -147,11 +147,14 @@ describe("validateMcpAllowlistIds", () => {
       validateMcpAllowlistIds({ allow: ["does:not:exist"], deny: [], tooling: false }, known),
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-      if (exit.cause.error instanceof McpToolInputError) {
-        expect(exit.cause.error.path).toBe("flags.allow");
-        expect(exit.cause.error.toolId).toBe("does:not:exist");
+    if (Exit.isFailure(exit)) {
+      const error = Cause.findError(exit.cause);
+      expect(Result.isSuccess(error)).toBe(true);
+      if (Result.isFailure(error)) throw error.failure;
+      expect(error.success).toBeInstanceOf(McpToolInputError);
+      if (error.success instanceof McpToolInputError) {
+        expect(error.success.path).toBe("flags.allow");
+        expect(error.success.toolId).toBe("does:not:exist");
       }
     }
   });
@@ -252,7 +255,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Given
     const input = { flags: { loud: true, name: "Lando" }, args: { target: "dev" } };
     // When
-    const argv = Either.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
+    const argv = Result.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
     // Then
     expect(argv).toEqual(["--name=Lando", "--loud", "--", "dev"]);
   });
@@ -261,7 +264,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Given a declared positional whose value looks like a flag
     const input = { args: { target: "--literal" } };
     // When MCP serializes it
-    const argv = Either.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
+    const argv = Result.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
     // Then the shared parser keeps the positional identity
     expect(argv).toEqual(["--", "--literal"]);
   });
@@ -270,7 +273,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Given
     const input = { flags: { loud: false, name: "" }, args: { target: "prod", greeting: "hi there" } };
     // When
-    const argv = Either.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
+    const argv = Result.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
     // Then
     expect(argv).toEqual(["--name=", "--", "prod", "hi there"]);
   });
@@ -287,8 +290,8 @@ describe("mcpRegistryWithToolingEntries", () => {
     // When MCP names only the later positional
     const result = mcpCommands.toolingArgvFromInput("app:greet", declaration, { args: { second: "b" } });
     // Then the tool call fails with the same error the CLI parser raises
-    expect(Either.isLeft(result)).toBe(true);
-    expect(Either.isLeft(result) ? result.left : undefined).toMatchObject({
+    expect(Result.isFailure(result)).toBe(true);
+    expect(Result.isFailure(result) ? result.failure : undefined).toMatchObject({
       _tag: "ToolingInputError",
       tool: "greet",
       field: "first",
@@ -359,10 +362,13 @@ describe("mcpListResult", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-      if (exit.cause.error instanceof McpToolInputError) {
-        expect(exit.cause.error.toolId).toBe("app:config");
+    if (Exit.isFailure(exit)) {
+      const error = Cause.findError(exit.cause);
+      expect(Result.isSuccess(error)).toBe(true);
+      if (Result.isFailure(error)) throw error.failure;
+      expect(error.success).toBeInstanceOf(McpToolInputError);
+      if (error.success instanceof McpToolInputError) {
+        expect(error.success.toolId).toBe("app:config");
       }
     }
   });
@@ -374,9 +380,12 @@ describe("mcpListResult", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-        if (exit.cause.error instanceof McpToolInputError) expect(exit.cause.error.toolId).toBe(id);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.findError(exit.cause);
+        expect(Result.isSuccess(error)).toBe(true);
+        if (Result.isFailure(error)) throw error.failure;
+        expect(error.success).toBeInstanceOf(McpToolInputError);
+        if (error.success instanceof McpToolInputError) expect(error.success.toolId).toBe(id);
       }
     }
   });
@@ -388,9 +397,12 @@ describe("mcpListResult", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-        if (exit.cause.error instanceof McpToolInputError) expect(exit.cause.error.toolId).toBe(id);
+      if (Exit.isFailure(exit)) {
+        const error = Cause.findError(exit.cause);
+        expect(Result.isSuccess(error)).toBe(true);
+        if (Result.isFailure(error)) throw error.failure;
+        expect(error.success).toBeInstanceOf(McpToolInputError);
+        if (error.success instanceof McpToolInputError) expect(error.success.toolId).toBe(id);
       }
     }
   });

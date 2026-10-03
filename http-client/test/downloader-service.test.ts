@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Fiber, Layer, Stream } from "effect";
+import { Effect, Fiber, Layer, Result, Stream } from "effect";
 
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader } from "@lando/sdk/services";
@@ -62,24 +62,26 @@ const makeFakeHttpClient = (options: FakeOptions = {}) => {
 const download = (
   request: DownloadRequest,
   fake: Layer.Layer<HttpClient>,
-): Promise<Either.Either<DownloadResult, unknown>> =>
+): Promise<Result.Result<DownloadResult, unknown>> =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
         const downloader = yield* Downloader;
         return yield* downloader.download(request);
       }),
-    ).pipe(Effect.either, Effect.provide(DownloaderLive.pipe(Layer.provide(fake)))),
+    ).pipe(Effect.result, Effect.provide(DownloaderLive.pipe(Layer.provide(fake)))),
   );
 
-const expectRight = <A>(either: Either.Either<A, unknown>): A => {
-  if (Either.isLeft(either)) throw new Error(`expected success, got error: ${JSON.stringify(either.left)}`);
-  return either.right;
+const expectRight = <A>(either: Result.Result<A, unknown>): A => {
+  if (Result.isFailure(either))
+    throw new Error(`expected success, got error: ${JSON.stringify(either.failure)}`);
+  return either.success;
 };
 
-const expectLeft = (either: Either.Either<unknown, unknown>): { _tag?: string; reason?: string } => {
-  if (Either.isRight(either)) throw new Error(`expected error, got success: ${JSON.stringify(either.right)}`);
-  return either.left as { _tag?: string; reason?: string };
+const expectLeft = (either: Result.Result<unknown, unknown>): { _tag?: string; reason?: string } => {
+  if (Result.isSuccess(either))
+    throw new Error(`expected error, got success: ${JSON.stringify(either.success)}`);
+  return either.failure as { _tag?: string; reason?: string };
 };
 
 const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
@@ -313,7 +315,7 @@ describe("DownloaderLive", () => {
       });
 
       const program = Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(
             Effect.gen(function* () {
               const downloader = yield* Downloader;
@@ -324,15 +326,19 @@ describe("DownloaderLive", () => {
             }),
           ).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(fake.layer)))),
         );
-        yield* Effect.iterate(0, {
-          while: (n) => n < 200,
-          body: (n) =>
+        let attempts = 0;
+        yield* Effect.whileLoop({
+          while: () => attempts < 200,
+          body: () =>
             Effect.gen(function* () {
               const entries = yield* Effect.promise(() => readdir(dir));
               if (entries.some((e) => e.includes(".tmp-"))) return 1000;
               yield* Effect.sleep("5 millis");
-              return n + 1;
+              return attempts + 1;
             }),
+          step: (next) => {
+            attempts = next;
+          },
         });
         yield* Fiber.interrupt(fiber);
       });

@@ -191,7 +191,7 @@ test.each([
             const outcome = yield* startApp(
               {},
               { plan, landofile, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } },
-            ).pipe(Effect.either);
+            ).pipe(Effect.result);
             const cachedPlan = yield* planner.plan(landofile, provider.capabilities);
             return {
               view,
@@ -200,7 +200,7 @@ test.each([
               cachedPlan,
               buildIdentity,
               outcome,
-              events: [...(yield* Queue.takeAll(queue))],
+              events: [...(yield* Queue.clear(queue))],
             };
           }),
         ).pipe(Effect.provide(layer)),
@@ -208,7 +208,7 @@ test.each([
 
       // Then: provider action sees the value; durable identities and every observed surface do not.
       expect(providerValue).toBe(sentinel);
-      expect(result.outcome._tag).toBe(fails ? "Left" : "Right");
+      expect(result.outcome._tag).toBe(fails ? "Failure" : "Success");
       expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
       expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
       expect(result.cachedPlan).toEqual(result.plan);

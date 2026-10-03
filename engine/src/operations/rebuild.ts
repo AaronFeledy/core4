@@ -132,7 +132,7 @@ const rebuildSelectedServices = (
                   serviceEnvironment,
                 })
                 .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
-            ).pipe(Effect.zipRight(compensateFailure(prepareGpgHome, stopSelected))),
+            ).pipe(Effect.andThen(compensateFailure(prepareGpgHome, stopSelected))),
         }),
     });
     yield* withBuildProvider(
@@ -200,7 +200,7 @@ export const rebuildApp = (
             const proxy = yield* RouterService;
             const events = yield* EventService;
             const ref: AppRef = resolvedTarget.app;
-            const timestamp = () => DateTime.unsafeNow();
+            const timestamp = () => DateTime.nowUnsafe();
             const preRebuild = PreRebuildEvent.make({
               _tag: "pre-rebuild",
               app: ref,

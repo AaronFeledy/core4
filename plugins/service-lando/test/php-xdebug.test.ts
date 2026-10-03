@@ -23,13 +23,13 @@ const PHP_XDEBUG_CLIENT_HOST = "host.docker.internal";
 const PHP_XDEBUG_PORT = 9003;
 
 const BuildSteps = Schema.Struct({
-  buildSteps: Schema.optional(
+  buildSteps: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
-        id: Schema.optional(Schema.String),
+        id: Schema.optionalKey(Schema.String),
         command: Schema.Unknown,
-        user: Schema.optional(Schema.String),
-        buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+        user: Schema.optionalKey(Schema.String),
+        buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
       }),
     ),
   ),

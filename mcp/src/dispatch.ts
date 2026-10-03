@@ -85,7 +85,7 @@ const appRefSummary = (deps: McpDispatchDeps, input: McpToolInput | undefined): 
   input?.appPath === undefined ? undefined : boundedEventString(deps.redactor, input.appPath);
 
 const emit = (deps: McpDispatchDeps, event: LandoEvent): Effect.Effect<void> =>
-  deps.publish === undefined ? Effect.void : deps.publish(event).pipe(Effect.catchAll(() => Effect.void));
+  deps.publish === undefined ? Effect.void : deps.publish(event).pipe(Effect.catch(() => Effect.void));
 
 const preEvent = (
   deps: McpDispatchDeps,
@@ -96,7 +96,7 @@ const preEvent = (
     toolId: boundedEventString(deps.redactor, input.toolId),
     commandId: boundedEventString(deps.redactor, input.commandId),
     ...(input.appRef === undefined ? {} : { appRef: input.appRef }),
-    timestamp: DateTime.unsafeMake(nowMs(deps)),
+    timestamp: DateTime.makeUnsafe(nowMs(deps)),
   });
 };
 
@@ -120,7 +120,7 @@ const postEvent = (deps: McpDispatchDeps, input: PostEventInput): LandoEvent =>
     ...(input.failureDetail === undefined
       ? {}
       : { failureDetail: boundedEventString(deps.redactor, input.failureDetail) }),
-    timestamp: DateTime.unsafeMake(nowMs(deps)),
+    timestamp: DateTime.makeUnsafe(nowMs(deps)),
   });
 
 const envelopeTag = (envelope: unknown): string | undefined => {
@@ -285,11 +285,11 @@ export const dispatchTool = (
 
     const exit = yield* Effect.exit(run);
     if (exit._tag === "Success") return exit.value;
-    if (Cause.isInterruptedOnly(exit.cause)) {
+    if (Cause.hasInterruptsOnly(exit.cause)) {
       yield* emitPost("failure", "Interrupted");
       return yield* Effect.fail(interruptedError());
     }
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     if (Option.isSome(failure)) {
       yield* emitPost("failure", failure.value._tag);
       return yield* Effect.fail(failure.value);

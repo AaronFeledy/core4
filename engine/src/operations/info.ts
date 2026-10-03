@@ -41,7 +41,7 @@ export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/a
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
-const InfoServiceStatusSchema = Schema.Literal(
+const InfoServiceStatusSchema = Schema.Literals([
   "unknown",
   "stopped",
   "starting",
@@ -49,14 +49,14 @@ const InfoServiceStatusSchema = Schema.Literal(
   "healthy",
   "unhealthy",
   "error",
-);
+]);
 
 const AppInfoLogSourceSchema = Schema.Struct({
   id: Schema.String,
   path: Schema.String,
-  strategy: Schema.Literal("redirect", "follow"),
-  availability: Schema.Literal("available", "redirected-to-console", "unavailable"),
-  reason: Schema.optional(Schema.String),
+  strategy: Schema.Literals(["redirect", "follow"]),
+  availability: Schema.Literals(["available", "redirected-to-console", "unavailable"]),
+  reason: Schema.optionalKey(Schema.String),
 });
 
 export const AppInfoServiceSchema = Schema.Struct({
@@ -68,8 +68,8 @@ export const AppInfoServiceSchema = Schema.Struct({
   primary: Schema.Boolean,
   status: InfoServiceStatusSchema,
   endpoints: Schema.Array(Schema.String),
-  logSources: Schema.optional(Schema.Array(AppInfoLogSourceSchema)),
-  creds: Schema.optional(ServiceCreds),
+  logSources: Schema.optionalKey(Schema.Array(AppInfoLogSourceSchema)),
+  creds: Schema.optionalKey(ServiceCreds),
 });
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
@@ -79,16 +79,16 @@ export const AppInfoAgentEnvSchema = Schema.Struct({
 
 const AppInfoHostProxySchema = Schema.Struct({
   runLando: Schema.Struct({
-    availability: Schema.Literal("available", "unavailable"),
-    reason: Schema.optional(Schema.String),
+    availability: Schema.Literals(["available", "unavailable"]),
+    reason: Schema.optionalKey(Schema.String),
   }),
 });
 
 export const AppInfoResultSchema = Schema.Struct({
   app: Schema.String,
   services: Schema.Array(AppInfoServiceSchema),
-  agentEnv: Schema.optional(AppInfoAgentEnvSchema),
-  hostProxy: Schema.optional(AppInfoHostProxySchema),
+  agentEnv: Schema.optionalKey(AppInfoAgentEnvSchema),
+  hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
 });
 
 const statusText = (status: string | undefined): InfoServiceStatus => {

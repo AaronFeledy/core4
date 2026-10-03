@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { resolveServiceConfigSources } from "../../src/planner/service-config-files.ts";
 
@@ -82,27 +82,27 @@ describe("service config file sources", () => {
     { key: "dir", authored: "" },
   ] as const)("rejects $key source $authored", async ({ key, authored }) => {
     // Given an invalid authored source; when resolving it.
-    const result = await Effect.runPromise(Effect.either(resolveConfig({ [key]: authored })));
+    const result = await Effect.runPromise(Effect.result(resolveConfig({ [key]: authored })));
     // Then validation identifies the exact config field.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("LandofileValidationError");
-      expect(result.left.issues).toContain(`services.database.config.${key}`);
-      expect(result.left.file).toBe(`${appRoot}/.lando.yml`);
-      expect(result.left.message).toContain(`services.database.config.${key}`);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("LandofileValidationError");
+      expect(result.failure.issues).toContain(`services.database.config.${key}`);
+      expect(result.failure.file).toBe(`${appRoot}/.lando.yml`);
+      expect(result.failure.message).toContain(`services.database.config.${key}`);
     }
   });
 
   test("rejects an absolute authored path even when inside the app", async () => {
     // Given an absolute path to an existing file; when resolving it.
     const result = await Effect.runPromise(
-      Effect.either(resolveConfig({ server: join(appRoot, "server.cnf") })),
+      Effect.result(resolveConfig({ server: join(appRoot, "server.cnf") })),
     );
     // Then callers receive the tagged validation failure.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("LandofileValidationError");
-      expect(result.left.issues).toContain("services.database.config.server");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("LandofileValidationError");
+      expect(result.failure.issues).toContain("services.database.config.server");
     }
   });
 
@@ -119,13 +119,13 @@ describe("service config file sources", () => {
       kind === "cycle" ? "dir" : "file",
     );
     // When resolving the directory.
-    const result = await Effect.runPromise(Effect.either(resolveConfig({ dir: "conf" })));
+    const result = await Effect.runPromise(Effect.result(resolveConfig({ dir: "conf" })));
     // Then the failure names the offending relative entry.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("LandofileValidationError");
-      expect(result.left.issues).toContain("services.database.config.dir");
-      expect(result.left.message).toContain("nested/bad-link");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("LandofileValidationError");
+      expect(result.failure.issues).toContain("services.database.config.dir");
+      expect(result.failure.message).toContain("nested/bad-link");
     }
   });
 

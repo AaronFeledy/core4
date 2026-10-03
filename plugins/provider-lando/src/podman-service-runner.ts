@@ -31,7 +31,7 @@ export const readPodmanServiceLogTail = (socketPath: string): Effect.Effect<stri
       return tail.length === 0 ? undefined : tail;
     },
     catch: () => undefined,
-  }).pipe(Effect.catchAll((tail) => Effect.succeed(tail)));
+  }).pipe(Effect.catch((tail) => Effect.succeed(tail)));
 
 const readPodmanServiceLogTailSync = (socketPath: string): string | undefined => {
   try {
@@ -110,7 +110,7 @@ const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
       return raw.split("\0").filter((part) => part.length > 0);
     },
     catch: () => [],
-  }).pipe(Effect.catchAll((argv) => Effect.succeed(argv)));
+  }).pipe(Effect.catch((argv) => Effect.succeed(argv)));
 
 const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
   actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
@@ -153,7 +153,7 @@ const listProcPids = (): Effect.Effect<ReadonlyArray<number>> =>
       return entries.filter((entry) => /^\d+$/u.test(entry)).map((entry) => Number(entry));
     },
     catch: () => [] as number[],
-  }).pipe(Effect.catchAll(() => Effect.succeed([] as number[])));
+  }).pipe(Effect.catch(() => Effect.succeed([] as number[])));
 
 const findMatchingServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
   Effect.gen(function* () {

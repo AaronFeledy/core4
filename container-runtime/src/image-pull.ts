@@ -233,7 +233,7 @@ export const pullImage = <E = never>(
                   ...(frame.stream === undefined ? {} : { stream: redactString(frame.stream) }),
                   ...(frame.current === undefined ? {} : { current: frame.current }),
                   ...(frame.total === undefined ? {} : { total: frame.total }),
-                  timestamp: DateTime.unsafeNow(),
+                  timestamp: DateTime.nowUnsafe(),
                 }),
               );
       }

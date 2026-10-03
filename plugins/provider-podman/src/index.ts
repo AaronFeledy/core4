@@ -755,7 +755,7 @@ const assembleRuntimeProvider = (
         ...agentBridge,
         isAvailable: podmanApi.info.pipe(
           Effect.as(true),
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.catch(() => Effect.succeed(false)),
         ),
         appliedPlans:
           options.appliedPlanState === undefined
@@ -772,7 +772,7 @@ const assembleRuntimeProvider = (
             ctx: PODMAN_CTX,
             dialect: libpodPullDialect,
             publish: (event) =>
-              options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ?? Effect.void,
+              options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
           }).pipe(
             Effect.map((result) => ({
               providerId: providerIdBranded,
@@ -915,7 +915,7 @@ const conflictCheck: PluginDoctorCheckContribution = {
     const socketPath = resolvePodmanSocket({ platform: input.platform, env: input.env });
     return detectProviderLandoConflict(stateDir, socketPath).pipe(
       Effect.as([]),
-      Effect.catchAll((error) => {
+      Effect.catch((error) => {
         if (!(error instanceof ProviderLandoConflictError)) return Effect.die(error);
         const report = {
           name: "provider-conflict",

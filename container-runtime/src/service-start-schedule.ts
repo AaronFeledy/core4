@@ -118,11 +118,15 @@ const probeHealthy = <E, R>(
       yield* Effect.sleep(Duration.seconds(healthcheck.startPeriodSeconds));
     }
 
-    const attempt = Effect.timeoutTo(Effect.either(handlers.execHealthcheck(service, command)), {
-      duration: Duration.seconds(healthcheck.timeoutSeconds),
-      onSuccess: (result) => (result._tag === "Right" && result.right.exitCode === 0 ? "green" : "red"),
-      onTimeout: () => "red" as const,
-    });
+    const attempt = Effect.timeoutOrElse(
+      Effect.map(Effect.result(handlers.execHealthcheck(service, command)), (result) =>
+        result._tag === "Success" && result.success.exitCode === 0 ? "green" : "red",
+      ),
+      {
+        duration: Duration.seconds(healthcheck.timeoutSeconds),
+        orElse: () => Effect.succeed((() => "red" as const)()),
+      },
+    );
 
     return yield* runProbe(
       {
@@ -140,7 +144,7 @@ const probeHealthy = <E, R>(
       attempt,
     ).pipe(
       Effect.map((result) => result.outcome === "green"),
-      Effect.catchAll(() => Effect.succeed(false)),
+      Effect.catch(() => Effect.succeed(false)),
     );
   });
 
@@ -190,7 +194,7 @@ export const runServiceStartSchedule = <E, R>(
           );
           return optionalOnlyServices.has(node.id)
             ? start.pipe(
-                Effect.catchAll(() =>
+                Effect.catch(() =>
                   (handlers.cleanupOptionalStartFailure?.(value.service) ?? Effect.void).pipe(
                     Effect.as("failed" as const),
                   ),
@@ -208,7 +212,7 @@ export const runServiceStartSchedule = <E, R>(
           case "service_completed_successfully":
             return handlers.waitForExit(value.service).pipe(
               Effect.map((result) => (result.exitCode === 0 ? ("succeeded" as const) : ("failed" as const))),
-              Effect.catchAll(() => Effect.succeed("failed" as const)),
+              Effect.catch(() => Effect.succeed("failed" as const)),
             );
         }
       },

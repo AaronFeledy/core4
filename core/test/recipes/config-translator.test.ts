@@ -4,7 +4,7 @@ import { validateConfigTranslateResult } from "@lando/sdk/landofile";
 import { ConfigTranslateDetectInput, ConfigTranslateInput, RecipeProducer } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { RecipeDecomposerFactory, RecipeDecomposerShape } from "@lando/sdk/services";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 import { makeRecipeTranslatorModule } from "../../src/recipes/translator-module.ts";
 
@@ -146,7 +146,7 @@ describe("recipe config translator", () => {
         message: expect.stringMatching(/example.*1\.0\.0.*canonical/),
       },
     ]);
-    expect(Either.isRight(validateConfigTranslateResult(input, result))).toBe(true);
+    expect(Result.isSuccess(validateConfigTranslateResult(input, result))).toBe(true);
   });
 
   test("maps decomposition reason and remediation without copying option values", async () => {

@@ -4,12 +4,12 @@
 // @variant:
 
 import { test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { withScenarioContext } from "@lando/core/testing";
 
 test("source-map-guide:runs", async () => {
-  await Effect.runPromise(
+  const exit = await Effect.runPromiseExit(
     withScenarioContext({ guideId: "source-map-guide", scenarioId: "runs" }, () =>
       Effect.gen(function* () {
         // @source: docs/guides/source-map-guide.mdx:8
@@ -17,7 +17,8 @@ test("source-map-guide:runs", async () => {
         yield* Effect.succeed(undefined);
         // @source: docs/guides/source-map-guide.mdx:9
         throw new Error("seeded failure");
-      }),
+      }).pipe(Effect.ensuring(Effect.die(new Error("cleanup defect")))),
     ),
   );
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
 });

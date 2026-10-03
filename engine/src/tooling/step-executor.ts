@@ -92,7 +92,7 @@ const executeResolved = <E, A>(
   );
   return leaf.ignoreError
     ? presented.pipe(
-        Effect.catchAll((error) => (isEventBoundaryError(error) ? Effect.fail(error) : Effect.void)),
+        Effect.catch((error) => (isEventBoundaryError(error) ? Effect.fail(error) : Effect.void)),
       )
     : presented;
 };
@@ -113,7 +113,7 @@ export const runToolingStepProgramWith = <E, A>(
           const resolved = yield* dependencies.resolveLeaf(leaf, leafContext);
           yield* executeResolved(resolved.leaf, resolved.context, runners);
         }).pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             runners.mapLeafError === undefined
               ? Effect.fail(error)
               : Effect.fail(runners.mapLeafError(leaf, error)),

@@ -161,7 +161,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(LandofileParseError);
       }
@@ -179,7 +179,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(LandofileFormConflictError);
       }
@@ -282,7 +282,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -318,7 +318,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -352,7 +352,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -387,7 +387,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -427,14 +427,13 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.unsupported");
-            expect(error.issues).toContain("services");
+            expect(error.issues).toEqual(["services.web.unsupported"]);
             expect(error.message).toContain("unsupported service keys");
             expect(error.message).toContain("For type: compose services");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
@@ -456,7 +455,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -484,7 +483,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -670,7 +669,7 @@ describe("LandofileServiceLive — reserved section rejection (US-014)", () => {
       const exit = await discoverExit();
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") assertUnsupportedRejection(failure.value);
       }
@@ -829,7 +828,7 @@ describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)
       const exit = await discoverExit();
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") assertUnsupportedRejection(failure.value);
       }

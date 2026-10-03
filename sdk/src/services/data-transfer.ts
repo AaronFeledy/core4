@@ -65,4 +65,4 @@ export interface DataMoverShape {
   readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
 }
 
-export class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}
+export class DataMover extends Context.Service<DataMover, DataMoverShape>()("@lando/core/DataMover") {}

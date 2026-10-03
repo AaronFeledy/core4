@@ -22,7 +22,7 @@ import {
 test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () => {
   // Given
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
     source: "plan-sanitizer.test",
     runtime: 4,
   } satisfies AppPlan["metadata"];
@@ -96,7 +96,7 @@ test("sanitizer strips ssh-agent overlay", async () => {
   const { withSshAgentOverlay } = await import("../../../src/subsystems/ssh-agent/overlay.ts");
   // Given
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
     source: "sanitizer-test",
     runtime: 4,
   } satisfies AppPlan["metadata"];
@@ -148,7 +148,7 @@ test("sanitizer strips gpg-agent overlay", async () => {
   const { withGpgAgentOverlay } = await import("../../../src/subsystems/gpg-agent/overlay.ts");
   // Given
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
     source: "sanitizer-test",
     runtime: 4,
   } satisfies AppPlan["metadata"];

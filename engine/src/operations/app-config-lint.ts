@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { Effect, Either, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import { resolveKnownEventSet } from "../planner/event-set.ts";
 
 import type {
@@ -41,16 +41,16 @@ export const appConfigLint = (
     const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
       ...runtimeInputs,
       ...(options.templates === undefined ? {} : { templates: options.templates }),
-    }).pipe(Effect.either);
-    if (Either.isLeft(loaded)) {
-      return { ...result, valid: false, violations: [{ path: "", message: loaded.left.message }] };
+    }).pipe(Effect.result);
+    if (Result.isFailure(loaded)) {
+      return { ...result, valid: false, violations: [{ path: "", message: loaded.failure.message }] };
     }
     const pluginRegistry = yield* PluginRegistry;
     const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
     const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
     const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
     yield* resolveKnownEventSet({
-      landofile: loaded.right,
+      landofile: loaded.success,
       pluginRegistry,
       configService,
       fileSystem,

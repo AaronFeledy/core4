@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Layer, Option, TestClock, TestContext } from "effect";
+import { Effect, Exit, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
@@ -82,14 +83,14 @@ describe("makeHealthcheckRunner", () => {
     const earlyRunner = makeHealthcheckRunner(earlyFake);
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(earlyRunner.run(plan, appId, service));
+        const fiber = yield* Effect.forkChild(earlyRunner.run(plan, appId, service));
         yield* TestClock.adjust("19 seconds");
-        const early = yield* Fiber.poll(fiber);
-        expect(Option.isNone(early)).toBe(true);
+        const early = fiber.pollUnsafe();
+        expect(early).toBeUndefined();
         yield* TestClock.adjust("1 second");
         const result = yield* Fiber.join(fiber);
         expect(result.healthy).toBe(false);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
   });
 
@@ -134,18 +135,18 @@ describe("makeHealthcheckRunner", () => {
 
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           runner.run(commandPlan("exit 0", { startPeriodSeconds: 15 }), appId, service),
         );
         yield* TestClock.adjust("14 seconds");
-        const early = yield* Fiber.poll(fiber);
-        expect(Option.isNone(early)).toBe(true);
+        const early = fiber.pollUnsafe();
+        expect(early).toBeUndefined();
         expect(fake.calls).toHaveLength(0);
         yield* TestClock.adjust("1 second");
         const result = yield* Fiber.join(fiber);
         expect(result).toEqual({ healthy: true, service, attempts: 1, lastStatus: "ok" });
         expect(fake.calls).toHaveLength(1);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
   });
 

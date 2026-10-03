@@ -38,7 +38,7 @@ describe("service type resolve input", () => {
         });
       },
     };
-    const pluginRegistry: Context.Tag.Service<typeof PluginRegistry> = {
+    const pluginRegistry: Context.Service.Shape<typeof PluginRegistry> = {
       list: Effect.succeed([]),
       load: (pluginName) => Effect.fail(missingPlugin(pluginName)),
       loadServiceType: (id) =>

@@ -83,7 +83,7 @@ export interface ProviderSetupOptions {
   readonly runtimeBundleUrl?: string;
   readonly runtimeBundleSha256?: string;
   readonly network?: NetworkConfig;
-  readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
+  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
   /** Parsed values of the setup flags this provider's plugin contributed via `setup.flags`. */
   readonly setupFlags?: Readonly<Record<string, unknown>>;
 }
@@ -265,7 +265,7 @@ export interface ProviderRuntimeSnapshot {
   readonly volumes: ReadonlyArray<VolumeInfo>;
 }
 
-export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
+export class RuntimeProviderRegistry extends Context.Service<
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
@@ -282,7 +282,7 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
       AppResolveError | ProviderError | NoProviderInstalledError
     >;
   }
->() {}
+>()("@lando/core/RuntimeProviderRegistry") {}
 
 export type AppliedFileSyncInspection =
   | { readonly status: "missing" | "ordinary" | "unknown" }
@@ -447,7 +447,6 @@ export type DestroyOutcome =
 /** Whether `removeObservedService` removed the container behind an observation, or found none. */
 export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
-export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
-  RuntimeProvider,
-  RuntimeProviderShape
->() {}
+export class RuntimeProvider extends Context.Service<RuntimeProvider, RuntimeProviderShape>()(
+  "@lando/core/RuntimeProvider",
+) {}

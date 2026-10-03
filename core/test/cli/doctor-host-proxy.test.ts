@@ -4,7 +4,8 @@ import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema, TestClock, TestContext } from "effect";
+import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -56,7 +57,7 @@ const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   select: () => Effect.succeed(provider),
 });
 
-const buildConfigService = (userDataRoot: string): Context.Tag.Service<typeof ConfigService> => {
+const buildConfigService = (userDataRoot: string): Context.Service.Shape<typeof ConfigService> => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
@@ -1516,7 +1517,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
       },
       exec: () =>
         Deferred.succeed(probeStarted, undefined).pipe(
-          Effect.zipRight(Effect.sleep(75)),
+          Effect.andThen(Effect.sleep(75)),
           Effect.as({ exitCode: 1, stdout: "not-an-envelope", stderr: "failed" }),
         ),
     };
@@ -1524,7 +1525,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // When
     const checks = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           hostProxyTransportDoctorChecks({
             provider,
             providerKind: "user-installed",
@@ -1541,7 +1542,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         yield* Deferred.await(probeStarted);
         yield* TestClock.adjust("25 millis");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(hostProxyDoctorLayer(root)), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(hostProxyDoctorLayer(root)), Effect.provide(TestClock.layer())),
     );
 
     // Then
@@ -1567,7 +1568,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // When
     const checks = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           hostProxyTransportDoctorChecks({
             provider: TestRuntimeProvider,
             providerKind: "user-installed",
@@ -1583,7 +1584,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         );
         yield* Deferred.await(rootReadStarted);
         expect(rootReads).toBe(1);
-        expect(Option.isNone(yield* Fiber.poll(fiber))).toBe(true);
+        expect(fiber.pollUnsafe()).toBeUndefined();
         yield* TestClock.adjust("25 millis");
         return yield* Fiber.join(fiber);
       }).pipe(
@@ -1591,7 +1592,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         Effect.provide(
           Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root, platform: "linux", env: {} })),
         ),
-        Effect.provide(TestContext.TestContext),
+        Effect.provide(TestClock.layer()),
       ),
     );
 

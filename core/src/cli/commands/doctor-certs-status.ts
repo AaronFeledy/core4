@@ -62,7 +62,7 @@ export const certsDoctorStatus = (redact: (value: string) => string) =>
     const resolved = yield* Effect.exit(resolver.value.resolve);
     if (Exit.isSuccess(resolved)) return { _tag: "selected", id: resolved.value.id } as const;
 
-    const failure = Cause.failureOption(resolved.cause);
+    const failure = Cause.findErrorOption(resolved.cause);
     if (Option.isSome(failure)) return statusFromFailure(failure.value, redact);
     return {
       _tag: "load-failed",

@@ -26,30 +26,33 @@ const sample = (
   steps: [{ id: "start", durationMs, exitCode: outcome === "passed" ? 0 : 7, stdout: "", stderr: "" }],
 });
 
-const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerformanceReport => ({
-  schemaVersion: 1,
-  series: { provider: "lando", platform: "linux-x64", fixtureSet: "db-v1" },
-  run: {
-    id: "42",
-    attempt: 1,
-    commit: "abc123",
-    generatedAt: "2026-09-11T00:00:00.000Z",
-    architecture: "x64",
-    runner: "ubuntu-24.04",
-  },
-  versions: { binary: "4.0.0", runtime: "6.0.0", provider: "4.0.0" },
-  fileSync: { eligible: false, reason: "native bind mounts" },
-  fixtures: [],
-  lanes: [
-    {
-      id: "cold-first-start",
-      class: "start",
-      outcome: samples.some((entry) => entry.outcome === "failed") ? "failed" : "passed",
-      samples,
-      statistics: statisticsForSamples(samples),
+const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerformanceReport => {
+  const statistics = statisticsForSamples(samples);
+  return {
+    schemaVersion: 1,
+    series: { provider: "lando", platform: "linux-x64", fixtureSet: "db-v1" },
+    run: {
+      id: "42",
+      attempt: 1,
+      commit: "abc123",
+      generatedAt: "2026-09-11T00:00:00.000Z",
+      architecture: "x64",
+      runner: "ubuntu-24.04",
     },
-  ],
-});
+    versions: { binary: "4.0.0", runtime: "6.0.0", provider: "4.0.0" },
+    fileSync: { eligible: false, reason: "native bind mounts" },
+    fixtures: [],
+    lanes: [
+      {
+        id: "cold-first-start",
+        class: "start",
+        outcome: samples.some((entry) => entry.outcome === "failed") ? "failed" : "passed",
+        samples,
+        ...(statistics === undefined ? {} : { statistics }),
+      },
+    ],
+  };
+};
 
 const reportWithDiagnostic = (diagnostic: unknown): unknown => {
   const valid = report([sample(0, "failed", 10)]);

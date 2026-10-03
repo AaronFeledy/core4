@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Layer, Result } from "effect";
 
 import { refreshAppCache, renderAppCacheRefreshResult } from "@lando/core/cli/operations";
 import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
@@ -55,7 +55,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "app-cache.scenario.test",
   runtime: 4 as const,
 };
@@ -221,7 +221,7 @@ describe("lando app:cache:refresh", () => {
 
         expect(exit._tag).toBe("Failure");
         if (exit._tag !== "Failure") return;
-        const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+        const failure = Result.getOrThrow(Cause.findError(exit.cause));
         expect(failure).toBeInstanceOf(CacheError);
         expect(failure?.message).toBe("Failed to write app-command cache.");
       } finally {

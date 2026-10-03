@@ -119,7 +119,7 @@ export const makeTestHttpClient = (
           ...(request.method === undefined ? {} : { method: request.method }),
           ...(request.callerId === undefined ? {} : { callerId: redact(request.callerId) }),
           ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-          timestamp: DateTime.unsafeNow(),
+          timestamp: DateTime.nowUnsafe(),
         }),
       );
 
@@ -132,7 +132,7 @@ export const makeTestHttpClient = (
             durationMs: 0,
             failureDetail: "offline",
             ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-            timestamp: DateTime.unsafeNow(),
+            timestamp: DateTime.nowUnsafe(),
           }),
         );
         return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
@@ -147,7 +147,7 @@ export const makeTestHttpClient = (
             durationMs: 0,
             failureDetail: "offline",
             ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-            timestamp: DateTime.unsafeNow(),
+            timestamp: DateTime.nowUnsafe(),
           }),
         );
         return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
@@ -180,7 +180,7 @@ export const makeTestHttpClient = (
           outcome: "success",
           durationMs: 0,
           ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-          timestamp: DateTime.unsafeNow(),
+          timestamp: DateTime.nowUnsafe(),
         }),
       );
       return body;

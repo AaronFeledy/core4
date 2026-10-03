@@ -15,14 +15,14 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("ExampleTaggedError", {
   message: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.optionalKey(Schema.String),
 }) {}
 
 const plainRedactor = createRedactor("secrets", { values: [] });
 const EmptyResultSchema = Schema.Struct({});
 const PersonResultSchema = Schema.Struct({
   name: Schema.String,
-  age: Schema.optional(Schema.Number),
+  age: Schema.optionalKey(Schema.Number),
 });
 
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));

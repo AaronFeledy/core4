@@ -34,15 +34,15 @@ const AcquisitionFingerprintSchema = Schema.Struct({
 });
 
 export const AcquisitionState = Schema.Struct({
-  mode: Schema.Literal(...ACQUISITION_MODES),
+  mode: Schema.Literals([...ACQUISITION_MODES]),
   httpPort: PortNumber,
   httpsPort: PortNumber,
   notices: Schema.Array(Schema.String),
   fingerprint: AcquisitionFingerprintSchema,
-  helperInstalled: Schema.optional(Schema.Boolean),
-  socketsActive: Schema.optional(Schema.Boolean),
-  bindHttpPort: Schema.optional(PortNumber),
-  bindHttpsPort: Schema.optional(PortNumber),
+  helperInstalled: Schema.optionalKey(Schema.Boolean),
+  socketsActive: Schema.optionalKey(Schema.Boolean),
+  bindHttpPort: Schema.optionalKey(PortNumber),
+  bindHttpsPort: Schema.optionalKey(PortNumber),
 });
 export type AcquisitionState = typeof AcquisitionState.Type;
 
@@ -64,7 +64,7 @@ export const readAcquisitionState = (
         catch: (error) => error,
       }),
     ),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 const isOurPreferredHolder = (probe: {
@@ -153,11 +153,11 @@ export const persistPortAcquisition = (
             ...(probed.httpsHolders === undefined ? {} : { httpsHolders: probed.httpsHolders }),
           }),
         catch: (error) => error,
-      }).pipe(Effect.either);
-      if (hops._tag === "Right") {
+      }).pipe(Effect.result);
+      if (hops._tag === "Success") {
         const resolved = yield* resolveNeedsHelper(dependencies.socketProxy, {
-          httpTarget: hops.right.bindHttpPort,
-          httpsTarget: hops.right.bindHttpsPort,
+          httpTarget: hops.success.bindHttpPort,
+          httpsTarget: hops.success.bindHttpsPort,
         });
         if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
           const decision = { ...resolved.decision, fingerprint: lists.fingerprint };
@@ -165,8 +165,8 @@ export const persistPortAcquisition = (
             ...decision,
             helperInstalled: resolved.helperInstalled,
             socketsActive: resolved.socketsActive,
-            bindHttpPort: hops.right.bindHttpPort,
-            bindHttpsPort: hops.right.bindHttpsPort,
+            bindHttpPort: hops.success.bindHttpPort,
+            bindHttpsPort: hops.success.bindHttpsPort,
           });
           return decision;
         }

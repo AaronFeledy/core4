@@ -43,7 +43,7 @@ const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
   volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "cross-process.integration.test",
   runtime: 4 as const,
 };
@@ -611,8 +611,8 @@ describe("provider-lando cross-process state", () => {
       const providerA = await makeProvider();
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
-      const failed = await runOnce(Effect.either(providerA.destroy({ app: plan.id }, { volumes: true })));
-      expect(failed._tag).toBe("Left");
+      const failed = await runOnce(Effect.result(providerA.destroy({ app: plan.id }, { volumes: true })));
+      expect(failed._tag).toBe("Failure");
       expect(fake.existing.size).toBe(0);
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);

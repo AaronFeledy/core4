@@ -39,7 +39,7 @@ export const discover = () => Effect.runPromise(discoverEffect);
 export const discoverFailure = async () => {
   const exit = await Effect.runPromiseExit(discoverEffect);
   if (Exit.isSuccess(exit)) throw new Error("expected discovery failure");
-  return Option.getOrThrow(Cause.failureOption(exit.cause));
+  return Option.getOrThrow(Cause.findErrorOption(exit.cause));
 };
 
 export const planDiscoveredEffect = (input: { readonly appRoot: string; readonly cacheRoot: string }) => {

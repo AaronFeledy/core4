@@ -223,7 +223,7 @@ const runUpdate = (options: Parameters<typeof update>[0]) =>
 const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<string | undefined> => {
   const exit = await Effect.runPromiseExit(effect);
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag !== "Some") return undefined;
   const value = failure.value;
   return typeof value === "object" && value !== null && "_tag" in value
@@ -234,7 +234,7 @@ const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<stri
 const failureValue = async (effect: Effect.Effect<unknown, unknown>): Promise<unknown> => {
   const exit = await Effect.runPromiseExit(effect);
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some" ? failure.value : undefined;
 };
 
@@ -447,7 +447,7 @@ describe("update signed manifest", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some" && failure.value instanceof UpdateMinimumVersionError) {
         const minimumFailure = failure.value;

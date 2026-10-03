@@ -31,10 +31,9 @@ export class PrivateFileAccessError extends Error {
   }
 }
 
-export class PrivateFileAccessService extends Context.Tag("@lando/state-store/PrivateFileAccess")<
-  PrivateFileAccessService,
-  PrivateFileAccess
->() {}
+export class PrivateFileAccessService extends Context.Service<PrivateFileAccessService, PrivateFileAccess>()(
+  "@lando/state-store/PrivateFileAccess",
+) {}
 
 type ClosablePrivateFileAccess = PrivateFileAccess & { readonly close: () => Promise<void> };
 
@@ -51,7 +50,7 @@ const unavailableAccess = (): ClosablePrivateFileAccess => ({
 export const makePrivateFileAccessLive = (
   options: PrivateFileAccessLiveOptions = {},
 ): Layer.Layer<PrivateFileAccessService> =>
-  Layer.scoped(
+  Layer.effect(
     PrivateFileAccessService,
     Effect.acquireRelease(
       Effect.sync((): ClosablePrivateFileAccess => {

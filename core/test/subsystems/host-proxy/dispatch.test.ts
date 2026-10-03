@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -200,7 +200,7 @@ describe("dispatchRunLando", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Cause.squash(exit.cause);
       expect(error).toBeInstanceOf(HostProxyCommandNotAllowedError);
     }
     const tags = events.map((event) => event._tag);

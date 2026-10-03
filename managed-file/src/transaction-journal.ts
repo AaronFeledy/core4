@@ -8,19 +8,22 @@ import { Effect, Schema } from "effect";
 import { transactionError, transactionIO } from "./transaction-error.ts";
 import { digestOf, ensureDirectory, statMaybe } from "./transaction-fs.ts";
 
-const Digest = Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u));
-const Mode = Schema.Number.pipe(Schema.int(), Schema.between(0, 0o7777));
+const Digest = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u)));
+const Mode = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: 0o7777 })),
+);
 const Absent = Schema.Struct({ present: Schema.Literal(false) });
-export const FileState = Schema.Union(
+export const FileState = Schema.Union([
   Absent,
   Schema.Struct({
     present: Schema.Literal(true),
     digest: Digest,
     mode: Mode,
   }),
-);
+]);
 export type FileState = typeof FileState.Type;
-const Before = Schema.Union(
+const Before = Schema.Union([
   Absent,
   Schema.Struct({
     present: Schema.Literal(true),
@@ -28,20 +31,20 @@ const Before = Schema.Union(
     mode: Mode,
     backup: Schema.String,
   }),
-);
+]);
 export const Stage = Schema.Struct({ path: Schema.String, dev: Schema.String, ino: Schema.String });
 export type Stage = typeof Stage.Type;
 export const Entry = Schema.Struct({
   path: Schema.String,
   before: Before,
   after: FileState,
-  stage: Schema.optional(Stage),
+  stage: Schema.optionalKey(Stage),
 });
 export type Entry = typeof Entry.Type;
 export const Journal = Schema.Struct({
   id: Schema.String,
   root: Schema.String,
-  state: Schema.Literal("prepared", "committing", "committed", "blocked"),
+  state: Schema.Literals(["prepared", "committing", "committed", "blocked"]),
   entries: Schema.Array(Entry),
 });
 export type Journal = typeof Journal.Type;

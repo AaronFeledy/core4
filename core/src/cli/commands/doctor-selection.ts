@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import type { ConfigError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
@@ -75,12 +75,12 @@ export const gatherSelectionInputs = (
 ): Effect.Effect<GatheredSelectionInputs, never, ConfigService> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;
-    const configProvider = yield* Effect.either(configService.get("defaultProviderId"));
+    const configProvider = yield* Effect.result(configService.get("defaultProviderId"));
 
     const flag = branded(options.flagProviderId);
     const landofile = branded(options.landofileProviderId);
     const env = readProviderEnvVar(options.env ?? process.env);
-    const config = Either.isRight(configProvider) ? (configProvider.right ?? undefined) : undefined;
+    const config = Result.isSuccess(configProvider) ? (configProvider.success ?? undefined) : undefined;
     return {
       inputs: {
         ...(flag === undefined ? {} : { flag }),
@@ -89,7 +89,7 @@ export const gatherSelectionInputs = (
         ...(config === undefined ? {} : { config }),
         capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
       },
-      ...(Either.isLeft(configProvider) ? { configFailure: configProvider.left } : {}),
+      ...(Result.isFailure(configProvider) ? { configFailure: configProvider.failure } : {}),
     };
   });
 

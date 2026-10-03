@@ -19,7 +19,7 @@ export const cleanupHostProxyRunLandoState = (
     yield* removeOwnedHostProxyWorkerState(app, paths, {
       privateFileAccess,
     });
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 export const removeSessionState = (paths: HostProxySessionPaths, socketOwned: boolean): Effect.Effect<void> =>
   Effect.promise(async () => {

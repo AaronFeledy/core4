@@ -30,7 +30,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   extensions: {},
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
 };
 /** A plan recorded at `at`, the way every current build records it. */
 const planAt = (at: string): AppPlan => ({
@@ -61,7 +61,7 @@ const snapshot = (overrides: Partial<ProviderRuntimeSnapshot> = {}): ProviderRun
 });
 const run = (
   snapshots: ReadonlyArray<ProviderRuntimeSnapshot> | undefined,
-  exists: Context.Tag.Service<typeof FileSystem>["exists"] = () => Effect.succeed(false),
+  exists: Context.Service.Shape<typeof FileSystem>["exists"] = () => Effect.succeed(false),
 ) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -166,7 +166,8 @@ test("groups plans by their recorded identity root and sorts roots deterministic
 });
 
 test("ignores applied plans without an identity, which teardown cannot target", async () => {
-  const result = await run([snapshot({ appliedPlans: [{ ...plan, identity: undefined }] })]);
+  const { identity: _identity, ...withoutIdentity } = plan;
+  const result = await run([snapshot({ appliedPlans: [withoutIdentity] })]);
   expect(result).toEqual([]);
 });
 

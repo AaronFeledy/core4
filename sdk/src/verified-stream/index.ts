@@ -127,7 +127,7 @@ export const persistVerifiedStream = <E, R>(
         },
         catch: (cause) =>
           new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
-      }).pipe(Effect.zipRight(Ref.update(size, (n) => n + chunk.length))),
+      }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
     );
 
     const sizeBytes = yield* Ref.get(size);
@@ -177,7 +177,7 @@ export const collectVerifiedStream = <E, R>(
     yield* Stream.runForEach(params.body, (chunk) =>
       Effect.sync(() => {
         hash.update(chunk);
-      }).pipe(Effect.zipRight(Ref.update(size, (n) => n + chunk.length))),
+      }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
     );
 
     const sizeBytes = yield* Ref.get(size);

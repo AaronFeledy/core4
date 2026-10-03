@@ -32,7 +32,7 @@ export interface HostPathAccess {
 
 export interface DiscoverProxydInput {
   readonly exists: HostPathAccess["exists"];
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
 }
 
 export type SocketProxyInstallOutcome =
@@ -47,16 +47,16 @@ export type SocketProxyStartOutcome =
 
 export interface InstallSocketProxyInput extends HostPathAccess {
   readonly user: string;
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
-  readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
+  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly serviceType?: SocketProxyServiceType;
   readonly httpTarget: number;
   readonly httpsTarget: number;
 }
 
 export interface StartSocketsInput {
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
-  readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
+  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly probeForward?: (
     host: string,
     port: number,
@@ -77,7 +77,7 @@ export const discoverProxydBinary = (
     }
     const lookup = yield* input.processRunner
       .run({ cmd: "sh", args: ["-c", "command -v systemd-socket-proxyd"] })
-      .pipe(Effect.catchAll(() => Effect.succeed(failedResult(1))));
+      .pipe(Effect.catch(() => Effect.succeed(failedResult(1))));
     const found = lookup.stdout.trim();
     if (lookup.exitCode === 0 && found.length > 0) return found;
     return yield* Effect.fail(
@@ -93,7 +93,7 @@ export const isSocketProxyInstalled = (access: HostPathAccess): Effect.Effect<bo
   Effect.gen(function* () {
     for (const path of SOCKET_UNIT_PATHS) {
       if (!(yield* access.exists(path))) return false;
-      const text = yield* access.readText(path).pipe(Effect.catchAll(() => Effect.succeed("")));
+      const text = yield* access.readText(path).pipe(Effect.catch(() => Effect.succeed("")));
       if (!text.includes(UNIT_MARKER)) return false;
     }
     return true;
@@ -113,12 +113,8 @@ export const readHelperHopTargets = (
   access: HostPathAccess,
 ): Effect.Effect<{ readonly httpTarget: number; readonly httpsTarget: number } | undefined> =>
   Effect.gen(function* () {
-    const httpUnit = yield* access
-      .readText(HTTP_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-    const httpsUnit = yield* access
-      .readText(HTTPS_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
+    const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+    const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
     const httpTarget = hopPortFromUnit(httpUnit);
     const httpsTarget = hopPortFromUnit(httpsUnit);
     if (httpTarget === undefined || httpsTarget === undefined) return undefined;
@@ -131,12 +127,8 @@ const hopsMatchTargets = (
   httpsTarget: number,
 ): Effect.Effect<boolean> =>
   Effect.gen(function* () {
-    const httpUnit = yield* access
-      .readText(HTTP_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-    const httpsUnit = yield* access
-      .readText(HTTPS_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
+    const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+    const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
     const hopPattern = /127\.0\.0\.1:\d+/u;
     if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
     return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
@@ -177,7 +169,7 @@ const controlSockets = (
     const args = [verb, ...SOCKET_UNITS];
     const unelevated = yield* input.processRunner
       .run({ cmd: "systemctl", args })
-      .pipe(Effect.catchAll((error) => Effect.succeed(failedResult(1, error.message))));
+      .pipe(Effect.catch((error) => Effect.succeed(failedResult(1, error.message))));
     const result =
       unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["systemctl", ...args]);
     if (result.exitCode !== 0) {

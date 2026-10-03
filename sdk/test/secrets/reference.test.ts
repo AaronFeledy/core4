@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { SecretReferenceInvalidError } from "@lando/sdk/errors";
 import * as secrets from "@lando/sdk/secrets";
@@ -10,7 +10,7 @@ test("parses a bare id to the default store", () => {
   // When
   const result = secrets.parseSecretReference(raw);
   // Then
-  expect(result).toEqual(Either.right({ raw, key: raw }));
+  expect(result).toEqual(Result.succeed({ raw, key: raw }));
 });
 
 test("parses op://Vault/Item With Space/field?ssh-format=openssh", () => {
@@ -20,7 +20,7 @@ test("parses op://Vault/Item With Space/field?ssh-format=openssh", () => {
   const result = secrets.parseSecretReference(raw);
   // Then
   expect(result).toEqual(
-    Either.right({ raw, scheme: "op", key: "Vault/Item With Space/field?ssh-format=openssh" }),
+    Result.succeed({ raw, scheme: "op", key: "Vault/Item With Space/field?ssh-format=openssh" }),
   );
 });
 
@@ -32,7 +32,7 @@ test.each([
   // Given / When
   const result = secrets.parseSecretReference(raw);
   // Then
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
 });
 
 test.each([
@@ -67,10 +67,10 @@ test.each([
   // Given / When
   const result = secrets.parseSecretReference(raw);
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left).toBeInstanceOf(SecretReferenceInvalidError);
-    expect(result.left.reference).toBe(raw);
-    expect(result.left.remediation.length).toBeGreaterThan(0);
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(SecretReferenceInvalidError);
+    expect(result.failure.reference).toBe(raw);
+    expect(result.failure.remediation.length).toBeGreaterThan(0);
   }
 });

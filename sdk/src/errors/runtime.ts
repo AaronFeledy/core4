@@ -35,7 +35,7 @@ export class RouterPortsExhausted extends Schema.TaggedError<RouterPortsExhauste
   bindAddress: Schema.String,
   httpTried: Schema.Array(Schema.Number),
   httpsTried: Schema.Array(Schema.Number),
-  exhausted: Schema.Literal("http", "https", "both"),
+  exhausted: Schema.Literals(["http", "https", "both"]),
   remediation: Schema.String,
 }) {}
 
@@ -59,7 +59,7 @@ export class RouterPortPinMismatch extends Schema.TaggedError<RouterPortPinMisma
 export class RouterWatcherError extends Schema.TaggedError<RouterWatcherError>()("RouterWatcherError", {
   message: Schema.String,
   proxyId: Schema.String,
-  failureClass: Schema.Literal("inotify-limit", "disk", "permission", "other"),
+  failureClass: Schema.Literals(["inotify-limit", "disk", "permission", "other"]),
   watcherHost: Schema.String,
   detail: Schema.String,
   remediation: Schema.String,
@@ -89,7 +89,7 @@ export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeB
   "LandoRuntimeBootstrapError",
   {
     message: Schema.String,
-    stage: Schema.Literal("minimal", "plugins", "commands", "provider", "app", "tooling"),
+    stage: Schema.Literals(["minimal", "plugins", "commands", "provider", "app", "tooling"]),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -112,7 +112,7 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
   {
     message: Schema.String,
     value: Schema.String,
-    source: Schema.Literal("flag", "env", "config"),
+    source: Schema.Literals(["flag", "env", "config"]),
     remediation: Schema.String,
   },
 ) {}
@@ -122,7 +122,7 @@ export class LogLevelSelectionError extends Schema.TaggedError<LogLevelSelection
   {
     message: Schema.String,
     value: Schema.String,
-    source: Schema.Literal("flag", "env", "config"),
+    source: Schema.Literals(["flag", "env", "config"]),
     remediation: Schema.String,
   },
 ) {}

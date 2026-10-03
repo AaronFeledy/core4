@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Duration, Effect, Either, Schema, Stream } from "effect";
+import { Duration, Effect, Result, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -46,7 +46,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
   Effect.gen(function* () {
     const providerId = ProviderId.make(provider.id);
     const testAppPlan = makeTestAppPlan(providerId);
-    const capabilities = Schema.decodeUnknownEither(ProviderCapabilities)(provider.capabilities);
+    const capabilities = Schema.decodeUnknownResult(ProviderCapabilities)(provider.capabilities);
 
     yield* requireContract(isNonEmptyString(provider.id), "provider exposes a non-empty id", provider.id);
     yield* requireContract(
@@ -65,7 +65,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       provider.platform,
     );
 
-    yield* requireContract(Either.isRight(capabilities), "capability matrix decodes", capabilities);
+    yield* requireContract(Result.isSuccess(capabilities), "capability matrix decodes", capabilities);
     const declaredComposeKnobs = provider.capabilities.composeKnobs?.supported ?? [];
     yield* requireContract(
       declaredComposeKnobs.length === 0 || provider.capabilities.composeSpec === "native",
@@ -339,7 +339,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
     yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
 
-    const logChunks = yield* Effect.timeoutFail(
+    const logChunks = yield* Effect.timeoutOrElse(
       provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
         Stream.take(1),
         Stream.runCollect,
@@ -347,10 +347,8 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
         Effect.mapError(mapProviderFailure("logs emits structured chunks")),
       ),
       {
-        // Live provider log endpoints can take several seconds to flush the
-        // first chunk on contended CI runners; still fail closed if no chunk emits.
         duration: Duration.seconds(15),
-        onTimeout: () => contractFailure("logs emits at least one chunk", []),
+        orElse: () => Effect.fail((() => contractFailure("logs emits at least one chunk", []))()),
       },
     );
     yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);

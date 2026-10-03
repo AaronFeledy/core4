@@ -31,7 +31,7 @@ const isStringStateBucket = (value: unknown): value is StateBucket<string> =>
   typeof value.set === "function";
 
 export const makePluginArtifactDownload =
-  (downloader: Context.Tag.Service<typeof Downloader>): ArtifactDownload =>
+  (downloader: Context.Service.Shape<typeof Downloader>): ArtifactDownload =>
   (request) =>
     Effect.scoped(
       Effect.gen(function* () {

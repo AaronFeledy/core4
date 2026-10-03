@@ -25,7 +25,7 @@ const appId = AppId.make("logfollowapp");
 const appRoot = AbsolutePath.make("/tmp/lando-log-follow-app");
 const textEncoder = new TextEncoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "logs-follow.test",
   runtime: 4 as const,
 };

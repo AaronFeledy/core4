@@ -11,8 +11,8 @@ import { Schema } from "effect";
  * logs, transcripts, or JSON output.
  */
 export class ManagedFileError extends Schema.TaggedError<ManagedFileError>()("ManagedFileError", {
-  reason: Schema.Literal("io", "decode", "conflict", "path", "format"),
-  operation: Schema.Literal("plan", "apply", "remove", "status", "adopt", "release"),
+  reason: Schema.Literals(["io", "decode", "conflict", "path", "format"]),
+  operation: Schema.Literals(["plan", "apply", "remove", "status", "adopt", "release"]),
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
   remediation: Schema.optional(Schema.String),
@@ -39,10 +39,10 @@ export class ManagedFileError extends Schema.TaggedError<ManagedFileError>()("Ma
 export class ManagedFileTransactionError extends Schema.TaggedError<ManagedFileTransactionError>()(
   "ManagedFileTransactionError",
   {
-    reason: Schema.Literal("path", "conflict", "io", "journal", "lock", "checkpoint", "blocked"),
-    phase: Schema.Literal("prepare", "commit", "inspect", "cleanup", "recover"),
-    path: Schema.String.pipe(Schema.maxLength(4096)),
-    cause: Schema.Literal("filesystem", "invariant", "interrupted-checkpoint"),
-    remediation: Schema.String.pipe(Schema.maxLength(256)),
+    reason: Schema.Literals(["path", "conflict", "io", "journal", "lock", "checkpoint", "blocked"]),
+    phase: Schema.Literals(["prepare", "commit", "inspect", "cleanup", "recover"]),
+    path: Schema.String.pipe(Schema.check(Schema.isMaxLength(4096))),
+    cause: Schema.Literals(["filesystem", "invariant", "interrupted-checkpoint"]),
+    remediation: Schema.String.pipe(Schema.check(Schema.isMaxLength(256))),
   },
 ) {}

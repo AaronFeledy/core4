@@ -32,7 +32,7 @@ export const readConfigCliGlobals = async (): Promise<ConfigCliGlobals> => {
   const config = await Effect.runPromise(
     Effect.flatMap(ConfigService, (service) => service.load).pipe(
       Effect.provide(ConfigServiceLive),
-      Effect.catchAll(() => Effect.succeed(undefined)),
+      Effect.catch(() => Effect.succeed(undefined)),
     ),
   );
   if (config === undefined) return {};

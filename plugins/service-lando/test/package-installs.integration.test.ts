@@ -25,9 +25,13 @@ import { composeServicePlan } from "./support/compose-harness.ts";
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-13T00:00:00Z"),
+  resolvedAt: "2026-09-13T00:00:00Z",
   source: "package-installs.integration.test",
   runtime: 4 as const,
+};
+const planMetadata = {
+  ...metadata,
+  resolvedAt: DateTime.makeUnsafe(metadata.resolvedAt),
 };
 
 const runBuiltImage = async (
@@ -86,7 +90,7 @@ const planFor = async (
     appRoot,
     appName: String(appId),
     serviceName: String(serviceName),
-    metadata: { ...metadata, resolvedAt: DateTime.formatIso(metadata.resolvedAt) },
+    metadata,
     featureOverrides: new Map([[featureId, feature]]),
   });
   const plan: AppPlan = {
@@ -100,7 +104,7 @@ const planFor = async (
     networks: [],
     stores: [],
     fileSync: [],
-    metadata,
+    metadata: planMetadata,
     extensions: {},
   };
   return [plan, service] as const;

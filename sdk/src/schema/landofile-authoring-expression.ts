@@ -1,25 +1,25 @@
-import { Either, ParseResult, Schema } from "effect";
+import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { type ExpressionNode, ExpressionTemplate, type PathSegment } from "../expressions/ast.ts";
 import { EXPRESSION_HELPER_NAMES } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 
 // ==== Parsed authoring expressions retain source without resolving values.
-export const AuthoringExpressionExpectedType = Schema.Literal(
+export const AuthoringExpressionExpectedType = Schema.Literals([
   "string",
   "number",
   "boolean",
   "array",
   "object",
   "unknown",
-).annotations({
+]).annotate({
   identifier: "AuthoringExpressionExpectedType",
   title: "Authoring expression expected type",
   description: "Value kind required by the authoring site, or unknown for unconstrained sites.",
 });
 export type AuthoringExpressionExpectedType = typeof AuthoringExpressionExpectedType.Type;
 
-export const AuthoringExpressionForm = Schema.Literal("whole", "composite").annotations({
+export const AuthoringExpressionForm = Schema.Literals(["whole", "composite"]).annotate({
   identifier: "AuthoringExpressionForm",
   title: "Authoring expression form",
   description: "Whether an expression occupies the whole value or forms interpolated text.",
@@ -27,25 +27,25 @@ export const AuthoringExpressionForm = Schema.Literal("whole", "composite").anno
 export type AuthoringExpressionForm = typeof AuthoringExpressionForm.Type;
 
 export const AuthoringExpression = Schema.Struct({
-  _tag: Schema.Literal("AuthoringExpression").annotations({
+  _tag: Schema.Literal("AuthoringExpression").annotate({
     description: "Parsed authoring expression discriminator.",
   }),
-  form: AuthoringExpressionForm.annotations({
+  form: AuthoringExpressionForm.annotate({
     description: "Whole value or composite string interpolation.",
   }),
-  expectedType: AuthoringExpressionExpectedType.annotations({
+  expectedType: AuthoringExpressionExpectedType.annotate({
     description: "Value kind required at this authoring site.",
   }),
-  source: Schema.String.annotations({
+  source: Schema.String.annotate({
     description: "Original expression source, preserved verbatim for encoding.",
   }),
-  template: ExpressionTemplate.annotations({
+  template: ExpressionTemplate.annotate({
     description: "Parsed expression template, never evaluated during authoring validation.",
   }),
-  scopes: Schema.Array(Schema.String).annotations({
+  scopes: Schema.Array(Schema.String).annotate({
     description: "Sorted unique context scope heads referenced by the template.",
   }),
-}).annotations({
+}).annotate({
   identifier: "AuthoringExpression",
   title: "Authoring expression",
   description: "A parsed, statically checked expression occupying a typed Landofile authoring site.",
@@ -104,9 +104,9 @@ const hasExpression = (template: ExpressionTemplate): boolean =>
 
 export const classifyAuthoringSource = (source: string): AuthoringSourceClass => {
   const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
-  return Either.match(parsed, {
-    onLeft: () => "invalid",
-    onRight: (template) => (hasExpression(template) ? "expression" : "plain"),
+  return Result.match(parsed, {
+    onFailure: () => "invalid",
+    onSuccess: (template) => (hasExpression(template) ? "expression" : "plain"),
   });
 };
 
@@ -206,49 +206,59 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
 };
 
 // ==== Memoized wire-to-expression slots enforce the site's static constraints.
-const slots = new Map<AuthoringExpressionExpectedType, Schema.Schema<AuthoringExpression, string>>();
+const slots = new Map<AuthoringExpressionExpectedType, Schema.Codec<AuthoringExpression, string>>();
 
 export const authoringExpressionSlot = (
   expectedType: AuthoringExpressionExpectedType,
-): Schema.Schema<AuthoringExpression, string> => {
+): Schema.Codec<AuthoringExpression, string> => {
   const cached = slots.get(expectedType);
   if (cached !== undefined) return cached;
-  const slot = Schema.transformOrFail(Schema.String, AuthoringExpression, {
-    strict: true,
-    decode: (source, _options, ast) => {
-      const fail = (message: string) =>
-        ParseResult.fail(new ParseResult.Type(ast, source, `${expectedType} authoring site: ${message}`));
-      const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
-      if (Either.isLeft(parsed)) return fail("Invalid expression syntax.");
-      const template = parsed.right;
-      if (!hasExpression(template)) return fail("Expected an expression, not plain text.");
-      const form = template.whole ? "whole" : "composite";
-      if (!template.whole && expectedType !== "string")
-        return fail("Composite expressions require a string site.");
-      const analysis = analyzeTemplate(template);
-      if (analysis.scopes.some((head) => !allowedScopes.has(head)))
-        return fail("Expression references an unknown scope.");
-      if ([...analysis.callees].some((callee) => !EXPRESSION_HELPER_NAMES.has(callee)))
-        return fail("Expression calls an unknown helper.");
-      if (
-        template.whole &&
-        expectedType !== "unknown" &&
-        analysis.inferredType !== "unknown" &&
-        analysis.inferredType !== expectedType
-      ) {
-        return fail(`Expression has static type ${analysis.inferredType}.`);
-      }
-      return ParseResult.succeed({
-        _tag: "AuthoringExpression" as const,
-        form,
-        expectedType,
-        source,
-        template,
-        scopes: analysis.scopes,
-      });
-    },
-    encode: (expression) => ParseResult.succeed(expression.source),
-  });
+  const slot = Schema.String.pipe(
+    Schema.decodeTo(
+      Schema.toType(AuthoringExpression),
+      SchemaTransformation.transformEffect<AuthoringExpression, string>({
+        decode: (source, options) => {
+          const fail = (message: string) =>
+            Effect.fail(
+              new SchemaIssue.InvalidValue(
+                { message: `${expectedType} authoring site: ${message}` },
+                source,
+                options,
+              ),
+            );
+          const parsed = parseExpressionEither(source, { filePath: "<authoring>" });
+          if (Result.isFailure(parsed)) return fail("Invalid expression syntax.");
+          const template = parsed.success;
+          if (!hasExpression(template)) return fail("Expected an expression, not plain text.");
+          const form = template.whole ? "whole" : "composite";
+          if (!template.whole && expectedType !== "string")
+            return fail("Composite expressions require a string site.");
+          const analysis = analyzeTemplate(template);
+          if (analysis.scopes.some((head) => !allowedScopes.has(head)))
+            return fail("Expression references an unknown scope.");
+          if ([...analysis.callees].some((callee) => !EXPRESSION_HELPER_NAMES.has(callee)))
+            return fail("Expression calls an unknown helper.");
+          if (
+            template.whole &&
+            expectedType !== "unknown" &&
+            analysis.inferredType !== "unknown" &&
+            analysis.inferredType !== expectedType
+          ) {
+            return fail(`Expression has static type ${analysis.inferredType}.`);
+          }
+          return Effect.succeed({
+            _tag: "AuthoringExpression" as const,
+            form,
+            expectedType,
+            source,
+            template,
+            scopes: analysis.scopes,
+          });
+        },
+        encode: (expression) => Effect.succeed(expression.source),
+      }),
+    ),
+  );
   slots.set(expectedType, slot);
   return slot;
 };

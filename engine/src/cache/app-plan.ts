@@ -273,7 +273,7 @@ export const readCachedAppPlan = (input: {
           path,
           decodeError: cause,
         }),
-    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+    }).pipe(Effect.catch(() => Effect.succeed(null)));
   });
 
 export const writeCachedAppPlan = (input: {

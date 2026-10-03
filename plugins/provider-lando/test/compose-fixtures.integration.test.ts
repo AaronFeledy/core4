@@ -287,7 +287,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     try {
       for (const initializerName of initializerContainers) {
         await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             liveRequest({
               method: "DELETE",
               path: `/containers/${encodeURIComponent(initializerName)}?force=true`,
@@ -298,7 +298,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     } finally {
       try {
         if (plan !== undefined) {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api, volumes: true })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api, volumes: true })));
         }
       } finally {
         await rm(appRoot, { recursive: true, force: true });
@@ -338,7 +338,7 @@ const rejectFixtureBeforeProviderCall = async (fixture: RejectedFixtureCase): Pr
         Effect.provide(plannerLayer),
       ),
     );
-    const failure = Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : undefined;
+    const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
     const error = failure?._tag === "Some" ? failure.value : undefined;
 
     expect(providerCallCount).toBe(0);

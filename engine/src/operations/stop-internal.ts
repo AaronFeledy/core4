@@ -56,7 +56,7 @@ type StopAppServices =
   | StateStore;
 type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 export interface StopAppPreflight {
   readonly provider: RuntimeProviderShape;

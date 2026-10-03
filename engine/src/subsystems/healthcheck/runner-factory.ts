@@ -66,12 +66,11 @@ const resolveRedactor = Effect.gen(function* () {
 
 const makeAttempt = (context: AttemptContext): Effect.Effect<AttemptOutcome> =>
   Effect.gen(function* () {
-    const completed = yield* Effect.timeoutTo(
-      Effect.either(context.deps.exec(context.target, context.command)),
+    const completed = yield* Effect.timeoutOrElse(
+      Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
       {
         duration: Duration.seconds(context.timeoutSeconds),
-        onSuccess: (result) => result,
-        onTimeout: () => "timeout" as const,
+        orElse: () => Effect.succeed((() => "timeout" as const)()),
       },
     );
 
@@ -80,17 +79,17 @@ const makeAttempt = (context: AttemptContext): Effect.Effect<AttemptOutcome> =>
       return "red";
     }
 
-    if (completed._tag === "Left") {
-      yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.left) });
+    if (completed._tag === "Failure") {
+      yield* Ref.set(context.status, { _tag: "provider", message: providerMessage(completed.failure) });
       return "red";
     }
 
-    if (completed.right.exitCode === 0) {
+    if (completed.success.exitCode === 0) {
       yield* Ref.set(context.status, { _tag: "ok" });
       return "green";
     }
 
-    yield* Ref.set(context.status, { _tag: "exit", code: completed.right.exitCode });
+    yield* Ref.set(context.status, { _tag: "exit", code: completed.success.exitCode });
     return "red";
   });
 

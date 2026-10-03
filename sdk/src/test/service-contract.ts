@@ -1,4 +1,4 @@
-import { Cause, Effect, Either, Exit, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
 
 import {
   LandofileShape,
@@ -94,18 +94,18 @@ export const runServiceCompositionContract = (
       typeof serviceType.resolve,
     );
 
-    const decodedLandofile = Schema.decodeUnknownEither(LandofileShape)({
+    const decodedLandofile = Schema.decodeUnknownResult(LandofileShape)({
       name: appName,
       services: { [serviceName]: input.landofileService },
     });
     yield* requireServiceComposition(
-      Either.isRight(decodedLandofile),
+      Result.isSuccess(decodedLandofile),
       "landofile service input decodes through LandofileShape",
-      Either.isLeft(decodedLandofile) ? decodedLandofile.left : undefined,
+      Result.isFailure(decodedLandofile) ? decodedLandofile.failure : undefined,
     );
-    if (Either.isLeft(decodedLandofile)) return;
+    if (Result.isFailure(decodedLandofile)) return;
 
-    const decodedService = decodedLandofile.right.services?.[ServiceName.make(serviceName)];
+    const decodedService = decodedLandofile.success.services?.[ServiceName.make(serviceName)];
     yield* requireServiceComposition(
       decodedService !== undefined,
       "landofile decode preserves the requested service entry",
@@ -121,7 +121,7 @@ export const runServiceCompositionContract = (
       ...(input.providerId === undefined ? {} : { provider: input.providerId }),
       primary: false,
       metadata: {
-        resolvedAt: "2026-05-10T18:51:00Z",
+        resolvedAt: DateTime.formatIso(DateTime.makeUnsafe("2026-05-10T18:51:00Z")),
         source: "@lando/sdk/test/service-composition-contract",
         runtime: 4,
       },

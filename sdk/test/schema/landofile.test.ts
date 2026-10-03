@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 import * as AST from "effect/SchemaAST";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
@@ -81,10 +81,10 @@ describe("LandofileShape — schema gate", () => {
     };
 
     // When
-    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test('IncludeEntry decodes kind: "compose"', () => {
@@ -92,10 +92,10 @@ describe("LandofileShape — schema gate", () => {
     const input = { source: "./f.yml", kind: "compose" };
 
     // When
-    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+    const result = Schema.decodeUnknownResult(IncludeEntry)(input);
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test('IncludeEntry still decodes kind: "landofile"', () => {
@@ -103,10 +103,10 @@ describe("LandofileShape — schema gate", () => {
     const input = { source: "./f.yml", kind: "landofile" };
 
     // When
-    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+    const result = Schema.decodeUnknownResult(IncludeEntry)(input);
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test('IncludeEntry decodes kind: "tooling" with its namespacing contract', () => {
@@ -124,10 +124,10 @@ describe("LandofileShape — schema gate", () => {
     };
 
     // When
-    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+    const result = Schema.decodeUnknownResult(IncludeEntry)(input);
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test("LandofileShape decodes the toolingIncludes shorthand", () => {
@@ -148,10 +148,10 @@ describe("LandofileShape — schema gate", () => {
     };
 
     // When
-    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test.each([
@@ -187,21 +187,21 @@ describe("LandofileShape — schema gate", () => {
     const input = "./f.yml";
 
     // When
-    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+    const result = Schema.decodeUnknownResult(IncludeEntry)(input);
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test("IncludeEntry kind carries a property-level description", () => {
     // Given
     const struct = AST.isUnion(IncludeEntry.ast)
-      ? IncludeEntry.ast.types.find((member) => AST.isTypeLiteral(member))
+      ? IncludeEntry.ast.types.find((member) => AST.isObjects(member))
       : undefined;
     const kind = struct?.propertySignatures.find(({ name }) => name === "kind");
 
     // When
-    const description = kind?.annotations[AST.DescriptionAnnotationId];
+    const description = kind?.type.annotations?.description;
 
     // Then
     expect(typeof description).toBe("string");
@@ -235,7 +235,7 @@ describe("LandofileShape — schema gate", () => {
   });
 
   test("strict decoding accepts the frozen top-level Compose subset", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       {
         name: "myapp",
         version: "3.9",
@@ -254,11 +254,11 @@ describe("LandofileShape — schema gate", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
   });
 
   test("strict decoding rejects non-directive top-level template keys", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       {
         name: "myapp",
         template: "handlebars",
@@ -266,27 +266,27 @@ describe("LandofileShape — schema gate", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      const rejectionRow = issues.find((row) => row.path.includes("template"));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      const rejectionRow = issues.find((row) => (row.path ?? []).includes("template"));
       expect(rejectionRow).toBeDefined();
-      expect(rejectionRow?._tag).toBe("Unexpected");
+      expect(rejectionRow?.message).toBe("Expected no excess property");
     }
   });
 
   test("strict decoding preserves the SSH-agent sidecar default and true opt-in", () => {
-    const omitted = Schema.decodeUnknownEither(LandofileShape)(
+    const omitted = Schema.decodeUnknownResult(LandofileShape)(
       { name: "myapp" },
       { onExcessProperty: "error" },
     );
-    const explicit = Schema.decodeUnknownEither(LandofileShape)(
+    const explicit = Schema.decodeUnknownResult(LandofileShape)(
       { name: "myapp", sshAgent: { sidecar: true } },
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isRight(omitted)).toBe(true);
-    expect(Either.isRight(explicit)).toBe(true);
+    expect(Result.isSuccess(omitted)).toBe(true);
+    expect(Result.isSuccess(explicit)).toBe(true);
   });
 
   test("strict decoding accepts sshAgent.sidecar false and an explicit socket", () => {
@@ -302,9 +302,9 @@ describe("LandofileShape — schema gate", () => {
     // Given
     const input = { gpgAgent: { forward: true, socket: "/tmp/S.gpg-agent.extra" } };
     // When
-    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
     // Then
-    expect(result).toEqual(Either.right(input));
+    expect(result).toEqual(Result.succeed(input));
   });
 
   test("strict decoding accepts raw remotes and dataset sync bindings", () => {
@@ -339,7 +339,7 @@ describe("LandofileShape — schema gate", () => {
   });
 
   test("strict decoding rejects malformed remote entries", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       {
         name: "myapp",
         remotes: { pantheon: { site: "missing-source" } },
@@ -347,15 +347,15 @@ describe("LandofileShape — schema gate", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((row) => row.path.join(".") === "remotes.pantheon.source")).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((row) => (row.path ?? []).join(".") === "remotes.pantheon.source")).toBe(true);
     }
   });
 
   test("strict decoding rejects malformed dataset binding entries", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       {
         name: "myapp",
         sync: { database: { service: 123 } },
@@ -363,10 +363,10 @@ describe("LandofileShape — schema gate", () => {
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((row) => row.path.join(".") === "sync.database.service")).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((row) => (row.path ?? []).join(".") === "sync.database.service")).toBe(true);
     }
   });
 });
@@ -451,15 +451,15 @@ describe("LandofileShape (MVP)", () => {
     ] as const;
 
     for (const { service, propertyPath } of rejectedFields) {
-      const result = Schema.decodeUnknownEither(LandofileShape)(
+      const result = Schema.decodeUnknownResult(LandofileShape)(
         { name: "myapp", services: { web: service } },
         { onExcessProperty: "error" },
       );
 
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-        expect(issues.some((row) => row.path.join(".") === propertyPath)).toBe(true);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+        expect(issues.some((row) => (row.path ?? []).join(".") === propertyPath)).toBe(true);
       }
     }
   });
@@ -506,17 +506,17 @@ describe("LandofileShape (MVP)", () => {
       },
     };
 
-    const result = Schema.decodeUnknownEither(LandofileShape)(withDisallowedKey, {
+    const result = Schema.decodeUnknownResult(LandofileShape)(withDisallowedKey, {
       onExcessProperty: "error",
     });
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      const rejectionRow = issues.find((row) => row.path.includes("unsupported"));
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      const rejectionRow = issues.find((row) => (row.path ?? []).includes("unsupported"));
       expect(rejectionRow).toBeDefined();
-      expect(rejectionRow?._tag).toBe("Unexpected");
+      expect(rejectionRow?.message).toBe("Expected no excess property");
     }
   });
 
@@ -531,14 +531,16 @@ describe("LandofileShape (MVP)", () => {
       },
     };
 
-    const result = Schema.decodeUnknownEither(LandofileShape)(withDisallowedKey, {
+    const result = Schema.decodeUnknownResult(LandofileShape)(withDisallowedKey, {
       onExcessProperty: "error",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (!Either.isLeft(result)) return;
+    expect(Result.isFailure(result)).toBe(true);
+    if (!Result.isFailure(result)) return;
 
-    const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-    const rejectedKeys = issues.filter((row) => row._tag === "Unexpected").map((row) => row.path.join("."));
+    const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+    const rejectedKeys = issues
+      .filter((row) => row.message === "Expected no excess property")
+      .map((row) => (row.path ?? []).join("."));
     expect(rejectedKeys.length).toBeGreaterThan(0);
 
     const err = new LandofileValidationError({
@@ -711,18 +713,18 @@ describe("LandofileShape — tooling: supported schema", () => {
     // Given
     const input = { tooling: { run: { args: { target: { order } } } } };
     // When
-    const result = Schema.decodeUnknownEither(LandofileShape)(input);
+    const result = Schema.decodeUnknownResult(LandofileShape)(input);
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("rejects the retired flag type field when decoding strictly", () => {
     // Given
     const input = { tooling: { run: { flags: { loud: { type: "boolean" } } } } };
     // When
-    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("strictly decodes and round-trips tooling defaults with task env and dir overrides", () => {
@@ -765,15 +767,15 @@ describe("LandofileShape — tooling: supported schema", () => {
     const input = { toolingDefaults: { service: "appserver", method: "checksum" } };
 
     // When
-    const result = Schema.decodeUnknownEither(LandofileShape)(input, {
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, {
       onExcessProperty: "error",
     });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((row) => row.path.join(".") === "toolingDefaults.method")).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((row) => (row.path ?? []).join(".") === "toolingDefaults.method")).toBe(true);
     }
   });
 
@@ -822,27 +824,27 @@ describe("LandofileShape — tooling: supported schema", () => {
   });
 
   test("strict decoding rejects unsupported task fields (`deps`)", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       { tooling: { test: { cmds: ["pytest"], deps: ["assets"] } } },
       { onExcessProperty: "error" },
     );
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("strict decoding rejects unsafe `raw:` var form", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       { tooling: { run: { cmd: "echo", vars: { X: { raw: "$(date)" } } } } },
       { onExcessProperty: "error" },
     );
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("strict decoding rejects step-object cmd entries (`task:`)", () => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       { tooling: { build: { cmds: [{ task: "assets" }] } } },
       { onExcessProperty: "error" },
     );
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("ToolingTaskShape exposes every supported field as optional", () => {

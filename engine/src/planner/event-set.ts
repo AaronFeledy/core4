@@ -17,10 +17,10 @@ import { contributionId, resolveHostFacts } from "./service-types.ts";
 
 export interface KnownEventSetInput {
   readonly landofile: LandofileShape;
-  readonly pluginRegistry: Context.Tag.Service<typeof PluginRegistry>;
-  readonly configService: Context.Tag.Service<typeof ConfigService> | undefined;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
-  readonly pathsService: Context.Tag.Service<typeof PathsService> | undefined;
+  readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly configService: Context.Service.Shape<typeof ConfigService> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
+  readonly pathsService: Context.Service.Shape<typeof PathsService> | undefined;
   readonly capabilities?: ProviderCapabilities;
   readonly file?: string;
 }
@@ -124,4 +124,4 @@ export const resolveKnownEventSet = (input: KnownEventSetInput) =>
     };
   });
 
-export type KnownEventSetResolution = Effect.Effect.Success<ReturnType<typeof resolveKnownEventSet>>;
+export type KnownEventSetResolution = Effect.Success<ReturnType<typeof resolveKnownEventSet>>;

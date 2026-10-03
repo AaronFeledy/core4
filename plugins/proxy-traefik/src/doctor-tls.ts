@@ -17,10 +17,10 @@ import type { ProxyPaths } from "./proxy-types.ts";
 import { DEFAULT_AUTHORITY_PORTS, persistedAuthorities } from "./routing.ts";
 
 const readText = (path: string): Effect.Effect<string | undefined> =>
-  Effect.tryPromise(() => readFile(path, "utf8")).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  Effect.tryPromise(() => readFile(path, "utf8")).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 const readNames = (path: string): Effect.Effect<ReadonlyArray<string> | undefined> =>
-  Effect.tryPromise(() => readdir(path)).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  Effect.tryPromise(() => readdir(path)).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 const isReadableRegularFile = (path: string): Effect.Effect<boolean> =>
   Effect.tryPromise(async () => {
@@ -32,7 +32,7 @@ const isReadableRegularFile = (path: string): Effect.Effect<boolean> =>
     } finally {
       await handle.close();
     }
-  }).pipe(Effect.catchAll(() => Effect.succeed(false)));
+  }).pipe(Effect.catch(() => Effect.succeed(false)));
 
 const isRouteFile = (name: string): boolean => {
   if (!name.startsWith(ROUTE_FILE_PREFIX) || !name.endsWith(ROUTE_FILE_SUFFIX)) return false;

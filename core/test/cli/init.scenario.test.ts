@@ -176,7 +176,7 @@ describe("lando init --full", () => {
       );
       expect(Exit.isFailure(directExit)).toBe(true);
       if (Exit.isFailure(directExit)) {
-        const failure = Cause.failureOption(directExit.cause);
+        const failure = Cause.findErrorOption(directExit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const value = failure.value;

@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { meanDecomposer } from "../../src/recipes/builtin/mean/decomposer.ts";
 import { meanRecipeYaml } from "../../src/recipes/builtin/mean/manifest.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "../../src/recipes/builtin/mean/scaffold.ts";
@@ -91,13 +91,13 @@ describe("mean decomposition", () => {
     { options: { ...defaults, redis: "yes" }, path: "options.redis" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(decomposer.decompose({ producer: meanProducer, options, secrets: {} })),
+      Effect.result(decomposer.decompose({ producer: meanProducer, options, secrets: {} })),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -133,7 +133,7 @@ describe("mean decomposition", () => {
   test.each([defaults, { node: "22", redis: false }, { node: "lts", redis: true }])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(meanSnapshot, options))).toEqual(authoringOf(options));
+      expect(Result.getOrThrow(renderRecipeSnapshot(meanSnapshot, options))).toEqual(authoringOf(options));
     },
   );
 

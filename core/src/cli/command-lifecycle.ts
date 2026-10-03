@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Exit, FiberRef, Option, Schema } from "effect";
+import { Cause, Clock, Context, Effect, Exit, Option, Schema } from "effect";
 
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -29,7 +29,12 @@ export interface CommandLifecycleOptions<A> {
   readonly interruptionExitCode?: number;
 }
 
-const currentCommandInvocation = FiberRef.unsafeMake<CliInvocationSnapshot | undefined>(undefined);
+const CurrentCommandInvocation = Context.Reference<CliInvocationSnapshot | undefined>(
+  "@lando/core/CurrentCommandInvocation",
+  {
+    defaultValue: () => undefined,
+  },
+);
 
 export interface NestedCommandInvocationInput {
   readonly argv: ReadonlyArray<string>;
@@ -42,7 +47,7 @@ export const makeNestedCommandInvocation = (
   commandId: string,
   input: NestedCommandInvocationInput,
 ): Effect.Effect<CliInvocationSnapshot> =>
-  FiberRef.get(currentCommandInvocation).pipe(
+  CurrentCommandInvocation.pipe(
     Effect.map((parent) => ({
       commandId,
       argv: input.argv,
@@ -73,8 +78,8 @@ export const withCommandEventService = <A, E, R>(
   );
 
 const failureIdentity = (cause: Cause.Cause<unknown>): { readonly failureTag: string } => {
-  if (Cause.isInterruptedOnly(cause)) return { failureTag: "Interrupted" };
-  const failure = Cause.failureOption(cause);
+  if (Cause.hasInterruptsOnly(cause)) return { failureTag: "Interrupted" };
+  const failure = Cause.findErrorOption(cause);
   if (failure._tag === "Some") {
     const value = failure.value;
     if (typeof value === "object" && value !== null) {
@@ -83,20 +88,19 @@ const failureIdentity = (cause: Cause.Cause<unknown>): { readonly failureTag: st
     }
     return { failureTag: "Failure" };
   }
-  const defect = Cause.dieOption(cause);
-  if (defect._tag === "Some") return { failureTag: "Defect" };
+  if (Cause.hasDies(cause)) return { failureTag: "Defect" };
   return { failureTag: "Failure" };
 };
 
-const publishRedacted = <A extends LandoEvent, I>(schema: Schema.Schema<A, I>, event: I) =>
+const publishRedacted = <A extends LandoEvent, I>(schema: Schema.Codec<A, I>, event: I) =>
   Effect.gen(function* () {
     const redaction = yield* RedactionService;
     const events = yield* EventService;
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-    const decoded = yield* Schema.decodeUnknown(schema)(redactor.redactValue(event));
+    const decoded = yield* Schema.decodeUnknownEffect(schema)(redactor.redactValue(event));
     yield* events.publish(decoded);
   }).pipe(
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.serviceOption(Logger).pipe(
         Effect.flatMap(
           Option.match({
@@ -104,7 +108,7 @@ const publishRedacted = <A extends LandoEvent, I>(schema: Schema.Schema<A, I>, e
             onSome: (logger) =>
               logger
                 .debug("CLI lifecycle event publication failed.", { cause: Cause.pretty(cause) })
-                .pipe(Effect.catchAll(() => Effect.void)),
+                .pipe(Effect.catch(() => Effect.void)),
           }),
         ),
       ),
@@ -140,7 +144,7 @@ export const runCommandLifecycle = <A, E, R>(
         ...invocation,
       });
       const outcome = yield* Effect.exit(command).pipe(
-        Effect.locally(currentCommandInvocation, invocationSnapshot),
+        Effect.provideService(CurrentCommandInvocation, invocationSnapshot),
       );
       const finishedAt = yield* Clock.currentTimeMillis;
       const terminal = {
@@ -155,11 +159,11 @@ export const runCommandLifecycle = <A, E, R>(
           exitCode: options.successExitCode?.(outcome.value) ?? 0,
         });
       } else {
-        const failure = Cause.failureOption(outcome.cause);
+        const failure = Cause.findErrorOption(outcome.cause);
         yield* publishRedacted(CliCommandErrorEvent, {
           _tag: `cli-${options.invocation.commandId}-error`,
           ...terminal,
-          exitCode: Cause.isInterruptedOnly(outcome.cause)
+          exitCode: Cause.hasInterruptsOnly(outcome.cause)
             ? (options.interruptionExitCode ?? 1)
             : failure._tag === "Some"
               ? (options.failureExitCode?.(failure.value) ?? 1)

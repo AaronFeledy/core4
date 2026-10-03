@@ -30,11 +30,11 @@ for (const method of ["chmod", "writeFile"] as const) {
       try {
         // When initialization fails after exclusive creation
         const result = await Effect.runPromise(
-          Effect.either(acquireAdvisoryLockAt(path, "test", { privateFileAccess: ownerOnlyFileAccess })),
+          Effect.result(acquireAdvisoryLockAt(path, "test", { privateFileAccess: ownerOnlyFileAccess })),
         );
         // Then the failure is surfaced and cleanup is bounded to the original inode
-        expect(result._tag).toBe("Left");
-        if (result._tag === "Left") expect(result.left.cause).toBe(injected);
+        expect(result._tag).toBe("Failure");
+        if (result._tag === "Failure") expect(result.failure.cause).toBe(injected);
         if (replaced) expect(await fs.readFile(path, "utf8")).toBe("foreign");
         else await expect(fs.stat(path)).rejects.toMatchObject({ code: "ENOENT" });
       } finally {
@@ -83,7 +83,7 @@ test("removes its empty lock when access restriction fails", async () => {
   try {
     // When lock initialization applies access restrictions
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         acquireAdvisoryLockAt(path, "test", {
           privateFileAccess: {
             enforce: () => Promise.reject(injected),
@@ -94,7 +94,7 @@ test("removes its empty lock when access restriction fails", async () => {
     );
 
     // Then the failure is surfaced and the poisoned empty lock is removed
-    expect(result).toMatchObject({ _tag: "Left", left: { cause: injected } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { cause: injected } });
     await expect(fs.stat(path)).rejects.toMatchObject({ code: "ENOENT" });
   } finally {
     await fs.rm(dir, { recursive: true, force: true });

@@ -92,9 +92,7 @@ export const reseedRetainedTargets = (
             const terminated = yield* Effect.exit(engine.terminateSession(ref));
             if (Exit.isFailure(flushed))
               return yield* Effect.failCause(
-                Exit.isFailure(terminated)
-                  ? Cause.sequential(flushed.cause, terminated.cause)
-                  : flushed.cause,
+                Exit.isFailure(terminated) ? Cause.combine(flushed.cause, terminated.cause) : flushed.cause,
               );
             if (Exit.isFailure(terminated)) return yield* Effect.failCause(terminated.cause);
           }),

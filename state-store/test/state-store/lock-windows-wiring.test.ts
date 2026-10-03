@@ -26,7 +26,7 @@ test("the default state layer uses its runner for Windows advisory-lock ACLs", a
         const bucket = yield* store.open({
           root: { path: AbsolutePath.make(root) },
           key: "applied-plans.json",
-          schema: Schema.Record({ key: Schema.String, value: Schema.String }),
+          schema: Schema.Record(Schema.String, Schema.String),
           version: 1,
           mode: 0o600,
           lock: "advisory",

@@ -7,7 +7,7 @@ import {
   PrivateFileAccessService,
 } from "../src/private-file-access.ts";
 
-type PrivateFileAccessProcessRunner = Pick<Context.Tag.Service<typeof ProcessRunner>, "run">;
+type PrivateFileAccessProcessRunner = Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
 
 export const nativeProcessRunner: PrivateFileAccessProcessRunner = {
   run: (input) =>

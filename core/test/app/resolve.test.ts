@@ -297,7 +297,7 @@ describe("resolveApp", () => {
       });
       const id = await Effect.runPromise(
         Effect.sync(() => process.chdir(right)).pipe(
-          Effect.zipRight(resolveApp()),
+          Effect.andThen(resolveApp()),
           Effect.flatMap((app) => app.info()),
           Effect.map((info) => info.app),
           Effect.scoped,
@@ -380,7 +380,7 @@ describe("resolveApp", () => {
                       .app()
                       .pipe(
                         Effect.flatMap((app) =>
-                          Effect.sync(() => process.chdir(right)).pipe(Effect.zipRight(app.tooling("build"))),
+                          Effect.sync(() => process.chdir(right)).pipe(Effect.andThen(app.tooling("build"))),
                         ),
                       ),
                   ),

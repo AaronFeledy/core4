@@ -1,17 +1,6 @@
 import { expect } from "bun:test";
-import {
-  Cause,
-  Clock,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Option,
-  Stream,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import { HttpRequestError, type ScannerError } from "@lando/sdk/errors";
 import { AppId, type HttpRequest, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
@@ -26,16 +15,16 @@ import {
 import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(TestContext.TestContext)));
+  Effect.runPromise(effect.pipe(Effect.provide(TestClock.layer())));
 
 export const driveExit = <A, E>(effect: Effect.Effect<A, E, never>): Promise<Exit.Exit<A, E>> =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(TestContext.TestContext)));
+  Effect.runPromiseExit(effect.pipe(Effect.provide(TestClock.layer())));
 
 type TimedExit<A, E> = { readonly exit: Exit.Exit<A, E>; readonly elapsedMs: number };
 
 export const runExitUnderClock = <A, E>(
   effect: Effect.Effect<A, E, never>,
-  advance: Duration.DurationInput,
+  advance: Duration.Input,
 ): Promise<TimedExit<A, E>> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -44,10 +33,10 @@ export const runExitUnderClock = <A, E>(
         const exit = yield* Effect.exit(effect);
         return { exit, elapsedMs: (yield* Clock.currentTimeMillis) - started };
       });
-      const fiber = yield* Effect.fork(measured);
+      const fiber = yield* Effect.forkChild(measured);
       yield* TestClock.adjust(advance);
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestContext.TestContext)),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
 export const successOf = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -59,7 +48,7 @@ export const successOf = <A, E>(exit: Exit.Exit<A, E>): A => {
 export const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (Option.isSome(failure)) return failure.value;
   throw new Error("expected typed failure");
 };
@@ -98,13 +87,13 @@ export const endpointsOf = (
 export type ScriptedRequestResult =
   | { readonly kind: "status"; readonly status: number }
   | { readonly kind: "failure"; readonly message: string }
-  | { readonly kind: "sleep"; readonly duration: Duration.DurationInput; readonly status: number };
+  | { readonly kind: "sleep"; readonly duration: Duration.Input; readonly status: number };
 
 export const httpStatus = (status: number): ScriptedRequestResult => ({ kind: "status", status });
 
 export const httpFailure = (message: string): ScriptedRequestResult => ({ kind: "failure", message });
 
-export const httpSleep = (duration: Duration.DurationInput, status: number): ScriptedRequestResult => ({
+export const httpSleep = (duration: Duration.Input, status: number): ScriptedRequestResult => ({
   kind: "sleep",
   duration,
   status,
@@ -144,7 +133,9 @@ export const requestSequence = (
             new HttpRequestError({ message: scripted.message, urlOrigin: urlOrigin(req.url) }),
           );
         case "sleep":
-          return Effect.sleep(Duration.decode(scripted.duration)).pipe(Effect.as(response(scripted.status)));
+          return Effect.sleep(Duration.fromInputUnsafe(scripted.duration)).pipe(
+            Effect.as(response(scripted.status)),
+          );
       }
     },
   };

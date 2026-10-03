@@ -466,7 +466,7 @@ describe("tooling includes — failure modes", () => {
 
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         resolveLandofileIncludes({
           landofile: { toolingIncludes: { out: { file: outside, optional: true } } },
           appRoot,
@@ -477,10 +477,10 @@ describe("tooling includes — failure modes", () => {
     );
 
     // Then containment still fails closed before optional missing-file handling
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("LandofileIncludeError");
-      if (result.left._tag === "LandofileIncludeError") expect(result.left.kind).toBe("outside-root");
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("LandofileIncludeError");
+      if (result.failure._tag === "LandofileIncludeError") expect(result.failure.kind).toBe("outside-root");
     }
   });
 

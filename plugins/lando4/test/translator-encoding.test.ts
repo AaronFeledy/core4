@@ -62,10 +62,10 @@ describe("lando4 encoding", () => {
       parseLandofile({ file: ".lando.yml", content: result.text, cwd: "." }),
     );
     const actual = await Effect.runPromise(
-      Schema.decodeUnknown(LandofileAuthoringFragment)(parsed, { onExcessProperty: "error" }),
+      Schema.decodeUnknownEffect(LandofileAuthoringFragment)(parsed, { onExcessProperty: "error" }),
     );
     const expected = await Effect.runPromise(
-      Schema.decodeUnknown(LandofileAuthoringFragment)(COMPLETE_CONTEXT, { onExcessProperty: "error" }),
+      Schema.decodeUnknownEffect(LandofileAuthoringFragment)(COMPLETE_CONTEXT, { onExcessProperty: "error" }),
     );
     expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));
   });
@@ -87,7 +87,7 @@ describe("lando4 encoding", () => {
 
   test("agrees with the canonical serializer", () => {
     expect(emitLandofileYamlEither({ b: 1, a: 2 }, { sortKeys: true })).toEqual(
-      expect.objectContaining({ _tag: "Right" }),
+      expect.objectContaining({ _tag: "Success" }),
     );
   });
 });

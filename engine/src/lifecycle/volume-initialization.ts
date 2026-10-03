@@ -7,7 +7,7 @@ import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withVolumeCoordinationLock } from "./volume-coordination.ts";
 
 export const recordCreatedVolumes = (
-  provider: Pick<Context.Tag.Service<typeof RuntimeProvider>, "id" | "observeVolume">,
+  provider: Pick<Context.Service.Shape<typeof RuntimeProvider>, "id" | "observeVolume">,
   plan: AppPlan,
   result: ApplyResult,
 ) =>

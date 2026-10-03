@@ -116,7 +116,9 @@ export const compileToolingInvocations = (
   input: CompileToolingInput,
 ): Effect.Effect<CompiledTooling, ToolingCompileError | ToolingDisabledError | ToolingInputError> =>
   Effect.gen(function* () {
-    const normalized = yield* normalizeToolingTask(input.lookupKey, input.task, input.source);
+    const normalized = yield* Effect.fromResult(
+      normalizeToolingTask(input.lookupKey, input.task, input.source),
+    );
     if (normalized.disabled) {
       return yield* Effect.fail(
         new ToolingDisabledError({
@@ -139,12 +141,12 @@ export const compileToolingInvocations = (
       const argumentFailure = validateToolingArguments(input.name, normalized, input.args ?? []);
       if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
     }
-    const values = yield* parseToolingArgv(normalized, input.args ?? []);
+    const values = yield* Effect.fromResult(parseToolingArgv(normalized, input.args ?? []));
     const invocations = yield* Effect.forEach(
       normalized.steps,
       (step, index): Effect.Effect<ToolingInvocation, ToolingInputError> =>
         Effect.gen(function* () {
-          const service = yield* resolveServiceRef(step.service, values, normalized);
+          const service = yield* Effect.fromResult(resolveServiceRef(step.service, values, normalized));
           return stepInvocation(
             input.name,
             { ...step, ...(service === undefined ? {} : { resolvedService: service }) },

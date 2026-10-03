@@ -24,7 +24,7 @@ export const confirmOrFail = (
 ) => {
   if (input.yes) return Effect.void;
   return confirm(message).pipe(
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.catch(() => Effect.succeed(false)),
     Effect.flatMap((accepted) =>
       accepted
         ? Effect.void
@@ -51,7 +51,7 @@ export const publishTree = (
 ): Effect.Effect<SqlProgressHandle, unknown> =>
   Effect.gen(function* () {
     const startedAt = Date.now();
-    const now = DateTime.unsafeNow();
+    const now = DateTime.nowUnsafe();
     yield* publish(
       TaskTreeStartEvent.make({
         parentId: "db",
@@ -76,7 +76,7 @@ export const completeTree = (
   startedAt?: number,
 ) =>
   Effect.gen(function* () {
-    const now = DateTime.unsafeNow();
+    const now = DateTime.nowUnsafe();
     const durationMs = startedAt === undefined ? 0 : Math.max(0, Date.now() - startedAt);
     for (const step of steps) {
       yield* publish(TaskCompleteEvent.make({ taskId: step.id, durationMs, timestamp: now }));

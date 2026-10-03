@@ -44,8 +44,8 @@ export interface MkcertCertificateAuthorityOptions {
   readonly binDir: string;
   readonly certsDir: string;
   readonly toolDownloadsDir: string;
-  readonly downloader: Context.Tag.Service<typeof Downloader>;
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
+  readonly downloader: Context.Service.Shape<typeof Downloader>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
   readonly platform?: string | undefined;
   readonly arch?: string | undefined;
 }

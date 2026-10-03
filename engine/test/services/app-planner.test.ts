@@ -160,7 +160,7 @@ test("gpg opt-in fails planning without agentSocket", async () => {
   // Then
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit))
-    expect(Option.getOrUndefined(Cause.failureOption(exit.cause))).toMatchObject({
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
       _tag: "CapabilityError",
       feature: "lando.gpg-agent",
       capability: "agentSocket",
@@ -190,7 +190,7 @@ test("fails CapabilityError when host mode provider lacks agentSocket", async ()
   // Then
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) {
-    expect(Option.getOrUndefined(Cause.failureOption(exit.cause))).toMatchObject({
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toMatchObject({
       _tag: "CapabilityError",
       feature: "lando.ssh-agent",
       capability: "agentSocket",
@@ -412,7 +412,7 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
     throw new Error("Expected failure");
   }
 
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   return Option.getOrThrow(failure);
 };
@@ -2519,7 +2519,7 @@ describe("AppPlannerLive", () => {
       const appPlan = await plan(landofileFixture);
 
       const encoded = Schema.encodeSync(AppPlan)(appPlan);
-      expect(Schema.decodeUnknownEither(AppPlan)(encoded)._tag).toBe("Right");
+      expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Success");
       expect(appPlan.provider).toBe(ProviderId.make("lando"));
       expect(Object.keys(appPlan.services).sort()).toEqual(["db", "web"]);
 

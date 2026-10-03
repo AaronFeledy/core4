@@ -24,7 +24,7 @@ const appRoot = AbsolutePath.make("/tmp/lando-health-app");
 const serviceName = ServiceName.make("web");
 const target = { app: appId, service: serviceName };
 const metadata: PlanMetadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "inspect-health.test",
   runtime: 4,
 };
@@ -113,7 +113,7 @@ const apiWithHealth = (health?: string) => apiFromResponses([{ status: 200, body
 const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderUnavailableError => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) {
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag === "Some" && failure.value instanceof ProviderUnavailableError) {
       return failure.value;

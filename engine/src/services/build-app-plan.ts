@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import type { AppPlan, BuildStep, ServicePlan } from "@lando/sdk/schema";
 
@@ -6,18 +6,18 @@ import { appBuildKeyForStep } from "./build-key.ts";
 
 const ProviderCommandSpec = Schema.Struct({
   command: Schema.Array(Schema.String),
-  cwd: Schema.optional(Schema.String),
-  env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  stdin: Schema.optional(Schema.Literal("inherit", "ignore")),
-  tty: Schema.optional(Schema.Boolean),
+  cwd: Schema.optionalKey(Schema.String),
+  env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  stdin: Schema.optionalKey(Schema.Literals(["inherit", "ignore"])),
+  tty: Schema.optionalKey(Schema.Boolean),
 });
 
 const AppBuildStepIntent = Schema.Struct({
-  id: Schema.optional(Schema.String),
+  id: Schema.optionalKey(Schema.String),
   phase: Schema.String,
   command: ProviderCommandSpec,
-  dependsOn: Schema.optional(Schema.Array(Schema.String)),
-  user: Schema.optional(Schema.String),
+  dependsOn: Schema.optionalKey(Schema.Array(Schema.String)),
+  user: Schema.optionalKey(Schema.String),
 });
 type AppBuildStepIntent = typeof AppBuildStepIntent.Type;
 
@@ -38,8 +38,8 @@ const appBuildIntents = (service: ServicePlan): ReadonlyArray<AppBuildStepIntent
     if (typeof entry !== "object" || entry === null || !("phase" in entry) || entry.phase !== "app") {
       return [];
     }
-    const decoded = Schema.decodeUnknownEither(AppBuildStepIntent)(entry);
-    return Either.isRight(decoded) ? [decoded.right] : [];
+    const decoded = Schema.decodeUnknownResult(AppBuildStepIntent)(entry);
+    return Result.isSuccess(decoded) ? [decoded.success] : [];
   });
 };
 

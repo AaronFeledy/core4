@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   JSON_SCHEMA_NAMES,
@@ -506,7 +506,13 @@ const materializeJsonSchemaFixture = (root: JsonSchemaNode, node: JsonSchemaNode
   if (Array.isArray(resolved.anyOf)) return materializeJsonSchemaFixture(root, resolved.anyOf[0] ?? {}, key);
   if (Array.isArray(resolved.oneOf)) return materializeJsonSchemaFixture(root, resolved.oneOf[0] ?? {}, key);
   if (Array.isArray(resolved.allOf)) {
-    return mergeObjects(resolved.allOf.map((child) => materializeJsonSchemaFixture(root, child, key)));
+    const { allOf, ...base } = resolved;
+    const baseValue = materializeJsonSchemaFixture(root, base, key);
+    const values = allOf.map((child) => materializeJsonSchemaFixture(root, child, key));
+    if (baseValue !== null && typeof baseValue === "object" && !Array.isArray(baseValue)) {
+      return mergeObjects([baseValue, ...values]);
+    }
+    return baseValue ?? values.find((value) => value !== null) ?? null;
   }
 
   if (resolved.type === "string" || resolved.pattern !== undefined || resolved.format !== undefined) {
@@ -568,6 +574,8 @@ const recipeProvenanceFixture = {
 } as const;
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  GuideProps: {},
+  CleanupProps: {},
   RouteFilter: { type: "stripPrefix", prefix: "/api" },
   RecipeSourceKind: "bundled",
   RecipeContentDigest: `sha256:${"a".repeat(64)}`,
@@ -833,21 +841,23 @@ export const assertPublicSchemaContractCoverage = (
 
   const failingSchemas: string[] = [];
   for (const schemaName of JSON_SCHEMA_NAMES) {
-    const schema: Schema.Schema.AnyNoContext = publicSchemaRegistry[schemaName];
-    const happy = Schema.decodeUnknownEither(schema)(publicSchemaHappyPathFixture(schemaName), {
+    const schema: Schema.Codec<unknown, unknown> = Schema.make(publicSchemaRegistry[schemaName].ast);
+    const happy = Schema.decodeUnknownResult(schema)(publicSchemaHappyPathFixture(schemaName), {
       onExcessProperty: "error",
     });
-    const error = Schema.decodeUnknownEither(schema)(undefined, { onExcessProperty: "error" });
+    const error = Schema.decodeUnknownResult(schema)(undefined, { onExcessProperty: "error" });
 
-    if (Either.isLeft(happy)) failingSchemas.push(`${schemaName} happy path: ${String(happy.left)}`);
-    if (Either.isRight(error)) failingSchemas.push(`${schemaName} error path accepted undefined`);
-    if (Either.isRight(happy)) {
-      const encoded = Schema.encodeEither(schema)(happy.right);
-      if (Either.isLeft(encoded)) failingSchemas.push(`${schemaName} encode: ${String(encoded.left)}`);
-      if (Either.isRight(encoded)) {
-        const decodedAgain = Schema.decodeUnknownEither(schema)(encoded.right, { onExcessProperty: "error" });
-        if (Either.isLeft(decodedAgain))
-          failingSchemas.push(`${schemaName} decode encoded: ${String(decodedAgain.left)}`);
+    if (Result.isFailure(happy)) failingSchemas.push(`${schemaName} happy path: ${String(happy.failure)}`);
+    if (Result.isSuccess(error)) failingSchemas.push(`${schemaName} error path accepted undefined`);
+    if (Result.isSuccess(happy)) {
+      const encoded = Schema.encodeResult(schema)(happy.success);
+      if (Result.isFailure(encoded)) failingSchemas.push(`${schemaName} encode: ${String(encoded.failure)}`);
+      if (Result.isSuccess(encoded)) {
+        const decodedAgain = Schema.decodeUnknownResult(schema)(encoded.success, {
+          onExcessProperty: "error",
+        });
+        if (Result.isFailure(decodedAgain))
+          failingSchemas.push(`${schemaName} decode encoded: ${String(decodedAgain.failure)}`);
       }
     }
   }

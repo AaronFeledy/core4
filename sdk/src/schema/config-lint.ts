@@ -16,11 +16,11 @@ export const ConfigLintViolation = Schema.Struct({
   /** Human-readable description of the violation. */
   message: Schema.String,
   /** Optional remediation hint (e.g. "Remove unknown key …"). */
-  suggestedFix: Schema.optional(Schema.String),
+  suggestedFix: Schema.optionalKey(Schema.String),
   /** 1-based source line for diagnostics that can be located. */
-  line: Schema.optional(Schema.Number),
+  line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */
-  column: Schema.optional(Schema.Number),
+  column: Schema.optionalKey(Schema.Number),
 });
 export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 

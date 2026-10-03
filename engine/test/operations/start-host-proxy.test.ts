@@ -57,7 +57,7 @@ const tempDirs: string[] = [];
 const previousComposition = globalThis.__landoEngineCompositionInputs;
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00.000Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00.000Z"),
   source: "start-host-proxy.test",
   runtime: 4 as const,
 };
@@ -184,7 +184,7 @@ const expectPrepareSpy = (exit: Exit.Exit<unknown, unknown>, target: HostProxySh
   expect(Exit.isFailure(exit)).toBe(true);
   expect(prepareCalls).toEqual([target]);
   if (!Exit.isFailure(exit)) return;
-  const error = Cause.failureOption(exit.cause);
+  const error = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(error)).toBe(true);
   if (Option.isNone(error)) return;
   expect(error.value).toBeInstanceOf(HostProxyTransportUnavailableError);

@@ -19,7 +19,7 @@ export type CommandResultEnvelopeFormat = "json" | "yaml";
 
 export interface EncodeCommandResultOptions {
   readonly command: string;
-  readonly resultSchema: Schema.Schema.AnyNoContext;
+  readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly outcome: CommandResultOutcome;
   readonly redactor: Redactor;
   readonly warnings?: ReadonlyArray<CommandWarning>;
@@ -80,7 +80,7 @@ const taggedErrorJson = (
   return base;
 };
 
-const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
+const encodeResult = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
   Effect.try({
     try: () => {
       const encoded = Schema.encodeSync(schema)(value as never);
@@ -169,7 +169,7 @@ export const identityRedactor: Redactor = {
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => encodeEnvelopeLine(envelope, options.redactor, options.format)),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
         : Effect.succeed(
@@ -183,7 +183,7 @@ export const buildCommandResultEnvelope = (
 ): Effect.Effect<CommandResultEnvelope, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => Schema.decodeSync(CommandResultEnvelope)(envelope as never)),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
         : Effect.succeed(
@@ -198,7 +198,7 @@ const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<st
     catch: (error) => error,
   }).pipe(
     Effect.map((encoded) => encodeJsonLine(encoded, redactor)),
-    Effect.catchAll(() =>
+    Effect.catch(() =>
       Effect.succeed(
         encodeJsonLine(
           {
@@ -215,7 +215,7 @@ const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<st
 export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.flatMap((envelope) => encodeStreamFrame({ _tag: "result", envelope }, options.redactor)),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
         : encodeStreamFrame(

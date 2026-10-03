@@ -1,4 +1,5 @@
-import { Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
+import { Semaphore } from "effect";
+import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
@@ -30,16 +31,16 @@ export const makeTaskTreeConsumerLive = (
   raiseInterrupt: () => void,
   prefetchLiveRegion: () => void,
 ): Layer.Layer<never, never, EventService | TranscriptTailReader> =>
-  Layer.scopedDiscard(
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const transcriptReader = yield* TranscriptTailReader;
-      const semaphore = yield* Effect.makeSemaphore(1);
+      const semaphore = yield* Semaphore.make(1);
       const serialized = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
         semaphore.withPermits(1)(effect);
       const journal = outputJournalFor(io);
       const queue = yield* events.subscribeQueue;
-      const runtime = yield* Effect.runtime<never>();
+      const runtime = yield* Effect.context<never>();
       const scope = yield* Effect.scope;
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
@@ -62,7 +63,7 @@ export const makeTaskTreeConsumerLive = (
             );
       });
       const runInScope = <A, E>(effect: Effect.Effect<A, E>): void => {
-        Runtime.runFork(runtime)(
+        Effect.runForkWith(runtime)(
           Effect.forkIn(serialized(effect).pipe(Effect.ignore), scope).pipe(Effect.asVoid),
         );
       };
@@ -230,8 +231,10 @@ export const makeTaskTreeConsumerLive = (
           handleResize = () => {};
           unsubscribe?.();
           toolingStatus.stop();
-          const remaining = yield* Queue.takeAll(queue);
-          for (const event of remaining) yield* serialized(consume(event));
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
+          if (Option.isSome(remaining)) {
+            for (const event of remaining.value) yield* serialized(consume(event));
+          }
           yield* Fiber.interrupt(fiber);
           const substrate = active;
           if (substrate !== undefined) {

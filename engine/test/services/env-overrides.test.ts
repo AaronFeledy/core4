@@ -263,7 +263,7 @@ describe("notify environment overrides", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
       }
@@ -355,7 +355,7 @@ describe("router environment overrides", () => {
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
       }
@@ -423,7 +423,7 @@ describe("network inject environment overrides", () => {
 
         expect(Exit.isFailure(exit)).toBe(true);
         if (Exit.isFailure(exit)) {
-          const failure = Cause.failureOption(exit.cause);
+          const failure = Cause.findErrorOption(exit.cause);
           expect(failure._tag).toBe("Some");
           if (failure._tag === "Some") {
             expect(failure.value).toBeInstanceOf(ConfigError);
@@ -432,7 +432,7 @@ describe("network inject environment overrides", () => {
                 `Invalid ${name} value. Expected "true" or "false"; set it to one of those values or unset it.`,
               );
               expect(failure.value.path).toBe(join(dir, "config.yml"));
-              expect(failure.value.cause).toMatchObject({ _tag: "ParseError" });
+              expect(failure.value.cause).toMatchObject({ _tag: "SchemaError" });
             }
           }
         }

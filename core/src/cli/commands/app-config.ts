@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type {
   AppIdReservedError,
@@ -97,12 +97,15 @@ export const appConfigRedactionTokens = (result: unknown): ReadonlyArray<string>
 };
 
 export const AppConfigResultSchema = Schema.Struct({
-  app: Schema.optional(Schema.String),
-  source: Schema.optional(Schema.Literal("resolved")),
-  landofile: Schema.optional(LandofileShape),
-  sources: Schema.optional(
+  app: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literal("resolved")),
+  landofile: Schema.optionalKey(LandofileShape),
+  sources: Schema.optionalKey(
     Schema.Array(
-      Schema.Struct({ id: Schema.String, sha256: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u)) }),
+      Schema.Struct({
+        id: Schema.String,
+        sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
+      }),
     ),
   ),
   ...ConfigWriteResultFields,
@@ -132,7 +135,7 @@ type AppConfigError =
 
 type AppConfigServices = LandofileService | StateStore;
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" });
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, { onExcessProperty: "error" });
 
 const missingArgsError = (): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
@@ -266,8 +269,8 @@ export const appConfigSet = (
       unknown
     >;
     const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: inputPath });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
+    if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+    const next = mutation.success.next;
     const issues = decodeIssues(decodeLandofile(next));
     if (issues.length > 0) {
       return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues, path: key }));
@@ -275,13 +278,13 @@ export const appConfigSet = (
     const dryRun = options.dryRun === true;
     if (!dryRun) {
       const emitted = emitConfigYaml({ file: inputPath, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeLandofileText(inputPath, emitted.right);
+      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+      yield* writeLandofileText(inputPath, emitted.success);
     }
     return {
       subcommand: "set",
       key,
-      value: mutation.right.value,
+      value: mutation.success.value,
       filePath: inputPath,
       changed: true,
       dryRun,
@@ -310,19 +313,19 @@ export const appConfigUnset = (
       unknown
     >;
     const mutation = applyUnsetMutation({ tree, key, file: inputPath });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
+    if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+    const next = mutation.success.next;
     const issues = decodeIssues(decodeLandofile(next));
     if (issues.length > 0) {
       return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues, path: key }));
     }
     const dryRun = options.dryRun === true;
-    if (!dryRun && mutation.right.changed) {
+    if (!dryRun && mutation.success.changed) {
       const emitted = emitConfigYaml({ file: inputPath, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeLandofileText(inputPath, emitted.right);
+      if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+      yield* writeLandofileText(inputPath, emitted.success);
     }
-    return { subcommand: "unset", key, filePath: inputPath, changed: mutation.right.changed, dryRun };
+    return { subcommand: "unset", key, filePath: inputPath, changed: mutation.success.changed, dryRun };
   });
 
 export const appConfigValidate = (

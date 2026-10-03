@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
@@ -139,16 +139,16 @@ export const runTooling = (
 
     const planResult =
       target === undefined
-        ? yield* Effect.either(resolveToolingPlan({ landofile, appRoot }))
-        : ({ _tag: "Right", right: target.plan } as const);
-    if (planResult._tag === "Left") {
+        ? yield* Effect.result(resolveToolingPlan({ landofile, appRoot }))
+        : Result.succeed(target.plan);
+    if (Result.isFailure(planResult)) {
       if (appRoot !== undefined) {
         const scriptResult = yield* runBunShellTooling(options, appRoot);
         if (scriptResult !== undefined) return scriptResult;
       }
-      return yield* Effect.fail(planResult.left);
+      return yield* Effect.fail(planResult.failure);
     }
-    const plan = planResult.right;
+    const plan = planResult.success;
     const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
     const task = tooling[toolingLookupKey];
     const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
@@ -211,7 +211,7 @@ export const runTooling = (
     if (liveTree !== undefined) yield* liveTree.start;
 
     const startedAt = Date.now();
-    const exit = yield* Effect.either(
+    const exit = yield* Effect.result(
       runBracketedInvocations({
         plan,
         tool: options.name,
@@ -223,11 +223,11 @@ export const runTooling = (
     );
     const durationMs = Date.now() - startedAt;
     if (liveTree !== undefined) {
-      const exitCode = exit._tag === "Right" ? exit.right.exitCode : 1;
+      const exitCode = exit._tag === "Success" ? exit.success.exitCode : 1;
       yield* liveTree.finish(exitCode, durationMs);
     }
-    if (exit._tag === "Left") return yield* Effect.fail(exit.left);
-    const result = exit.right;
+    if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
+    const result = exit.success;
 
     if (progressEvents !== undefined && !streamedLive) {
       const redaction = yield* Effect.serviceOption(RedactionService);

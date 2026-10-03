@@ -3,7 +3,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 
-import { DateTime, Effect, FiberRef } from "effect";
+import { Context, DateTime, Effect } from "effect";
 
 import { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
@@ -26,7 +26,9 @@ export const APP_LOCK_TIMEOUT_ENV = "LANDO_APP_LOCK_TIMEOUT_MS";
 export const APP_LOCK_HOLDERS_ENV = "LANDO_APP_LOCK_HOLDERS";
 export const APP_LOCK_WAIT_MESSAGE = "another Lando command holds the app lock";
 
-const heldAppLockKeys = FiberRef.unsafeMake<ReadonlySet<string>>(new Set());
+const HeldAppLockKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldAppLockKeys", {
+  defaultValue: (): ReadonlySet<string> => new Set(),
+});
 
 export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): number => {
   const raw = env[APP_LOCK_TIMEOUT_ENV];
@@ -107,7 +109,7 @@ const isSameHolder = (key: string, lockPath: string): Effect.Effect<boolean> =>
     const record = await peekAdvisoryLockRecord(lockPath);
     if (record === null) return false;
     // Same PID is another fiber in this process: wait on the file lock.
-    // Nested same-process acquires are FiberRef no-ops before this check.
+    // Nested same-process acquires are context-reference no-ops before this check.
     if (record.pid === process.pid) return false;
     if (isAncestorPid(record.pid)) return true;
     return parseHolderEntries(process.env[APP_LOCK_HOLDERS_ENV]).some(
@@ -122,10 +124,10 @@ const announceWait = (): Effect.Effect<void> =>
     yield* events.value.publish(
       MessageWarnEvent.make({
         body: APP_LOCK_WAIT_MESSAGE,
-        timestamp: DateTime.unsafeNow(),
+        timestamp: DateTime.nowUnsafe(),
       }),
     );
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 const timeoutError = (appId: string, timeoutMs: number, cause?: unknown): AppLockTimeoutError =>
   new AppLockTimeoutError({
@@ -200,7 +202,7 @@ export const appMutationLockIdentity = (app: {
 /**
  * Acquire one per-app advisory file lock around a mutating operation.
  *
- * Reentrancy: already holding this key (in-process FiberRef, inherited
+ * Reentrancy: already holding this key (in-process context reference, inherited
  * {@link APP_LOCK_HOLDERS_ENV} token, or lock-holder PID in this process tree)
  * is a no-op acquire so a plugin/hook/helper that shells out to another `lando`
  * mutate on the same app cannot deadlock.
@@ -217,10 +219,11 @@ export const withAppMutationLock = <A, E, R>(
     const paths = yield* PathsService;
     const privateFileAccess = yield* PrivateFileAccessService;
     const { key, canonicalRoot } = yield* appMutationLockIdentity(app);
-    const held = yield* FiberRef.get(heldAppLockKeys);
-    const provided = Effect.provide(body, context).pipe(
+    const held = yield* HeldAppLockKeys;
+    const provided = body.pipe(
       Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
-      Effect.locally(heldAppLockKeys, new Set([...held, key])),
+      Effect.provideService(HeldAppLockKeys, new Set([...held, key])),
+      Effect.provide(context),
     );
     if (held.has(key)) return yield* provided;
 
@@ -264,7 +267,7 @@ export const withAppMutationLock = <A, E, R>(
                   ),
           ),
         ),
-      ({ lock, restore }) => Effect.sync(restore).pipe(Effect.zipRight(lock.release)),
+      ({ lock, restore }) => Effect.sync(restore).pipe(Effect.andThen(lock.release)),
     );
   });
 

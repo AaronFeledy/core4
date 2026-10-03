@@ -33,7 +33,7 @@ describe("bounded scanner", () => {
             body: Stream.fromEffect(
               Effect.sync(() => {
                 pulls += 1;
-              }).pipe(Effect.zipRight(Effect.never)),
+              }).pipe(Effect.andThen(Effect.never)),
             ),
           };
         }),
@@ -69,13 +69,14 @@ describe("bounded scanner", () => {
     // When: interrupt only after the request has entered its scope.
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(scanner.scan(appId));
+        const fiber = yield* Effect.forkChild(scanner.scan(appId));
         yield* Deferred.await(acquired);
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
     // Then: interruption is preserved and the request is released exactly once.
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(closed).toBe(1);
   });
 

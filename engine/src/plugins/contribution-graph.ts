@@ -1,4 +1,4 @@
-import { Context, Effect, Either, Layer, Option, Scope } from "effect";
+import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type {
@@ -6,7 +6,11 @@ import type {
   ExecutableCommandLoader,
   LandoPluginModule,
 } from "@lando/sdk/plugins";
-import type { CertificateAuthorityContribution, ResolvedPluginInput } from "@lando/sdk/schema";
+import {
+  type CertificateAuthorityContribution,
+  PluginManifest,
+  type ResolvedPluginInput,
+} from "@lando/sdk/schema";
 import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
@@ -26,7 +30,7 @@ export interface LoadedPluginContribution extends DiscoveredPlugin {
 }
 
 export type CertificateAuthorityAcquisition =
-  | { readonly kind: "service"; readonly service: Context.Tag.Service<typeof CertificateAuthority> }
+  | { readonly kind: "service"; readonly service: Context.Service.Shape<typeof CertificateAuthority> }
   | { readonly kind: "layer"; readonly layer: CertificateAuthorityContributionLayer }
   | { readonly kind: "module"; readonly module: string };
 
@@ -53,10 +57,10 @@ export interface PluginContributionGraphShape {
   readonly hostContext: Context.Context<never>;
 }
 
-export class PluginContributionGraph extends Context.Tag("@lando/core/private/PluginContributionGraph")<
+export class PluginContributionGraph extends Context.Service<
   PluginContributionGraph,
   PluginContributionGraphShape
->() {}
+>()("@lando/core/private/PluginContributionGraph") {}
 
 export interface PluginContributionGraphPolicy {
   readonly layers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
@@ -86,24 +90,45 @@ export const mergeLoadedPluginSources = (
 
 const validateResolvedPlugin = (
   input: ResolvedPluginInput,
-): Either.Either<LoadedPluginContribution, PluginCapabilityIndexError> => {
-  if (input.manifest.name !== input.entry.name || input.entry.manifest.name !== input.manifest.name) {
-    return Either.left(
+): Result.Result<LoadedPluginContribution, PluginCapabilityIndexError> => {
+  const isModule = (entry: unknown): entry is LandoPluginModule =>
+    typeof entry === "object" &&
+    entry !== null &&
+    "name" in entry &&
+    typeof entry.name === "string" &&
+    "manifest" in entry &&
+    Schema.is(PluginManifest)(entry.manifest) &&
+    (!("certificateAuthorities" in entry) || entry.certificateAuthorities instanceof Map);
+  const entry = input.entry;
+  if (!isModule(entry)) {
+    return Result.fail(
       new PluginDescriptorMismatchError({
-        pluginName: input.entry.name,
+        pluginName: input.manifest.name,
         kind: "identity",
         declared: [input.manifest.name],
-        provided: [input.entry.name, input.entry.manifest.name],
+        provided: [],
+        message: "Expected an already-loaded LandoPluginModule object.",
+        remediation: "Provide a loaded plugin descriptor alongside its resolved manifest.",
+      }),
+    );
+  }
+  if (input.manifest.name !== entry.name || entry.manifest.name !== input.manifest.name) {
+    return Result.fail(
+      new PluginDescriptorMismatchError({
+        pluginName: entry.name,
+        kind: "identity",
+        declared: [input.manifest.name],
+        provided: [entry.name, entry.manifest.name],
         message: "Pre-resolved plugin manifest and descriptor identities disagree.",
         remediation: "Use the same plugin name in the resolved manifest and LandoPluginModule descriptor.",
       }),
     );
   }
-  return Either.map(makePluginCapabilityIndex([input.entry]), () => ({
+  return Result.map(makePluginCapabilityIndex([entry]), () => ({
     source: "explicit" as const,
     manifest: input.manifest,
-    entry: input.entry,
-    module: input.entry,
+    entry,
+    module: entry,
   }));
 };
 
@@ -142,7 +167,7 @@ const commandLoaders = (plugin: LoadedPluginContribution): ReadonlyMap<string, E
 
 export const pluginCommandCandidates = (
   plugins: ReadonlyArray<LoadedPluginContribution>,
-): Either.Either<ReadonlyArray<GraphCommandCandidate>, PluginDescriptorMismatchError> => {
+): Result.Result<ReadonlyArray<GraphCommandCandidate>, PluginDescriptorMismatchError> => {
   const candidates: GraphCommandCandidate[] = [];
   const owners = new Map<string, string>();
   for (const plugin of plugins) {
@@ -153,7 +178,7 @@ export const pluginCommandCandidates = (
     const provided = [...loaders.keys()];
     const declaredIds = new Set(declared);
     if (provided.some((id) => !declaredIds.has(id))) {
-      return Either.left(
+      return Result.fail(
         new PluginDescriptorMismatchError({
           pluginName: String(plugin.manifest.name),
           kind: "commands",
@@ -167,7 +192,7 @@ export const pluginCommandCandidates = (
     for (const [id, load] of loaders) {
       const owner = owners.get(id);
       if (owner !== undefined) {
-        return Either.left(
+        return Result.fail(
           new PluginDescriptorMismatchError({
             pluginName: String(plugin.manifest.name),
             kind: "commands",
@@ -182,7 +207,7 @@ export const pluginCommandCandidates = (
       candidates.push({ id, pluginName: String(plugin.manifest.name), source: plugin.source, load });
     }
   }
-  return Either.right(candidates);
+  return Result.succeed(candidates);
 };
 
 const bootstrapFailure = (message: string, cause: unknown) =>
@@ -192,7 +217,7 @@ export const makePluginContributionGraphLive = (
   policy: PluginContributionGraphPolicy,
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
 ) =>
-  Layer.scopedContext(
+  Layer.effectContext(
     Effect.gen(function* () {
       const paths = yield* PathsService;
       const loggerOption = yield* Effect.serviceOption(Logger);
@@ -238,9 +263,9 @@ export const makePluginContributionGraphLive = (
           ? []
           : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
       const explicit = yield* Effect.forEach(policy.manifests, (input) =>
-        Either.match(validateResolvedPlugin(input), {
-          onLeft: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-          onRight: Effect.succeed,
+        Result.match(validateResolvedPlugin(input), {
+          onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+          onSuccess: Effect.succeed,
         }),
       );
       const globalPlugins = mergeLoadedPluginSources(
@@ -251,9 +276,9 @@ export const makePluginContributionGraphLive = (
         [bundled, system, user, app, explicit],
         policy.discovery.disable,
       );
-      const commands = yield* Either.match(pluginCommandCandidates(merged), {
-        onLeft: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-        onRight: Effect.succeed,
+      const commands = yield* Result.match(pluginCommandCandidates(merged), {
+        onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+        onSuccess: Effect.succeed,
       });
       const graph: PluginContributionGraphShape = {
         plugins: merged,
@@ -269,7 +294,7 @@ export const makePluginContributionGraphLive = (
 export const withPluginLayerOverrides = <A, E, R>(
   runtimeLayer: Layer.Layer<A | PluginContributionGraph, E, R>,
 ): Layer.Layer<A | PluginContributionGraph, E, R> => {
-  const hostOverrides = Layer.scopedContext(
+  const hostOverrides = Layer.effectContext(
     Effect.map(PluginContributionGraph, (graph) => graph.hostContext),
   ).pipe(Layer.provide(runtimeLayer));
   return Layer.merge(runtimeLayer, hostOverrides);

@@ -26,7 +26,7 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("us586-verify-lando");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "destroy-forgets-applied-plans.test",
   runtime: 4 as const,
 };

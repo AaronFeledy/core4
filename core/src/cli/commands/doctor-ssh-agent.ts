@@ -15,7 +15,7 @@ import {
   RuntimeProviderRegistry,
   type SshService,
 } from "@lando/sdk/services";
-import { Effect, Either, Option } from "effect";
+import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
@@ -24,7 +24,7 @@ type Details = typeof SshAgentPostureDetails.Type;
 
 export interface SshAgentDoctorOptions {
   readonly globalConfig?: Pick<GlobalConfig, "sshAgent" | "gpgAgent"> | undefined;
-  readonly gpgRunner?: Pick<ProcessRunner["Type"], "run">;
+  readonly gpgRunner?: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
   readonly platform?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly discovery?: Partial<Pick<HostAgentDiscoveryOptions, "home" | "exists" | "runGpgconf">>;
@@ -33,17 +33,20 @@ export interface SshAgentDoctorOptions {
 }
 
 export const sshAgentPostureCheck = (
-  input: SshAgentDoctorOptions & { readonly sshService: SshService["Type"]; readonly fix?: boolean },
+  input: SshAgentDoctorOptions & {
+    readonly sshService: Context.Service.Shape<typeof SshService>;
+    readonly fix?: boolean;
+  },
 ): Effect.Effect<DoctorSubsystemCheck> =>
   Effect.gen(function* () {
     const config = yield* Effect.serviceOption(ConfigService);
     const sshAgent =
       input.globalConfig === undefined && Option.isSome(config)
-        ? yield* config.value.get("sshAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        ? yield* config.value.get("sshAgent").pipe(Effect.catch(() => Effect.succeed(undefined)))
         : input.globalConfig?.sshAgent;
     const landofiles = yield* Effect.serviceOption(LandofileService);
     const landofile = Option.isSome(landofiles)
-      ? yield* loadUserLandofile(landofiles.value).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      ? yield* loadUserLandofile(landofiles.value).pipe(Effect.catch(() => Effect.succeed(undefined)))
       : undefined;
     const intent = resolveSshAgentIntent({
       landofile: landofile ?? {},
@@ -53,7 +56,7 @@ export const sshAgentPostureCheck = (
     const capabilities =
       input.capabilities ??
       (Option.isSome(registry)
-        ? yield* registry.value.capabilities.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        ? yield* registry.value.capabilities.pipe(Effect.catch(() => Effect.succeed(undefined)))
         : undefined);
     let delivery: Details["delivery"] = capabilities?.agentSocket?.delivery ?? "none";
     let runtimeVolume: string | undefined;
@@ -80,11 +83,11 @@ export const sshAgentPostureCheck = (
             return { source: "sidecar" as const, reachable: yield* runtimeSshAgentReady };
           }
           const upstream = { _tag: "unix" as const, path: socket.socketPath };
-          const probed = yield* Effect.either(probeAgent(upstream));
+          const probed = yield* Effect.result(probeAgent(upstream));
           return {
             source: "sidecar" as const,
-            reachable: probed._tag === "Right",
-            ...(probed._tag === "Right" ? { identities: probed.right.identities } : {}),
+            reachable: probed._tag === "Success",
+            ...(probed._tag === "Success" ? { identities: probed.success.identities } : {}),
           } satisfies Details["upstream"];
         }
         case "host": {
@@ -109,7 +112,7 @@ export const sshAgentPostureCheck = (
           return intent.mode satisfies never;
       }
     }).pipe(
-      Effect.catchAll(() =>
+      Effect.catch(() =>
         Effect.succeed({
           source: intent.mode === "sidecar" ? "sidecar" : "none",
           reachable: false,
@@ -124,9 +127,9 @@ export const sshAgentPostureCheck = (
           fixContext.fixOutcome = "skipped-manual";
           break;
         case "sidecar": {
-          const setup = yield* Effect.either(input.sshService.setup({ force: false }));
-          if (Either.isRight(setup)) upstream = yield* inspect;
-          const recovered = Either.isRight(setup) && upstream.reachable && delivery !== "none";
+          const setup = yield* Effect.result(input.sshService.setup({ force: false }));
+          if (Result.isSuccess(setup)) upstream = yield* inspect;
+          const recovered = Result.isSuccess(setup) && upstream.reachable && delivery !== "none";
           fixContext.fixOutcome = recovered ? "recovered" : "failed";
           fixContext.fixCommand = "ssh.setup";
           fixContext.fixExitCode = recovered ? "0" : "1";
@@ -159,7 +162,7 @@ export const sshAgentPostureCheck = (
     })();
     const configuredGpg =
       input.globalConfig === undefined && Option.isSome(config)
-        ? yield* config.value.get("gpgAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        ? yield* config.value.get("gpgAgent").pipe(Effect.catch(() => Effect.succeed(undefined)))
         : input.globalConfig?.gpgAgent;
     const gpg = yield* gpgAgentPostureDetail({
       landofile: landofile ?? {},

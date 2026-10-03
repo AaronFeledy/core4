@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Context, Effect, Either, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -32,8 +32,8 @@ interface PluginRegistryDiscoveryOptions {
 }
 
 interface PluginRegistryServices {
-  readonly registry: Context.Tag.Service<typeof PluginRegistry>;
-  readonly globalManifests: Context.Tag.Service<typeof GlobalPluginManifests>;
+  readonly registry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly globalManifests: Context.Service.Shape<typeof GlobalPluginManifests>;
 }
 
 interface PluginRegistryInput {
@@ -45,8 +45,8 @@ interface PluginRegistryInput {
 }
 
 const makePluginRegistry = (
-  configService: Context.Tag.Service<typeof ConfigService> | undefined,
-  logger: Context.Tag.Service<typeof Logger> | undefined,
+  configService: Context.Service.Shape<typeof ConfigService> | undefined,
+  logger: Context.Service.Shape<typeof Logger> | undefined,
   input: PluginRegistryInput,
 ): PluginRegistryServices => {
   const { capabilities, discovery } = input;
@@ -57,7 +57,7 @@ const makePluginRegistry = (
     const userDataRoot =
       configService === undefined
         ? resolveUserDataRoot()
-        : yield* configService.get("userDataRoot").pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+        : yield* configService.get("userDataRoot").pipe(Effect.catch(() => Effect.succeed(undefined)));
     const userPlugins =
       discovery.user === false || userDataRoot === undefined
         ? []
@@ -83,7 +83,7 @@ const makePluginRegistry = (
     ),
   );
 
-  const registry: Context.Tag.Service<typeof PluginRegistry> = {
+  const registry: Context.Service.Shape<typeof PluginRegistry> = {
     list: discover,
     load: (name) =>
       Effect.gen(function* () {
@@ -195,9 +195,9 @@ export const makePluginRegistryLive = (
           (module) => !(discovery.disable ?? []).includes(module.manifest.name),
         );
       }
-      const capabilities = yield* Either.match(makePluginCapabilityIndex(enabledModules), {
-        onLeft: (error) => Effect.fail(error),
-        onRight: (index) => Effect.succeed(index),
+      const capabilities = yield* Result.match(makePluginCapabilityIndex(enabledModules), {
+        onFailure: (error) => Effect.fail(error),
+        onSuccess: (index) => Effect.succeed(index),
       }).pipe(Effect.orDie);
       const services = makePluginRegistry(
         configService._tag === "Some" ? configService.value : undefined,

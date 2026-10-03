@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, TestClock, TestContext } from "effect";
+import { Effect, Fiber, Option } from "effect";
+import { TestClock } from "effect/testing";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 
@@ -134,14 +135,14 @@ describe("makeStdioMcpTransport inbound framing limits", () => {
     const completion = await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* makeStdioMcpTransport({ catalog, input, write: () => Effect.void });
-        const receiveFiber = yield* transport.receive.pipe(Effect.fork);
+        const receiveFiber = yield* transport.receive.pipe(Effect.forkChild);
         yield* Effect.promise(() => chunkRead.promise);
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         yield* TestClock.adjust("5 seconds");
-        const poll = yield* Fiber.poll(receiveFiber);
+        const poll = Option.fromNullishOr(receiveFiber.pollUnsafe());
         yield* Fiber.interrupt(receiveFiber);
         return poll;
-      }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
     );
 
     // Then
@@ -163,17 +164,17 @@ describe("makeStdioMcpTransport inbound framing limits", () => {
     const completion = await Effect.runPromise(
       Effect.gen(function* () {
         const transport = yield* makeStdioMcpTransport({ catalog, input, write: () => Effect.void });
-        const receiveFiber = yield* transport.receive.pipe(Effect.fork);
+        const receiveFiber = yield* transport.receive.pipe(Effect.forkChild);
         inputController.enqueue(encoder.encode('{"jsonrpc":"2.0"'));
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         yield* TestClock.adjust("4 seconds");
         inputController.enqueue(encoder.encode(',"id":15'));
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         yield* TestClock.adjust("1 second");
-        const poll = yield* Fiber.poll(receiveFiber);
+        const poll = Option.fromNullishOr(receiveFiber.pollUnsafe());
         yield* Fiber.interrupt(receiveFiber);
         return poll;
-      }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
     );
 
     // Then

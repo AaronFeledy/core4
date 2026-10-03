@@ -29,7 +29,7 @@ export const encodeStdioReply = (
 
   return message.pipe(
     Effect.flatMap((output) => stringifyBoundedJson(output, "MCP JSON-RPC response")),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       stringifyBoundedJson(serializationErrorResponse(jsonrpcId, error), "MCP JSON-RPC error response"),
     ),
   );

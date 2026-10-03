@@ -10,7 +10,7 @@ import type {
 interface ActiveTranscriptTail {
   readonly generation: number;
   readonly taskId: string;
-  readonly scope: Scope.CloseableScope;
+  readonly scope: Scope.Closeable;
   readonly session: TranscriptTailSession;
 }
 

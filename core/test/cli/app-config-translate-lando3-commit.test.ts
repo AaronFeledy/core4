@@ -36,7 +36,7 @@ test("full write folds recipe content and backs up every overwritten or removed 
       await Effect.runPromise(
         parseLandofile({ file, content, cwd: root }).pipe(
           Effect.flatMap((value) =>
-            Schema.decodeUnknown(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
+            Schema.decodeUnknownEffect(LandofileAuthoringFragment)(value, { onExcessProperty: "error" }),
           ),
         ),
       );
@@ -75,7 +75,7 @@ test.each(boundaries)("recovers the entire set after %s/%i", (point, index) =>
       }),
     );
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ConfigTranslateError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigTranslateError" } });
     await Effect.runPromise(
       makeManagedFileTransactionGuard({
         journalRoot,
@@ -105,7 +105,7 @@ test.each([
           transactionCheckpoint: (at) => (at === "prepared" ? Effect.fail("interrupted") : Effect.void),
         }),
       ),
-    ).toMatchObject({ _tag: "Left" });
+    ).toMatchObject({ _tag: "Failure" });
     // When
     const recovery = makeManagedFileTransactions({
       journalRoot,
@@ -114,7 +114,7 @@ test.each([
     });
     const result = await failure(recovery.ensureConsistent(root));
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ManagedFileTransactionError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ManagedFileTransactionError" } });
     await Effect.runPromise(
       makeManagedFileTransactionGuard({
         journalRoot,

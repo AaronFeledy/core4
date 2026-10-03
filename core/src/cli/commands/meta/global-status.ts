@@ -45,7 +45,7 @@ export const GlobalStatusServiceSchema = Schema.Struct({
   type: Schema.String,
   provider: Schema.String,
   primary: Schema.Boolean,
-  status: Schema.Literal("unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"),
+  status: Schema.Literals(["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"]),
   endpoints: Schema.Array(Schema.String),
 });
 
@@ -226,7 +226,7 @@ export const globalStatus = (
               status === "stopped" ? [] : publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
           };
         }),
-        Effect.catchAll(() => Effect.succeed(degraded(service))),
+        Effect.catch(() => Effect.succeed(degraded(service))),
       );
 
     const selected = yield* selectedServices(loaded.plan, options.services);
