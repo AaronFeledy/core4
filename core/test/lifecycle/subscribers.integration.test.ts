@@ -648,11 +648,11 @@ describe("subscriber runtime integration", () => {
         Effect.gen(function* () {
           const events = yield* EventService;
           const redaction = yield* RedactionService;
-          const config: McpRuntimeConfigShape = {
+          const config: McpRuntimeConfigShape = McpRuntimeConfig.of({
             commandEntries: [{ spec: versionSpec }],
             defaultAllowlist: [versionSpec.id],
             runtimeLayer: Layer.succeed(EventService, events),
-          };
+          });
           const mcpLayer = mcpServiceLayer.pipe(
             Layer.provide(
               Layer.mergeAll(

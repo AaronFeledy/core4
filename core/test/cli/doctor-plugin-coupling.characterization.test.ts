@@ -44,10 +44,10 @@ const buildConfigService = (
     ...overrides,
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const slowBindMountProvider = { ...TestRuntimeProvider, id: "lando" as const };
@@ -55,11 +55,12 @@ Object.assign(slowBindMountProvider, {
   capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
 });
 
-const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
-  list: Effect.succeed([ProviderId.make(provider.id)]),
-  capabilities: Effect.succeed(provider.capabilities),
-  select: () => Effect.succeed(provider),
-});
+const buildRegistry = (provider: typeof TestRuntimeProvider) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
 
 const runDoctorWithUserDataRoot = (userDataRoot: string) =>
   Effect.runPromise(
@@ -67,7 +68,10 @@ const runDoctorWithUserDataRoot = (userDataRoot: string) =>
       Effect.provide(
         Layer.mergeAll(
           Layer.succeed(RuntimeProviderRegistry, buildRegistry(slowBindMountProvider)),
-          Layer.succeed(ConfigService, buildConfigService({ userDataRoot: AbsolutePath.make(userDataRoot) })),
+          Layer.succeed(
+            ConfigService,
+            ConfigService.of(buildConfigService({ userDataRoot: AbsolutePath.make(userDataRoot) })),
+          ),
           Layer.succeed(PathsService, makeLandoPaths({ userDataRoot, platform: "linux", env: {} })),
         ),
       ),
@@ -221,14 +225,14 @@ describe("doctor() provider-conflict short-circuit (contract: a detected conflic
       const socket = "/run/user/1000/podman/podman.sock";
       await writeProviderLandoState(dataRoot, socket);
 
-      const registryThatMustNotConstruct = {
+      const registryThatMustNotConstruct = RuntimeProviderRegistry.of({
         list: Effect.succeed([ProviderId.make("podman")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () =>
           Effect.die(
             "registry.select() must not be called: a provider conflict was already detected for this id",
           ),
-      };
+      });
 
       const result = await Effect.runPromise(
         doctor({
@@ -238,7 +242,10 @@ describe("doctor() provider-conflict short-circuit (contract: a detected conflic
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(RuntimeProviderRegistry, registryThatMustNotConstruct),
-              Layer.succeed(ConfigService, buildConfigService({ userDataRoot: AbsolutePath.make(dataRoot) })),
+              Layer.succeed(
+                ConfigService,
+                ConfigService.of(buildConfigService({ userDataRoot: AbsolutePath.make(dataRoot) })),
+              ),
               Layer.succeed(
                 PathsService,
                 makeLandoPaths({ userDataRoot: dataRoot, platform: "linux", env: {} }),

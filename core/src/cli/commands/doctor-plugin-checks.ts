@@ -85,79 +85,78 @@ const PLUGIN_INDEX_REMEDIATION: DoctorSelfSolution = {
     "Plugin doctor contributions could not be indexed, so no plugin checks ran. Inspect installed plugins with `lando plugin list` and remove the conflicting one.",
 };
 
-export const pluginDoctorReports = (
+export const pluginDoctorReports = Effect.fnUntraced(function* (
   modules: ReadonlyArray<LandoPluginModule>,
   input: PluginDoctorInput,
   redactor: Redactor,
   budgetMs: number,
-): Effect.Effect<PluginDoctorRunOutcome, never> =>
-  Effect.gen(function* () {
-    const index = makePluginCapabilityIndex(modules);
-    if (Result.isFailure(index)) {
-      const described = describeDoctorFailure(index.failure);
-      return {
-        reports: [],
-        selfChecks: [
-          doctorSelfCheck({
-            section: "plugin-doctor-checks",
-            reason: "failure",
-            message: redactDoctorMessage(described.message, redactor.redactString),
-            ...(described.tag === undefined ? {} : { tag: described.tag }),
-            solutions: [PLUGIN_INDEX_REMEDIATION],
-          }),
-        ],
-      };
-    }
+): Effect.fn.Return<PluginDoctorRunOutcome, never> {
+  const index = makePluginCapabilityIndex(modules);
+  if (Result.isFailure(index)) {
+    const described = describeDoctorFailure(index.failure);
+    return {
+      reports: [],
+      selfChecks: [
+        doctorSelfCheck({
+          section: "plugin-doctor-checks",
+          reason: "failure",
+          message: redactDoctorMessage(described.message, redactor.redactString),
+          ...(described.tag === undefined ? {} : { tag: described.tag }),
+          solutions: [PLUGIN_INDEX_REMEDIATION],
+        }),
+      ],
+    };
+  }
 
-    const isolated = yield* Effect.forEach(
-      index.success.doctorChecks.entries(),
-      ([id, check]) =>
-        isolateDoctorSection({
-          section: `plugin-check:${id}`,
-          // Suspended so a synchronous throw while *building* the effect is
-          // attributed to the plugin rather than escaping the isolate.
-          effect: Effect.suspend(() => check.run(input)).pipe(
-            Effect.flatMap((reports) =>
-              Schema.decodeUnknownEffect(PluginDoctorReports, { onExcessProperty: "error" })(reports).pipe(
-                Effect.map((decoded) =>
-                  decoded.map((report) =>
-                    redactor.redactValue({
-                      ...report,
-                      context: Object.fromEntries(
-                        Object.entries(report.context).map(([key, value]) => [
-                          redactor.redactString(key),
-                          value,
-                        ]),
-                      ),
-                    }),
-                  ),
+  const isolated = yield* Effect.forEach(
+    index.success.doctorChecks.entries(),
+    ([id, check]) =>
+      isolateDoctorSection({
+        section: `plugin-check:${id}`,
+        // Suspended so a synchronous throw while *building* the effect is
+        // attributed to the plugin rather than escaping the isolate.
+        effect: Effect.suspend(() => check.run(input)).pipe(
+          Effect.flatMap((reports) =>
+            Schema.decodeUnknownEffect(PluginDoctorReports, { onExcessProperty: "error" })(reports).pipe(
+              Effect.map((decoded) =>
+                decoded.map((report) =>
+                  redactor.redactValue({
+                    ...report,
+                    context: Object.fromEntries(
+                      Object.entries(report.context).map(([key, value]) => [
+                        redactor.redactString(key),
+                        value,
+                      ]),
+                    ),
+                  }),
                 ),
-                Effect.flatMap(Schema.decodeUnknownEffect(PluginDoctorReports)),
-                Effect.mapError(
-                  () =>
-                    new PluginDoctorReportInvalidError({
-                      message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,
-                    }),
-                ),
+              ),
+              Effect.flatMap(Schema.decodeUnknownEffect(PluginDoctorReports)),
+              Effect.mapError(
+                () =>
+                  new PluginDoctorReportInvalidError({
+                    message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,
+                  }),
               ),
             ),
           ),
-          fallback: [] as ReadonlyArray<PluginDoctorReport>,
-          budgetMs,
-          redact: redactor.redactString,
-          context: { checkId: id },
-          solutions: [PLUGIN_CHECK_REMEDIATION],
-        }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
-      { concurrency: "unbounded" },
-    );
+        ),
+        fallback: [] as ReadonlyArray<PluginDoctorReport>,
+        budgetMs,
+        redact: redactor.redactString,
+        context: { checkId: id },
+        solutions: [PLUGIN_CHECK_REMEDIATION],
+      }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
+    { concurrency: "unbounded" },
+  );
 
-    return {
-      reports: isolated.flatMap((entry) =>
-        entry.outcome.value.map((report) => ({ report, relevant: entry.relevant })),
-      ),
-      selfChecks: isolated.flatMap((entry) => (entry.outcome.self === undefined ? [] : [entry.outcome.self])),
-    };
-  });
+  return {
+    reports: isolated.flatMap((entry) =>
+      entry.outcome.value.map((report) => ({ report, relevant: entry.relevant })),
+    ),
+    selfChecks: isolated.flatMap((entry) => (entry.outcome.self === undefined ? [] : [entry.outcome.self])),
+  };
+});
 
 /**
  * A plugin's `relevant` predicate is untrusted host code called outside the

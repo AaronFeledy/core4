@@ -21,7 +21,7 @@ const SYSTEM_CA_SAMPLE = "-----BEGIN CERTIFICATE-----\nSYSTEM-ROOT-SAMPLE\n-----
 const withPolicy = <A, E, R>(
   policy: HttpClientContractRequestPolicy,
   effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> => effect.pipe(Effect.provideService(RequestPolicy, policy));
+): Effect.Effect<A, E, R> => effect.pipe(Effect.provideService(RequestPolicy, RequestPolicy.of(policy)));
 
 const originOf = (url: string): string => {
   try {
@@ -144,14 +144,17 @@ describe("HttpClient contract suite", () => {
       return Promise.resolve(new Response(body, { status: 200 }));
     }) as unknown as typeof fetch;
 
-    const eventLayer = Layer.succeed(EventService, {
-      publish: (event: LandoEvent) => Effect.sync(() => void events.push(event)),
-      subscribe: () => Stream.empty,
-      subscribeQueue: undefined,
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    } as never);
+    const eventLayer = Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event: LandoEvent) => Effect.sync(() => void events.push(event)),
+        subscribe: () => Stream.empty,
+        subscribeQueue: undefined,
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      } as never),
+    );
 
     const layer = layerWith({
       fetch: fetchImpl,
@@ -190,7 +193,8 @@ describe("HttpClient contract suite", () => {
           caPems: input.caPems,
           trustHost: input.trustHost ?? true,
         }),
-        withTrust: (trust, effect) => effect.pipe(Effect.provideService(NetworkTrust, trust)),
+        withTrust: (trust, effect) =>
+          effect.pipe(Effect.provideService(NetworkTrust, NetworkTrust.of(trust))),
         lastInit: () => Effect.sync(() => lastInit),
         systemCaSample: SYSTEM_CA_SAMPLE,
       },
@@ -209,19 +213,17 @@ describe("HttpClient contract suite", () => {
         connectCount: () => Effect.sync(() => connectCount),
       },
       interruption: {
-        run: () =>
-          Effect.gen(function* () {
-            const response = yield* service.get("https://contract.test/interrupt.bin");
-            return yield* Stream.runDrain(response.stream);
-          }),
+        run: Effect.fnUntraced(function* () {
+          const response = yield* service.get("https://contract.test/interrupt.bin");
+          return yield* Stream.runDrain(response.stream);
+        }),
         finalized: () => Effect.sync(() => interruptSignal?.aborted === true && interruptAborted),
       },
       timeout: {
-        run: (timeoutMs) =>
-          Effect.gen(function* () {
-            const response = yield* service.get("https://contract.test/timeout-hang.bin");
-            return yield* Stream.runDrain(response.stream).pipe(Effect.timeout(Duration.millis(timeoutMs)));
-          }),
+        run: Effect.fnUntraced(function* (timeoutMs) {
+          const response = yield* service.get("https://contract.test/timeout-hang.bin");
+          return yield* Stream.runDrain(response.stream).pipe(Effect.timeout(Duration.millis(timeoutMs)));
+        }),
         reaped: () => Effect.sync(() => timeoutSignal?.aborted === true && timeoutAborted),
       },
     };

@@ -375,12 +375,11 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
 });
 
 describe("lando renderer (TTY vs non-TTY selection)", () => {
-  const drive = (events: ReadonlyArray<LandoEvent>) =>
-    Effect.gen(function* () {
-      const svc = yield* EventService;
-      for (const event of events) yield* svc.publish(event);
-      yield* Effect.sleep("20 millis");
-    });
+  const drive = Effect.fnUntraced(function* (events: ReadonlyArray<LandoEvent>) {
+    const svc = yield* EventService;
+    for (const event of events) yield* svc.publish(event);
+    yield* Effect.sleep("20 millis");
+  });
 
   test("non-TTY IO falls back to one plain line per renderable event", async () => {
     const io = createBufferedRendererIO();

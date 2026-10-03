@@ -8,12 +8,16 @@ export interface HostDnsResolverShape {
 
 export class HostDnsResolver extends Context.Service<HostDnsResolver, HostDnsResolverShape>()(
   "@lando/core/HostDnsResolver",
-) {}
-
-export const HostDnsResolverLive = Layer.succeed(HostDnsResolver, {
-  lookup: (hostname) =>
-    Effect.tryPromise({
-      try: async () => (await lookup(hostname, { all: true })).map((entry) => entry.address),
-      catch: () => new Error("Host DNS lookup failed."),
+) {
+  static readonly layer = Layer.succeed(
+    this,
+    this.of({
+      lookup: Effect.fn("HostDnsResolver.lookup")((hostname: string) =>
+        Effect.tryPromise({
+          try: async () => (await lookup(hostname, { all: true })).map((entry) => entry.address),
+          catch: () => new Error("Host DNS lookup failed."),
+        }),
+      ),
     }),
-});
+  );
+}

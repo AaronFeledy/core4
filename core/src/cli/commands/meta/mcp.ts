@@ -227,16 +227,15 @@ const resolveRegistryForEffectiveOptions = (
 ): Effect.Effect<McpCommandRegistry, never, never> =>
   options.tooling === true ? resolveToolingRegistry(registry, runtimeLayer) : Effect.succeed(registry);
 
-const resolveRegistryForCommand = (
+const resolveRegistryForCommand = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.Effect<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> =>
-  Effect.gen(function* () {
-    const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
-    const options = resolveMcpOptions(flags, config);
-    return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
-  });
+): Effect.fn.Return<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> {
+  const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
+  const options = resolveMcpOptions(flags, config);
+  return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
+});
 
 /**
  * Compose CLI flags with global `mcp.*` config. Deny is unioned here and wins
@@ -285,16 +284,15 @@ export const validateMcpAllowlistIds = (
   return Effect.void;
 };
 
-const resolveOptions = (
+const resolveOptions = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.Effect<ResolvedMcpOptions, ConfigError | McpToolInputError, ConfigService> =>
-  Effect.gen(function* () {
-    const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
-    const options = resolveMcpOptions(flags, config);
-    yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
-    return options;
-  });
+): Effect.fn.Return<ResolvedMcpOptions, ConfigError | McpToolInputError, ConfigService> {
+  const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
+  const options = resolveMcpOptions(flags, config);
+  yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
+  return options;
+});
 
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
@@ -307,21 +305,20 @@ export const buildMcpRuntimeConfig = (
   resources,
 });
 
-export const mcpListResult = (
+export const mcpListResult = Effect.fn("Mcp.list")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.Effect<McpListResult, ConfigError | McpToolInputError, ConfigService> =>
-  Effect.gen(function* () {
-    const options = yield* resolveOptions(registry, flags);
-    return buildMcpListResult({
-      defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
-      commandEntries: registry.commandEntries,
-      ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
-      allow: options.allow,
-      deny: options.deny,
-      tooling: options.tooling,
-    });
+): Effect.fn.Return<McpListResult, ConfigError | McpToolInputError, ConfigService> {
+  const options = yield* resolveOptions(registry, flags);
+  return buildMcpListResult({
+    defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
+    commandEntries: registry.commandEntries,
+    ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
+    allow: options.allow,
+    deny: options.deny,
+    tooling: options.tooling,
   });
+});
 
 /**
  * Serve MCP over stdio until the transport closes (stdin EOF). Constructs
@@ -329,39 +326,38 @@ export const mcpListResult = (
  * dispatch loop. Emits no command-result envelope on the protocol stream;
  * startup validation failures still surface as one failure envelope.
  */
-export const serveMcp = (
+export const serveMcp = Effect.fn("Mcp.serve")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.Effect<
+): Effect.fn.Return<
   void,
   ConfigError | McpToolInputError | McpTransportError,
   ConfigService | RedactionService
-> =>
-  Effect.gen(function* () {
-    const options = yield* resolveOptions(registry, flags);
-    const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
-    const catalogOptions = {
-      allow: options.allow,
-      deny: options.deny,
-      tooling: options.tooling,
-    };
-    yield* Effect.gen(function* () {
-      const service = yield* McpService;
-      yield* service
-        .serve({
-          transport: "stdio",
-          cwd: process.cwd(),
-          ...catalogOptions,
-          ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
-        })
-        .pipe(Effect.provide(RendererStdio.layer));
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(serviceLayer),
-      Effect.provideService(McpRuntimeConfig, runtimeConfig),
-    );
-  });
+> {
+  const options = yield* resolveOptions(registry, flags);
+  const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
+  const catalogOptions = {
+    allow: options.allow,
+    deny: options.deny,
+    tooling: options.tooling,
+  };
+  yield* Effect.gen(function* () {
+    const service = yield* McpService;
+    yield* service
+      .serve({
+        transport: "stdio",
+        cwd: process.cwd(),
+        ...catalogOptions,
+        ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
+      })
+      .pipe(Effect.provide(RendererStdio.layer));
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(serviceLayer),
+    Effect.provideService(McpRuntimeConfig, runtimeConfig),
+  );
+});
 
 export const dispatchMcpCommand = async (params: {
   readonly flags: McpCommandFlags;

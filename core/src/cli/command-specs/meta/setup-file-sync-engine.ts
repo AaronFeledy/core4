@@ -9,7 +9,7 @@ import * as BundledFileSyncEngine from "@lando/engine/plugins/file-sync-from-mod
  * The bundled descriptor index validates this concrete engine before exposing it;
  * its construction requirements are the provider-bootstrap paths and downloader.
  */
-export const SetupFileSyncEngineLive = BundledFileSyncEngine.layer as Layer.Layer<
+export const layer = BundledFileSyncEngine.layer as Layer.Layer<
   FileSyncEngine,
   unknown,
   PathsService | Downloader

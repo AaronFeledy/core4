@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/core/testing` no longer re-exports `makeJsonRendererLive`. It exports the renderer runtime as the `RendererRuntime` namespace; use `RendererRuntime.layerJson(io)` (the other renderer layers are `layerPlain`, `layerPlainTaskDetail`, `layerJsonNotification`, `layerVerbose`, and the `layer*Service` variants). `renderPlain` stays a named export. No other `@lando/core/testing` export is renamed or removed.
+
 - The erased SDK service exports `HttpClientShape` and `HttpClientError` are removed alongside the SDK `HttpClient` tag. Use `HttpClient.HttpClient` from `effect/http/HttpClient` and `HttpClientError.HttpClientError` from `effect/http/HttpClientError`. The HTTP implementation package replaces `HttpClientLive` / `makeHttpClientLive` with `layer` / `layerWith`, and `DownloaderLive` with `layer` on its downloader subpath; the old service and timeout subpaths are removed.
 
 - SDK service contracts now declare their shapes inline; existing `*Shape` exports remain as inferred service-type aliases, except `EventServiceShape` and `FileSyncEngineShape`, whose recursive contracts require interfaces. Public tag ids, method signatures, and export names are unchanged. `VerifiedStreamError` uses `Schema.TaggedError` with the same tag and fields. Secret redactor factory results add Effect `Redactable` and safe JSON/string/inspection representations; their redaction methods retain existing behavior and no public export is renamed or removed.

@@ -39,13 +39,16 @@ import { TestRouterService } from "@lando/sdk/test";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
 const testProviderLayers = [
-  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
-  }),
-  Layer.succeed(RouterService, TestRouterService),
+  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    }),
+  ),
+  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
 ];
 
 // A single `redis` service keeps the plan route-free (tcp endpoint), so
@@ -134,13 +137,12 @@ const makeTrackingFileSyncEngine = (): {
     },
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    createSession: (spec: FileSyncSessionSpec) =>
-      Effect.gen(function* () {
-        const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
-        sessions.set(ref, spec);
-        yield* Effect.addFinalizer(() => Effect.sync(() => sessions.delete(ref)));
-        return ref;
-      }),
+    createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+      const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+      sessions.set(ref, spec);
+      yield* Effect.addFinalizer(() => Effect.sync(() => sessions.delete(ref)));
+      return ref;
+    }),
     flushSession: () => Effect.void,
     pauseSession: () => Effect.void,
     resumeSession: () => Effect.void,
@@ -365,12 +367,12 @@ describe("@lando/core App-handle library contract", () => {
   test("runtime-scope close tears down App-handle start resources", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingFileSyncEngine();
-      const acceleratedProvider = {
+      const acceleratedProvider = RuntimeProvider.of({
         ...TestRuntimeProvider,
         inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
         prepareFileSyncTargets: (syncPlan: AppPlan) =>
           Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
-      };
+      });
       const activeSessions = await Effect.runPromise(
         Effect.scoped(
           openLandoRuntime({
@@ -378,14 +380,20 @@ describe("@lando/core App-handle library contract", () => {
               policy: "bundled-only",
               layers: [
                 Layer.succeed(RuntimeProvider, acceleratedProvider),
-                Layer.succeed(RuntimeProviderRegistry, {
-                  list: Effect.succeed([ProviderId.make(acceleratedProvider.id)]),
-                  capabilities: Effect.succeed(acceleratedProvider.capabilities),
-                  select: () => Effect.succeed(acceleratedProvider),
-                }),
-                Layer.succeed(RouterService, TestRouterService),
-                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
-                Layer.succeed(FileSyncEngine, tracking.engine),
+                Layer.succeed(
+                  RuntimeProviderRegistry,
+                  RuntimeProviderRegistry.of({
+                    list: Effect.succeed([ProviderId.make(acceleratedProvider.id)]),
+                    capabilities: Effect.succeed(acceleratedProvider.capabilities),
+                    select: () => Effect.succeed(acceleratedProvider),
+                  }),
+                ),
+                Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+                Layer.succeed(
+                  AppPlanner,
+                  AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                ),
+                Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
               ],
             },
           }).pipe(

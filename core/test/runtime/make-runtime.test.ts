@@ -432,7 +432,7 @@ describe("makeLandoRuntime", () => {
   });
 
   test("a host InteractionService override in plugins.layers wins", async () => {
-    const hostService = {
+    const hostService = InteractionService.of({
       id: "host-interaction",
       isInteractive: Effect.succeed(false),
       prompt: () => Effect.succeed("host" as never),
@@ -440,7 +440,7 @@ describe("makeLandoRuntime", () => {
       confirm: () => Effect.succeed(true),
       select: () => Effect.succeed("host" as never),
       secret: () => Effect.succeed("host" as never),
-    };
+    });
     const context = await Effect.runPromise(
       Effect.scoped(
         Layer.build(

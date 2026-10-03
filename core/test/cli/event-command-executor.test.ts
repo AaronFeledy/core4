@@ -154,7 +154,7 @@ const eventPlan = (): AppPlan => ({
   extensions: {},
 });
 
-describe("EventCommandExecutorLive", () => {
+describe("EventCommandExecutorLayer.layer", () => {
   test("retains the executor when a canonical command enters another command-backed lifecycle event", async () => {
     // Given
     const harness = makeHarness();

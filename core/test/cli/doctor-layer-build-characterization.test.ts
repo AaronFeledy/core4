@@ -56,10 +56,13 @@ test("the global-app doctor layer builds once per runtime", async () => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = DefaultGlobalAppDoctorLayer.pipe(
     Layer.provide(
-      Layer.succeed(ConfigService, {
-        load: Effect.succeed(config),
-        get: (key) => Effect.succeed(config[key]),
-      }),
+      Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: (key) => Effect.succeed(config[key]),
+        }),
+      ),
     ),
   );
   await characterizeBuilds(layer, GlobalAppService);

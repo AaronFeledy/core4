@@ -178,7 +178,7 @@ const makeHarness = async (
       });
     },
   };
-  const pluginRegistry = {
+  const pluginRegistry = PluginRegistry.of({
     list: Effect.succeed([manifest]),
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(fakeServiceType),
@@ -187,7 +187,7 @@ const makeHarness = async (
         ? Effect.succeed(fakeServiceType.testFeature)
         : Effect.die(`unexpected service feature ${id}`),
     loadAppFeature: () => Effect.die("not used"),
-  };
+  });
   const layer = Layer.mergeAll(
     LandoConfigService.layer,
     AppCacheService.layer,
@@ -195,37 +195,49 @@ const makeHarness = async (
     GlobalAppServiceLayer.layer.pipe(
       Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event);
-        }),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Queue.unbounded<LandoEvent>(),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Queue.unbounded<LandoEvent>(),
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      }),
+    ),
     Layer.succeed(PluginRegistry, pluginRegistry),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(SecretStore, {
-      id: "ensure-global-test",
-      get: () => Effect.succeed("resolved-global-token"),
-      has: () => Effect.succeed(true),
-      list: Effect.succeed(["GLOBAL_TOKEN"]),
-    }),
-    Layer.succeed(BuildOrchestrator, {
-      build: (plan) =>
-        Effect.sync(() => {
-          operations.push("build");
-          return plan;
-        }),
-      buildApp: () => Effect.void,
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "ensure-global-test",
+        get: () => Effect.succeed("resolved-global-token"),
+        has: () => Effect.succeed(true),
+        list: Effect.succeed(["GLOBAL_TOKEN"]),
+      }),
+    ),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (plan) =>
+          Effect.sync(() => {
+            operations.push("build");
+            return plan;
+          }),
+        buildApp: () => Effect.void,
+      }),
+    ),
     AppPlannerLayer.layer.pipe(
       Layer.provide(
         Layer.mergeAll(

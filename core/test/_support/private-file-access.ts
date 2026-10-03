@@ -7,7 +7,7 @@ import {
 } from "../../src/cli/commands/app-config-translate.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../src/cli/commands/init.ts";
 
-export const ownerOnlyFileAccess: PrivateFileAccess = {
+export const ownerOnlyFileAccess: PrivateFileAccess = PrivateFileAccessService.of({
   enforce: (path) =>
     Effect.runPromise(
       Effect.scoped(
@@ -24,7 +24,7 @@ export const ownerOnlyFileAccess: PrivateFileAccess = {
         ),
       ),
     ),
-};
+});
 
 export const initAppWithOwnerOnlyFileAccess = (
   options: Omit<InitAppOptions, "privateFileAccess">,

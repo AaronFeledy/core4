@@ -69,188 +69,187 @@ const baseCheck = (
   selection: options.selection,
 });
 
-export const diagnoseHostProxyWorker = (
+export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
   options: DiagnoseWorkerOptions,
-): Effect.Effect<DoctorCheck, never, HostProxyDoctorFileSystem> =>
-  Effect.gen(function* () {
-    const fileSystem = yield* HostProxyDoctorFileSystem;
-    const { doctor, record } = options;
-    const currentRecord = options.current ? options.record : undefined;
-    const containerUrl = currentRecord?.containerUrl;
-    const rawProbeServices = currentRecord?.probeServices;
-    const endpoint = record.transport === "unix-socket" ? record.socketPath : containerUrl;
-    const context: Record<string, string> = {
-      providerId: doctor.provider.id,
-      providerKind: doctor.providerKind,
-      providerVersion: doctor.provider.version,
-      appId: record.appId,
-      transport: record.transport,
-      endpoint: endpoint ?? "missing",
-    };
+): Effect.fn.Return<DoctorCheck, never, HostProxyDoctorFileSystem> {
+  const fileSystem = yield* HostProxyDoctorFileSystem;
+  const { doctor, record } = options;
+  const currentRecord = options.current ? options.record : undefined;
+  const containerUrl = currentRecord?.containerUrl;
+  const rawProbeServices = currentRecord?.probeServices;
+  const endpoint = record.transport === "unix-socket" ? record.socketPath : containerUrl;
+  const context: Record<string, string> = {
+    providerId: doctor.provider.id,
+    providerKind: doctor.providerKind,
+    providerVersion: doctor.provider.version,
+    appId: record.appId,
+    transport: record.transport,
+    endpoint: endpoint ?? "missing",
+  };
 
-    if (currentRecord?.providerId !== undefined && currentRecord.providerId !== doctor.provider.id) {
-      return baseCheck(
-        doctor,
-        {
-          ...context,
-          reachability: "not-probed",
-          reason: "provider-mismatch",
-          workerProviderId: currentRecord.providerId,
-        },
-        "pass",
-        [],
-      );
-    }
+  if (currentRecord?.providerId !== undefined && currentRecord.providerId !== doctor.provider.id) {
+    return baseCheck(
+      doctor,
+      {
+        ...context,
+        reachability: "not-probed",
+        reason: "provider-mismatch",
+        workerProviderId: currentRecord.providerId,
+      },
+      "pass",
+      [],
+    );
+  }
 
-    // A Windows bridge advertises a guest Unix socket but controls the worker
-    // through its host loopback URL. The guest path must be probed in a service,
-    // never stat'ed on the Windows host.
-    const bridgedGuestSocket = record.transport === "unix-socket" && record.url !== undefined;
-    if (bridgedGuestSocket && record.socketPath === undefined) {
-      return baseCheck(
-        doctor,
-        { ...context, reachability: "unreachable", failure: "guest-socket-missing" },
-        "warn",
-        [HOST_PROXY_REMEDIATION],
-      );
-    }
-    if (record.transport === "unix-socket" && !bridgedGuestSocket) {
-      const controlProbe = yield* probeWorker(record);
-      const socketMetadata =
-        record.socketPath === undefined ? undefined : yield* fileSystem.socketMetadata(record.socketPath);
-      const reachable =
-        controlProbe === "live" && socketMetadata?.type === "socket" && socketMetadata.mode === 0o600;
-      return baseCheck(
-        doctor,
-        {
-          ...context,
-          reachability: reachable ? "reachable" : "unreachable",
-          socketType: socketMetadata?.type ?? "missing",
-          socketMode:
-            socketMetadata === undefined ? "missing" : socketMetadata.mode.toString(8).padStart(4, "0"),
-          ...(!reachable && controlProbe !== "live" ? { failure: "control-probe-failed" } : {}),
-        },
-        reachable ? "pass" : "warn",
-        reachable ? [] : [HOST_PROXY_REMEDIATION],
-      );
-    }
-
-    const containerTarget = bridgedGuestSocket
-      ? record.socketPath === undefined
-        ? undefined
-        : { kind: "unix-socket" as const }
-      : containerUrl === undefined
-        ? undefined
-        : { kind: "tcp-host-gateway" as const, containerUrl };
-    if (
-      currentRecord?.providerId === undefined ||
-      containerTarget === undefined ||
-      rawProbeServices === undefined
-    ) {
-      return baseCheck(
-        doctor,
-        {
-          ...context,
-          reachability: "not-probed",
-          ...(!bridgedGuestSocket && doctor.provider.tcpHostGateway !== undefined
-            ? { containerGateway: doctor.provider.tcpHostGateway }
-            : {}),
-          reason: "pre-upgrade-record",
-        },
-        "pass",
-        [],
-      );
-    }
-
+  // A Windows bridge advertises a guest Unix socket but controls the worker
+  // through its host loopback URL. The guest path must be probed in a service,
+  // never stat'ed on the Windows host.
+  const bridgedGuestSocket = record.transport === "unix-socket" && record.url !== undefined;
+  if (bridgedGuestSocket && record.socketPath === undefined) {
+    return baseCheck(
+      doctor,
+      { ...context, reachability: "unreachable", failure: "guest-socket-missing" },
+      "warn",
+      [HOST_PROXY_REMEDIATION],
+    );
+  }
+  if (record.transport === "unix-socket" && !bridgedGuestSocket) {
     const controlProbe = yield* probeWorker(record);
-    const gateway = doctor.provider.tcpHostGateway;
-    const gatewayContext = bridgedGuestSocket || gateway === undefined ? {} : { containerGateway: gateway };
-    if (controlProbe !== "live") {
+    const socketMetadata =
+      record.socketPath === undefined ? undefined : yield* fileSystem.socketMetadata(record.socketPath);
+    const reachable =
+      controlProbe === "live" && socketMetadata?.type === "socket" && socketMetadata.mode === 0o600;
+    return baseCheck(
+      doctor,
+      {
+        ...context,
+        reachability: reachable ? "reachable" : "unreachable",
+        socketType: socketMetadata?.type ?? "missing",
+        socketMode:
+          socketMetadata === undefined ? "missing" : socketMetadata.mode.toString(8).padStart(4, "0"),
+        ...(!reachable && controlProbe !== "live" ? { failure: "control-probe-failed" } : {}),
+      },
+      reachable ? "pass" : "warn",
+      reachable ? [] : [HOST_PROXY_REMEDIATION],
+    );
+  }
+
+  const containerTarget = bridgedGuestSocket
+    ? record.socketPath === undefined
+      ? undefined
+      : { kind: "unix-socket" as const }
+    : containerUrl === undefined
+      ? undefined
+      : { kind: "tcp-host-gateway" as const, containerUrl };
+  if (
+    currentRecord?.providerId === undefined ||
+    containerTarget === undefined ||
+    rawProbeServices === undefined
+  ) {
+    return baseCheck(
+      doctor,
+      {
+        ...context,
+        reachability: "not-probed",
+        ...(!bridgedGuestSocket && doctor.provider.tcpHostGateway !== undefined
+          ? { containerGateway: doctor.provider.tcpHostGateway }
+          : {}),
+        reason: "pre-upgrade-record",
+      },
+      "pass",
+      [],
+    );
+  }
+
+  const controlProbe = yield* probeWorker(record);
+  const gateway = doctor.provider.tcpHostGateway;
+  const gatewayContext = bridgedGuestSocket || gateway === undefined ? {} : { containerGateway: gateway };
+  if (controlProbe !== "live") {
+    return baseCheck(
+      doctor,
+      { ...context, reachability: "unreachable", failure: "control-probe-failed" },
+      "warn",
+      [HOST_PROXY_REMEDIATION],
+    );
+  }
+  if (!bridgedGuestSocket && gateway === undefined) {
+    return baseCheck(
+      doctor,
+      { ...context, reachability: "unreachable", failure: "container-gateway-unavailable" },
+      "warn",
+      [HOST_PROXY_REMEDIATION],
+    );
+  }
+  if (
+    containerTarget.kind === "tcp-host-gateway" &&
+    gateway !== undefined &&
+    !containerGatewayMatches(containerTarget.containerUrl, gateway)
+  ) {
+    return baseCheck(
+      doctor,
+      {
+        ...context,
+        reachability: "unreachable",
+        ...gatewayContext,
+        failure: "container-gateway-mismatch",
+      },
+      "warn",
+      [HOST_PROXY_REMEDIATION],
+    );
+  }
+
+  const containerProbe = yield* probeHostProxyContainer({
+    providerExec: doctor.provider.exec,
+    appId: record.appId,
+    target: containerTarget,
+    probeServices: rawProbeServices,
+    maxProbeServices: options.maxProbeServices,
+  });
+  switch (containerProbe) {
+    case "reachable":
+      return baseCheck(doctor, { ...context, reachability: "reachable", ...gatewayContext }, "pass", []);
+    case "cap-exhausted":
       return baseCheck(
         doctor,
-        { ...context, reachability: "unreachable", failure: "control-probe-failed" },
-        "warn",
-        [HOST_PROXY_REMEDIATION],
+        {
+          ...context,
+          reachability: "not-probed",
+          ...gatewayContext,
+          reason: "probe-service-cap-exhausted",
+        },
+        "pass",
+        [],
       );
-    }
-    if (!bridgedGuestSocket && gateway === undefined) {
-      return baseCheck(
-        doctor,
-        { ...context, reachability: "unreachable", failure: "container-gateway-unavailable" },
-        "warn",
-        [HOST_PROXY_REMEDIATION],
-      );
-    }
-    if (
-      containerTarget.kind === "tcp-host-gateway" &&
-      gateway !== undefined &&
-      !containerGatewayMatches(containerTarget.containerUrl, gateway)
-    ) {
+    case "failed":
       return baseCheck(
         doctor,
         {
           ...context,
           reachability: "unreachable",
           ...gatewayContext,
-          failure: "container-gateway-mismatch",
+          failure: "container-probe-failed",
         },
         "warn",
         [HOST_PROXY_REMEDIATION],
       );
+    case "inconclusive":
+      return baseCheck(
+        doctor,
+        {
+          ...context,
+          reachability: "not-probed",
+          ...gatewayContext,
+          reason: "probe-services-inconclusive",
+        },
+        "pass",
+        [],
+      );
+    default: {
+      const exhaustive: never = containerProbe;
+      return exhaustive;
     }
-
-    const containerProbe = yield* probeHostProxyContainer({
-      providerExec: doctor.provider.exec,
-      appId: record.appId,
-      target: containerTarget,
-      probeServices: rawProbeServices,
-      maxProbeServices: options.maxProbeServices,
-    });
-    switch (containerProbe) {
-      case "reachable":
-        return baseCheck(doctor, { ...context, reachability: "reachable", ...gatewayContext }, "pass", []);
-      case "cap-exhausted":
-        return baseCheck(
-          doctor,
-          {
-            ...context,
-            reachability: "not-probed",
-            ...gatewayContext,
-            reason: "probe-service-cap-exhausted",
-          },
-          "pass",
-          [],
-        );
-      case "failed":
-        return baseCheck(
-          doctor,
-          {
-            ...context,
-            reachability: "unreachable",
-            ...gatewayContext,
-            failure: "container-probe-failed",
-          },
-          "warn",
-          [HOST_PROXY_REMEDIATION],
-        );
-      case "inconclusive":
-        return baseCheck(
-          doctor,
-          {
-            ...context,
-            reachability: "not-probed",
-            ...gatewayContext,
-            reason: "probe-services-inconclusive",
-          },
-          "pass",
-          [],
-        );
-      default: {
-        const exhaustive: never = containerProbe;
-        return exhaustive;
-      }
-    }
-  });
+  }
+});
 
 export type HostProxyDoctorProvider = {
   readonly id: string;

@@ -20,23 +20,29 @@ import { TestRouterService } from "@lando/sdk/test";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
 const testProviderLayers = [
-  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
+  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
   // Acquiring a scratch app reaches the proxy subsystem, which asks
   // PrivilegeService to run `systemctl start` on the host socket units. Left
   // live that spawns `sudo`, so on a host with an askpass helper the file's
   // runtime depends on a human typing a password and the run mutates host
   // state. These tests prove scratch acquisition, captured cwd, and tooling
   // targeting -- never elevation -- so the neutral fake reports success.
-  Layer.succeed(PrivilegeService, {
-    elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-  }),
-  Layer.succeed(RouterService, TestRouterService),
+  Layer.succeed(
+    PrivilegeService,
+    PrivilegeService.of({
+      elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    }),
+  ),
+  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
 
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
-  }),
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    }),
+  ),
 ];
 
 const landofileYaml = (name = "embedded-app", tooling = false): string =>
@@ -243,13 +249,16 @@ describe("resolveApp", () => {
               plugins: {
                 policy: "bundled-only",
                 layers: [
-                  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
-                  Layer.succeed(RouterService, TestRouterService),
-                  Layer.succeed(RuntimeProviderRegistry, {
-                    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-                    select: () => Effect.succeed(TestRuntimeProvider),
-                  }),
+                  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
+                  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+                  Layer.succeed(
+                    RuntimeProviderRegistry,
+                    RuntimeProviderRegistry.of({
+                      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+                      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                      select: () => Effect.succeed(TestRuntimeProvider),
+                    }),
+                  ),
                 ],
               },
             }).pipe(

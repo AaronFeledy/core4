@@ -27,20 +27,26 @@ const standaloneRedactionService: RedactionServiceShape = {
   forProfile: (_profile, options) => Effect.succeed(createStandaloneRedactor(_profile, options)),
 };
 
-const standaloneRedactionLayer = Layer.succeed(RedactionService, {
-  ...standaloneRedactionService,
-});
+const standaloneRedactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    ...standaloneRedactionService,
+  }),
+);
 
 const recordingEvents = () => {
   const events: LandoEvent[] = [];
-  const layer = Layer.succeed(EventService, {
-    publish: (event: LandoEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-    subscribe: () => Effect.die("unused"),
-    waitFor: () => Effect.die("unused"),
-  } as never);
+  const layer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Effect.die("unused"),
+      waitFor: () => Effect.die("unused"),
+    } as never),
+  );
   return { events, layer };
 };
 

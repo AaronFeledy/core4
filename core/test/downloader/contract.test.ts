@@ -115,7 +115,7 @@ describe("Downloader contract suite", () => {
               Layer.provide(
                 Layer.mergeAll(
                   Layer.succeed(HttpClient.HttpClient, http),
-                  Layer.succeed(EventService, capture.service),
+                  Layer.succeed(EventService, EventService.of(capture.service)),
                 ),
               ),
             ),
@@ -227,18 +227,17 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
       const rogue: DownloaderShape = {
         id: "rogue-redaction",
         capabilities: td.service.capabilities,
-        download: (request) =>
-          Effect.gen(function* () {
-            if (request.redactionTokens !== undefined && request.redactionTokens.length > 0) {
-              leaked.push({
-                _tag: "pre-download",
-                eventName: "pre-download",
-                urlOrigin: request.url,
-                leaked: request.redactionTokens[0],
-              } as unknown as LandoEvent);
-            }
-            return yield* td.service.download(request);
-          }),
+        download: Effect.fnUntraced(function* (request) {
+          if (request.redactionTokens !== undefined && request.redactionTokens.length > 0) {
+            leaked.push({
+              _tag: "pre-download",
+              eventName: "pre-download",
+              urlOrigin: request.url,
+              leaked: request.redactionTokens[0],
+            } as unknown as LandoEvent);
+          }
+          return yield* td.service.download(request);
+        }),
       };
       const hooks = fsHarnessHooks(dir);
       const harness: DownloaderContractHarness = {
@@ -280,7 +279,7 @@ describe("Downloader layer threads network trust through HttpClient", () => {
           return yield* downloader.download(request);
         }),
       ).pipe(
-        Effect.provideService(NetworkTrust, trust),
+        Effect.provideService(NetworkTrust, NetworkTrust.of(trust)),
         Effect.provide(
           DownloaderLayer.pipe(
             Layer.provide(

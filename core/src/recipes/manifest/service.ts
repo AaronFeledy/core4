@@ -11,7 +11,7 @@ import { Schema } from "effect";
  *   - `choices:` required and non-empty for `select`/`multiselect`
  *     prompts
  */
-import { type Context, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import {
   NotImplementedError,
@@ -233,26 +233,28 @@ const validateRecipeManifestObject = (
     Effect.flatMap((manifest) => validateSemantics(source, manifest)),
   );
 
-const parseRecipe = (
-  source: string,
-  content: string,
-): Effect.Effect<
-  typeof RecipeManifest.Type,
-  | RecipeExtendsError
-  | RecipeManifestParseError
-  | RecipeManifestValidationError
-  | RecipeSourceError
-  | NotImplementedError
-> =>
-  parseRecipeYaml({ source, content }).pipe(
-    Effect.flatMap((parsed) => flattenRecipe(source, parsed)),
-    Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
-  );
+const parseRecipe = Effect.fn("RecipeManifestService.parse")(
+  (
+    source: string,
+    content: string,
+  ): Effect.Effect<
+    typeof RecipeManifest.Type,
+    | RecipeExtendsError
+    | RecipeManifestParseError
+    | RecipeManifestValidationError
+    | RecipeSourceError
+    | NotImplementedError
+  > =>
+    parseRecipeYaml({ source, content }).pipe(
+      Effect.flatMap((parsed) => flattenRecipe(source, parsed)),
+      Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
+    ),
+);
 
-const recipeManifestService: Context.Service.Shape<typeof RecipeManifestService> = {
+const recipeManifestService = RecipeManifestService.of({
   parse: parseRecipe,
-};
+});
 
-export const RecipeManifestServiceLive = Layer.succeed(RecipeManifestService, recipeManifestService);
+export const layer = Layer.succeed(RecipeManifestService, recipeManifestService);
 
 export { parseRecipe, validateRecipeManifestObject };

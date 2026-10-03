@@ -155,18 +155,17 @@ const mapRemoteError = (cause: unknown, ref: string, chain: ReadonlyArray<string
   });
 };
 
-export const readRemoteParent = (
+export const readRemoteParent = Effect.fn("RecipeManifest.readRemoteParent")(function* (
   ref: string,
   ctx: RemoteParentContext,
   chain: ReadonlyArray<string>,
-): Effect.Effect<RawRemoteParent, RemoteParentError> =>
-  Effect.gen(function* () {
-    const resolved = yield* Effect.tryPromise({
-      try: () => resolveRemote(ref, ctx),
-      catch: (cause) => mapRemoteError(cause, ref, chain),
-    });
-    return {
-      source: resolved.source,
-      parsed: yield* parseRecipeYaml({ source: resolved.source, content: resolved.manifestYaml }),
-    };
+): Effect.fn.Return<RawRemoteParent, RemoteParentError> {
+  const resolved = yield* Effect.tryPromise({
+    try: () => resolveRemote(ref, ctx),
+    catch: (cause) => mapRemoteError(cause, ref, chain),
   });
+  return {
+    source: resolved.source,
+    parsed: yield* parseRecipeYaml({ source: resolved.source, content: resolved.manifestYaml }),
+  };
+});

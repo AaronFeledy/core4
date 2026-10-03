@@ -70,11 +70,12 @@ const resultEnvelope = (ndjson: string) => {
 const decodeCommandEnvelope = (line: string) =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 
-const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
-  list: Effect.succeed([ProviderId.make(provider.id)]),
-  capabilities: Effect.succeed(provider.capabilities),
-  select: () => Effect.succeed(provider),
-});
+const buildRegistry = (provider: typeof TestRuntimeProvider) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
@@ -85,10 +86,10 @@ const buildConfigService = (
     ...overrides,
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const buildLayers = (
@@ -96,7 +97,7 @@ const buildLayers = (
 ): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry | DeprecationService> =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-    Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(
       PathsService,
       makeLandoPaths({ userDataRoot: isolatedUserDataRoot, platform: "linux", env: {} }),
@@ -125,19 +126,22 @@ const deprecationNotice = (overrides: Partial<DeprecationNotice> = {}): Deprecat
   ...overrides,
 });
 
-const useDeprecation = (kind: DeprecationSurfaceKind, id: string, notice = deprecationNotice()) =>
-  Effect.gen(function* () {
-    const deprecations = yield* DeprecationService;
-    yield* deprecations.register("core", kind, id, notice);
-    yield* deprecations.use({
-      kind,
-      id,
-      notice,
-      app: "doctor-app",
-      ...(kind === "plugin" || kind === "manifest-contribution" ? { plugin: "legacy-plugin" } : {}),
-      timestamp: DateTime.makeUnsafe("2026-06-13T00:00:00.000Z"),
-    });
+const useDeprecation = Effect.fnUntraced(function* (
+  kind: DeprecationSurfaceKind,
+  id: string,
+  notice = deprecationNotice(),
+) {
+  const deprecations = yield* DeprecationService;
+  yield* deprecations.register("core", kind, id, notice);
+  yield* deprecations.use({
+    kind,
+    id,
+    notice,
+    app: "doctor-app",
+    ...(kind === "plugin" || kind === "manifest-contribution" ? { plugin: "legacy-plugin" } : {}),
+    timestamp: DateTime.makeUnsafe("2026-06-13T00:00:00.000Z"),
   });
+});
 
 describe("meta:doctor combined report", () => {
   test.each([
@@ -167,7 +171,7 @@ describe("meta:doctor combined report", () => {
           }).pipe(
             Effect.provideService(
               ConfigService,
-              buildConfigService({ userDataRoot: AbsolutePath.make(dir) }),
+              ConfigService.of(buildConfigService({ userDataRoot: AbsolutePath.make(dir) })),
             ),
           ),
         );

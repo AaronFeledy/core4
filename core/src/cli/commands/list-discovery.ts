@@ -6,6 +6,7 @@ import { APP_LABEL, PROVIDER_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths } from "@lando/paths";
+import { Predicate } from "effect";
 
 export interface AppsListEntry {
   readonly appId: string;
@@ -34,9 +35,6 @@ const APPLIED_PLANS_RECORD = "applied-plans.json";
 const GLOBAL_APP_ID = "global";
 const CONTAINER_LIST_TIMEOUT_MS = 1500;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const uniqueSorted = (values: ReadonlyArray<string>): string[] =>
   [...new Set(values)].sort((left, right) => left.localeCompare(right));
 
@@ -44,7 +42,7 @@ const servicesFromPlan = (services: unknown): string[] => {
   if (Array.isArray(services)) {
     return uniqueSorted(services.filter((value): value is string => typeof value === "string"));
   }
-  if (isRecord(services)) return uniqueSorted(Object.keys(services));
+  if (Predicate.isObject(services)) return uniqueSorted(Object.keys(services));
   return [];
 };
 
@@ -95,7 +93,7 @@ export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): App
 };
 
 const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntry | undefined => {
-  if (!isRecord(value)) return undefined;
+  if (!Predicate.isObject(value)) return undefined;
   const id = value.id;
   const root = value.root;
   if (typeof id !== "string" || typeof root !== "string") return undefined;
@@ -126,12 +124,12 @@ export const decodeAppliedStateFile = (content: string, fallbackProvider: string
   } catch {
     return [];
   }
-  if (!isRecord(parsed)) return [];
+  if (!Predicate.isObject(parsed)) return [];
 
   if ("data" in parsed) {
     const single = planLikeToEntry(parsed.data, fallbackProvider);
     if (single !== undefined) return [single];
-    if (isRecord(parsed.data)) {
+    if (Predicate.isObject(parsed.data)) {
       const fromRecord: AppsListEntry[] = [];
       for (const value of Object.values(parsed.data)) {
         const entry = planLikeToEntry(value, fallbackProvider);
@@ -228,7 +226,7 @@ export const readAppliedPlansFromUserData = async (userDataRoot: string): Promis
 };
 
 const stringLabels = (value: unknown): Record<string, string> => {
-  if (!isRecord(value)) return {};
+  if (!Predicate.isObject(value)) return {};
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
@@ -242,7 +240,7 @@ const labeledResourceEvidence = (
   const appIds: string[] = [];
   const providerIds: string[] = [];
   for (const resource of resources) {
-    if (!isRecord(resource)) continue;
+    if (!Predicate.isObject(resource)) continue;
     const labels = stringLabels(resource.Labels);
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "" || (!includeScratch && labels[SCRATCH_LABEL] === "TRUE"))
@@ -261,7 +259,7 @@ export const appsFromContainerList = (
   if (!Array.isArray(body)) return [];
   const grouped = new Map<string, { services: Set<string>; providerId: string; scratch: boolean }>();
   for (const container of body) {
-    if (!isRecord(container)) continue;
+    if (!Predicate.isObject(container)) continue;
     if (typeof container.State === "string" && container.State !== "running") continue;
     const labels = stringLabels(container.Labels);
     const appId = labels[APP_LABEL];
@@ -404,7 +402,7 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         listContainersOnSocket(socket),
         listVolumesOnSocket(socket),
       ]);
-      const volumes = isRecord(volumesBody) ? volumesBody.Volumes : undefined;
+      const volumes = Predicate.isObject(volumesBody) ? volumesBody.Volumes : undefined;
       const apps = appsFromContainerList(containers, {
         globalAppRoot: paths.globalAppRoot,
         ...(options.includeScratch === true ? { includeScratch: true } : {}),

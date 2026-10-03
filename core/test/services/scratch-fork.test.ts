@@ -18,7 +18,7 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { DataMoverLive } from "@lando/data-mover/service";
+import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
@@ -68,14 +68,20 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets")),
-});
+const redactionLive = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets")),
+  }),
+);
 
-const scratchInitAppPortLive = Layer.succeed(ScratchInitAppPort, {
-  initApp: () => Promise.reject(new TypeError("fork scratch fixtures must not initialize recipes")),
-});
+const scratchInitAppPortLive = Layer.succeed(
+  ScratchInitAppPort,
+  ScratchInitAppPort.of({
+    initApp: () => Promise.reject(new TypeError("fork scratch fixtures must not initialize recipes")),
+  }),
+);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -229,7 +235,7 @@ const makeScratchForkLayer = (
     readonly routes?: RouteRecorder;
   } = {},
 ) => {
-  const provider: RuntimeProviderShape = {
+  const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
     id: String(providerId),
     displayName: "Scratch Fork Test Provider",
@@ -267,41 +273,47 @@ const makeScratchForkLayer = (
     logs: () => Stream.empty,
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
-  };
+  });
 
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const registryLive = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.sync(() => {
-      options.onCapabilities?.();
-      return capabilities;
+  const registryLive = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.sync(() => {
+        options.onCapabilities?.();
+        return capabilities;
+      }),
+      select: () => Effect.succeed(provider),
     }),
-    select: () => Effect.succeed(provider),
-  });
+  );
   const scratchRegistryLive = (() => {
     if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLayer.ScratchRegistry.layer;
     const registry = makeScratchRegistry(ownerOnlyFileAccess);
     let upsertCount = 0;
-    return Layer.succeed(ScratchRegistry, {
-      ...registry,
-      upsert: (entry) => {
-        upsertCount += 1;
-        if (upsertCount === 2) {
-          return Effect.fail(
-            new ScratchAppError({
-              operation: "registry.write",
-              message: "injected registry upsert failure",
-              cause: undefined,
-            }),
-          );
-        }
-        return registry.upsert(entry);
-      },
-    });
+    return Layer.succeed(
+      ScratchRegistry,
+      ScratchRegistry.of({
+        ...registry,
+        upsert: (entry) => {
+          upsertCount += 1;
+          if (upsertCount === 2) {
+            return Effect.fail(
+              new ScratchAppError({
+                operation: "registry.write",
+                message: "injected registry upsert failure",
+                cause: undefined,
+              }),
+            );
+          }
+          return registry.upsert(entry);
+        },
+      }),
+    );
   })();
-  const dataMoverLive = DataMoverLive.pipe(
+  const dataMoverLive = BunDataMover.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         stateStoreLayer,
@@ -317,20 +329,23 @@ const makeScratchForkLayer = (
     routeRecorder === undefined
       ? []
       : [
-          Layer.succeed(RouterService, {
-            id: "recording",
-            capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-            setup: () => Effect.void,
-            revalidateStartup: Effect.void,
-            applyRoutes: (routes, app) =>
-              Effect.sync(() => {
-                routeRecorder.applied.push(String(app));
-                return { app, appliedRoutes: routes, authorities: [] };
-              }),
-            removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(String(app))),
-            status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
-            stop: Effect.void,
-          }),
+          Layer.succeed(
+            RouterService,
+            RouterService.of({
+              id: "recording",
+              capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+              setup: () => Effect.void,
+              revalidateStartup: Effect.void,
+              applyRoutes: (routes, app) =>
+                Effect.sync(() => {
+                  routeRecorder.applied.push(String(app));
+                  return { app, appliedRoutes: routes, authorities: [] };
+                }),
+              removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(String(app))),
+              status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+              stop: Effect.void,
+            }),
+          ),
         ];
   const scratchDeps = Layer.mergeAll(
     BunFileSystem.layer,

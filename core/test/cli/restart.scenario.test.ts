@@ -52,7 +52,7 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
+const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
@@ -181,18 +181,24 @@ const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
     GlobalAppServiceLayer.layer.pipe(
       Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
-    Layer.succeed(PluginRegistry, {
-      list: Effect.succeed([]),
-      load: () => Effect.die("not used"),
-      loadServiceType: () => Effect.die("not used"),
-      loadServiceFeature: () => Effect.die("not used"),
-      loadAppFeature: () => Effect.die("not used"),
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-    Layer.succeed(RouterService, proxy),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed([]),
+        load: () => Effect.die("not used"),
+        loadServiceType: () => Effect.die("not used"),
+        loadServiceFeature: () => Effect.die("not used"),
+        loadAppFeature: () => Effect.die("not used"),
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      }),
+    ),
+    Layer.succeed(RouterService, RouterService.of(proxy)),
     shellRunnerLive,
   );
 
@@ -236,48 +242,63 @@ const makeRestartLayer = (
 
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
-    TestStateStoreLive,
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
-        name: "test-restart",
-        services: {},
-        ...(effectiveEventsForPlan(plannedApp) === undefined
-          ? {}
-          : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
+    testStateStoreLayer,
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({
+          name: "test-restart",
+          services: {},
+          ...(effectiveEventsForPlan(plannedApp) === undefined
+            ? {}
+            : { events: effectiveEventsForPlan(plannedApp) ?? {} }),
+        }),
       }),
-    }),
+    ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(BuildOrchestrator, {
-      build: (appPlan) => options.buildEffect ?? Effect.succeed(appPlan),
-      buildApp: () => Effect.void,
-    }),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (appPlan) => options.buildEffect ?? Effect.succeed(appPlan),
+        buildApp: () => Effect.void,
+      }),
+    ),
     requiredStartServicesLayer(proxy),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.succeed({
-          tool: invocation.tool,
-          service: invocation.service ?? "web",
-          exitCode: 0,
-          stdout: invocation.commands[0]?.[2]?.replace(/^echo /u, "").replace(/ "[$]@"$/u, "") ?? "",
-          stderr: "",
-        }),
-    }),
-    Layer.succeed(EventService, {
-      publish: (event) => Effect.sync(() => events.push(event._tag)),
-      subscribe: () => Stream.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "recording",
+        run: (invocation) =>
+          Effect.succeed({
+            tool: invocation.tool,
+            service: invocation.service ?? "web",
+            exitCode: 0,
+            stdout: invocation.commands[0]?.[2]?.replace(/^echo /u, "").replace(/ "[$]@"$/u, "") ?? "",
+            stderr: "",
+          }),
+      }),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) => Effect.sync(() => events.push(event._tag)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
 
   return { layer, events, destroyCalls, applyCalls, routeRemovals };

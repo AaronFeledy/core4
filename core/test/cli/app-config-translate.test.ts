@@ -778,7 +778,10 @@ describe("appConfigTranslate", () => {
       makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } }),
       makeTranslator("compose", {}),
     ];
-    const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.succeed(translators) });
+    const registry = Layer.succeed(
+      ConfigTranslatorRegistry,
+      ConfigTranslatorRegistry.of({ list: Effect.succeed(translators) }),
+    );
 
     // When: the operation lists without an explicit translators option.
     const result = await Effect.runPromise(appConfigTranslate({ list: true }).pipe(Effect.provide(registry)));
@@ -796,7 +799,10 @@ describe("appConfigTranslate", () => {
       id: "lando3",
       translators: ["@lando/lando3", "@acme/lando3-fork"],
     });
-    const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.fail(conflict) });
+    const registry = Layer.succeed(
+      ConfigTranslatorRegistry,
+      ConfigTranslatorRegistry.of({ list: Effect.fail(conflict) }),
+    );
 
     // When: the operation lists.
     const exit = await Effect.runPromiseExit(

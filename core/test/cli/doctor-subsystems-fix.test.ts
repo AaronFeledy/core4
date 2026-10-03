@@ -37,7 +37,9 @@ const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(
     subsystemDoctor({ fix }).pipe(
-      Effect.provide(Layer.succeed(HostDnsResolver, { lookup: () => Effect.succeed([]) })),
+      Effect.provide(
+        Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.succeed([]) })),
+      ),
       Effect.provide(DefaultSubsystemDoctorLayer),
     ),
   );
@@ -203,16 +205,19 @@ describe("doctor --fix recovery", () => {
   test("--fix recovers a selected-but-stopped RouterService without using the unavailable stub", async () => {
     let setupCalls = 0;
     const proxyService = makeTestRouterService();
-    const stoppedTraefik = Layer.succeed(RouterService, {
-      ...proxyService,
-      id: "traefik",
-      setup: (config) =>
-        Effect.tap(proxyService.setup(config), () =>
-          Effect.sync(() => {
-            setupCalls += 1;
-          }),
-        ),
-    });
+    const stoppedTraefik = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...proxyService,
+        id: "traefik",
+        setup: (config) =>
+          Effect.tap(proxyService.setup(config), () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+          ),
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedTraefik);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");
@@ -233,14 +238,17 @@ describe("doctor --fix recovery", () => {
 
   test("--fix recovers a SshService when setup restores agent reachability", async () => {
     let setupCalls = 0;
-    const recoverableSsh = Layer.succeed(SshService, {
-      ...makeTestSshService(),
-      id: "unavailable",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
-    });
+    const recoverableSsh = Layer.succeed(
+      SshService,
+      SshService.of({
+        ...makeTestSshService(),
+        id: "unavailable",
+        setup: () =>
+          Effect.sync(() => {
+            setupCalls += 1;
+          }),
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableSsh);
     const result = await Effect.runPromise(
       subsystemDoctor({
@@ -270,13 +278,16 @@ describe("doctor --fix recovery", () => {
 
   test("--fix recovers a degraded automatic subsystem when its setup() succeeds", async () => {
     const proxyService = makeTestRouterService();
-    const recoverableProxy = Layer.succeed(RouterService, {
-      ...proxyService,
-      id: "unavailable",
-      setup: (config) => proxyService.setup(config),
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: () => Effect.void,
-    });
+    const recoverableProxy = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...proxyService,
+        id: "unavailable",
+        setup: (config) => proxyService.setup(config),
+        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        removeRoutes: () => Effect.void,
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");
@@ -292,20 +303,23 @@ describe("doctor --fix recovery", () => {
   });
 
   test("--fix redacts secret-like environment values from failed setup errors", async () => {
-    const secretErrorProxy = Layer.succeed(RouterService, {
-      ...TestRouterService,
-      id: "unavailable",
-      setup: () =>
-        Effect.fail(
-          new ProxySetupError({
-            proxyId: "unavailable",
-            message: "setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2",
-            remediation: "Retry setup.",
-          }),
-        ),
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: () => Effect.void,
-    });
+    const secretErrorProxy = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...TestRouterService,
+        id: "unavailable",
+        setup: () =>
+          Effect.fail(
+            new ProxySetupError({
+              proxyId: "unavailable",
+              message: "setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2",
+              remediation: "Retry setup.",
+            }),
+          ),
+        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        removeRoutes: () => Effect.void,
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");

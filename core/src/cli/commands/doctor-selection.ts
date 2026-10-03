@@ -70,34 +70,32 @@ export const buildSelectionRecord = (resolution: ProviderSelectionResolution): D
   },
 });
 
-export const gatherSelectionInputs = (
+export const gatherSelectionInputs = Effect.fnUntraced(function* (
   options: DoctorSelectionOptions,
-): Effect.Effect<GatheredSelectionInputs, never, ConfigService> =>
-  Effect.gen(function* () {
-    const configService = yield* ConfigService;
-    const configProvider = yield* Effect.result(configService.get("defaultProviderId"));
+): Effect.fn.Return<GatheredSelectionInputs, never, ConfigService> {
+  const configService = yield* ConfigService;
+  const configProvider = yield* Effect.result(configService.get("defaultProviderId"));
 
-    const flag = branded(options.flagProviderId);
-    const landofile = branded(options.landofileProviderId);
-    const env = readProviderEnvVar(options.env ?? process.env);
-    const config = Result.isSuccess(configProvider) ? (configProvider.success ?? undefined) : undefined;
-    return {
-      inputs: {
-        ...(flag === undefined ? {} : { flag }),
-        ...(landofile === undefined ? {} : { landofile }),
-        ...(env === undefined ? {} : { env }),
-        ...(config === undefined ? {} : { config }),
-        capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-      },
-      ...(Result.isFailure(configProvider) ? { configFailure: configProvider.failure } : {}),
-    };
-  });
+  const flag = branded(options.flagProviderId);
+  const landofile = branded(options.landofileProviderId);
+  const env = readProviderEnvVar(options.env ?? process.env);
+  const config = Result.isSuccess(configProvider) ? (configProvider.success ?? undefined) : undefined;
+  return {
+    inputs: {
+      ...(flag === undefined ? {} : { flag }),
+      ...(landofile === undefined ? {} : { landofile }),
+      ...(env === undefined ? {} : { env }),
+      ...(config === undefined ? {} : { config }),
+      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+    },
+    ...(Result.isFailure(configProvider) ? { configFailure: configProvider.failure } : {}),
+  };
+});
 
-export const resolveStateDir = (
+export const resolveStateDir = Effect.fnUntraced(function* (
   configService: typeof ConfigService.Service,
-): Effect.Effect<string | undefined, ConfigError> =>
-  Effect.gen(function* () {
-    const userDataRoot = yield* configService.get("userDataRoot");
-    if (typeof userDataRoot !== "string" || userDataRoot.length === 0) return undefined;
-    return `${userDataRoot}/providers`;
-  });
+): Effect.fn.Return<string | undefined, ConfigError> {
+  const userDataRoot = yield* configService.get("userDataRoot");
+  if (typeof userDataRoot !== "string" || userDataRoot.length === 0) return undefined;
+  return `${userDataRoot}/providers`;
+});

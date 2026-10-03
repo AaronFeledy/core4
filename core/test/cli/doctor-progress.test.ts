@@ -20,14 +20,17 @@ import { doctorSelfCheck } from "../../src/cli/commands/doctor-self.ts";
 
 const recordingEvents = () => {
   const events: Array<Record<string, unknown>> = [];
-  const layer = Layer.succeed(EventService, {
-    publish: (event: LandoEvent) => Effect.sync(() => events.push({ ...event })),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<never>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  } satisfies EventServiceShape);
+  const layer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) => Effect.sync(() => events.push({ ...event })),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<never>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } satisfies EventServiceShape),
+  );
   return { events, layer };
 };
 
@@ -35,10 +38,13 @@ const globalConfig = {
   defaultProviderId: ProviderId.make("lando"),
   telemetry: { enabled: false },
 } as GlobalConfig;
-const configService = Layer.succeed(ConfigService, {
-  load: Effect.succeed(globalConfig),
-  get: (key) => Effect.succeed(globalConfig[key]),
-});
+const configService = Layer.succeed(
+  ConfigService,
+  ConfigService.of({
+    load: Effect.succeed(globalConfig),
+    get: (key) => Effect.succeed(globalConfig[key]),
+  }),
+);
 
 const pass = { status: "pass" as const, solutions: [] };
 const warn = { status: "warn" as const, solutions: [{ command: "lando restart" }] };

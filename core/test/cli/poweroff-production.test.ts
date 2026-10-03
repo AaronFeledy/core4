@@ -36,15 +36,16 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
     operation: "destroy",
     remediation: "Start the test provider.",
   });
-  const providerLayer = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: (plan) =>
-      Effect.succeed({
-        ...TestRuntimeProvider,
-        id: plan?.provider ?? ProviderId.make("docker"),
-        destroy: (target, options) =>
-          Effect.gen(function* () {
+  const providerLayer = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: (plan) =>
+        Effect.succeed({
+          ...TestRuntimeProvider,
+          id: plan?.provider ?? ProviderId.make("docker"),
+          destroy: Effect.fnUntraced(function* (target, options) {
             calls.push(`${plan?.provider}:${target.app}`);
             if (failure === "provider") return yield* Effect.fail(unavailable);
             if (failure === "no-plan") return { kind: "no-op" as const, reason: "no-applied-plan" as const };
@@ -52,22 +53,24 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
             expect(target.plan).toBeUndefined();
             return { kind: "destroyed" as const };
           }),
-      }),
-  });
-  const scratchLayer = Layer.succeed(ScratchAppService, {
-    kind: "scratch",
-    root: Effect.succeed(AbsolutePath.make(root)),
-    ensureRoot: Effect.die("unexpected ensureRoot"),
-    synthesizeId: () => Effect.die("unexpected synthesizeId"),
-    paths: () => Effect.die("unexpected paths"),
-    acquire: () => Effect.die("unexpected acquire"),
-    resolveById: () => Effect.die("unexpected resolve"),
-    list: () => Effect.succeed([]),
-    info: () => Effect.die("unexpected info"),
-    start: () => Effect.die("unexpected start"),
-    stop: () => Effect.die("unexpected stop"),
-    destroy: (id, options) =>
-      Effect.gen(function* () {
+        }),
+    }),
+  );
+  const scratchLayer = Layer.succeed(
+    ScratchAppService,
+    ScratchAppService.of({
+      kind: "scratch",
+      root: Effect.succeed(AbsolutePath.make(root)),
+      ensureRoot: Effect.die("unexpected ensureRoot"),
+      synthesizeId: () => Effect.die("unexpected synthesizeId"),
+      paths: () => Effect.die("unexpected paths"),
+      acquire: () => Effect.die("unexpected acquire"),
+      resolveById: () => Effect.die("unexpected resolve"),
+      list: () => Effect.succeed([]),
+      info: () => Effect.die("unexpected info"),
+      start: () => Effect.die("unexpected start"),
+      stop: () => Effect.die("unexpected stop"),
+      destroy: Effect.fnUntraced(function* (id, options) {
         expect(options?.keepVolumes).not.toBe(true);
         calls.push(`scratch:${id}`);
         if (failure === "scratch")
@@ -83,8 +86,9 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
           app: { kind: "scratch" as const, id: AppId.make(id), root: AbsolutePath.make(root) },
         };
       }),
-    gc: () => Effect.die("unexpected gc"),
-  });
+      gc: () => Effect.die("unexpected gc"),
+    }),
+  );
   const options: PoweroffOptions = {
     userDataRoot: root,
     userCacheRoot: root,
@@ -105,26 +109,32 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
       return { terminated: true };
     },
   };
-  const eventLayer = Layer.succeed(EventService, {
-    publish: (event) =>
-      Effect.sync(() => {
-        events.push(event._tag);
-      }),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  });
+  const eventLayer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event._tag);
+        }),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    }),
+  );
   const layer = Layer.mergeAll(
     LandoConfigService.layer,
     providerLayer,
     scratchLayer,
     eventLayer,
-    Layer.succeed(ScratchResourceScanner, {
-      listScratchIds: Effect.die("unexpected scratch scan"),
-      pruneScratch: () => Effect.die("registered scratch must use destroy"),
-    }),
+    Layer.succeed(
+      ScratchResourceScanner,
+      ScratchResourceScanner.of({
+        listScratchIds: Effect.die("unexpected scratch scan"),
+        pruneScratch: () => Effect.die("registered scratch must use destroy"),
+      }),
+    ),
   );
   return { root, calls, options, layer, events };
 };

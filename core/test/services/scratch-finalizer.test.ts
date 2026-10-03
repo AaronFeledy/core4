@@ -15,7 +15,7 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { DataMoverLive } from "@lando/data-mover/service";
+import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
@@ -31,7 +31,7 @@ import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -67,14 +67,20 @@ const landofileRuntimeInputs = {
 const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
 const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets")),
-});
+const redactionLive = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets")),
+  }),
+);
 
-const scratchInitAppPortLive = Layer.succeed(ScratchInitAppPort, {
-  initApp: () => Promise.reject(new TypeError("fork scratch fixtures must not initialize recipes")),
-});
+const scratchInitAppPortLive = Layer.succeed(
+  ScratchInitAppPort,
+  ScratchInitAppPort.of({
+    initApp: () => Promise.reject(new TypeError("fork scratch fixtures must not initialize recipes")),
+  }),
+);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -169,7 +175,7 @@ const makeRecordingLayer = (
   destroyCalls: DestroyCall[],
   options: { readonly failApply?: boolean } = {},
 ) => {
-  const provider: RuntimeProviderShape = {
+  const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
     id: String(providerId),
     displayName: "Scratch Finalizer Test Provider",
@@ -216,16 +222,19 @@ const makeRecordingLayer = (
     logs: () => Stream.empty,
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
-  };
+  });
 
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const registryLive = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  const registryLive = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
   const scratchDeps = Layer.mergeAll(
     BunFileSystem.layer,
     landofileServiceLayer,
@@ -234,7 +243,7 @@ const makeRecordingLayer = (
     ScratchRegistryLayer.ScratchRegistry.layer,
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     scratchInitAppPortLive,
-    DataMoverLive.pipe(
+    BunDataMover.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
@@ -263,12 +272,11 @@ const directoryExists = async (path: string): Promise<boolean> => {
 // Readiness MUST be a post-`acquire` condition: `appliedPlans` is recorded at
 // apply-start, before the scope-bound destroy finalizer is registered, so
 // interrupting on it races teardown (#244).
-const waitUntil = (predicate: () => boolean) =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 500 && !predicate(); attempt += 1) {
-      yield* Effect.sleep("5 millis");
-    }
-  });
+const waitUntil = Effect.fnUntraced(function* (predicate: () => boolean) {
+  for (let attempt = 0; attempt < 500 && !predicate(); attempt += 1) {
+    yield* Effect.sleep("5 millis");
+  }
+});
 
 describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
   test("keep-on-failure leaves the registry entry and scratch root after apply fails", async () => {
@@ -390,7 +398,10 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           return yield* Fiber.join(fiber);
         }).pipe(
           Effect.provide(
-            Layer.merge(makeRecordingLayer(appliedPlans, destroyCalls), makePlainRendererServiceLive(io)),
+            Layer.merge(
+              makeRecordingLayer(appliedPlans, destroyCalls),
+              RendererRuntime.layerPlainService(io),
+            ),
           ),
         ),
       );

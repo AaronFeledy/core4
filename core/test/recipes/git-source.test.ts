@@ -8,7 +8,7 @@ import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/error
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { type GitRecipeCloner, publish, resolveGitRecipeSource } from "../../src/recipes/git-source.ts";
-import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
+import * as RecipeManifestServiceLayer from "../../src/recipes/manifest/service.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const VALID_RECIPE = `id: remote-recipe
@@ -153,7 +153,7 @@ describe("resolveGitRecipeSource", () => {
       });
       const manifest = await Effect.runPromise(
         Effect.flatMap(RecipeManifestService, (svc) => svc.parse(result.source, result.manifestYaml)).pipe(
-          Effect.provide(RecipeManifestServiceLive),
+          Effect.provide(RecipeManifestServiceLayer.layer),
         ),
       );
 
@@ -316,7 +316,7 @@ describe("resolveGitRecipeSource — real git clone (file:// source, no network)
       expect(await Bun.file(result.source).exists()).toBe(true);
       const manifest = await Effect.runPromise(
         Effect.flatMap(RecipeManifestService, (svc) => svc.parse(result.source, result.manifestYaml)).pipe(
-          Effect.provide(RecipeManifestServiceLive),
+          Effect.provide(RecipeManifestServiceLayer.layer),
         ),
       );
       expect(manifest.id).toBe("remote-recipe");

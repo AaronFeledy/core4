@@ -105,7 +105,7 @@ export const makeTestHttpClient = (
           method: request.method,
           ...(policy.callerId === undefined ? {} : { callerId: redact(policy.callerId) }),
           ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: policy.onBehalfOf }),
-          timestamp: DateTime.nowUnsafe(),
+          timestamp: yield* DateTime.now,
         }),
       );
 
@@ -119,7 +119,7 @@ export const makeTestHttpClient = (
             durationMs: 0,
             failureDetail: "offline",
             ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: policy.onBehalfOf }),
-            timestamp: DateTime.nowUnsafe(),
+            timestamp: yield* DateTime.now,
           }),
         );
         return yield* Effect.fail(transportError(request, "offline"));
@@ -154,7 +154,7 @@ export const makeTestHttpClient = (
           outcome: "success",
           durationMs: 0,
           ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: policy.onBehalfOf }),
-          timestamp: DateTime.nowUnsafe(),
+          timestamp: yield* DateTime.now,
         }),
       );
 

@@ -73,7 +73,7 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
     return reference;
   };
 
-  const service: SecretStoreShape = {
+  const service = SecretStore.of({
     id,
     schemes,
     get: (secret) => {
@@ -97,7 +97,7 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
       return Effect.sync(() => secrets.has(secret));
     },
     list: Effect.sync(() => [...secrets.keys()].sort()),
-  };
+  });
 
   return {
     service,

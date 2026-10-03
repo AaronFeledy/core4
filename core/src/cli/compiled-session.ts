@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
-import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
+import * as RendererOutput from "@lando/renderer/output";
+import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { listSelectableResultKeys } from "@lando/sdk/command-result";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report";
 import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle";
@@ -140,7 +141,7 @@ export const commandErrorMessage = (error: unknown, commandId: string = activeCo
 export const emitResultLine = (text: string): void => {
   Effect.runSync(
     writeResultLine(text).pipe(
-      Effect.provide(makeRendererServiceLiveForMode(activeRendererMode, landoRenderer)),
+      Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer)),
     ),
   );
 };
@@ -148,7 +149,7 @@ export const emitResultLine = (text: string): void => {
 export const emitDiagnosticLine = (text: string): void => {
   Effect.runSync(
     writeDiagnosticLine(text).pipe(
-      Effect.provide(makeRendererServiceLiveForMode(activeRendererMode, landoRenderer)),
+      Effect.provide(RendererOutput.layerServiceForMode(activeRendererMode, landoRenderer)),
     ),
   );
 };

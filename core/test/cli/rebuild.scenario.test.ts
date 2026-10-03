@@ -226,18 +226,24 @@ const requiredStartServicesLayer = Layer.mergeAll(
   GlobalAppServiceLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
   ),
-  Layer.succeed(PluginRegistry, {
-    list: Effect.succeed([]),
-    load: () => Effect.die("not used"),
-    loadServiceType: () => Effect.die("not used"),
-    loadServiceFeature: () => Effect.die("not used"),
-    loadAppFeature: () => Effect.die("not used"),
-  }),
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  }),
-  Layer.succeed(RouterService, TestRouterService),
+  Layer.succeed(
+    PluginRegistry,
+    PluginRegistry.of({
+      list: Effect.succeed([]),
+      load: () => Effect.die("not used"),
+      loadServiceType: () => Effect.die("not used"),
+      loadServiceFeature: () => Effect.die("not used"),
+      loadAppFeature: () => Effect.die("not used"),
+    }),
+  ),
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    }),
+  ),
+  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
   shellRunnerLive,
 );
 
@@ -293,45 +299,57 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
     stateStoreLayer,
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
+    ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(BuildOrchestrator, {
-      build: (appPlan) =>
-        Effect.succeed({
-          ...appPlan,
-          services: {
-            ...appPlan.services,
-            ...(appPlan.services[api.name] === undefined
-              ? {}
-              : {
-                  [api.name]: {
-                    ...appPlan.services[api.name],
-                    artifact: { kind: "ref" as const, ref: "api:new-built-artifact" },
-                  },
-                }),
-          },
-        }),
-      buildApp: (appPlan, options) =>
-        Effect.sync(() => {
-          buildAppCalls.push({ force: options?.force === true, services: Object.keys(appPlan.services) });
-        }),
-    }),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (appPlan) =>
+          Effect.succeed({
+            ...appPlan,
+            services: {
+              ...appPlan.services,
+              ...(appPlan.services[api.name] === undefined
+                ? {}
+                : {
+                    [api.name]: {
+                      ...appPlan.services[api.name],
+                      artifact: { kind: "ref" as const, ref: "api:new-built-artifact" },
+                    },
+                  }),
+            },
+          }),
+        buildApp: (appPlan, options) =>
+          Effect.sync(() => {
+            buildAppCalls.push({ force: options?.force === true, services: Object.keys(appPlan.services) });
+          }),
+      }),
+    ),
     requiredStartServicesLayer,
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(EventService, {
-      publish: (event) => Effect.sync(() => void lifecycleOrder.push(event._tag)),
-      subscribe: () => Stream.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) => Effect.sync(() => void lifecycleOrder.push(event._tag)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
 
   return { layer, destroyCalls, applyCalls, recordedPlans, stopCalls, buildAppCalls, lifecycleOrder };
@@ -360,19 +378,25 @@ const makeCachedBuildLayer = () => {
     },
   };
   const paths = Layer.succeed(PathsService, makeLandoPaths());
-  const registry = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(provider),
-  });
-  const eventService = Layer.succeed(EventService, {
-    publish: (event) => Effect.sync(() => void events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Effect.die("not used"),
-    waitFor: () => Effect.die("not used"),
-    waitForAny: () => Effect.die("not used"),
-    query: () => Effect.die("not used"),
-  });
+  const registry = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
+  const eventService = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) => Effect.sync(() => void events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Effect.die("not used"),
+      waitFor: () => Effect.die("not used"),
+      waitForAny: () => Effect.die("not used"),
+      query: () => Effect.die("not used"),
+    }),
+  );
   const dependencies = Layer.mergeAll(
     PrivateFileAccessService.layer,
     paths,
@@ -382,10 +406,13 @@ const makeCachedBuildLayer = () => {
     requiredStartServicesLayer,
   );
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "test-rebuild", services: {} }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithAppBuild) }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "test-rebuild", services: {} }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(planWithAppBuild) })),
     dependencies,
     BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
   );

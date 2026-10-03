@@ -22,21 +22,19 @@ export const rebuildOptionsFromInput = (input: unknown): NonNullable<Parameters<
   };
 };
 
-export const runRebuildCommand = (input: unknown) => {
+export const runRebuildCommand = Effect.fn("RebuildCommand.run")(function* (input: unknown) {
   const options = rebuildOptionsFromInput(input);
   const target =
     options.services === undefined
       ? "this app"
       : `services ${options.services.join(", ")} and their prerequisites`;
-  return Effect.gen(function* () {
-    yield* requireConfirmation({
-      yes: extractSpecFlags(input).yes === true,
-      message: `Rebuild ${target}? This recreates containers and discards anything not in the Landofile or a volume.`,
-    });
-    yield* refreshAppCache();
-    return yield* rebuildApp(options);
+  yield* requireConfirmation({
+    yes: extractSpecFlags(input).yes === true,
+    message: `Rebuild ${target}? This recreates containers and discards anything not in the Landofile or a volume.`,
   });
-};
+  yield* refreshAppCache();
+  return yield* rebuildApp(options);
+});
 
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   resultSchema: RebuildAppResultSchema,

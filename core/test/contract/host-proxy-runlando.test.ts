@@ -51,36 +51,45 @@ const appRef = { kind: "user" as const, id: "myapp", root: AbsolutePath.make("/s
 const mount = { containerRoot: "/app", hostRoot: "/srv/apps/myapp" };
 
 const shellLayer = () =>
-  Layer.succeed(ShellRunner, {
-    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    run: () => Effect.die("nu"),
-    runScript: () => Effect.die("nu"),
-    interactive: () => Effect.die("nu"),
-  } as never);
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      run: () => Effect.die("nu"),
+      runScript: () => Effect.die("nu"),
+      interactive: () => Effect.die("nu"),
+    } as never),
+  );
 
 const silentEventLayer = () =>
-  Layer.succeed(EventService, {
-    publish: () => Effect.void,
-    subscribe: () => Effect.die("nu"),
-    subscribeQueue: Effect.die("nu"),
-    waitFor: () => Effect.die("nu"),
-    waitForAny: () => Effect.die("nu"),
-    query: () => Effect.die("nu"),
-  } as never);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: () => Effect.void,
+      subscribe: () => Effect.die("nu"),
+      subscribeQueue: Effect.die("nu"),
+      waitFor: () => Effect.die("nu"),
+      waitForAny: () => Effect.die("nu"),
+      query: () => Effect.die("nu"),
+    } as never),
+  );
 
 const recordingEventLayer = () => {
   const events: LandoEvent[] = [];
-  const layer = Layer.succeed(EventService, {
-    publish: (event: LandoEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-    subscribe: () => Effect.die("nu"),
-    subscribeQueue: Effect.die("nu"),
-    waitFor: () => Effect.die("nu"),
-    waitForAny: () => Effect.die("nu"),
-    query: () => Effect.die("nu"),
-  } as never);
+  const layer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Effect.die("nu"),
+      subscribeQueue: Effect.die("nu"),
+      waitFor: () => Effect.die("nu"),
+      waitForAny: () => Effect.die("nu"),
+      query: () => Effect.die("nu"),
+    } as never),
+  );
   return { events, layer };
 };
 
@@ -90,22 +99,28 @@ const standaloneRedactionService: RedactionServiceShape = {
 };
 
 const redactionLayer = () =>
-  Layer.succeed(RedactionService, {
-    ...standaloneRedactionService,
-  });
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      ...standaloneRedactionService,
+    }),
+  );
 
 const commandServices = (eventLayer: Layer.Layer<EventService>, httpsPort = 443) =>
   Layer.mergeAll(
     shellLayer(),
     eventLayer,
     redactionLayer(),
-    Layer.succeed(RouterService, {
-      status: Effect.succeed({
-        state: "running",
-        configuredApps: [],
-        authorities: [{ hostname: "web.myapp.lndo.site", scheme: "https", port: httpsPort }],
-      }),
-    } as never),
+    Layer.succeed(
+      RouterService,
+      RouterService.of({
+        status: Effect.succeed({
+          state: "running",
+          configuredApps: [],
+          authorities: [{ hostname: "web.myapp.lndo.site", scheme: "https", port: httpsPort }],
+        }),
+      } as never),
+    ),
   );
 
 const hostSideEnvelope = (

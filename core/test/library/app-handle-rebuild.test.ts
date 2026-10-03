@@ -12,13 +12,16 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { TestRouterService } from "@lando/sdk/test";
 
 const providerLayers = [
-  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
-  }),
-  Layer.succeed(RouterService, TestRouterService),
+  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    }),
+  ),
+  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
 ];
 
 test("App.rebuild delegates to the rebuild lifecycle and runs pre/post rebuild events", async () => {

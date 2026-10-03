@@ -1,5 +1,5 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
-import { Data, Effect, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -59,12 +59,19 @@ export interface DoctorSubsystemCheck {
  * failure (e.g. `ProxyError`, `CaError`) without modifying the
  * compatibility-locked SDK error classes.
  */
-export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFailure")<{
-  readonly subsystem: string;
-  readonly severity: DoctorSeverity;
-  readonly solution: DoctorSolution;
-  readonly cause?: unknown;
-}> {}
+export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFailure>()(
+  "DoctorSubsystemFailure",
+  {
+    subsystem: Schema.String,
+    severity: Schema.Literals(["info", "warn", "error"]),
+    solution: Schema.Struct({
+      kind: Schema.Literals(["automatic", "manual"]),
+      description: Schema.String,
+      command: Schema.optionalKey(Schema.String),
+    }),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
 
 /**
  * Service identities that indicate the subsystem is not yet wired to a real
@@ -222,70 +229,69 @@ export const passCheck = (spec: SubsystemSpec, context: Record<string, string>):
 const withoutPreFixState = (context: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(context).filter(([key]) => key !== "state"));
 
-export const buildDegradedCheck = (
+export const buildDegradedCheck = Effect.fnUntraced(function* (
   spec: SubsystemSpec,
   baseContext: Record<string, string>,
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
   cause?: unknown,
   refreshContext?: () => Effect.Effect<Record<string, string>, never>,
-): Effect.Effect<DoctorSubsystemCheck, never> =>
-  Effect.gen(function* () {
-    const serviceId = baseContext.subsystemId ?? "unknown";
+): Effect.fn.Return<DoctorSubsystemCheck, never> {
+  const serviceId = baseContext.subsystemId ?? "unknown";
 
-    if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
-      const fixCommand = `${spec.name}.setup`;
-      const result = yield* Effect.result(runSetup());
-      if (Result.isSuccess(result)) {
-        const liveContext = refreshContext === undefined ? {} : yield* refreshContext();
-        return passCheck(spec, {
-          ...withoutPreFixState(baseContext),
-          ...(baseContext.ready === "false" ? { ready: "true" } : {}),
-          ...liveContext,
-          fixOutcome: "recovered",
-          fixCommand,
-          fixExitCode: "0",
-        });
-      }
-      const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.failure);
-      return {
-        name: spec.name,
-        status: "warn",
-        severity: diagnostic.severity,
-        recovery: spec.recovery,
-        context: {
-          ...baseContext,
-          fixOutcome: "failed",
-          fixCommand,
-          fixExitCode: "1",
-          fixError: errorMessage(result.failure),
-        },
-        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
-      };
+  if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
+    const fixCommand = `${spec.name}.setup`;
+    const result = yield* Effect.result(runSetup());
+    if (Result.isSuccess(result)) {
+      const liveContext = refreshContext === undefined ? {} : yield* refreshContext();
+      return passCheck(spec, {
+        ...withoutPreFixState(baseContext),
+        ...(baseContext.ready === "false" ? { ready: "true" } : {}),
+        ...liveContext,
+        fixOutcome: "recovered",
+        fixCommand,
+        fixExitCode: "0",
+      });
     }
-
-    if (fix) {
-      return {
-        name: spec.name,
-        status: "warn",
-        severity: "warn",
-        recovery: spec.recovery,
-        context: { ...baseContext, fixOutcome: "skipped-manual" },
-        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
-      };
-    }
-
-    const diagnostic =
-      cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
+    const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.failure);
     return {
       name: spec.name,
       status: "warn",
-      severity: diagnostic?.severity ?? "warn",
+      severity: diagnostic.severity,
       recovery: spec.recovery,
-      context: baseContext,
-      solutions: [diagnostic?.solution ?? degradedSolution(spec)],
+      context: {
+        ...baseContext,
+        fixOutcome: "failed",
+        fixCommand,
+        fixExitCode: "1",
+        fixError: errorMessage(result.failure),
+      },
+      solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
     };
-  });
+  }
+
+  if (fix) {
+    return {
+      name: spec.name,
+      status: "warn",
+      severity: "warn",
+      recovery: spec.recovery,
+      context: { ...baseContext, fixOutcome: "skipped-manual" },
+      solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
+    };
+  }
+
+  const diagnostic =
+    cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
+  return {
+    name: spec.name,
+    status: "warn",
+    severity: diagnostic?.severity ?? "warn",
+    recovery: spec.recovery,
+    context: baseContext,
+    solutions: [diagnostic?.solution ?? degradedSolution(spec)],
+  };
+});
 
 /**
  * Probe an identity-based subsystem (ready iff its service id is not a

@@ -24,7 +24,7 @@ import {
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
-import { DataMoverLive } from "@lando/data-mover/service";
+import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -43,7 +43,7 @@ import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeJsonRendererServiceLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(
@@ -64,7 +64,7 @@ import {
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
+import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -164,7 +164,7 @@ const die = (operation: string) =>
   Effect.die(new Error(`scratch run test provider should not call ${operation}`));
 
 const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
-  const provider: RuntimeProviderShape = {
+  const provider: RuntimeProviderShape = RuntimeProvider.of({
     id: String(providerId),
     displayName: "Scratch Run Test Provider",
     version: "0.0.0",
@@ -242,7 +242,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     copyFromService: () => Stream.die("scratch run test provider should not call copyFromService"),
     exportArtifact: () => Stream.die("scratch run test provider should not call exportArtifact"),
     importArtifact: () => die("importArtifact"),
-  };
+  });
 
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
@@ -250,11 +250,14 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
   const eventLive = LandoEventService.layer.pipe(Layer.provide(redactionLive));
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
-  const registryLive = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  const registryLive = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
   const scratchDeps = Layer.mergeAll(
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -266,8 +269,8 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     redactionLive,
     ScratchRegistryLayer.ScratchRegistry.layer,
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
-    ScratchInitAppPortLive,
-    DataMoverLive.pipe(
+    ScratchInitAppPortLayer.layer,
+    BunDataMover.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
@@ -1086,7 +1089,7 @@ describe("scratch run rendering", () => {
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
           Effect.provide(testSupportLayer()),
-          Effect.provide(makeJsonRendererServiceLive(io)),
+          Effect.provide(RendererRuntime.layerJsonService(io)),
         ),
       );
 

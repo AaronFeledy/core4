@@ -106,14 +106,19 @@ const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
   mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
-  });
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
+    }),
+  );
 
 const serviceLayer = (config: McpRuntimeConfigShape) =>
   mcpServiceLayer.pipe(
-    Layer.provide(Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer())),
+    Layer.provide(
+      Layer.mergeAll(Layer.succeed(McpRuntimeConfig, McpRuntimeConfig.of(config)), redactionLayer()),
+    ),
   );
 
 describe("MCP contract suite — catalog matches the allowlist cache", () => {

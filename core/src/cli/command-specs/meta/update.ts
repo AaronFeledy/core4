@@ -28,13 +28,12 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   };
 };
 
-export const runUpdateCommand = (input: unknown) =>
-  Effect.gen(function* () {
-    const runPluginUpdates = yield* makePluginUpdateRunner();
-    const stateStore = yield* StateStore;
-    const handoff = makeUpdateHandoff(stateStore, process.env.LANDO_UPDATE_HANDOFF_TOKEN);
-    return yield* update({ ...updateOptionsFromInput(input), runPluginUpdates, handoff });
-  });
+export const runUpdateCommand = Effect.fn("UpdateCommand.run")(function* (input: unknown) {
+  const runPluginUpdates = yield* makePluginUpdateRunner();
+  const stateStore = yield* StateStore;
+  const handoff = makeUpdateHandoff(stateStore, process.env.LANDO_UPDATE_HANDOFF_TOKEN);
+  return yield* update({ ...updateOptionsFromInput(input), runPluginUpdates, handoff });
+});
 
 export const renderUpdateResult = (result: UpdateResult): string => {
   const coreStatus =

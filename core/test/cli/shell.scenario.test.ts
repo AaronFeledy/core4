@@ -157,12 +157,15 @@ const shellRunnerLayer = (
     Effect.die("interactive not expected"),
   exec: Context.Service.Shape<typeof ShellRunner>["exec"] = () => Effect.die("exec not expected"),
 ) =>
-  Layer.succeed(ShellRunner, {
-    exec,
-    run: () => Effect.die("not used"),
-    runScript: () => Effect.die("not used"),
-    interactive,
-  });
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec,
+      run: () => Effect.die("not used"),
+      runScript: () => Effect.die("not used"),
+      interactive,
+    }),
+  );
 
 const layer = (
   landofile: LandofileShape = { name: "shell-scenario" },
@@ -170,39 +173,54 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
     shellRunner,
-    Layer.succeed(SecretStore, {
-      id: "test",
-      get: () => Effect.die("secret not expected"),
-      has: () => Effect.succeed(false),
-      list: Effect.succeed([]),
-    }),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "test",
+        get: () => Effect.die("secret not expected"),
+        has: () => Effect.succeed(false),
+        list: Effect.succeed([]),
+      }),
+    ),
     emptyConfigServiceLayer,
   );
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "shell-scenario" }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(appPlan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "shell-scenario" }) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(appPlan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
     shellRunnerLayer(),
-    Layer.succeed(SecretStore, {
-      id: "test",
-      get: () => Effect.die("secret not expected"),
-      has: () => Effect.succeed(false),
-      list: Effect.succeed([]),
-    }),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "test",
+        get: () => Effect.die("secret not expected"),
+        has: () => Effect.succeed(false),
+        list: Effect.succeed([]),
+      }),
+    ),
     emptyConfigServiceLayer,
   );
 

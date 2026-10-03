@@ -9,7 +9,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
-import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem";
+import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
 import { collectOomDoctorChecks } from "./doctor-oom";
 import {
   isRelevantContribution,
@@ -67,11 +67,11 @@ export { renderDoctorResult, renderSolution } from "./doctor-render-text";
 
 import type { DoctorOptions } from "./doctor-options";
 
-export const doctor = (
-  options: DoctorOptions = {},
-  modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
-): Effect.Effect<DoctorResult, never, ConfigService | PathsService | RuntimeProviderRegistry> =>
-  Effect.gen(function* () {
+export const doctor = Effect.fn("Doctor.collect")(
+  function* (
+    options: DoctorOptions = {},
+    modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
+  ): Effect.fn.Return<DoctorResult, never, ConfigService | PathsService | RuntimeProviderRegistry> {
     const configService = yield* ConfigService;
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
@@ -269,7 +269,7 @@ export const doctor = (
         runtime: diagnosis.runtime,
         selection,
         sourceEnv,
-      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive)),
+      }).pipe(Effect.provide(HostProxyDoctorFileSystem.layer)),
       fallback: [] as ReadonlyArray<DoctorCheck>,
       redact,
     });
@@ -283,4 +283,7 @@ export const doctor = (
       ...hostProxyOutcome.value,
       ...oomChecks,
     ]);
-  }).pipe((effect) => interruptOnAbort(effect, options.signal));
+  },
+  (effect, options?: DoctorOptions, _modules?: ReadonlyArray<LandoPluginModule>) =>
+    interruptOnAbort(effect, options?.signal),
+);

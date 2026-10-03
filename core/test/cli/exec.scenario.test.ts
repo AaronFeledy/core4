@@ -22,7 +22,7 @@ import {
 import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_KEYS } from "@lando/engine/config/agent-env";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
-import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -212,17 +212,21 @@ const makeLayer = (options: {
   readonly provider: RuntimeProviderShape;
 }) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed(options.landofile) }).pipe(
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(options.landofile) }),
+    ).pipe(Layer.provide(emptyConfigServiceLayer)),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(options.plan) })).pipe(
       Layer.provide(emptyConfigServiceLayer),
     ),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(options.plan) }).pipe(
-      Layer.provide(emptyConfigServiceLayer),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(options.provider),
+      }),
     ),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(options.provider),
-    }),
     emptyConfigServiceLayer,
   );
 
@@ -531,7 +535,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
         Effect.provide(
           Layer.merge(
             makeLayer({ landofile: { name: "scenario" }, plan, provider }),
-            makePlainRendererServiceLive(io),
+            RendererRuntime.layerPlainService(io),
           ),
         ),
       ),
@@ -551,7 +555,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
         Effect.provide(
           Layer.merge(
             makeLayer({ landofile: { name: "scenario" }, plan, provider }),
-            makePlainRendererServiceLive(io),
+            RendererRuntime.layerPlainService(io),
           ),
         ),
       ),
@@ -590,17 +594,21 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
   test("unknown --service fails with ToolingExecError even when provider selection would also fail", async () => {
     const plan = makePlan([makeService("web", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
-    const failingRegistry = Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () =>
-        Effect.fail(new ProviderUnavailableError({ providerId, operation: "select", message: "boom" })),
-    });
+    const failingRegistry = Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () =>
+          Effect.fail(new ProviderUnavailableError({ providerId, operation: "select", message: "boom" })),
+      }),
+    );
     const layer = Layer.mergeAll(
-      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "scenario" }) }).pipe(
-        Layer.provide(emptyConfigServiceLayer),
-      ),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }).pipe(
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({ discover: Effect.succeed({ name: "scenario" }) }),
+      ).pipe(Layer.provide(emptyConfigServiceLayer)),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })).pipe(
         Layer.provide(emptyConfigServiceLayer),
       ),
       failingRegistry,

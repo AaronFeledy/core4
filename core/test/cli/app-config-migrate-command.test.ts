@@ -66,7 +66,7 @@ test("preserves an edit made while migration approval is pending", async () => {
   const concurrent = managedLandofile().replace("port: 80", "port: 9000");
   const interaction = makeTestInteractionService();
   let edited = false;
-  const service = {
+  const service = InteractionService.of({
     ...interaction.service,
     isInteractive: Effect.succeed(true),
     confirm: () =>
@@ -77,7 +77,7 @@ test("preserves an edit made while migration approval is pending", async () => {
         }
         return true;
       }),
-  };
+  });
 
   // When the first confirmation edits the file before transaction preparation
   const result = await Effect.runPromise(
@@ -106,13 +106,16 @@ test("inspects pending recovery without locking when dry-run input is invalid", 
   // When
   const result = await Effect.runPromise(
     appConfigMigrate({ ...input, dryRun: true }).pipe(
-      Effect.provideService(ManagedFileTransactionGuard, {
-        ensureConsistent: () =>
-          Effect.sync(() => {
-            ensured = true;
-          }),
-        pending: () => Effect.succeed(report),
-      }),
+      Effect.provideService(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          ensureConsistent: () =>
+            Effect.sync(() => {
+              ensured = true;
+            }),
+          pending: () => Effect.succeed(report),
+        }),
+      ),
       Effect.result,
     ),
   );
@@ -132,17 +135,20 @@ test("does not call ensureConsistent on a clean dry-run", async () => {
   // When
   const result = await Effect.runPromise(
     appConfigMigrate({ ...input, dryRun: true, nonInteractive: true }).pipe(
-      Effect.provideService(ManagedFileTransactionGuard, {
-        ensureConsistent: () =>
-          Effect.sync(() => {
-            ensured = true;
-          }),
-        pending: () =>
-          Effect.sync(() => {
-            pendingCalls += 1;
-            return null;
-          }),
-      }),
+      Effect.provideService(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          ensureConsistent: () =>
+            Effect.sync(() => {
+              ensured = true;
+            }),
+          pending: () =>
+            Effect.sync(() => {
+              pendingCalls += 1;
+              return null;
+            }),
+        }),
+      ),
     ),
   );
   // Then

@@ -56,27 +56,26 @@ export const renderGlobalDestroyResult = (result: GlobalDestroyResult): string =
   return `destroyed: ${result.app} - ${services} (${trailer})`;
 };
 
-export const globalDestroy = (
+export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
   options: GlobalDestroyOptions = {},
-): Effect.Effect<GlobalDestroyResult, GlobalDestroyError, GlobalDestroyServices> =>
-  Effect.gen(function* () {
-    if (options.yes !== true) return yield* Effect.fail(confirmationError());
+): Effect.fn.Return<GlobalDestroyResult, GlobalDestroyError, GlobalDestroyServices> {
+  if (options.yes !== true) return yield* Effect.fail(confirmationError());
 
-    const loaded = yield* loadGlobalPlan();
-    const volumes = options.purge ?? false;
-    if (!loaded.materialized) {
-      return { app: "global", materialized: false, servicesDestroyed: [], volumesRemoved: volumes };
-    }
+  const loaded = yield* loadGlobalPlan();
+  const volumes = options.purge ?? false;
+  if (!loaded.materialized) {
+    return { app: "global", materialized: false, servicesDestroyed: [], volumesRemoved: volumes };
+  }
 
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const servicesDestroyed = Object.values(loaded.plan.services)
-      .reverse()
-      .map((service) => String(service.name));
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const servicesDestroyed = Object.values(loaded.plan.services)
+    .reverse()
+    .map((service) => String(service.name));
 
-    yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes, removeState: true });
-    const router = yield* RouterService;
-    yield* router.removeRoutes(loaded.plan.id);
+  yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes, removeState: true });
+  const router = yield* RouterService;
+  yield* router.removeRoutes(loaded.plan.id);
 
-    return { app: loaded.plan.name, materialized: true, servicesDestroyed, volumesRemoved: volumes };
-  });
+  return { app: loaded.plan.name, materialized: true, servicesDestroyed, volumesRemoved: volumes };
+});

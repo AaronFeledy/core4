@@ -21,8 +21,8 @@ const DoctorLandofileLayer = EngineLandofileServiceLayer.layerDefault.pipe(
   Layer.provide(Layer.merge(StateStoreLayer.layer, ManagedFileTransactionGuardLayer.layer)),
 );
 
-export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | undefined> =>
-  Effect.gen(function* () {
+export const resolveDoctorAppIdentity = Effect.fnUntraced(
+  function* (): Effect.fn.Return<DoctorAppIdentity | undefined, unknown> {
     const available = yield* Effect.serviceOption(LandofileService);
     const service = Option.isSome(available)
       ? available.value
@@ -32,7 +32,9 @@ export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | un
     if (root === undefined || landofile.name === undefined) return undefined;
     const canonicalRoot = yield* Effect.tryPromise(() => realpath(root));
     return { name: landofile.name, root: canonicalRoot };
-  }).pipe(Effect.catchCause(() => Effect.succeed(undefined)));
+  },
+  Effect.catchCause(() => Effect.succeed(undefined)),
+);
 
 export const makeDoctorResourceInspector = (options: {
   readonly provider: Effect.Effect<RuntimeProviderShape, unknown>;
@@ -41,8 +43,8 @@ export const makeDoctorResourceInspector = (options: {
 }): DoctorResourceInspector => {
   const provider = Effect.runSync(Effect.cached(options.provider.pipe(Effect.timeout(options.budgetMs))));
   return {
-    inspect: (query) =>
-      Effect.gen(function* () {
+    inspect: Effect.fn("DoctorResourceInspector.inspect")(
+      function* (query: Parameters<DoctorResourceInspector["inspect"]>[0]) {
         const checked = yield* Schema.decodeUnknownEffect(DoctorResourceNameQuery)(query);
         const selected = yield* provider;
         if (selected.inspectResourceNames === undefined)
@@ -57,18 +59,18 @@ export const makeDoctorResourceInspector = (options: {
           names,
           truncated: names.length >= checked.limit,
         } satisfies DoctorResourceInspection;
-      }).pipe(
-        Effect.timeout(options.budgetMs),
-        Effect.catchCause((cause) => {
-          const described = describeDoctorCause(cause);
-          const message =
-            described.tag === undefined ? described.message : `${described.tag}: ${described.message}`;
-          return Effect.succeed({
-            status: "unavailable",
-            reason: redactDoctorMessage(message, options.redact),
-          } satisfies DoctorResourceInspection);
-        }),
-      ),
+      },
+      Effect.timeout(options.budgetMs),
+      Effect.catchCause((cause) => {
+        const described = describeDoctorCause(cause);
+        const message =
+          described.tag === undefined ? described.message : `${described.tag}: ${described.message}`;
+        return Effect.succeed({
+          status: "unavailable",
+          reason: redactDoctorMessage(message, options.redact),
+        } satisfies DoctorResourceInspection);
+      }),
+    ),
   };
 };
 
@@ -89,8 +91,8 @@ export const makeDoctorExecutableLocator = (options: {
       ? Object.entries(options.env).find(([entry]) => entry.toUpperCase() === key)?.[1]
       : options.env[key];
   return {
-    locate: (name) =>
-      Effect.gen(function* () {
+    locate: Effect.fn("DoctorExecutableLocator.locate")(
+      function* (name: string) {
         const runningPath = yield* Effect.tryPromise(() => realpath(options.execPath)).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
         );
@@ -131,13 +133,13 @@ export const makeDoctorExecutableLocator = (options: {
               ? { kind: "ambiguous", reason: "PATH exceeds the 256-entry inspection budget." }
               : { kind: "missing" },
         } satisfies DoctorExecutableLocation;
-      }).pipe(
-        Effect.catchCause(() =>
-          Effect.succeed({
-            runningBasename,
-            candidate: { kind: "ambiguous", reason: "Executable location could not be inspected." },
-          } satisfies DoctorExecutableLocation),
-        ),
+      },
+      Effect.catchCause(() =>
+        Effect.succeed({
+          runningBasename,
+          candidate: { kind: "ambiguous", reason: "Executable location could not be inspected." },
+        } satisfies DoctorExecutableLocation),
       ),
+    ),
   };
 };

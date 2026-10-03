@@ -38,55 +38,54 @@ const validOpenEnvelope = (stdout: string): boolean => {
   }
 };
 
-export const probeHostProxyContainer = (
+export const probeHostProxyContainer = Effect.fnUntraced(function* (
   options: HostProxyContainerProbeOptions,
-): Effect.Effect<HostProxyContainerProbeResult> =>
-  Effect.gen(function* () {
-    const services = [...options.probeServices]
-      .sort(compareCodePointStrings)
-      .slice(0, options.maxProbeServices);
-    let failed = false;
-    for (const service of services) {
-      const result = yield* runProbe<ExecResult, ProviderError, never>(
-        {
-          id: `doctor:host-proxy:${options.appId}`,
-          policy: { maxAttempts: 1, timeout: Duration.seconds(5), backoff: "fixed" },
-          classify: {
-            success: (value) => {
-              const execResult = Schema.decodeUnknownResult(ExecResultSchema)(value);
-              if (Result.isFailure(execResult)) return "yellow";
-              return validOpenEnvelope(execResult.success.stdout)
-                ? "green"
-                : execResult.success.exitCode === 127
-                  ? "red"
-                  : "yellow";
-            },
-            failure: () => "yellow",
+): Effect.fn.Return<HostProxyContainerProbeResult> {
+  const services = [...options.probeServices]
+    .sort(compareCodePointStrings)
+    .slice(0, options.maxProbeServices);
+  let failed = false;
+  for (const service of services) {
+    const result = yield* runProbe<ExecResult, ProviderError, never>(
+      {
+        id: `doctor:host-proxy:${options.appId}`,
+        policy: { maxAttempts: 1, timeout: Duration.seconds(5), backoff: "fixed" },
+        classify: {
+          success: (value) => {
+            const execResult = Schema.decodeUnknownResult(ExecResultSchema)(value);
+            if (Result.isFailure(execResult)) return "yellow";
+            return validOpenEnvelope(execResult.success.stdout)
+              ? "green"
+              : execResult.success.exitCode === 127
+                ? "red"
+                : "yellow";
           },
+          failure: () => "yellow",
         },
-        options.providerExec(
-          { app: AppId.make(options.appId), service: ServiceName.make(service) },
-          {
-            command: ["/usr/local/bin/lando", "open", "--print"],
-            env:
-              options.target.kind === "unix-socket"
-                ? { LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET }
-                : { LANDO_HOST_PROXY_URL: options.target.containerUrl },
-            stdin: "ignore",
-            tty: false,
-          },
-        ),
-      ).pipe(
-        Effect.map((probeResult) => {
-          if (probeResult.outcome === "green") return "reachable" as const;
-          if (probeResult.outcome === "red" && probeResult.lastError === undefined) return "failed" as const;
-          return "inconclusive" as const;
-        }),
-        Effect.catch(() => Effect.succeed("inconclusive" as const)),
-      );
-      if (result === "reachable") return result;
-      if (result === "failed") failed = true;
-    }
-    if (options.probeServices.length > services.length) return "cap-exhausted";
-    return failed ? "failed" : "inconclusive";
-  });
+      },
+      options.providerExec(
+        { app: AppId.make(options.appId), service: ServiceName.make(service) },
+        {
+          command: ["/usr/local/bin/lando", "open", "--print"],
+          env:
+            options.target.kind === "unix-socket"
+              ? { LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET }
+              : { LANDO_HOST_PROXY_URL: options.target.containerUrl },
+          stdin: "ignore",
+          tty: false,
+        },
+      ),
+    ).pipe(
+      Effect.map((probeResult) => {
+        if (probeResult.outcome === "green") return "reachable" as const;
+        if (probeResult.outcome === "red" && probeResult.lastError === undefined) return "failed" as const;
+        return "inconclusive" as const;
+      }),
+      Effect.catch(() => Effect.succeed("inconclusive" as const)),
+    );
+    if (result === "reachable") return result;
+    if (result === "failed") failed = true;
+  }
+  if (options.probeServices.length > services.length) return "cap-exhausted";
+  return failed ? "failed" : "inconclusive";
+});

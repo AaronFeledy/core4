@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { redactString } from "../redact";
@@ -45,34 +45,33 @@ const summaryStatus = (steps: ReadonlyArray<SetupReadinessStep>): SetupReadiness
   return "ready";
 };
 
-export const writeSetupReadiness = (
+export const writeSetupReadiness = Effect.fnUntraced(function* (
   userDataRoot: string | undefined,
   providerId: string,
   steps: ReadonlyArray<SetupReadinessStep>,
   runtimeService?: SetupReadinessRuntimeService | null,
-): Effect.Effect<void, never> =>
-  Effect.gen(function* () {
-    if (userDataRoot === undefined) return;
-    const existing = yield* readSetupReadinessRaw(userDataRoot);
-    const runtimeServiceBlock =
-      runtimeService === undefined
-        ? existing?.runtimeService === undefined
-          ? {}
-          : { runtimeService: existing.runtimeService }
-        : runtimeService === null
-          ? {}
-          : { runtimeService };
-    const summary: SetupReadinessSummary = {
-      status: summaryStatus(steps),
-      providerId,
-      updatedAt: new Date().toISOString(),
-      steps,
-      ...runtimeServiceBlock,
-    };
-    yield* Effect.promise(() =>
-      writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
-    ).pipe(Effect.catch(() => Effect.void));
-  });
+): Effect.fn.Return<void, never> {
+  if (userDataRoot === undefined) return;
+  const existing = yield* readSetupReadinessRaw(userDataRoot);
+  const runtimeServiceBlock =
+    runtimeService === undefined
+      ? existing?.runtimeService === undefined
+        ? {}
+        : { runtimeService: existing.runtimeService }
+      : runtimeService === null
+        ? {}
+        : { runtimeService };
+  const summary: SetupReadinessSummary = {
+    status: summaryStatus(steps),
+    providerId,
+    updatedAt: DateTime.formatIso(yield* DateTime.now),
+    steps,
+    ...runtimeServiceBlock,
+  };
+  yield* Effect.promise(() =>
+    writeFileAtomicViaRename(setupReadinessPath(userDataRoot), `${JSON.stringify(summary, null, 2)}\n`),
+  ).pipe(Effect.catch(() => Effect.void));
+});
 
 export const readSetupReadiness = (
   userDataRoot: string | undefined,

@@ -18,7 +18,8 @@ import { EventService } from "@lando/sdk/services";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeJsonRendererLive, renderPlain } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { renderPlain } from "@lando/renderer/runtime";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
@@ -313,7 +314,9 @@ describe("lando renderer visual language", () => {
     });
     await Effect.runPromise(
       Effect.scoped(
-        program.pipe(Effect.provide(Layer.provideMerge(makeJsonRendererLive(io), LandoEventService.layer))),
+        program.pipe(
+          Effect.provide(Layer.provideMerge(RendererRuntime.layerJson(io), LandoEventService.layer)),
+        ),
       ),
     );
     const lines = io.stderrLines();

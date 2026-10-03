@@ -165,15 +165,21 @@ const makeLayer = (rawLine: string) => {
   };
 
   return Layer.mergeAll(
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
 };
 

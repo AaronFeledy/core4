@@ -33,7 +33,7 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 
 import { makeLandoPaths } from "@lando/paths";
-const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
+const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -256,28 +256,37 @@ const makeStopLayer = (
 
   const layer = Layer.mergeAll(
     PrivateFileAccessService.layer,
-    TestStateStoreLive,
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+    testStateStoreLayer,
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+    ),
     makeTestStateStore().layer,
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event._tag);
-          publishedEvents.push(event);
-        }),
-      subscribe: () => Stream.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event._tag);
+            publishedEvents.push(event);
+          }),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
 
   return { layer, events, publishedEvents, destroyCalls, volumes };
@@ -410,7 +419,7 @@ describe("lando stop", () => {
 
   test("skips file-sync cleanup when the engine is unavailable and still stops the app", async () => {
     const callLog: string[] = [];
-    const unavailableEngine: FileSyncEngineShape = {
+    const unavailableEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -436,7 +445,7 @@ describe("lando stop", () => {
           return [];
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const fakeProvider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -491,25 +500,34 @@ describe("lando stop", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
-      TestStateStoreLive,
+      testStateStoreLayer,
       PrivateFileAccessService.layer,
-      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(capabilities),
-        select: () => Effect.succeed(fakeProvider),
-      }),
-      Layer.succeed(EventService, {
-        publish: () => Effect.void,
-        subscribe: () => Stream.die("not used"),
-        subscribeQueue: Effect.die("not used"),
-        waitFor: () => Effect.die("not used"),
-        waitForAny: () => Effect.die("not used"),
-        query: () => Effect.succeed([]),
-      }),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.succeed(capabilities),
+          select: () => Effect.succeed(fakeProvider),
+        }),
+      ),
+      Layer.succeed(
+        EventService,
+        EventService.of({
+          publish: () => Effect.void,
+          subscribe: () => Stream.die("not used"),
+          subscribeQueue: Effect.die("not used"),
+          waitFor: () => Effect.die("not used"),
+          waitForAny: () => Effect.die("not used"),
+          query: () => Effect.succeed([]),
+        }),
+      ),
       Layer.succeed(FileSyncEngine, unavailableEngine),
     );
 
@@ -521,7 +539,7 @@ describe("lando stop", () => {
 
   test("surfaces file-sync session listing failure before stopping app writers", async () => {
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -556,7 +574,7 @@ describe("lando stop", () => {
           ),
         ),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeStopLayer(plan, {
       appliedFileSync: {
         status: "accelerated",
@@ -588,7 +606,7 @@ describe("lando stop", () => {
       lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     }));
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -627,7 +645,7 @@ describe("lando stop", () => {
           return existing;
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const harness = makeStopLayer(plan, {
       appliedFileSync: {
         status: "accelerated",
@@ -656,7 +674,7 @@ describe("lando stop", () => {
       lastUpdatedAt: DateTime.makeUnsafe("2026-05-29T00:00:00Z"),
     };
     const callLog: string[] = [];
-    const fakeEngine: FileSyncEngineShape = {
+    const fakeEngine: FileSyncEngineShape = FileSyncEngine.of({
       id: "mutagen",
       displayName: "Fake Mutagen",
       capabilities: {
@@ -685,7 +703,7 @@ describe("lando stop", () => {
           return [existing];
         }),
       streamEvents: () => Stream.empty,
-    };
+    });
     const fakeProvider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -746,25 +764,34 @@ describe("lando stop", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
-      TestStateStoreLive,
+      testStateStoreLayer,
       PrivateFileAccessService.layer,
-      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({ discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      ),
       makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(capabilities),
-        select: () => Effect.succeed(fakeProvider),
-      }),
-      Layer.succeed(EventService, {
-        publish: () => Effect.void,
-        subscribe: () => Stream.die("not used"),
-        subscribeQueue: Effect.die("not used"),
-        waitFor: () => Effect.die("not used"),
-        waitForAny: () => Effect.die("not used"),
-        query: () => Effect.succeed([]),
-      }),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.succeed(capabilities),
+          select: () => Effect.succeed(fakeProvider),
+        }),
+      ),
+      Layer.succeed(
+        EventService,
+        EventService.of({
+          publish: () => Effect.void,
+          subscribe: () => Stream.die("not used"),
+          subscribeQueue: Effect.die("not used"),
+          waitFor: () => Effect.die("not used"),
+          waitForAny: () => Effect.die("not used"),
+          query: () => Effect.succeed([]),
+        }),
+      ),
       Layer.succeed(FileSyncEngine, fakeEngine),
     );
 

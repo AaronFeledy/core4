@@ -47,15 +47,21 @@ test.each([true, false])(
             env: {},
           },
         }).pipe(
-          Effect.provideService(ConfigService, {
-            load: Effect.succeed(config),
-            get: (name) => Effect.succeed(config[name]),
-          }),
-          Effect.provideService(SshService, {
-            ...makeTestSshService(),
-            id: "sidecar",
-            getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(path) }),
-          }),
+          Effect.provideService(
+            ConfigService,
+            ConfigService.of({
+              load: Effect.succeed(config),
+              get: (name) => Effect.succeed(config[name]),
+            }),
+          ),
+          Effect.provideService(
+            SshService,
+            SshService.of({
+              ...makeTestSshService(),
+              id: "sidecar",
+              getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(path) }),
+            }),
+          ),
           Effect.provide(BunFileSystem.layer),
           Effect.provide(DefaultSubsystemDoctorLayer),
         ),

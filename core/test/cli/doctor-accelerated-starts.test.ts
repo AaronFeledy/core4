@@ -13,14 +13,17 @@ test("minimal doctor does not inspect ambient state without a supplied StateStor
     Effect.gen(function* () {
       const fs = yield* FileSystem;
       return yield* acceleratedStartsDoctor((value) => value).pipe(
-        Effect.provideService(FileSystem, {
-          ...fs,
-          readDir: () =>
-            Effect.sync(() => {
-              scans++;
-              return [];
-            }),
-        }),
+        Effect.provideService(
+          FileSystem,
+          FileSystem.of({
+            ...fs,
+            readDir: () =>
+              Effect.sync(() => {
+                scans++;
+                return [];
+              }),
+          }),
+        ),
       );
     }).pipe(Effect.provide(BunFileSystem.layer)),
   );
@@ -65,7 +68,7 @@ test.each(["retained", "preparing", "sessions-ready", "apply-intent"] as const)(
       Effect.gen(function* () {
         const fs = yield* FileSystem;
         return yield* acceleratedStartsDoctor((value) => value).pipe(
-          Effect.provideService(FileSystem, { ...fs, readDir: () => Effect.succeed([key]) }),
+          Effect.provideService(FileSystem, FileSystem.of({ ...fs, readDir: () => Effect.succeed([key]) })),
           Effect.provide(store.layer),
         );
       }).pipe(Effect.provide(BunFileSystem.layer)),

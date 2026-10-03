@@ -16,15 +16,20 @@ const invocation = (id: string): CliInvocationSnapshot => ({
   cwd: `/invocations/${id}`,
   invocationId: id,
 });
-const redaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(identityRedactor),
+const redaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(identityRedactor),
+  }),
+);
+const lifecycle = Effect.fnUntraced(function* <A, E, R>(
+  work: Effect.Effect<A, E, R>,
+  parent: CliInvocationSnapshot,
+) {
+  const exit = yield* runCommandLifecycle(work, { invocation: parent });
+  return yield* exit;
 });
-const lifecycle = <A, E, R>(work: Effect.Effect<A, E, R>, parent: CliInvocationSnapshot) =>
-  Effect.gen(function* () {
-    const exit = yield* runCommandLifecycle(work, { invocation: parent });
-    return yield* exit;
-  });
 
 describe("command invocation fiber-local ancestry", () => {
   test("has no parent outside a lifecycle and uses the ambient or explicit cwd", async () => {

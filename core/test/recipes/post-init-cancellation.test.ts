@@ -194,16 +194,19 @@ test("interrupts the nested runner when post-init is cancelled", async () => {
         rolledBack: false,
       }),
   }).pipe(
-    Effect.provideService(ProcessRunner, {
-      run: () =>
-        Effect.acquireUseRelease(
-          Effect.sync(() => started.resolve()),
-          () => Effect.never.pipe(Effect.timeout("2 seconds"), Effect.orDie),
-          () => Effect.sync(() => released.resolve()),
-        ),
-      stream: () => Stream.empty,
-      streamWithExit: () => Stream.empty,
-    }),
+    Effect.provideService(
+      ProcessRunner,
+      ProcessRunner.of({
+        run: () =>
+          Effect.acquireUseRelease(
+            Effect.sync(() => started.resolve()),
+            () => Effect.never.pipe(Effect.timeout("2 seconds"), Effect.orDie),
+            () => Effect.sync(() => released.resolve()),
+          ),
+        stream: () => Stream.empty,
+        streamWithExit: () => Stream.empty,
+      }),
+    ),
   );
   const result = Effect.runPromiseExit(program, { signal: controller.signal });
   try {

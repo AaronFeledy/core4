@@ -26,27 +26,30 @@ const capturingRendererLayer = (
   sink: { warnings: string[]; stderr?: string[] },
   id = "test",
 ): Layer.Layer<Renderer> =>
-  Layer.succeed(Renderer, {
-    id,
-    capabilities: {
-      color: false,
-      interactive: false,
-      animation: false,
-      notifications: false,
-    },
-    message: {
-      info: () => Effect.void,
-      warn: (body: string) =>
-        Effect.sync(() => {
-          sink.warnings.push(body);
-        }),
-      error: () => Effect.void,
-    },
-    output: {
-      stdout: () => Effect.void,
-      stderr: (chunk: string) => Effect.sync(() => sink.stderr?.push(chunk)),
-    },
-  } as Context.Service.Shape<typeof Renderer>);
+  Layer.succeed(
+    Renderer,
+    Renderer.of({
+      id,
+      capabilities: {
+        color: false,
+        interactive: false,
+        animation: false,
+        notifications: false,
+      },
+      message: {
+        info: () => Effect.void,
+        warn: (body: string) =>
+          Effect.sync(() => {
+            sink.warnings.push(body);
+          }),
+        error: () => Effect.void,
+      },
+      output: {
+        stdout: () => Effect.void,
+        stderr: (chunk: string) => Effect.sync(() => sink.stderr?.push(chunk)),
+      },
+    } as Context.Service.Shape<typeof Renderer>),
+  );
 
 describe("assertLandoVersionConstraint", () => {
   test("passes when the running version satisfies the constraint", async () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Predicate } from "effect";
 
 import { Effect, Schema } from "effect";
 
@@ -23,11 +24,8 @@ const PackageManifestSchema = Schema.Struct({
 
 type StateStoreServiceModule = typeof import("@lando/state-store/service");
 
-const isRuntimeModule = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null;
-
 const isStateStoreServiceModule = (value: unknown): value is StateStoreServiceModule =>
-  isRuntimeModule(value) &&
+  Predicate.isObjectOrArray(value) &&
   "makeStateStore" in value &&
   typeof value.makeStateStore === "function" &&
   "layer" in value;

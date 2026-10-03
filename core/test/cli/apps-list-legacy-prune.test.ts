@@ -48,31 +48,37 @@ const fixture = async (provider: string) => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            Layer.succeed(ConfigService, {
-              load: Effect.succeed(config),
-              get: (key) => Effect.succeed(config[key]),
-            }),
+            Layer.succeed(
+              ConfigService,
+              ConfigService.of({
+                load: Effect.succeed(config),
+                get: (key) => Effect.succeed(config[key]),
+              }),
+            ),
             Layer.succeed(PathsService, paths),
-            Layer.succeed(StateStore, {
-              ...store,
-              open: (spec) =>
-                store.open(spec).pipe(
-                  Effect.map((bucket) => {
-                    if (!failRemoval || bucket.path !== legacyPath) return bucket;
-                    expect(spec.lock).toBe("advisory");
-                    return {
-                      ...bucket,
-                      remove: Effect.fail(
-                        new StateStoreError({
-                          reason: "io",
-                          operation: "remove",
-                          path: legacyPath,
-                        }),
-                      ),
-                    };
-                  }),
-                ),
-            }),
+            Layer.succeed(
+              StateStore,
+              StateStore.of({
+                ...store,
+                open: (spec) =>
+                  store.open(spec).pipe(
+                    Effect.map((bucket) => {
+                      if (!failRemoval || bucket.path !== legacyPath) return bucket;
+                      expect(spec.lock).toBe("advisory");
+                      return {
+                        ...bucket,
+                        remove: Effect.fail(
+                          new StateStoreError({
+                            reason: "io",
+                            operation: "remove",
+                            path: legacyPath,
+                          }),
+                        ),
+                      };
+                    }),
+                  ),
+              }),
+            ),
             BunFileSystem.layer,
             PrivateFileAccessService.layer,
           ),

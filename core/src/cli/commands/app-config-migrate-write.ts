@@ -66,53 +66,52 @@ interface WriteRecipeMigrationRequest {
   readonly privateFileAccess: PrivateFileAccess;
 }
 
-export const writeRecipeMigration = ({
+export const writeRecipeMigration = Effect.fnUntraced(function* ({
   appRoot,
   document,
   expectedBefore,
   privateFileAccess,
-}: WriteRecipeMigrationRequest) =>
-  Effect.gen(function* () {
-    const content = yield* Effect.fromResult(emitLandofileYamlEither(document)).pipe(
+}: WriteRecipeMigrationRequest) {
+  const content = yield* Effect.fromResult(emitLandofileYamlEither(document)).pipe(
+    Effect.mapError(
+      () =>
+        new AppConfigMigrateError({
+          reason: "encode-failed",
+          message: "Cannot losslessly encode the migrated Landofile.",
+          remediation: "Correct unsupported authoring values before retrying.",
+        }),
+    ),
+  );
+  const redactor = createStandaloneRedactor("secrets");
+  yield* makeManagedFileTransactions({
+    journalRoot: () => resolveLandoRoots().userDataRoot,
+    privateFileAccess,
+  })
+    .run({
+      appRoot,
+      operations: [
+        {
+          kind: "write",
+          path: CANONICAL_LANDOFILE,
+          content,
+          expectedBefore: {
+            present: true,
+            digest: new Bun.CryptoHasher("sha256").update(expectedBefore).digest("hex"),
+          },
+        },
+      ],
+    })
+    .pipe(
       Effect.mapError(
-        () =>
-          new AppConfigMigrateError({
-            reason: "encode-failed",
-            message: "Cannot losslessly encode the migrated Landofile.",
-            remediation: "Correct unsupported authoring values before retrying.",
+        (error) =>
+          new AppConfigMigrateCommitError({
+            phase: error.phase,
+            reason: error.reason,
+            message: redactor.redactString(
+              `Recipe migration transaction failed (${error.phase}/${error.reason}) at ${error.path}.`,
+            ),
+            remediation: redactor.redactString(error.remediation),
           }),
       ),
     );
-    const redactor = createStandaloneRedactor("secrets");
-    yield* makeManagedFileTransactions({
-      journalRoot: () => resolveLandoRoots().userDataRoot,
-      privateFileAccess,
-    })
-      .run({
-        appRoot,
-        operations: [
-          {
-            kind: "write",
-            path: CANONICAL_LANDOFILE,
-            content,
-            expectedBefore: {
-              present: true,
-              digest: new Bun.CryptoHasher("sha256").update(expectedBefore).digest("hex"),
-            },
-          },
-        ],
-      })
-      .pipe(
-        Effect.mapError(
-          (error) =>
-            new AppConfigMigrateCommitError({
-              phase: error.phase,
-              reason: error.reason,
-              message: redactor.redactString(
-                `Recipe migration transaction failed (${error.phase}/${error.reason}) at ${error.path}.`,
-              ),
-              remediation: redactor.redactString(error.remediation),
-            }),
-        ),
-      );
-  });
+});

@@ -238,13 +238,19 @@ const makeLogsLayer = (
   };
 
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-logs", services: {} }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(effectivePlan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(defaultProviderCapabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "test-logs", services: {} }) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(effectivePlan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(defaultProviderCapabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
 
   return { layer, logCalls };
@@ -623,12 +629,15 @@ describe("lando logs", () => {
   test("followLogsApp streams each provider chunk live through the StreamFrameSink", async () => {
     const harness = makeLogsLayer();
     const emitted: Array<{ readonly _tag: string; readonly chunk: string; readonly service?: string }> = [];
-    const sink = Layer.succeed(StreamFrameSink, {
-      emit: (frame) =>
-        Effect.sync(() => {
-          emitted.push(frame);
-        }),
-    });
+    const sink = Layer.succeed(
+      StreamFrameSink,
+      StreamFrameSink.of({
+        emit: (frame) =>
+          Effect.sync(() => {
+            emitted.push(frame);
+          }),
+      }),
+    );
     const result = await Effect.runPromise(
       followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),
     );
@@ -683,13 +692,16 @@ describe("lando logs", () => {
       );
     const harness = makeLogsLayer({ serviceLogs: true, logs: infinite });
     let seen = 0;
-    const sink = Layer.succeed(StreamFrameSink, {
-      emit: () =>
-        Effect.sync(() => {
-          seen += 1;
-          if (seen === 3) controller.abort();
-        }),
-    });
+    const sink = Layer.succeed(
+      StreamFrameSink,
+      StreamFrameSink.of({
+        emit: () =>
+          Effect.sync(() => {
+            seen += 1;
+            if (seen === 3) controller.abort();
+          }),
+      }),
+    );
 
     const result = await Effect.runPromise(
       followLogsApp({ follow: true, signal: controller.signal }).pipe(
@@ -717,13 +729,16 @@ describe("lando logs", () => {
     const harness = makeLogsLayer({ serviceLogs: true, logs: infinite });
     const controller = new AbortController();
     let seen = 0;
-    const sink = Layer.succeed(StreamFrameSink, {
-      emit: () =>
-        Effect.sync(() => {
-          seen += 1;
-          if (seen === 3) controller.abort();
-        }),
-    });
+    const sink = Layer.succeed(
+      StreamFrameSink,
+      StreamFrameSink.of({
+        emit: () =>
+          Effect.sync(() => {
+            seen += 1;
+            if (seen === 3) controller.abort();
+          }),
+      }),
+    );
 
     const exit = await Effect.runPromiseExit(
       followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),

@@ -33,18 +33,22 @@ const spec = (
 });
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
-  });
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
+    }),
+  );
 
-const configLayer = (config: McpRuntimeConfigShape) => Layer.succeed(McpRuntimeConfig, config);
+const configLayer = (config: McpRuntimeConfigShape) =>
+  Layer.succeed(McpRuntimeConfig, McpRuntimeConfig.of(config));
 
 const serviceLayer = (config: McpRuntimeConfigShape, redactedValues: ReadonlyArray<string> = []) =>
   mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
 
 const recordingEventLayer = (events: LandoEvent[]) => {
-  const service: EventServiceShape = {
+  const service: EventServiceShape = EventService.of({
     publish: (event) => Effect.sync(() => events.push(event)),
     subscribe: () => Stream.empty,
     subscribeQueue: Effect.gen(function* () {
@@ -53,22 +57,20 @@ const recordingEventLayer = (events: LandoEvent[]) => {
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  };
+  });
   return Layer.succeed(EventService, service);
 };
 
-const dispatchAndCollectReplies = ({
-  config,
-  options,
-  toolId,
-  redactedValues = [],
-}: {
-  readonly config: McpRuntimeConfigShape;
-  readonly options: McpServeOptions;
-  readonly toolId: string;
-  readonly redactedValues?: ReadonlyArray<string>;
-}) =>
-  Effect.gen(function* () {
+const dispatchAndCollectReplies = Effect.fnUntraced(
+  function* ({
+    options,
+    toolId,
+  }: {
+    readonly config: McpRuntimeConfigShape;
+    readonly options: McpServeOptions;
+    readonly toolId: string;
+    readonly redactedValues?: ReadonlyArray<string>;
+  }) {
     const inmem = yield* makeStdioClient();
     const service = yield* McpService;
     const fiber = yield* service
@@ -80,7 +82,10 @@ const dispatchAndCollectReplies = ({
     yield* inmem.close;
     yield* Fiber.join(fiber);
     return replies;
-  }).pipe(Effect.scoped, Effect.provide(serviceLayer(config, redactedValues)));
+  },
+  Effect.scoped,
+  (effect, { config, redactedValues = [] }) => Effect.provide(effect, serviceLayer(config, redactedValues)),
+);
 
 describe("McpService.catalog", () => {
   test("lists the effective allowlist as tools", async () => {

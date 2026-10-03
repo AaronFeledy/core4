@@ -60,18 +60,18 @@ const buildDependencyLayer = (
     ...(options.defaultProviderId === undefined ? {} : { defaultProviderId: options.defaultProviderId }),
   });
   const load = Effect.succeed(config);
-  const configService: Context.Service.Shape<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 
-  const pluginRegistryService: Context.Service.Shape<typeof PluginRegistry> = {
+  const pluginRegistryService: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
     list: Effect.succeed(options.manifests),
     load: (name) => Effect.fail(notRegistered(name)),
     loadServiceType: (id) => Effect.fail(notRegistered(id)),
     loadServiceFeature: (id) => Effect.fail(notRegistered(id)),
     loadAppFeature: (id) => Effect.fail(notRegistered(id)),
-  };
+  });
 
   const downloaderHandle = Effect.runSync(makeTestDownloader());
   const managedFileHandle = Effect.runSync(makeTestManagedFileStore());
@@ -82,12 +82,12 @@ const buildDependencyLayer = (
     Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
   );
   return Layer.mergeAll(
-    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
+    Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     Layer.succeed(ConfigService, configService),
     Layer.succeed(PluginRegistry, pluginRegistryService),
-    Layer.succeed(Downloader, downloaderHandle.service),
+    Layer.succeed(Downloader, Downloader.of(downloaderHandle.service)),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
     Layer.succeed(ManagedFileService, managedFileHandle.service),
     Layer.succeed(PathsService, landoPaths),
     Layer.succeed(StateStore, stateStoreHandle.service),

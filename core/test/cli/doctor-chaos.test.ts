@@ -35,13 +35,13 @@ const buildConfigService = (
     telemetry: { enabled: false },
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) =>
       options.failGet === true
         ? Effect.fail(new ConfigError({ message: `config file is corrupt: ${String(key)}` }))
         : Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const failingSelectRegistry = () => ({
@@ -78,8 +78,8 @@ const layersFor = (
   configOptions: { readonly failGet?: boolean } = {},
 ) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, registry as never),
-    Layer.succeed(ConfigService, buildConfigService(configOptions)),
+    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry as never)),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService(configOptions))),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
@@ -89,13 +89,12 @@ const layersFor = (
  * deadline fires. Advance a millisecond at a time and drain the scheduler between
  * steps, as a real clock would.
  */
-const advanceSettled = (millis: number) =>
-  Effect.gen(function* () {
-    for (let elapsed = 0; elapsed < millis; elapsed += 1) {
-      yield* TestClock.adjust("1 millis");
-      yield* Effect.promise(() => new Promise<void>((resume) => setImmediate(resume)));
-    }
-  });
+const advanceSettled = Effect.fnUntraced(function* (millis: number) {
+  for (let elapsed = 0; elapsed < millis; elapsed += 1) {
+    yield* TestClock.adjust("1 millis");
+    yield* Effect.promise(() => new Promise<void>((resume) => setImmediate(resume)));
+  }
+});
 
 const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>
   (report.self?.checks ?? []).map((check) => check.section);

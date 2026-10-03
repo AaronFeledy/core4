@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Effect, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 
@@ -21,12 +21,20 @@ export type SetupNetworkFailureKind =
   | "missing-custom-ca"
   | "blocked-registry";
 
-export class SetupNetworkTrustError extends Data.TaggedError("SetupNetworkTrustError")<{
-  readonly kind: SetupNetworkFailureKind;
-  readonly message: string;
-  readonly remediation: string;
-  readonly cause?: unknown;
-}> {}
+export class SetupNetworkTrustError extends Schema.TaggedError<SetupNetworkTrustError>()(
+  "SetupNetworkTrustError",
+  {
+    kind: Schema.Literals([
+      "tls-interception",
+      "proxy-authentication",
+      "missing-custom-ca",
+      "blocked-registry",
+    ]),
+    message: Schema.String,
+    remediation: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
 
 export interface ResolvedSetupNetworkTrust extends NetworkConfig {
   readonly proxy: {
@@ -133,60 +141,59 @@ export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustEr
   return blockedRegistryError({ cause });
 };
 
-export const resolveSetupNetworkTrust = (
+export const resolveSetupNetworkTrust = Effect.fnUntraced(function* (
   config: GlobalConfig,
   env: NodeJS.ProcessEnv = process.env,
-): Effect.Effect<ResolvedSetupNetworkTrust, SetupNetworkTrustError> =>
-  Effect.gen(function* () {
-    const plan = yield* Effect.try({
-      try: () => resolveNetworkTrustPlan({ network: config.network }, env),
-      catch: (cause) =>
-        cause instanceof NetworkTrustResolutionError
-          ? new SetupNetworkTrustError({
-              kind: "missing-custom-ca",
-              message: "LANDO_NETWORK_CA_CERTS is not a JSON array of custom CA certificate paths.",
-              remediation:
-                'Set LANDO_NETWORK_CA_CERTS to a JSON array such as `["/path/to/corp-root.pem"]`, or configure network.ca.certs in the global config.',
-              cause,
-            })
-          : new SetupNetworkTrustError({
-              kind: "blocked-registry",
-              message: "Network trust configuration could not be resolved.",
-              remediation: platformNetworkHint(),
-              cause,
-            }),
-    });
-
-    const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
-      Effect.mapError(
-        (error) =>
-          new SetupNetworkTrustError({
+): Effect.fn.Return<ResolvedSetupNetworkTrust, SetupNetworkTrustError> {
+  const plan = yield* Effect.try({
+    try: () => resolveNetworkTrustPlan({ network: config.network }, env),
+    catch: (cause) =>
+      cause instanceof NetworkTrustResolutionError
+        ? new SetupNetworkTrustError({
             kind: "missing-custom-ca",
-            message: error.message,
-            remediation: `${error.remediation} Then rerun \`lando setup\`. ${platformNetworkHint()}`,
-            cause: error,
+            message: "LANDO_NETWORK_CA_CERTS is not a JSON array of custom CA certificate paths.",
+            remediation:
+              'Set LANDO_NETWORK_CA_CERTS to a JSON array such as `["/path/to/corp-root.pem"]`, or configure network.ca.certs in the global config.',
+            cause,
+          })
+        : new SetupNetworkTrustError({
+            kind: "blocked-registry",
+            message: "Network trust configuration could not be resolved.",
+            remediation: platformNetworkHint(),
+            cause,
           }),
-      ),
-    );
-
-    return {
-      // Defaults are deliberately asymmetric: CA material is not secret so inject is on,
-      // while proxy URLs may embed credentials so inject stays opt-in.
-      proxy: {
-        ...plan.proxy,
-        injectIntoServices: config.network?.proxy?.injectIntoServices ?? false,
-      },
-      ca: {
-        trustHost: plan.trustHost,
-        certs: plan.caCertPaths,
-        loadedCerts,
-        injectIntoServices: config.network?.ca?.injectIntoServices ?? true,
-      },
-    };
   });
 
-export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =>
-  Effect.gen(function* () {
+  const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
+    Effect.mapError(
+      (error) =>
+        new SetupNetworkTrustError({
+          kind: "missing-custom-ca",
+          message: error.message,
+          remediation: `${error.remediation} Then rerun \`lando setup\`. ${platformNetworkHint()}`,
+          cause: error,
+        }),
+    ),
+  );
+
+  return {
+    // Defaults are deliberately asymmetric: CA material is not secret so inject is on,
+    // while proxy URLs may embed credentials so inject stays opt-in.
+    proxy: {
+      ...plan.proxy,
+      injectIntoServices: config.network?.proxy?.injectIntoServices ?? false,
+    },
+    ca: {
+      trustHost: plan.trustHost,
+      certs: plan.caCertPaths,
+      loadedCerts,
+      injectIntoServices: config.network?.ca?.injectIntoServices ?? true,
+    },
+  };
+});
+
+export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = Effect.fn("SetupNetworkTrust.probe")(
+  function* (network) {
     const hasTrustToValidate =
       network.proxy.http !== undefined ||
       network.proxy.https !== undefined ||
@@ -204,16 +211,16 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =
     if (response.status < 200 || response.status >= 400) {
       return yield* Effect.fail(blockedRegistryError({ status: response.status }));
     }
-  });
+  },
+);
 
-export const validateSetupNetworkTrust = (
+export const validateSetupNetworkTrust = Effect.fnUntraced(function* (
   config: GlobalConfig,
   probe?: SetupNetworkTrustProbe,
-): Effect.Effect<ResolvedSetupNetworkTrust, SetupNetworkTrustError, HttpClient.HttpClient> =>
-  Effect.gen(function* () {
-    const resolved = yield* resolveSetupNetworkTrust(config);
-    // The probe returns a classified SetupNetworkTrustError; re-classifying its
-    // message here would downgrade proxy-authentication to blocked-registry.
-    yield* (probe ?? defaultSetupNetworkTrustProbe)(resolved);
-    return resolved;
-  });
+): Effect.fn.Return<ResolvedSetupNetworkTrust, SetupNetworkTrustError, HttpClient.HttpClient> {
+  const resolved = yield* resolveSetupNetworkTrust(config);
+  // The probe returns a classified SetupNetworkTrustError; re-classifying its
+  // message here would downgrade proxy-authentication to blocked-registry.
+  yield* (probe ?? defaultSetupNetworkTrustProbe)(resolved);
+  return resolved;
+});

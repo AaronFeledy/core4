@@ -119,29 +119,38 @@ describe("lando app:cache:refresh", () => {
 
         let selectCalls = 0;
         const layer = Layer.mergeAll(
-          Layer.succeed(LandofileService, {
-            discover: Effect.succeed({
-              name: "test-app-cache",
-              services: {},
-              tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
+          Layer.succeed(
+            LandofileService,
+            LandofileService.of({
+              discover: Effect.succeed({
+                name: "test-app-cache",
+                services: {},
+                tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
+              }),
             }),
-          }),
-          Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-          Layer.succeed(PluginRegistry, {
-            list: Effect.succeed([]),
-            load: () => Effect.die("plugin load must not run"),
-            loadServiceType: () => Effect.die("service type load must not run"),
-            loadServiceFeature: () => Effect.die("service feature load must not run"),
-            loadAppFeature: () => Effect.die("service feature load must not run"),
-          }),
-          Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([providerId]),
-            capabilities: Effect.succeed(capabilities),
-            select: () => {
-              selectCalls += 1;
-              return Effect.die("provider must not be selected");
-            },
-          }),
+          ),
+          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+          Layer.succeed(
+            PluginRegistry,
+            PluginRegistry.of({
+              list: Effect.succeed([]),
+              load: () => Effect.die("plugin load must not run"),
+              loadServiceType: () => Effect.die("service type load must not run"),
+              loadServiceFeature: () => Effect.die("service feature load must not run"),
+              loadAppFeature: () => Effect.die("service feature load must not run"),
+            }),
+          ),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([providerId]),
+              capabilities: Effect.succeed(capabilities),
+              select: () => {
+                selectCalls += 1;
+                return Effect.die("provider must not be selected");
+              },
+            }),
+          ),
         );
 
         const result = await Effect.runPromise(
@@ -189,26 +198,35 @@ describe("lando app:cache:refresh", () => {
           extensions: {},
         };
         const layer = Layer.mergeAll(
-          Layer.succeed(LandofileService, {
-            discover: Effect.succeed({
-              name: "strict-app-cache",
-              services: {},
-              tooling: { hello: { cmds: ["echo hi"] } },
+          Layer.succeed(
+            LandofileService,
+            LandofileService.of({
+              discover: Effect.succeed({
+                name: "strict-app-cache",
+                services: {},
+                tooling: { hello: { cmds: ["echo hi"] } },
+              }),
             }),
-          }),
-          Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-          Layer.succeed(PluginRegistry, {
-            list: Effect.succeed([]),
-            load: () => Effect.die("plugin load must not run"),
-            loadServiceType: () => Effect.die("service type load must not run"),
-            loadServiceFeature: () => Effect.die("service feature load must not run"),
-            loadAppFeature: () => Effect.die("service feature load must not run"),
-          }),
-          Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([providerId]),
-            capabilities: Effect.succeed(capabilities),
-            select: () => Effect.die("provider must not be selected"),
-          }),
+          ),
+          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+          Layer.succeed(
+            PluginRegistry,
+            PluginRegistry.of({
+              list: Effect.succeed([]),
+              load: () => Effect.die("plugin load must not run"),
+              loadServiceType: () => Effect.die("service type load must not run"),
+              loadServiceFeature: () => Effect.die("service feature load must not run"),
+              loadAppFeature: () => Effect.die("service feature load must not run"),
+            }),
+          ),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([providerId]),
+              capabilities: Effect.succeed(capabilities),
+              select: () => Effect.die("provider must not be selected"),
+            }),
+          ),
         );
 
         const blockedPath = dirname(appCommandCachePath(cacheRoot, "strict-app-cache", dir));

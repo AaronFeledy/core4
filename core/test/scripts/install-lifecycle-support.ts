@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import type { update } from "@lando/engine/operations/update";
-import type { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 
@@ -117,11 +117,11 @@ export const runInstaller = async (
 };
 const encoder = new TextEncoder();
 const hex = "a".repeat(64);
-export const noopTelemetry = {
+export const noopTelemetry = Telemetry.of({
   enabled: false,
   record: () => Effect.void,
-} satisfies typeof Telemetry.Service;
-export const noopProcessRunner = {
+} satisfies typeof Telemetry.Service);
+export const noopProcessRunner = ProcessRunner.of({
   run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   stream: () => {
     throw new Error("stream is not used by update manifest tests");
@@ -129,7 +129,7 @@ export const noopProcessRunner = {
   streamWithExit: () => {
     throw new Error("streamWithExit is not used by update manifest tests");
   },
-} satisfies typeof ProcessRunner.Service;
+} satisfies typeof ProcessRunner.Service);
 const manifestFor = (channel: UpdateChannel) => ({
   channel,
   latest: "4.2.0",

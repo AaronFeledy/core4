@@ -29,10 +29,13 @@ const entry = (id: string, summary: string): McpCommandEntry => ({
 });
 
 const configLayer = (mcp: McpConfig | undefined) =>
-  Layer.succeed(ConfigService, {
-    load: Effect.succeed({} as GlobalConfig),
-    get: (key) => Effect.succeed((key === "mcp" ? mcp : undefined) as never),
-  });
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load: Effect.succeed({} as GlobalConfig),
+      get: (key) => Effect.succeed((key === "mcp" ? mcp : undefined) as never),
+    }),
+  );
 
 const registry: McpCommandRegistry = {
   commandEntries: [entry("app:info", "Show app info"), entry("app:config:get", "App config")],
@@ -59,7 +62,10 @@ describe("native meta:mcp dispatch", () => {
 describe("metaMcpSpec", () => {
   test("runs the real programmatic list operation from the injected built-in catalog", async () => {
     // Given
-    const catalogLayer = Layer.succeed(BuiltInCommandCatalog, { entries: builtInCommandEntries });
+    const catalogLayer = Layer.succeed(
+      BuiltInCommandCatalog,
+      BuiltInCommandCatalog.of({ entries: builtInCommandEntries }),
+    );
     const input = { argv: [], args: {}, flags: { list: true }, parsedArgv: [] };
 
     // When

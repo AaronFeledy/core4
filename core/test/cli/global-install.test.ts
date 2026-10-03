@@ -60,18 +60,24 @@ const layerWithFakeGlobalService = (modulePath: string) => {
     GlobalAppServiceLayer.layer.pipe(
       Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
-    Layer.succeed(PluginRegistry, {
-      list: Effect.succeed([fakeManifest]),
-      load: () => Effect.succeed(fakeManifest),
-      loadServiceType: () => Effect.die("not needed"),
-      loadServiceFeature: () => Effect.die("not needed"),
-      loadAppFeature: () => Effect.die("not needed"),
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make(provider.id)]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed([fakeManifest]),
+        load: () => Effect.succeed(fakeManifest),
+        loadServiceType: () => Effect.die("not needed"),
+        loadServiceFeature: () => Effect.die("not needed"),
+        loadAppFeature: () => Effect.die("not needed"),
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make(provider.id)]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
 };
 
@@ -174,23 +180,29 @@ describe("global:install command operation", () => {
         GlobalAppServiceLayer.layer.pipe(
           Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
         ),
-        Layer.succeed(PluginRegistry, {
-          list: Effect.succeed([]),
-          load: () => Effect.die("not needed"),
-          loadServiceType: () => Effect.die("not needed"),
-          loadServiceFeature: () => Effect.die("not needed"),
-          loadAppFeature: () => Effect.die("not needed"),
-        }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
-          capabilities: Effect.succeed(dockerProvider.capabilities),
-          select: (plan) => {
-            selected.push(plan === undefined ? undefined : String(plan.provider));
-            return Effect.succeed(
-              plan !== undefined && String(plan.provider) === "lando" ? landoProvider : dockerProvider,
-            );
-          },
-        }),
+        Layer.succeed(
+          PluginRegistry,
+          PluginRegistry.of({
+            list: Effect.succeed([]),
+            load: () => Effect.die("not needed"),
+            loadServiceType: () => Effect.die("not needed"),
+            loadServiceFeature: () => Effect.die("not needed"),
+            loadAppFeature: () => Effect.die("not needed"),
+          }),
+        ),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
+            capabilities: Effect.succeed(dockerProvider.capabilities),
+            select: (plan) => {
+              selected.push(plan === undefined ? undefined : String(plan.provider));
+              return Effect.succeed(
+                plan !== undefined && String(plan.provider) === "lando" ? landoProvider : dockerProvider,
+              );
+            },
+          }),
+        ),
       );
 
       await Effect.runPromise(globalInstall({}).pipe(Effect.provide(layer)));

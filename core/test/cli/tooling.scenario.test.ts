@@ -185,21 +185,32 @@ const makeLayer = (options: {
   readonly planCalls?: number[];
   readonly planCwds?: string[];
 }) => {
-  const landofileLayer = Layer.succeed(LandofileService, {
-    discover: Effect.succeed(options.landofile),
-  });
-  const plannerLayer = Layer.succeed(AppPlanner, {
-    plan: () => {
-      options.planCalls?.push(1);
-      options.planCwds?.push(process.cwd());
-      return options.planError === undefined ? Effect.succeed(options.plan) : Effect.fail(options.planError);
-    },
-  });
-  const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(options.provider),
-  });
+  const landofileLayer = Layer.succeed(
+    LandofileService,
+    LandofileService.of({
+      discover: Effect.succeed(options.landofile),
+    }),
+  );
+  const plannerLayer = Layer.succeed(
+    AppPlanner,
+    AppPlanner.of({
+      plan: () => {
+        options.planCalls?.push(1);
+        options.planCwds?.push(process.cwd());
+        return options.planError === undefined
+          ? Effect.succeed(options.plan)
+          : Effect.fail(options.planError);
+      },
+    }),
+  );
+  const registryLayer = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(options.provider),
+    }),
+  );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
     landofileLayer,
@@ -210,13 +221,16 @@ const makeLayer = (options: {
   );
 };
 
-const emptyPluginRegistry = Layer.succeed(PluginRegistry, {
-  list: Effect.succeed([]),
-  load: () => Effect.die("not used"),
-  loadServiceType: () => Effect.die("not used"),
-  loadServiceFeature: () => Effect.die("not used"),
-  loadAppFeature: () => Effect.die("not used"),
-});
+const emptyPluginRegistry = Layer.succeed(
+  PluginRegistry,
+  PluginRegistry.of({
+    list: Effect.succeed([]),
+    load: () => Effect.die("not used"),
+    loadServiceType: () => Effect.die("not used"),
+    loadServiceFeature: () => Effect.die("not used"),
+    loadAppFeature: () => Effect.die("not used"),
+  }),
+);
 
 const withTempToolingApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-tooling-plan-cache-app-"));
@@ -262,11 +276,10 @@ const recordingEventLayer = (events: LandoEvent[]) =>
     Effect.gen(function* () {
       const queue = yield* Queue.unbounded<LandoEvent>();
       const service: EventServiceShape = {
-        publish: (event: LandoEvent) =>
-          Effect.gen(function* () {
-            events.push(event);
-            yield* Queue.offer(queue, event);
-          }),
+        publish: Effect.fnUntraced(function* (event: LandoEvent) {
+          events.push(event);
+          yield* Queue.offer(queue, event);
+        }),
         subscribe: <Name extends string>(name: Name) =>
           Stream.fromQueue(queue).pipe(
             Stream.filter((event): event is EventFor<Name> => name === "*" || event._tag === name),
@@ -499,15 +512,18 @@ describe("runTooling — CLI rendering", () => {
       const planCalls: number[] = [];
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan: freshPlan, provider, planCalls }),
-        Layer.succeed(PluginRegistry, {
-          list: Effect.fail(
-            new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
-          ),
-          load: () => Effect.die("not used"),
-          loadServiceType: () => Effect.die("not used"),
-          loadServiceFeature: () => Effect.die("not used"),
-          loadAppFeature: () => Effect.die("not used"),
-        }),
+        Layer.succeed(
+          PluginRegistry,
+          PluginRegistry.of({
+            list: Effect.fail(
+              new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+            ),
+            load: () => Effect.die("not used"),
+            loadServiceType: () => Effect.die("not used"),
+            loadServiceFeature: () => Effect.die("not used"),
+            loadAppFeature: () => Effect.die("not used"),
+          }),
+        ),
         AppCacheService.layer,
       );
 

@@ -61,7 +61,11 @@ describe("runtime-service uninstall execution", () => {
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
-        }).pipe(Effect.provide(Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }))),
+        }).pipe(
+          Effect.provide(
+            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+          ),
+        ),
       );
 
       // Then: canonical paths reach the maintainer and teardown completes.

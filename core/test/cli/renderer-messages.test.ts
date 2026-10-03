@@ -13,7 +13,7 @@ import { EventService } from "@lando/sdk/services";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeJsonRendererLive, makePlainRendererLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
@@ -229,7 +229,7 @@ describe("plain renderer Layer: message events through EventService", () => {
       yield* events.publish(errorEventWithoutRemediation);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makePlainRendererLive(io), LandoEventService.layer);
+    const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const lines = io.stdoutLines();
@@ -251,7 +251,7 @@ describe("json renderer Layer: message events through EventService", () => {
       yield* events.publish(errorEventWithRemediation);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeJsonRendererLive(io), LandoEventService.layer);
+    const layer = Layer.provideMerge(RendererRuntime.layerJson(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -283,7 +283,7 @@ describe("exit-code contract: message events do not mutate process.exitCode", ()
         yield* Effect.sleep("20 millis");
         return 0;
       });
-      const layer = Layer.provideMerge(makePlainRendererLive(io), LandoEventService.layer);
+      const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
       const result = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
       expect(result).toBe(0);
       expect(process.exitCode).toBe(sentinel);
