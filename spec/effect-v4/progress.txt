@@ -265,3 +265,9 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): Bugbot reported no bugs. Landofile YAML emit keeps a stricter plain-object check than `Predicate.isObject` because class instances, Dates, and Maps are not YAML maps. Lock-test `Date.now` and `utimes` calls are host filesystem clocks, not Effect time. A local `TestStateStoreLive` binding is not a `*Live` export. Engine idiom, MCP, and command spans stay with later stories.
 - Verification: `gate:pr` passed. Guide lint, coverage, public transcripts, and drift against `origin/main` passed. The HTTP guide passed once (1 test). Spot checks passed: verified-stream, tracer, redaction inspection, plugin-abstraction coverage, network-boundary fixtures (34), plus private-CA trust and span redaction (5).
 ---
+
+## 2026-10-03 06:15 CDT - US-663 Review
+- HTTP span URLs now go through `RedactionService` when the requesting fiber has one, so a secret that lives only in the path is not kept in `url.full`. `NetworkTrust` is a fiber reference with an unset default, not a fourth service class. `@lando/http-client` depends on `@lando/redaction` for that tag.
+- Review notes (deferred/rejected): the gate review also asked for `Effect.fn` on every remaining provider arrow (`RuntimeProvider.start`, `ProviderDataPlane.run`, `PodmanApiClient.request`, plus helpers such as `collectByteStream`). The idiom pass already replaced Effect.gen-only bodies, and operation/provider span trees are US-664. Wrapping those arrows here would start that story.
+- Verification: http-client and core typecheck passed. Package DAG passed. Span redaction, private-CA, and injected-trust tests passed (the new path-secret case included).
+---
