@@ -19,6 +19,61 @@ const objectSchema = (
 });
 
 describe("schema compatibility classifier", () => {
+  test.each(["^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "^[a-z]+$", "^x-[\\s\\S]*?$", "__proto__"])(
+    "recognizes the closed record representation of key pattern %s",
+    (pattern) => {
+      // Given the GuideFrontmatter.axes record shape with the same key and value constraints.
+      const value = { type: "array", minItems: 1, items: { type: "string", pattern } };
+      const before = {
+        type: "object",
+        propertyNames: { type: "string", pattern },
+        additionalProperties: value,
+      };
+      const after = { type: "object", patternProperties: { [pattern]: value }, additionalProperties: false };
+      // When the generator moves key validation into the closed pattern map.
+      const findings = classifySchemaChange(before, after, "strict");
+      // Then the representation change needs no exception.
+      expect(findings).toEqual([]);
+    },
+  );
+
+  test.each([
+    ["declared key outside pattern", { properties: { name: { type: "string" } } }, {}],
+    [
+      "declared overlapping key escapes value constraint",
+      { properties: { "x-name": { type: "number" } } },
+      {},
+    ],
+    ["overlapping pattern bypasses fallback", { patternProperties: { "^x-a": { type: "number" } } }, {}],
+    ["extra propertyNames restriction", { propertyNames: { pattern: "^x-", minLength: 5 } }, {}],
+    ["open pattern record", {}, { additionalProperties: true }],
+    ["changed value constraint", {}, { patternProperties: { "^x-": { type: "number" } } }],
+    ["newline exclusion", {}, { patternProperties: { "^x-.*$": { type: "string" } } }],
+    ["prototype key exclusion", { propertyNames: { pattern: "^x-", not: { const: "x-__proto__" } } }, {}],
+  ] satisfies ReadonlyArray<readonly [string, JsonSchema, JsonSchema]>)(
+    "keeps record-key differences unaccepted: %s",
+    (_name, beforeExtra, afterExtra) => {
+      // Given a pattern record with one real difference in key or value acceptance.
+      const before = {
+        propertyNames: { pattern: "^x-" },
+        additionalProperties: { type: "string" },
+        ...beforeExtra,
+      };
+      const after = {
+        patternProperties: { "^x-": { type: "string" } },
+        additionalProperties: false,
+        ...beforeExtra,
+        ...afterExtra,
+      };
+      Reflect.deleteProperty(after, "propertyNames");
+      // When the two representations are compared.
+      const findings = classifySchemaChange(before, after, "strict");
+      // Then a generator rewrite cannot excuse the semantic difference.
+      expect(findings.length).toBeGreaterThan(0);
+      expect(findings.every((entry) => entry.verdict === "unknown" && !entry.accepted)).toBe(true);
+    },
+  );
+
   test.each([
     [
       "definitions location",
@@ -149,7 +204,7 @@ describe("schema compatibility classifier", () => {
     );
 
     expect(findings).toEqual([
-      expect.objectContaining({ verdict: "unknown", changeKind: "unsupported-construct", path: "$.oneOf" }),
+      expect.objectContaining({ verdict: "unknown", changeKind: "unsupported-construct", path: "$.anyOf" }),
     ]);
   });
 

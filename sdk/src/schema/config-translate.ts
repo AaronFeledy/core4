@@ -1,7 +1,10 @@
-import { Schema } from "effect";
+import { Schema, SchemaTransformation } from "effect";
 import { LandofileAuthoringFragmentWire, LandofileAuthoringShapeWire } from "./landofile-authoring.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
 import { PortablePath } from "./primitives.ts";
+
+const CONTENT_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const SECRET_REFERENCE_PATTERN = /^\$\{secret:[^}]+\}$/;
 
 // ==== Source snapshots and translation requests
 const metadata = (identifier: string, description: string) => ({
@@ -30,9 +33,13 @@ export const ConfigTranslateConfidence = Schema.Literals(["exact", "likely", "po
 export const ConfigTranslateMode = Schema.Literals(["full", "single-layer"]).annotate(
   metadata("ConfigTranslateMode", "Full document-set or selected-layer conversion."),
 );
-export const ConfigTranslateDocumentBytes = Schema.Uint8ArrayFromBase64.annotate({
-  description: "Bounded raw source bytes, encoded as base64 on the wire.",
-});
+export const ConfigTranslateDocumentBytes = Schema.Uint8ArrayFromBase64.from
+  .annotate({
+    format: undefined,
+    contentEncoding: undefined,
+    description: "Bounded raw source bytes, encoded as base64 on the wire.",
+  })
+  .pipe(Schema.decodeTo(Schema.Uint8Array, SchemaTransformation.uint8ArrayFromBase64String));
 export const ConfigTranslateDocument = Schema.Struct({
   sourceId: ConfigTranslateSourceId.annotate({ description: "Stable identity assigned to this source." }),
   layerId: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
@@ -40,7 +47,13 @@ export const ConfigTranslateDocument = Schema.Struct({
   }),
   path: Schema.optionalKey(PortablePath.annotate({ description: "App-relative source path." })),
   mediaType: Schema.String.annotate({ description: "Source media type." }),
-  contentDigest: Schema.String.pipe(Schema.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/))).annotate({
+  contentDigest: Schema.String.pipe(
+    Schema.check(
+      Schema.isPattern(CONTENT_DIGEST_PATTERN, {
+        toJsonSchema: () => ({ pattern: CONTENT_DIGEST_PATTERN.source }),
+      }),
+    ),
+  ).annotate({
     description: "SHA-256 digest of the raw source bytes.",
   }),
   bytes: ConfigTranslateDocumentBytes,
@@ -74,7 +87,13 @@ export const ConfigTranslateAnswerValue = Schema.Union([AnswerScalar, Schema.Arr
 export const ConfigTranslateSecretReference = Schema.Union([
   Schema.Struct({
     disposition: Schema.Literal("secret-store").annotate({ description: "Stored-secret disposition." }),
-    reference: Schema.String.pipe(Schema.check(Schema.isPattern(/^\$\{secret:[^}]+\}$/))).annotate({
+    reference: Schema.String.pipe(
+      Schema.check(
+        Schema.isPattern(SECRET_REFERENCE_PATTERN, {
+          toJsonSchema: () => ({ pattern: SECRET_REFERENCE_PATTERN.source }),
+        }),
+      ),
+    ).annotate({
       description: "One canonical ${secret:...} reference, never the secret value.",
     }),
   }).annotate(metadata("ConfigTranslateStoredSecretReference", "Approved stored-secret reference.")),

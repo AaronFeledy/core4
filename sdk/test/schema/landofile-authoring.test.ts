@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { getJsonSchema } from "@lando/sdk/schema";
 import * as Public from "@lando/sdk/schema";
 import { SchemaAST as AST, Result, Schema, SchemaTransformation } from "effect";
 
@@ -307,5 +308,66 @@ describe("Landofile authoring schemas", () => {
     expect(identifiers.has("ServiceConfigInputAuthoringFragment")).toBe(true);
     expect(identifiers.has("ServiceConfigInput")).toBe(false);
     expect(identifiers.has("RouterConfigAuthoringFragment")).toBe(true);
+  });
+
+  test("keeps wire transport permissive where the validated shape rejects bad numbers", () => {
+    // Given numeric literals outside the validated port and memory checks.
+    const samples = [
+      { router: { httpPort: 1.5 } },
+      { router: { httpPort: 0 } },
+      { router: { httpPort: 65536 } },
+      { services: { web: { deploy: { resources: { limits: { memory: 1.5 } } } } } },
+    ];
+
+    // When each literal is decoded as validated authoring and as wire transport.
+    const results = samples.map((input) => ({
+      shape: Schema.decodeUnknownResult(Public.LandofileAuthoringShape)(input)._tag,
+      wire: Schema.decodeUnknownResult(Public.LandofileAuthoringShapeWire)(input)._tag,
+    }));
+
+    // Then only the wire schema accepts them.
+    expect(results).toEqual(samples.map(() => ({ shape: "Failure", wire: "Success" })));
+  });
+
+  test("publishes deprecation constraints without requiring them on a partial fragment", () => {
+    // Given the published authoring documents.
+    const shape = getJsonSchema("LandofileAuthoringShape");
+    const fragment = getJsonSchema("LandofileAuthoringFragment");
+
+    // When a fragment omits the notice fields the published schema still lists.
+    const decoded = Schema.decodeUnknownResult(Public.LandofileAuthoringFragment)({
+      tooling: { task: { service: "web", cmd: "echo", deprecated: { since: "4.2.0" } } },
+    });
+
+    // Then the JSON projection keeps the notice contract and the fragment stays partial.
+    expect(shape).toMatchObject({
+      definitions: {
+        DeprecationNotice: {
+          required: ["since", "note"],
+          properties: {
+            docsUrl: { format: "uri", pattern: "^[Hh][Tt][Tt][Pp][Ss]?://" },
+            since: { pattern: "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$" },
+            severity: { enum: ["info", "warn", "error"] },
+          },
+        },
+      },
+    });
+    expect(fragment).toMatchObject({ definitions: { DeprecationNotice: { required: ["since", "note"] } } });
+    expect(shape).toHaveProperty(
+      [
+        "properties",
+        "tooling",
+        "anyOf",
+        0,
+        "additionalProperties",
+        "anyOf",
+        0,
+        "properties",
+        "deprecated",
+        "anyOf",
+      ],
+      [{ $ref: "#/definitions/DeprecationNotice" }, { type: "string" }],
+    );
+    expect(decoded._tag).toBe("Success");
   });
 });

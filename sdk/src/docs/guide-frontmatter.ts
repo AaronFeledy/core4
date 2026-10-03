@@ -11,6 +11,7 @@ export const GuideId = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(GUIDE_ID_PATTERN, {
       message: "Guide id must be lowercase kebab-case (a-z, 0-9, hyphen).",
+      toJsonSchema: () => ({ pattern: GUIDE_ID_PATTERN.source }),
     }),
   ),
 ).annotate({ identifier: "GuideId" });
@@ -23,6 +24,7 @@ const TabAxisValue = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(GUIDE_ID_PATTERN, {
       message: "Axis values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+      toJsonSchema: () => ({ pattern: GUIDE_ID_PATTERN.source }),
     }),
   ),
 );
@@ -32,7 +34,7 @@ const TabAxis = Schema.Array(TabAxisValue).pipe(
   Schema.check(
     Schema.makeFilter((values) => new Set(values).size === values.length, {
       message: "Axis values must be unique.",
-      jsonSchema: {},
+      toJsonSchema: () => [{}, true],
     }),
   ),
 );
@@ -41,6 +43,7 @@ const AxisName = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(GUIDE_ID_PATTERN, {
       message: "Axis names must be lowercase kebab-case (a-z, 0-9, hyphen).",
+      toJsonSchema: () => ({ pattern: GUIDE_ID_PATTERN.source }),
     }),
   ),
 );
@@ -49,7 +52,7 @@ const Axes = Schema.Record(AxisName, TabAxis).pipe(
   Schema.check(
     Schema.makeFilter((axes) => Object.keys(axes).length >= 1, {
       message: "`axes:` must declare at least one axis.",
-      jsonSchema: {},
+      toJsonSchema: () => [{}, true],
     }),
   ),
 );

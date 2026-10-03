@@ -83,7 +83,7 @@ export const MatcherPartialObject = Schema.Record(Schema.String, Schema.Unknown)
     Schema.check(
       Schema.makeFilter((input) => MATCHER_OPERATOR_KEYS.every((key) => !Object.hasOwn(input, key)), {
         message: "Matcher partial objects cannot use reserved matcher operator keys.",
-        jsonSchema: {},
+        toJsonSchema: () => [{}, true],
       }),
     ),
   )
@@ -107,7 +107,7 @@ export const MatcherSchema = Schema.Union([
 });
 export type MatcherSchema = typeof MatcherSchema.Type;
 
-export const GuideProps = Schema.Struct({}).annotate({
+export const GuideProps = Schema.ObjectKeyword.annotate({
   identifier: "GuideProps",
   title: "Guide Props",
   description: "<Guide> component props.",
@@ -127,7 +127,7 @@ export const ScenarioProps = Schema.Struct({
         (input) => input.render !== false || (input.reason !== undefined && input.reason.length >= 8),
         {
           message: "<Scenario render={false}> requires a `reason` of at least 8 characters.",
-          jsonSchema: {},
+          toJsonSchema: () => [{}, true],
         },
       ),
     ),
@@ -184,7 +184,7 @@ export const VerifyProps = Schema.Struct({
         (input) =>
           [input.event, input.command, input.file, input.errorTag].filter((value) => value !== undefined)
             .length === 1,
-        { message: "<Verify> requires exactly one target.", jsonSchema: {} },
+        { message: "<Verify> requires exactly one target.", toJsonSchema: () => [{}, true] },
       ),
     ),
   )
@@ -195,7 +195,7 @@ export const VerifyProps = Schema.Struct({
   });
 export type VerifyProps = typeof VerifyProps.Type;
 
-export const CleanupProps = Schema.Struct({}).annotate({
+export const CleanupProps = Schema.ObjectKeyword.annotate({
   identifier: "CleanupProps",
   title: "Cleanup Props",
   description: "<Cleanup> component props.",
@@ -213,8 +213,13 @@ export const VariableProps = Schema.Struct({
 });
 export type VariableProps = typeof VariableProps.Type;
 
+const explanationMinimum = 8;
+const explanationText = Schema.String.check(
+  Schema.isMinLength(explanationMinimum, { toJsonSchema: () => ({ minLength: explanationMinimum }) }),
+);
+
 export const HiddenProps = Schema.Struct({
-  reason: Schema.String.pipe(Schema.check(Schema.isMinLength(8))),
+  reason: explanationText,
 }).annotate({
   identifier: "HiddenProps",
   title: "Hidden Props",
@@ -246,7 +251,7 @@ export const InspectProps = Schema.Struct({
             .length === 1,
         {
           message: "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
-          jsonSchema: {},
+          toJsonSchema: () => [{}, true],
         },
       ),
     ),
@@ -259,10 +264,12 @@ export const InspectProps = Schema.Struct({
 export type InspectProps = typeof InspectProps.Type;
 
 /** Tab axis names and values — lowercase kebab-case (a-z, 0-9, hyphen). */
+const axisTokenPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export const AxisToken = Schema.String.pipe(
   Schema.check(
-    Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, {
+    Schema.isPattern(axisTokenPattern, {
       message: "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+      toJsonSchema: () => ({ pattern: axisTokenPattern.source }),
     }),
   ),
 ).annotate({ identifier: "AxisToken" });
@@ -289,7 +296,7 @@ export type TabProps = typeof TabProps.Type;
 export const InlineProps = Schema.Struct({
   code: Schema.String,
   lang: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "ts"))),
-  justification: Schema.String.pipe(Schema.check(Schema.isMinLength(8))),
+  justification: explanationText,
 }).annotate({
   identifier: "InlineProps",
   title: "Inline Props",
@@ -298,7 +305,7 @@ export const InlineProps = Schema.Struct({
 export type InlineProps = typeof InlineProps.Type;
 
 export const SkipProps = Schema.Struct({
-  reason: Schema.String.pipe(Schema.check(Schema.isMinLength(8))),
+  reason: explanationText,
   until: Schema.optionalKey(Schema.String),
 }).annotate({
   identifier: "SkipProps",

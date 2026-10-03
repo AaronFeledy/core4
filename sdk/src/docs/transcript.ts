@@ -2,9 +2,12 @@ import { Schema } from "effect";
 
 import { GuideId } from "./guide-frontmatter.ts";
 
+const ISO8601_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 const Iso8601Timestamp = Schema.String.pipe(
   Schema.check(
-    Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, {
+    Schema.isPattern(ISO8601_TIMESTAMP_PATTERN, {
+      toJsonSchema: () => ({ pattern: ISO8601_TIMESTAMP_PATTERN.source }),
       message: "Timestamp must be an ISO8601 UTC string.",
     }),
   ),

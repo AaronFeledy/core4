@@ -1,9 +1,74 @@
 import { describe, expect, test } from "bun:test";
+import { CleanupProps, GuideProps } from "@lando/sdk/docs/components";
 import { Result, Schema, SchemaIssue } from "effect";
 import { deprecateField, getSchemaDeprecation } from "../../src/schema/deprecation.ts";
 import { getJsonSchemaWithDeprecations } from "../../src/schema/json-schema-deprecations.ts";
 
 describe("schema artifact generation", () => {
+  test.each([
+    { name: "Guide", schema: GuideProps },
+    { name: "Cleanup", schema: CleanupProps },
+  ])("keeps $name props limited to the published container contract", ({ schema }) => {
+    const values = [{}, [], null, undefined, "text", 1, true];
+    const accepted = values.map(Schema.is(schema));
+    expect(accepted).toEqual([true, true, false, false, false, false, false]);
+  });
+
+  test.each([
+    { name: "Guide", schema: GuideProps },
+    { name: "Cleanup", schema: CleanupProps },
+  ])("publishes the original $name container alternatives", ({ name, schema }) => {
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    const definition = `${name}PropsEncoded`;
+    expect(artifact).toHaveProperty("$ref", `#/definitions/${definition}`);
+    expect(artifact).toHaveProperty(
+      ["definitions", definition, "anyOf"],
+      expect.arrayContaining([{ type: "array" }, { type: "object" }]),
+    );
+    expect(artifact).toHaveProperty(["definitions", definition, "anyOf", "length"], 2);
+  });
+
+  test("omits optional undefined without inventing null", () => {
+    // Given an optional value that rejects explicit null.
+    const schema = Schema.Struct({ value: Schema.optional(Schema.String) });
+    // When projected to JSON input.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then omission remains legal and the present value is string-only.
+    expect(artifact).toEqual({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: { value: { type: "string" } },
+      additionalProperties: false,
+    });
+  });
+
+  test.each([Schema.optionalKey, Schema.optional])(
+    "retains explicit null in optional nullable values (%#)",
+    (optional) => {
+      // Given an optional nullable property.
+      const schema = Schema.Struct({ value: optional(Schema.NullOr(Schema.String)) });
+      // When projected to JSON input.
+      const artifact = getJsonSchemaWithDeprecations(schema);
+      // Then null remains a declared alternative, not an undefined substitute.
+      expect(artifact).not.toHaveProperty("required");
+      expect(artifact).toHaveProperty("properties.value", { anyOf: [{ type: "string" }, { type: "null" }] });
+    },
+  );
+
+  test("leaves required undefined unions and array elements outside optional-key projection", () => {
+    // Given undefined outside an optional object property.
+    const schema = Schema.Struct({
+      value: Schema.UndefinedOr(Schema.String),
+      items: Schema.Array(Schema.UndefinedOr(Schema.String)),
+    });
+    // When projected to JSON input.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then the pre-existing JSON codec behavior is unchanged.
+    expect(artifact).toHaveProperty("required", ["value", "items"]);
+    expect(artifact).toHaveProperty("properties.value.anyOf", [{ type: "string" }, { type: "null" }]);
+    expect(artifact).toHaveProperty("properties.items.items.anyOf", [{ type: "string" }, { type: "null" }]);
+  });
+
   test("emits exact optional authored keys as draft-07 without nullable alternatives", () => {
     // Given an authored-input schema with an optional key.
     const schema = Schema.Struct({ port: Schema.optionalKey(Schema.Number) });
@@ -35,6 +100,85 @@ describe("schema artifact generation", () => {
     expect(issues.map((issue) => `${issue.path?.join(".")}: ${issue.message}`)).toEqual([
       "config.port: Port must be positive.",
     ]);
+  });
+
+  test("restores pattern constraints on string values and record keys", () => {
+    // Given a pattern used on both sides of a record.
+    const key = Schema.String.check(Schema.isPattern(/^x-[a-z]+$/u));
+    const schema = Schema.Record(key, Schema.String.check(Schema.isPattern(/^[0-9]+$/u)));
+    // When emitted as draft-07.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then the key selector and value constraint both survive.
+    expect(artifact).toHaveProperty("patternProperties", {
+      "^x-[a-z]+$": { type: "string", pattern: "^[0-9]+$" },
+    });
+    expect(artifact).toHaveProperty("additionalProperties", false);
+  });
+
+  test("restores original string minimum lengths through nested filter groups", () => {
+    // Given grouped string checks and an array check with the same bound.
+    const grouped = Schema.isPattern(/^[a-z]+$/u).and(
+      Schema.isMinLength(7, { toJsonSchema: () => ({ minLength: 7 }) }).and(Schema.isMaxLength(12)),
+    );
+    const schema = Schema.Struct({
+      value: Schema.String.check(grouped),
+      items: Schema.Array(Schema.String).check(Schema.isMinLength(7)),
+    });
+    // When projected to JSON input.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then string length keeps the wire contract and array cardinality is unchanged.
+    expect(artifact).toHaveProperty("properties.value", {
+      type: "string",
+      allOf: [{ pattern: "^[a-z]+$" }, { allOf: [{ minLength: 7 }, { maxLength: 12 }] }],
+    });
+    expect(artifact).toHaveProperty("properties.items.minItems", 7);
+  });
+
+  test("preserves explicit check JSON Schema overrides", () => {
+    // Given overrides different from the represented pattern and length.
+    const schema = Schema.String.check(
+      Schema.isPattern(/^original$/, { toJsonSchema: () => ({ pattern: "^override$" }) }),
+      Schema.isMinLength(7, { toJsonSchema: () => ({ minLength: 2 }) }),
+    );
+    // When emitted.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then explicit callback output wins over representation metadata.
+    expect(artifact).toMatchObject({ type: "string", pattern: "^override$", minLength: 2 });
+  });
+
+  test.each([2, 7, 8])("preserves standalone minimum length %i and base annotations", (minLength) => {
+    // Given a checked string with a base annotation.
+    const schema = Schema.String.check(
+      Schema.isMinLength(minLength, { toJsonSchema: () => ({ minLength }) }),
+    ).annotate({ title: "Token" });
+    // When emitted.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then the original bound and base survive together.
+    expect(artifact).toMatchObject({ type: "string", title: "Token", minLength });
+  });
+
+  test("preserves tuple minimum length overrides resembling upstream defaults", () => {
+    // Given an intentional projection different from the runtime bound.
+    const schema = Schema.String.check(
+      Schema.isMinLength(7, { toJsonSchema: () => [{ minLength: 4 }, true] }),
+    );
+    // When emitted.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then the callback, not representation metadata, owns the projection.
+    expect(artifact).toEqual({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "string",
+      minLength: 4,
+    });
+  });
+
+  test("preserves intentionally empty tuple pattern projections", () => {
+    // Given a runtime pattern whose author deliberately publishes no pattern.
+    const schema = Schema.String.check(Schema.isPattern(/^a$/, { toJsonSchema: () => [{}, true] }));
+    // When emitted.
+    const artifact = getJsonSchemaWithDeprecations(schema);
+    // Then no constraint is inferred from the runtime representation.
+    expect(artifact).toEqual({ $schema: "http://json-schema.org/draft-07/schema#", type: "string" });
   });
 
   test("keeps numeric constraints without adding non-finite string alternatives", () => {

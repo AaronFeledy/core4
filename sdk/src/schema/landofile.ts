@@ -13,6 +13,7 @@ import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
+import { mapInputWithPrecheck } from "./map-input.ts";
 import { StorageScope } from "./mounts.ts";
 import { ScannerConfig } from "./networking.ts";
 import {
@@ -109,16 +110,6 @@ const ServiceDependencyInput = Schema.Struct({
 
 const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;
 
-const ReservedComposeScalarMapInput = Schema.Unknown.annotate({
-  jsonSchema: {
-    type: "object",
-    propertyNames: RESERVED_KEY_PROPERTY_NAMES,
-    additionalProperties: {
-      anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
-    },
-  },
-});
-
 const ReservedDependencyMapInput = Schema.Record(Schema.String, ServiceDependencyInput);
 
 const reservedMapKeyFailure = (input: unknown) =>
@@ -135,6 +126,7 @@ const reservedMapKeyCheck = Schema.makeFilter(
   (input: unknown) => !(typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")),
   {
     message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
+    toJsonSchema: () => ({ propertyNames: RESERVED_KEY_PROPERTY_NAMES }),
   },
 );
 
@@ -144,12 +136,17 @@ const ComposeScalarRecord = Schema.Record(
   Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
 );
 
-const ServiceDependencyInputRecord = ReservedDependencyMapInput.check(reservedMapKeyCheck).pipe(
-  Schema.decodeTo(Schema.Record(Schema.String, ServiceDependencyInput)),
-);
+const ServiceDependencyInputRecord = mapInputWithPrecheck(ReservedDependencyMapInput, reservedMapKeyCheck);
 
-const ComposeScalarMapInput = ReservedComposeScalarMapInput.check(reservedMapKeyCheck).pipe(
-  Schema.decodeTo(ComposeScalarRecord),
+const ComposeScalarMapInput = mapInputWithPrecheck(
+  ComposeScalarRecord,
+  reservedMapKeyCheck,
+  Schema.Record(
+    ComposeScalarRecord.key,
+    Schema.Union(
+      ComposeScalarRecord.value.members.map((member) => (member === Schema.Number ? Schema.Finite : member)),
+    ),
+  ),
 );
 
 const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])

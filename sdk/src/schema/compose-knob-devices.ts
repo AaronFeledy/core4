@@ -91,7 +91,12 @@ const ComposeUlimitEntryField = Schema.Union([UlimitValue, ComposeUlimit]).pipe(
   ),
 );
 
-const UlimitName = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-z]+$/)));
+const ULIMIT_NAME_PATTERN = /^[a-z]+$/;
+const UlimitName = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(ULIMIT_NAME_PATTERN, { toJsonSchema: () => ({ pattern: ULIMIT_NAME_PATTERN.source }) }),
+  ),
+);
 
 export const ComposeUlimitsField = Schema.Record(UlimitName, ComposeUlimitEntryField).annotate({
   description:

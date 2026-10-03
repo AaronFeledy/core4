@@ -37,6 +37,7 @@ export const AppEnvironmentDefaults = Schema.Record(Schema.String, AppEnvironmen
       {
         message:
           "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
+        toJsonSchema: () => [{ maxProperties: 256 }, true],
       },
     ),
   ),
@@ -44,7 +45,6 @@ export const AppEnvironmentDefaults = Schema.Record(Schema.String, AppEnvironmen
     identifier: "AppEnvironmentDefaults",
     title: "Global App Environment Defaults",
     description: "Bounded environment defaults applied only to user-app services.",
-    jsonSchema: { maxProperties: 256 },
   }),
 );
 export type AppEnvironmentDefaults = typeof AppEnvironmentDefaults.Type;
@@ -75,6 +75,7 @@ export const AppLabelDefaults = Schema.Record(Schema.String, AppLabelValue).pipe
       {
         message:
           "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
+        toJsonSchema: () => [{ maxProperties: 256 }, true],
       },
     ),
   ),
@@ -82,7 +83,6 @@ export const AppLabelDefaults = Schema.Record(Schema.String, AppLabelValue).pipe
     identifier: "AppLabelDefaults",
     title: "Global App Label Defaults",
     description: "Bounded container-label defaults applied only to user-app services.",
-    jsonSchema: { maxProperties: 256 },
   }),
 );
 export type AppLabelDefaults = typeof AppLabelDefaults.Type;
@@ -166,31 +166,6 @@ export const AgentEnvConfig = Schema.Struct({
   deny: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
   }),
-}).annotate({
-  jsonSchema: {
-    type: "object",
-    required: [],
-    additionalProperties: false,
-    properties: {
-      enabled: {
-        type: "boolean",
-        default: true,
-        description:
-          "Master switch for host agent-context env forwarding; default true (global agentEnv.enabled).",
-      },
-      allow: {
-        type: "array",
-        items: { type: "string" },
-        description:
-          "Additional exact env-var names forwarded beyond the built-in agent-context allowlist (global agentEnv.allow).",
-      },
-      deny: {
-        type: "array",
-        items: { type: "string" },
-        description: "Built-in or allowed env-var names to suppress from forwarding (global agentEnv.deny).",
-      },
-    },
-  },
 });
 export type AgentEnvConfig = typeof AgentEnvConfig.Type;
 

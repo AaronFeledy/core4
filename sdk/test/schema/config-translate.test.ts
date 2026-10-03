@@ -12,6 +12,25 @@ type TranslateRequiresNothing = Assert<
 
 // ==== Snapshot wire contracts
 describe("config translation schemas", () => {
+  test("retains the base string projection when publishing document bytes", () => {
+    // Given the historical wire contract without format assertions.
+    // When the owning bytes field is projected.
+    const projected = schema.getJsonSchema("ConfigTranslateDocumentBytes");
+    // Then publication preserves the wire contract and field description.
+    expect(projected).toEqual({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "string",
+      description: "Bounded raw source bytes, encoded as base64 on the wire.",
+    });
+  });
+
+  test.each(["!invalid!", "A", 42, null])("rejects invalid byte input %j", (input) => {
+    // Given an input outside the existing base64 decoder contract.
+    // When decoded at the document-byte boundary.
+    const result = Schema.decodeUnknownResult(schema.ConfigTranslateDocumentBytes)(input);
+    // Then projection customization does not relax decoding.
+    expect(Result.isFailure(result)).toBe(true);
+  });
   test("requires no ambient services for translation", () => {
     const requiresNothing: TranslateRequiresNothing = true;
     expect(requiresNothing).toBe(true);

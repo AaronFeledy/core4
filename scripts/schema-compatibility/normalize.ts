@@ -38,7 +38,23 @@ export const normalizeJsonSchema = (root: JsonSchema): JsonSchema => {
     }
     return value;
   };
-  const visit = (schema: JsonSchema, ancestors: readonly JsonSchema[]): JsonSchema => {
+  const visit = (
+    schema: JsonSchema,
+    ancestors: readonly JsonSchema[],
+    aliases: readonly JsonSchema[] = [],
+  ): JsonSchema => {
+    if (
+      typeof schema.$ref === "string" &&
+      Object.keys(schema).every(
+        (key) => key === "$ref" || key === "$defs" || key === "definitions" || annotations.has(key),
+      )
+    ) {
+      // Alias hops do not change semantic depth. Track them separately so a
+      // targetless alias cycle terminates without inventing an accepting schema.
+      if (aliases.includes(schema)) return { $ref: schema.$ref };
+      const target = resolve(schema.$ref);
+      if (isJsonObject(target)) return visit(target, ancestors, [...aliases, schema]);
+    }
     const cycle = ancestors.indexOf(schema);
     if (cycle >= 0) return { $ref: `#cycle/${ancestors.length - cycle}` };
     const stack = [...ancestors, schema];
@@ -73,7 +89,10 @@ export const normalizeJsonSchema = (root: JsonSchema): JsonSchema => {
         result[key] = [...value].sort((a, b) => jsonValueKey(a).localeCompare(jsonValueKey(b)));
       } else result[key] = value;
     }
-    return normalizeStructure(result);
+    return normalizeStructure(
+      result,
+      ancestors.some((parent) => parent.unevaluatedProperties !== undefined),
+    );
   };
   return visit(root, []);
 };

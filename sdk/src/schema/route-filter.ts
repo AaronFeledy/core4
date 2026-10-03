@@ -2,6 +2,9 @@ import { Schema } from "effect";
 
 // ==== Provider-neutral route filters
 
+const PREFIX_PATTERN = /^\//;
+const HEADER_PATTERN = /^[A-Za-z0-9-]+$/;
+
 export const RouteFilterType = Schema.Literals([
   "stripPrefix",
   "addPrefix",
@@ -14,10 +17,22 @@ export type RouteFilterType = typeof RouteFilterType.Type;
 const name = Schema.optionalKey(Schema.String).annotate({
   description: "Layer-merge identity of this filter, not an HTTP header name.",
 });
-const prefix = Schema.NonEmptyString.pipe(Schema.check(Schema.isPattern(/^\//))).annotate({
+const prefix = Schema.NonEmptyString.pipe(
+  Schema.check(
+    Schema.isPattern(PREFIX_PATTERN, {
+      toJsonSchema: () => ({ pattern: PREFIX_PATTERN.source }),
+    }),
+  ),
+).annotate({
   description: "Non-empty path prefix beginning with a slash.",
 });
-const header = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9-]+$/))).annotate({
+const header = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(HEADER_PATTERN, {
+      toJsonSchema: () => ({ pattern: HEADER_PATTERN.source }),
+    }),
+  ),
+).annotate({
   description: "HTTP header name containing only letters, digits, and hyphens.",
 });
 const value = Schema.String.annotate({ description: "HTTP header value to set." });

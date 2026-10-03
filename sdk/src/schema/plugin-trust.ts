@@ -10,7 +10,7 @@ export const PluginTrustList = Schema.Array(Schema.String).pipe(
   Schema.check(
     Schema.makeFilter(isSortedUniquePluginTrustList, {
       message: "Trust entries must be sorted and unique.",
-      jsonSchema: {},
+      toJsonSchema: () => [{}, true],
     }),
   ),
 );

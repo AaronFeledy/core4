@@ -282,6 +282,9 @@ const jsonInputAst = (root: AST.AST): AST.AST => {
     if (cached !== undefined) return cached;
     let result: AST.AST;
     switch (ast._tag) {
+      case "String":
+        result = new AST.String(ast.annotations, ast.checks, undefined, ast.context);
+        break;
       case "Number":
         // JSON numbers are finite; do not widen file artifacts to Effect's non-finite string codec.
         result = new AST.Number(
@@ -300,9 +303,35 @@ const jsonInputAst = (root: AST.AST): AST.AST => {
         break;
       case "Objects":
         result = new AST.Objects(
-          ast.propertySignatures.map(
-            (property) => new AST.PropertySignature(property.name, visit(property.type)),
-          ),
+          ast.propertySignatures.map((property) => {
+            const type = property.type;
+            const input =
+              AST.isOptional(type) && AST.isUnion(type)
+                ? new AST.Union(
+                    type.types.filter((member) => !AST.isUndefined(member)),
+                    type.options,
+                    type.annotations,
+                    type.checks,
+                    undefined,
+                    type.context,
+                    type.encodingChecks,
+                  )
+                : type;
+            const onlyMember =
+              AST.isUnion(input) &&
+              input.types.length === 1 &&
+              input.checks === undefined &&
+              input.encodingChecks === undefined
+                ? input.types[0]
+                : undefined;
+            const projected =
+              input !== type && onlyMember !== undefined
+                ? Schema.optionalKey(
+                    Schema.make<Schema.Codec<unknown>>(visit(onlyMember)).annotate(input.annotations ?? {}),
+                  ).annotateKey(input.context?.annotations ?? {}).ast
+                : visit(input);
+            return new AST.PropertySignature(property.name, projected);
+          }),
           ast.indexSignatures.map(
             (index) => new AST.IndexSignature(visit(index.parameter), visit(index.type)),
           ),

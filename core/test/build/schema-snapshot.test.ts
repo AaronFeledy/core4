@@ -102,11 +102,20 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
       target.allOf.forEach((branch, index) => visit(ast, branch, `${path}.allOf[${index}]`));
       return;
     }
-    if (AST.isSuspend(ast)) {
+    if (AST.isDeclaration(ast) && ast.annotations?.toCodecJson !== undefined) {
+      visit(AST.toEncoded(Schema.toCodecJson(Schema.make(ast)).ast), target, path);
+    } else if (AST.isSuspend(ast)) {
       visit(ast.thunk(), target, path);
     } else if (AST.isUnion(ast)) {
       const branches = target.anyOf ?? target.oneOf;
-      const members = ast.types.filter((member) => !AST.isNever(member));
+      const members = ast.types.filter(
+        (member) => !AST.isNever(member) && !(AST.isOptional(ast) && AST.isUndefined(member)),
+      );
+      const onlyMember = members.length === 1 ? members[0] : undefined;
+      if (onlyMember !== undefined) {
+        visit(onlyMember, target, path);
+        return;
+      }
       if (Array.isArray(branches)) {
         expect(branches.length, `${path}: union alignment`).toBe(members.length);
         members.forEach((member, index) => visit(member, branches[index], `${path}.anyOf[${index}]`));
@@ -197,7 +206,31 @@ describe("schema snapshot artifact-set gate", () => {
       nullable: Schema.optionalKey(Schema.NullOr(Schema.String)),
     });
     const artifact = getJsonSchemaWithDeprecations(schema);
+    expect(unexplainedNullPaths(schema, artifact)).toEqual([]);
+  });
+
+  test("artifact null guard detects a manually corrupted optional union", () => {
+    const schema = Schema.Struct({ optional: Schema.optional(Schema.String) });
+    const artifact = {
+      type: "object",
+      properties: { optional: { anyOf: [{ type: "string" }, { type: "null" }] } },
+    };
     expect(unexplainedNullPaths(schema, artifact)).toEqual(["$.properties.optional.anyOf[1]"]);
+  });
+
+  test.each([
+    { value: Schema.NullOr(Schema.String), paths: [] },
+    { value: Schema.String, paths: ["$.additionalProperties.anyOf[1]"] },
+  ])("artifact null guard checks declared JSON map codecs (%#)", ({ value, paths }) => {
+    const map = Schema.Record(Schema.String, value);
+    const schema = Schema.declare(Schema.is(map), {
+      toCodecJson: () => new AST.Link(map.ast, SchemaTransformation.passthrough()),
+    });
+    const artifact = {
+      type: "object",
+      additionalProperties: { anyOf: [{ type: "string" }, { type: "null" }] },
+    };
+    expect(unexplainedNullPaths(schema, artifact)).toEqual(paths);
   });
 
   test.each(["value", "unexpected"])("artifact null guard detects nullable type arrays on %s", (field) => {

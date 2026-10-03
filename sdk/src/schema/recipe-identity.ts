@@ -7,6 +7,7 @@ const metadata = (identifier: string, description: string) => ({
 });
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const CONTENT_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
@@ -14,6 +15,7 @@ const SEMVER_PATTERN =
 export const RecipeId = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(KEBAB_CASE_PATTERN, {
+      toJsonSchema: () => ({ pattern: KEBAB_CASE_PATTERN.source }),
       message: "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
     }),
   ),
@@ -24,6 +26,7 @@ export type RecipeId = typeof RecipeId.Type;
 export const RecipeVersion = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(SEMVER_PATTERN, {
+      toJsonSchema: () => ({ pattern: SEMVER_PATTERN.source }),
       message: "Recipe version must be a semver string (e.g. 1.0.0).",
     }),
   ),
@@ -51,7 +54,11 @@ export type RecipePackageName = typeof RecipePackageName.Type;
  * without creating a circular definition.
  */
 export const RecipeContentDigest = Schema.String.pipe(
-  Schema.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/)),
+  Schema.check(
+    Schema.isPattern(CONTENT_DIGEST_PATTERN, {
+      toJsonSchema: () => ({ pattern: CONTENT_DIGEST_PATTERN.source }),
+    }),
+  ),
 ).annotate(
   metadata("RecipeContentDigest", "SHA-256 over canonical recipe inputs, excluding the digest and history."),
 );

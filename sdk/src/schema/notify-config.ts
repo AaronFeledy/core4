@@ -3,13 +3,19 @@ import { Schema } from "effect";
 
 // NotifyConfig — global desktop-notification policy.
 
+const NOTIFY_COMMAND_ID_PATTERN = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/;
+
 /**
  * Canonical command id shape used by `notify.commands` (e.g. `app:start`).
  * Registry membership is validated after decode at config-resolution time.
  */
 export const NotifyCommandId = Schema.String.pipe(
   Schema.check(Schema.isMaxLength(128)),
-  Schema.check(Schema.isPattern(/^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/)),
+  Schema.check(
+    Schema.isPattern(NOTIFY_COMMAND_ID_PATTERN, {
+      toJsonSchema: () => ({ pattern: NOTIFY_COMMAND_ID_PATTERN.source }),
+    }),
+  ),
 );
 export type NotifyCommandId = typeof NotifyCommandId.Type;
 

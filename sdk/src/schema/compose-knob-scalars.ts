@@ -114,7 +114,14 @@ export const ComposeStopGracePeriodField = ComposeDurationSecondsField.annotate(
 
 export const ComposeRestartField = Schema.Literals(["no", "always", "on-failure", "unless-stopped"]);
 
-const TimedPullPolicy = Schema.String.pipe(Schema.check(Schema.isPattern(/^every_(?:[0-9]+[wdhms])+$/)));
+const TIMED_PULL_POLICY_PATTERN = /^every_(?:[0-9]+[wdhms])+$/;
+const TimedPullPolicy = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(TIMED_PULL_POLICY_PATTERN, {
+      toJsonSchema: () => ({ pattern: TIMED_PULL_POLICY_PATTERN.source }),
+    }),
+  ),
+);
 
 export const ComposePullPolicyField = Schema.Union([
   Schema.Literals(["always", "never", "build", "if_not_present", "missing", "refresh", "daily", "weekly"]),

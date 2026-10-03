@@ -112,7 +112,11 @@ export const RendererKeyChordPattern = /^(ctrl\+)?(alt\+)?(shift\+)?[a-z0-9][a-z
  * schema-decode failures (surfaced as `ConfigError` at the config boundary).
  */
 export const RendererKeyChord = Schema.String.pipe(
-  Schema.check(Schema.isPattern(RendererKeyChordPattern)),
+  Schema.check(
+    Schema.isPattern(RendererKeyChordPattern, {
+      toJsonSchema: () => ({ pattern: RendererKeyChordPattern.source }),
+    }),
+  ),
   Schema.check(
     Schema.makeFilter(
       (chord) => Schema.is(RendererKeyName)(chord.replace(/^(ctrl\+)?(alt\+)?(shift\+)?/, "")),

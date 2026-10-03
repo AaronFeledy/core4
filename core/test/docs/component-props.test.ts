@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
+import { SchemaIssue, SchemaRepresentation } from "effect";
 
 import {
   CleanupProps,
@@ -304,7 +304,10 @@ describe("component prop schemas", () => {
     ) => {
       const decoded = Schema.decodeUnknownSync(schema)(value);
       expect(Schema.encodeSync(schema)(decoded)).toEqual(value);
-      expect(Schema.toJsonSchemaDocument(schema)).toHaveProperty(["definitions", name]);
+      const published = SchemaRepresentation.fromJsonSchemaDocument(Schema.toJsonSchemaDocument(schema), {
+        patterns: "apply",
+      });
+      expect(Schema.is(published)(value), name).toBe(true);
     };
 
     expectSchemaRoundTrip("GuideProps", GuideProps, {});

@@ -1,9 +1,87 @@
 import { describe, expect, test } from "bun:test";
 import { classifySchemaChange } from "../../../scripts/schema-compatibility/classifier.ts";
-import type { JsonSchema } from "../../../scripts/schema-compatibility/model.ts";
+import type { JsonSchema, JsonValue } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 
 describe("meaning-preserving schema normalization", () => {
+  test.each([
+    ["primitive types", [{ type: "string" }, { type: "number" }, { type: "null" }], true],
+    ["integer and string", [{ type: "integer" }, { type: "string" }], true],
+    ["distinct constants", [{ const: null }, { const: "null" }], true],
+    ["disjoint enums", [{ enum: [1, 2] }, { enum: [3, 4] }], true],
+    ["constant and enum", [{ const: "a" }, { enum: ["b", "c"] }], true],
+    ["integer overlaps number", [{ type: "integer" }, { type: "number" }], false],
+    ["duplicate branches", [{ type: "string" }, { type: "string" }], false],
+    ["overlapping enums", [{ enum: [1, 2] }, { enum: [2, 3] }], false],
+    ["equal object constants", [{ const: { a: 1, b: 2 } }, { const: { b: 2, a: 1 } }], false],
+    ["unconstrained branch", [{ type: "string" }, {}], false],
+    ["boolean true branch", [{ type: "string" }, true], false],
+    ["only some pairs disjoint", [{ type: "number" }, { type: "string" }, { type: "integer" }], false],
+  ] satisfies ReadonlyArray<readonly [string, readonly JsonValue[], boolean]>)(
+    "proves union equivalence only for %s",
+    (_name, branches, equivalent) => {
+      // Given the same branches under exclusive and inclusive union operators.
+      const before = { oneOf: branches };
+      const after = { anyOf: branches };
+      // When the classifier compares the accepted values.
+      const findings = classifySchemaChange(before, after, "strict");
+      // Then only proven pairwise disjointness removes the finding.
+      if (equivalent) expect(normalizeJsonSchema(before)).toEqual(normalizeJsonSchema(after));
+      else expect(normalizeJsonSchema(before)).not.toEqual(normalizeJsonSchema(after));
+      expect(findings.length === 0).toBe(equivalent);
+      expect(findings.every((finding) => !finding.accepted)).toBe(true);
+    },
+  );
+
+  test.each([
+    ["required shared tag", "object", ["kind"], ["kind"], "kind", true],
+    ["optional tag", "object", [], [], "kind", false],
+    ["one optional tag", "object", ["kind"], [], "kind", false],
+    ["different tags", "object", ["kind"], ["other"], "other", false],
+    ["non-object values also match", undefined, ["kind"], ["kind"], "kind", false],
+  ] as const)("proves tagged union equivalence only with %s", (_name, type, left, right, tag, equivalent) => {
+    // Given distinct tags, with object type and requiredness varied independently.
+    const branches = [
+      { ...(type ? { type } : {}), properties: { kind: { const: "a" } }, required: [...left] },
+      { ...(type ? { type } : {}), properties: { [tag]: { const: "b" } }, required: [...right] },
+    ];
+    // When the union spelling changes.
+    const findings = classifySchemaChange({ oneOf: branches }, { anyOf: branches }, "strict");
+    // Then only mandatory shared tags on objects establish disjointness.
+    expect(findings.length === 0).toBe(equivalent);
+  });
+
+  test.each([
+    ["omitted", {}, true],
+    ["true", { additionalProperties: true }, true],
+    ["empty", { additionalProperties: {} }, true],
+    ["closed", { additionalProperties: false }, false],
+    ["constrained", { additionalProperties: { type: "string" } }, false],
+  ] satisfies ReadonlyArray<readonly [string, JsonSchema, boolean]>)(
+    "drops empty patterns only when additional properties are unrestricted: %s",
+    (_name, extra, equivalent) => {
+      // Given overlapping patterns: every matching constraint applies, not just the first.
+      const before = { ...extra, patternProperties: { "^x-": {}, "^x-a": { type: "number" }, "^y-": true } };
+      const after = { ...extra, patternProperties: { "^x-a": { type: "number" } } };
+      // When empty branches are removed.
+      const findings = classifySchemaChange(before, after, "strict");
+      // Then no keys may become exposed to constrained additionalProperties.
+      expect(findings.length === 0).toBe(equivalent);
+    },
+  );
+
+  test.each([false, { type: "string" }, { minLength: 1 }])(
+    "retains restricting pattern branch %j",
+    (branch) => {
+      // Given a restricting branch under an otherwise open object.
+      const before = { patternProperties: { "^x-": branch } };
+      // When it disappears.
+      const findings = classifySchemaChange(before, {}, "strict");
+      // Then constraint loss remains unaccepted.
+      expect(findings).toEqual([expect.objectContaining({ verdict: "unknown", accepted: false })]);
+    },
+  );
+
   test.each([
     [
       "singleton reference allOf",
@@ -159,6 +237,13 @@ describe("meaning-preserving schema normalization", () => {
 
   test.each([
     ["removed pattern", { type: "string", pattern: "^x-" }, { type: "string" }],
+    ["removed minLength", { type: "string", minLength: 1 }, { type: "string" }],
+    ["unknown extension", { "x-constraint": true }, {}],
+    [
+      "unevaluated properties",
+      { unevaluatedProperties: false, allOf: [{ patternProperties: { "^x-": {} } }] },
+      { unevaluatedProperties: false },
+    ],
     ["removed format", { type: "string", format: "ip" }, { type: "string" }],
     [
       "removed property name constraint",

@@ -4,6 +4,8 @@ import { Schema } from "effect";
 import { LandoEvent } from "../events/union.ts";
 import { AppRef } from "./networking.ts";
 
+const RENDERER_PANEL_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
 // ====
 // Renderer panel slots, views, and manifest contribution shapes.
 
@@ -21,7 +23,11 @@ export type RendererPanelSlot = typeof RendererPanelSlot.Type;
 export const RendererPanelId = Schema.String.pipe(
   Schema.check(Schema.isMinLength(1)),
   Schema.check(Schema.isMaxLength(64)),
-  Schema.check(Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/)),
+  Schema.check(
+    Schema.isPattern(RENDERER_PANEL_ID_PATTERN, {
+      toJsonSchema: () => ({ pattern: RENDERER_PANEL_ID_PATTERN.source }),
+    }),
+  ),
   Schema.brand("RendererPanelId"),
 );
 export type RendererPanelId = typeof RendererPanelId.Type;

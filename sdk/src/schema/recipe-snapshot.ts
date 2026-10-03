@@ -143,7 +143,13 @@ export type RecipeHunkClassification = typeof RecipeHunkClassification.Type;
 
 const HUNK_ID_PATTERN = /^hunk-[0-9a-f]{24}$/;
 
-const hunkIdField = Schema.String.pipe(Schema.check(Schema.isPattern(HUNK_ID_PATTERN))).annotate({
+const hunkIdField = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(HUNK_ID_PATTERN, {
+      toJsonSchema: () => ({ pattern: HUNK_ID_PATTERN.source }),
+    }),
+  ),
+).annotate({
   description: "Stable id derived from producer family, edge endpoints, layer, kind, and canonical path.",
 });
 

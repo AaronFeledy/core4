@@ -1,6 +1,7 @@
 import { SchemaIssue, SchemaTransformation } from "effect";
 import { Effect } from "effect";
 import { Schema } from "effect";
+import { mapInputWithPrecheck } from "./map-input.ts";
 
 const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;
 
@@ -11,26 +12,6 @@ const ExtraHostsRecord = Schema.Record(
   Schema.String,
   Schema.Union([Schema.String, Schema.Array(Schema.String)]),
 );
-
-const ReservedComposeScalarMapInput = Schema.Unknown.annotate({
-  jsonSchema: {
-    type: "object",
-    propertyNames: RESERVED_KEY_PROPERTY_NAMES,
-    additionalProperties: {
-      anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
-    },
-  },
-});
-
-const ReservedExtraHostsMapInput = Schema.Unknown.annotate({
-  jsonSchema: {
-    type: "object",
-    propertyNames: RESERVED_KEY_PROPERTY_NAMES,
-    additionalProperties: {
-      anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
-    },
-  },
-});
 
 const reservedMapKeyFailure = (input: unknown) =>
   Effect.fail(
@@ -46,16 +27,20 @@ const reservedMapKeyCheck = Schema.makeFilter(
   (input: unknown) => !(typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")),
   {
     message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
+    toJsonSchema: () => ({ propertyNames: RESERVED_KEY_PROPERTY_NAMES }),
   },
 );
 
-const ComposeScalarMapInput = ReservedComposeScalarMapInput.check(reservedMapKeyCheck).pipe(
-  Schema.decodeTo(ComposeScalarMap),
+const ComposeScalarMapInput = mapInputWithPrecheck(
+  ComposeScalarMap,
+  reservedMapKeyCheck,
+  Schema.Record(
+    ComposeScalarMap.key,
+    Schema.Union(ComposeScalar.members.map((member) => (member === Schema.Number ? Schema.Finite : member))),
+  ),
 );
 
-const ComposeExtraHostsMapInput = ReservedExtraHostsMapInput.check(reservedMapKeyCheck).pipe(
-  Schema.decodeTo(ExtraHostsRecord),
-);
+const ComposeExtraHostsMapInput = mapInputWithPrecheck(ExtraHostsRecord, reservedMapKeyCheck);
 
 const splitMappingEntry = (
   entry: string,

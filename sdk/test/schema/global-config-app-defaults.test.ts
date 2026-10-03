@@ -7,6 +7,14 @@ import { GlobalConfig } from "@lando/sdk/schema";
 const decode = (input: unknown) => Schema.decodeUnknownResult(GlobalConfig)(input);
 
 describe("GlobalConfig app defaults", () => {
+  test.each(["appEnv", "appLabels"] as const)("accepts exactly 256 entries in %s", (field) => {
+    // Given a map at the existing maximum, with keys valid for either field.
+    const values = Object.fromEntries(Array.from({ length: 256 }, (_, index) => [`KEY_${index}`, "x"]));
+    // When it crosses the runtime configuration boundary.
+    const result = decode({ [field]: values });
+    // Then the projection migration has not narrowed the runtime boundary.
+    expect(Result.isSuccess(result)).toBe(true);
+  });
   test("accepts bounded app environment and label maps", () => {
     const config = Schema.decodeUnknownSync(GlobalConfig)({
       appEnv: { APP_MODE: "development", LANDO_PLUGIN_ACME_TOKEN: "plugin-owned" },

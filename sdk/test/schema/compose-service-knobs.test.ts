@@ -4,6 +4,48 @@ import { Result, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
+describe("Compose map input contracts", () => {
+  test.each([
+    ["sysctls", { a: "text", b: 1, c: true, d: null }],
+    ["extra_hosts", { db: "127.0.0.1", cache: ["127.0.0.2", "::1"] }],
+  ])("preserves valid %s maps", (field, value) => {
+    // Given a map exercising every supported value type.
+    const input = { [field]: value };
+    // When decoded through the service contract.
+    const result = Schema.decodeUnknownSync(ServiceConfig)(input);
+    // Then canonical map values remain unchanged.
+    expect(result).toMatchObject(input);
+  });
+
+  test.each([
+    ["sysctls", { invalid: {} }],
+    ["sysctls", { invalid: [] }],
+    ["extra_hosts", { invalid: 42 }],
+    ["extra_hosts", { invalid: true }],
+    ["extra_hosts", { invalid: null }],
+    ["extra_hosts", { invalid: [42] }],
+    ["sysctls", false],
+    ["extra_hosts", "127.0.0.1"],
+  ])("rejects invalid %s map values", (field, value) => {
+    // Given a value outside the existing map and list input forms.
+    const input = { [field]: value };
+    // When decoded at the public service boundary.
+    const result = Schema.decodeUnknownResult(ServiceConfig)(input);
+    // Then the native projection has not widened runtime acceptance.
+    expect(Result.isFailure(result)).toBe(true);
+  });
+
+  test.each(["sysctls", "extra_hosts"] as const)("rejects JSON-owned reserved keys in %s", (field) => {
+    // Given an own property, not object-literal prototype mutation.
+    const value: unknown = JSON.parse('{"__proto__":"127.0.0.1"}');
+    // When decoded through the service field.
+    const result = Schema.decodeUnknownResult(ServiceConfig)({ [field]: value });
+    // Then the reserved-key guard and its remediation remain in effect.
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure.message).toContain('The key "__proto__" is reserved');
+  });
+});
+
 const COMPOSE_SERVICE_KNOB_KEYS = [
   "restart",
   "cap_add",

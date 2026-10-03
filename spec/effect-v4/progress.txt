@@ -132,3 +132,39 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Sanitized linux-x64 binary: **234,374,344 bytes**, versus **200,709,600** (**+16.8%**). `app:config --format=json` exited 0 in **0.54 s**, peak RSS **339,912 KB**, versus **215,844 KB** (**+57.5%**) and 0.43 s at baseline. Both exceed the 5% threshold. Module/allocation causes are not yet isolated: **US-662 retains ownership**, with no waiver or downstream deferral.
 - Discard earlier pre-fix measurements as final performance evidence. Full unit-suite wall time remains a CI measurement; no full local suite was run.
 ---
+
+## 2026-10-03 00:25 CDT - US-662 blocker repairs (direct follow-up)
+- Resolved all 425 unexplained schema findings. Draft-07 artifacts retain optional-key omission, native map constraints, reserved-key diagnostic precedence, and existing container-only result/guide contracts. Validated authoring keeps its checks; structural wire schemas preserve the actual Effect 3 encoded transport behavior. The compatibility normalizer recognizes only proved identities, with negative tests for genuine constraint changes.
+- The historical embedded `x-*` producer applied extension-only key validation to declared names, rejecting valid runtime documents. Kept the corrected artifacts and documented 68 exact exceptions backed by captured-base, whole-subtree, wrong-path, and unrelated-mutation proofs. No blanket exception was added. Final schema compatibility against `origin/main`: **0 breaking, 0 unknown, 69 accepted (68 proved artifact corrections plus one pre-existing exception), 0 skipped**.
+- Final review exposed a callback bug in the initial projection repair: explicit tuple-form `toJsonSchema` callbacks could be mistaken for upstream defaults. Removed that inference. Canonical SDK checks now declare exact projections at construction, retaining their original RegExp sources and flags. Both failing counterexamples now pass; all **406 generated SDK artifacts remain byte-identical** to the pre-callback-fix snapshot. The read-only delta review approved the correction.
+- Binary/RSS comparison had mixed Bun compiler versions. Rebuilt the unchanged Effect 3 base with identical release flags: **239,076,552 bytes on Bun 1.4.0**, versus **200,705,504 on Bun 1.4.2**, within 4,096 bytes of the old unversioned record. The final pinned-Bun-1.4.0 Effect 4 binary is **227,497,160 bytes**, about **4.8% smaller** than its matched base. Compiler pin, bytecode, source maps, splitting, and bundled assets are unchanged. Narrow lazy Effect subpath imports avoid retaining unused modules.
+- Memoizing already-constructed, factory-local minimal/provider dependency graphs avoids repeated composite traversal without delaying input capture or changing overrides. Matched Bun 1.4.0 base peak RSS: **318,220 / 315,256 / 318,784 KB**; final Effect 4: **247,560 / 227,056 / 237,816 KB**, all command exits 0. Final hot-path p95 **237.1 ms** remains within the matched-base **239.0 / 253.1 / 294.3 ms** runs. Earlier paired current runs were **174.2 / 180.5 / 184.2 ms**; retain the noise rather than claiming a fixed speedup.
+- Verification: final `gate:pr` passed (typecheck, lint, codegen drift, boundaries, and actual guide drift); **422 tests passed across 15 focused schema/docs/proof files**. Refreshed sandbox compile/relocation, retained lifecycle, uninstall guard, and library-shell checks: **43 passed**. Earlier final four owned guides passed with positive counts, both nightly-tier files passed 26 tests, docs checks/test and guide gates passed, and the live Compose-knob test passed against the connecting sandbox socket. Manual help/version, valid JSON config, and missing-config tagged failure/exit 1 passed. No full local suite was run; full CI coverage remains a separate gate.
+- **Learnings for future iterations:** record the Bun compiler version with every binary/RSS baseline; patch releases materially change bytecode size. Projection callbacks belong to the schema author and must not be inferred from returned fragments. Artifact guards must inspect explicit declaration JSON codecs without excusing undeclared nullable values.
+- These follow-up changes remain uncommitted. No push, PR action, or additional loop signal was performed.
+---
+## 2026-10-03 00:33 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-03 00:33 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-10-03 00:33 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-03 00:33 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-10-03 00:33 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+## 2026-10-03 00:33 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-10-03 00:50 CDT - US-662 (Build, completion)
+- Committed the blocker repairs from the direct follow-up: the schema-compatibility identities, x-extension artifact corrections with their proofs, exact-projection SDK checks, lazy concrete Effect subpath imports, and memoized bootstrap dependency graphs. No new behavior beyond that follow-up.
+- Verification: `gate:pr` passed (typecheck, lint, codegen drift, boundaries, actual guide drift against `origin/main`). Schema compatibility against `origin/main`: 0 breaking, 0 unknown, 69 accepted, 0 skipped. Spot checks: 422 tests across 15 schema, compatibility, docs, and pin files passed. Sandbox CLI: `--version` and `--help` exit 0, `app:config --format=json` emits a valid envelope (exit 0), and a missing Landofile returns tagged `LandofileNotFoundError` JSON (exit 1). The full `bun run test` suite is left to CI.
+- **Learnings for future iterations:**
+  - Under `lando4-dev --exec`, piping CLI output into `head` can fail with EAGAIN on the interop stdout. Redirect to files under the repo and read them from the host.
+---

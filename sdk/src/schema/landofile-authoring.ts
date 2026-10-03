@@ -6,6 +6,7 @@ import {
   isPlainAuthoringString,
 } from "./landofile-authoring-expression.ts";
 import { authoringContainerFilter } from "./landofile-authoring-refinement.ts";
+import { authoringJsonContainer, authoringWireAst } from "./landofile-authoring-wire.ts";
 import { LandofileShape } from "./landofile.ts";
 
 // ==== Generic wire-tree authoring types
@@ -160,7 +161,8 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
           undefined,
           node.context,
         );
-        return allowExpression ? union([object, options.slotFor("object")]) : object;
+        const container = authoringJsonContainer(node, object) ?? object;
+        return allowExpression ? union([container, options.slotFor("object")]) : container;
       }
       case "Arrays": {
         const tuple = new AST.Arrays(
@@ -172,7 +174,8 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
           undefined,
           node.context,
         );
-        return allowExpression ? union([tuple, options.slotFor("array")]) : tuple;
+        const container = authoringJsonContainer(node, tuple) ?? tuple;
+        return allowExpression ? union([container, options.slotFor("array")]) : container;
       }
       case "Union":
         return union(
@@ -228,16 +231,19 @@ export const LandofileAuthoringFragment: Schema.Codec<
     "Recursively partial Landofile authoring values with parsed, unresolved expressions at typed value sites.",
 });
 
-export const LandofileAuthoringShapeWire: Schema.Codec<AuthoringRootEncoded<LandofileEncoded>> =
-  Schema.toEncoded(LandofileAuthoringShape).annotate({
-    identifier: "LandofileAuthoringShapeWire",
-    title: "Landofile authoring shape wire form",
-    description: "Complete Landofile authoring wire tree retaining expressions as source strings.",
-  });
+export const LandofileAuthoringShapeWire: Schema.Codec<AuthoringRootEncoded<LandofileEncoded>> = Schema.make<
+  Schema.Codec<AuthoringRootEncoded<LandofileEncoded>>
+>(authoringWireAst(LandofileAuthoringShape.ast)).annotate({
+  identifier: "LandofileAuthoringShapeWire",
+  title: "Landofile authoring shape wire form",
+  description: "Complete Landofile authoring wire tree retaining expressions as source strings.",
+});
 
 export const LandofileAuthoringFragmentWire: Schema.Codec<
   AuthoringDeepPartial<AuthoringEncoded<LandofileEncoded>>
-> = Schema.toEncoded(LandofileAuthoringFragment).annotate({
+> = Schema.make<Schema.Codec<AuthoringDeepPartial<AuthoringEncoded<LandofileEncoded>>>>(
+  authoringWireAst(LandofileAuthoringFragment.ast),
+).annotate({
   identifier: "LandofileAuthoringFragmentWire",
   title: "Landofile authoring fragment wire form",
   description: "Recursively partial Landofile authoring wire tree retaining expressions as source strings.",
