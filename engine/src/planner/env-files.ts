@@ -69,7 +69,7 @@ const loadEnvFiles = Effect.fnUntraced(function* (
           file: parsed.issue.source,
           issues: [
             validationIssueFromText(
-              `line ${parsed.issue.line}`,
+              `${input.issuePath}[${index}]`,
               `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
             ),
           ],
