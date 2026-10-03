@@ -3,11 +3,11 @@ import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { McpService } from "@lando/mcp/service";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { makeStdioClient, startStdioClient } from "@lando/mcp/testing";
+import type { LandoEvent } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";
 import { eventLayer, serverLayer, startServer, toolErrorObject } from "./server";
-import type { LandoEvent } from "@lando/sdk/services";
 import { expectMcpTransportFailure } from "./stdio-transport-test-support";
 
 test("stdio-outbound-deadline-disconnects", async () => {
@@ -156,7 +156,11 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
             ),
         };
         const service = yield* McpService.pipe(
-          Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }).pipe(Layer.provide(eventLayer(events)))),
+          Effect.provide(
+            serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }).pipe(
+              Layer.provide(eventLayer(events)),
+            ),
+          ),
         );
         const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
         const calls = [];
@@ -175,7 +179,9 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
   expect(observed.results).toHaveLength(257);
   expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(257);
   expect(events.filter((event) => event._tag === "post-mcp-call")).toHaveLength(257);
-  expect(events.filter((event) => event._tag === "post-mcp-call" && event.outcome === "failure")).toEqual([expect.objectContaining({ failureDetail: "McpTransportError" })]);
+  expect(events.filter((event) => event._tag === "post-mcp-call" && event.outcome === "failure")).toEqual([
+    expect.objectContaining({ failureDetail: "McpTransportError" }),
+  ]);
   expect(toolErrorObject(observed.busy)).toEqual({
     _tag: "McpTransportError",
     message: "Server busy",

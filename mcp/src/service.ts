@@ -55,8 +55,10 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
               : options?.allow,
           deny: options?.deny,
         });
-      const catalog: McpServiceShape["catalog"] = (options) =>
-        Effect.sync(() => {
+      const catalog: McpServiceShape["catalog"] = Effect.fn("McpService.catalog")(function* (
+        options?: McpCatalogOptions,
+      ) {
+        return yield* Effect.sync(() => {
           const key = JSON.stringify(options ?? {});
           const cached = catalogCache.get(key);
           if (cached !== undefined) return cached;
@@ -69,6 +71,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           catalogCache.set(key, value);
           return value;
         });
+      });
       const onMemoryPressure = (level: MemoryPressureLevel) =>
         handleMemoryPressure(level, {
           dropCaches: () => catalogCache.clear(),

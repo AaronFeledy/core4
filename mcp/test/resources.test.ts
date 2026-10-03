@@ -126,3 +126,38 @@ test("resource failures preserve redacted tagged error data", async () => {
     },
   });
 });
+
+test("each resource read releases its request scope before returning", async () => {
+  let finalized = 0;
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        yield* client.request("resources/read", { uri: "lando://app/config" });
+        const first = finalized;
+        yield* client.request("resources/read", { uri: "lando://app/config" });
+        return { first, second: finalized };
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer({
+          resources: [
+            {
+              uri: "lando://app/config",
+              name: "Config",
+              description: "Config",
+              resultSchema: Schema.Struct({ value: Schema.String }),
+              read: Effect.acquireRelease(Effect.succeed({ value: "config" }), () =>
+                Effect.sync(() => {
+                  finalized++;
+                }),
+              ),
+            },
+          ],
+        }),
+      ),
+    ),
+  );
+  expect(observed).toEqual({ first: 1, second: 2 });
+  expect(finalized).toBe(2);
+});

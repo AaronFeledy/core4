@@ -4,7 +4,7 @@ import { CORE_VERSION } from "@lando/engine/version";
 import type { McpTransportError } from "@lando/sdk/errors";
 import type { McpCatalog, McpServeOptions } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Context, Deferred, Effect, Fiber, Layer, Option, Semaphore, Stdio } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer, Option, Schema, Semaphore, Stdio } from "effect";
 import * as McpProtocol from "effect/ai/McpProtocol";
 import * as McpSchema from "effect/ai/McpSchema";
 import * as McpServer from "effect/ai/McpServer";
@@ -16,6 +16,7 @@ import { makeNestedExecute } from "./execute";
 import { type MemoryPressureLevel, attachMemoryPressureListener } from "./memory-pressure";
 import type { McpCommandExecutorShape } from "./port";
 import { makeStreamFrameSink } from "./progress";
+import type { McpToolInput } from "./registry";
 import { registerResources } from "./resources";
 import type { McpRuntimeConfigShape } from "./service";
 import { guardStdio } from "./stdio-guard";
@@ -32,7 +33,7 @@ export interface McpSession {
   readonly handleMemoryPressure: (level: MemoryPressureLevel) => void;
 }
 
-export const serveSession = Effect.fn("McpService.serve")(
+export const serveSession = Effect.fnUntraced(
   function* (session: McpSession) {
     const terminal = yield* Deferred.make<void, McpTransportError>();
     const guarded = yield* guardStdio(yield* Stdio.Stdio, terminal);
@@ -75,7 +76,20 @@ export const serveSession = Effect.fn("McpService.serve")(
               message,
             });
           });
-          const prompt = yield* confirmationPrompt();
+          const decodedInput = yield* Effect.try({
+            try: () => SchemaInput(input),
+            catch: () => stdioTransportError("MCP tool arguments must be an object."),
+          });
+          const prompt = yield* confirmationPrompt(
+            {
+              toolId: descriptor.toolId,
+              app:
+                typeof decodedInput.appPath === "string"
+                  ? decodedInput.appPath
+                  : Option.getOrElse(Context.getOption(runtimeContext, RuntimeCwd), () => process.cwd()),
+            },
+            session.redactor,
+          );
           const callContext = Option.isSome(prompt)
             ? Context.add(runtimeContext, ConfirmationPrompt, prompt.value)
             : runtimeContext;
@@ -86,10 +100,6 @@ export const serveSession = Effect.fn("McpService.serve")(
           );
           const execute: McpDispatchDeps["execute"] = (entry, runInput) =>
             semaphore.withPermits(1)(nested(entry, runInput));
-          const decodedInput = yield* Effect.try({
-            try: () => SchemaInput(input),
-            catch: () => stdioTransportError("MCP tool arguments must be an object."),
-          });
           return yield* dispatchTool(
             { toolId: descriptor.toolId, input: decodedInput },
             {
@@ -124,8 +134,6 @@ export const serveSession = Effect.fn("McpService.serve")(
   Effect.catchTag("IllegalArgumentError", (error) => Effect.fail(stdioTransportError(error.message))),
 );
 
-import { Schema } from "effect";
-import type { McpToolInput } from "./registry";
 const SchemaInput = (input: unknown): McpToolInput =>
   Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(input ?? {});
 const SchemaToolInput = Schema.decodeUnknownSync(McpSchema.ToolJson);

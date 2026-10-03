@@ -9,16 +9,48 @@ tags: [beta, docs, mcp, agent]
 # Drive Lando through MCP
 
 An MCP client starts `lando mcp` as a child process and owns its stdin and stdout
-pipes. The server exchanges one JSON-RPC object per line and runs until the client
-closes stdin. Keep stdin open until every outstanding request id has answered;
-closing early interrupts in-flight tool calls. Serve mode writes protocol frames
-only; it does not wrap startup or shutdown in a Lando command-result envelope.
+pipes. The server speaks MCP over newline-delimited JSON-RPC and runs until the
+client closes stdin. Keep stdin open until every outstanding request id has
+answered; closing early interrupts in-flight tool calls. Serve mode writes
+protocol frames only; it does not wrap startup or shutdown in a Lando
+command-result envelope.
 
 Configure the MCP client to launch `lando mcp` with piped stdin and stdout.
 Audit the effective catalog without starting the long-running server with
-`lando mcp --list --format=json`. The wire framing is newline-delimited
-JSON-RPC: write one complete JSON-RPC object followed by a newline for every
-request or notification.
+`lando mcp --list --format=json`.
+
+```sh
+lando mcp --list --format=json
+```
+
+Check that the catalog includes the tools you intend to expose before connecting
+the client.
+
+## Initialize the client
+
+Lando negotiates MCP protocol versions `2025-06-18`, `2025-03-26`, and
+`2024-11-05`. An `initialize` that offers `2025-06-18` gets `2025-06-18` back.
+Write one complete JSON-RPC object followed by a newline for every request or
+notification. An inbound frame over 1 MiB ends the session.
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"my-agent","version":"1.0.0"}}}
+```
+
+## Call a tool and read its result
+
+Every tool in `tools/list` carries an `outputSchema`. A `tools/call` result has
+`structuredContent` holding the redacted, bounded `CommandResultEnvelope` for the
+command, plus the same JSON as a `text` content block for clients that ignore
+structured output. `isError` is `true` whenever the envelope is not `ok`, so a
+command's own tagged failure (for example `LandofileNotFoundError`) arrives as a
+normal tool result you can read.
+
+Rejections that never reach the command (bad input, `Server busy`, an
+interrupted call) also come back as a tool result with `isError: true`; the
+`text` block is the tagged error as JSON and there is no `structuredContent`.
+A tool outside the effective allowlist is never registered, so calling it gets
+the protocol's unknown-tool error, code `-32602`.
 
 Send integer flags as JSON numbers without a fractional part. For example, the
 `app:logs` tool declares `flags.tail` as `integer`:
@@ -46,93 +78,117 @@ and `channel` at `order: 1` with `default: stable`, this call fails on `label`:
 The tag, message, and `field` are byte-identical to what the CLI emits for the
 same declaration and input.
 
+## Confirm changes to an app
+
+`app:rebuild` asks before it recreates containers. It is not in the default
+allowlist; expose it with `--allow app:rebuild` or `mcp.allow`. `app:destroy`
+stays forbidden unless you allowlist it explicitly the same way. Once exposed,
+either command proceeds without a question when the call sends `flags.yes: true`.
+
+Without `yes`, what happens depends on the client. A client that advertised the
+`elicitation` capability in `initialize` gets an `elicitation/create` request
+with a `{ confirm: boolean }` form; the message names the tool, the app's
+directory, and what the command is about to do. Accept with `confirm: true` and the command runs.
+Decline, cancel, answer `confirm: false`, or say nothing for 120 seconds and the
+call returns `isError: true` with a `CommandConfirmationError` whose `reason` is
+`declined`. A client without elicitation gets the same error with `reason`
+`non-interactive`. Elicitation never lifts a deny: a tool outside the effective
+allowlist is still unknown to the session.
+
+```json
+{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"app:rebuild","arguments":{"flags":{"yes":true}}}}
+```
+
+## Read resources and complete schema names
+
+The server also publishes read-only resources. Each JSON payload reuses the
+matching command result schema and is redacted and bounded the same way tool
+results are.
+
+| URI | What you get |
+| --- | --- |
+| `lando://app/config` | Resolved configuration for the app in the server's working directory |
+| `lando://app/info` | Services and endpoints for that app |
+| `lando://apps` | Known apps and their services |
+| `lando://doctor` | Host-safe diagnostics, no fixes applied |
+| `lando://schemas/{name}` | A public Lando JSON schema by name |
+
+App-scoped resources resolve the app from the directory `lando mcp` was started
+in and fail with the usual tagged errors when there is no app there. The
+`lando://schemas/{name}` template supports `completion/complete`, so a client
+can tab through the public schema registry instead of guessing names.
+
+```json
+{"jsonrpc":"2.0","id":7,"method":"completion/complete","params":{"ref":{"type":"ref/resource","uri":"lando://schemas/{name}"},"argument":{"name":"name","value":"CommandResult"}}}
+```
+
 <Guide>
   <Scenario id="stdio-conversation" render>
     <Step name="call-a-read-only-tool">
       <Run
         runtime="library"
-        code={`const { Fiber, Layer, Queue } = yield* Effect.promise(() => import("effect"));
+        code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
 const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
 const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
-const { McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
-const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-transport.ts"));
-const { McpTransport } = yield* Effect.promise(() => import("../../../../../mcp/src/transport.ts"));
-const { RedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
-const frames = [
-  { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
-  { jsonrpc: "2.0", method: "notifications/initialized" },
-  { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-  {
-    jsonrpc: "2.0",
-    id: 3,
-    method: "tools/call",
-    params: { name: "app:config:get", arguments: { args: { key: "name" } } },
-  },
-];
-let inputController: ReadableStreamDefaultController<Uint8Array> | undefined;
-const input = new ReadableStream<Uint8Array>({
-  start: (controller) => {
-    inputController = controller;
-  },
-});
 const runtimeLayer = Layer.succeed(LandofileService, {
   discover: Effect.succeed({ name: "mcp-guide", services: {} }),
 });
-const serviceLayer = McpServiceLive.pipe(Layer.provide(Layer.mergeAll(
+const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
   Layer.succeed(McpRuntimeConfig, {
     commandEntries: registry.commandEntries,
     defaultAllowlist: ["app:config:get", "app:config:view"],
     runtimeLayer,
   }),
   Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
   }),
 )));
 const responses = yield* Effect.gen(function* () {
-  const output = yield* Queue.unbounded<string>();
+  const client = yield* makeStdioClient();
   const service = yield* McpService;
-  const catalog = yield* service.catalog();
-  const transport = yield* makeStdioMcpTransport({
-    catalog,
-    input,
-    write: (line) => Queue.offer(output, line).pipe(Effect.asVoid),
-  });
   const fiber = yield* service.serve({ transport: "stdio" }).pipe(
-    Effect.provideService(McpTransport, transport),
+    Effect.provideService(Stdio.Stdio, client.stdio),
     Effect.forkScoped,
   );
-  if (inputController === undefined) return yield* Effect.die(new Error("input stream did not start"));
-  inputController.enqueue(new TextEncoder().encode(
-    frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n",
-  ));
-  const lines = [yield* Queue.take(output), yield* Queue.take(output), yield* Queue.take(output)];
-  inputController.close();
+  const initialized = yield* client.initialize({});
+  const listed = yield* client.request("tools/list");
+  const called = yield* client.request("tools/call", {
+    name: "app:config:get",
+    arguments: { args: { key: "name" } },
+  });
+  yield* client.close;
   yield* Fiber.join(fiber);
-  return lines.map((line) => JSON.parse(line));
+  return { initialized, listed, called };
 }).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));
-expect(responses).toContainEqual(expect.objectContaining({
+expect(responses.initialized).toMatchObject({
   id: 1,
-  result: expect.objectContaining({ protocolVersion: "2024-11-05" }),
-}));
-expect(responses).toContainEqual(expect.objectContaining({
-  id: 2,
+  result: { protocolVersion: "2025-06-18", serverInfo: { name: "lando" } },
+});
+expect(responses.listed).toMatchObject({
   result: { tools: expect.arrayContaining([
-    expect.objectContaining({ name: "app:config:get" }),
-    expect.objectContaining({ name: "app:config:view" }),
+    expect.objectContaining({ name: "app:config:get", outputSchema: expect.objectContaining({ type: "object" }) }),
+    expect.objectContaining({ name: "app:config:view", outputSchema: expect.objectContaining({ type: "object" }) }),
   ]) },
-}));
-expect(responses).toContainEqual(expect.objectContaining({
-  id: 3,
-  result: expect.objectContaining({
+});
+const called = Schema.decodeUnknownSync(Schema.Struct({
+  content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
+}))(responses.called.result);
+const callText = called.content[0]?.text ?? "";
+expect(responses.called).toMatchObject({
+  result: {
     isError: false,
     content: [expect.objectContaining({ type: "text" })],
-  }),
-}));
-const callText = responses.find((response) => response.id === 3)?.result.content[0].text;
+    structuredContent: { ok: true, command: "app:config:get", result: { value: "mcp-guide" } },
+  },
+});
 expect(callText).toContain('\"command\":\"app:config:get\"');
 expect(callText).toContain('\"value\":\"mcp-guide\"');`}
         displayCode={`const child = Bun.spawn(["lando", "mcp"], {
@@ -142,7 +198,16 @@ expect(callText).toContain('\"value\":\"mcp-guide\"');`}
 });
 
 const frames = [
-  { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
+  {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "my-agent", version: "1.0.0" },
+    },
+  },
   { jsonrpc: "2.0", method: "notifications/initialized" },
   { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
   {
@@ -162,12 +227,12 @@ const responses = [];
 const pending = new Set([1, 2, 3]);
 const reader = child.stdout.getReader();
 
-for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\n");
+for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\\n");
 await child.stdin.flush();
 
 const parseLines = () => {
   let nl;
-  while ((nl = buffer.indexOf("\n")) !== -1) {
+  while ((nl = buffer.indexOf("\\n")) !== -1) {
     const line = buffer.slice(0, nl).trim();
     buffer = buffer.slice(nl + 1);
     if (!line) continue;
@@ -205,7 +270,9 @@ const [stderr, exitCode] = await Promise.all([
   new Response(child.stderr).text(),
   child.exited,
 ]);
-if (exitCode !== 0) throw new Error(stderr);`}
+if (exitCode !== 0) throw new Error(stderr);
+
+// Find the response with id 3 and read result.structuredContent.`}
       />
     </Step>
   </Scenario>
@@ -268,17 +335,24 @@ configuration.
 
 Protocol input and output stay bounded: a complete inbound frame and a
 partial inbound buffer are each capped at 1 MiB. At most 256 unresolved tool
-calls are retained; request 257 receives a JSON-RPC `Server busy` error. The
-outbound queue, queued bytes, and blocked-write duration are bounded too
-(1024 messages / 8 MiB / 5 seconds).
+calls are retained; request 257 gets a tool result with `isError: true` whose
+text is a `McpTransportError` reading `Server busy`, and it carries no
+`structuredContent`. The outbound queue, queued bytes, and blocked-write
+duration are bounded too (1024 messages / 8 MiB / 5 seconds).
 
   <Scenario id="bounded-read-only-regressions" render>
     <Step name="verify-read-only-tools">
       <Run
         runtime="library"
-code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-transport.ts"));
+code={`const { Deferred, Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
+const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
+const { LandofileService } = yield* Effect.promise(() => import("@lando/sdk/services"));
 const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../mcp/src/stdio-limits.ts"));
 const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../mcp/src/catalog.ts"));
+const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
+const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
 const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
@@ -293,41 +367,154 @@ expect(catalog.tools.find((tool) => tool.toolId === "app:config:get")?.inputSche
 expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSchema).toMatchObject({
   properties: { args: { properties: {} }, flags: { properties: {} } },
 });
-const frames = Array.from({ length: MAX_OUTSTANDING_REQUESTS + 1 }, (_, index) => ({
-  jsonrpc: "2.0",
-  id: index + 1,
-  method: "tools/call",
-  params: { name: "app:config:get", arguments: { args: { key: "name" } } },
-}));
-const input = new ReadableStream<Uint8Array>({
-  start: (controller) => {
-    controller.enqueue(new TextEncoder().encode(frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n"));
-    controller.close();
-  },
+const release = yield* Deferred.make<void>();
+const runtimeLayer = Layer.succeed(LandofileService, {
+  discover: Deferred.await(release).pipe(Effect.as({ name: "mcp-guide", services: {} })),
 });
-const writes: string[] = [];
-const transport = yield* makeStdioMcpTransport({
-  catalog,
-  input,
-  write: (line) => Effect.sync(() => writes.push(line)),
-});
-yield* Effect.gen(function* () {
-  for (let index = 0; index < MAX_OUTSTANDING_REQUESTS; index += 1) {
-    const incoming = yield* transport.receive;
-    expect(incoming._tag).toBe("Some");
+const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
+  Layer.succeed(McpRuntimeConfig, {
+    commandEntries: registry.commandEntries,
+    defaultAllowlist: ["app:config:get", "app:config:view"],
+    runtimeLayer,
+  }),
+  Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
+  }),
+)));
+const observed = yield* Effect.gen(function* () {
+  const client = yield* makeStdioClient();
+  const service = yield* McpService;
+  const fiber = yield* service.serve({ transport: "stdio" }).pipe(
+    Effect.provideService(Stdio.Stdio, client.stdio),
+    Effect.forkScoped,
+  );
+  yield* client.initialize({});
+  const calls = [];
+  for (let index = 0; index < MAX_OUTSTANDING_REQUESTS + 1; index += 1) {
+    calls.push(yield* client.sendRequest("tools/call", {
+      name: "app:config:get",
+      arguments: { args: { key: "name" } },
+    }));
   }
-  while (writes.length < 1) yield* Effect.sleep("10 millis");
-}).pipe(Effect.timeout("5 seconds"));
-expect(JSON.parse(writes[0] ?? "{}")).toMatchObject({
-  jsonrpc: "2.0",
-  id: MAX_OUTSTANDING_REQUESTS + 1,
-  error: { code: -32000, message: "Server busy" },
-});`}
+  const last = calls[MAX_OUTSTANDING_REQUESTS];
+  if (last === undefined) return yield* Effect.die(new Error("expected request 257"));
+  const busy = yield* last.response;
+  yield* Deferred.succeed(release, undefined);
+  const results = yield* Effect.forEach(calls, (call) => call.response);
+  yield* client.close;
+  yield* Fiber.join(fiber);
+  return { busyId: last.id, busy, results };
+}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));
+expect(observed.results).toHaveLength(MAX_OUTSTANDING_REQUESTS + 1);
+expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId });
+const busyResult = Schema.decodeUnknownSync(Schema.Struct({
+  isError: Schema.Literal(true),
+  content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
+  structuredContent: Schema.optionalKey(Schema.Unknown),
+}))(observed.busy.result);
+expect(busyResult.structuredContent).toBeUndefined();
+expect(JSON.parse(busyResult.content[0]?.text ?? "{}")).toEqual({
+  _tag: "McpTransportError",
+  message: "Server busy",
+  remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
+});
+const succeeded = observed.results.filter((message) => {
+  const result = message.result;
+  return Schema.is(Schema.Struct({ isError: Schema.Literal(false) }))(result);
+});
+expect(succeeded).toHaveLength(MAX_OUTSTANDING_REQUESTS);`}
         displayCode={`// Keep protocol input and output bounded. Lando rejects oversized or stalled
-// peers, caps unresolved calls at 256, and returns Server busy for request 257.
+// peers and caps unresolved calls at 256. Request 257 is answered with a tool
+// result with isError: true and tagged McpTransportError JSON in its text.
 // The app-config projection is intentionally read-only:
 const appConfigTools = ["app:config:get", "app:config:view"];
 console.log(appConfigTools);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="resources-and-schema-completion" render>
+    <Step name="list-resources-and-complete-schema-names">
+      <Run
+        runtime="library"
+code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
+const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
+const { JSON_SCHEMA_NAMES } = yield* Effect.promise(() => import("@lando/sdk/schema"));
+const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
+const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { resources } = yield* Effect.promise(() => import("../../../../../core/src/mcp-resources.ts"));
+const { RedactionService, registerRedactionValues } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
+  Layer.succeed(McpRuntimeConfig, {
+    commandEntries: [],
+    defaultAllowlist: [],
+    runtimeLayer: Layer.empty,
+    resources,
+  }),
+  Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
+  }),
+)));
+const observed = yield* Effect.gen(function* () {
+  const client = yield* makeStdioClient();
+  const service = yield* McpService;
+  const fiber = yield* service.serve({ transport: "stdio" }).pipe(
+    Effect.provideService(Stdio.Stdio, client.stdio),
+    Effect.forkScoped,
+  );
+  yield* client.initialize({});
+  const list = yield* client.request("resources/list");
+  const templates = yield* client.request("resources/templates/list");
+  const complete = yield* client.request("completion/complete", {
+    ref: { type: "ref/resource", uri: "lando://schemas/{name}" },
+    argument: { name: "name", value: "CommandResult" },
+  });
+  yield* client.close;
+  yield* Fiber.join(fiber);
+  return { list, templates, complete };
+}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));
+const listed = Schema.decodeUnknownSync(Schema.Struct({
+  resources: Schema.Array(Schema.Struct({ uri: Schema.String, mimeType: Schema.String })),
+}))(observed.list.result);
+expect(listed.resources.map((resource) => resource.uri)).toEqual([
+  "lando://app/config",
+  "lando://app/info",
+  "lando://apps",
+  "lando://doctor",
+]);
+expect(listed.resources.every((resource) => resource.mimeType === "application/json")).toBe(true);
+expect(observed.templates).toMatchObject({
+  result: { resourceTemplates: [{ uriTemplate: "lando://schemas/{name}", mimeType: "application/json" }] },
+});
+const expected = JSON_SCHEMA_NAMES.filter((name) => name.startsWith("CommandResult"));
+expect(expected.length).toBeGreaterThan(0);
+expect(observed.complete).toMatchObject({
+  result: { completion: { values: expected, hasMore: false } },
+});`}
+        displayCode={`// With an initialized child whose stdin is still open, list resources
+// and complete a schema name. Wait for ids 4, 5, and 6 before closing stdin.
+const frames = [
+  { jsonrpc: "2.0", id: 4, method: "resources/list", params: {} },
+  { jsonrpc: "2.0", id: 5, method: "resources/templates/list", params: {} },
+  {
+    jsonrpc: "2.0",
+    id: 6,
+    method: "completion/complete",
+    params: {
+      ref: { type: "ref/resource", uri: "lando://schemas/{name}" },
+      argument: { name: "name", value: "CommandResult" },
+    },
+  },
+];
+for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\\n");
+await child.stdin.flush();
+// id 4 lists lando://app/config, lando://app/info, lando://apps, lando://doctor.
+// id 5 lists the lando://schemas/{name} template.
+// id 6 returns every public schema name starting with "CommandResult".
+// Read one with: { method: "resources/read", params: { uri: "lando://schemas/CommandResultEnvelope" } }`}
       />
     </Step>
   </Scenario>

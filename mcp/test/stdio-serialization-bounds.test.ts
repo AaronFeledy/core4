@@ -1,7 +1,40 @@
 import { expect, test } from "bun:test";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
-import { Effect, Schema } from "effect";
-import { serverLayer, startServer, toolErrorObject } from "./server";
+import type { LandoEvent } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
+import { eventLayer, serverLayer, startServer, toolErrorObject } from "./server";
+
+test("combined text and structured content respect the 8 MiB limit and publish failure", async () => {
+  const events: LandoEvent[] = [];
+  const spec = {
+    id: "app:info",
+    summary: "Info",
+    resultSchema: Schema.Struct({ body: Schema.String }),
+    run: () => Effect.succeed({ body: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES / 2) }),
+  };
+  const response = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        return yield* client.request("tools/call", { name: spec.id });
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }).pipe(
+          Layer.provide(eventLayer(events)),
+        ),
+      ),
+    ),
+  );
+  expect(toolErrorObject(response)).toMatchObject({
+    _tag: "McpTransportError",
+    message: "MCP tool result frame exceeded the 8 MiB JSON serialization limit.",
+  });
+  expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(1);
+  expect(events.filter((event) => event._tag === "post-mcp-call")).toEqual([
+    expect.objectContaining({ outcome: "failure", failureDetail: "McpTransportError" }),
+  ]);
+});
 
 test("oversized-result-fails-closed-before-retaining-the-complete-frame", async () => {
   let trailingPropertyRead = false;

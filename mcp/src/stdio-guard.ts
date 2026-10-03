@@ -14,11 +14,19 @@ export const guardStdio = Effect.fnUntraced(function* (
   stdio: Stdio.Stdio,
   terminal: Deferred.Deferred<void, McpTransportError>,
 ) {
-  const stdout: Stdio.Stdio["stdout"] = (options) => forEachChunk((chunk: string | Uint8Array) =>
-    Stream.run(Stream.make(chunk), stdio.stdout(options)).pipe(
-      Effect.timeoutOrElse({ duration: OUTBOUND_WRITE_DEADLINE, orElse: () => Effect.fail(stdioTransportError("MCP stdio stdout write exceeded the 5 second deadline.")) }),
-      Effect.catch((error) => Deferred.fail(terminal, stdioTransportError(error.message, error)).pipe(Effect.asVoid)),
-    ));
+  const stdout: Stdio.Stdio["stdout"] = (options) =>
+    forEachChunk((chunk: string | Uint8Array) =>
+      Stream.run(Stream.make(chunk), stdio.stdout(options)).pipe(
+        Effect.timeoutOrElse({
+          duration: OUTBOUND_WRITE_DEADLINE,
+          orElse: () =>
+            Effect.fail(stdioTransportError("MCP stdio stdout write exceeded the 5 second deadline.")),
+        }),
+        Effect.catch((error) =>
+          Deferred.fail(terminal, stdioTransportError(error.message, error)).pipe(Effect.asVoid),
+        ),
+      ),
+    );
   const stdin = Stream.transformPull(stdio.stdin, (pull) =>
     Effect.sync(() => {
       let parts: Uint8Array[] = [];

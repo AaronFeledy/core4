@@ -19,10 +19,11 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { type Redactor, createRedactor } from "@lando/sdk/secrets";
 
 import { type CommandResultOutcome, buildCommandResultEnvelope } from "@lando/sdk/command-result";
-import { redactBoundedJsonValue } from "./bounded-json";
+import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";
+import { encodeProgressFrame } from "./progress";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry";
-import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "./result-inspector";
+import { inspectMcpCommandOutcome } from "./result-inspector";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
 
@@ -93,18 +94,6 @@ const envelopeTag = (envelope: unknown): string | undefined => {
   return typeof tag === "string" ? tag : undefined;
 };
 
-const encodeProgressFrame = (frame: unknown, redactor: Redactor): Effect.Effect<unknown, McpTransportError> =>
-  Effect.try({
-    try: () => projectMcpProgressFrame(frame),
-    catch: (cause) =>
-      cause instanceof McpTransportError
-        ? cause
-        : new McpTransportError({
-            message: "MCP progress payload could not be safely inspected.",
-            remediation: "Emit a plain stdout or stderr frame with string chunk and service fields.",
-          }),
-  }).pipe(Effect.flatMap((projected) => redactBoundedJsonValue(projected, redactor, "MCP progress payload")));
-
 const emitProgressFrame = (
   deps: McpDispatchDeps,
   frame: McpProgressFrame,
@@ -141,7 +130,7 @@ export const withResultTokens = (redactor: Redactor, tokens: ReadonlyArray<strin
  * Publishes `pre-mcp-call` before the decision and `post-mcp-call` after — for
  * every call, including rejected ones.
  */
-export const dispatchTool = Effect.fn("McpService.callTool")(function* (
+export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
   request: McpToolCallRequest,
   deps: McpDispatchDeps,
 ): Effect.fn.Return<McpDispatchResult, McpDispatchError> {
@@ -245,6 +234,11 @@ export const dispatchTool = Effect.fn("McpService.callTool")(function* (
     });
     const envelope = yield* redactBoundedJsonValue(encodedEnvelope, redactor, "MCP tool result");
     const ok = Predicate.isObject(envelope) && envelope.ok === true;
+    const text = yield* stringifyBoundedJson(envelope, "MCP tool result");
+    yield* stringifyBoundedJson(
+      { content: [{ type: "text", text }], structuredContent: envelope, isError: !ok },
+      "MCP tool result frame",
+    );
 
     yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));
 

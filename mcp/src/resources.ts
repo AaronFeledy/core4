@@ -39,7 +39,7 @@ const contents = Effect.fnUntraced(function* (uri: string, value: unknown, redac
   return McpSchema.ReadResourceResult.make({ contents: [{ uri, mimeType: "application/json", text }] });
 });
 
-export const registerResources = Effect.fnUntraced(function* (
+export const registerResources = Effect.fn("McpService.registerResources")(function* (
   entries: ReadonlyArray<McpResourceEntry>,
   context: Context.Context<unknown>,
   redactor: Redactor,
@@ -56,6 +56,7 @@ export const registerResources = Effect.fnUntraced(function* (
           withResultTokens(redactor, entry.redactionTokens?.(value) ?? []),
         );
       },
+      Effect.scoped,
       Effect.provide(context),
       Effect.catch((error) => resourceError(error, redactor).pipe(Effect.flatMap(Effect.fail))),
     );

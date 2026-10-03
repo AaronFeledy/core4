@@ -1,4 +1,5 @@
 import { ConfirmationPrompt } from "@lando/engine/operations/confirmation-prompt";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Duration, Effect, Option } from "effect";
 import { McpServerClient } from "effect/ai/McpSchema";
 import * as McpServer from "effect/ai/McpServer";
@@ -33,7 +34,17 @@ const elicitConfirmation = Effect.fn("McpService.elicitConfirmation")(
   Effect.scoped,
 );
 
-export const confirmationPrompt = Effect.fnUntraced(function* () {
+/** The tool call a confirmation belongs to; the elicitation message names both. */
+export interface ConfirmationTarget {
+  readonly toolId: string;
+  /** Directory of the app the call targets. */
+  readonly app: string;
+}
+
+export const confirmationPrompt = Effect.fnUntraced(function* (
+  target: ConfirmationTarget,
+  redactor: Redactor,
+) {
   const capabilities = yield* McpServer.clientCapabilities;
   if (capabilities.elicitation === undefined) return Option.none<ConfirmationPrompt["Service"]>();
   const session = yield* Effect.serviceOption(McpServerClient);
@@ -41,7 +52,9 @@ export const confirmationPrompt = Effect.fnUntraced(function* () {
   return Option.some(
     ConfirmationPrompt.of({
       confirm: ({ message }) =>
-        elicitConfirmation(message).pipe(Effect.provideService(McpServerClient, session.value)),
+        elicitConfirmation(
+          redactor.redactString(`${target.toolId} on the app at ${target.app}: ${message}`),
+        ).pipe(Effect.provideService(McpServerClient, session.value)),
     }),
   );
 });

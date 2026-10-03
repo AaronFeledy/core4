@@ -58,6 +58,7 @@ test.each(["accept-true", "accept-false", "decline", "cancel", "reverse-failure"
           let reverse = yield* client.next;
           while (reverse.method !== "elicitation/create") reverse = yield* client.next;
           expect(reverse.params).toMatchObject({
+            message: `app:rebuild on the app at ${process.cwd()}: Rebuild fixture-app and replace its services?`,
             requestedSchema: {
               type: "object",
               properties: { confirm: { type: "boolean" } },

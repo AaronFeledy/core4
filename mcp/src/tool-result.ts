@@ -37,7 +37,6 @@ export const rejectionResult = Effect.fnUntraced(function* (error: McpDispatchEr
 
 export const commandResult = Effect.fnUntraced(function* (result: McpDispatchResult) {
   const text = yield* stringifyBoundedJson(result.envelope, "MCP tool result");
-  yield* stringifyBoundedJson({ content: [{ type: "text", text }], structuredContent: result.envelope, isError: !result.ok }, "MCP tool result frame");
   return new McpSchema.CallToolResult({
     content: [{ type: "text", text }],
     structuredContent: result.envelope,

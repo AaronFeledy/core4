@@ -12,7 +12,7 @@ import { type Context, Effect } from "effect";
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { StreamFrameSink, StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { redactBoundedJsonValue } from "./bounded-json";
 import type { McpNotify } from "./dispatch";
 import { projectMcpProgressFrame } from "./result-inspector";
@@ -39,7 +39,8 @@ export const encodeProgressFrame = (
 export const makeStreamFrameSink = (
   notify: McpNotify,
   redactorForFrame: Redactor,
-): Context.Service.Shape<typeof StreamFrameSink> => ({
-  emit: (frame: StreamFrameSinkFrame) =>
-    encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
-});
+): Context.Service.Shape<typeof StreamFrameSink> =>
+  StreamFrameSink.of({
+    emit: (frame: StreamFrameSinkFrame) =>
+      encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
+  });

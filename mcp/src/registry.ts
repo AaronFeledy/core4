@@ -11,6 +11,7 @@
 import { McpToolInputError } from "@lando/sdk/errors";
 
 import type { Effect, Schema } from "effect";
+import { Predicate } from "effect";
 import type { McpProgressFrame, McpRunInput } from "./dispatch";
 
 export interface McpCommandSpec {
@@ -52,7 +53,7 @@ export interface McpInputMemberView {
 export type JsonSchemaObject = Record<string, unknown>;
 
 const asView = (value: unknown): McpInputMemberView =>
-  value !== null && typeof value === "object" ? (value as McpInputMemberView) : {};
+  Predicate.isObjectOrArray(value) ? (value as McpInputMemberView) : {};
 
 const memberType = (view: McpInputMemberView): "string" | "boolean" | "number" | "integer" => {
   if (view.valueType === "integer") return "integer";
