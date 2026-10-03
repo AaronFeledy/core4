@@ -58,8 +58,8 @@ export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressi
   {
     message: Schema.String,
     path: Schema.String,
-    compression: Schema.Literal("gzip", "zstd"),
-    operation: Schema.Literal("compress", "decompress"),
+    compression: Schema.Literals(["gzip", "zstd"]),
+    operation: Schema.Literals(["compress", "decompress"]),
     remediation: Schema.String,
   },
 ) {}
