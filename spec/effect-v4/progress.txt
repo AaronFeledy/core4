@@ -434,3 +434,11 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - The redaction rule rejects a literal `"[redacted]"` outside `@lando/redaction`; implement `Redactable` with `REDACTED` from `@lando/sdk/secrets`.
   - Guide `<Run command>` splits on whitespace, so quoted multi-word arguments do not survive; use single-token values in executed commands.
 ---
+
+## 2026-10-03 16:37 CDT - US-667 Drift Audit
+- Trigger: 1 cycle, +6610/−5748 across 197 files, 2 commits
+- Contract drift: docker and podman constructed the provider with an untraced factory while the lando provider already spans `RuntimeProvider.make`. Agent instructions still named a `Live` layer.
+- Fixed: every bundled provider traces `RuntimeProvider.make`; instructions now say implementation layer.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (70 boundary, scaffold, and registry tests; 28 provider descriptor and doctor tests).
+---

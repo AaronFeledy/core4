@@ -964,7 +964,7 @@ export const plugin = definePlugin({
       {
         id: runtimeProviderId,
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
-        make: Effect.fnUntraced(function* (ctx) {
+        make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const paths = yield* PathsService;
           const assets = yield* LogFileHelperAssets;
           const appPlanSanitizer = yield* AppPlanSanitizer;

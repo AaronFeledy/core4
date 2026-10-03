@@ -825,7 +825,7 @@ export const plugin = definePlugin({
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
-        make: Effect.fnUntraced(function* (ctx) {
+        make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const paths = yield* PathsService;
           const assets = yield* LogFileHelperAssets;
           const appPlanSanitizer = yield* AppPlanSanitizer;
