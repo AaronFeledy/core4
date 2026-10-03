@@ -2,7 +2,7 @@ import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogLevel, ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
-import { type Renderer, type RootOverrides, RuntimeProvider } from "@lando/sdk/services";
+import { Renderer, type RootOverrides, RuntimeProvider } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
 import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -113,21 +113,22 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   importArtifact: () => Effect.die("runtime provider stub cannot import artifacts"),
 });
 
-export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Service.Shape<typeof Renderer> => ({
-  id,
-  capabilities: {
-    color: false,
-    interactive: false,
-    animation: false,
-    notifications: false,
-  },
-  message: {
-    info: () => Effect.void,
-    warn: () => Effect.void,
-    error: () => Effect.void,
-  },
-  output: {
-    stdout: () => Effect.void,
-    stderr: () => Effect.void,
-  },
-});
+export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Service.Shape<typeof Renderer> =>
+  Renderer.of({
+    id,
+    capabilities: {
+      color: false,
+      interactive: false,
+      animation: false,
+      notifications: false,
+    },
+    message: {
+      info: () => Effect.void,
+      warn: () => Effect.void,
+      error: () => Effect.void,
+    },
+    output: {
+      stdout: () => Effect.void,
+      stderr: () => Effect.void,
+    },
+  });

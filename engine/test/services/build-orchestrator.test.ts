@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { type Context, DateTime, Deferred, Effect, Fiber, Layer, Predicate, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -81,8 +81,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
 
 const buildLifecycleEntry = (event: unknown): readonly [unknown, unknown] | undefined => {
   if (!isRecord(event)) return undefined;

@@ -308,3 +308,9 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - Remaining `Effect.gen` in engine source are layer constructors, reusable Effect values, and anonymous callbacks; none is a named generator-only wrapper. A line ending `=>` followed by `Effect.gen(` is a quick audit for regressions.
   - Wrapping a literal in `Tag.of` turns a `import type` tag into a value use; fix the import to a value import rather than reverting.
 ---
+
+## 2026-10-03 08:42 CDT - US-664 Review
+- Engine service factories that still returned plain objects now build those values with `Tag.of` (secret store, cache, deprecation, host tooling, logger, global app, scratch app, the library renderer stub, and the disabled host proxy). Two engine test record guards now use `Predicate.isObject`.
+- Review notes (deferred/rejected): Bugbot reported no bugs. Host `Date.now` in runtime-process polling and plugin-link temp names stays; those are host clocks, not Effect time. Anonymous `Effect.gen` callbacks and reusable `Effect.gen` values are not named generator-only wrappers. Bootstrap generators still name core and data-mover `*Live` layers; those packages are US-666. `EventCommandExecutor` stays a tag without an engine layer because core still owns the implementation.
+- Verification: `gate:pr` passed (typecheck, lint, codegen drift, boundaries, guide drift against `origin/main`). Guide lint, coverage, and public transcripts passed. Spot checks passed: operation and planner spans, scratch `TestClock`, cache, deprecation, global app, secret-store registry, build orchestrator, host-proxy transport, and the host-proxy redaction guard (116 tests).
+---

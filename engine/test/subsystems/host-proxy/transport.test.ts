@@ -4,7 +4,7 @@ import { type IncomingMessage, createServer, request as httpRequest } from "node
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Cause, Effect, Exit, Layer, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Predicate, Stream } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -57,8 +57,7 @@ const tempRoot = async (): Promise<string> => {
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/srv/apps/demo" };
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
 
 const coreBuildHostProxyShimScript = async (): Promise<string> => {
   const packageJson: unknown = await Bun.file(

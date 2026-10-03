@@ -46,7 +46,7 @@ export const makeEnvSecretStore = (
 
   const readValue = (secret: string): string | undefined => env[`${prefix}${secret}`];
 
-  return {
+  return SecretStore.of({
     id: "env",
     schemes: [],
     get: (secret) => {
@@ -71,7 +71,7 @@ export const makeEnvSecretStore = (
         .map((key) => key.slice(prefix.length))
         .sort(),
     ),
-  };
+  });
 };
 
 /** Build the env-backed `SecretStore` Live Layer. */

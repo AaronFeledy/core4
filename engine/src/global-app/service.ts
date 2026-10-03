@@ -356,7 +356,15 @@ const makeGlobalAppService = (
     Effect.fail(
       globalAppError("ensureRunning", "Global service startup requires the app runtime.", undefined),
     );
-  return { id: GLOBAL_APP_ID, root, ensureRoot, paths, ensureUserLandofile, ensureRunning, regenerateDist };
+  return GlobalAppService.of({
+    id: GLOBAL_APP_ID,
+    root,
+    ensureRoot,
+    paths,
+    ensureUserLandofile,
+    ensureRunning,
+    regenerateDist,
+  });
 };
 
 export const layer = Layer.effect(

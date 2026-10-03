@@ -105,12 +105,13 @@ const log = (
     ),
   );
 
-const makeLoggerService = (): Context.Service.Shape<typeof Logger> => ({
-  debug: (message, data) => log(Effect.logDebug, message, data),
-  info: (message, data) => log(Effect.logInfo, message, data),
-  warn: (message, data) => log(Effect.logWarning, message, data),
-  error: (message, data) => log(Effect.logError, message, data),
-});
+const makeLoggerService = (): Context.Service.Shape<typeof Logger> =>
+  Logger.of({
+    debug: (message, data) => log(Effect.logDebug, message, data),
+    info: (message, data) => log(Effect.logInfo, message, data),
+    warn: (message, data) => log(Effect.logWarning, message, data),
+    error: (message, data) => log(Effect.logError, message, data),
+  });
 
 const loggerServiceLayer = (): Layer.Layer<Logger> => Layer.succeed(Logger, makeLoggerService());
 

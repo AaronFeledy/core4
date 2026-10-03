@@ -40,34 +40,35 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A
 const makeCacheService = (
   entries: Ref.Ref<ReadonlyMap<string, CacheEntry>>,
   privateFileAccess: PrivateFileAccess,
-): Context.Service.Shape<typeof CacheService> => ({
-  read: Effect.fn("CacheService.read")(function* <A, I>(key: string, schema?: Schema.Codec<A, I>) {
-    const nowMs = yield* Clock.currentTimeMillis;
-    const entry = (yield* Ref.get(entries)).get(key);
+): Context.Service.Shape<typeof CacheService> =>
+  CacheService.of({
+    read: Effect.fn("CacheService.read")(function* <A, I>(key: string, schema?: Schema.Codec<A, I>) {
+      const nowMs = yield* Clock.currentTimeMillis;
+      const entry = (yield* Ref.get(entries)).get(key);
 
-    if (entry === undefined) {
-      return null;
-    }
+      if (entry === undefined) {
+        return null;
+      }
 
-    if (expired(entry, nowMs)) {
-      yield* Ref.update(entries, (current) => removeKey(current, key));
-      return null;
-    }
+      if (expired(entry, nowMs)) {
+        yield* Ref.update(entries, (current) => removeKey(current, key));
+        return null;
+      }
 
-    return yield* decodeStored(key, entry.value, schema);
-  }),
-  write: Effect.fn("CacheService.write")(function* (key, value, ttlMs) {
-    const nowMs = yield* Clock.currentTimeMillis;
-    yield* Ref.update(entries, (current) =>
-      new Map(current).set(key, {
-        value,
-        ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
-      }),
-    );
-  }),
-  writeAtomic: (path, content) => writeAtomicCacheFile(path, content, privateFileAccess.enforce),
-  invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
-});
+      return yield* decodeStored(key, entry.value, schema);
+    }),
+    write: Effect.fn("CacheService.write")(function* (key, value, ttlMs) {
+      const nowMs = yield* Clock.currentTimeMillis;
+      yield* Ref.update(entries, (current) =>
+        new Map(current).set(key, {
+          value,
+          ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
+        }),
+      );
+    }),
+    writeAtomic: (path, content) => writeAtomicCacheFile(path, content, privateFileAccess.enforce),
+    invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
+  });
 
 const makeCacheServiceLayer = (privateFileAccess: PrivateFileAccess) =>
   Layer.effect(

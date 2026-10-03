@@ -1169,7 +1169,7 @@ const makeScratchAppService = (
     return { inspected: allIds.length, reaped, errors };
   });
 
-  return {
+  return ScratchAppService.of({
     kind: "scratch",
     root,
     ensureRoot,
@@ -1183,7 +1183,7 @@ const makeScratchAppService = (
     stop,
     destroy,
     gc,
-  };
+  });
 };
 
 const makeScratchAppServiceLayer = (loadCurrentLandofile: UserAppResolution["loadUserLandofile"]) =>

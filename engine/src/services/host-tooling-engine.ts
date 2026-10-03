@@ -152,11 +152,12 @@ export const runHostToolingWith = (
 ): Effect.Effect<ToolingEngineResult, ToolingCompileError | ToolingExecError> =>
   hostRun(shell, invocation, plan, provider);
 
-const makeHostToolingEngine = (shell: Context.Service.Shape<typeof ShellRunner>) => ({
-  id: "host",
-  run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
-    hostRun(shell, invocation, plan, provider),
-});
+const makeHostToolingEngine = (shell: Context.Service.Shape<typeof ShellRunner>) =>
+  ToolingEngine.of({
+    id: "host",
+    run: (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
+      hostRun(shell, invocation, plan, provider),
+  });
 
 export const layer = Layer.effect(
   ToolingEngine,
