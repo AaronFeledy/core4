@@ -405,3 +405,14 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): Gate review asked for `static readonly layer` on `BuiltInCommandCatalog`. Rejected: the default layer stays a `Layer.suspend` module export because the command specs already import the service class, so a class-level layer that imports the registry would cycle. `layerWith` still builds values with `this.of`. Gate review also asked to wrap pipe-returning helpers (`emitOptionalStdout`, `writeStdout`, `validateRecipeManifestObject`) in `Effect.fnUntraced`. Rejected: spec §4.6 replaces named functions whose body only returns `Effect.gen`, which is the 230-wrapper pass already done; these helpers return piped effects, and US-664 left the same shape. `makeTaskTreeInputLive` in core instructions is pre-existing and names a plugin symbol this story did not rename. Remaining `Date` uses are the sync invocation-id fallback and host-injected doctor render clocks, same host-clock deferral as US-664.
 - Verification: spot checks passed; guide gates passed; no full suite run.
 ---
+
+## 2026-10-03 14:41 CDT - US-666 Drift Audit
+- Trigger: 2 cycles, +13595/−12477 across 336 files, 2 commits
+- Contract drift: lifecycle event timestamps still went through `new Date` after Clock had already supplied the millis. They now use `DateTime.formatIso`, which is the same UTC ISO string.
+- Idiom: the jq guard still named `isRecord` around `Predicate.isObjectOrArray`. The predicate is inlined; arrays still walk, and objects without a string `kind` still stop.
+- Re-checked deferrals: `BuiltInCommandCatalog` stays a module `layer` because a class-level default cycles through the command specs. Pipe-returning helpers stay unwrapped; the idiom pass only replaces gen-only bodies. The sync invocation-id fallback and host-injected doctor `Date` clocks stay. `makeTaskTreeInputLive` in core instructions still names a plugin symbol US-667 owns.
+- Span proof holds: production `runWithRendererHandling` builds the root and three stage spans, and the span test drives that function. No tracing product surface was added. No other story was started.
+- Fixed: lifecycle timestamps use DateTime; the `isRecord` alias is gone.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (42 tests: spans, lifecycle, jq guard).
+---

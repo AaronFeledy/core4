@@ -1,4 +1,4 @@
-import { Cause, Clock, Context, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Clock, Context, DateTime, Effect, Exit, Option, Schema } from "effect";
 
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -140,7 +140,7 @@ export const runCommandLifecycle: <A, E, R>(
     ...(options.invocation.app === undefined ? {} : { app: options.invocation.app }),
     invocationId,
     ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
-    timestamp: new Date(startedAt).toISOString(),
+    timestamp: DateTime.formatIso(DateTime.makeUnsafe(startedAt)),
   };
   yield* publishRedacted(CliCommandInitEvent, {
     _tag: `cli-${options.invocation.commandId}-init`,
@@ -153,7 +153,7 @@ export const runCommandLifecycle: <A, E, R>(
   const finishedAt = yield* Clock.currentTimeMillis;
   const terminal = {
     ...invocation,
-    timestamp: new Date(finishedAt).toISOString(),
+    timestamp: DateTime.formatIso(DateTime.makeUnsafe(finishedAt)),
     durationMs: Math.max(0, finishedAt - startedAt),
   };
   if (Exit.isSuccess(outcome)) {
