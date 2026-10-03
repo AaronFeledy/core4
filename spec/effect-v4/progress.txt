@@ -416,3 +416,8 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck and lint pass. Spot checks pass (42 tests: spans, lifecycle, jq guard).
 ---
+
+## 2026-10-03 14:55 CDT - US-666 Verify
+- Compiled-binary setup, lamp init/start, and live HTTP and HTTPS returned the PHP body. PHP tooling, a database query, info (database passwords `[redacted]`), logs, app config, and doctor exited 0. A missing Landofile returned tagged `LandofileNotFoundError` with no span frames in the plain error, and exit 1. Destroy and poweroff exited 0.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us666v-appserver`, `lando-us666v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics`, plus an older managed `podman` process, after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-665 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-666 acceptance failure.
+---
