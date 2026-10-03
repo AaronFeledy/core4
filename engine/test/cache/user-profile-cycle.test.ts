@@ -38,17 +38,19 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
   let writes = 0;
   const cache = Layer.effect(
     CacheService,
-    Effect.map(CacheService, (service) => ({
-      ...service,
-      writeAtomic: (...args: Parameters<typeof service.writeAtomic>) =>
-        service.writeAtomic(...args).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              writes += 1;
-            }),
+    Effect.map(CacheService, (service) =>
+      CacheService.of({
+        ...service,
+        writeAtomic: (...args: Parameters<typeof service.writeAtomic>) =>
+          service.writeAtomic(...args).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                writes += 1;
+              }),
+            ),
           ),
-        ),
-    })),
+      }),
+    ),
   ).pipe(Layer.provide(AppCacheService.layer));
   const plannerLayer = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, cache)),

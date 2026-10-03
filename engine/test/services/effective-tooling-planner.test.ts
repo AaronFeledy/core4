@@ -109,16 +109,18 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   });
   const registryLayer = Layer.effect(
     PluginRegistry,
-    Effect.map(PluginRegistry, (registry) => ({
-      ...registry,
-      list: Effect.succeed([manifest]),
-      loadServiceType: (id: string) =>
-        id === serviceType.id
-          ? Effect.succeed(serviceType)
-          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
-      loadServiceFeature: (id: string) =>
-        id === feature.id ? Effect.succeed(feature) : registry.loadServiceFeature(id),
-    })),
+    Effect.map(PluginRegistry, (registry) =>
+      PluginRegistry.of({
+        ...registry,
+        list: Effect.succeed([manifest]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+        loadServiceFeature: (id: string) =>
+          id === feature.id ? Effect.succeed(feature) : registry.loadServiceFeature(id),
+      }),
+    ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));
   const plannerLayer = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
@@ -231,14 +233,16 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
   });
   const registryLayer = Layer.effect(
     PluginRegistry,
-    Effect.map(PluginRegistry, (registry) => ({
-      ...registry,
-      list: Effect.succeed([manifest]),
-      loadServiceType: (id: string) =>
-        id === serviceType.id
-          ? Effect.succeed(serviceType)
-          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
-    })),
+    Effect.map(PluginRegistry, (registry) =>
+      PluginRegistry.of({
+        ...registry,
+        list: Effect.succeed([manifest]),
+        loadServiceType: (id: string) =>
+          id === serviceType.id
+            ? Effect.succeed(serviceType)
+            : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+      }),
+    ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));
   return AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),

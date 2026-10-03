@@ -320,3 +320,14 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): the three `runtime-provider-registry` Docker-selection cases still time out at 5s on this host; the prior build entry already recorded the same timeouts on unchanged `origin/main`. Router registry values are wrapped with `RouterServiceRegistry.of` at the layer call, so the factory return stays a plain shape.
 - Verification: `gate:pr` passed again. Spot checks passed aside from those three known timeouts (139 pass in the touched service, scanner, healthcheck, proxy, and plugin files).
 ---
+
+## 2026-10-03 09:09 CDT - US-664 Drift Audit
+- Trigger: 3 cycles, +13517/−12884, 3 commits
+- Weakened proof: the operation-span test invented `RuntimeProvider.inspect` on a local provider wrapper. The stock test provider and the shared provider operations (`inspect`, `start`, `stop`, `restart`, `exec`, `apply`, `destroy`) now open that span, and the test calls the stock provider.
+- Ceremony: removed the scanner layer alias that existed only so a test could assert it was the same object.
+- Contract drift: agent instructions named `CommandRegistryLayer.layer.list` and `*UnavailableLive`, which are not exports. They now name the `CommandRegistry` `list` method and `layerUnavailable`.
+- Re-checked deferrals: reusable `Effect.gen` values are not named generator-only wrappers; the module-namespace guard is not a plain-object check; core and data-mover `*Live` layers stay with US-666; host clocks stay host clocks. No later story started. Graph cycle diagnostics and the scratch `TestClock` proof still hit production code.
+- Fixed: production provider spans, the dead layer alias, the instruction names, and test service values built with `Tag.of`.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (57 tests on the span, cycle, clock, scanner, and override files).
+---

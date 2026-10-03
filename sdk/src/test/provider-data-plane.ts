@@ -565,13 +565,14 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
 
     return Stream.concat(Stream.make(consoleChunk), followers);
   },
-  inspect: (target) =>
-    Effect.succeed({
+  inspect: Effect.fn("RuntimeProvider.inspect")(function* (target) {
+    return yield* Effect.succeed({
       app: target.app,
       service: target.service,
       providerId: TEST_PROVIDER_ID,
-      status: "running",
-    }),
+      status: "running" as const,
+    });
+  }),
   list: (filter) =>
     Effect.succeed([
       {

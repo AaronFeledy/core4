@@ -98,21 +98,23 @@ const serviceType: ServiceType = {
 
 const registryLayer = Layer.effect(
   PluginRegistry,
-  Effect.map(PluginRegistry, (registry) => ({
-    ...registry,
-    list: Effect.succeed([
-      Schema.decodeUnknownSync(PluginManifest)({
-        name: PluginName.make("@lando/shared-event-resolution-test"),
-        version: "1.0.0",
-        api: 4,
-        contributes: { serviceTypes: [serviceType.id] },
-      }),
-    ]),
-    loadServiceType: (id: string) =>
-      id === serviceType.id
-        ? Effect.succeed(serviceType)
-        : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
-  })),
+  Effect.map(PluginRegistry, (registry) =>
+    PluginRegistry.of({
+      ...registry,
+      list: Effect.succeed([
+        Schema.decodeUnknownSync(PluginManifest)({
+          name: PluginName.make("@lando/shared-event-resolution-test"),
+          version: "1.0.0",
+          api: 4,
+          contributes: { serviceTypes: [serviceType.id] },
+        }),
+      ]),
+      loadServiceType: (id: string) =>
+        id === serviceType.id
+          ? Effect.succeed(serviceType)
+          : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+    }),
+  ),
 ).pipe(Layer.provide(PluginRegistryLayer.layer));
 
 const landofileYaml = `name: shared-event-resolution

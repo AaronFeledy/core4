@@ -1303,33 +1303,32 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 ),
               ),
       removeArtifact: () => Effect.void,
-      apply: (plan, applyOptions) =>
-        Effect.gen(function* () {
-          yield* ensureEffect;
-          const physicalPlan = yield* physicalNetworkPlan(plan);
-          const result = yield* runtimeBringUp(physicalPlan, {
-            ...(podmanApi === undefined
-              ? {}
-              : {
-                  api: podmanApi,
-                  ensureImage: makeEnsureImage(podmanApi, {
-                    ctx: LANDO_CTX,
-                    dialect: libpodPullDialect,
-                  }),
+      apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* ensureEffect;
+        const physicalPlan = yield* physicalNetworkPlan(plan);
+        const result = yield* runtimeBringUp(physicalPlan, {
+          ...(podmanApi === undefined
+            ? {}
+            : {
+                api: podmanApi,
+                ensureImage: makeEnsureImage(podmanApi, {
+                  ctx: LANDO_CTX,
+                  dialect: libpodPullDialect,
                 }),
-            ctx: LANDO_CTX,
-            startFailureRemediation: makeLandoStartFailureRemediation(platform),
-            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-            ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-            ...(applyOptions.serviceEnvironment === undefined
-              ? {}
-              : { serviceEnvironment: applyOptions.serviceEnvironment }),
-            reconcile: applyOptions.reconcile,
-          });
-          yield* rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile);
-          yield* reconcilePublishedServices(physicalPlan);
-          return result;
-        }),
+              }),
+          ctx: LANDO_CTX,
+          startFailureRemediation: makeLandoStartFailureRemediation(platform),
+          ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+          ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+          ...(applyOptions.serviceEnvironment === undefined
+            ? {}
+            : { serviceEnvironment: applyOptions.serviceEnvironment }),
+          reconcile: applyOptions.reconcile,
+        });
+        yield* rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile);
+        yield* reconcilePublishedServices(physicalPlan);
+        return result;
+      }),
       quiesceForFileSync: (target) =>
         Effect.gen(function* () {
           const plan = yield* freshPlanForTeardown(target, true);
@@ -1352,26 +1351,25 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             purgeCaches: false,
           }).pipe(Effect.asVoid);
         }),
-      destroy: (target, destroyOptions) =>
-        Effect.gen(function* () {
-          const plan = yield* freshPlanForTeardown(target, false);
-          if (plan === undefined) return DESTROY_NO_OP;
-          const physicalPlan = yield* physicalNetworkPlan(plan);
-          yield* ensureEffect.pipe(
-            Effect.andThen(
-              runtimeBringDown(physicalPlan, {
-                ...(podmanApi === undefined ? {} : { api: podmanApi }),
-                ctx: LANDO_CTX,
-                volumes: destroyOptions.volumes,
-                ...(destroyOptions.purgeCaches === undefined
-                  ? {}
-                  : { purgeCaches: destroyOptions.purgeCaches }),
-              }).pipe(Effect.asVoid),
-            ),
-          );
-          if (destroyOptions.removeState !== false) yield* forgetPlan(target.app);
-          return DESTROYED;
-        }),
+      destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+        const plan = yield* freshPlanForTeardown(target, false);
+        if (plan === undefined) return DESTROY_NO_OP;
+        const physicalPlan = yield* physicalNetworkPlan(plan);
+        yield* ensureEffect.pipe(
+          Effect.andThen(
+            runtimeBringDown(physicalPlan, {
+              ...(podmanApi === undefined ? {} : { api: podmanApi }),
+              ctx: LANDO_CTX,
+              volumes: destroyOptions.volumes,
+              ...(destroyOptions.purgeCaches === undefined
+                ? {}
+                : { purgeCaches: destroyOptions.purgeCaches }),
+            }).pipe(Effect.asVoid),
+          ),
+        );
+        if (destroyOptions.removeState !== false) yield* forgetPlan(target.app);
+        return DESTROYED;
+      }),
       removeObservedService: (observed) =>
         ensureEffect.pipe(
           Effect.andThen(

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Option, References, Tracer } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { infoForPlan } from "../../src/operations/info.ts";
@@ -53,14 +53,7 @@ test("nests provider inspection under the operation span when info runs against 
       return span;
     },
   });
-  const provider: RuntimeProviderShape = {
-    ...TestRuntimeProvider,
-    inspect: Effect.fn("RuntimeProvider.inspect")(function* (
-      target: Parameters<RuntimeProviderShape["inspect"]>[0],
-    ) {
-      return yield* TestRuntimeProvider.inspect(target);
-    }),
-  };
+  const provider = TestRuntimeProvider;
   const registry = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({

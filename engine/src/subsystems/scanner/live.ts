@@ -133,5 +133,3 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProvider | HttpClient.
     });
   }),
 );
-
-export const UrlScannerDefaultLayer = layer;

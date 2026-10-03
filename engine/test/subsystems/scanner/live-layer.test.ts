@@ -8,7 +8,6 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
-import { UrlScannerDefaultLayer } from "../../../src/subsystems/scanner/live.ts";
 import { appId, asHttpClient, drive, driveExit, failureOf, httpStatus, requestSequence } from "./support.ts";
 
 const web = ServiceName.make("web");
@@ -70,7 +69,6 @@ describe("ProviderUrlScanner.layer", () => {
     expect(result.endpoints[0]?.service).toBe(web);
     expect(result.endpoints[0]?.url).toBe("http://localhost:8080/");
     expect(result.endpoints[0]?.outcome).toBe("green");
-    expect(UrlScannerDefaultLayer).toBe(ProviderUrlScanner.layer);
   });
 
   test("maps provider list failures to ScannerError", async () => {
