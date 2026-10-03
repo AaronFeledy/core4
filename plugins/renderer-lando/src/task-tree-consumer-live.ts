@@ -11,7 +11,6 @@ import {
   claimOpenTuiDegradationNotice,
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
-import { takeAllAvailable } from "./queue-available.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
@@ -232,8 +231,10 @@ export const makeTaskTreeConsumerLive = (
           handleResize = () => {};
           unsubscribe?.();
           toolingStatus.stop();
-          const remaining = yield* takeAllAvailable(queue);
-          for (const event of remaining) yield* serialized(consume(event));
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
+          if (Option.isSome(remaining)) {
+            for (const event of remaining.value) yield* serialized(consume(event));
+          }
           yield* Fiber.interrupt(fiber);
           const substrate = active;
           if (substrate !== undefined) {

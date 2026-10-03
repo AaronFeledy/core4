@@ -201,3 +201,12 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - Effect 4 `Effect.provide(layer)` inside an already-provided effect reuses services from the parent memo map. Use `{ local: true }` when an inner runtime must build its own instance of a layer the outer scope already built, such as redaction bound to a different secret store.
   - A sandbox reset drops the live-test fixture images. Pull `node:22-alpine` and `postgres:16-alpine` through the managed socket (`libpod/images/pull`) before blaming bringUp/inspect failures.
 ---
+
+## 2026-10-03 02:25 CDT - US-662 Drift Audit
+- Trigger: 8 cycles, 1502 files (+29628/−12668), 76 commits
+- Dual path: renderer finalizers drained with a takeUnsafe loop that stops when the queue is done and drops the remaining events. They now use Queue.clear, the same nonblocking drain as the other renderer.
+- Deferred conmon processes after destroy/poweroff: re-checked against the acceptance criteria. No Effect-port change owns that shutdown, so it stays out of scope.
+- Fixed: deleted the takeUnsafe drain wrapper. Finalizers and test collectors use Queue.clear.
+- Split/excise: none. Later stories are not started.
+- Verification: typecheck, lint, and schema compatibility pass (0 breaking, 0 unknown, 69 accepted). Spot checks pass: effect pin and telemetry shutdown (7), renderer queue drains (28).
+---

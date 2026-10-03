@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer, Queue } from "effect";
+import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
 import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY_INITIAL } from "@lando/sdk/renderer";
@@ -20,7 +20,6 @@ import type { LiveRegionControllerOptions } from "./opentui/live-region-controll
 import { createLiveRegionController } from "./opentui/live-region-controller.ts";
 import { prefetchLiveRegionModule } from "./opentui/live-region-substrate.ts";
 import type { OpenTuiLiveRegionModuleLike } from "./opentui/live-region-types.ts";
-import { takeAllAvailable } from "./queue-available.ts";
 import { makeLineModeConsumer, makeLandoService as makeRendererService } from "./renderer-service.ts";
 import { makeTaskTreeConsumerLive } from "./task-tree-consumer-live.ts";
 import type { LiveRegionHandle } from "./task-tree-substrate-handler.ts";
@@ -99,8 +98,10 @@ const makeNotificationConsumerLive = (
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* Fiber.interrupt(fiber);
-          const remaining = yield* takeAllAvailable(queue);
-          for (const event of remaining) consume(event);
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
+          if (Option.isSome(remaining)) {
+            for (const event of remaining.value) consume(event);
+          }
           if (flushNotifications !== undefined) yield* Effect.promise(flushNotifications);
         }),
       );

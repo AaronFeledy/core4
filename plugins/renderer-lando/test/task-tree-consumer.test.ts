@@ -12,7 +12,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, Logger, References, Schema } from "effect";
+import { Effect, Layer, Logger, Queue, References, Schema } from "effect";
 
 import {
   type LandoEvent,
@@ -33,7 +33,6 @@ import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
-import { takeAllAvailable } from "../src/queue-available.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { makeLandoService } from "../src/renderer-service.ts";
 
@@ -356,7 +355,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           yield* Effect.sleep("20 millis");
           inject?.("\r");
           yield* Effect.sleep("20 millis");
-          return [...(yield* takeAllAvailable(collector))];
+          return [...(yield* Queue.clear(collector))];
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -404,7 +403,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           };
           inject?.("\x1b");
           yield* Effect.sleep("20 millis");
-          return [...(yield* takeAllAvailable(collector))];
+          return [...(yield* Queue.clear(collector))];
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -457,7 +456,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           controller.exitFullTail = workingExit;
           inject?.("\x1b");
           yield* Effect.sleep("20 millis");
-          return [...(yield* takeAllAvailable(collector))];
+          return [...(yield* Queue.clear(collector))];
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -599,7 +598,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       yield* Effect.sleep("20 millis");
       yield* transcriptReader.append(transcriptPath, "raw secret two");
       yield* Effect.sleep("20 millis");
-      publishedRawTranscript = [...(yield* takeAllAvailable(collector))].some((event) =>
+      publishedRawTranscript = [...(yield* Queue.clear(collector))].some((event) =>
         JSON.stringify(event).includes("raw secret"),
       );
     });

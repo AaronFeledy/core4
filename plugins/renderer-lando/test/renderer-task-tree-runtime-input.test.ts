@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Queue, Schema } from "effect";
 
 import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -8,7 +8,6 @@ import { EventService } from "@lando/sdk/services";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 
-import { takeAllAvailable } from "../src/queue-available.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 
 class FakeLiveRegion {
@@ -94,7 +93,7 @@ describe("lando renderer (TTY keybindings)", () => {
       base.injectKey("\x1b");
       yield* Effect.sleep("40 millis");
 
-      const drained = yield* takeAllAvailable(collector);
+      const drained = yield* Queue.clear(collector);
       return [...drained];
     });
 
@@ -140,7 +139,7 @@ describe("lando renderer (TTY keybindings)", () => {
       base.injectKey("\x03");
       yield* Effect.sleep("20 millis");
 
-      return [...(yield* takeAllAvailable(collector))];
+      return [...(yield* Queue.clear(collector))];
     });
     const layer = Layer.provideMerge(makeLandoEventConsumer(io, deps), EventServiceLive);
     const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
@@ -166,7 +165,7 @@ describe("lando renderer (TTY keybindings)", () => {
         base.injectKey(raw);
         yield* Effect.sleep("20 millis");
 
-        return [...(yield* takeAllAvailable(collector))];
+        return [...(yield* Queue.clear(collector))];
       });
       const layer = Layer.provideMerge(
         makeLandoEventConsumer(io, {
