@@ -119,6 +119,8 @@ export const commonContainerLabels = (
 
 export interface ContainerHostConfigOptions {
   readonly onMissingBindMountSource?: (mount: ServicePlan["mounts"][number]) => never;
+  /** Local endpoint copy for the create body. Does not rewrite desired state. */
+  readonly endpoints?: ReadonlyArray<InternalEndpoint | PublishedEndpoint>;
 }
 
 const missingBindMountSource = (mount: ServicePlan["mounts"][number]): never => {
@@ -326,7 +328,9 @@ export const containerHostConfigFragment = (
   options: ContainerHostConfigOptions = {},
 ): Record<string, unknown> => {
   const portBindings = containerPortBindings(
-    service.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : [])),
+    (options.endpoints ?? service.endpoints).flatMap((endpoint) =>
+      endpoint._tag === "published" ? [endpoint] : [],
+    ),
   );
   const binds = bindMountStrings(plan, service, options);
   const mounts = containerMountObjects(plan, service, options);

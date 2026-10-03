@@ -7,6 +7,8 @@ import {
   AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
   type AppRef,
+  type EndpointPlan,
+  type HostPlatform,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -34,6 +36,13 @@ import {
   serviceContainerName,
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
+import {
+  classifyServicePublishHost,
+  createAssignedHostPorts,
+  isHostPortBindRejection,
+  prepareCreatePublishEndpoints,
+  type ServicePublishProbe,
+} from "../service-publish-ports.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
@@ -71,6 +80,7 @@ interface InspectResult {
   readonly publishFingerprint: string;
   readonly bindSources: ReadonlyMap<string, string> | undefined;
   readonly networkNames: ReadonlySet<string> | undefined;
+  readonly body?: unknown;
 }
 
 const inspectBindSources = (body: unknown): ReadonlyMap<string, string> | undefined => {
@@ -157,6 +167,9 @@ export interface BringUpOptions {
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
   readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
+  readonly platform?: HostPlatform;
+  readonly daemonUrl?: string;
+  readonly probeBind?: ServicePublishProbe;
 }
 
 interface BringUpDeps {
@@ -265,6 +278,7 @@ const inspectContainer = Effect.fnUntraced(function* (
       publishFingerprint: fingerprintInspectPublishPorts(body),
       bindSources: inspectBindSources(body),
       networkNames: inspectNetworkNames(body),
+      body,
     };
   }
   return {
@@ -273,11 +287,18 @@ const inspectContainer = Effect.fnUntraced(function* (
     publishFingerprint: fingerprintInspectPublishPorts(body),
     bindSources: inspectBindSources(body),
     networkNames: inspectNetworkNames(body),
+    body,
   };
 });
 
-const hostConfig = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan) => {
+const hostConfig = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+  endpoints: ReadonlyArray<EndpointPlan>,
+) => {
   return containerHostConfigFragment(plan, service, {
+    endpoints,
     onMissingBindMountSource: (mount) => {
       throw podmanFailure(deps, {
         service,
@@ -289,13 +310,19 @@ const hostConfig = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan) => {
   });
 };
 
-const createContainerRequest = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan, name: string) => {
+const createContainerRequest = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  endpoints: ReadonlyArray<EndpointPlan>,
+) => {
   const knobs = realizePodmanComposeKnobs(service, {
     onInvalid: (message, details) => {
       throw podmanFailure(deps, { service, operation: "bringUp.knobs", message, details });
     },
   });
-  const baseHostConfig = hostConfig(deps, plan, service);
+  const baseHostConfig = hostConfig(deps, plan, service, endpoints);
   const mountTargets = new Set<string>();
   const binds = baseHostConfig.Binds;
   if (Array.isArray(binds)) {
@@ -467,17 +494,15 @@ const ensureVolume = (
 export const isMissingImageCreateResponse = (response: EngineHttpResponse): boolean =>
   response.status === 404 || /no such image/iu.test(response.body);
 
-const createContainer = Effect.fnUntraced(function* (
+const buildCreateRequest = (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
   name: string,
-): Effect.fn.Return<void, BringUpError> {
-  if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
-    yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
-  }
-  const createRequest = yield* Effect.try({
-    try: () => createContainerRequest(deps, plan, service, name),
+  endpoints: ReadonlyArray<EndpointPlan>,
+) =>
+  Effect.try({
+    try: () => createContainerRequest(deps, plan, service, name, endpoints),
     catch: (cause) =>
       cause instanceof ServiceStartError
         ? cause
@@ -488,6 +513,19 @@ const createContainer = Effect.fnUntraced(function* (
             cause,
           }),
   });
+
+const createContainer = Effect.fnUntraced(function* (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  endpoints: ReadonlyArray<EndpointPlan>,
+  reassign: (exclude: ReadonlySet<number>) => Effect.Effect<ReadonlyArray<EndpointPlan>, BringUpError>,
+): Effect.fn.Return<void, BringUpError> {
+  if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
+    yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
+  }
+  let createRequest = yield* buildCreateRequest(deps, plan, service, name, endpoints);
   const response = yield* request(deps, { method: "POST", ...createRequest });
   if (response.status === 201 || response.status === 409) return;
   if (
@@ -499,26 +537,46 @@ const createContainer = Effect.fnUntraced(function* (
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
     const retry = yield* request(deps, { method: "POST", ...createRequest });
     if (retry.status === 201 || retry.status === 409) return;
+    if (!isHostPortBindRejection(retry)) {
+      return yield* Effect.fail(
+        podmanFailure(deps, {
+          service,
+          operation: "bringUp.create",
+          message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${retry.status}.`,
+          details: {
+            status: response.status,
+            body: response.body,
+            retryStatus: retry.status,
+            retryBody: retry.body,
+          },
+        }),
+      );
+    }
+  } else if (!isHostPortBindRejection(response)) {
     return yield* Effect.fail(
       podmanFailure(deps, {
         service,
         operation: "bringUp.create",
-        message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${retry.status}.`,
-        details: {
-          status: response.status,
-          body: response.body,
-          retryStatus: retry.status,
-          retryBody: retry.body,
-        },
+        message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${response.status}.`,
+        details: { status: response.status, body: response.body },
       }),
     );
   }
+  const rebound = yield* reassign(createAssignedHostPorts(endpoints));
+  createRequest = yield* buildCreateRequest(deps, plan, service, name, rebound);
+  const bindRetry = yield* request(deps, { method: "POST", ...createRequest });
+  if (bindRetry.status === 201 || bindRetry.status === 409) return;
   return yield* Effect.fail(
     podmanFailure(deps, {
       service,
       operation: "bringUp.create",
-      message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${response.status}.`,
-      details: { status: response.status, body: response.body },
+      message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${bindRetry.status}.`,
+      details: {
+        status: response.status,
+        body: response.body,
+        retryStatus: bindRetry.status,
+        retryBody: bindRetry.body,
+      },
     }),
   );
 });
@@ -683,13 +741,15 @@ const startService = Effect.fnUntraced(function* (
     endpoint._tag === "published" ? [endpoint] : [],
   );
   const plannedFingerprint = fingerprintPlannedPublishPorts(published);
+  const portMismatch =
+    plannedFingerprint.length > 0 &&
+    inspected.publishFingerprint.length > 0 &&
+    inspected.publishFingerprint !== plannedFingerprint;
   let before = inspected;
   if (
     before.exists &&
     (deps.options.reconcile === true ||
-      (plannedFingerprint.length > 0 &&
-        before.publishFingerprint.length > 0 &&
-        before.publishFingerprint !== plannedFingerprint) ||
+      portMismatch ||
       bindSourceChanged(service, before) ||
       plannedNetworkMissing(plan, before))
   ) {
@@ -708,9 +768,31 @@ const startService = Effect.fnUntraced(function* (
     created: !before.exists,
     startedExisting: before.exists && !before.running,
   });
+  const publishHost = classifyServicePublishHost({
+    platform: deps.options.platform ?? process.platform,
+    ...(deps.options.daemonUrl === undefined ? {} : { daemonUrl: deps.options.daemonUrl }),
+  });
+  const prepareEndpoints = (exclude?: ReadonlySet<number>) =>
+    prepareCreatePublishEndpoints({
+      endpoints: service.endpoints,
+      ...(inspected.body === undefined ? {} : { inspect: inspected.body }),
+      copyInspectHostPort: inspected.exists && !before.exists && !portMismatch,
+      host: publishHost,
+      ...(deps.options.probeBind === undefined ? {} : { probeBind: deps.options.probeBind }),
+      ...(exclude === undefined ? {} : { exclude }),
+    });
   let changed = false;
   if (!before.exists) {
-    yield* createContainer(deps, plan, service, name);
+    const createEndpoints = yield* prepareEndpoints();
+    yield* createContainer(deps, plan, service, name, createEndpoints, (exclude) =>
+      prepareCreatePublishEndpoints({
+        endpoints: service.endpoints,
+        copyInspectHostPort: false,
+        host: publishHost,
+        ...(deps.options.probeBind === undefined ? {} : { probeBind: deps.options.probeBind }),
+        exclude,
+      }),
+    );
     changed = true;
   }
   const sharedNetwork = sharedNetworkName(plan);
