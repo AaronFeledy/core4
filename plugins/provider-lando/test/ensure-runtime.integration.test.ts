@@ -176,7 +176,10 @@ const makeFakePodmanApi = (
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
-    stream: () => Stream.make(makeFrame("ok\n")),
+    stream: (request) => {
+      events.push(`api.stream ${request.method} ${request.path}`);
+      return Stream.make(makeFrame("ok\n"));
+    },
   };
 };
 
@@ -240,6 +243,21 @@ const withRuntimeProvider = async <A>(
 };
 
 describe("provider-lando ensureRuntime factory wiring", () => {
+  test("logs ensures runtime readiness before opening the log stream", async () => {
+    // Given: a managed runtime that must be launched.
+    const events: string[] = [];
+    // When: planful logs are requested through the provider.
+    await withRuntimeProvider(events, async (provider) => {
+      await Effect.runPromise(
+        Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
+      );
+    });
+    // Then: launch precedes the log transport.
+    expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
+    expect(events.indexOf("service.launch")).toBeLessThan(
+      events.findIndex((event) => event.startsWith("api.stream")),
+    );
+  });
   test("apply triggers ensureRuntime launch before bringUp", async () => {
     const events: string[] = [];
     await withRuntimeProvider(events, async (provider) => {

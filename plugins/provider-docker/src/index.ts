@@ -29,11 +29,11 @@ import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
-import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
@@ -504,22 +504,23 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     ),
   );
   const runtimeCapabilities = capabilities.pipe(
-    Effect.map((resolved) => ({
-      capabilities: {
-        ...resolved,
-        serviceLogSources:
-          (options.logFileAccess !== undefined ||
-            logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              resolved.hostProxy?.containerTargets,
-            ) !== undefined) &&
-          resolved.serviceLogSources,
-      },
-      logFileHelperPayload: logFileHelperPayloadForTargets(
-        options.logFileHelperPayloads,
-        resolved.hostProxy?.containerTargets,
-      ),
-    })),
+    Effect.map((resolved) => {
+      const logSourceBinding = makeProviderLogSourceBinding({
+        providerId: PROVIDER_ID,
+        logFileAccess: options.logFileAccess,
+        helperPayload: logFileHelperPayloadForTargets(
+          options.logFileHelperPayloads,
+          resolved.hostProxy?.containerTargets,
+        ),
+      });
+      return {
+        capabilities: {
+          ...resolved,
+          serviceLogSources: logSourceBinding.supported && resolved.serviceLogSources,
+        },
+        logSourceBinding,
+      };
+    }),
   );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
@@ -581,7 +582,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
   return runtimeCapabilities.pipe(
     Effect.map(
-      ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
+      ({ capabilities: resolvedCapabilities, logSourceBinding }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
         inspectResourceNames: (query) => inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
         displayName: "Docker Runtime Provider",
@@ -666,20 +667,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               Effect.map((plan) => {
                 if (plan !== undefined) {
                   const service = plan.services[target.service];
-                  const logFileAccess =
-                    options.logFileAccess ??
-                    (service === undefined || logFileHelperPayload === undefined
-                      ? undefined
-                      : makeDockerLogFileAccess({
-                          providerId: PROVIDER_ID,
-                          api: dockerApi,
-                          container: containerName(plan, service),
-                          helperPayload: logFileHelperPayload,
-                        }));
                   return logs(plan, target, logOptions, {
                     api: dockerApi,
                     ctx: DOCKER_CTX,
-                    ...(logFileAccess === undefined ? {} : { logFileAccess }),
+                    ...logSourceBinding.bind(
+                      dockerApi,
+                      service === undefined ? undefined : containerName(plan, service),
+                    ),
                   });
                 }
 

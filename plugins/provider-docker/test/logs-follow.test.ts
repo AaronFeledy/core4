@@ -116,7 +116,13 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { ...fake.api, info: Effect.succeed({ Architecture: "amd64", OSType: "linux" }) },
+            logFileAccess: fs.access,
+            logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+          }),
         ),
       ),
     );
@@ -130,6 +136,33 @@ describe("provider-docker log followers", () => {
     expect(consoleChunk?.source).toBeUndefined();
     expect(fileChunk?.source).toBe(fileSource.id);
     expect(fileChunk?.stream).toBe("stderr");
+  });
+
+  test("returns a service error when the target is absent and helper access is available", async () => {
+    // Given: a plan that does not contain the requested service.
+    const plan = makePlan();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ Architecture: "amd64", OSType: "linux" }) },
+            logFileHelperPayloads: { "linux-x64": new Uint8Array([1]) },
+          }),
+        ),
+      ),
+    );
+    // When: logs are requested for the missing service.
+    const result = await Effect.runPromise(
+      Effect.result(
+        Stream.runCollect(
+          provider.logs({ app: appId, service: ServiceName.make("missing"), plan }, { follow: false }),
+        ),
+      ),
+    );
+    // Then: missing service is a typed failure rather than a container binding defect.
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ServiceNotFoundError" } });
   });
 
   test("uses caller-provided log sources before plan-cached service sources", async () => {
