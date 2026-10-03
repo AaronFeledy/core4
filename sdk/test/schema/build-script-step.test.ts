@@ -98,14 +98,14 @@ describe("build step objects", () => {
       { onExcessProperty: "error" },
     );
 
-    // When / Then
+    // When / Then — the issue path names the offending key, as Landofile diagnostics render it
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) return;
     expect(
       SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
-        .issues.map(({ message }) => message)
+        .issues.map(({ path, message }) => `${path?.join(".")}: ${message}`)
         .join("\n"),
-    ).toContain("cmd");
+    ).toContain("build.app.cmd");
   });
 
   test("keeps object steps inside the Lando key family", () => {
