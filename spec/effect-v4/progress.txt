@@ -176,3 +176,8 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck and lint passed. Spot checks passed: 56 tests across the effect pin, schema-artifact null guard, shell-failure, layer-memo, telemetry-shutdown, and MCP-shutdown proofs.
 ---
+
+## 2026-10-03 01:00 CDT - US-662 Verify
+- Compiled-binary setup, `lando init` lamp, and `lando start` succeeded on a reset sandbox. Both proxy URLs returned the PHP body; `php` tooling, logs, `app:config`, and `doctor` exited 0. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us662v-appserver` and `lando-us662v-database`, parented to `/init`, after the app was already destroyed. Expected no processes for that app. Suspected area: runtime shutdown vs in-flight exec monitors. Not a US-662 acceptance failure.
+---
