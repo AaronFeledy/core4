@@ -337,3 +337,22 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us664v-appserver`, `lando-us664v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics`, plus an older managed `podman` process, after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-663 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-664 acceptance failure.
 - **Out-of-scope finding:** `lando doctor` warned that ports 80 and 443 are occupied (router hopped to 8080/8443) and that WSL root mount propagation is private. The app still returned HTTP 200 on the hopped URLs. Suspected area: WSL mirrored networking, not the engine idiom change.
 ---
+
+## 2026-10-03 10:20 CDT - Babysit
+- PR: #1144 https://github.com/AaronFeledy/core4/pull/1144
+- CI outcome: pass (after one triage round; library-api-tests-runner failed initially)
+- Review feedback: fixed (app-handle-export test now locates the appShareStop error channel on the Effect.fn generator; same precise-channel assertions kept)
+- Merge: merged (squash)
+---
+
+## 2026-10-03 11:35 CDT - US-665 (Build, pass 1: server migrated; not implemented)
+- `lando mcp` now runs on `effect/ai` `McpServer.layerStdio` with protocols 2025-06-18, 2025-03-26, and 2024-11-05, over an Effect `Stdio` implemented by `@lando/renderer`. An `@lando/mcp` stdin/stdout guard keeps the 1 MiB inbound frame limit, the partial-frame deadline, and the write deadline. The hand-written JSON-RPC transport, reader, writer, framing, and in-memory transport are gone; tests drive the real server through a Queue-backed `Stdio` and a JSON-RPC test client (`@lando/mcp/testing`).
+- Tools are registered from the allowlisted catalog with an envelope `outputSchema`; results carry the redacted, bounded envelope as `structuredContent` plus a text fallback. Confirmation goes through a new engine per-call `ConfirmationPrompt` service that `requireConfirmation` consults; MCP provides it only when the client advertises elicitation. Resources (`lando://app/config`, `app/info`, `apps`, `doctor`, `schemas/{name}` with completion) are supplied by core through `McpRuntimeConfig`. The canonical MCP section is amended.
+- Verification: `bun run typecheck` passes; `mcp/test`, `core/test/mcp`, and the renderer stdio test pass (146 tests). Not yet run: `lint`, `check:boundaries`, `codegen:check`, `gate:pr`, doctor-mcp and meta:mcp CLI tests, guide gates, and the source-CLI transcript.
+- Remaining for the next Build pass: rewrite `docs/guides/agent-native/mcp.mdx` (its three scenarios still import the deleted `makeStdioMcpTransport`/`McpServiceLive`) and `core/test/build/mcp-guide-acceptance.test.ts`; confirm elicitation tests cover accept, decline, cancel, 120 s timeout, no capability, and `yes: true`, and resource tests cover listing, reading, completion, and a planted secret; finish the `mcp` idiom pass (`Effect.fn` names, no `*Live`, Clock over `Date.now`); run the full gate set and a piped `lando mcp` session.
+- **Learnings for future iterations:**
+  - Effect 4.0.0 `McpServer.addTool` drops JSON-RPC error `data` for tool failures. Dispatch-level rejections (input, Server busy, interrupted) therefore return `CallToolResult` with `isError: true` and the redacted tagged error as text, with no `structuredContent`. Resource failures keep `data`.
+  - Tools outside the effective allowlist are never registered, so Effect answers them with `-32602 Tool '<name>' not found` before any Lando handler or `pre-mcp-call` event runs.
+  - `McpServer.elicit` turns a client "cancel" into `Effect.interrupt`, which looks like tool cancellation. Use `McpServerClient.getClient` and `client.elicit` directly to map cancel to `declined`.
+  - Effect's stdio RPC protocol logs and retries stdin stream errors every 500 ms instead of ending the session; a fatal inbound limit has to end the stdin stream and report through a terminal `Deferred`.
+---
