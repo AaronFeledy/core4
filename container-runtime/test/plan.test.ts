@@ -218,6 +218,32 @@ describe("container plan helpers", () => {
     });
   });
 
+  test("uses a local endpoint copy for PortBindings without rewriting desired state", () => {
+    const unpinned: ServicePlan = {
+      ...service,
+      endpoints: [
+        { _tag: "published", port: 8080, protocol: "tcp", publication: { bindAddress: "127.0.0.1" } },
+      ],
+    };
+    const localCopy = [
+      {
+        _tag: "published" as const,
+        port: 8080,
+        protocol: "tcp" as const,
+        publication: { bindAddress: "127.0.0.1", hostPort: 30_000 },
+      },
+    ];
+    expect(containerHostConfigFragment(plan, unpinned, { endpoints: localCopy })).toMatchObject({
+      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "30000" }] },
+    });
+    expect(unpinned.endpoints[0]).toEqual({
+      _tag: "published",
+      port: 8080,
+      protocol: "tcp",
+      publication: { bindAddress: "127.0.0.1" },
+    });
+  });
+
   test("emits option-bearing mounts as HostConfig Mounts without duplicate Binds", () => {
     const { appMount: _appMount, ...withoutAppMount } = service;
     const serviceWithMountOptions: ServicePlan = {
