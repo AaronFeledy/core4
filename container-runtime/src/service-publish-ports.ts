@@ -5,12 +5,12 @@ import { Effect } from "effect";
 
 import { isErrnoCode } from "@lando/sdk/errors";
 import {
-  DEFAULT_ROUTER_HTTP_PORTS,
   DEFAULT_ROUTER_HTTPS_PORTS,
+  DEFAULT_ROUTER_HTTP_PORTS,
   type EndpointPlan,
   type HostPlatform,
-  type PublishedEndpoint,
   PortNumber,
+  type PublishedEndpoint,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 
@@ -29,7 +29,19 @@ export const SERVICE_PUBLISH_PORT_MAX = 32_767;
 export const SERVICE_PUBLISH_RESERVED_PORTS = new Set<number>([
   ...DEFAULT_ROUTER_HTTP_PORTS,
   ...DEFAULT_ROUTER_HTTPS_PORTS,
-  38_080, 48_080, 58_080, 38_443, 48_443, 58_443, 48_081, 58_081, 48_082, 58_082, 48_444, 58_444, 48_445,
+  38_080,
+  48_080,
+  58_080,
+  38_443,
+  48_443,
+  58_443,
+  48_081,
+  58_081,
+  48_082,
+  58_082,
+  48_444,
+  58_444,
+  48_445,
   58_445,
 ]);
 
@@ -159,7 +171,8 @@ export const inspectHostPortForEndpoint = (
   endpoint: PublishedEndpoint,
 ): number | undefined => {
   const materialized = publishedEndpointsFromInspect(inspect, [endpoint]);
-  const fromNetwork = materialized[0]?.materialization?.hostPort;
+  const first = materialized[0];
+  const fromNetwork = first?._tag === "published" ? first.materialization?.hostPort : undefined;
   if (fromNetwork !== undefined && fromNetwork > 0) return fromNetwork;
   return hostConfigBindingPort(inspect, endpoint);
 };

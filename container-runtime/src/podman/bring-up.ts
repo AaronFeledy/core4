@@ -37,11 +37,11 @@ import {
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import {
+  type ServicePublishProbe,
   classifyServicePublishHost,
   createAssignedHostPorts,
   isHostPortBindRejection,
   prepareCreatePublishEndpoints,
-  type ServicePublishProbe,
 } from "../service-publish-ports.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";

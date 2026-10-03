@@ -128,7 +128,9 @@ const makeFakeApi = (input: {
           createIndex += 1;
           if (status === 201 || status === 409) {
             exists = true;
-            const created = request.body as { HostConfig?: { PortBindings?: Record<string, Array<{ HostPort?: string }>> } };
+            const created = request.body as {
+              HostConfig?: { PortBindings?: Record<string, Array<{ HostPort?: string }>> };
+            };
             hostPort = created.HostConfig?.PortBindings?.["8080/tcp"]?.[0]?.HostPort || hostPort;
           }
           return { status, body };
@@ -160,7 +162,9 @@ const createHostPort = (calls: ReadonlyArray<EngineHttpRequest>, index = 0): str
 };
 
 const successProbe: ServicePublishProbe = (_host, port) =>
-  Effect.succeed(port === SERVICE_PUBLISH_PORT_MIN ? { kind: "success" } : { kind: "EADDRINUSE", code: "EADDRINUSE" });
+  Effect.succeed(
+    port === SERVICE_PUBLISH_PORT_MIN ? { kind: "success" } : { kind: "EADDRINUSE", code: "EADDRINUSE" },
+  );
 
 describe("create-body service publish ports", () => {
   test("omitted hostPort is never written into desired state", async () => {
@@ -168,13 +172,17 @@ describe("create-body service publish ports", () => {
     const plan = planWithPublication({ bindAddress: "127.0.0.1" });
     const before = plan.services[serviceName]?.endpoints[0];
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }));
+    await Effect.runPromise(
+      bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }),
+    );
 
     expect(plan.services[serviceName]?.endpoints[0]).toEqual(before);
-    expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({ publication: { bindAddress: "127.0.0.1" } });
-    expect("hostPort" in (plan.services[serviceName]?.endpoints[0] as { publication: object }).publication).toBe(
-      false,
-    );
+    expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({
+      publication: { bindAddress: "127.0.0.1" },
+    });
+    expect(
+      "hostPort" in (plan.services[serviceName]?.endpoints[0] as { publication: object }).publication,
+    ).toBe(false);
     expect(createHostPort(fake.calls)).toBe(String(SERVICE_PUBLISH_PORT_MIN));
   });
 
@@ -207,13 +215,17 @@ describe("create-body service publish ports", () => {
       },
     };
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }));
+    await Effect.runPromise(
+      bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }),
+    );
 
     expect(createHostPort(fake.calls)).toBe("31234");
-    expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({ publication: { bindAddress: "127.0.0.1" } });
-    expect("hostPort" in (plan.services[serviceName]?.endpoints[0] as { publication: object }).publication).toBe(
-      false,
-    );
+    expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({
+      publication: { bindAddress: "127.0.0.1" },
+    });
+    expect(
+      "hostPort" in (plan.services[serviceName]?.endpoints[0] as { publication: object }).publication,
+    ).toBe(false);
   });
 
   test("an explicit hostPort is untouched", async () => {
@@ -245,7 +257,9 @@ describe("create-body service publish ports", () => {
       },
     };
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }));
+    await Effect.runPromise(
+      bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }),
+    );
 
     expect(createHostPort(fake.calls)).toBe("18080");
     expect(plan.services[serviceName]?.endpoints[0]).toMatchObject({
@@ -257,7 +271,9 @@ describe("create-body service publish ports", () => {
     const fake = makeFakeApi({ exists: true, running: true, inspectHostPort: "18080" });
     const plan = planWithPublication({ bindAddress: "127.0.0.1", hostPort: 38_080 });
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }));
+    await Effect.runPromise(
+      bringUp(plan, { api: fake.api, ctx, platform: "linux", probeBind: successProbe }),
+    );
 
     expect(createHostPort(fake.calls)).toBe("38080");
   });
@@ -298,7 +314,8 @@ describe("create-body service publish ports", () => {
     const probeBind: ServicePublishProbe = (_host, port, protocol) => {
       calls.push(protocol);
       if (protocol === "tcp") return Effect.succeed({ kind: "success" });
-      if (port === SERVICE_PUBLISH_PORT_MIN) return Effect.succeed({ kind: "EADDRINUSE", code: "EADDRINUSE" });
+      if (port === SERVICE_PUBLISH_PORT_MIN)
+        return Effect.succeed({ kind: "EADDRINUSE", code: "EADDRINUSE" });
       return Effect.succeed({ kind: "success" });
     };
     const fake = makeFakeApi({ exists: false });
