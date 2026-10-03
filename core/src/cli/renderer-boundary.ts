@@ -303,8 +303,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       eventConsumerLayer === undefined
         ? executeCommand
         : executeCommand.pipe(Effect.provide(eventConsumerLayer));
+    // Build the command runtime in its own memo map. Effect 4 otherwise reuses the
+    // diagnostic fallback's `RedactionServiceLive`, bound to the env-only secret
+    // store, and secrets from the runtime's own store would render unredacted.
     const commandOutcome = yield* Effect.exit(
-      withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(commandLayer)),
+      withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(commandLayer, { local: true })),
     );
     if (Exit.isFailure(commandOutcome)) {
       yield* renderFailure(commandOutcome.cause);
