@@ -83,6 +83,20 @@ const layersFor = (
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
+/**
+ * Effect 4's TestClock fires every due sleep in one `adjust`, yielding only once
+ * between them, so work woken by an earlier deadline cannot settle before a later
+ * deadline fires. Advance a millisecond at a time and drain the scheduler between
+ * steps, as a real clock would.
+ */
+const advanceSettled = (millis: number) =>
+  Effect.gen(function* () {
+    for (let elapsed = 0; elapsed < millis; elapsed += 1) {
+      yield* TestClock.adjust("1 millis");
+      yield* Effect.promise(() => new Promise<void>((resume) => setImmediate(resume)));
+    }
+  });
+
 const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>
   (report.self?.checks ?? []).map((check) => check.section);
 
@@ -371,7 +385,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
         yield* Deferred.await(hangStarted);
         yield* Effect.yieldNow;
         expect(Option.isSome(yield* Deferred.poll(healthyStarted))).toBe(true);
-        yield* TestClock.adjust("1 second");
+        yield* advanceSettled(1_000);
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
@@ -446,7 +460,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
         );
         yield* Deferred.await(firstStarted);
         yield* Effect.yieldNow;
-        yield* TestClock.adjust("1 second");
+        yield* advanceSettled(1_000);
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
@@ -488,9 +502,9 @@ describe("doctor chaos: plugin-contributed checks", () => {
           }),
         );
         yield* Deferred.await(pluginStarted);
-        yield* TestClock.adjust("800 millis");
+        yield* advanceSettled(800);
         yield* Deferred.await(providerStarted);
-        yield* TestClock.adjust("200 millis");
+        yield* advanceSettled(200);
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
