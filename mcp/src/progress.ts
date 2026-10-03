@@ -1,7 +1,7 @@
 /**
  * MCP progress-frame framing seam.
  *
- * Bridges a command's `StreamFrameSink` emissions onto the `McpTransport`
+ * Bridges a command's `StreamFrameSink` emissions onto the MCP server's
  * notification channel: each frame is projected to a safe progress shape,
  * bounded-redacted, then handed to the per-request `notify`. `makeStreamFrameSink`
  * is the `StreamFrameSink` service the retained-runtime execution provides for a

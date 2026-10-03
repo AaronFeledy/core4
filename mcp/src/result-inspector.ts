@@ -209,7 +209,13 @@ const projectFailure = (error: unknown): Record<string, string> => {
   const tag = ownString(error, "_tag") ?? ownString(error, "name") ?? "UnknownError";
   const message = ownString(error, "message") ?? "Command failed.";
   const remediation = ownString(error, "remediation");
-  return remediation === undefined ? { _tag: tag, message } : { _tag: tag, message, remediation };
+  const reason = ownString(error, "reason");
+  return {
+    _tag: tag,
+    message,
+    ...(remediation === undefined ? {} : { remediation }),
+    ...(reason === undefined ? {} : { reason }),
+  };
 };
 
 export const inspectMcpCommandOutcome = (

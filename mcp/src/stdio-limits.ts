@@ -7,6 +7,7 @@ import { McpTransportError } from "@lando/sdk/errors";
 import type { CommandResultFormat } from "@lando/sdk/schema";
 
 export const MAX_FRAME_BYTES = 1_048_576;
+export const DEFAULT_MCP_MAX_CONCURRENT = 4;
 export const MAX_PARTIAL_BUFFER_BYTES = 1_048_576;
 export const PARTIAL_FRAME_DEADLINE = Duration.seconds(5);
 export const MAX_OUTSTANDING_REQUESTS = 256;

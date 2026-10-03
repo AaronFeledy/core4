@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
+import { Effect, Fiber, Layer, Queue, Schema, Stdio, Stream } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 import type { McpServeOptions } from "@lando/sdk/schema";
@@ -11,12 +11,12 @@ import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
-import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
+import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import { McpServiceLive } from "../../src/mcp-command-executor.ts";
+import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 
 const spec = (
   id: string,
@@ -41,7 +41,7 @@ const redactionLayer = (values: ReadonlyArray<string> = []) =>
 const configLayer = (config: McpRuntimeConfigShape) => Layer.succeed(McpRuntimeConfig, config);
 
 const serviceLayer = (config: McpRuntimeConfigShape, redactedValues: ReadonlyArray<string> = []) =>
-  McpServiceLive.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
+  mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
 
 const recordingEventLayer = (events: LandoEvent[]) => {
   const service: EventServiceShape = {
@@ -69,11 +69,11 @@ const dispatchAndCollectReplies = ({
   readonly redactedValues?: ReadonlyArray<string>;
 }) =>
   Effect.gen(function* () {
-    const inmem = yield* makeInMemoryTransport();
+    const inmem = yield* makeStdioClient();
     const service = yield* McpService;
     const fiber = yield* service
       .serve(options)
-      .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+      .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
     yield* inmem.push({ toolId });
     while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
     const replies = yield* inmem.replies;
@@ -136,10 +136,10 @@ describe("McpService.serve", () => {
     // When: MCP dispatches the real canonical program and the transport closes.
     const replies = await Effect.runPromise(
       Effect.gen(function* () {
-        const inmem = yield* makeInMemoryTransport();
+        const inmem = yield* makeStdioClient();
         const service = yield* McpService;
         const fiber = yield* runCommandLifecycle(
-          service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, inmem.transport)),
+          service.serve({ transport: "stdio" }).pipe(Effect.provideService(Stdio.Stdio, inmem.stdio)),
           {
             invocation: {
               commandId: "meta:mcp",
@@ -204,10 +204,10 @@ describe("McpService.serve", () => {
     // When: MCP executes the failing program beneath the outer invocation.
     const replies = await Effect.runPromise(
       Effect.gen(function* () {
-        const inmem = yield* makeInMemoryTransport();
+        const inmem = yield* makeStdioClient();
         const service = yield* McpService;
         const fiber = yield* runCommandLifecycle(
-          service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, inmem.transport)),
+          service.serve({ transport: "stdio" }).pipe(Effect.provideService(Stdio.Stdio, inmem.stdio)),
           {
             invocation: {
               commandId: "meta:mcp",
@@ -308,11 +308,11 @@ describe("McpService.serve", () => {
     };
 
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       yield* inmem.push({ toolId: "app:logs" });
       while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
       const notifications = yield* inmem.notifications;
@@ -412,11 +412,11 @@ describe("McpService.serve", () => {
     // When
     const replies = await Effect.runPromise(
       Effect.gen(function* () {
-        const inmem = yield* makeInMemoryTransport();
+        const inmem = yield* makeStdioClient();
         const service = yield* McpService;
         const fiber = yield* service
           .serve({ transport: "stdio" })
-          .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+          .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
         yield* inmem.push({ toolId: "app:info" });
         while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
         yield* inmem.push({ toolId: "app:info" });
@@ -520,11 +520,11 @@ describe("McpService.serve", () => {
     };
 
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       yield* inmem.push({ toolId: "app:info", input: { appPath: "/per-call-root" } });
       while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
       const replies = yield* inmem.replies;
@@ -564,11 +564,11 @@ describe("McpService.serve", () => {
     };
 
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio", maxConcurrent: 2 })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       for (let index = 0; index < 5; index += 1) yield* inmem.push({ toolId: "app:exec" });
       yield* Effect.sleep("80 millis");
       const observedMax = maxActive;
@@ -605,11 +605,11 @@ describe("McpService.serve", () => {
     };
 
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       yield* inmem.push({ toolId: "app:exec" });
       yield* Effect.sleep("50 millis");
       yield* inmem.close;

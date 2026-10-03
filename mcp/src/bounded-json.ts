@@ -238,11 +238,11 @@ export const redactBoundedJsonValue = (
   value: unknown,
   redactor: Redactor,
   context: string,
-): Effect.Effect<unknown, McpTransportError> =>
+): Effect.Effect<import("effect").Schema.Json, McpTransportError> =>
   stringifyBoundedJson(value, context, redactor).pipe(
     Effect.flatMap((encoded) =>
       Effect.try({
-        try: (): unknown => JSON.parse(encoded),
+        try: (): import("effect").Schema.Json => JSON.parse(encoded),
         catch: () => serializationFailure(context),
       }),
     ),

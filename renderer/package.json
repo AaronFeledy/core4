@@ -23,6 +23,7 @@
     "./io": "./src/io.ts",
     "./output": "./src/output.ts",
     "./runtime": "./src/runtime.ts",
+    "./stdio": "./src/stdio.ts",
     "./summary": "./src/summary.ts",
     "./package.json": "./package.json"
   },

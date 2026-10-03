@@ -1,265 +1,161 @@
-import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Layer, Option, Schema } from "effect";
+import { expect, test } from "bun:test";
+import { McpService } from "@lando/mcp/service";
+import { startStdioClient } from "@lando/mcp/testing";
+import type { LandoEvent } from "@lando/sdk/services";
+import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { eventLayer, serverLayer, startServer } from "./server";
 
-import { createRedactor } from "@lando/sdk/secrets";
-
-import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
-import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
-import { McpTransport, type McpTransportReply, makeInMemoryTransport } from "@lando/mcp/transport";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { TestMcpCommandExecutor } from "./executor";
-
-const spec = (id: string, run: McpCommandSpec["run"]): McpCommandSpec => ({
-  id,
-  summary: `${id} summary`,
-  resultSchema: Schema.Struct({}),
-  run,
-});
-
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-});
-
-const serviceLayer = (config: McpRuntimeConfigShape) =>
-  McpServiceLive.pipe(
-    Layer.provide(
-      Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer, TestMcpCommandExecutor),
+test("interrupts an in-flight call, publishes Interrupted, and emits no duplicate cancellation response", async () => {
+  const events: LandoEvent[] = [];
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const finished = yield* Deferred.make<void>();
+        const command = {
+          id: "app:exec",
+          summary: "Block",
+          resultSchema: Schema.Struct({}),
+          run: () =>
+            Deferred.succeed(started, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.ensuring(Deferred.succeed(finished, undefined)),
+            ),
+        };
+        const service = yield* McpService.pipe(
+          Effect.provide(
+            serverLayer({ commandEntries: [{ spec: command }], defaultAllowlist: [command.id] }).pipe(
+              Layer.provide(eventLayer(events)),
+            ),
+          ),
+        );
+        const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
+        const call = yield* client.sendRequest("tools/call", { name: command.id });
+        yield* Deferred.await(started);
+        yield* client.cancel(call.id);
+        yield* Deferred.await(finished);
+        yield* client.cancel(call.id);
+        yield* client.request("ping");
+        yield* client.close;
+        yield* Fiber.join(client.fiber);
+        return { id: call.id, messages: yield* client.messages };
+      }),
     ),
   );
+  expect(observed.messages.filter((message) => message.id === observed.id)).toEqual([]);
+  expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(1);
+  expect(events.filter((event) => event._tag === "post-mcp-call")).toEqual([
+    expect.objectContaining({ outcome: "failure", failureDetail: "Interrupted" }),
+  ]);
+});
 
-describe("McpService.serve cancellation", () => {
-  test("interrupts a single in-flight call when the transport cancels its request id", async () => {
-    let finalized = false;
-    const config: McpRuntimeConfigShape = {
-      commandEntries: [
-        {
-          spec: spec("app:exec", () =>
-            Effect.never.pipe(
-              Effect.ensuring(
-                Effect.sync(() => {
-                  finalized = true;
-                }),
-              ),
-            ),
-          ),
-        } satisfies McpCommandEntry,
-      ],
-      defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
-    };
-
-    const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
-      const service = yield* McpService;
-      const fiber = yield* service
-        .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
-      const id = yield* inmem.push({ toolId: "app:exec" });
-      yield* Effect.sleep("10 millis");
-      yield* inmem.cancel(id);
-      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
-      const replies = yield* inmem.replies;
-      yield* inmem.close;
-      yield* Fiber.join(fiber);
-      return { id, replies };
-    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
-
-    const { id, replies } = await Effect.runPromise(program);
-    expect(finalized).toBe(true);
-    expect(replies).toEqual([
-      { id, ok: false, error: expect.objectContaining({ _tag: "McpTransportError" }) },
-    ]);
+test("does not send a cancellation reply after a completed request is cancelled", async () => {
+  const messages = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        const result = yield* client.request("tools/call", { name: "app:info" });
+        if (typeof result.id !== "number") throw new Error("Expected numeric response id");
+        yield* client.cancel(result.id);
+        yield* client.request("ping");
+        return (yield* client.messages).filter((message) => message.id === result.id);
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer({
+          commandEntries: [
+            {
+              spec: {
+                id: "app:info",
+                summary: "Info",
+                resultSchema: Schema.Struct({ finished: Schema.Boolean }),
+                run: () => Effect.succeed({ finished: true }),
+              },
+            },
+          ],
+          defaultAllowlist: ["app:info"],
+        }),
+      ),
+    ),
+  );
+  expect(messages).toHaveLength(1);
+  expect(messages[0]).toMatchObject({
+    result: { isError: false, structuredContent: { ok: true, result: { finished: true } } },
   });
+});
 
-  test("sends one reply when cancelling an in-flight call", async () => {
-    const config: McpRuntimeConfigShape = {
-      commandEntries: [
-        {
-          spec: spec("app:exec", () => Effect.never),
-        } satisfies McpCommandEntry,
-      ],
-      defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
-    };
+test("does not poison a reused request id when a late cancellation arrives", async () => {
+  let executions = 0;
+  const results = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        const first = yield* (yield* client.sendRequest("tools/call", { name: "app:info" }, "reused-id"))
+          .response;
+        yield* client.cancel("reused-id");
+        yield* client.request("ping");
+        const second = yield* (yield* client.sendRequest("tools/call", { name: "app:info" }, "reused-id"))
+          .response;
+        return [first, second];
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer({
+          commandEntries: [
+            {
+              spec: {
+                id: "app:info",
+                summary: "Info",
+                resultSchema: Schema.Struct({ executions: Schema.Number }),
+                run: () => Effect.sync(() => ({ executions: ++executions })),
+              },
+            },
+          ],
+          defaultAllowlist: ["app:info"],
+        }),
+      ),
+    ),
+  );
+  expect(executions).toBe(2);
+  expect(results).toHaveLength(2);
+  expect(results).toEqual([
+    expect.objectContaining({ result: expect.objectContaining({ isError: false }) }),
+    expect.objectContaining({ result: expect.objectContaining({ isError: false }) }),
+  ]);
+});
 
-    const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
-      const service = yield* McpService;
-      const fiber = yield* service
-        .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
-      const id = yield* inmem.push({ toolId: "app:exec" });
-      yield* Effect.sleep("10 millis");
-      yield* inmem.cancel(id);
-      yield* Effect.sleep("80 millis");
-      const replies = yield* inmem.replies;
-      yield* inmem.close;
-      yield* Fiber.join(fiber);
-      return { id, replies };
-    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
-
-    const { id, replies } = await Effect.runPromise(program);
-    expect(replies).toEqual([
-      { id, ok: false, error: expect.objectContaining({ _tag: "McpTransportError" }) },
-    ]);
-  });
-
-  test("does not send a cancellation reply after a completed request is cancelled", async () => {
-    const config: McpRuntimeConfigShape = {
-      commandEntries: [
-        {
-          spec: spec("app:info", () => Effect.succeed({ finished: true })),
-        } satisfies McpCommandEntry,
-      ],
-      defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
-    };
-
-    const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
-      const service = yield* McpService;
-      const fiber = yield* service
-        .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
-      const id = yield* inmem.push({ toolId: "app:info" });
-      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
-      yield* inmem.cancel(id);
-      yield* Effect.sleep("80 millis");
-      const replies = yield* inmem.replies;
-      yield* inmem.close;
-      yield* Fiber.join(fiber);
-      return { id, replies };
-    }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
-
-    const { id, replies } = await Effect.runPromise(program);
-    expect(replies).toHaveLength(1);
-    expect(replies[0]).toMatchObject({
-      id,
-      ok: true,
-      result: { ok: true, envelope: { ok: true, result: { finished: true } } },
-    });
-  });
-
-  test("does not poison a reused request id when a late cancellation arrives", async () => {
-    let executions = 0;
-    const requestId = "reused-after-late-cancel";
-    const config: McpRuntimeConfigShape = {
-      commandEntries: [
-        {
-          spec: spec("app:info", () =>
+test("does not start semaphore-waiting work when cancellation arrives before execution", async () => {
+  let executions = 0;
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const command = {
+          id: "app:exec",
+          summary: "Block",
+          resultSchema: Schema.Struct({}),
+          run: () =>
             Effect.sync(() => {
-              executions += 1;
-              return { executions };
-            }),
+              executions++;
+            }).pipe(Effect.andThen(Deferred.succeed(started, undefined)), Effect.andThen(Effect.never)),
+        };
+        const service = yield* McpService.pipe(
+          Effect.provide(
+            serverLayer({ commandEntries: [{ spec: command }], defaultAllowlist: [command.id] }),
           ),
-        } satisfies McpCommandEntry,
-      ],
-      defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
-    };
-
-    const program = Effect.gen(function* () {
-      let deliveredRequests = 0;
-      let deliveredCancel = false;
-      const replies: McpTransportReply[] = [];
-      const firstReply = yield* Deferred.make<void>();
-      const secondReply = yield* Deferred.make<void>();
-      const service = yield* McpService;
-      const transport = {
-        receive: Effect.gen(function* () {
-          if (deliveredRequests === 0) {
-            deliveredRequests = 1;
-            return Option.some({ id: requestId, request: { toolId: "app:info" } });
-          }
-          if (deliveredRequests === 1) {
-            yield* Deferred.await(firstReply);
-            yield* Effect.sleep("20 millis");
-            deliveredRequests = 2;
-            return Option.some({ id: requestId, request: { toolId: "app:info" } });
-          }
-          yield* Deferred.await(secondReply);
-          return Option.none();
-        }),
-        receiveCancel: Effect.gen(function* () {
-          if (!deliveredCancel) {
-            yield* Deferred.await(firstReply);
-            deliveredCancel = true;
-            return Option.some(requestId);
-          }
-          yield* Deferred.await(secondReply);
-          return Option.none<string>();
-        }),
-        reply: (reply: McpTransportReply) =>
-          Effect.sync(() => replies.push(reply)).pipe(
-            Effect.andThen(
-              replies.length === 0
-                ? Deferred.succeed(firstReply, undefined)
-                : Deferred.succeed(secondReply, undefined),
-            ),
-          ),
-        notify: () => Effect.void,
-      };
-
-      yield* service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, transport));
-      return replies;
-    }).pipe(Effect.provide(serviceLayer(config)));
-
-    const replies = await Effect.runPromise(program);
-    expect(executions).toBe(2);
-    expect(replies).toHaveLength(2);
-    expect(replies.every((reply) => reply.ok)).toBe(true);
-  });
-
-  test("does not start a request when cancellation arrives before request registration", async () => {
-    let executed = false;
-    const requestId = "cancel-before-start";
-    const config: McpRuntimeConfigShape = {
-      commandEntries: [
-        {
-          spec: spec("app:exec", () =>
-            Effect.sync(() => {
-              executed = true;
-              return {};
-            }),
-          ),
-        } satisfies McpCommandEntry,
-      ],
-      defaultAllowlist: ["app:exec"],
-      runtimeLayer: Layer.empty,
-    };
-
-    const program = Effect.gen(function* () {
-      let requestDelivered = false;
-      let cancelDelivered = false;
-      const replies: McpTransportReply[] = [];
-      const replied = yield* Deferred.make<void>();
-      const service = yield* McpService;
-      const transport = {
-        receive: Effect.gen(function* () {
-          if (requestDelivered) return yield* Deferred.await(replied).pipe(Effect.as(Option.none()));
-          yield* Effect.sleep("10 millis");
-          requestDelivered = true;
-          return Option.some({ id: requestId, request: { toolId: "app:exec" } });
-        }),
-        receiveCancel: Effect.gen(function* () {
-          if (cancelDelivered) return yield* Deferred.await(replied).pipe(Effect.as(Option.none<string>()));
-          cancelDelivered = true;
-          return Option.some(requestId);
-        }),
-        reply: (reply: McpTransportReply) =>
-          Effect.sync(() => replies.push(reply)).pipe(Effect.andThen(Deferred.succeed(replied, undefined))),
-        notify: () => Effect.void,
-      };
-
-      yield* service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, transport));
-      return replies;
-    }).pipe(Effect.provide(serviceLayer(config)));
-
-    const replies = await Effect.runPromise(program);
-    expect(executed).toBe(false);
-    expect(replies).toEqual([
-      { id: requestId, ok: false, error: expect.objectContaining({ _tag: "McpTransportError" }) },
-    ]);
-  });
+        );
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", maxConcurrent: 1 }));
+        yield* client.sendRequest("tools/call", { name: command.id }, "running");
+        yield* Deferred.await(started);
+        yield* client.sendRequest("tools/call", { name: command.id }, "waiting");
+        yield* client.cancel("waiting");
+        yield* client.request("ping");
+        yield* client.close;
+        yield* Fiber.join(client.fiber);
+        return yield* client.messages;
+      }),
+    ),
+  );
+  expect(executions).toBe(1);
+  expect(observed.filter((message) => message.id === "waiting")).toEqual([]);
 });

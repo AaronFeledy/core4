@@ -1,253 +1,201 @@
-import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber, Option } from "effect";
+import { expect, test } from "bun:test";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { McpService } from "@lando/mcp/service";
+import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
+import { makeStdioClient, startStdioClient } from "@lando/mcp/testing";
+import { Deferred, Effect, Fiber, Layer, Schema, Stdio, Stream } from "effect";
+import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";
+import { eventLayer, serverLayer, startServer, toolErrorObject } from "./server";
+import type { LandoEvent } from "@lando/sdk/services";
+import { expectMcpTransportFailure } from "./stdio-transport-test-support";
 
-import type { McpCatalog } from "@lando/sdk/schema";
-
-import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
-import {
-  expectMcpTransportFailure,
-  expectPolledMcpTransportFailure,
-} from "./stdio-transport-test-support.ts";
-
-const encoder = new TextEncoder();
-const catalog = { tools: [] } satisfies McpCatalog;
-
-const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
-const parseJsonObject = (line: string): Readonly<Record<string, unknown>> => {
-  const parsed: unknown = JSON.parse(line);
-  if (!isJsonObject(parsed)) throw new Error("expected JSON-RPC line to decode to an object");
-  return parsed;
-};
-
-const inputFromMessages = (messages: ReadonlyArray<unknown>): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    start: (controller) => {
-      controller.enqueue(
-        encoder.encode(`${messages.map((message) => JSON.stringify(message)).join("\n")}\n`),
-      );
-      controller.close();
-    },
-  });
-
-const openToolCallInput = (id: number, progressToken?: string): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    start: (controller) => {
-      controller.enqueue(
-        encoder.encode(
-          `${JSON.stringify({
-            jsonrpc: "2.0",
-            id,
-            method: "tools/call",
-            params: {
-              name: "app:info",
-              ...(progressToken === undefined ? {} : { _meta: { progressToken } }),
-            },
-          })}\n`,
-        ),
-      );
-    },
-  });
-
-describe("makeStdioMcpTransport queue and write limits", () => {
-  test("stdio-outbound-deadline-disconnects", async () => {
-    // Given
-    const input = openToolCallInput(15);
-
-    // When
-    const completion = await Effect.runPromise(
+test("stdio-outbound-deadline-disconnects", async () => {
+  const exit = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const writeStarted = yield* Deferred.make<void>();
-        const releaseWrite = yield* Deferred.make<void>();
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: () =>
-            Deferred.succeed(writeStarted, undefined).pipe(Effect.andThen(Deferred.await(releaseWrite))),
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const started = yield* Deferred.make<void>();
+        let blocked = false;
+        const stdio = Stdio.make({
+          ...client.stdio,
+          stdout: () =>
+            forEachChunk((chunk: string | Uint8Array) =>
+              blocked
+                ? Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never))
+                : Stream.run(Stream.make(chunk), client.stdio.stdout()),
+            ),
         });
-        const incoming = yield* transport.receive;
-        if (Option.isNone(incoming)) return Option.none();
-        const replyFiber = yield* transport
-          .reply({
-            id: incoming.value.id,
-            ok: true,
-            result: { envelope: { apiVersion: "v4", command: "app:info", ok: true }, ok: true },
-          })
-          .pipe(Effect.forkChild);
-        yield* Deferred.await(writeStarted);
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provideService(Stdio.Stdio, stdio), Effect.forkScoped);
+        yield* client.initialize();
+        blocked = true;
+        yield* client.sendRequest("tools/list");
+        yield* Deferred.await(started);
         yield* TestClock.adjust("5 seconds");
-        const poll = Option.fromNullishOr(replyFiber.pollUnsafe());
-        yield* Fiber.interrupt(replyFiber);
-        return poll;
-      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
-    );
-
-    // Then
-    expectPolledMcpTransportFailure(completion);
-  });
-
-  test("stdio-never-reading-client-cannot-accumulate-unbounded-progress", async () => {
-    // Given
-    const input = openToolCallInput(16, "blocked-progress");
-
-    // When
-    const completion = await Effect.runPromise(
-      Effect.gen(function* () {
-        const writeStarted = yield* Deferred.make<void>();
-        const releaseWrite = yield* Deferred.make<void>();
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: () =>
-            Deferred.succeed(writeStarted, undefined).pipe(Effect.andThen(Deferred.await(releaseWrite))),
-        });
-        const incoming = yield* transport.receive;
-        if (Option.isNone(incoming)) return yield* Effect.die(new Error("expected an open MCP tool call"));
-        yield* transport
-          .notify({
-            id: incoming.value.id,
-            frame: { _tag: "output", stream: "stdout", line: "progress-0" },
-          })
-          .pipe(Effect.forkChild);
-        yield* Deferred.await(writeStarted);
-        const notifications = Effect.forEach(
-          Array.from({ length: 1025 }, (_, index) => index + 1),
-          (index) =>
-            transport.notify({
-              id: incoming.value.id,
-              frame: { _tag: "output", stream: "stdout", line: `progress-${index}` },
-            }),
-          { concurrency: "unbounded", discard: true },
-        );
-        const notifyFiber = yield* notifications.pipe(Effect.forkChild);
-        return yield* Fiber.await(notifyFiber);
-      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
-    );
-
-    // Then
-    const error = expectMcpTransportFailure(completion);
-    expect(error?.message).toBe("MCP stdio outbound queue exceeded its bounded capacity.");
-  });
-
-  test("stdio-outbound-byte-cap-disconnects above 8 MiB", async () => {
-    // Given
-    const input = openToolCallInput(17, "oversized-progress");
-
-    // When
-    const outcome = await Effect.runPromise(
-      Effect.gen(function* () {
-        let writeCalls = 0;
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: () =>
-            Effect.sync(() => {
-              writeCalls += 1;
-            }),
-        });
-        const incoming = yield* transport.receive;
-        if (Option.isNone(incoming)) return { completion: Option.none(), writeCalls };
-        const notifyFiber = yield* transport
-          .notify({
-            id: incoming.value.id,
-            frame: { _tag: "output", stream: "stdout", line: "x".repeat(8 * 1024 * 1024 + 1) },
-          })
-          .pipe(Effect.forkChild);
-        yield* Effect.yieldNow;
-        const poll = Option.fromNullishOr(notifyFiber.pollUnsafe());
-        yield* Fiber.interrupt(notifyFiber);
-        return { completion: poll, writeCalls };
-      }).pipe(Effect.scoped),
-    );
-
-    // Then
-    expect(outcome.writeCalls).toBe(0);
-    expectPolledMcpTransportFailure(outcome.completion);
-  });
-
-  test("stdio-outstanding-request-cap-rejects-the-257th-as-busy", async () => {
-    // Given
-    const writes: string[] = [];
-    const input = inputFromMessages(
-      Array.from({ length: 257 }, (_, index) => ({
-        jsonrpc: "2.0",
-        id: index + 1,
-        method: "tools/call",
-        params: { name: "app:info" },
-      })),
-    );
-
-    // When
-    const receivedCount = await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) => Effect.sync(() => writes.push(line)),
-        });
-        let count = 0;
-        while (count < 256) {
-          const incoming = yield* transport.receive;
-          if (Option.isNone(incoming)) return count;
-          count += 1;
-        }
-        return count;
-      }).pipe(Effect.scoped),
-    );
-
-    // Then
-    expect(receivedCount).toBe(256);
-    expect(writes.map(parseJsonObject)).toEqual([
-      expect.objectContaining({
-        jsonrpc: "2.0",
-        id: 257,
-        error: expect.objectContaining({ code: -32000 }),
+        return yield* Fiber.await(fiber);
       }),
-    ]);
-  });
+    ).pipe(Effect.provide(serverLayer()), Effect.provide(TestClock.layer())),
+  );
+  expect(expectMcpTransportFailure(exit)?.message).toBe(
+    "MCP stdio stdout write exceeded the 5 second deadline.",
+  );
+});
 
-  test("stdio-cancellation-cap-disconnects above 256", async () => {
-    // Given
-    const requestId = 18;
-    const input = inputFromMessages([
-      {
-        jsonrpc: "2.0",
-        id: requestId,
-        method: "tools/call",
-        params: { name: "app:info" },
-      },
-      ...Array.from({ length: 257 }, () => ({
-        jsonrpc: "2.0",
-        method: "notifications/cancelled",
-        params: { requestId },
-      })),
-    ]);
-
-    // When
-    const outcome = await Effect.runPromise(
+test("stdio-never-reading-client-cannot-accumulate-unbounded-progress", async () => {
+  let emitted = 0;
+  const observed = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({ catalog, input, write: () => Effect.void });
-        const incoming = yield* transport.receive;
-        if (Option.isNone(incoming)) return { count: 0, overflow: undefined };
-        // Keep cancellations pending until the reader reaches the overflow boundary.
-        const readerCompletion = yield* transport.receive.pipe(Effect.exit);
-        expectMcpTransportFailure(readerCompletion);
-        let count = 0;
-        while (count < 256) {
-          const cancellation = yield* transport.receiveCancel;
-          if (Option.isNone(cancellation)) return { count, overflow: undefined };
-          count += 1;
-        }
-        const overflow = yield* transport.receiveCancel.pipe(Effect.exit);
-        return { count, overflow };
-      }).pipe(Effect.scoped),
-    );
+        const client = yield* makeStdioClient();
+        const started = yield* Deferred.make<void>();
+        let blocked = false;
+        const spec = {
+          id: "app:logs",
+          summary: "Logs",
+          resultSchema: Schema.Struct({}),
+          run: () =>
+            Effect.gen(function* () {
+              const sink = yield* StreamFrameSink;
+              for (let i = 0; i < 1025; i++) {
+                emitted++;
+                yield* sink.emit({ _tag: "stdout", chunk: `progress-${i}` });
+              }
+              return {};
+            }),
+        };
+        const service = yield* McpService.pipe(
+          Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] })),
+        );
+        const stdio = Stdio.make({
+          ...client.stdio,
+          stdout: () =>
+            forEachChunk((chunk: string | Uint8Array) =>
+              blocked
+                ? Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never))
+                : Stream.run(Stream.make(chunk), client.stdio.stdout()),
+            ),
+        });
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provideService(Stdio.Stdio, stdio), Effect.forkScoped);
+        yield* client.initialize();
+        blocked = true;
+        yield* client.sendRequest("tools/call", {
+          name: spec.id,
+          _meta: { progressToken: "blocked-progress" },
+        });
+        yield* Deferred.await(started);
+        yield* TestClock.adjust("4 seconds");
+        const buffered = emitted;
+        yield* TestClock.adjust("1 second");
+        return { buffered, exit: yield* Fiber.await(fiber) };
+      }),
+    ).pipe(Effect.provide(TestClock.layer())),
+  );
+  expect(observed.buffered).toBeGreaterThan(0);
+  expect(observed.buffered).toBeLessThanOrEqual(11);
+  expect(expectMcpTransportFailure(observed.exit)?.message).toBe(
+    "MCP stdio stdout write exceeded the 5 second deadline.",
+  );
+});
 
-    // Then
-    expect(outcome.count).toBe(256);
-    expect(outcome.overflow).toBeDefined();
-    if (outcome.overflow !== undefined) expectMcpTransportFailure(outcome.overflow);
+test("stdio-outbound-byte-cap-rejects-progress-above-8-MiB-without-emitting-it", async () => {
+  const spec = {
+    id: "app:logs",
+    summary: "Logs",
+    resultSchema: Schema.Struct({}),
+    run: () => Effect.succeed({}),
+    streamFrames: () => [{ _tag: "stdout" as const, chunk: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1) }],
+  };
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        const response = yield* client.request("tools/call", {
+          name: spec.id,
+          _meta: { progressToken: "oversized-progress" },
+        });
+        return { response, notifications: yield* client.notifications };
+      }),
+    ).pipe(Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }))),
+  );
+  expect(toolErrorObject(observed.response)).toMatchObject({
+    _tag: "McpTransportError",
+    message: expect.stringContaining("8 MiB"),
   });
+  expect(observed.notifications).toEqual([]);
+});
+
+test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concurrency-4", async () => {
+  let active = 0;
+  let maximum = 0;
+  const events: LandoEvent[] = [];
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const release = yield* Deferred.make<void>();
+        const spec = {
+          id: "app:info",
+          summary: "Info",
+          resultSchema: Schema.Struct({}),
+          run: () =>
+            Effect.sync(() => {
+              active++;
+              maximum = Math.max(maximum, active);
+            }).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.as({}),
+              Effect.ensuring(
+                Effect.sync(() => {
+                  active--;
+                }),
+              ),
+            ),
+        };
+        const service = yield* McpService.pipe(
+          Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }).pipe(Layer.provide(eventLayer(events)))),
+        );
+        const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
+        const calls = [];
+        for (let i = 0; i < 257; i++) calls.push(yield* client.sendRequest("tools/call", { name: spec.id }));
+        const last = calls[256];
+        if (last === undefined) throw new Error("Expected 257 requests");
+        const busy = yield* last.response;
+        const observedMaximum = maximum;
+        yield* Deferred.succeed(release, undefined);
+        const results = yield* Effect.forEach(calls, (call) => call.response);
+        return { busy, results, observedMaximum };
+      }),
+    ),
+  );
+  expect(observed.observedMaximum).toBe(4);
+  expect(observed.results).toHaveLength(257);
+  expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(257);
+  expect(events.filter((event) => event._tag === "post-mcp-call")).toHaveLength(257);
+  expect(events.filter((event) => event._tag === "post-mcp-call" && event.outcome === "failure")).toEqual([expect.objectContaining({ failureDetail: "McpTransportError" })]);
+  expect(toolErrorObject(observed.busy)).toEqual({
+    _tag: "McpTransportError",
+    message: "Server busy",
+    remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
+  });
+  expect(Schema.decodeUnknownSync(Schema.JsonObject)(observed.busy.result).structuredContent).toBeUndefined();
+});
+
+test("repeated cancellation notifications are consumed immediately without an accumulating cancellation queue", async () => {
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        for (let i = 0; i < 257; i++) yield* client.cancel("not-running");
+        const ping = yield* client.request("ping");
+        yield* client.close;
+        return { ping, exit: yield* Fiber.await(client.fiber) };
+      }),
+    ).pipe(Effect.provide(serverLayer())),
+  );
+  expect(observed.ping).toMatchObject({ result: {} });
+  expect(observed.exit._tag).toBe("Success");
 });
