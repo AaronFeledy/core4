@@ -29,7 +29,7 @@ const csi = {
   defaultFg: `${ESC}[39m`,
 } as const;
 
-const hasC0OrDel = (value: string): boolean => {
+export const hasC0OrDel = (value: string): boolean => {
   for (const ch of value) {
     const cp = ch.codePointAt(0);
     if (cp !== undefined && (cp <= 0x1f || cp === 0x7f)) return true;
@@ -37,14 +37,222 @@ const hasC0OrDel = (value: string): boolean => {
   return false;
 };
 
-const isSafeHttpHref = (href: string): boolean =>
-  href.length > 0 && (href.startsWith("https://") || href.startsWith("http://")) && !hasC0OrDel(href);
+const isSafeHref = (href: string): boolean =>
+  href.length > 0 &&
+  (href.startsWith("https://") || href.startsWith("http://") || href.startsWith("file://")) &&
+  !hasC0OrDel(href);
 
-/** Wrap `text` in OSC 8 ST hyperlinks when `href` is a safe non-empty http(s) URL. */
+/**
+ * Wrap `text` in OSC 8 ST hyperlinks when `href` is a safe http(s) or file URL.
+ * The visible label is unchanged; unsupported schemes stay plain text. The
+ * label is already-painted output (SGR dim/tone from the summary painters), so
+ * only the target is validated; a caller linking raw untrusted text screens it
+ * with {@link hasC0OrDel} first.
+ */
 export const hyperlink = (text: string, href: string): string => {
-  if (!isSafeHttpHref(href)) return text;
+  if (!isSafeHref(href)) return text;
   const terminator = `${ESC}\\`;
   return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
+};
+
+/** True when stdout can take OSC 8: a TTY, an env snapshot is present, TERM is not dumb, and NO_COLOR is unset. */
+export const shouldEmitHyperlinks = (input: {
+  readonly isTTY: boolean;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}): boolean => {
+  if (!input.isTTY || input.env === undefined) return false;
+  const noColor = input.env.NO_COLOR;
+  if (noColor !== undefined && noColor !== "") return false;
+  return input.env.TERM !== "dumb";
+};
+
+const isHttpUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
+
+const OSC8_PREFIX = `${ESC}]8;`;
+const OSC8_ST = `${ESC}\\`;
+const OSC8_BEL = "\x07";
+
+const OSC8_CLOSE = [`${OSC8_PREFIX};${OSC8_ST}`, `${OSC8_PREFIX};${OSC8_BEL}`] as const;
+
+/** End index of an OSC 8 sequence starting at `start`, or undefined if none. */
+const osc8SequenceEnd = (text: string, start: number): number | undefined => {
+  if (!text.startsWith(OSC8_PREFIX, start)) return undefined;
+  const from = start + OSC8_PREFIX.length;
+  const st = text.indexOf(OSC8_ST, from);
+  const bel = text.indexOf(OSC8_BEL, from);
+  let end = -1;
+  if (st >= 0) end = st + OSC8_ST.length;
+  if (bel >= 0 && (end < 0 || bel + 1 < end)) end = bel + 1;
+  return end > start ? end : undefined;
+};
+
+/**
+ * End index of the OSC 8 span starting at `start`: a lone close sequence ends
+ * at itself, an open sequence runs through its label to the next close, and an
+ * unterminated open runs to the end of `text`. Undefined when no OSC 8 starts here.
+ */
+const skipOsc8 = (text: string, start: number): number | undefined => {
+  const openEnd = osc8SequenceEnd(text, start);
+  if (openEnd === undefined) return undefined;
+  if (OSC8_CLOSE.some((close) => text.startsWith(close, start))) return openEnd;
+  const close = OSC8_CLOSE.map((seq) => ({ at: text.indexOf(seq, openEnd), length: seq.length }))
+    .filter(({ at }) => at >= 0)
+    .sort((left, right) => left.at - right.at)[0];
+  return close === undefined ? text.length : close.at + close.length;
+};
+
+/** Separators around printed endpoints; a prefix of a longer URL is not a token. */
+const isUrlTokenBoundary = (ch: string | undefined): boolean => {
+  if (ch === undefined) return true;
+  const code = ch.codePointAt(0);
+  if (code === undefined || code <= 0x20 || code === 0x7f) return true;
+  return (
+    ch === "," ||
+    ch === ";" ||
+    ch === "|" ||
+    ch === "(" ||
+    ch === ")" ||
+    ch === "<" ||
+    ch === ">" ||
+    ch === "{" ||
+    ch === "}" ||
+    ch === "[" ||
+    ch === "]" ||
+    ch === '"' ||
+    ch === "'"
+  );
+};
+
+const isWholeEndpointTokenAt = (text: string, index: number, url: string): boolean => {
+  if (!text.startsWith(url, index)) return false;
+  return isUrlTokenBoundary(text[index - 1]) && isUrlTokenBoundary(text[index + url.length]);
+};
+
+/** Wrap whitespace only; ESC starts CSI and must be consumed as a whole sequence. */
+const isWrapSoft = (ch: string | undefined): boolean => {
+  const code = ch?.codePointAt(0);
+  return code !== undefined && code !== 0x1b && (code <= 0x20 || code === 0x7f);
+};
+
+/** Box-drawing glyphs `formatSummary` paints around each wrapped field segment. */
+const FRAME_GLYPHS = new Set(["│", "╭", "╮", "├", "┤", "╰", "╯", "─"]);
+
+/** End index of a CSI/SGR sequence starting at `start`, or undefined if none. */
+const skipCsiAt = (text: string, start: number): number | undefined => {
+  if (text.charCodeAt(start) !== 0x1b || text[start + 1] !== "[") return undefined;
+  let index = start + 2;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    if ((code >= 48 && code <= 57) || code === 0x3b) {
+      index += 1;
+      continue;
+    }
+    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) return index + 1;
+    return undefined;
+  }
+  return undefined;
+};
+
+/**
+ * Skip wrap soft runs, CSI, and frame glyphs. These are layout chrome between
+ * hard-broken URL fragments, not suffix bytes.
+ */
+const skipLayoutChromeAt = (text: string, start: number): number => {
+  let index = start;
+  while (index < text.length) {
+    const csiEnd = skipCsiAt(text, index);
+    if (csiEnd !== undefined) {
+      index = csiEnd;
+      continue;
+    }
+    const ch = text[index];
+    if (ch !== undefined && isWrapSoft(ch)) {
+      index += 1;
+      continue;
+    }
+    if (ch !== undefined && FRAME_GLYPHS.has(ch)) {
+      index += ch.length;
+      continue;
+    }
+    break;
+  }
+  return index;
+};
+
+/**
+ * Walk `suffix` against `text` from `start`, skipping wrap soft runs, CSI, and
+ * frame glyphs between suffix bytes. True when every suffix byte is found in
+ * order and the next real character is a token boundary or the end of `text`.
+ */
+const matchesWrappedSuffix = (text: string, start: number, suffix: string): boolean => {
+  let index = start;
+  let taken = 0;
+  while (taken < suffix.length) {
+    index = skipLayoutChromeAt(text, index);
+    if (index >= text.length || text[index] !== suffix[taken]) return false;
+    index += 1;
+    taken += 1;
+  }
+  let next = index;
+  for (;;) {
+    const csiEnd = skipCsiAt(text, next);
+    if (csiEnd === undefined) break;
+    next = csiEnd;
+  }
+  const ch = text[next];
+  return isUrlTokenBoundary(ch) || (ch !== undefined && FRAME_GLYPHS.has(ch));
+};
+
+/**
+ * True when `url` matched at `index` is the head of a longer known endpoint that
+ * a hard wrap cut after it: layout chrome follows, and walking the longer
+ * candidate's remaining suffix across later wrap breaks consumes that suffix.
+ * A newline before a different whole endpoint is not a wrap.
+ */
+const isWrappedPrefixOfCandidate = (
+  text: string,
+  index: number,
+  url: string,
+  candidates: ReadonlyArray<string>,
+): boolean => {
+  const after = index + url.length;
+  if (skipLayoutChromeAt(text, after) === after) return false;
+  return candidates.some((candidate) => {
+    if (candidate.length <= url.length || !candidate.startsWith(url)) return false;
+    return matchesWrappedSuffix(text, after, candidate.slice(url.length));
+  });
+};
+
+/**
+ * Wrap each known http(s) URL that still appears as a whole token in `text`.
+ * Longer endpoints win so a prefix (`:80` vs `:8080`, host vs host:port) cannot
+ * nest inside another link. An OSC 8 span already in `text` (open, label, close)
+ * is copied whole, never rewritten or re-linked. A URL split by wrapping is left
+ * plain so OSC 8 never wraps a partial label, including a head that happens to
+ * equal a shorter known endpoint.
+ */
+export const linkKnownHttpUrls = (text: string, urls: ReadonlyArray<string>): string => {
+  const candidates = [...new Set(urls.filter(isHttpUrl))].sort((left, right) => right.length - left.length);
+  if (candidates.length === 0) return text;
+  let out = "";
+  let index = 0;
+  while (index < text.length) {
+    const oscEnd = skipOsc8(text, index);
+    if (oscEnd !== undefined) {
+      out += text.slice(index, oscEnd);
+      index = oscEnd;
+      continue;
+    }
+    const match = candidates.find((url) => isWholeEndpointTokenAt(text, index, url));
+    if (match !== undefined && !isWrappedPrefixOfCandidate(text, index, match, candidates)) {
+      out += hyperlink(match, match);
+      index += match.length;
+      continue;
+    }
+    out += text[index];
+    index += 1;
+  }
+  return out;
 };
 
 /**

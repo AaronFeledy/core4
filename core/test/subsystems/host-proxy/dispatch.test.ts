@@ -83,6 +83,16 @@ describe("openOptionsFromRunLandoArgv", () => {
     });
   });
 
+  test("accepts --qr like --print so an in-container open does not launch a host browser", () => {
+    const options = openOptionsFromRunLandoArgv(["open", "--qr"], { tty: true });
+
+    expect(options).toEqual({
+      qr: true,
+      json: false,
+      ttyPresent: true,
+    });
+  });
+
   test("keeps explicit text format ahead of later JSON shortcut", () => {
     const options = openOptionsFromRunLandoArgv(["open", "--format=text", "-j"], { tty: false });
 

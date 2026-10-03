@@ -7,6 +7,7 @@ import {
   libpodLifecycleDialect,
   libpodPullDialect,
   libpodWaitDialect,
+  parseImagePlatform,
   parseImageReference,
 } from "../src/dialect.ts";
 
@@ -22,6 +23,27 @@ describe("container engine dialects", () => {
       wait: dockerWaitDialect,
       sharedNetworkAttachment: "connect-after-create",
     });
+  });
+
+  test("parses os/arch and os/arch/variant image platform pins", () => {
+    expect(parseImagePlatform("linux/amd64")).toEqual({ os: "linux", architecture: "amd64" });
+    expect(parseImagePlatform("linux/arm64/v8")).toEqual({
+      os: "linux",
+      architecture: "arm64",
+      variant: "v8",
+    });
+    expect(parseImagePlatform("amd64")).toBeUndefined();
+  });
+
+  test("rejects malformed platform pins instead of dropping empty or extra components", () => {
+    // Given
+    const pins = ["linux//amd64", "/linux/amd64", "linux/amd64/", "linux/arm/v7/extra"];
+
+    // When
+    const parsed = pins.map(parseImagePlatform);
+
+    // Then
+    expect(parsed).toEqual(pins.map(() => undefined));
   });
 
   test("parses tagged, untagged, registry-port, and digest image references", () => {
@@ -79,6 +101,10 @@ describe("container engine dialects", () => {
       path: "/images/create?fromImage=registry%3A5000%2Fteam%2Fapp&tag=v1",
     });
     expect(inspect).toEqual({ method: "GET", path: "/images/registry%3A5000%2Fteam%2Fapp%3Av1/json" });
+    expect(dockerPullDialect.request(reference, { platform: "linux/amd64" })).toEqual({
+      method: "POST",
+      path: "/images/create?fromImage=registry%3A5000%2Fteam%2Fapp&tag=v1&platform=linux%2Famd64",
+    });
   });
 
   test("decodes Docker pull errors and the first inspected digest", () => {
@@ -106,6 +132,14 @@ describe("container engine dialects", () => {
     expect(request).toEqual({
       method: "POST",
       path: "/libpod/images/pull?reference=team%2Fapp%3Av1&pullProgress=true",
+    });
+    expect(libpodPullDialect.request(reference, { platform: "linux/amd64" })).toEqual({
+      method: "POST",
+      path: "/libpod/images/pull?reference=team%2Fapp%3Av1&pullProgress=true&OS=linux&Arch=amd64",
+    });
+    expect(libpodPullDialect.request(reference, { platform: "linux/arm64/v8" })).toEqual({
+      method: "POST",
+      path: "/libpod/images/pull?reference=team%2Fapp%3Av1&pullProgress=true&OS=linux&Arch=arm64&Variant=v8",
     });
     expect(libpodPullDialect.frameError({ error: "denied" })).toBe("denied");
     expect(libpodPullDialect.frameError({ errorDetail: "ignored" })).toBeUndefined();

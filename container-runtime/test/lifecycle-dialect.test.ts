@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Exit } from "effect";
 
 import {
   AbsolutePath,
@@ -180,6 +180,39 @@ describe("lifecycle dialect", () => {
     // Then
     expect(forces).toEqual([false, true]);
     expect(fake.requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(2);
+  });
+
+  test("does not ensure or pull-pin a build-only service", async () => {
+    const fake = makeBringUpApi();
+    const calls: string[] = [];
+    const buildPlan: AppPlan = {
+      ...plan,
+      services: {
+        [serviceName]: {
+          ...service,
+          artifact: {
+            kind: "build",
+            context: AbsolutePath.make("/tmp/lifecycle-dialect-build"),
+            specInline: "FROM scratch",
+          },
+          extensions: { compose: { build: { platforms: ["linux/amd64"] } } },
+        },
+      },
+    };
+
+    const exit = await Effect.runPromiseExit(
+      bringUp(buildPlan, {
+        api: fake.api,
+        ctx,
+        dialect: dockerLifecycleDialect,
+        ensureImage: ({ ref, force }) =>
+          Effect.sync(() => calls.push(`ensure:${ref}:${force}`)).pipe(Effect.asVoid),
+      }),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+    expect(fake.requests.every((request) => !request.path.includes("/images/create"))).toBe(true);
   });
 
   test("skips the libpod volume prune endpoint for the Docker lifecycle dialect", async () => {

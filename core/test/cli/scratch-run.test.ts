@@ -26,6 +26,7 @@ import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { DataMoverLive } from "@lando/data-mover/service";
 import { CacheServiceLive } from "@lando/engine/cache/service";
+import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import { ScratchRegistryLive, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
@@ -1094,17 +1095,7 @@ describe("scratch run rendering", () => {
 });
 
 describe("scratch run agent env forwarding", () => {
-  const AGENT_KEYS = [
-    "CLAUDECODE",
-    "CLAUDE_CODE",
-    "CURSOR_AGENT",
-    "OPENCODE",
-    "COPILOT_CLI",
-    "GEMINI_CLI",
-    "AGENT",
-    "CI",
-    "LANDO_AGENT_ENV",
-  ] as const;
+  const AGENT_KEYS = [...AGENT_CONTEXT_ENV_ALLOWLIST, "LANDO_AGENT_ENV"] as const;
 
   const withHostEnv = async <A>(
     env: Record<string, string | undefined>,

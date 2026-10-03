@@ -237,6 +237,16 @@ const makeFakeApi = () => {
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
         }
+        if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Os: "linux",
+              Architecture: "amd64",
+              RepoDigests: ["img@sha256:test"],
+            }),
+          };
+        }
         if (request.path.endsWith("/json")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
           if (!existing.has(name)) {
@@ -589,6 +599,16 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
           const existed = existing.delete(name);
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
+        }
+        if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Os: "linux",
+              Architecture: "amd64",
+              RepoDigests: ["img@sha256:test"],
+            }),
+          };
         }
         if (request.path.endsWith("/json")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));

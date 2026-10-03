@@ -101,7 +101,8 @@
     "@lando/state-store": "workspace:*",
     "@lando/telemetry": "workspace:*",
     "effect": "catalog:",
-    "semver": "^7.8.5"
+    "semver": "^7.8.5",
+    "uqr": "^0.1.3"
   },
   "devDependencies": {
     "@types/semver": "^7.7.1"

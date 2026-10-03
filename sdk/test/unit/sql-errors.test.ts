@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
+  SqlDumpCompressionError,
   SqlDumpNotFoundError,
   SqlServiceAmbiguousError,
   SqlServiceNotFoundError,
@@ -140,5 +141,28 @@ describe("SqlDumpNotFoundError", () => {
     expect(decoded.path).toBe("/tmp/sql-app/_backups/missing.sql.gz");
     expect(decoded.appRoot).toBe("/tmp/sql-app");
     expect(decoded.remediation).toContain("app root");
+  });
+});
+
+describe("SqlDumpCompressionError", () => {
+  test("encodes and decodes with _tag intact when host dump compression fails", () => {
+    const error = new SqlDumpCompressionError({
+      message: "Failed to decompress dump file: /tmp/sql-app/dump.sql.zst",
+      path: "/tmp/sql-app/dump.sql.zst",
+      compression: "zstd",
+      operation: "decompress",
+      remediation: "Confirm the dump is valid gzip or zstd, then retry the import.",
+    });
+
+    expect(error._tag).toBe("SqlDumpCompressionError");
+    expect(Schema.is(SqlDumpCompressionError)(error)).toBe(true);
+
+    const encoded = Schema.encodeUnknownSync(SqlDumpCompressionError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlDumpCompressionError)(encoded);
+
+    expect(decoded._tag).toBe("SqlDumpCompressionError");
+    expect(decoded.path).toBe("/tmp/sql-app/dump.sql.zst");
+    expect(decoded.compression).toBe("zstd");
+    expect(decoded.operation).toBe("decompress");
   });
 });

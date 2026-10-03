@@ -26,6 +26,7 @@ import {
   type ShellInteractiveSpec,
   ShellRunner,
 } from "@lando/core/services";
+import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/config/agent-env";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
@@ -204,17 +205,6 @@ const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
     }),
     emptyConfigServiceLayer,
   );
-
-const AGENT_ENV_NAMES = [
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CURSOR_AGENT",
-  "OPENCODE",
-  "COPILOT_CLI",
-  "GEMINI_CLI",
-  "AGENT",
-  "CI",
-] as const;
 
 const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
   const saved = new Map<string, string | undefined>();

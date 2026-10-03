@@ -19,6 +19,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_KEYS } from "@lando/engine/config/agent-env";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
@@ -624,17 +625,6 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
 });
 
 describe("execApp — host agent-context env forwarding", () => {
-  const AGENT_KEYS = [
-    "CLAUDECODE",
-    "CLAUDE_CODE",
-    "CURSOR_AGENT",
-    "OPENCODE",
-    "COPILOT_CLI",
-    "GEMINI_CLI",
-    "AGENT",
-    "CI",
-  ] as const;
-
   const withHostEnv = async <A>(
     env: Record<string, string | undefined>,
     run: () => Promise<A>,
@@ -825,17 +815,6 @@ describe("execApp — host agent-context env forwarding", () => {
 });
 
 describe("execApp — interactive TTY terminal-capability env", () => {
-  const AGENT_KEYS = [
-    "CLAUDECODE",
-    "CLAUDE_CODE",
-    "CURSOR_AGENT",
-    "OPENCODE",
-    "COPILOT_CLI",
-    "GEMINI_CLI",
-    "AGENT",
-    "CI",
-  ] as const;
-
   const CAPABILITY_KEYS = [
     "TERM",
     "COLORTERM",

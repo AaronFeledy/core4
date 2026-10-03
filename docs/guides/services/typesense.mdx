@@ -1,0 +1,160 @@
+---
+id: typesense
+provider: test
+timeout: 90000
+tags: [beta, docs, typesense, compose, service]
+---
+
+# Add Typesense with Compose
+
+Put Typesense next to your app with `type: compose` on the official image, and wire the data dir plus API key through environment variables:
+
+```yaml
+name: typesense-demo
+services:
+  search:
+    type: compose
+    image: typesense/typesense:30.2
+    appMount: false
+    home: false
+    ports:
+      - 8108:8108
+    volumes:
+      - ./typesense-data:/data
+    environment:
+      TYPESENSE_DATA_DIR: /data
+      TYPESENSE_API_KEY: xyz
+      TYPESENSE_ENABLE_CORS: "true"
+```
+
+`appMount: false` keeps Typesense off your app tree. Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/). Create the host data directory, then start:
+
+```sh
+mkdir -p typesense-data
+lando start
+lando info
+```
+
+`lando info` lists `tcp://localhost:8108` for `search`.
+
+## Check health
+
+Probe the HTTP surface from the host with the published port:
+
+```sh
+curl -sf http://localhost:8108/health
+```
+
+A healthy node returns `{"ok":true}`. Confirm the pinned version:
+
+```sh
+curl -sf -H 'X-TYPESENSE-API-KEY: xyz' http://localhost:8108/debug
+```
+
+That body includes `"version":"30.2"` for the image above. Swap `xyz` for your own key in both the Landofile and the header.
+
+## Create a collection and search
+
+Typesense's day-to-day API is plain HTTP. Create a collection, upsert a document, then search:
+
+```sh
+curl -sf -H 'X-TYPESENSE-API-KEY: xyz' -H 'Content-Type: application/json' \
+  http://localhost:8108/collections \
+  -d '{"name":"books","fields":[{"name":"title","type":"string"},{"name":"author","type":"string"}]}'
+
+curl -sf -H 'X-TYPESENSE-API-KEY: xyz' -H 'Content-Type: application/json' \
+  'http://localhost:8108/collections/books/documents?action=upsert' \
+  -d '{"id":"1","title":"The Lando Files","author":"Cloud City"}'
+
+curl -sf -H 'X-TYPESENSE-API-KEY: xyz' \
+  'http://localhost:8108/collections/books/documents/search?q=Lando&query_by=title'
+```
+
+The search response reports `found` and the matching document. Same shape as the Typesense docs, just pointed at the Lando-published port.
+
+## Reach Typesense from another service
+
+Other services on the app join the same network. The hostname is the service key `search`, and the port is `8108`:
+
+```
+http://search:8108
+```
+
+From a Node or PHP service, call that URL with the `X-TYPESENSE-API-KEY` header. Do not use `localhost` inside another container. That is the container itself, not Typesense.
+
+## Pass flags as a command list
+
+A YAML string `command:` is one argv, so the upstream Typesense Compose one-liner does not work. That file sets `command` to one quoted string:
+
+```yaml
+command: '--data-dir /data --api-key=xyz --enable-cors'
+```
+
+The whole string is a single argument. Set the environment variables in the first example, or pass each flag and value as its own argv entry:
+
+```yaml
+services:
+  search:
+    type: compose
+    image: typesense/typesense:30.2
+    appMount: false
+    home: false
+    ports:
+      - 8108:8108
+    volumes:
+      - ./typesense-data:/data
+    command:
+      - --data-dir
+      - /data
+      - --api-key
+      - xyz
+      - --enable-cors
+```
+
+## Pin a version
+
+Change the image tag when you want a different Typesense release:
+
+```yaml
+services:
+  search:
+    type: compose
+    image: typesense/typesense:29.1
+```
+
+Keep the data directory and API key the same across bumps unless that release's upgrade notes say otherwise.
+
+## Start, inspect, destroy
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="typesense-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"compose\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "typesense/typesense:30\\.2" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "TYPESENSE_DATA_DIR" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "TYPESENSE_API_KEY" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+`lando destroy -y` removes containers and networks. The bind-mounted `typesense-data/` directory on the host stays. Delete it yourself when you want a fresh index, or pass `--volumes` / `--purge` when you used a named volume instead.
+
+## Next
+
+- [Add a Compose service](../compose-passthrough/)
+- [Add Meilisearch](../meilisearch/)
+- [Add Solr](../solr/)
+- [How services find each other](../../subsystems/service-dns/)
+- [Keep a service home across rebuilds and reach your host](../home-and-host/)
