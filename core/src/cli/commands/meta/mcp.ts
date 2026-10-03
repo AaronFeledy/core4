@@ -6,8 +6,8 @@ import { serializeToolingInput } from "@lando/landofile/tooling-input";
  *   - `--list` projects the effective tool catalog (id, summary, source of
  *     allowance) as a normal machine-output result (`McpListResult`).
  *   - serve mode runs the long-running stdio MCP server: it constructs
- *     `McpServiceLive` lazily, drives `McpService.serve` over the hand-rolled
- *     stdio JSON-RPC transport, and emits no command-result envelope, preserving
+ *     the MCP service layer lazily, drives `McpService.serve` over Effect's
+ *     stdio server, and emits no command-result envelope, preserving
  *     the MCP protocol stream.
  *
  * Built-in entries are injected so this module stays out of the command-graph
@@ -30,10 +30,10 @@ import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
-import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
-import { McpTransport } from "@lando/mcp/transport";
 import type { RedactionService } from "@lando/redaction/service";
-import { McpServiceLive } from "../../../mcp-command-executor";
+import * as RendererStdio from "@lando/renderer/stdio";
+import { serviceLayer } from "../../../mcp-command-executor";
+import { resources } from "../../../mcp-resources";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
@@ -304,6 +304,7 @@ export const buildMcpRuntimeConfig = (
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
   defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
   runtimeLayer,
+  resources,
 });
 
 export const mcpListResult = (
@@ -324,7 +325,7 @@ export const mcpListResult = (
 
 /**
  * Serve MCP over stdio until the transport closes (stdin EOF). Constructs
- * `McpServiceLive` lazily, computes the catalog for `tools/list`, and runs the
+ * the MCP service layer lazily, computes the catalog for `tools/list`, and runs the
  * dispatch loop. Emits no command-result envelope on the protocol stream;
  * startup validation failures still surface as one failure envelope.
  */
@@ -347,18 +348,17 @@ export const serveMcp = (
     };
     yield* Effect.gen(function* () {
       const service = yield* McpService;
-      const catalog = yield* service.catalog(catalogOptions);
-      const transport = yield* makeStdioMcpTransport({ catalog });
       yield* service
         .serve({
           transport: "stdio",
+          cwd: process.cwd(),
           ...catalogOptions,
           ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
         })
-        .pipe(Effect.provideService(McpTransport, transport));
+        .pipe(Effect.provide(RendererStdio.layer));
     }).pipe(
       Effect.scoped,
-      Effect.provide(McpServiceLive),
+      Effect.provide(serviceLayer),
       Effect.provideService(McpRuntimeConfig, runtimeConfig),
     );
   });

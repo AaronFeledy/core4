@@ -1,111 +1,46 @@
-import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Queue, Schema } from "effect";
+import { expect, test } from "bun:test";
+import { Effect, Schema } from "effect";
+import { serverLayer, startServer, toolErrorObject } from "./server";
 
-import type { McpCatalog } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
-
-import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
-import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
-import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
-import { McpTransport } from "@lando/mcp/transport";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
-import { TestMcpCommandExecutor } from "./executor";
-
-const encoder = new TextEncoder();
-const catalog = { tools: [] } satisfies McpCatalog;
-
-const toolCallLine = (id: number): string =>
-  JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "app:info" } });
-
-const parseObject = (text: string): Readonly<Record<string, unknown>> => {
-  const parsed: unknown = JSON.parse(text);
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("expected JSON object");
-  }
-  return parsed as Readonly<Record<string, unknown>>;
-};
-
-describe("MCP service stdio serialization", () => {
-  test("aggregate oversized result fails tagged, releases correlation, and preserves redaction", async () => {
-    // Given
-    const secret = "known-service-secret";
-    let calls = 0;
-    const command: McpCommandSpec = {
-      id: "app:info",
-      summary: "app:info summary",
-      resultSchema: Schema.Struct({
-        chunks: Schema.Array(Schema.Number),
-        apiToken: Schema.String,
-        note: Schema.String,
-      }),
-      run: () =>
-        Effect.sync(() => {
-          calls += 1;
-          return {
-            chunks: calls === 1 ? Array.from({ length: 1_100_000 }, () => 1_000_000) : [1],
-            apiToken: "secret-keyed-value",
-            note: `note=${secret}`,
-          };
-        }),
-    };
-    const config: McpRuntimeConfigShape = {
-      commandEntries: [{ spec: command } satisfies McpCommandEntry],
-      defaultAllowlist: ["app:info"],
-      runtimeLayer: Layer.empty,
-    };
-    let inputController: ReadableStreamDefaultController<Uint8Array> | undefined;
-    const input = new ReadableStream<Uint8Array>({
-      start: (controller) => {
-        inputController = controller;
-      },
-    });
-    const serviceLayer = McpServiceLive.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(McpRuntimeConfig, config),
-          Layer.succeed(RedactionService, {
-            registerValues: registerRedactionValues,
-            forProfile: () => Effect.succeed(createRedactor("secrets", { values: [secret] })),
-          }),
-          TestMcpCommandExecutor,
-        ),
-      ),
-    );
-
-    // When
-    const lines = await Effect.runPromise(
+test("aggregate oversized result fails tagged, releases correlation, and preserves redaction", async () => {
+  const secret = "known-service-secret";
+  let calls = 0;
+  const spec = {
+    id: "app:info",
+    summary: "Info",
+    resultSchema: Schema.Struct({
+      chunks: Schema.Array(Schema.Number),
+      apiToken: Schema.String,
+      note: Schema.String,
+    }),
+    run: () =>
+      Effect.sync(() => ({
+        chunks: ++calls === 1 ? Array.from({ length: 1_100_000 }, () => 1_000_000) : [1],
+        apiToken: "secret-keyed-value",
+        note: `note=${secret}`,
+      })),
+  };
+  const responses = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const output = yield* Queue.unbounded<string>();
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) => Queue.offer(output, line).pipe(Effect.asVoid),
-        });
-        const service = yield* McpService;
-        const fiber = yield* service
-          .serve({ transport: "stdio" })
-          .pipe(Effect.provideService(McpTransport, transport), Effect.forkScoped);
-        if (inputController === undefined) return yield* Effect.die(new Error("input stream did not start"));
-        inputController.enqueue(encoder.encode(`${toolCallLine(31)}\n`));
-        const first = yield* Queue.take(output);
-        inputController.enqueue(encoder.encode(`${toolCallLine(32)}\n`));
-        const second = yield* Queue.take(output);
-        inputController.close();
-        yield* Fiber.join(fiber);
+        const client = yield* startServer();
+        const first = yield* client.request("tools/call", { name: spec.id });
+        const second = yield* client.request("tools/call", { name: spec.id });
         return [first, second] as const;
-      }).pipe(Effect.scoped, Effect.provide(serviceLayer)),
-    );
-
-    // Then
-    const first = parseObject(lines[0]);
-    const second = parseObject(lines[1]);
-    expect(first).toMatchObject({
-      id: 31,
-      error: { code: -32603, data: { _tag: "McpTransportError" } },
-    });
-    expect(second).toMatchObject({ id: 32, result: expect.any(Object) });
-    expect(lines.join("\n")).toContain("[redacted]");
-    expect(lines.join("\n")).not.toContain(secret);
-    expect(lines.join("\n")).not.toContain("secret-keyed-value");
+      }),
+    ).pipe(
+      Effect.provide(serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id] }, [secret])),
+    ),
+  );
+  expect(toolErrorObject(responses[0])).toMatchObject({
+    _tag: "McpTransportError",
+    message: "MCP command result exceeded the 8 MiB JSON serialization limit before schema encoding.",
   });
+  expect(responses[1]).toMatchObject({
+    result: { isError: false, structuredContent: { ok: true, result: { chunks: [1] } } },
+  });
+  const text = JSON.stringify(responses);
+  expect(text).toContain("[redacted]");
+  expect(text).not.toContain(secret);
+  expect(text).not.toContain("secret-keyed-value");
 });

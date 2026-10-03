@@ -337,3 +337,47 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us664v-appserver`, `lando-us664v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics`, plus an older managed `podman` process, after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-663 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-664 acceptance failure.
 - **Out-of-scope finding:** `lando doctor` warned that ports 80 and 443 are occupied (router hopped to 8080/8443) and that WSL root mount propagation is private. The app still returned HTTP 200 on the hopped URLs. Suspected area: WSL mirrored networking, not the engine idiom change.
 ---
+
+## 2026-10-03 10:20 CDT - Babysit
+- PR: #1144 https://github.com/AaronFeledy/core4/pull/1144
+- CI outcome: pass (after one triage round; library-api-tests-runner failed initially)
+- Review feedback: fixed (app-handle-export test now locates the appShareStop error channel on the Effect.fn generator; same precise-channel assertions kept)
+- Merge: merged (squash)
+---
+
+## 2026-10-03 11:35 CDT - US-665 (Build, pass 1: server migrated; not implemented)
+- `lando mcp` now runs on `effect/ai` `McpServer.layerStdio` with protocols 2025-06-18, 2025-03-26, and 2024-11-05, over an Effect `Stdio` implemented by `@lando/renderer`. An `@lando/mcp` stdin/stdout guard keeps the 1 MiB inbound frame limit, the partial-frame deadline, and the write deadline. The hand-written JSON-RPC transport, reader, writer, framing, and in-memory transport are gone; tests drive the real server through a Queue-backed `Stdio` and a JSON-RPC test client (`@lando/mcp/testing`).
+- Tools are registered from the allowlisted catalog with an envelope `outputSchema`; results carry the redacted, bounded envelope as `structuredContent` plus a text fallback. Confirmation goes through a new engine per-call `ConfirmationPrompt` service that `requireConfirmation` consults; MCP provides it only when the client advertises elicitation. Resources (`lando://app/config`, `app/info`, `apps`, `doctor`, `schemas/{name}` with completion) are supplied by core through `McpRuntimeConfig`. The canonical MCP section is amended.
+- Verification: `bun run typecheck` passes; `mcp/test`, `core/test/mcp`, and the renderer stdio test pass (146 tests). Not yet run: `lint`, `check:boundaries`, `codegen:check`, `gate:pr`, doctor-mcp and meta:mcp CLI tests, guide gates, and the source-CLI transcript.
+- Remaining for the next Build pass: rewrite `docs/guides/agent-native/mcp.mdx` (its three scenarios still import the deleted `makeStdioMcpTransport`/`McpServiceLive`) and `core/test/build/mcp-guide-acceptance.test.ts`; confirm elicitation tests cover accept, decline, cancel, 120 s timeout, no capability, and `yes: true`, and resource tests cover listing, reading, completion, and a planted secret; finish the `mcp` idiom pass (`Effect.fn` names, no `*Live`, Clock over `Date.now`); run the full gate set and a piped `lando mcp` session.
+- **Learnings for future iterations:**
+  - Effect 4.0.0 `McpServer.addTool` drops JSON-RPC error `data` for tool failures. Dispatch-level rejections (input, Server busy, interrupted) therefore return `CallToolResult` with `isError: true` and the redacted tagged error as text, with no `structuredContent`. Resource failures keep `data`.
+  - Tools outside the effective allowlist are never registered, so Effect answers them with `-32602 Tool '<name>' not found` before any Lando handler or `pre-mcp-call` event runs.
+  - `McpServer.elicit` turns a client "cancel" into `Effect.interrupt`, which looks like tool cancellation. Use `McpServerClient.getClient` and `client.elicit` directly to map cancel to `declined`.
+  - Effect's stdio RPC protocol logs and retries stdin stream errors every 500 ms instead of ending the session; a fatal inbound limit has to end the stdin stream and report through a terminal `Deferred`.
+---
+
+## 2026-10-03 12:05 CDT - US-665 (Build, pass 2: implemented)
+- Finished the MCP server migration. The elicitation message now names the tool, the target app's directory (the call's `appPath`, else the session cwd), and the command's own consequence text, redacted. Core resource tests now read the real `lando://app/config`, `app/info`, `apps`, and `doctor` entries through a bundled-only runtime against a fixture app: each payload matches its result schema, a planted Landofile secret comes back `[redacted]`, and a missing app returns the tagged `AppResolveError` (`LandofileNotFoundError`) as resource error data. The combined text-plus-structured frame bound now runs inside dispatch, so an oversize result also publishes a failing `post-mcp-call`. Resource reads release their per-request scope. The executable guide was rewritten (four scenarios: conversation, startup refusals, bounded read-only contract, resources and schema completion) and the mcp package finished its idiom pass.
+- Verification: `gate:pr` passed (typecheck, lint, codegen:check, boundaries, guide-drift vs origin/main); `lint:guides`, `check:guide-coverage`, `check:public-transcripts`, and the focused guide run (4 tests) passed. Spot checks: `mcp/test`, `core/test/mcp`, the guide acceptance test, and 18 adjacent doctor/meta:mcp/confirmation/renderer files (348 tests) passed. A piped `lando mcp --allow app:rebuild` session on the compiled binary, run in the sandbox with an isolated HOME, negotiated 2025-06-18, listed 16 tools that all had `outputSchema`, listed the four resources and the schema template, completed `CommandResult*`, returned tagged errors for the missing-app resource and tool call, sent `elicitation/create` for rebuild, mapped decline to `CommandConfirmationError` `declined`, answered an unlisted `app:destroy` with `-32602`, and exited 0 when stdin closed.
+- **Learnings for future iterations:**
+  - Confirmation deliberately runs before any engine or Landofile access (`core/test/cli/command-confirmation.test.ts` makes `LandofileService.discover` die). Never resolve the app name inside a command just to word its prompt. The MCP host adds the app identity it already holds.
+  - `makeLandoRuntime({...})` silently falls through to its `unknown` overload, which returns `RuntimeLayer` with no services, when an option is an unbranded string (`config.user*Root` needs `AbsolutePath.make`, `defaultProviderId` needs `ProviderId.make`). The symptom is "Type 'X' is not assignable to type 'never'" far from the options object. Branding the inputs fixes it.
+  - `--exec` runs one command through `.local/bin/lando4-dev`, and a bash coproc drives a piped `lando mcp` session from there with no Bun in the sandbox. Read the coproc fd only in `$(recv)`; a pipe after `recv` loses the fd in the subshell.
+---
+
+## 2026-10-03 12:19 CDT - US-665 Drift Audit
+- Trigger: 2 cycles, +3097/−2943, 4 commits
+- Dead exports: the deleted stdio writer and cancellation queue left three unread caps (partial buffer, pending cancellations, outbound message count). New MCP modules also exported symbols nothing outside the file imported.
+- Contract drift: the guide still described a 1024-message outbound queue. That queue left with the hand-written writer. Per-payload 8 MiB serialization and the 5 second write deadline still fail closed.
+- Idiom: the MCP JSON bounder still had a named `isPlainObject` helper. The same prototype check now sits at the one call site, so class instances and `toJSON` still fail closed.
+- Re-checked deferrals: unknown tools stay unregistered (`-32602`, no call events) because that is the §10.14 amendment, and dispatch still publishes both events for rejections that reach it. The combined frame bound inside dispatch stays; it is what makes an oversize result emit a failing `post-mcp-call`. No other story was started. No SDK surface was added.
+- Fixed: deleted the unread caps, stopped exporting file-local symbols, inlined the plain-object check, and corrected the guide bounds sentence.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Guide lint passes. Spot checks pass (50 tests on bounds, framing, resources, confirmation, and renderer stdio).
+---
+
+## 2026-10-03 12:24 CDT - US-665 Verify
+- Compiled-binary setup, lamp init/start, and live HTTP and HTTPS returned the PHP body. A piped `lando mcp` session negotiated 2025-06-18, listed tools with `outputSchema`, read redacted app config/info/apps/doctor resources, completed and read `lando://schemas/{name}`, returned structured `app:info`, answered unlisted `app:destroy` with `-32602`, mapped elicitation decline to `CommandConfirmationError` `declined` and a client without elicitation to `non-interactive`, and rebuilt with `yes: true` without asking. `app:config`, `mcp --list`, `doctor`, and `logs` exited 0. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. Destroy and poweroff exited 0.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us665v-appserver`, `lando-us665v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics`, plus a managed `podman` process, after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-664 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-665 acceptance failure.
+---

@@ -24,11 +24,6 @@ const limitFailure = (context: string): McpTransportError =>
 const isOmittedObjectValue = (value: unknown): boolean =>
   value === undefined || typeof value === "function" || typeof value === "symbol";
 
-const isPlainObject = (value: object): boolean => {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-};
-
 const chunkEnd = (value: string, start: number): number => {
   const candidate = Math.min(start + STRING_CHUNK_CODE_UNITS, value.length);
   if (candidate >= value.length) return candidate;
@@ -155,7 +150,11 @@ class BoundedJsonWriter {
   }
 
   #writeObject(value: object): void {
-    if (!isPlainObject(value) || Object.getOwnPropertyDescriptor(value, "toJSON") !== undefined) {
+    const prototype = Object.getPrototypeOf(value);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      Object.getOwnPropertyDescriptor(value, "toJSON") !== undefined
+    ) {
       throw serializationFailure(this.#context);
     }
     this.#withAncestor(value, () => {
@@ -238,11 +237,11 @@ export const redactBoundedJsonValue = (
   value: unknown,
   redactor: Redactor,
   context: string,
-): Effect.Effect<unknown, McpTransportError> =>
+): Effect.Effect<import("effect").Schema.Json, McpTransportError> =>
   stringifyBoundedJson(value, context, redactor).pipe(
     Effect.flatMap((encoded) =>
       Effect.try({
-        try: (): unknown => JSON.parse(encoded),
+        try: (): import("effect").Schema.Json => JSON.parse(encoded),
         catch: () => serializationFailure(context),
       }),
     ),

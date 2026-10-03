@@ -21,7 +21,6 @@
     ".": "./src/index.ts",
     "./allowlist": "./src/allowlist.ts",
     "./bounded-json": "./src/bounded-json.ts",
-    "./cancellation": "./src/cancellation.ts",
     "./catalog": "./src/catalog.ts",
     "./dispatch": "./src/dispatch.ts",
     "./memory-pressure": "./src/memory-pressure.ts",
@@ -31,9 +30,8 @@
     "./registry": "./src/registry.ts",
     "./result-inspector": "./src/result-inspector.ts",
     "./service": "./src/service.ts",
+    "./testing": "./src/testing.ts",
     "./stdio-limits": "./src/stdio-limits.ts",
-    "./stdio-transport": "./src/stdio-transport.ts",
-    "./transport": "./src/transport.ts",
     "./package.json": "./package.json"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

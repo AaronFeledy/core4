@@ -1,7 +1,7 @@
 import { type Context, Effect, type Exit, Layer } from "effect";
 
 import { type McpCommandExecution, McpCommandExecutor, type McpCommandExecutorShape } from "@lando/mcp/port";
-import { McpServiceLive as McpPackageServiceLive } from "@lando/mcp/service";
+import { McpService } from "@lando/mcp/service";
 import { RedactionService } from "@lando/redaction/service";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "./cli/command-lifecycle";
 
@@ -25,13 +25,13 @@ const executeNestedCommand = <A, E, R>(
     Effect.provideService(RedactionService, redaction),
   );
 
-export const McpCommandExecutorLive: Layer.Layer<McpCommandExecutor, never, RedactionService> = Layer.effect(
+export const layer: Layer.Layer<McpCommandExecutor, never, RedactionService> = Layer.effect(
   McpCommandExecutor,
   Effect.map(RedactionService, (redaction) => {
     const execute: McpCommandExecutorShape["execute"] = (command, execution) =>
       executeNestedCommand(redaction, command, execution);
-    return { execute };
+    return McpCommandExecutor.of({ execute });
   }),
 );
 
-export const McpServiceLive = McpPackageServiceLive.pipe(Layer.provide(McpCommandExecutorLive));
+export const serviceLayer = McpService.layer.pipe(Layer.provide(layer));

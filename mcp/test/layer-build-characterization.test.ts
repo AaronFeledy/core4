@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Context, Effect, Layer } from "effect";
-import { McpRuntimeConfig, McpService, McpServiceLive } from "../src/service.ts";
+import { McpRuntimeConfig, McpService } from "../src/service.ts";
 import { TestMcpCommandExecutor } from "./executor.ts";
 
 test("MCP builds once per runtime, reuses it for nested provide, and builds freshly in a new run", async () => {
   // Given: the real MCP layer with the package's executor seam and an empty command catalog.
   const instances: Context.Service.Shape<typeof McpService>[] = [];
-  const layer = McpServiceLive.pipe(
+  const layer = McpService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
         TestMcpCommandExecutor,

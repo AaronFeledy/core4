@@ -12,13 +12,14 @@ import { EventService, PluginRegistry } from "@lando/sdk/services";
 
 import { makeBootstrapLifecycleTracker } from "@lando/engine/runtime/bootstrap-lifecycle";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
-import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
+import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { Stdio } from "effect";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { McpServiceLive } from "../../src/mcp-command-executor.ts";
+import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
@@ -652,7 +653,7 @@ describe("subscriber runtime integration", () => {
             defaultAllowlist: [versionSpec.id],
             runtimeLayer: Layer.succeed(EventService, events),
           };
-          const mcpLayer = McpServiceLive.pipe(
+          const mcpLayer = mcpServiceLayer.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.succeed(McpRuntimeConfig, config),
@@ -661,12 +662,10 @@ describe("subscriber runtime integration", () => {
             ),
           );
           const replies = yield* Effect.gen(function* () {
-            const inMemory = yield* makeInMemoryTransport();
+            const inMemory = yield* makeStdioClient();
             const service = yield* McpService;
             const fiber = yield* runCommandLifecycle(
-              service
-                .serve({ transport: "stdio" })
-                .pipe(Effect.provideService(McpTransport, inMemory.transport)),
+              service.serve({ transport: "stdio" }).pipe(Effect.provideService(Stdio.Stdio, inMemory.stdio)),
               {
                 invocation: {
                   commandId: "meta:mcp",
