@@ -15,7 +15,7 @@ const ValueSchema = Schema.Struct({ value: Schema.String });
 const PackageManifestSchema = Schema.Struct({
   name: Schema.String,
   private: Schema.Boolean,
-  workspaces: Schema.optionalKey(Schema.Array(Schema.String)),
+  workspaces: Schema.optionalKey(Schema.Struct({ packages: Schema.Array(Schema.String) })),
   dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   devDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   peerDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -76,7 +76,7 @@ describe("StateStore package seam", () => {
     expect(artifactExists).toBe(true);
     expect(packageManifest.name).toBe("@lando/state-store");
     expect(packageManifest.private).toBe(true);
-    expect(rootManifest.workspaces).toContain("state-store");
+    expect(rootManifest.workspaces?.packages).toContain("state-store");
     expect(coreManifest.dependencies?.["@lando/state-store"]).toBe("workspace:*");
     expect(servicePath).toContain("state-store/src/service.ts");
     expect(value).toEqual({ value: "package" });
