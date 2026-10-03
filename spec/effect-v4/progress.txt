@@ -181,3 +181,23 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Compiled-binary setup, `lando init` lamp, and `lando start` succeeded on a reset sandbox. Both proxy URLs returned the PHP body; `php` tooling, logs, `app:config`, and `doctor` exited 0. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
 - **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us662v-appserver` and `lando-us662v-database`, parented to `/init`, after the app was already destroyed. Expected no processes for that app. Suspected area: runtime shutdown vs in-flight exec monitors. Not a US-662 acceptance failure.
 ---
+
+## 2026-10-03 01:55 CDT - Babysit
+- PR: #1141 https://github.com/AaronFeledy/core4/pull/1141
+- CI outcome: fail. After merging origin/main (conflict was core/package.json; main's SQL compression and image-pull tests ported to Effect 4), the unit shards 1-3, the library-api tests, and the static-checks audit fail. The failures are 61 tests (workspaces object-form readers, Effect 4 Schema/Logger/Cause behavior, managed-file transaction recovery, SecretStore redaction, docs:scenario exit code), plus `bun audit` high: http-cache-semantics@4.2.0 via docs > astro.
+- Review feedback: none from Bugbot. Triage round 1 was aborted mid-run. It left 6 local, unpushed fix commits on the branch (Landofile remediation path, network inject SchemaError cause, renderer-boundary memo map, yaml conformance sampling, structured log parsing, applied-state failure detail). These need verification before push.
+- Merge: deferred (CI red; returned to Build)
+---
+## 2026-10-03 01:55 - Babysit
+- [looper] Babysit handed the story back at building: PR #1141 CI red after merging main: 61 unit/library test failures from Effect 4 behavior changes and object-form workspaces readers, plus bun audit high (http-cache-semantics via astro); partial triage fixes committed locally (unpushed) on branch
+---
+
+## 2026-10-03 02:20 CDT - US-662 (Build, CI-failure repair)
+- Verified all 13 local fix commits left by the aborted Babysit triage against the PR's 61 failing CI tests across 24 files; every failure is covered. Effect 4 port gaps in tests: Result-shaped matchers, the object-form root `workspaces.packages`, `SchemaError` causes, structured JSON log lines, `TestClock` timer settling, applied-state failure detail, and well-formed string samples for YAML. Two product fixes: Landofile remediation issues keep their path, and the renderer boundary builds the command layer in a local memo map. Without the memo map, Effect 4 reuses the diagnostic fallback's env-only `RedactionServiceLive`, and SecretStore values render unredacted; `redaction-ac6` fails when the fix is reverted.
+- The audit ignore covers GHSA-ch52-4w7c-c8xp (`http-cache-semantics@4.2.0` via docs > astro). The advisory is also on `main` (same lockfile entry), and npm has no patched release; the dependency is docs-only.
+- The mixed compose/non-compose Landofile case no longer lists the uninformative Effect 3 `services` issue. The decoder reports the first offending path. Non-compose unsupported keys are still rejected on their own (verified via CLI, exit 1).
+- Verification: `gate:pr` passed (with real guide drift against `origin/main`). All 24 CI-failing files passed locally (252 tests). The 29 non-integration test files touched by the main merge passed (533 tests), plus the docs sidebar test (12). The compiled binary rebuilt. In the sandbox, `global:start` brought up the managed runtime; the five main-merge live provider suites passed (bringUp/inspect 21 after pulling the node/postgres fixture images, contract and cross-process green; only the Windows-only case skipped). `app:config` JSON/plain failures and missing-Landofile failures exit 1 with tagged errors. The runtime was then powered off.
+- **Learnings for future iterations:**
+  - Effect 4 `Effect.provide(layer)` inside an already-provided effect reuses services from the parent memo map. Use `{ local: true }` when an inner runtime must build its own instance of a layer the outer scope already built, such as redaction bound to a different secret store.
+  - A sandbox reset drops the live-test fixture images. Pull `node:22-alpine` and `postgres:16-alpine` through the managed socket (`libpod/images/pull`) before blaming bringUp/inspect failures.
+---
