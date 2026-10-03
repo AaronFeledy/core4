@@ -259,3 +259,9 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - The Edit tool can reject a valid single replacement in this session; a scripted replace works.
   - A JSX template-literal `code` prop in a guide cannot contain escaped backticks; build URLs with string concatenation.
 ---
+
+## 2026-10-03 06:01 CDT - US-663 Review
+- The verified-stream failure fixture now uses `Schema.TaggedError`, the form the idiom pass requires. The plugin HTTP guide names the egress span `HttpClient.request` and says lifecycle events carry origin and method, not a raw URL.
+- Review notes (deferred/rejected): Bugbot reported no bugs. Landofile YAML emit keeps a stricter plain-object check than `Predicate.isObject` because class instances, Dates, and Maps are not YAML maps. Lock-test `Date.now` and `utimes` calls are host filesystem clocks, not Effect time. A local `TestStateStoreLive` binding is not a `*Live` export. Engine idiom, MCP, and command spans stay with later stories.
+- Verification: `gate:pr` passed. Guide lint, coverage, public transcripts, and drift against `origin/main` passed. The HTTP guide passed once (1 test). Spot checks passed: verified-stream, tracer, redaction inspection, plugin-abstraction coverage, network-boundary fixtures (34), plus private-CA trust and span redaction (5).
+---

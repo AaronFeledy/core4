@@ -34,7 +34,7 @@ Do not call `fetch` yourself. A bare `fetch` skips the user's proxy, ignores the
 - **Proxy and `NO_PROXY`.** Lando reads `network.proxy` from global config plus the usual `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` variables.
 - **Private CAs.** Certificates from `network.ca.certs` or `LANDO_NETWORK_CA_CERTS` are trusted for that request. `network.ca.trustHost: false` drops the system roots and trusts only those certificates.
 - **Fresh trust per request.** Lando resolves trust when the request runs, so a config change applies to the next request without a restart.
-- **Redacted telemetry.** Each request is a span named after its method, with credentials and query values stripped from the URL. The same redacted URL goes into the HTTP lifecycle events.
+- **Redacted telemetry.** Each request is a span named `HttpClient.request`, with the method and a URL that has credentials and query values stripped. Lifecycle events record the origin and method, not the raw URL.
 - **Interrupts abort.** Interrupting the fiber aborts the connection. Stream the body with `response.stream` when the payload is large; nothing is buffered until you ask for it.
 
 ## Send JSON
