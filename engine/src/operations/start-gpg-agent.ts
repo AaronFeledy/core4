@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import { PathsService, ProcessRunner, type RuntimeProviderShape } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Option, Ref, Scope } from "effect";
+import { Effect, Option, type Scope } from "effect";
 import { type GpgAgentDiscoveryOptions, discoverHostGpgAgent } from "../subsystems/gpg-agent/discovery.ts";
 import type { GpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { exportPublicKeyring } from "../subsystems/gpg-agent/keyring.ts";
@@ -22,6 +22,7 @@ import {
   startDetachedAgentRelayWorker,
 } from "../subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../subsystems/ssh-agent/session.ts";
+import { withRetainedSession } from "./retained-session.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
 type AgentError = GpgAgentUnavailableError | GpgAgentTransportError;
@@ -163,30 +164,17 @@ export const withStartedGpgAgent = <A, E, R>(
     ) {
       return yield* options.use(plan, Effect.void);
     }
-    const keep = yield* Ref.make(false);
     const acquire = options.startSession?.() ?? startGpgAgentSession(plan, app, capabilities, intent);
-    return yield* Effect.acquireUseRelease(
+    return yield* withRetainedSession(
       acquire,
       (agent) =>
-        options
-          .use(withGpgAgentOverlay(plan, agent.session, agent.keyringDir), prepareGpgHome(plan, options.exec))
-          .pipe(
-            Effect.tap(() =>
-              Effect.gen(function* () {
-                if (options.managed !== undefined) {
-                  yield* Effect.addFinalizer(() => Effect.promise(() => agent.session.close())).pipe(
-                    Effect.provideService(Scope.Scope, options.managed.scope),
-                  );
-                }
-                yield* Ref.set(keep, true);
-              }),
-            ),
-          ),
-      (agent) =>
-        Ref.get(keep).pipe(
-          Effect.flatMap((retained) =>
-            retained ? Effect.void : Effect.promise(() => agent.session.close()),
-          ),
+        options.use(
+          withGpgAgentOverlay(plan, agent.session, agent.keyringDir),
+          prepareGpgHome(plan, options.exec),
         ),
+      {
+        close: (agent) => Effect.promise(() => agent.session.close()),
+        ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
+      },
     );
   });
