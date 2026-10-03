@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 
 import { Cause, Effect, Exit, Fiber, Layer, Schema } from "effect";
 
@@ -24,7 +23,6 @@ import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/c
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const roots: string[] = [];
-const repoRoot = resolve(import.meta.dirname, "../../..");
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -119,7 +117,7 @@ const writeCommandSubscriberPlugin = async (
     })}\n`,
   );
   await writeFile(join(packageRoot, "index.js"), "export {};\n");
-  const effectModuleUrl = pathToFileURL(join(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  const effectModuleUrl = import.meta.resolve("effect");
   await writeFile(
     join(packageRoot, "src", "subscriber.mjs"),
     [
@@ -168,7 +166,7 @@ const writeToolingBootstrapSubscriberPlugin = async (
     })}\n`,
   );
   await writeFile(join(packageRoot, "index.js"), "export {};\n");
-  const effectModuleUrl = pathToFileURL(join(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  const effectModuleUrl = import.meta.resolve("effect");
   await writeFile(
     join(packageRoot, "src", "subscriber.mjs"),
     [

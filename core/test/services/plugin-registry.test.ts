@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
@@ -36,8 +36,6 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/lando4",
   "@lando/lando3",
 ];
-
-const repoRoot = resolve(import.meta.dirname, "../../..");
 
 let userDataRoot: string;
 let appRoot: string;
@@ -167,7 +165,7 @@ const writeExternalServiceTypePlugin = async (
 ) => {
   const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
   await mkdir(packageRoot, { recursive: true });
-  const effectModuleUrl = pathToFileURL(resolve(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  const effectModuleUrl = import.meta.resolve("effect");
   const entries = plugin.serviceTypes
     .map((serviceType) => {
       const extendsLine =
@@ -670,7 +668,7 @@ describe("PluginRegistryLive", () => {
     const userPluginsRoot = join(userDataRoot, "plugins");
     const packageRoot = join(userPluginsRoot, "@example", "global-plugin", "1.0.0");
     await mkdir(join(packageRoot, "src"), { recursive: true });
-    const effectModuleUrl = pathToFileURL(resolve(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+    const effectModuleUrl = import.meta.resolve("effect");
     await writeFile(
       join(packageRoot, "package.json"),
       `${JSON.stringify(
