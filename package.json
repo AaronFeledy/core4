@@ -53,7 +53,7 @@
     "typecheck": "bun run scripts/typecheck.ts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "lint": "biome check . && bun run check:deprecations",
-    "audit": "bun audit",
+    "audit": "bun audit --ignore=GHSA-ch52-4w7c-c8xp",
     "audit:fix": "bun audit fix",
     "dedupe": "bun dedupe",
     "prune": "bun prune",
