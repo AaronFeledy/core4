@@ -9,6 +9,7 @@ import {
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileParseError,
+  LandofileValidationError,
   type NotImplementedError,
   RecipeSourceError,
   type ToolingIncludeCycleError,
@@ -182,6 +183,7 @@ export type ResolveIncludesError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | LandofileParseError
+  | LandofileValidationError
   | ResolveLandofileLoadExpressionError
   | NotImplementedError
   | ToolingIncludeCycleError;
@@ -665,25 +667,21 @@ const parseFragment = (
     }),
   );
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> =>
-  validationIssuesFromCause(cause, { fallback: causeMessage(cause) }).map(formatValidationIssueLine);
-
 const decodeMerged = (
   value: Record<string, unknown>,
   filePath: string,
-): Effect.Effect<LandofileShape, LandofileParseError> => {
+): Effect.Effect<LandofileShape, LandofileValidationError> => {
   const decoded = Schema.decodeUnknownResult(LandofileShape)(value, {
     onExcessProperty: "error",
     errors: "all",
   });
   if (decoded._tag === "Success") return Effect.succeed(decoded.success);
+  const issues = validationIssuesFromCause(decoded.failure, { fallback: causeMessage(decoded.failure) });
   return Effect.fail(
-    new LandofileParseError({
-      message: `Merged Landofile is invalid: ${validationIssues(decoded.failure).join(", ")}`,
-      filePath,
-      line: undefined,
-      column: undefined,
-      cause: decoded.failure,
+    new LandofileValidationError({
+      message: `Merged Landofile is invalid: ${issues.map(formatValidationIssueLine).join(", ")}`,
+      file: filePath,
+      issues,
     }),
   );
 };

@@ -12,6 +12,7 @@ import type {
   ComposeKeyRejectedError,
   LandofileIncludeError,
   LandofileLockMismatchError,
+  LandofileValidationError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
@@ -76,6 +77,7 @@ export interface AppIncludesVerifyOptions {
 export type AppIncludesVerifyError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileValidationError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
