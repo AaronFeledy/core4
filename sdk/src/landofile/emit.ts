@@ -1,11 +1,13 @@
 import { Predicate, Result } from "effect";
 
+import { LANDOFILE_EDITOR_SCHEMA_URL } from "../schema/editor.ts";
 import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
 
 const INDENT = "  ";
 
 export const LANDOFILE_LEADING_COMMENT_BLOCKS = {
+  "editor-schema": [`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}`],
   "recipe-provenance": [
     "# Recipe knobs. Change a value here to change every `{{ recipe.<option> }}` site below.",
     "# Replace a `{{ recipe.<option> }}` reference with a literal to take that site over.",

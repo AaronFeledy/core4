@@ -5,6 +5,7 @@ import { type Context, Effect, Predicate } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
+import { validationIssueFromText } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 
 type ComposeConfigFileInput = {
@@ -52,7 +53,16 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
       new LandofileValidationError({
         message: `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
         file: `${input.appRoot}/.lando.yml`,
-        issues: [`services.${grant.service}.configs`, `configs.${grant.source}`],
+        issues: [
+          validationIssueFromText(
+            `services.${grant.service}.configs`,
+            `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
+          ),
+          validationIssueFromText(
+            `configs.${grant.source}`,
+            `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
+          ),
+        ],
       }),
     );
   }
@@ -63,7 +73,12 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         message:
           "The Landofile declares configs, but the FileSystem service is unavailable. Provide FileSystem so config files can be read.",
         file: `${input.appRoot}/.lando.yml`,
-        issues: ["configs"],
+        issues: [
+          validationIssueFromText(
+            "configs",
+            "The Landofile declares configs, but the FileSystem service is unavailable. Provide FileSystem so config files can be read.",
+          ),
+        ],
       }),
     );
   }
@@ -76,7 +91,12 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         new LandofileValidationError({
           message: `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
           file: `${input.appRoot}/.lando.yml`,
-          issues: [`configs.${name}.external`],
+          issues: [
+            validationIssueFromText(
+              `configs.${name}.external`,
+              `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
+            ),
+          ],
         }),
       );
     }
@@ -85,7 +105,12 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         new LandofileValidationError({
           message: `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
           file: `${input.appRoot}/.lando.yml`,
-          issues: [`configs.${name}.file`],
+          issues: [
+            validationIssueFromText(
+              `configs.${name}.file`,
+              `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
+            ),
+          ],
         }),
       );
     }
@@ -96,7 +121,12 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
           new LandofileValidationError({
             message: `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,
             file: source,
-            issues: [`configs.${name}.file`],
+            issues: [
+              validationIssueFromText(
+                `configs.${name}.file`,
+                `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,
+              ),
+            ],
           }),
       ),
     );

@@ -174,7 +174,7 @@ const runGenerator = (): void => {
 };
 
 describe("schema snapshot artifact-set gate", () => {
-  test("authored-input draft-07 artifacts advertise null only where the encoded source accepts it", async () => {
+  test("authored-input artifacts advertise null only where the encoded source accepts it", async () => {
     // Given the emitted authored-input artifact families, including registered lockfiles.
     runGenerator();
     const names = JSON_SCHEMA_NAMES.filter(
@@ -183,7 +183,7 @@ describe("schema snapshot artifact-set gate", () => {
           name,
         ) || /Lock(?:file|File|Entries|Entry)?(?:Schema)?$/.test(name),
     );
-    // When actual draft-07 documents are checked against their encoded source ASTs.
+    // When actual documents are checked against their encoded source ASTs.
     for (const name of names) {
       const artifact: unknown = JSON.parse(await readFile(schemaArtifactPath(name), "utf8"));
       expect(unexplainedNullPaths(publicSchemaRegistry[name], artifact), name).toEqual([]);
@@ -269,7 +269,7 @@ describe("schema snapshot artifact-set gate", () => {
         string,
         unknown
       >;
-      expect(artifact.$schema, id).toBe("http://json-schema.org/draft-07/schema#");
+      expect(artifact.$schema, id).toBe("https://json-schema.org/draft/2020-12/schema");
     }
   });
 
@@ -765,11 +765,11 @@ describe("schema snapshot artifact-set gate", () => {
       string,
       unknown
     >;
-    expect(artifact.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(artifact.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     expect(JSON.stringify(artifact)).toContain("Deprecation Notice");
   });
 
-  test("generator emits a draft-07 schema artifact for every public SDK schema", async () => {
+  test("generator emits a draft 2020-12 schema artifact for every public SDK schema", async () => {
     runGenerator();
 
     for (const schemaName of JSON_SCHEMA_NAMES) {
@@ -778,7 +778,7 @@ describe("schema snapshot artifact-set gate", () => {
         unknown
       >;
 
-      expect(artifact.$schema, schemaName).toBe("http://json-schema.org/draft-07/schema#");
+      expect(artifact.$schema, schemaName).toBe("https://json-schema.org/draft/2020-12/schema");
     }
   });
 

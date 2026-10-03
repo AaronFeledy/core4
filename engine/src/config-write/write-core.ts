@@ -3,6 +3,7 @@ import { Predicate, Result, Schema } from "effect";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
 
+import { type ValidationIssue, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 import { type PathSegment, parsePathSegments, setAtPath, unsetAtPath } from "./dot-path";
 import { type ValueType, parseTypedValue } from "./value-parse";
 
@@ -22,7 +23,7 @@ export const parseConfigPath = (
         message: `\`${key}\` is not a valid config path.`,
         file,
         path: key,
-        issues: [`Malformed path: \`${key}\``],
+        issues: [validationIssue([], `Malformed path: \`${key}\``)],
         remediation: pathRemediation,
       }),
     );
@@ -41,7 +42,7 @@ export const parseConfigValue = (
       new LandofileWriteValidationError({
         message: parsed.failure.message,
         file,
-        issues: [parsed.failure.message],
+        issues: [validationIssue([], parsed.failure.message)],
         remediation: `Provide a valid \`${type}\` value, or choose a different \`--type\`.`,
       }),
     );
@@ -49,14 +50,9 @@ export const parseConfigValue = (
   return Result.succeed(parsed.success);
 };
 
-export const decodeIssues = (decoded: Result.Result<unknown, unknown>): ReadonlyArray<string> => {
+export const decodeIssues = (decoded: Result.Result<unknown, unknown>): readonly ValidationIssue[] => {
   if (Result.isSuccess(decoded)) return [];
-  const cause = decoded.failure;
-  const rendered = cause instanceof Error ? cause.message : String(cause);
-  return rendered
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  return validationIssuesFromCause(decoded.failure, { fallback: "Invalid config." });
 };
 
 export interface SetMutationInput {
@@ -96,7 +92,7 @@ export const applyUnsetMutation = (
 
 export const writeValidationErrorFromIssues = (input: {
   readonly file: string;
-  readonly issues: ReadonlyArray<string>;
+  readonly issues: readonly ValidationIssue[];
   readonly path?: string;
 }): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
@@ -116,7 +112,7 @@ export const emitConfigYaml = (input: {
     return Result.fail(
       writeValidationErrorFromIssues({
         file: input.file,
-        issues: ["The resulting config root must be a YAML map."],
+        issues: [validationIssue([], "The resulting config root must be a YAML map.")],
         ...(input.path === undefined ? {} : { path: input.path }),
       }),
     );
@@ -126,7 +122,7 @@ export const emitConfigYaml = (input: {
   return Result.fail(
     writeValidationErrorFromIssues({
       file: input.file,
-      issues: [emitted.failure.message],
+      issues: [validationIssue([], emitted.failure.message)],
       ...(input.path === undefined ? {} : { path: input.path }),
     }),
   );

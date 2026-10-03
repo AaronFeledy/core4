@@ -120,7 +120,7 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
   const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
   const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
   yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
+  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error", errors: "all" });
   if (decoded._tag === "Failure") {
     return yield* Effect.fail(
       new LandofileParseError({

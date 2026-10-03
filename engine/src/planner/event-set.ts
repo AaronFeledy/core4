@@ -2,6 +2,7 @@ import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
+import { validationIssueFromText } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect } from "effect";
 import {
@@ -45,7 +46,12 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
               new LandofileValidationError({
                 message: `Global configuration could not be loaded for service network injection: ${cause.message}`,
                 file: landofilePath,
-                issues: ["network"],
+                issues: [
+                  validationIssueFromText(
+                    "network",
+                    `Global configuration could not be loaded for service network injection: ${cause.message}`,
+                  ),
+                ],
               }),
           ),
         );
@@ -102,7 +108,12 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
           new LandofileValidationError({
             message: cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
             file: landofilePath,
-            issues: ["events"],
+            issues: [
+              validationIssueFromText(
+                "events",
+                cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
+              ),
+            ],
           }),
       }));
     return yield* Effect.fail(unknownEventError(unknown, knownEventNames, canonicalPath ?? landofilePath));

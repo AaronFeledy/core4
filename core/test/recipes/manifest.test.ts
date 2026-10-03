@@ -319,7 +319,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("choicesFrom"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("choicesFrom"))).toBe(true);
     }
   });
 
@@ -332,7 +332,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("removeIn"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("removeIn"))).toBe(true);
     }
   });
 
@@ -349,7 +349,9 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("prompts.0.deprecated"))).toBe(true);
+      expect(
+        error.issues.some((issue) => issue.path[0] === "prompts" && issue.path.at(-1) === "deprecated"),
+      ).toBe(true);
     }
   });
 
@@ -458,7 +460,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("add"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("add"))).toBe(true);
     }
   });
 
@@ -473,7 +475,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("--global"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("--global"))).toBe(true);
     }
   });
 
@@ -488,7 +490,9 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("at least one dependency category"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("at least one dependency category"))).toBe(
+        true,
+      );
     }
   });
 
@@ -502,7 +506,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("template must not be empty"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("template must not be empty"))).toBe(true);
     }
   });
 
@@ -516,7 +520,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("must not begin"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("must not begin"))).toBe(true);
     }
   });
 
@@ -530,7 +534,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("script must not be empty"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("script must not be empty"))).toBe(true);
     }
   });
 
@@ -544,7 +548,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("must not begin"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("must not begin"))).toBe(true);
     }
   });
 
@@ -594,7 +598,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("spec must not be empty"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("spec must not be empty"))).toBe(true);
     }
   });
 
@@ -608,7 +612,7 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((issue) => issue.includes("must not begin"))).toBe(true);
+      expect(error.issues.some((issue) => issue.message.includes("must not begin"))).toBe(true);
     }
   });
 
@@ -647,7 +651,7 @@ version: 0.0.1
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
       expect(error.message).toContain("recipe.yml is invalid");
-      expect(error.issues.some((i) => i.includes("title"))).toBe(true);
+      expect(error.issues.some((i) => i.path.includes("title") || i.message.includes("title"))).toBe(true);
     }
   });
 
@@ -668,8 +672,8 @@ prompts:
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((i) => i.includes("duplicate prompt name"))).toBe(true);
-      expect(error.issues.some((i) => i.includes("appName"))).toBe(true);
+      expect(error.issues.some((i) => i.message.includes("duplicate prompt name"))).toBe(true);
+      expect(error.issues.some((i) => i.message.includes("appName"))).toBe(true);
     }
   });
 
@@ -687,7 +691,9 @@ prompts:
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((i) => i.includes("framework") && i.includes("choices"))).toBe(true);
+      expect(error.issues.some((i) => i.message.includes("framework") && i.message.includes("choices"))).toBe(
+        true,
+      );
     }
   });
 
@@ -706,7 +712,9 @@ prompts:
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
-      expect(error.issues.some((i) => i.includes("features") && i.includes("non-empty"))).toBe(true);
+      expect(
+        error.issues.some((i) => i.message.includes("features") && i.message.includes("non-empty")),
+      ).toBe(true);
     }
   });
 

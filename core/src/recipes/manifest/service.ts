@@ -1,5 +1,3 @@
-import { SchemaIssue } from "effect";
-import { Schema } from "effect";
 /**
  * `RecipeManifestService` live layer.
  *
@@ -20,7 +18,13 @@ import {
   RecipeManifestValidationError,
   type RecipeSourceError,
 } from "@lando/sdk/errors";
-import { RecipeManifest } from "@lando/sdk/schema";
+import {
+  RecipeManifest,
+  type ValidationIssue,
+  formatValidationIssueLine,
+  validationIssue,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { decodeOrFail } from "@lando/landofile/decode";
@@ -104,14 +108,8 @@ const rejectUnsupportedSections = (
 
 const recipeSourceLabel = (source: string): string => source.split(/[\\/]/).filter(Boolean).at(-1) ?? source;
 
-const validationIssues = (source: string, cause: unknown): ReadonlyArray<string> => {
-  if (Schema.isSchemaError(cause)) {
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
-    );
-  }
-  return [cause instanceof Error ? cause.message : `Invalid ${recipeSourceLabel(source)}.`];
-};
+const validationIssues = (source: string, cause: unknown): ReadonlyArray<ValidationIssue> =>
+  validationIssuesFromCause(cause, { fallback: `Invalid ${recipeSourceLabel(source)}.` });
 
 const validateManifest = (
   source: string,
@@ -121,11 +119,11 @@ const validateManifest = (
     const label = recipeSourceLabel(source);
     const issues = validationIssues(source, cause);
     return new RecipeManifestValidationError({
-      message: `${label} is invalid: ${issues.join(", ")}.`,
+      message: `${label} is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
       source,
       issues,
     });
-  })(parsed, { onExcessProperty: "error" });
+  })(parsed, { onExcessProperty: "error", errors: "all" });
 
 /**
  * Cross-field invariants enforced after strict schema decode succeeds.
@@ -136,13 +134,13 @@ const validateSemantics = (
   source: string,
   manifest: typeof RecipeManifest.Type,
 ): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError> => {
-  const issues: string[] = [];
+  const issues: ValidationIssue[] = [];
 
   if (manifest.prompts !== undefined) {
     const seen = new Set<string>();
     for (const prompt of manifest.prompts) {
       if (seen.has(prompt.name)) {
-        issues.push(`prompts: duplicate prompt name "${prompt.name}".`);
+        issues.push(validationIssue(["prompts"], `prompts: duplicate prompt name "${prompt.name}".`));
       }
       seen.add(prompt.name);
     }
@@ -154,7 +152,10 @@ const validateSemantics = (
       if (prompt.choicesFrom !== undefined) continue;
       if (prompt.choices === undefined || prompt.choices.length === 0) {
         issues.push(
-          `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list (or use choicesFrom:).`,
+          validationIssue(
+            ["prompts", index],
+            `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list (or use choicesFrom:).`,
+          ),
         );
       }
     }
@@ -163,7 +164,8 @@ const validateSemantics = (
   if (manifest.postInit !== undefined) {
     for (const [index, action] of manifest.postInit.entries()) {
       const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts ?? []);
-      if (authorizationIssue !== undefined) issues.push(`postInit[${index}]: ${authorizationIssue}`);
+      if (authorizationIssue !== undefined)
+        issues.push(validationIssue(["postInit", index], `postInit[${index}]: ${authorizationIssue}`));
       if (action.type !== "bun") continue;
       if (action.verb === "add") {
         const categories = [
@@ -174,39 +176,68 @@ const validateSemantics = (
         ];
         const specs = categories.flatMap((category) => category ?? []);
         if (specs.length === 0) {
-          issues.push(`postInit[${index}] (bun add): at least one dependency category must be non-empty.`);
+          issues.push(
+            validationIssue(
+              ["postInit", index],
+              `postInit[${index}] (bun add): at least one dependency category must be non-empty.`,
+            ),
+          );
         }
         for (const spec of specs) {
           if (spec.trim() === "" || spec.trim().startsWith("-")) {
             issues.push(
-              `postInit[${index}] (bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
+              validationIssue(
+                ["postInit", index],
+                `postInit[${index}] (bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
+              ),
             );
           }
         }
       }
       if (action.verb === "create") {
         if (action.template.trim() === "") {
-          issues.push(`postInit[${index}] (bun create): template must not be empty.`);
+          issues.push(
+            validationIssue(
+              ["postInit", index],
+              `postInit[${index}] (bun create): template must not be empty.`,
+            ),
+          );
         } else if (action.template.trim().startsWith("-")) {
           issues.push(
-            `postInit[${index}] (bun create): template "${action.template}" is invalid; it must not begin with "-".`,
+            validationIssue(
+              ["postInit", index],
+              `postInit[${index}] (bun create): template "${action.template}" is invalid; it must not begin with "-".`,
+            ),
           );
         }
       }
       if ((action.verb === "run" || action.verb === "script") && action.script.trim() === "") {
-        issues.push(`postInit[${index}] (bun ${action.verb}): script must not be empty.`);
+        issues.push(
+          validationIssue(
+            ["postInit", index],
+            `postInit[${index}] (bun ${action.verb}): script must not be empty.`,
+          ),
+        );
       }
       if (action.verb === "run" && action.script.trim().startsWith("-")) {
         issues.push(
-          `postInit[${index}] (bun run): script "${action.script}" is invalid; it must not begin with "-".`,
+          validationIssue(
+            ["postInit", index],
+            `postInit[${index}] (bun run): script "${action.script}" is invalid; it must not begin with "-".`,
+          ),
         );
       }
       if (action.verb === "x") {
         if (action.spec.trim() === "") {
-          issues.push(`postInit[${index}] (bun x): spec must not be empty.`);
+          issues.push(
+            validationIssue(["postInit", index], `postInit[${index}] (bun x): spec must not be empty.`),
+          );
         } else if (action.spec.trim().startsWith("-")) {
           issues.push(
-            `postInit[${index}] (bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
+            validationIssue(
+              ["postInit", index],
+              `postInit[${index}] (bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
+            ),
           );
         }
       }
@@ -217,7 +248,7 @@ const validateSemantics = (
   const label = recipeSourceLabel(source);
   return Effect.fail(
     new RecipeManifestValidationError({
-      message: `${label} is invalid: ${issues.join(", ")}.`,
+      message: `${label} is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
       source,
       issues,
     }),

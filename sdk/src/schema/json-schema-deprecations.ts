@@ -268,7 +268,7 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: Traver
   }
 };
 
-export const withSchemaDeprecations = <S extends SchemaLike>(schema: S, jsonSchema: unknown): unknown => {
+export const withSchemaDeprecations = <S extends SchemaLike, T>(schema: S, jsonSchema: T): T => {
   const copy = cloneJson(jsonSchema);
   const root = jsonObject(copy);
   if (root !== undefined) applyDeprecationsFromAst(root, schema.ast, { root, visited: new WeakMap() });
@@ -383,22 +383,27 @@ const jsonInputAst = (root: AST.AST): AST.AST => {
   return visit(AST.toEncoded(root));
 };
 
+export const jsonSchemaDocument = <S extends SchemaLike>(
+  schema: S,
+  options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
+): JsonSchema.Document<"draft-2020-12"> => {
+  const rootIdentifier = AST.resolveIdentifier(jsonInputAst(schema.ast));
+  return Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), {
+    referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
+    includeAnnotationKey: (key) => key === "acceptsImportRef",
+    ...options,
+  });
+};
+
 export const getJsonSchemaWithDeprecations = <S extends SchemaLike>(
   schema: S,
   options: Schema.ToJsonSchemaOptions = { onExcessProperty: "error" },
-): unknown => {
-  const rootIdentifier = AST.resolveIdentifier(jsonInputAst(schema.ast));
-  const document = JsonSchema.toDocumentDraft07(
-    Schema.toJsonSchemaDocument(Schema.make<Schema.Codec<unknown>>(jsonInputAst(schema.ast)), {
-      referencePolicy: ({ identifier }) => (identifier === rootIdentifier ? undefined : identifier),
-      includeAnnotationKey: (key) => key === "acceptsImportRef",
-      ...options,
-    }),
-  );
+): JsonSchema.JsonSchema => {
+  const document = jsonSchemaDocument(schema, options);
   return withSchemaDeprecations(schema, {
-    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_07,
+    $schema: JsonSchema.META_SCHEMA_URI_DRAFT_2020_12,
     ...document.schema,
-    ...(Object.keys(document.definitions).length === 0 ? {} : { definitions: document.definitions }),
+    ...(Object.keys(document.definitions).length === 0 ? {} : { $defs: document.definitions }),
   });
 };
 

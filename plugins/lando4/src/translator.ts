@@ -255,7 +255,7 @@ const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
   const record = yield* decodeRecord(wire).pipe(
     Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
   );
-  const emitted = emitLandofileYamlEither(record, { sortKeys: true });
+  const emitted = emitLandofileYamlEither(record, { sortKeys: true, leadingCommentBlock: "editor-schema" });
   if (Result.isFailure(emitted)) {
     return yield* Effect.fail(translateError(emitted.failure.message, undefined, emitted.failure));
   }

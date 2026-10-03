@@ -4,6 +4,12 @@
 
 ## Compatibility notes
 
+- Published JSON Schema artifacts (`getJsonSchema`, `dist/schemas/**`, `dist/command-schemas/**`) are draft 2020-12 documents: `$schema` is `https://json-schema.org/draft/2020-12/schema` and shared definitions live under `$defs`. Editors get draft-07 artifacts from the new `getEditorJsonSchema("LandofileShape" | "GlobalConfig")` export, published as `landofile.schema.json` and `global-config.schema.json` with closed objects and generated descriptions. `LANDOFILE_EDITOR_SCHEMA_URL` is the one URL of the editor Landofile artifact; new Landofiles from `lando init` and `lando app:config:translate` reference it in a leading `# yaml-language-server: $schema=<url>` line.
+
+- `@lando/sdk/schema/standard` is an additive, direct-import subpath exporting `LandofileStandardSchema`, `GlobalConfigStandardSchema`, `PluginManifestStandardSchema`, and `RecipeManifestStandardSchema`, plus their `LandofileStandardJSONSchema`, `GlobalConfigStandardJSONSchema`, `PluginManifestStandardJSONSchema`, and `RecipeManifestStandardJSONSchema` counterparts. Standard Schema V1 validation uses the canonical decoders, rejects excess properties, and reports all issues. Standard JSON Schema V1 exposes lazy `input({ target })` and `output({ target })` documents for `draft-2020-12` and `draft-07`; JSON Schema cannot enforce every runtime refinement. These views do not mutate the canonical schema instances and are not added to the schema barrel or its frozen export-name fixture.
+
+- `ValidationIssue` and `ValidationIssuePath` are the shared shape of authored-file diagnostics. `LandofileValidationError.issues`, `LandofileWriteValidationError.issues`, `RecipeManifestValidationError.issues`, and `BunShellScriptFrontMatterError.issues` are arrays of `{ path, message, suggestion? }` instead of strings. `ConfigLintViolation.path` is a `ValidationIssuePath` and `suggestedFix` is renamed to `suggestion`. Unknown keys within Damerau-Levenshtein distance 2 set `suggestion` to `Did you mean "<key>"?`. Command result envelopes copy those issues onto optional `error.issues` when they decode as `ValidationIssue` values. Text output prints one line per issue as `<path>: <message>`, with numeric indexes in brackets (`services.web.ports[0]`) and no prefix at the document root.
+
 - `@lando/core/testing` no longer re-exports `makeJsonRendererLive`. It exports the renderer runtime as the `RendererRuntime` namespace; use `RendererRuntime.layerJson(io)` (the other renderer layers are `layerPlain`, `layerPlainTaskDetail`, `layerJsonNotification`, `layerVerbose`, and the `layer*Service` variants). `renderPlain` stays a named export. No other `@lando/core/testing` export is renamed or removed.
 
 - The erased SDK service exports `HttpClientShape` and `HttpClientError` are removed alongside the SDK `HttpClient` tag. Use `HttpClient.HttpClient` from `effect/http/HttpClient` and `HttpClientError.HttpClientError` from `effect/http/HttpClientError`. The HTTP implementation package replaces `HttpClientLive` / `makeHttpClientLive` with `layer` / `layerWith`, and `DownloaderLive` with `layer` on its downloader subpath; the old service and timeout subpaths are removed.
@@ -344,6 +350,8 @@ It registers no JSON Schema.
 
 ## Additive schema exports
 
+- `LANDOFILE_EDITOR_SCHEMA_URL`
+- `getEditorJsonSchema`
 - `AGENT_SOCKET_CONTAINER_DIR`
 - `SSH_AGENT_SOCKET_NAME`
 - `GPG_AGENT_SOCKET_NAME`
@@ -880,6 +888,17 @@ It registers no JSON Schema.
 - `ROUTE_PRIORITY_WILDCARD_BASE`
 - `ROUTE_PRIORITY_EXACT_BASE`
 - `ROUTE_PRIORITY_MAX`
+
+- `ValidationIssue`
+- `ValidationIssuePath`
+- `formatValidationIssueLine`
+- `formatValidationIssuePath`
+- `parseValidationIssuePath`
+- `suggestionForUnknownKey`
+- `validationIssue`
+- `validationIssueFromText`
+- `validationIssuesFromCause`
+- `validationIssuesFromSchemaIssue`
 
 ## Additive Beta service fields
 

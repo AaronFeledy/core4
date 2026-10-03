@@ -16,6 +16,7 @@ import { ServiceName, defineLandofile } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { TS_TIMEOUT_ENV } from "@lando/landofile/ts-loader";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(
@@ -382,7 +383,9 @@ describe("LandofileService layer — TS form schema validation", () => {
       const failure = failureFromExit(exit);
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
-        expect(failure.issues).toContain("services.web.unsupported");
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+          "services.web.unsupported",
+        );
       }
     });
   });

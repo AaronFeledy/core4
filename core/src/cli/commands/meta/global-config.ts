@@ -18,6 +18,7 @@ import {
 } from "@lando/engine/config-write/write-core";
 import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { parseLandofile } from "@lando/landofile/parser";
+import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
@@ -88,7 +89,10 @@ type GlobalConfigServices = FileSystem | GlobalAppService;
 
 const emptyGlobalLandofile: LandofileShapeType = { name: "global", runtime: 4, services: {} };
 
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, { onExcessProperty: "error" });
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, {
+  onExcessProperty: "error",
+  errors: "all",
+});
 
 const readGlobalText = (filePath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({
@@ -121,7 +125,7 @@ export const globalConfigSet = Effect.fn("GlobalConfig.set")(function* (
       new LandofileWriteValidationError({
         message: "`meta global config set` requires a <key.path> and a <value>.",
         file: filePath,
-        issues: ["Missing key path or value."],
+        issues: [validationIssue([], "Missing key path or value.")],
         remediation: "Usage: `lando meta global config set <key.path> <value> [--type ...]`.",
       }),
     );
@@ -153,7 +157,7 @@ export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
       new LandofileWriteValidationError({
         message: "`meta global config unset` requires a <key.path>.",
         file: filePath,
-        issues: ["Missing key path."],
+        issues: [validationIssue([], "Missing key path.")],
         remediation: "Usage: `lando meta global config unset <key.path>`.",
       }),
     );
@@ -206,7 +210,7 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
       new LandofileWriteValidationError({
         message: "No editor is configured.",
         file: filePath,
-        issues: ["Neither $VISUAL nor $EDITOR is set."],
+        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
         remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
       }),
     );
@@ -216,7 +220,7 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
       new LandofileWriteValidationError({
         message: `The editor session failed: ${edited.reason}`,
         file: filePath,
-        issues: [edited.reason],
+        issues: [validationIssue([], edited.reason)],
         remediation: "Re-run `lando meta global config edit` after resolving the editor error.",
       }),
     );
@@ -227,7 +231,7 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
         new LandofileWriteValidationError({
           message: error.message,
           file: filePath,
-          issues: [error.message],
+          issues: [validationIssue([], error.message)],
           remediation: "Fix the YAML syntax so the file parses, then retry. The file was left unchanged.",
         }),
       ),
@@ -326,7 +330,7 @@ export const globalConfig = Effect.fn("GlobalConfig.run")(function* (
     new LandofileWriteValidationError({
       message: `Unknown \`meta global config\` subcommand: "${subcommand}".`,
       file: filePath,
-      issues: [`Unsupported subcommand: "${subcommand}".`],
+      issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
       remediation: "Usage: `lando meta global config [view|set|unset|edit|validate]`.",
     }),
   );

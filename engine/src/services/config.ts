@@ -64,7 +64,7 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
 
   const merged = mergeConfig(fileConfig, overlay);
   try {
-    return Schema.decodeUnknownSync(GlobalConfig)(merged);
+    return Schema.decodeUnknownSync(GlobalConfig)(merged, { errors: "all" });
   } catch (cause) {
     const malformedAlias = NETWORK_BOOLEAN_ENV_ALIASES.find((name) => {
       const value = process.env[name];

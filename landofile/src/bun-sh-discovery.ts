@@ -1,7 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import { SchemaIssue } from "effect";
-import { Schema } from "effect";
 
 import { Effect } from "effect";
 
@@ -10,7 +8,7 @@ import {
   BunShellScriptFrontMatterError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { BunShellScriptFrontMatter } from "@lando/sdk/schema";
+import { BunShellScriptFrontMatter, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 
 import { decodeOrFail } from "./decode.ts";
 export const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
@@ -129,14 +127,8 @@ const parseFrontMatterBody = (
   return { parsed: result };
 };
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (Schema.isSchemaError(cause)) {
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid .bun.sh front-matter."];
-};
+const validationIssues = (cause: unknown) =>
+  validationIssuesFromCause(cause, { fallback: "Invalid .bun.sh front-matter." });
 
 const decodeFrontMatter = (
   scriptPath: string,
@@ -151,7 +143,7 @@ const decodeFrontMatter = (
         issues: validationIssues(cause),
         remediation: FRONT_MATTER_REMEDIATION,
       }),
-  )(parsed, { onExcessProperty: "error" });
+  )(parsed, { onExcessProperty: "error", errors: "all" });
 
 const detectUnsupportedKey = (parsed: Record<string, unknown>): { key: string } | undefined => {
   for (const entry of UNSUPPORTED_FRONT_MATTER_KEYS) {
@@ -251,7 +243,7 @@ const parseScriptFile = Effect.fnUntraced(function* (
       new BunShellScriptFrontMatterError({
         message: `.bun.sh front-matter at ${scriptPath} has a malformed YAML line.`,
         path: scriptPath,
-        issues: [`line ${malformedLine + 1}: expected "key: value"`],
+        issues: [validationIssue([], `line ${malformedLine + 1}: expected "key: value"`)],
         remediation: FRONT_MATTER_REMEDIATION,
       }),
     );

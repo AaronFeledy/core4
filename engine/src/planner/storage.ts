@@ -9,6 +9,7 @@ import {
   parseContainerDestination,
 } from "@lando/sdk/schema";
 
+import { validationIssueFromText } from "@lando/sdk/schema";
 import { kebab, shortHash } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
 
@@ -30,7 +31,7 @@ export const plannedContainerDestination = (
     return new LandofileValidationError({
       message: containerDestinationRefusalMessage(parsed.reason, target),
       file: `${appRoot}/.lando.yml`,
-      issues: [issue],
+      issues: [validationIssueFromText(issue, containerDestinationRefusalMessage(parsed.reason, target))],
     });
   }
   return parsed.value;
@@ -55,7 +56,12 @@ export const authoredStorageScopes = (
         invalidCacheEntry: new LandofileValidationError({
           message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
           file: `${appRoot}/.lando.yml`,
-          issues: [`services.${serviceName}.storage[${index}].scope`],
+          issues: [
+            validationIssueFromText(
+              `services.${serviceName}.storage[${index}].scope`,
+              `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
+            ),
+          ],
         }),
       };
     }

@@ -87,7 +87,7 @@ describe("FileSyncEngineCapabilities", () => {
     if (typeof fromRegistry !== "object" || fromRegistry === null || !("$schema" in fromRegistry)) {
       throw new Error("missing FileSyncEngineCapabilities schema");
     }
-    expect(fromRegistry.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(fromRegistry.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
   });
 });
 
@@ -166,7 +166,7 @@ describe("FileSyncSessionSpec", () => {
     if (typeof fromRegistry !== "object" || fromRegistry === null || !("$schema" in fromRegistry)) {
       throw new Error("missing FileSyncSessionSpec schema");
     }
-    expect(fromRegistry.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(fromRegistry.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
   });
 });
 

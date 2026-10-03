@@ -66,17 +66,17 @@ describe("LandofileService layer — build shape discrimination boundary", () =>
 
       // Then: validationIssues keeps the schema remediation, not the dotted path
       expect(error._tag).toBe("LandofileValidationError");
-      const mixedIssue = error.issues.find((issue) => issue.startsWith("Landofile service"));
+      const mixedIssue = error.issues.find((issue) => issue.message.startsWith("Landofile service"));
       expect(mixedIssue).toBeDefined();
-      expect(mixedIssue?.startsWith("Landofile service")).toBe(true);
-      expect(mixedIssue).toContain("Compose");
-      expect(mixedIssue).toContain("Lando build-script");
-      expect(mixedIssue).toContain("artifact");
-      expect(mixedIssue).toContain("no_cache");
-      expect(mixedIssue).toContain("remove");
-      expect(mixedIssue).toContain("image:");
-      expect(mixedIssue).not.toContain("build.dockerfile");
-      expect(mixedIssue).not.toBe("services.web.build");
+      expect(mixedIssue?.message.startsWith("Landofile service")).toBe(true);
+      expect(mixedIssue?.message).toContain("Compose");
+      expect(mixedIssue?.message).toContain("Lando build-script");
+      expect(mixedIssue?.message).toContain("artifact");
+      expect(mixedIssue?.message).toContain("no_cache");
+      expect(mixedIssue?.message).toContain("remove");
+      expect(mixedIssue?.message).toContain("image:");
+      expect(mixedIssue?.message).not.toContain("build.dockerfile");
+      expect(mixedIssue?.message).not.toBe("services.web.build");
     });
   });
 
@@ -101,7 +101,11 @@ describe("LandofileService layer — build shape discrimination boundary", () =>
       const error = validationErrorFrom(await discoverExit());
 
       // Then: merged strict-decode (onExcessProperty: error) reports the unknown key
-      expect(error.issues.some((issue) => issue.includes("composeBuild"))).toBe(true);
+      expect(
+        error.issues.some(
+          (issue) => issue.message.includes("composeBuild") || issue.path.includes("composeBuild"),
+        ),
+      ).toBe(true);
     });
   });
 });

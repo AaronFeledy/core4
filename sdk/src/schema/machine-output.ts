@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { DeprecationUse } from "./deprecation.ts";
+import { ValidationIssue } from "./validation-issue.ts";
 
 /** Command output formats; `json` and `ndjson` are machine-readable, others are human encodings. */
 export const CommandResultFormat = Schema.Literals(["text", "json", "table", "yaml", "ndjson"]);
@@ -33,6 +34,9 @@ const TaggedErrorJson = Schema.Struct({
   ),
   reason: Schema.optionalKey(Schema.String).annotate({
     description: "Structured failure reason when supplied as a string by the source error.",
+  }),
+  issues: Schema.optionalKey(Schema.Array(ValidationIssue)).annotate({
+    description: "Structured authored-file problems when the failure carries ValidationIssue values.",
   }),
 });
 

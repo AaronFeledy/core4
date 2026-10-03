@@ -6,6 +6,7 @@ import { type Context, Effect } from "effect";
 import { parseEnvFile } from "@lando/landofile/env-file";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
+import { validationIssueFromText } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 
 type EnvFileInput = {
@@ -31,7 +32,12 @@ const loadEnvFiles = Effect.fnUntraced(function* (
       new LandofileValidationError({
         message: `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
         file: `${input.appRoot}/.lando.yml`,
-        issues: [input.issuePath],
+        issues: [
+          validationIssueFromText(
+            input.issuePath,
+            `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
+          ),
+        ],
       }),
     );
   }
@@ -46,7 +52,12 @@ const loadEnvFiles = Effect.fnUntraced(function* (
           new LandofileValidationError({
             message: `Unable to read env file ${source} ${input.readContext}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
             file: source,
-            issues: [`${input.issuePath}[${index}]`],
+            issues: [
+              validationIssueFromText(
+                `${input.issuePath}[${index}]`,
+                `Unable to read env file ${source} ${input.readContext}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
+              ),
+            ],
           }),
       ),
     );
@@ -56,7 +67,12 @@ const loadEnvFiles = Effect.fnUntraced(function* (
         new LandofileValidationError({
           message: `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
           file: parsed.issue.source,
-          issues: [`line ${parsed.issue.line}`],
+          issues: [
+            validationIssueFromText(
+              `line ${parsed.issue.line}`,
+              `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
+            ),
+          ],
         }),
       );
     }

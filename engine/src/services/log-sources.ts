@@ -2,6 +2,7 @@ import { Result, Schema } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LogSource, type LogSource as LogSourceType } from "@lando/sdk/schema";
+import { validationIssueFromText } from "@lando/sdk/schema";
 
 export interface MergeLogSourcesInput {
   readonly appRoot: string;
@@ -21,7 +22,7 @@ const validationError = (
   new LandofileValidationError({
     message,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [issue],
+    issues: [validationIssueFromText(issue, message)],
   });
 
 const validateSourceShape = (

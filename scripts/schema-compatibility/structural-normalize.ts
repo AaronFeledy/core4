@@ -59,6 +59,12 @@ const disjointBranches = (left: JsonValue, right: JsonValue): boolean => {
 /** Canonicalize only identities whose accepted JSON values are unchanged. */
 export const normalizeStructure = (schema: JsonSchema, preserveEvaluatedProperties = false): JsonSchema => {
   const result: Record<string, JsonValue> = { ...schema };
+  if (Array.isArray(result.prefixItems)) {
+    const rest = result.items;
+    result.items = result.prefixItems;
+    Reflect.deleteProperty(result, "prefixItems");
+    if (rest !== undefined) result.additionalItems = rest;
+  }
   if (Array.isArray(result.items) && result.items.length === 1) {
     const item = result.items[0];
     if (item !== undefined && jsonEquals(item, result.additionalItems)) {

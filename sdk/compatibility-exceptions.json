@@ -2356,5 +2356,53 @@
     "changeKind": "property-removed",
     "path": "$.contributes.httpClients.items.capabilities",
     "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "type-changed",
+    "path": "$.violations.items.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "type-changed",
+    "path": "$.appConfig.violations.items.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig.violations.items.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "type-changed",
+    "path": "$.violations.items.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "type-changed",
+    "path": "$.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-removed",
+    "path": "$.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
   }
 ]

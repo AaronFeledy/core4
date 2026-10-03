@@ -32,7 +32,7 @@ describe("empty command result wire contract", () => {
     const artifact = getJsonSchemaWithDeprecations(EmptyResultSchema);
     // Then both branches and their unrestricted contents remain unchanged.
     expect(artifact).toEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
       anyOf: expect.arrayContaining([{ type: "object" }, { type: "array" }]),
     });
     expect(artifact).toHaveProperty("anyOf.length", 2);
@@ -46,7 +46,7 @@ describe("empty command result wire contract", () => {
     // Then the wider shape is preserved rather than globally rewritten.
     expect(Schema.is(schema)("scalar")).toBe(true);
     expect(artifact).toEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
       not: { type: "null" },
     });
   });

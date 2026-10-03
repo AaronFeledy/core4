@@ -7,7 +7,7 @@ import {
   makeManagedFileTransactionGuard,
   makeManagedFileTransactions,
 } from "@lando/managed-file/transaction";
-import { LandofileAuthoringFragment } from "@lando/sdk/schema";
+import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragment } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { failure, originals, snapshot, withFixture } from "./translate-lando3-fixture.ts";
@@ -31,6 +31,9 @@ test("full write folds recipe content and backs up every overwritten or removed 
       expect(await Bun.file(backup).text()).toBe(bytes);
     }
     const files = await snapshot(root);
+    expect(
+      files[".lando.yml"]?.startsWith(`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}\n`),
+    ).toBe(true);
     expect(files).not.toHaveProperty(".lando.recipe.yml");
     for (const [file, content] of Object.entries(files))
       await Effect.runPromise(

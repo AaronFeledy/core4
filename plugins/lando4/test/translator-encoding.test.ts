@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { emitLandofileYamlEither, parseLandofile } from "@lando/sdk/landofile";
-import { LandofileAuthoringFragment } from "@lando/sdk/schema";
+import { LANDOFILE_EDITOR_SCHEMA_URL, LandofileAuthoringFragment } from "@lando/sdk/schema";
 
 import { lando4ConfigTranslator } from "../src/translator.ts";
 
 const encodeOf = lando4ConfigTranslator.encode;
+const modeline = `# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}`;
 if (encodeOf === undefined) throw new Error("The lando4 translator must ship an encoder.");
 
 const COMPLETE_CONTEXT = {
@@ -21,6 +22,7 @@ describe("lando4 encoding", () => {
     expect(result.diagnostics).toEqual([]);
     expect(result.text).toBe(
       [
+        modeline,
         "name: myapp",
         "runtime: 4",
         "services:",
@@ -32,10 +34,9 @@ describe("lando4 encoding", () => {
     );
   });
 
-  test("emits no provenance comment block", async () => {
+  test("emits only the editor modeline as a leading comment", async () => {
     const result = await Effect.runPromise(encodeOf({ context: COMPLETE_CONTEXT }));
-    expect(result.text.startsWith("#")).toBe(false);
-    expect(result.text).not.toContain("#");
+    expect(result.text.split("\n").filter((line) => line.startsWith("#"))).toEqual([modeline]);
   });
 
   test("is byte stable across repeated encodes", async () => {
@@ -51,7 +52,9 @@ describe("lando4 encoding", () => {
         fragment: { services: { web: { port: "{{ env.LOCAL_PORT }}" } } },
       }),
     );
-    expect(result.text).toBe(["services:", "  web:", '    port: "{{ env.LOCAL_PORT }}"', ""].join("\n"));
+    expect(result.text).toBe(
+      [modeline, "services:", "  web:", '    port: "{{ env.LOCAL_PORT }}"', ""].join("\n"),
+    );
     expect(result.text).not.toContain("name:");
     expect(result.text).not.toContain("type: lando");
   });
@@ -61,6 +64,7 @@ describe("lando4 encoding", () => {
     const parsed = await Effect.runPromise(
       parseLandofile({ file: ".lando.yml", content: result.text, cwd: "." }),
     );
+    expect(parsed).toEqual(COMPLETE_CONTEXT);
     const actual = await Effect.runPromise(
       Schema.decodeUnknownEffect(LandofileAuthoringFragment)(parsed, { onExcessProperty: "error" }),
     );
@@ -89,5 +93,12 @@ describe("lando4 encoding", () => {
     expect(emitLandofileYamlEither({ b: 1, a: 2 }, { sortKeys: true })).toEqual(
       expect.objectContaining({ _tag: "Success" }),
     );
+  });
+
+  test("leaves the default serializer free of editor comments", () => {
+    expect(emitLandofileYamlEither({ name: "demo", runtime: 4 })).toMatchObject({
+      _tag: "Success",
+      success: "name: demo\nruntime: 4\n",
+    });
   });
 });

@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { type Context, Effect, Stream } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
+import { validationIssueFromText } from "@lando/sdk/schema";
 import type {
   FileSystem,
   ServiceTypeProjectFileDeclaration,
@@ -29,7 +30,7 @@ const validationError = (input: ProjectFileRequest, message: string) =>
   new LandofileValidationError({
     message,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [`services.${input.serviceName}.packageRoot`],
+    issues: [validationIssueFromText(`services.${input.serviceName}.packageRoot`, message)],
   });
 
 const containedPath = (

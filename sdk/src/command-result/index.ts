@@ -1,7 +1,7 @@
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { CommandResultEnvelope, StreamFrame, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
@@ -62,17 +62,21 @@ const taggedErrorJson = (
     readonly destructive: boolean;
   }>;
   readonly reason?: string;
+  readonly issues?: ReadonlyArray<ValidationIssue>;
 } => {
   const record = asRecord(error);
   const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
   const message = nonEmptyString(record?.message) ?? String(error);
   const remediation = nonEmptyString(record?.remediation);
   const reason = typeof record?.reason === "string" ? record.reason : undefined;
+  const decodedIssues = Schema.decodeUnknownResult(Schema.Array(ValidationIssue))(record?.issues);
+  const issues = Result.isSuccess(decodedIssues) ? decodedIssues.success : undefined;
   const base = {
     _tag: tag,
     message,
     ...(remediation === undefined ? {} : { remediation }),
     ...(reason === undefined ? {} : { reason }),
+    ...(issues === undefined ? {} : { issues }),
   };
   if (error instanceof SqlConfirmRequiredError) {
     return { ...base, service: error.service, steps: error.steps };

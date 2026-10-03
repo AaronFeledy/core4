@@ -119,8 +119,8 @@ describe("authoring JSON Schema publication", () => {
     // When its public artifact is emitted.
     const schema = getJsonSchema("AuthoringExpression");
     // Then function calls retain their callee and recursive argument graph.
-    const { definitions } = Schema.decodeUnknownSync(
-      Schema.Struct({ definitions: Schema.Record(Schema.String, Schema.Unknown) }),
+    const { $defs: definitions } = Schema.decodeUnknownSync(
+      Schema.Struct({ $defs: Schema.Record(Schema.String, Schema.Unknown) }),
     )(schema);
     expect(Object.values(definitions)).toEqual(
       expect.arrayContaining([
@@ -132,7 +132,7 @@ describe("authoring JSON Schema publication", () => {
                 callee: { type: "string" },
                 args: {
                   type: "array",
-                  items: { $ref: expect.stringMatching(/^#\/definitions\/ExpressionNode/) },
+                  items: { $ref: expect.stringMatching(/^#\/\$defs\/ExpressionNode/) },
                 },
               }),
             }),
@@ -167,8 +167,8 @@ describe("authoring JSON Schema publication", () => {
         }),
       ]),
     );
-    expect(schema).toHaveProperty("definitions.ServiceConfigInputAuthoringFragment");
-    expect(schema).not.toHaveProperty("definitions.ServiceConfigInput");
+    expect(schema).toHaveProperty("$defs.ServiceConfigInputAuthoringFragment");
+    expect(schema).not.toHaveProperty("$defs.ServiceConfigInput");
   });
 
   test("keeps complete and partial definitions distinct when publishing encode input", () => {
@@ -177,7 +177,7 @@ describe("authoring JSON Schema publication", () => {
     // When both trees share an artifact.
     const schema = getJsonSchema(name);
     // Then the complete context and the partial fragment stay separate wire members.
-    const definition = (schema as { definitions?: Record<string, unknown> }).definitions?.[name] as
+    const definition = (schema as { $defs?: Record<string, unknown> }).$defs?.[name] as
       | { properties?: Record<string, unknown> }
       | undefined;
     expect(
@@ -186,7 +186,7 @@ describe("authoring JSON Schema publication", () => {
     expect(
       definition?.properties ?? (schema as { properties?: Record<string, unknown> }).properties,
     ).toHaveProperty("fragment");
-    expect(schema).not.toHaveProperty("definitions.ServiceConfigInput");
+    expect(schema).not.toHaveProperty("$defs.ServiceConfigInput");
   });
 
   test("passes annotation validation when publishing the public registry", () => {

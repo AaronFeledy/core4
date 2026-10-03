@@ -22,9 +22,9 @@ const rootJsonSchema = (schema: unknown): unknown => {
   if (schema === null || typeof schema !== "object") throw new TypeError("Expected a schema document");
   const ref: unknown = Reflect.get(schema, "$ref");
   if (typeof ref !== "string") return schema;
-  const definitions: unknown = Reflect.get(schema, "definitions");
+  const definitions: unknown = Reflect.get(schema, "$defs");
   if (definitions === null || typeof definitions !== "object") throw new TypeError("Expected definitions");
-  return Reflect.get(definitions, ref.replace(/^#\/definitions\//, ""));
+  return Reflect.get(definitions, ref.replace(/^#\/\$defs\//, ""));
 };
 
 describe("DeprecationNotice", () => {
@@ -73,7 +73,7 @@ describe("DeprecationNotice", () => {
     expect(JSON.stringify(getJsonSchemaWithDeprecations(DeprecationNotice))).toContain("Deprecation Notice");
     expect(JSON.stringify(getJsonSchemaWithDeprecations(DeprecationNotice))).not.toContain('"$ref"');
     const jsonSchema = getJsonSchema("DeprecationNotice") as Record<string, unknown>;
-    expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(jsonSchema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     expect(JSON.stringify(jsonSchema)).toContain("Deprecation Notice");
   });
 });
@@ -299,7 +299,7 @@ describe("schema deprecation annotations", () => {
     });
     const jsonSchema = getJsonSchemaWithDeprecations(ReferencedParent) as {
       readonly properties?: Record<string, { readonly $ref?: string }>;
-      readonly definitions?: Record<
+      readonly $defs?: Record<
         string,
         {
           readonly properties?: Record<
@@ -310,14 +310,12 @@ describe("schema deprecation annotations", () => {
       >;
     };
 
-    expect(jsonSchema.properties?.child?.$ref).toBe("#/definitions/ReferencedDeprecatedChild");
-    expect(jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.oldField?.deprecated).toBe(true);
-    expect(
-      jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.oldField?.["x-deprecation"],
-    ).toEqual(notice);
-    expect(
-      jsonSchema.definitions?.ReferencedDeprecatedChild?.properties?.newField?.deprecated,
-    ).toBeUndefined();
+    expect(jsonSchema.properties?.child?.$ref).toBe("#/$defs/ReferencedDeprecatedChild");
+    expect(jsonSchema.$defs?.ReferencedDeprecatedChild?.properties?.oldField?.deprecated).toBe(true);
+    expect(jsonSchema.$defs?.ReferencedDeprecatedChild?.properties?.oldField?.["x-deprecation"]).toEqual(
+      notice,
+    );
+    expect(jsonSchema.$defs?.ReferencedDeprecatedChild?.properties?.newField?.deprecated).toBeUndefined();
   });
 
   test("does not mark a union root deprecated when only one branch is deprecated", () => {

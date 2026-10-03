@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { Effect, Predicate, Schema, SchemaIssue } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import { hasIncludeCycle } from "./include-graph.ts";
 
 import {
@@ -13,7 +13,13 @@ import {
   RecipeSourceError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type IncludeEntry,
+  LandofileShape,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
 import { mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
@@ -660,17 +666,16 @@ const parseFragment = (
   );
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> =>
-  Schema.isSchemaError(cause)
-    ? SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-        (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
-      )
-    : [causeMessage(cause)];
+  validationIssuesFromCause(cause, { fallback: causeMessage(cause) }).map(formatValidationIssueLine);
 
 const decodeMerged = (
   value: Record<string, unknown>,
   filePath: string,
 ): Effect.Effect<LandofileShape, LandofileParseError> => {
-  const decoded = Schema.decodeUnknownResult(LandofileShape)(value, { onExcessProperty: "error" });
+  const decoded = Schema.decodeUnknownResult(LandofileShape)(value, {
+    onExcessProperty: "error",
+    errors: "all",
+  });
   if (decoded._tag === "Success") return Effect.succeed(decoded.success);
   return Effect.fail(
     new LandofileParseError({

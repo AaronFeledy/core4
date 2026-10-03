@@ -27,7 +27,7 @@ const COMPOSE_WAVE_FIELDS = [
 ] as const;
 
 const publishedDescription = (field: string): unknown => {
-  const schema = getJsonSchema("ServiceConfig");
+  const schema: unknown = getJsonSchema("ServiceConfig");
   if (!isServiceConfigJsonSchema(schema)) return undefined;
   const property = schema.properties?.[field];
   return typeof property === "object" ? property.description : undefined;

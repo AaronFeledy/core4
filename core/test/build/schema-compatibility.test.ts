@@ -19,6 +19,28 @@ const objectSchema = (
 });
 
 describe("schema compatibility classifier", () => {
+  test.each([false, true, { type: "string" }] satisfies readonly (boolean | JsonSchema)[])(
+    "recognizes tuple dialect equivalence with rest %j",
+    (rest) => {
+      const items = [{ type: "string" }, { type: "number" }];
+      const before = { type: "array", items, additionalItems: rest };
+      const after = { type: "array", prefixItems: items, items: rest };
+
+      const findings = classifySchemaChange(before, after, "strict");
+
+      expect(findings).toEqual([]);
+    },
+  );
+
+  test("preserves tuple rest constraints across a dialect change", () => {
+    const before = { type: "array", items: [{ type: "string" }], additionalItems: { type: "number" } };
+    const after = { type: "array", prefixItems: [{ type: "string" }], items: false };
+
+    const findings = classifySchemaChange(before, after, "strict");
+
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
   test.each(["^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "^[a-z]+$", "^x-[\\s\\S]*?$", "__proto__"])(
     "recognizes the closed record representation of key pattern %s",
     (pattern) => {

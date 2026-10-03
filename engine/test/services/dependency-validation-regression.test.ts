@@ -21,7 +21,7 @@ test("reports the first dependency cycle with authored conditions and its closin
     message:
       "Dependency cycle detected: db --[service_completed_successfully]--> cache --[service_started]--> db. Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
     file: "/app/.lando.yml",
-    issues: ["services.cache.dependsOn"],
+    issues: [{ path: ["services", "cache", "dependsOn"] }],
   });
 });
 
@@ -34,7 +34,7 @@ test("reports a self dependency as a one-edge cycle", async () => {
   expect(error).toMatchObject({
     message:
       "Dependency cycle detected: web --[service_started]--> web. Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
-    issues: ["services.web.dependsOn"],
+    issues: [{ path: ["services", "web", "dependsOn"] }],
   });
 });
 

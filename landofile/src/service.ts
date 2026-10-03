@@ -1,6 +1,4 @@
 import { dirname, join } from "node:path";
-import { SchemaIssue } from "effect";
-import { Schema } from "effect";
 
 import { Cause, type Context, Effect, Layer, Predicate, Result } from "effect";
 
@@ -21,7 +19,14 @@ import {
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
-import { type LandofileLayer, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
+import {
+  type LandofileLayer,
+  LandofileShape,
+  ServiceConfig,
+  formatValidationIssueLine,
+  validationIssue,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import {
   ConfigService,
   LandofileService,
@@ -180,18 +185,11 @@ const ensureConsistentRoot = Effect.fnUntraced(function* (appRoot: string, input
   if (guard !== undefined) yield* guard.ensureConsistent(appRoot);
 });
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (Schema.isSchemaError(cause)) {
-    // A "Landofile service" remediation keeps its own issue next to its path so
-    // the user learns both what is wrong and where.
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.flatMap((issue) => {
-      const path = (issue.path ?? []).join(".");
-      if (path === "") return [issue.message];
-      return issue.message.startsWith("Landofile service") ? [path, issue.message] : [path];
-    });
-  }
-  return [cause instanceof Error ? cause.message : "Invalid Landofile."];
-};
+const validationIssues = (cause: unknown) =>
+  validationIssuesFromCause(cause, {
+    fallback: "Invalid Landofile.",
+    extraAllowedKeys: (path) => (path.length >= 3 && path[0] === "services" ? [...SERVICE_CONFIG_KEYS] : []),
+  });
 
 const unsupportedAuthoredServiceKeyTypes = (
   parsed: unknown,
@@ -251,11 +249,11 @@ const validateLandofile = (
     const issues = validationIssues(cause);
     const { scope, remediation } = validationScope(parsed);
     return new LandofileValidationError({
-      message: `Landofile contains ${scope}: ${issues.join(", ")}. ${remediation}`,
+      message: `Landofile contains ${scope}: ${issues.map(formatValidationIssueLine).join(", ")}. ${remediation}`,
       file: filePath,
       issues,
     });
-  })(parsed, { onExcessProperty: "error" });
+  })(parsed, { onExcessProperty: "error", errors: "all" });
 };
 
 const scanContentForUnsupportedExpressions = (
@@ -298,10 +296,10 @@ const materializeLoadExpressions = Effect.fnUntraced(function* (
 ): Effect.fn.Return<Record<string, unknown>, LandofileValidationError> {
   const materialized = materializeLoadScopeExpressions(value, filePath, env);
   if (materialized.unresolved.length === 0) return materialized.value;
-  const issues = materialized.unresolved.map(({ path, reason }) => `${path} (${reason})`);
+  const issues = materialized.unresolved.map(({ path, reason }) => validationIssue(path, reason));
   return yield* Effect.fail(
     new LandofileValidationError({
-      message: `Landofile cannot resolve configuration expressions: ${issues.join(", ")}. Set the missing recipe option or environment variable, add a default(), or replace the expression with a literal value.`,
+      message: `Landofile cannot resolve configuration expressions: ${issues.map(formatValidationIssueLine).join(", ")}. Set the missing recipe option or environment variable, add a default(), or replace the expression with a literal value.`,
       file: filePath,
       issues,
     }),

@@ -165,8 +165,10 @@ const extractExtraTagFields = (
     const issues = record.issues;
     if (Array.isArray(issues) && issues.length > 0) {
       const flat = issues
-        .filter((issue): issue is string => typeof issue === "string")
-        .map((issue) => `- ${issue}`)
+        .flatMap((issue) => {
+          const line = formatStructuredIssue(issue);
+          return line === undefined ? [] : [line];
+        })
         .join("\n");
       if (flat.length > 0) out.push(["issues", `\n${flat}`]);
     }
@@ -174,6 +176,35 @@ const extractExtraTagFields = (
   const op = asString(record.operation);
   if (op !== undefined) out.push(["operation", op]);
   return out;
+};
+
+const formatIssuePath = (path: readonly (string | number)[]): string => {
+  let formatted = "";
+  for (const segment of path) {
+    formatted =
+      typeof segment === "number"
+        ? `${formatted}[${segment}]`
+        : formatted.length === 0
+          ? segment
+          : `${formatted}.${segment}`;
+  }
+  return formatted;
+};
+
+const formatStructuredIssue = (issue: unknown): string | undefined => {
+  if (typeof issue !== "object" || issue === null) return undefined;
+  const path = Reflect.get(issue, "path");
+  const message = Reflect.get(issue, "message");
+  const suggestion = Reflect.get(issue, "suggestion");
+  if (typeof message !== "string" || !Array.isArray(path)) return undefined;
+  const segments: Array<string | number> = [];
+  for (const segment of path) {
+    if (typeof segment !== "string" && typeof segment !== "number") return undefined;
+    segments.push(segment);
+  }
+  const where = formatIssuePath(segments);
+  const hint = typeof suggestion === "string" ? ` ${suggestion}` : "";
+  return where.length === 0 ? `${message}${hint}` : `${where}: ${message}${hint}`;
 };
 
 const landofileNotFoundHint = (record: Record<string, unknown> | undefined): string | undefined =>

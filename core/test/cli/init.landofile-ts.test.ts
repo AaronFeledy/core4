@@ -158,7 +158,9 @@ describe("node-ts recipe pipeline", () => {
   });
 
   test("encoded node-ts Landofile contains no forbidden node builtin or URL-scheme import", async () => {
-    const { text: tsSource } = await previewBuiltinRecipe("node-ts", "demo-app");
+    const { text } = await previewBuiltinRecipe("node-ts", "demo-app");
+    // The editor-schema modeline is a comment, not an import; inspect only the document body.
+    const tsSource = text.replace(/^# yaml-language-server: .*\n/, "");
 
     const importPattern = /\b(?:import|require)\s*(?:\(\s*)?["'`]([^"'`]+)["'`]/g;
     const matchedSpecifiers: string[] = [];

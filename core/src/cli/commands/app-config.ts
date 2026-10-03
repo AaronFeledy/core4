@@ -50,6 +50,7 @@ import {
 import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { parseLandofile } from "@lando/landofile/parser";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
+import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
 
@@ -135,13 +136,16 @@ type AppConfigError =
 
 type AppConfigServices = LandofileService | StateStore;
 
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, { onExcessProperty: "error" });
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape, {
+  onExcessProperty: "error",
+  errors: "all",
+});
 
 const missingArgsError = (): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
     message: "`app config set` requires a <key.path> and a <value>.",
     file: "",
-    issues: ["Missing key path or value."],
+    issues: [validationIssue([], "Missing key path or value.")],
     remediation: "Usage: `lando app config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
   });
 
@@ -149,7 +153,7 @@ const missingGetKeyError = (): LandofileWriteValidationError =>
   new LandofileWriteValidationError({
     message: "`app config get` requires a <key.path>.",
     file: "",
-    issues: ["Missing key path."],
+    issues: [validationIssue([], "Missing key path.")],
     remediation: "Usage: `lando app config get <key.path>`.",
   });
 
@@ -251,7 +255,7 @@ const parseWriteValidationError = (
   new LandofileWriteValidationError({
     message: error.message,
     file: inputPath,
-    issues: [error.message],
+    issues: [validationIssue([], error.message)],
     remediation: "Fix the YAML syntax so the file parses, then retry. The file was left unchanged.",
   });
 
@@ -296,7 +300,7 @@ export const appConfigUnset = Effect.fn("AppConfig.unset")(function* (
       new LandofileWriteValidationError({
         message: "`app config unset` requires a <key.path>.",
         file: "",
-        issues: ["Missing key path."],
+        issues: [validationIssue([], "Missing key path.")],
         remediation: "Usage: `lando app config unset <key.path>`.",
       }),
     );
@@ -350,7 +354,7 @@ export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (
       new LandofileWriteValidationError({
         message: "No editor is configured.",
         file: inputPath,
-        issues: ["Neither $VISUAL nor $EDITOR is set."],
+        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
         remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
       }),
     );
@@ -360,7 +364,7 @@ export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (
       new LandofileWriteValidationError({
         message: `The editor session failed: ${edited.reason}`,
         file: inputPath,
-        issues: [edited.reason],
+        issues: [validationIssue([], edited.reason)],
         remediation:
           "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
       }),
@@ -472,7 +476,7 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (
       new LandofileWriteValidationError({
         message: `Unknown \`app config\` subcommand: "${subcommand}".`,
         file: "",
-        issues: [`Unsupported subcommand: "${subcommand}".`],
+        issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
         remediation: "Usage: `lando app config [view|set|unset|edit|validate]`.",
       }),
     );

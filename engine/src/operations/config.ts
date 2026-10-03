@@ -16,6 +16,7 @@ import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath } from "../config-write/dot-path";
 import {
@@ -200,7 +201,8 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
     catch: (cause) => configWriteError(path, cause),
   });
 
-const decodeGlobalConfig = Schema.decodeUnknownResult(GlobalConfig);
+const decodeGlobalConfig = (input: unknown) =>
+  Schema.decodeUnknownResult(GlobalConfig)(input, { onExcessProperty: "error", errors: "all" });
 
 const agentEnvPatternError = (
   decoded: ReturnType<typeof decodeGlobalConfig>,
@@ -220,7 +222,7 @@ const agentEnvPatternError = (
 
 const configValidationError = (
   path: string,
-  issues: ReadonlyArray<string>,
+  issues: readonly ValidationIssue[],
   key?: string,
 ): LandofileWriteValidationError =>
   writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
@@ -235,7 +237,7 @@ const metaConfigSet = Effect.fnUntraced(function* (
       new LandofileWriteValidationError({
         message: "`meta config set` requires a <key.path> and a <value>.",
         file: "",
-        issues: ["Missing key path or value."],
+        issues: [validationIssue([], "Missing key path or value.")],
         remediation: "Usage: `lando config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
       }),
     );
@@ -276,7 +278,7 @@ const metaConfigUnset = Effect.fnUntraced(function* (
       new LandofileWriteValidationError({
         message: "`meta config unset` requires a <key.path>.",
         file: "",
-        issues: ["Missing key path."],
+        issues: [validationIssue([], "Missing key path.")],
         remediation: "Usage: `lando config unset <key.path>`.",
       }),
     );
@@ -337,7 +339,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       new LandofileWriteValidationError({
         message: "No editor is configured.",
         file: path,
-        issues: ["Neither $VISUAL nor $EDITOR is set."],
+        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
         remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
       }),
     );
@@ -348,7 +350,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       new LandofileWriteValidationError({
         message: "No editor is configured.",
         file: path,
-        issues: ["Neither $VISUAL nor $EDITOR is set."],
+        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
         remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
       }),
     );
@@ -358,7 +360,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       new LandofileWriteValidationError({
         message: `The editor session failed: ${edited.reason}`,
         file: path,
-        issues: [edited.reason],
+        issues: [validationIssue([], edited.reason)],
         remediation:
           "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
       }),
@@ -370,7 +372,7 @@ const metaConfigEdit = Effect.fnUntraced(function* (
       new LandofileWriteValidationError({
         message: `The edited config is not valid YAML: ${cause instanceof Error ? cause.message : String(cause)}`,
         file: path,
-        issues: [cause instanceof Error ? cause.message : String(cause)],
+        issues: [validationIssue([], cause instanceof Error ? cause.message : String(cause))],
         remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
       }),
   });
@@ -422,7 +424,7 @@ export const config = Effect.fn("AppOperation.config")(function* (
       new LandofileWriteValidationError({
         message: `Unknown \`meta config\` subcommand: "${subcommand}".`,
         file: "",
-        issues: [`Unsupported subcommand: "${subcommand}".`],
+        issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
         remediation: "Usage: `lando meta config [view|get|set|unset|edit|validate|translate|telemetry]`.",
       }),
     );

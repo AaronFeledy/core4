@@ -16,6 +16,11 @@ import {
   type ConfigLintResult,
   type ConfigLintViolation,
   LandofileShape,
+  ServiceConfig,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
+  parseValidationIssuePath,
+  validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import {
   type ComposeRejectionMatch,
@@ -118,28 +123,51 @@ const composeSuggestedFix = (issue: LintIssue): string | undefined => {
   return undefined;
 };
 
-const violationFromIssue = (issue: LintIssue): ConfigLintViolation => {
-  const path = issue.path.map(String).join(".");
+const toIssuePath = (path: ReadonlyArray<PropertyKey>): ValidationIssuePath =>
+  path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
+
+const pathFromText = (text: string): ValidationIssuePath => parseValidationIssuePath(text) ?? [];
+
+const SERVICE_CONFIG_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
+
+const closestKeySuggestions = (issue: SchemaIssue.Issue): ReadonlyMap<string, string> =>
+  new Map(
+    validationIssuesFromSchemaIssue(issue, {
+      extraAllowedKeys: (path) => (path[0] === "services" && path.length >= 3 ? SERVICE_CONFIG_KEYS : []),
+    }).flatMap((entry) =>
+      entry.suggestion === undefined
+        ? []
+        : [[formatValidationIssuePath(entry.path), entry.suggestion] as const],
+    ),
+  );
+
+const violationFromIssue = (
+  issue: LintIssue,
+  suggestions: ReadonlyMap<string, string>,
+): ConfigLintViolation => {
+  const path = toIssuePath(issue.path);
+  const formatted = formatValidationIssuePath(path);
   const key = lastKey(issue.path);
-  const suggestedFix =
-    (issue._tag === "Type" && path === "sshAgent.socket"
+  const suggestion =
+    (issue._tag === "Type" && formatted === "sshAgent.socket"
       ? "Set sshAgent.socket to a string containing the host SSH-agent socket path, or omit it for automatic discovery."
       : undefined) ??
     composeSuggestedFix(issue) ??
     (issue._tag === "Unexpected"
-      ? `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`
+      ? (suggestions.get(formatted) ??
+        `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`)
       : issue._tag === "Missing"
-        ? `Add the required "${key ?? path}" field.`
+        ? `Add the required "${key ?? formatted}" field.`
         : undefined);
-  return suggestedFix === undefined
+  return suggestion === undefined
     ? { path, message: issue.message }
-    : { path, message: issue.message, suggestedFix };
+    : { path, message: issue.message, suggestion };
 };
 
 const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
-  path: match.documentPath,
+  path: pathFromText(match.documentPath),
   message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
-  suggestedFix: match.remediation,
+  suggestion: match.remediation,
 });
 
 const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
@@ -161,16 +189,18 @@ const violationsFor = (
       ].flatMap((result) =>
         Result.match(result, {
           onFailure: (error) => [
-            { path: error.key, message: error.message, suggestedFix: error.remediation },
+            { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
           ],
           onSuccess: () => [],
         }),
       )
     : lintIssues(decoded.failure.issue)
-        .map(violationFromIssue)
+        .map((issue) => violationFromIssue(issue, closestKeySuggestions(decoded.failure.issue)))
         .filter(
           (violation) =>
-            !rejections.some((rejection) => fallsWithinRejectedPath(violation.path, rejection.documentPath)),
+            !rejections.some((rejection) =>
+              fallsWithinRejectedPath(formatValidationIssuePath(violation.path), rejection.documentPath),
+            ),
         );
 };
 
@@ -186,7 +216,7 @@ const singleViolationResult = (
   details: {
     readonly line: number | undefined;
     readonly column: number | undefined;
-    readonly suggestedFix?: string | undefined;
+    readonly suggestion?: string | undefined;
   } = {
     line: undefined,
     column: undefined,
@@ -197,11 +227,11 @@ const singleViolationResult = (
   valid: false,
   violations: [
     {
-      path: "",
+      path: [],
       message,
       ...(details.line === undefined ? {} : { line: details.line }),
       ...(details.column === undefined ? {} : { column: details.column }),
-      ...(details.suggestedFix === undefined ? {} : { suggestedFix: details.suggestedFix }),
+      ...(details.suggestion === undefined ? {} : { suggestion: details.suggestion }),
     },
   ],
 });
@@ -298,7 +328,7 @@ export const lintLandofile = Effect.fn("Landofile.lint")(function* (
       return singleViolationResult(layer.filePath, error.message, {
         line: error.line,
         column: error.column,
-        suggestedFix: error.remediation,
+        suggestion: error.remediation,
       });
     }
     parsedLayers.push(parsedEither.success);
@@ -314,8 +344,14 @@ export const lintLandofile = Effect.fn("Landofile.lint")(function* (
   const rejections = layerRejections.flat();
   const rejectionViolations = rejections.map(rejectionViolation);
   const mergedViolations = violationsFor(parsed, rejections);
-  const violations = [...rejectionViolations, ...mergedViolations];
-  const violationKeys = new Set(violations.map((violation) => JSON.stringify(violation)));
+  const violations: Array<ConfigLintViolation> = [];
+  const violationKeys = new Set<string>();
+  for (const violation of [...rejectionViolations, ...mergedViolations]) {
+    const key = JSON.stringify(violation);
+    if (violationKeys.has(key)) continue;
+    violationKeys.add(key);
+    violations.push(violation);
+  }
   for (const [index, layer] of parsedLayers.entries()) {
     for (const violation of violationsFor(layer, layerRejections[index] ?? [])) {
       const key = JSON.stringify(violation);

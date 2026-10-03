@@ -20,12 +20,12 @@ describe("schema artifact generation", () => {
   ])("publishes the original $name container alternatives", ({ name, schema }) => {
     const artifact = getJsonSchemaWithDeprecations(schema);
     const definition = `${name}PropsEncoded`;
-    expect(artifact).toHaveProperty("$ref", `#/definitions/${definition}`);
+    expect(artifact).toHaveProperty("$ref", `#/$defs/${definition}`);
     expect(artifact).toHaveProperty(
-      ["definitions", definition, "anyOf"],
+      ["$defs", definition, "anyOf"],
       expect.arrayContaining([{ type: "array" }, { type: "object" }]),
     );
-    expect(artifact).toHaveProperty(["definitions", definition, "anyOf", "length"], 2);
+    expect(artifact).toHaveProperty(["$defs", definition, "anyOf", "length"], 2);
   });
 
   test("omits optional undefined without inventing null", () => {
@@ -35,7 +35,7 @@ describe("schema artifact generation", () => {
     const artifact = getJsonSchemaWithDeprecations(schema);
     // Then omission remains legal and the present value is string-only.
     expect(artifact).toEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "object",
       properties: { value: { type: "string" } },
       additionalProperties: false,
@@ -69,14 +69,14 @@ describe("schema artifact generation", () => {
     expect(artifact).toHaveProperty("properties.items.items.anyOf", [{ type: "string" }, { type: "null" }]);
   });
 
-  test("emits exact optional authored keys as draft-07 without nullable alternatives", () => {
+  test("emits exact optional authored keys as draft 2020-12 without nullable alternatives", () => {
     // Given an authored-input schema with an optional key.
     const schema = Schema.Struct({ port: Schema.optionalKey(Schema.Number) });
     // When emitted with the decoder's excess-property policy.
     const artifact = getJsonSchemaWithDeprecations(schema, { onExcessProperty: "error" });
     // Then the artifact agrees with absent-versus-null decoding.
     expect(artifact).toEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "object",
       properties: { port: { type: "number" } },
       additionalProperties: false,
@@ -106,7 +106,7 @@ describe("schema artifact generation", () => {
     // Given a pattern used on both sides of a record.
     const key = Schema.String.check(Schema.isPattern(/^x-[a-z]+$/u));
     const schema = Schema.Record(key, Schema.String.check(Schema.isPattern(/^[0-9]+$/u)));
-    // When emitted as draft-07.
+    // When emitted as draft 2020-12.
     const artifact = getJsonSchemaWithDeprecations(schema);
     // Then the key selector and value constraint both survive.
     expect(artifact).toHaveProperty("patternProperties", {
@@ -166,7 +166,7 @@ describe("schema artifact generation", () => {
     const artifact = getJsonSchemaWithDeprecations(schema);
     // Then the callback, not representation metadata, owns the projection.
     expect(artifact).toEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "string",
       minLength: 4,
     });
@@ -178,7 +178,7 @@ describe("schema artifact generation", () => {
     // When emitted.
     const artifact = getJsonSchemaWithDeprecations(schema);
     // Then no constraint is inferred from the runtime representation.
-    expect(artifact).toEqual({ $schema: "http://json-schema.org/draft-07/schema#", type: "string" });
+    expect(artifact).toEqual({ $schema: "https://json-schema.org/draft/2020-12/schema", type: "string" });
   });
 
   test("keeps numeric constraints without adding non-finite string alternatives", () => {
@@ -202,16 +202,16 @@ describe("schema artifact generation", () => {
     expect(artifact).toHaveProperty("properties.old.x-deprecation", notice);
   });
 
-  test("converts tuple keywords and local references to draft-07", () => {
+  test("preserves draft 2020-12 tuple keywords and local references", () => {
     // Given a named tuple used as an object field.
     const schema = Schema.Struct({
       pair: Schema.Tuple([Schema.String, Schema.Number]).annotate({ identifier: "Pair" }),
     });
     // When its document is emitted.
     const artifact = getJsonSchemaWithDeprecations(schema);
-    // Then draft-07 items and definition pointers are used.
-    expect(artifact).toHaveProperty("properties.pair.$ref", "#/definitions/Pair");
-    expect(artifact).toHaveProperty("definitions.Pair.items", [{ type: "string" }, { type: "number" }]);
-    expect(artifact).not.toHaveProperty("definitions.Pair.prefixItems");
+    // Then draft 2020-12 prefix items and definition pointers are used.
+    expect(artifact).toHaveProperty("properties.pair.$ref", "#/$defs/Pair");
+    expect(artifact).toHaveProperty("$defs.Pair.prefixItems", [{ type: "string" }, { type: "number" }]);
+    expect(artifact).not.toHaveProperty("definitions");
   });
 });

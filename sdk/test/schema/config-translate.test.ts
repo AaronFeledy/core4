@@ -18,7 +18,7 @@ describe("config translation schemas", () => {
     const projected = schema.getJsonSchema("ConfigTranslateDocumentBytes");
     // Then publication preserves the wire contract and field description.
     expect(projected).toEqual({
-      $schema: "http://json-schema.org/draft-07/schema#",
+      $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "string",
       description: "Bounded raw source bytes, encoded as base64 on the wire.",
     });

@@ -6,6 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -185,8 +186,12 @@ describe("LandofileService layer — Compose service spellings", () => {
       if (failure._tag !== "Some") return;
       expect(failure.value).toBeInstanceOf(LandofileValidationError);
       if (!(failure.value instanceof LandofileValidationError)) return;
-      expect(failure.value.issues).toContain("services.web.healthcheck");
-      const issues = failure.value.issues.join("\n");
+      expect(failure.value.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+        "services.web.healthcheck",
+      );
+      const issues = failure.value.issues
+        .map((issue) => `${issue.path.join(".")} ${issue.message}`)
+        .join("\n");
       expect(issues).toContain("Compose duration");
       expect(issues).toContain("30s");
       expect(issues).toContain("1m30s");
