@@ -376,3 +376,8 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck and lint pass. Guide lint passes. Spot checks pass (50 tests on bounds, framing, resources, confirmation, and renderer stdio).
 ---
+
+## 2026-10-03 12:24 CDT - US-665 Verify
+- Compiled-binary setup, lamp init/start, and live HTTP and HTTPS returned the PHP body. A piped `lando mcp` session negotiated 2025-06-18, listed tools with `outputSchema`, read redacted app config/info/apps/doctor resources, completed and read `lando://schemas/{name}`, returned structured `app:info`, answered unlisted `app:destroy` with `-32602`, mapped elicitation decline to `CommandConfirmationError` `declined` and a client without elicitation to `non-interactive`, and rebuilt with `yes: true` without asking. `app:config`, `mcp --list`, `doctor`, and `logs` exited 0. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. Destroy and poweroff exited 0.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us665v-appserver`, `lando-us665v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics`, plus a managed `podman` process, after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-664 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-665 acceptance failure.
+---
