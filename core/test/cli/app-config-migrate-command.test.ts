@@ -54,8 +54,8 @@ test("fails closed when selectable hunks lack non-interactive approval", async (
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "AppConfigMigrateError", reason: "confirmation-required" },
+    _tag: "Failure",
+    failure: { _tag: "AppConfigMigrateError", reason: "confirmation-required" },
   });
 });
 
@@ -86,8 +86,8 @@ test("preserves an edit made while migration approval is pending", async () => {
 
   // Then prepare reports a conflict and the concurrent bytes survive
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "AppConfigMigrateCommitError", phase: "prepare", reason: "conflict" },
+    _tag: "Failure",
+    failure: { _tag: "AppConfigMigrateCommitError", phase: "prepare", reason: "conflict" },
   });
   expect(await Bun.file(path).text()).toBe(concurrent);
 });
@@ -119,8 +119,8 @@ test("inspects pending recovery without locking when dry-run input is invalid", 
   // Then
   expect(ensured).toBe(false);
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "ManagedFileTransactionError", reason: "blocked", phase: "inspect" },
+    _tag: "Failure",
+    failure: { _tag: "ManagedFileTransactionError", reason: "blocked", phase: "inspect" },
   });
 });
 
@@ -224,5 +224,5 @@ test("fails closed when a valid recorded recipe is absent from the injected sour
     appConfigMigrate({ ...input, recipes: new Map(), dryRun: true }).pipe(Effect.result),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "unknown-recipe" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "unknown-recipe" } });
 });

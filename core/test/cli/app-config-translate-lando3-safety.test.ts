@@ -32,7 +32,7 @@ test.each(["edit", "delete"] as const)(
       const result = await failure(run({ write: true, translators: racing }));
       // Then
       expect(changed).toBe(true);
-      expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ConfigTranslateError" } });
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigTranslateError" } });
       const expected: Record<string, string> = { ...originals };
       if (change === "edit") expected[".lando.local.yml"] = edited;
       else Reflect.deleteProperty(expected, ".lando.local.yml");
@@ -48,7 +48,7 @@ test("single-layer conversion refuses legacy context before staging", () =>
     // Given / When
     const result = await failure(run({ write: true, files: [".lando.local.yml"] }));
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ConfigTranslateError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigTranslateError" } });
     if (result._tag === "Failure" && result.failure._tag === "ConfigTranslateError")
       expect(result.failure.remediation).toContain("full conversion");
     expect(await snapshot(root)).toEqual(originals);
@@ -70,7 +70,7 @@ test("guard blocks manual resolution when a prepared source is edited", () =>
             : Effect.void,
       }),
     );
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ConfigTranslateError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigTranslateError" } });
     // When
     const recovery = await failure(
       makeManagedFileTransactionGuard({
@@ -80,8 +80,8 @@ test("guard blocks manual resolution when a prepared source is edited", () =>
     );
     // Then
     expect(recovery).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "ManagedFileTransactionError", reason: "blocked" },
+      _tag: "Failure",
+      failure: { _tag: "ManagedFileTransactionError", reason: "blocked" },
     });
     expect(await snapshot(root)).toEqual({ ...originals, ".lando.local.yml": edited });
   }));

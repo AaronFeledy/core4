@@ -202,7 +202,7 @@ test("skips the post bracket when the converted body fails", async () => {
   // When
   const { result, executed } = await run(landofile, "node: echo body-one");
   // Then
-  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 7 } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 7 } });
   expect(executed).toEqual(["node: echo before", "node: echo body-one"]);
 });
 

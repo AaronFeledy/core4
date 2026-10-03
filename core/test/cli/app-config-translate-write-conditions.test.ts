@@ -54,7 +54,7 @@ test("rejects a changed unselected lower layer without changing the selected tar
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ConfigTranslateError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigTranslateError" } });
   expect(await Bun.file(join(appRoot, ".lando.local.yml")).text()).toBe(selected);
   expect(await Bun.file(join(appRoot, ".lando.yml")).text()).toBe("runtime: 4\nname: changed\n");
   expect((await readdir(appRoot)).sort()).toEqual([".lando.local.yml", ".lando.yml"]);

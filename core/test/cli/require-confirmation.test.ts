@@ -38,8 +38,8 @@ describe("requireConfirmation", () => {
     expect(interaction.transcript()).toHaveLength(prompts);
     if (!proceeds) {
       expect(result).toMatchObject({
-        _tag: "Left",
-        left: {
+        _tag: "Failure",
+        failure: {
           _tag: "CommandConfirmationError",
           reason: interactive ? "declined" : "non-interactive",
           remediation: expect.stringContaining("--yes"),
