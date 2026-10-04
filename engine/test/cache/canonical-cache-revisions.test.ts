@@ -15,7 +15,7 @@ import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache
 import { appPlanCachePath, appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
-test("rejects a valid revision-17 persisted plan even when its cache key matches", async () => {
+test.each([17, 18])("rejects matching revision-%i persisted plans", async (revision) => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-canonical-plan-"));
   try {
     const appRoot = "/workspace/canonical-app";
@@ -40,7 +40,7 @@ test("rejects a valid revision-17 persisted plan even when its cache key matches
       extensions: {},
     };
     const body = serialize({
-      schemaVersion: 17,
+      schemaVersion: revision,
       landoVersion: CORE_VERSION,
       key,
       versionConstraints: [],
@@ -49,7 +49,7 @@ test("rejects a valid revision-17 persisted plan even when its cache key matches
     });
     const header = Buffer.alloc(44);
     header.write("LCAP");
-    header.writeBigUInt64BE(17n, 4);
+    header.writeBigUInt64BE(BigInt(revision), 4);
     createHash("sha256").update(body).digest().copy(header, 12);
     const path = appPlanCachePath(cacheRoot, appName, appRoot);
     await mkdir(dirname(path), { recursive: true });

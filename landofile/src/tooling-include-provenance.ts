@@ -1,5 +1,7 @@
 const internalToolingTasks = new WeakMap<object, ReadonlyArray<string>>();
 
+export const hasInternalToolingTasks = (landofile: object): boolean => internalToolingTasks.has(landofile);
+
 export interface InternalToolingSource {
   readonly tooling: Readonly<Record<string, unknown>> | undefined;
   readonly internalTaskIds: ReadonlyArray<string>;

@@ -119,7 +119,7 @@ test("sorts referenced-file sets by UTF-16 while omitting their modification tim
   const fingerprint = deriveAppPlanCacheKey(input);
   expect(fingerprint).toBe(
     sha256Hex(
-      `{"appRoot":"/app","cache":"app-plan","config":null,"includedFragmentShas":[],"landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":18,"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
+      `{"appRoot":"/app","cache":"app-plan","config":null,"includedFragmentShas":[],"landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":19,"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
     ),
   );
 });

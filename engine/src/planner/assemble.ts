@@ -32,7 +32,6 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
-import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import { type ComposeAppFeature, composeAppFeatures } from "../services/app-feature.ts";
@@ -69,7 +68,7 @@ import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
-import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
+import { DEFAULT_PROXY_DOMAIN, appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
@@ -89,10 +88,13 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   fileSystem: Context.Service.Shape<typeof FileSystem> | undefined,
   pathsService: Context.Service.Shape<typeof PathsService> | undefined,
   certificateAuthorityResolver: Context.Service.Shape<typeof CertificateAuthorityResolver> | undefined,
-  landofile: LandofileShape,
+  authoredLandofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.fn.Return<AppPlan, AppPlannerError> {
   const {
+    landofile,
+    appSlug,
+    defaultDomain,
     services: seeds,
     effectiveTooling,
     appRoot,
@@ -110,10 +112,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     configService,
     fileSystem,
     pathsService,
-    landofile,
+    landofile: authoredLandofile,
     capabilities: providerCapabilities,
   });
-  const appSlug = normalizeAppSlug(appName, appRoot);
   const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
   const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
   const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
@@ -384,8 +385,6 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
   }
 
-  const defaultDomain =
-    globalConfig === undefined ? DEFAULT_PROXY_DOMAIN : readProxyDefaultDomain(globalConfig);
   const finalized = yield* finalizeServices({
     plannedServiceDrafts,
     appId,

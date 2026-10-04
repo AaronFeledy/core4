@@ -152,6 +152,35 @@ test("rejects a freshly disabled task even when the plan carries an enabled task
   expect(f.selections).toHaveLength(0);
 });
 
+test("resolves app and proxy expressions in a freshly authored task", async () => {
+  // Given a fresh declaration carrying deferred-scope expressions
+  const f = fixture({
+    cmd: "echo {{ app.name }} {{ proxy.defaultDomain }} db=mysql://lando@database/{{ app.name }}",
+    service: "worker",
+  });
+  // When invoked
+  const result = await f.run();
+  // Then the container sees the slug and default domain, never the literal template
+  expect(Result.isSuccess(result)).toBe(true);
+  expect(f.calls[0]?.command.join(" ")).toContain(
+    "echo tooling-test lndo.site db=mysql://lando@database/tooling-test",
+  );
+  expect(f.calls[0]?.command.join(" ")).not.toContain("{{");
+});
+
+test("fails with ConfigExpressionError when a fresh task references an unknown app field", async () => {
+  // Given a fresh declaration with an unresolvable deferred-scope expression
+  const f = fixture({ cmd: "echo {{ app.nope }}", service: "worker" });
+  // When invoked
+  const result = await f.run();
+  // Then the tagged planner error names the tooling path
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ConfigExpressionError", path: "tooling.custom.cmd" },
+  });
+  expect(f.calls).toHaveLength(0);
+});
+
 test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchanged for %j", async (cmd) => {
   // Given no declared inputs
   const f = fixture({ cmd });

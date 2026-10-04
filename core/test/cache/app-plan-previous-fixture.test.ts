@@ -8,12 +8,12 @@ import { Effect } from "effect";
 import { readCachedAppPlan } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 
-test("app-plan returns a cache miss when the persisted fixture is revision 17", async () => {
+test("app-plan returns a cache miss when the persisted fixture is revision 18", async () => {
   // Given the unchanged previous-revision bytes at the real cache path.
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-previous-"));
   try {
     const path = appPlanCachePath(cacheRoot, "fixture-app", "/workspace/fixture-app");
-    const fixture = await readFile(join(import.meta.dirname, "fixtures/binary-cache/app-plan-v17.bin"));
+    const fixture = await readFile(join(import.meta.dirname, "fixtures/binary-cache/app-plan-v18.bin"));
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, fixture);
 

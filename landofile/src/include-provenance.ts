@@ -1,6 +1,9 @@
 const localIncludePaths = new WeakMap<object, ReadonlyArray<string>>();
 const includeSources = new WeakMap<object, ReadonlyArray<LandofileIncludeSource>>();
 
+export const hasLocalIncludePaths = (landofile: object): boolean => localIncludePaths.has(landofile);
+export const hasLandofileIncludeSources = (landofile: object): boolean => includeSources.has(landofile);
+
 export interface LandofileIncludeSource {
   readonly id: string;
   readonly sha256: string;
