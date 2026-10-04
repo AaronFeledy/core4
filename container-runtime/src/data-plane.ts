@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import { tryParseJson } from "./engine-json.ts";
 import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
@@ -874,11 +875,9 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     }).pipe(
       Effect.flatMap((response) =>
         response.status === 200
-          ? Effect.try({
-              try: () => JSON.parse(response.body) as EngineVolume,
-              catch: (cause) =>
-                volumeError(options, input.operation, "Provider volume inspection failed.", undefined, cause),
-            })
+          ? tryParseJson(response.body, (cause) =>
+              volumeError(options, input.operation, "Provider volume inspection failed.", undefined, cause),
+            ).pipe(Effect.map((value) => value as EngineVolume))
           : Effect.fail(
               volumeError(options, input.operation, "Provider volume inspection failed.", response),
             ),
@@ -945,18 +944,16 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             }).pipe(
               Effect.tap((response) => ensure2xx(options, "snapshotVolume", response, store)),
               Effect.flatMap((response) =>
-                Effect.try({
-                  try: () => JSON.parse(response.body) as { readonly Id?: string; readonly Size?: number },
-                  catch: (cause) =>
-                    volumeError(
-                      options,
-                      "snapshotVolume",
-                      "Provider native snapshot inspection failed.",
-                      response,
-                      cause,
-                      store,
-                    ),
-                }),
+                tryParseJson(response.body, (cause) =>
+                  volumeError(
+                    options,
+                    "snapshotVolume",
+                    "Provider native snapshot inspection failed.",
+                    response,
+                    cause,
+                    store,
+                  ),
+                ).pipe(Effect.map((value) => value as { readonly Id?: string; readonly Size?: number })),
               ),
               Effect.flatMap((image) =>
                 image.Id === undefined || image.Size === undefined
@@ -1041,18 +1038,16 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         }).pipe(
           Effect.tap((response) => ensure2xx(options, "restoreVolume", response, store)),
           Effect.flatMap((response) =>
-            Effect.try({
-              try: () => JSON.parse(response.body) as { readonly Id?: string; readonly Size?: number },
-              catch: (cause) =>
-                volumeError(
-                  options,
-                  "restoreVolume",
-                  "Provider native snapshot inspection failed.",
-                  response,
-                  cause,
-                  store,
-                ),
-            }),
+            tryParseJson(response.body, (cause) =>
+              volumeError(
+                options,
+                "restoreVolume",
+                "Provider native snapshot inspection failed.",
+                response,
+                cause,
+                store,
+              ),
+            ).pipe(Effect.map((value) => value as { readonly Id?: string; readonly Size?: number })),
           ),
           Effect.flatMap((image) =>
             image.Id === spec.snapshot.digest && image.Size === spec.snapshot.sizeBytes

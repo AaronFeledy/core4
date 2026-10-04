@@ -19,6 +19,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
+import { parseJsonOrUndefined } from "../engine-json.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
@@ -167,19 +168,15 @@ const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolea
 };
 
 const parseVolumeLabels = (body: string): Readonly<Record<string, string>> | undefined => {
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const value = Reflect.get(parsed, "Labels");
-    if (typeof value !== "object" || value === null) return undefined;
-    const labels: Record<string, string> = {};
-    for (const [key, label] of Object.entries(value)) {
-      if (typeof label === "string") labels[key] = label;
-    }
-    return labels;
-  } catch {
-    return undefined;
+  const parsed = parseJsonOrUndefined(body);
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const value = Reflect.get(parsed, "Labels");
+  if (typeof value !== "object" || value === null) return undefined;
+  const labels: Record<string, string> = {};
+  for (const [key, label] of Object.entries(value)) {
+    if (typeof label === "string") labels[key] = label;
   }
+  return labels;
 };
 
 const removeVolume = Effect.fnUntraced(function* (

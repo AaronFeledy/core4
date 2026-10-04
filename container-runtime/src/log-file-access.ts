@@ -5,6 +5,7 @@ import type { LogFileAccess, LogFileHandle, LogFileRead, LogFileStat } from "@la
 import type { ProviderError } from "@lando/sdk/services";
 
 import type { DataPlaneApiClient, DataPlaneHttpRequest, DataPlaneHttpResponse } from "./data-plane.ts";
+import { tryParseJson } from "./engine-json.ts";
 import { archiveLogFileHelper } from "./log-file-archive.ts";
 import { cleanupLogFileHelper, makeLogFileHelperPaths } from "./log-file-helper-cleanup.ts";
 import { HelperSession } from "./log-file-session.ts";
@@ -51,10 +52,9 @@ const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> => ({
 });
 
 const parseExecId = (body: string, providerId: string) =>
-  Effect.try({
-    try: () => JSON.parse(body),
-    catch: (cause) => internal(providerId, "Docker exec create returned malformed JSON.", body, cause),
-  }).pipe(
+  tryParseJson(body, (cause) =>
+    internal(providerId, "Docker exec create returned malformed JSON.", body, cause),
+  ).pipe(
     Effect.flatMap((decoded) =>
       typeof decoded === "object" && decoded !== null && "Id" in decoded && typeof decoded.Id === "string"
         ? Effect.succeed(decoded.Id)
