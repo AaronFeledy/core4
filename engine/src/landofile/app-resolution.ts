@@ -2,9 +2,20 @@ import { Effect, Option } from "effect";
 
 import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
-import { Renderer, StateStore } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  LandofileService,
+  Renderer,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
 
-import { type UserAppResolution, makeUserAppResolution } from "@lando/landofile/app-resolution";
+import {
+  type ResolvedAppTarget,
+  type UserAppResolution,
+  makeUserAppResolution,
+  userAppRef,
+} from "@lando/landofile/app-resolution";
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
@@ -127,3 +138,19 @@ export const loadUserLandofileFile = (filePath: string) =>
   Effect.flatMap(StateStore, (stateStore) =>
     makeEngineUserAppResolution({ ...landofileRuntimeInputs(), stateStore }).loadUserLandofileFile(filePath),
   );
+
+export const planDesiredApp = Effect.gen(function* () {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const landofile = yield* loadUserLandofile(landofileService);
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* planner.plan(landofile, capabilities);
+  return { plan, landofile };
+});
+
+export const resolveDesiredAppTarget = Effect.map(
+  planDesiredApp,
+  ({ plan, landofile }) =>
+    ({ plan, root: plan.root, app: userAppRef(plan), landofile }) satisfies ResolvedAppTarget,
+);
