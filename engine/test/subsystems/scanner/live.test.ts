@@ -160,7 +160,7 @@ describe("makeUrlScanner", () => {
     expect(http.requests).toHaveLength(1);
   });
 
-  test("supplied urls are probed without listing provider endpoints", async () => {
+  test("supplied urls skip non-HTTP protocols without provider discovery", async () => {
     // Given: start already knows the host-facing URLs, including router authorities.
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
@@ -177,7 +177,14 @@ describe("makeUrlScanner", () => {
     const result = await drive(
       scanner.scan(appId, {
         plan,
-        urls: [{ service: web, url: "https://web.demo.lndo.site:4443/ready" }],
+        urls: [
+          ...["tcp", "udp", "redis", "valkey", "postgresql", "memcached"].map((protocol) => ({
+            service: db,
+            url: `${protocol}://localhost:9080/`,
+          })),
+          { service: web, url: "https://web.demo.lndo.site:4443/ready" },
+          { service: web, url: "http://localhost:8080/ready" },
+        ],
       }),
     );
 
@@ -185,8 +192,48 @@ describe("makeUrlScanner", () => {
     expect(source.calls).toHaveLength(0);
     expect(result.endpoints.map(({ url, outcome }) => ({ url, outcome }))).toEqual([
       { url: "https://web.demo.lndo.site:4443/ready", outcome: "green" },
+      { url: "http://localhost:8080/ready", outcome: "green" },
     ]);
-    expect(http.requests.map(({ url }) => url)).toEqual(["https://web.demo.lndo.site:4443/ready"]);
+    expect(http.requests.map(({ url }) => url)).toEqual([
+      "https://web.demo.lndo.site:4443/ready",
+      "http://localhost:8080/ready",
+    ]);
+  });
+
+  test("does not rediscover endpoints when every supplied URL is non-HTTP", async () => {
+    // Given an explicit TCP-only list and a discoverable HTTP endpoint.
+    const http = requestSequence([httpStatus(200)]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints });
+
+    // When scanning the explicit list.
+    const result = await drive(
+      scanner.scan(appId, { urls: [{ service: db, url: "tcp://localhost:9080/" }] }),
+    );
+
+    // Then neither the TCP endpoint nor an unrelated HTTP endpoint is probed.
+    expect(result.endpoints).toEqual([]);
+    expect(http.requests).toEqual([]);
+    expect(source.calls).toEqual([]);
+  });
+
+  test("reports malformed supplied URLs instead of silently skipping them", async () => {
+    const http = requestSequence([httpStatus(200)]);
+    const source = endpointsOf([]);
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints }, { retry: 1 });
+
+    const result = await drive(scanner.scan(appId, { urls: [{ service: web, url: "http://[broken" }] }));
+
+    expect(result.endpoints).toEqual([
+      {
+        service: web,
+        url: "http://[broken",
+        reachable: false,
+        outcome: "red",
+        detail: "InvalidUrl error (GET http://[broken)",
+      },
+    ]);
+    expect(http.requests).toEqual([]);
   });
 
   test("enabled false short-circuits without probing", async () => {
