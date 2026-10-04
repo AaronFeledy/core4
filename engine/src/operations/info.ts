@@ -18,7 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import {
-  AppPlanner,
+  type AppPlanner,
   type ConfigService,
   LandofileService,
   RouterService,
@@ -26,11 +26,7 @@ import {
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
-import {
-  type ResolvedAppTarget,
-  loadUserLandofile,
-  loadUserLandofileAt,
-} from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
@@ -225,8 +221,6 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
   target?: ResolvedAppTarget,
 ): Effect.fn.Return<InfoAppResult, InfoAppError, InfoAppServices> {
   const landofileService = yield* LandofileService;
-  const registry = yield* RuntimeProviderRegistry;
-  const planner = yield* AppPlanner;
 
   let plan: AppPlan;
   let landofile: LandofileShape | undefined;
@@ -236,9 +230,7 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
       landofile = yield* loadUserLandofileAt(landofileService, target.root);
     }
   } else {
-    landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    plan = yield* planner.plan(landofile, capabilities);
+    ({ plan, landofile } = yield* planDesiredApp);
   }
 
   const selectedPlan = yield* selectInfoPlan(plan, options?.services);

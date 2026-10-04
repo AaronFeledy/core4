@@ -4,18 +4,18 @@ import { Effect, Schema } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  type AppPlanner,
   type EventService,
-  LandofileService,
+  type LandofileService,
   type PathsService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import {
   verifyActiveVolumeCoordination,
   withPlanVolumeCoordination,
@@ -49,18 +49,6 @@ type StopAppServices =
   | RuntimeProviderRegistry
   | StateStore;
 type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
-
-const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
-
-const resolveDesiredTarget = Effect.gen(function* () {
-  const landofileService = yield* LandofileService;
-  const registry = yield* RuntimeProviderRegistry;
-  const planner = yield* AppPlanner;
-  const landofile = yield* loadUserLandofile(landofileService);
-  const capabilities = yield* registry.capabilities;
-  const plan = yield* planner.plan(landofile, capabilities);
-  return { plan, root: plan.root, app: appRef(plan), landofile } satisfies ResolvedAppTarget;
-});
 
 const unchangedResult = (app: string): StopAppResult => ({
   app,
@@ -122,7 +110,7 @@ export const stopAppWithPlan = Effect.fn("AppOperation.stopWithPlan")(function* 
   StopAppServices
 > {
   return yield* target === undefined
-    ? resolveDesiredTarget.pipe(
+    ? resolveDesiredAppTarget.pipe(
         Effect.flatMap((resolved) =>
           stopAppWithResolvedPlan(options, resolved, false, true, execution.skipInitEvents !== true),
         ),
@@ -167,7 +155,7 @@ const stopDesiredOrUnchanged = (
   options: StopAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
-  resolveDesiredTarget.pipe(
+  resolveDesiredAppTarget.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
     Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
     Effect.flatMap((desired) =>
