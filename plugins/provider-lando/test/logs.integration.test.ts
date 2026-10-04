@@ -4,7 +4,8 @@ import { DateTime, Effect, Schema, Stream } from "effect";
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { bringDown, bringUp, logs, makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
+import * as LandoProvider from "@lando/provider-lando";
+import { bringDown, bringUp, logs, makePodmanApiClient } from "@lando/provider-lando";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,
@@ -109,7 +110,7 @@ describe("provider-lando logs", () => {
     const memory = makeMemoryLogFileAccess();
     memory.writeFile(source.path, "override\n");
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({
+      LandoProvider.makeRuntimeProvider({
         platform: "linux",
         sanitizeAppliedPlan: stripHostProxyRunLando,
         podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.void },
@@ -133,7 +134,7 @@ describe("provider-lando logs", () => {
   test("retains the missing API failure when file access is injected", async () => {
     // Given: injected file access without an engine API.
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({
+      LandoProvider.makeRuntimeProvider({
         platform: "linux",
         sanitizeAppliedPlan: stripHostProxyRunLando,
         logFileAccess: makeMemoryLogFileAccess().access,
