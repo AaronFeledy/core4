@@ -2,7 +2,7 @@ import { type Context, Effect } from "effect";
 
 import { LandofileValidationError, type ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
@@ -52,8 +52,8 @@ export const resolveMysqlVolume = (
             message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
             file: `${plan.root}/.lando.yml`,
             issues: [
-              validationIssueFromText(
-                `services.${service.name}.storage`,
+              validationIssue(
+                ["services", service.name, "storage"],
                 `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
               ),
             ],

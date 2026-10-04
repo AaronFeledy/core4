@@ -21,7 +21,7 @@ import {
   type StorageScope,
 } from "@lando/sdk/schema";
 
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import {
   promoteRoutableEndpointsForHostProxy,
   usesManagedProxyNetwork,
@@ -55,8 +55,8 @@ const duplicateEndpointNameError = (
     message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
-      validationIssueFromText(
-        `services.${serviceName}.endpoints`,
+      validationIssue(
+        ["services", serviceName, "endpoints"],
         `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
       ),
     ],
@@ -104,8 +104,8 @@ export const resolveRoute = Effect.fnUntraced(function* (
         message: `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
-          validationIssueFromText(
-            `services.${serviceName}.routes`,
+          validationIssue(
+            ["services", serviceName, "routes"],
             `Route ${hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
           ),
         ],

@@ -9,7 +9,7 @@ import {
   parseContainerDestination,
 } from "@lando/sdk/schema";
 
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
 import { kebab, shortHash } from "./naming.ts";
 import type { AuthoredStorageInfo } from "./service-types.ts";
 
@@ -24,14 +24,14 @@ const cacheStoreName = (target: string, key: string | undefined): string =>
 export const plannedContainerDestination = (
   target: string,
   appRoot: string,
-  issue: string,
+  issue: ValidationIssuePath,
 ): PortablePath | LandofileValidationError => {
   const parsed = parseContainerDestination(target);
   if (!parsed.ok) {
     return new LandofileValidationError({
       message: containerDestinationRefusalMessage(parsed.reason, target),
       file: `${appRoot}/.lando.yml`,
-      issues: [validationIssueFromText(issue, containerDestinationRefusalMessage(parsed.reason, target))],
+      issues: [validationIssue(issue, containerDestinationRefusalMessage(parsed.reason, target))],
     });
   }
   return parsed.value;
@@ -57,8 +57,8 @@ export const authoredStorageScopes = (
           message: `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
           file: `${appRoot}/.lando.yml`,
           issues: [
-            validationIssueFromText(
-              `services.${serviceName}.storage[${index}].scope`,
+            validationIssue(
+              ["services", serviceName, "storage", index, "scope"],
               `Service ${serviceName} declares kind: cache with scope: service at services.${serviceName}.storage[${index}] in ${appRoot}/.lando.yml. Cache storage is shared across apps by design.`,
             ),
           ],
@@ -93,7 +93,7 @@ export const applyAuthoredStorage = (
   const additions: DataStoreMountPlan[] = [];
   for (const entry of authored) {
     const target = typeof entry === "string" ? entry : entry.target;
-    const mountTarget = plannedContainerDestination(target, appRoot, `services.${serviceName}.storage`);
+    const mountTarget = plannedContainerDestination(target, appRoot, ["services", serviceName, "storage"]);
     if (mountTarget instanceof LandofileValidationError) return mountTarget;
     if (occupiedTargets.has(String(mountTarget))) continue;
     occupiedTargets.add(String(mountTarget));
@@ -160,11 +160,12 @@ export const expandExcludesToShadows = (
 
   for (const excludePath of effectiveExcludes) {
     const destination = joinPathSegments(appMount.target, excludePath);
-    const mountTarget = plannedContainerDestination(
-      destination,
-      appRoot,
-      `services.${serviceName}.appMount.excludes`,
-    );
+    const mountTarget = plannedContainerDestination(destination, appRoot, [
+      "services",
+      serviceName,
+      "appMount",
+      "excludes",
+    ]);
     if (mountTarget instanceof LandofileValidationError) return mountTarget;
     const targetKey = String(mountTarget);
     if (shadowTargets.has(targetKey)) continue;

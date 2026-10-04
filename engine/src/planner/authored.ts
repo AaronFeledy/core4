@@ -37,11 +37,12 @@ export const applyAuthoredAppMount = (
   if (authored === undefined || authored === false) return servicePlan;
   const existingMount = servicePlan.appMount;
   if (existingMount === undefined) return servicePlan;
-  const target = plannedContainerDestination(
-    authored.target,
-    appRoot,
-    `services.${serviceName}.appMount.target`,
-  );
+  const target = plannedContainerDestination(authored.target, appRoot, [
+    "services",
+    serviceName,
+    "appMount",
+    "target",
+  ]);
   if (target instanceof LandofileValidationError) return target;
   const merged = {
     ...existingMount,

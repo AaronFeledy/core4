@@ -2,7 +2,7 @@ import { Result, Schema } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LogSource, type LogSource as LogSourceType } from "@lando/sdk/schema";
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { type ValidationIssuePath, validationIssue } from "@lando/sdk/schema";
 
 export interface MergeLogSourcesInput {
   readonly appRoot: string;
@@ -12,23 +12,23 @@ export interface MergeLogSourcesInput {
   readonly userSources: ReadonlyArray<unknown>;
 }
 
-const issuePath = (serviceName: string): string => `services.${serviceName}.logs`;
+const issuePath = (serviceName: string): ValidationIssuePath => ["services", serviceName, "logs"];
 
 const validationError = (
   input: Pick<MergeLogSourcesInput, "appRoot" | "serviceName">,
   message: string,
-  issue: string,
+  issue: ValidationIssuePath,
 ): LandofileValidationError =>
   new LandofileValidationError({
     message,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [validationIssueFromText(issue, message)],
+    issues: [validationIssue(issue, message)],
   });
 
 const validateSourceShape = (
   input: Pick<MergeLogSourcesInput, "appRoot" | "serviceName">,
   source: LogSourceType,
-  issue: string,
+  issue: ValidationIssuePath,
 ): LandofileValidationError | undefined => {
   if (!Schema.is(LogSource)(source)) {
     return validationError(input, `Service ${input.serviceName} declares an invalid log source.`, issue);
@@ -37,7 +37,7 @@ const validateSourceShape = (
     return validationError(
       input,
       `Service ${input.serviceName} log source ${String(source.id)} must use an absolute in-container path.`,
-      `${issue}.path`,
+      [...issue, "path"],
     );
   }
   return undefined;
@@ -46,26 +46,25 @@ const validateSourceShape = (
 const validateUniqueSources = (
   input: Pick<MergeLogSourcesInput, "appRoot" | "serviceName">,
   sources: ReadonlyArray<unknown>,
-  issue: string,
+  issue: ValidationIssuePath,
 ): LandofileValidationError | undefined => {
   const seen = new Set<string>();
   for (const [index, source] of sources.entries()) {
     if (!Schema.is(LogSource)(source)) {
-      return validationError(
-        input,
-        `Service ${input.serviceName} declares an invalid log source.`,
-        `${issue}[${index}]`,
-      );
+      return validationError(input, `Service ${input.serviceName} declares an invalid log source.`, [
+        ...issue,
+        index,
+      ]);
     }
-    const shapeError = validateSourceShape(input, source, `${issue}[${index}]`);
+    const shapeError = validateSourceShape(input, source, [...issue, index]);
     if (shapeError !== undefined) return shapeError;
     const id = String(source.id);
     if (seen.has(id)) {
-      return validationError(
-        input,
-        `Service ${input.serviceName} declares duplicate log source id ${id}.`,
-        `${issue}[${index}].id`,
-      );
+      return validationError(input, `Service ${input.serviceName} declares duplicate log source id ${id}.`, [
+        ...issue,
+        index,
+        "id",
+      ]);
     }
     seen.add(id);
   }
@@ -75,7 +74,7 @@ const validateUniqueSources = (
 export const mergeLogSources = (
   input: MergeLogSourcesInput,
 ): Result.Result<ReadonlyArray<LogSourceType>, LandofileValidationError> => {
-  const typeIssue = `${issuePath(input.serviceName)}.serviceType`;
+  const typeIssue = [...issuePath(input.serviceName), "serviceType"];
   const userIssue = issuePath(input.serviceName);
   const typeError = validateUniqueSources(input, input.typeSources, typeIssue);
   if (typeError !== undefined) return Result.fail(typeError);

@@ -2,7 +2,7 @@ import { Effect, Graph, Option, Schema } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, DependencyPlan, HealthcheckPlan } from "@lando/sdk/schema";
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 
 const DependencyServicePlan = Schema.Struct({
   dependsOn: Schema.Array(DependencyPlan),
@@ -31,8 +31,8 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
               message: `Service ${dependentName} depends on missing service ${targetName} with condition ${dependency.condition}. Add service ${targetName} to services or set required: false on this dependency.`,
               file: `${appRoot}/.lando.yml`,
               issues: [
-                validationIssueFromText(
-                  `services.${dependentName}.dependsOn`,
+                validationIssue(
+                  ["services", dependentName, "dependsOn"],
                   `Service ${dependentName} depends on missing service ${targetName} with condition ${dependency.condition}. Add service ${targetName} to services or set required: false on this dependency.`,
                 ),
               ],
@@ -51,8 +51,8 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
             message: `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled healthcheck. Add a healthcheck with kind: command to service ${targetName}, or relax the dependency condition to service_started. Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`,
             file: `${appRoot}/.lando.yml`,
             issues: [
-              validationIssueFromText(
-                `services.${dependentName}.dependsOn`,
+              validationIssue(
+                ["services", dependentName, "dependsOn"],
                 `Service ${dependentName} depends on service ${targetName} with condition service_healthy, but service ${targetName} has no enabled healthcheck. Add a healthcheck with kind: command to service ${targetName}, or relax the dependency condition to service_started. Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.`,
               ),
             ],
@@ -92,8 +92,8 @@ export const validateServiceDependencies = Effect.fn("AppPlanner.validateDepende
         message: `Dependency cycle detected: ${description}. Remove or redirect one dependency edge; required: false does not break a dependency cycle.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
-          validationIssueFromText(
-            `services.${dependentName}.dependsOn`,
+          validationIssue(
+            ["services", dependentName, "dependsOn"],
             `Dependency cycle detected: ${description}. Remove or redirect one dependency edge; required: false does not break a dependency cycle.`,
           ),
         ],

@@ -11,7 +11,7 @@ import type { FileSystem, LandoPaths } from "@lando/sdk/services";
 
 import { type LoadedCaPem, loadCaPems, resolveServiceNetworkInject } from "@lando/http-client/network-trust";
 import { assertUnderRoot } from "@lando/landofile/include-guard";
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 
 const CERTIFICATE_PEM_PATTERN = /^(?:\s*-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----\s*)+$/u;
 const SECURITY_FEATURE_ID = "lando.security" as const;
@@ -41,8 +41,8 @@ const validationError = (input: ResolveSecurityFeatureInput, message: string): L
     message: `Service ${input.serviceName} security.ca ${message}`,
     file: `${input.appRoot}/.lando.yml`,
     issues: [
-      validationIssueFromText(
-        `services.${input.serviceName}.security.ca`,
+      validationIssue(
+        ["services", input.serviceName, "security", "ca"],
         `Service ${input.serviceName} security.ca ${message}`,
       ),
     ],
@@ -81,8 +81,8 @@ export const loadGlobalSecurityCas = (
           message: `Global network CA could not be loaded: ${cause.message}. ${cause.remediation}`,
           file: `${appRoot}/.lando.yml`,
           issues: [
-            validationIssueFromText(
-              "network.ca.certs",
+            validationIssue(
+              ["network", "ca", "certs"],
               `Global network CA could not be loaded: ${cause.message}. ${cause.remediation}`,
             ),
           ],
@@ -97,8 +97,8 @@ export const loadGlobalSecurityCas = (
                 message: `Global network CA ${ca.path} must contain a valid PEM certificate. Point network.ca.certs or LANDO_NETWORK_CA_CERTS at a complete CERTIFICATE block.`,
                 file: `${appRoot}/.lando.yml`,
                 issues: [
-                  validationIssueFromText(
-                    "network.ca.certs",
+                  validationIssue(
+                    ["network", "ca", "certs"],
                     `Global network CA ${ca.path} must contain a valid PEM certificate. Point network.ca.certs or LANDO_NETWORK_CA_CERTS at a complete CERTIFICATE block.`,
                   ),
                 ],

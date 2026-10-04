@@ -18,7 +18,7 @@ import type {
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
@@ -96,8 +96,8 @@ export const resolvePinnedArtifactTag = (
         message: `Service ${serviceName} requests version ${version} of service type ${serviceType.id}, but that ServiceType does not publish any supported versions. Use the bare type ${serviceType.id} or choose a ServiceType with shipped version metadata.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
-          validationIssueFromText(
-            `services.${serviceName}.type`,
+          validationIssue(
+            ["services", serviceName, "type"],
             `Service ${serviceName} requests version ${version} of service type ${serviceType.id}, but that ServiceType does not publish any supported versions. Use the bare type ${serviceType.id} or choose a ServiceType with shipped version metadata.`,
           ),
         ],
@@ -110,8 +110,8 @@ export const resolvePinnedArtifactTag = (
         message: `Service ${serviceName} requests unsupported version ${version} of service type ${serviceType.id}. Supported versions: ${[...declaredVersions].sort().join(", ")}.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
-          validationIssueFromText(
-            `services.${serviceName}.type`,
+          validationIssue(
+            ["services", serviceName, "type"],
             `Service ${serviceName} requests unsupported version ${version} of service type ${serviceType.id}. Supported versions: ${[...declaredVersions].sort().join(", ")}.`,
           ),
         ],
@@ -125,8 +125,8 @@ export const resolvePinnedArtifactTag = (
       message: `Service type ${serviceType.id} declares supported version ${version} but does not publish an artifact for supported version ${version}. Fix the ServiceType metadata before using this version.`,
       file: `${appRoot}/.lando.yml`,
       issues: [
-        validationIssueFromText(
-          `services.${serviceName}.type`,
+        validationIssue(
+          ["services", serviceName, "type"],
           `Service type ${serviceType.id} declares supported version ${version} but does not publish an artifact for supported version ${version}. Fix the ServiceType metadata before using this version.`,
         ),
       ],
@@ -153,8 +153,8 @@ export const unsupportedServiceType = (
     message: `Unsupported service type ${serviceType} for service ${serviceName}.${remediation}`,
     file: `${appRoot}/.lando.yml`,
     issues: [
-      validationIssueFromText(
-        `services.${serviceName}.type`,
+      validationIssue(
+        ["services", serviceName, "type"],
         `Unsupported service type ${serviceType} for service ${serviceName}.${remediation}`,
       ),
     ],
@@ -170,8 +170,8 @@ export const serviceTypeCollision = (
     message: error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
     file: `${appRoot}/.lando.yml`,
     issues: [
-      validationIssueFromText(
-        `services.${serviceName}.type`,
+      validationIssue(
+        ["services", serviceName, "type"],
         error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
       ),
     ],
@@ -182,8 +182,8 @@ export const servicePlanError = (appRoot: string, serviceName: string, cause: un
     message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
     file: `${appRoot}/.lando.yml`,
     issues: [
-      validationIssueFromText(
-        `services.${serviceName}`,
+      validationIssue(
+        ["services", serviceName],
         cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
       ),
     ],
@@ -194,8 +194,8 @@ export const appFeatureError = (appRoot: string, cause: unknown) =>
     message: cause instanceof Error ? cause.message : "Invalid app-feature composition.",
     file: `${appRoot}/.lando.yml`,
     issues: [
-      validationIssueFromText(
-        "appFeatures",
+      validationIssue(
+        ["appFeatures"],
         cause instanceof Error ? cause.message : "Invalid app-feature composition.",
       ),
     ],

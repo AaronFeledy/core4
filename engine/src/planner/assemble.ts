@@ -15,7 +15,7 @@ import {
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import {
   type AppPlannerError,
   CacheService,
@@ -130,8 +130,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
         message: `Global network trust configuration is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
         file: landofilePath,
         issues: [
-          validationIssueFromText(
-            "network",
+          validationIssue(
+            ["network"],
             `Global network trust configuration is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
           ),
         ],
@@ -163,8 +163,8 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
             message: error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
             file: landofilePath,
             issues: [
-              validationIssueFromText(
-                `plugins.${ref.pluginId}.appFeatures.${ref.id}`,
+              validationIssue(
+                ["plugins", ref.pluginId, "appFeatures", ref.id],
                 error instanceof Error ? error.message : `App feature ${ref.id} is not registered.`,
               ),
             ],
