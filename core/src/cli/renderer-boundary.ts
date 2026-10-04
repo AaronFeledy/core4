@@ -122,8 +122,8 @@ const EmptyCommandResultSchema = Schema.Struct({});
 const withStageParent = <A, E, R>(effect: Effect.Effect<A, E, R>, span: Tracer.Span) =>
   Effect.provideService(effect, Tracer.ParentSpan, span);
 
-/** Ends a lifecycle stage span once; later calls are no-ops. */
-const makeStage = (name: "init" | "run" | "render") => {
+/** Ends a lifecycle stage span. Render may be revised after a formatter failure; other stages keep the first exit. */
+const makeStage = (name: "init" | "run" | "render", revisable = false) => {
   let span: Tracer.Span | undefined;
   let ended = false;
   const start = Effect.suspend(() =>
@@ -136,7 +136,9 @@ const makeStage = (name: "init" | "run" | "render") => {
   );
   const end = (exit: Exit.Exit<unknown, unknown>) =>
     Effect.suspend(() => {
-      if (span === undefined || ended) return Effect.void;
+      // Render can be closed once to fill the envelope, then again after a
+      // fallible formatter (jq) fails. Other stages stay first-exit-wins.
+      if (span === undefined || (ended && !revisable)) return Effect.void;
       ended = true;
       const current = span;
       return Effect.map(Clock.currentTimeNanos, (now) => current.end(now, exit));
@@ -232,7 +234,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       ? undefined
       : { ...options.invocation, invocationId: options.invocation.invocationId ?? newInvocationId() };
   const initStage = makeStage("init");
-  const renderStage = makeStage("render");
+  const renderStage = makeStage("render", true);
   let resultExit: Exit.Exit<unknown, unknown> = Exit.void;
   const capture = options.traceCapture;
   const finishTrace =

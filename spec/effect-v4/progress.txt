@@ -483,3 +483,34 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - **Learnings for future iterations:**
   - A reset `lando4-dev` still sees host ports 80 and 443 through WSL mirrored networking, so setup and start hop to 8080/8443. Doctor warns `preferred-host-ports` and router `occupied-hop`. The alternate URLs still serve the app.
 ---
+
+## 2026-10-03 20:35 CDT - Babysit
+- PR: #1148 https://github.com/AaronFeledy/core4/pull/1148
+- CI outcome: pass (after triage; first run failed unit shards 1/3, guide scenarios, build-windows-x64)
+- Review feedback: fixed (restored nested x- patterns in published LandofileShape, updated editor-schema leading-comment and guide array-path assertions, planner validation paths built as arrays for dotted service names, printed LandofileWriteValidationError issues; Windows compiled init lock failure is a pre-existing main flake)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-10-03 21:45 CDT - US-669
+- `--trace` (or `LANDO_TRACE=1`) traces dispatcher-routed commands. It prints a timing tree to stderr after the result, collapsing spans under 1% of total, and adds a `trace` field to JSON/YAML success and failure envelopes. The field is typed by the new public `CommandTrace` schema, which is registered with a contract fixture. Local retention keeps 10,000 finished spans and counts the rest in `droppedSpans`. The cold path and level-`none` logging are unchanged, and untraced runs keep `TracerEnabled` false.
+- Opt-in OTLP export:
+  - Settings: global config `tracing.otlp.endpoint`/`headers`, falling back per field to `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_HEADERS`. Header values are redacted in config views.
+  - Transport: Effect's `OtlpTracer` with `OtlpSerialization.layerJson` over Lando's HttpClient, posting to `<endpoint>/v1/traces` with `service.name=lando`, `service.version`, `os.type`, and `host.arch`.
+  - Timing: serialization waits for completion so the final redaction tokens scrub attributes. The flush runs after the result and is bounded to 1 s, and export failures never change the exit status.
+  - Limits: the 10,000-span cap limits only local retention, not export.
+- Embedding hosts: `openLandoRuntime`/`makeLandoRuntime` keep a host's `Tracer`, `CurrentLoggers`, `MinimumLogLevel`, and error reporters. A reference counts as host-provided when it is present in the fiber context and is not a value Lando recorded installing, so an explicit host `Info` is respected and nested Lando silent layers still work. Runtime and app-handle spans parent to the host span. The outermost Lando boundary applies `withErrorReporting({ defectsOnly: true })`, so a defect is reported once and tagged failures never are. The CLI installs a reporter that feeds the existing bug-report rendering.
+- Guides: `trace-a-command` (asserts `trace.spans`, root `lando meta:config`), `embedding-observability` (asserts the host span parents `LandoRuntime.run`), and prose-only `export-traces`, because a `<Run>` cannot plant env for an export or redaction assertion. Spec §8.11.6 and §16.6.1 amended.
+- Benchmark (sandbox, compiled binaries, script-reported warm p95): base 127.9 / 137.9 / 139.4 ms; branch without tracing 145.2 / 137.0 / 139.6 ms, within the §12 budget; branch with `LANDO_TRACE=1` 137.2 / 138.5 / 130.8 ms, so overhead is within noise on the `bench` tooling path.
+- Verification: `gate:pr` passed; `lint:guides`, `check:guide-coverage`, `check:public-transcripts`, and guide drift against `origin/main` passed; `check:schema-compatibility` reported 0 breaking. Spot checks: 680 tests across 18 SDK/CLI files, 7 host-observability tests plus 213 adjacent library/runtime/logger tests, and the touched guides (positive counts). Compiled-binary QA in `lando4-dev` covered the JSON trace, the stderr tree, no `trace` without the flag, an unreachable endpoint exiting 0 after about 1.1 s, and `--trace` in command help.
+- **Learnings for future iterations:**
+  - Telling a host-provided `Context.Reference` from Effect's default needs a presence check (`Context.getOrUndefined` on the fiber context) plus a marker for values Lando installed itself. Comparing against the default value misses an explicit host `Info`.
+  - Library guide `code` is typechecked as TS, so annotate empty arrays and narrow `find` results.
+  - Root `lando --help` is served by the cold path; global-flag footer changes show up in per-command help.
+---
+
+## 2026-10-03 21:58 CDT - US-669 Review
+- A failed jq render left the command root and the render span as ok in the JSON envelope and in the OTLP export, while the command exited 2. Those spans now take the final exit, so the failure envelope and the exporter report error. The timing-tree guide no longer claims each line shows a percentage of the total.
+- Review notes (deferred/rejected): Bugbot reported no bugs on the build commit. The gate review's other acceptance checks passed and were not demoted.
+- Verification: guide lint, coverage, transcripts, and drift against origin/main passed. Spot checks passed: command trace, tracer retention, trace selection, and jq emit (23).
+---

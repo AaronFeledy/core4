@@ -257,3 +257,59 @@ test("deduplicates nested defect reports into one existing failure rendering", a
   expect(io.stdout().trim().split("\n")).toHaveLength(1);
   expect(JSON.parse(io.stdout()).error.message).toBe("nested-defect-669");
 });
+
+test("marks the root and render spans failed when jq rendering fails", async () => {
+  const requests: string[] = [];
+  const receiver = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      requests.push(await request.text());
+      return Response.json({});
+    },
+  });
+  const io = createBufferedRendererIO();
+  let exitCode = 0;
+  try {
+    await runWithRendererHandling(Effect.succeed({ message: "completed" }), {
+      runtime: Layer.empty,
+      io,
+      rendererMode: "plain",
+      resultFormat: "json",
+      command: "meta:probe",
+      resultSchema: ResultSchema,
+      jqExpression: 'error("qa-jq-failure")',
+      trace: resolveTrace({
+        argv: ["--trace"],
+        env: {},
+        config: { otlp: { endpoint: String(receiver.url), headers: {} } },
+      }),
+      formatError: String,
+      setExitCode: (code) => {
+        exitCode = code;
+      },
+    });
+    expect(exitCode).toBe(2);
+    const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(io.stdout()));
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error).toMatchObject({ _tag: "JqExpressionError" });
+    const root = envelope.trace?.spans.find((span) => span.parent === undefined);
+    const render = envelope.trace?.spans.find((span) => span.name === "CommandLifecycle.render");
+    expect(root).toMatchObject({ name: "lando meta:probe", status: "error" });
+    expect(render).toMatchObject({ status: "error" });
+    expect(requests).toHaveLength(1);
+    const payload = JSON.parse(requests[0] ?? "{}") as {
+      resourceSpans?: Array<{
+        scopeSpans?: Array<{ spans?: Array<{ name?: string; status?: { code?: number } }> }>;
+      }>;
+    };
+    const exported = payload.resourceSpans?.flatMap(
+      (resource) => resource.scopeSpans?.flatMap((scope) => scope.spans ?? []) ?? [],
+    );
+    for (const name of ["lando meta:probe", "CommandLifecycle.render"]) {
+      expect(exported?.find((span) => span.name === name)?.status?.code).toBe(2);
+    }
+  } finally {
+    await receiver.stop(true);
+  }
+});

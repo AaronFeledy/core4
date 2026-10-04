@@ -39,6 +39,7 @@ export const makeCommandTracer = (options: {
         readonly time: bigint;
         readonly values?: Record<string, string | number | boolean>;
       }> = [];
+      let retainedIndex = -1;
       const span: Tracer.Span = {
         _tag: "Span",
         name: inner.name,
@@ -75,7 +76,7 @@ export const makeCommandTracer = (options: {
           inner.addLinks(links.map((link) => ({ ...link, attributes: attributes(link.attributes) })));
         },
         end(time, exit) {
-          if (spanStatus._tag === "Ended") return;
+          const revising = spanStatus._tag === "Ended";
           const durationMs = Math.max(0, Number(time - input.startTime) / 1_000_000);
           const status = Exit.isSuccess(exit)
             ? "ok"
@@ -92,12 +93,27 @@ export const makeCommandTracer = (options: {
             attributes: attributes(Object.fromEntries(inner.attributes)),
           };
           if (span === root) totalDurationMs = durationMs;
-          if (spans.length < capacity) spans.push(retained);
-          else {
-            droppedSpans += 1;
-            if (span === root && capacity > 0) {
-              spans.shift();
+          if (!revising) {
+            if (spans.length < capacity) {
+              retainedIndex = spans.length;
               spans.push(retained);
+            } else {
+              droppedSpans += 1;
+              if (span === root && capacity > 0) {
+                spans.shift();
+                spans.push(retained);
+                retainedIndex = spans.length - 1;
+              }
+            }
+          } else if (retainedIndex >= 0) {
+            const current = spans[retainedIndex];
+            const index =
+              current?.id === inner.spanId
+                ? retainedIndex
+                : spans.findIndex((item) => item.id === inner.spanId);
+            if (index >= 0) {
+              retainedIndex = index;
+              spans[index] = retained;
             }
           }
           const safeExit = Exit.isSuccess(exit)
@@ -106,9 +122,8 @@ export const makeCommandTracer = (options: {
               ? Exit.interrupt(0)
               : Exit.fail(redactor.redactString(Cause.pretty(exit.cause)));
           spanStatus = { _tag: "Ended", startTime: input.startTime, endTime: time, exit: safeExit };
-          if (options.delegate === undefined) inner.end(time, safeExit);
-          else
-            pendingExports.set(inner.spanId, () => {
+          const publish = () => {
+            if (options.delegate !== undefined) {
               for (const [key, value] of inner.attributes) inner.attribute(key, primitive(value));
               for (const event of events)
                 inner.event(
@@ -116,12 +131,15 @@ export const makeCommandTracer = (options: {
                   event.time,
                   event.values === undefined ? undefined : attributes(event.values),
                 );
-              const exportExit =
-                Exit.isFailure(safeExit) && !Cause.hasInterruptsOnly(safeExit.cause)
-                  ? Exit.fail(redactor.redactString(Cause.pretty(safeExit.cause)))
-                  : safeExit;
-              inner.end(time, exportExit);
-            });
+            }
+            const exportExit =
+              Exit.isFailure(safeExit) && !Cause.hasInterruptsOnly(safeExit.cause)
+                ? Exit.fail(redactor.redactString(Cause.pretty(safeExit.cause)))
+                : safeExit;
+            inner.end(time, exportExit);
+          };
+          if (options.delegate === undefined) publish();
+          else pendingExports.set(inner.spanId, publish);
         },
       };
       if (input.root && root === undefined) {

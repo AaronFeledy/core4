@@ -19,7 +19,7 @@ The flag is global, so it works on every dispatcher-routed command. `LANDO_TRACE
 
 ## Read the timing tree
 
-The tree goes to stderr after the normal result, so it never pollutes stdout. Each line is a span: a named stage with how long it took and how much of the total that is. Every command runs under one root span named `lando <command-id>`, with init, run, and render stages underneath and planner phases, lifecycle steps, and provider calls nested below those.
+The tree goes to stderr after the normal result, so it never pollutes stdout. Each line is a span: its name, how long it took, and whether it finished ok, failed, or was interrupted. Every command runs under one root span named `lando <command-id>`, with init, run, and render stages underneath and planner phases, lifecycle steps, and provider calls nested below those.
 
 Spans under 1% of the total collapse into their parent. You see where the time went, not every blink.
 
