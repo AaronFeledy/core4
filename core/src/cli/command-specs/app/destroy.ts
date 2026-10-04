@@ -14,7 +14,7 @@ import {
 import { renderDestroyAppResult } from "../../commands/destroy";
 import { requireConfirmation } from "../../require-confirmation";
 import type { LandoCommandSpec } from "../../spec/command-base";
-import { extractSpecFlags } from "../../spec/command-boundary";
+import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 /**
  * Prompts render as a one-line title, so the data loss comes first and the (possibly long) folder
@@ -36,21 +36,22 @@ const destroyConfirmation = (
 };
 
 export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (input: unknown) {
-  const flags = extractSpecFlags(input);
-  const volumes = flags.volumes === true || flags.purge === true;
-  const root = typeof flags.root === "string" ? resolve(process.cwd(), flags.root) : undefined;
+  const flags = specFlagsOf(input);
+  const volumes = booleanFlag(flags, "volumes") || booleanFlag(flags, "purge");
+  const rootFlag = stringFlag(flags, "root");
+  const root = rootFlag === undefined ? undefined : resolve(process.cwd(), rootFlag);
   yield* requireConfirmation({
-    yes: flags.yes === true,
+    yes: booleanFlag(flags, "yes"),
     message: destroyConfirmation(root, {
       volumes,
-      snapshots: flags.purge === true,
-      caches: flags["purge-caches"] === true,
+      snapshots: booleanFlag(flags, "purge"),
+      caches: booleanFlag(flags, "purge-caches"),
     }),
   });
   const options = {
     volumes,
-    purgeCaches: flags["purge-caches"] === true,
-    yes: flags.yes === true,
+    purgeCaches: booleanFlag(flags, "purge-caches"),
+    yes: booleanFlag(flags, "yes"),
   };
   return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
 });

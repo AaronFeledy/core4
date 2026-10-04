@@ -12,7 +12,8 @@ import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
+import { extractSpecParsedArgv } from "../../spec/command-boundary";
+import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
   typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";
@@ -47,13 +48,15 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   streaming: StreamFrame,
   streamingMode: "live",
   run: (input) => {
-    const flags = extractSpecFlags(input);
-    const envelope =
-      (typeof flags.format === "string" && isEnvelopeResultFormat(flags.format)) || flags.json === true;
+    const flags = specFlagsOf(input);
+    const format = stringFlag(flags, "format");
+    const user = stringFlag(flags, "user");
+    const cwd = stringFlag(flags, "cwd");
+    const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
       command: extractSpecParsedArgv(input),
-      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
-      ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
+      ...(user === undefined ? {} : { user }),
+      ...(cwd === undefined ? {} : { cwd }),
     };
     const nonInteractive =
       typeof input === "object" &&
@@ -64,7 +67,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
       return execApp({ ...base, tty: false, interactive: false });
     if (envelope) return execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
     const tty = process.stdout.isTTY === true;
-    const interactive = flags.interactive === true;
+    const interactive = booleanFlag(flags, "interactive");
     return withInheritedStdinRawMode(
       tty && interactive,
       execApp(attachExecHostIo({ ...base, tty, interactive })),

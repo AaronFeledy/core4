@@ -1,7 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
-import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 import { applyGlobalRoutesForSelectedServices } from "@lando/engine/operations/global-routes";
 
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
@@ -23,9 +22,8 @@ import type {
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
 } from "@lando/sdk/errors";
-import { ToolingExecError } from "@lando/sdk/errors";
+import type { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -38,7 +36,13 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { globalAppRef, renderGlobalServiceRow } from "./global-common";
+import { joinServiceRows } from "../service-summary";
+import {
+  globalAppRef,
+  renderGlobalServiceRow,
+  selectGlobalServices,
+  withGlobalLifecycleEvents,
+} from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
@@ -102,42 +106,6 @@ export type GlobalStartServices =
   | RuntimeProviderRegistry
   | RouterService;
 
-const availableServiceList = (services: AppPlan["services"]): string =>
-  Object.values(services)
-    .map((service) => String(service.name))
-    .sort()
-    .join(", ");
-
-const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
-  const list = availableServiceList(services);
-  const first = list.split(", ")[0];
-  return new ToolingExecError({
-    message:
-      list.length === 0
-        ? `meta:global:start: service ${requested} is not in the global app plan.`
-        : `meta:global:start: service ${requested} is not in the global app plan (available: ${list}).`,
-    tool: "meta:global:start",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando global:start --service ${first}` }),
-  });
-};
-
-const selectedServices = (
-  plan: AppPlan,
-  requested: ReadonlyArray<string> | undefined,
-): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
-  const services = Object.values(plan.services);
-  if (requested === undefined || requested.length === 0) return Effect.succeed(services);
-
-  const available = new Set(services.map((service) => String(service.name)));
-  const missing = requested.find((service) => !available.has(service));
-  if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
-
-  const ids = includeAvailableDependencies(requested, services);
-  return Effect.succeed(services.filter((service) => ids.has(String(service.name))));
-};
-
 const READY_STATES = new Set(["running", "ready"]);
 
 const isGlobalStartReady = (result: GlobalStartResult): boolean =>
@@ -145,7 +113,7 @@ const isGlobalStartReady = (result: GlobalStartResult): boolean =>
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
 export const renderGlobalStartResult = (result: GlobalStartResult): string => {
-  const services = result.servicesStarted.map(renderGlobalServiceRow).join("; ");
+  const services = joinServiceRows(result.servicesStarted.map(renderGlobalServiceRow));
   const prefix = isGlobalStartReady(result) ? "ready" : "starting";
   return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };
@@ -157,7 +125,12 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
   const loaded = yield* loadGlobalPlan();
   if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
-  const services = yield* selectedServices(loaded.plan, options.services);
+  const services = yield* selectGlobalServices({
+    commandId: "meta:global:start",
+    services: loaded.plan.services,
+    requested: options.services,
+    expandDependencies: true,
+  });
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
@@ -176,54 +149,60 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
           ),
         };
 
-  yield* events.publish(
-    PreGlobalStartEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      plan: loaded.plan,
-      triggeredBy: "meta:global:start",
-      ensuringServices: [],
-      cached: false,
-      timestamp: now(),
+  return yield* withGlobalLifecycleEvents(
+    {
+      pre: () =>
+        events.publish(
+          PreGlobalStartEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            plan: loaded.plan,
+            triggeredBy: "meta:global:start",
+            ensuringServices: [],
+            cached: false,
+            timestamp: now(),
+          }),
+        ),
+      post: () =>
+        events.publish(
+          PostGlobalStartEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            plan: loaded.plan,
+            cached: false,
+            timestamp: now(),
+          }),
+        ),
+    },
+    Effect.gen(function* () {
+      const builds = yield* BuildOrchestrator;
+      const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+
+      yield* Effect.scoped(
+        provider.apply(builtPlan, {
+          reconcile: false,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          serviceEnvironment,
+        }),
+      );
+
+      const router = yield* RouterService;
+      const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
+      const servicesStarted = yield* Effect.forEach(services, (service) =>
+        provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
+          Effect.map((runtime) => ({
+            name: String(service.name),
+            state: runtime.state ?? runtime.status,
+            endpoints: [
+              ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+              ...(routeUrls.get(service.name) ?? []),
+            ],
+          })),
+        ),
+      );
+
+      return { app: loaded.plan.name, servicesStarted };
     }),
   );
-
-  const builds = yield* BuildOrchestrator;
-  const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
-  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-
-  yield* Effect.scoped(
-    provider.apply(builtPlan, {
-      reconcile: false,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      serviceEnvironment,
-    }),
-  );
-
-  const router = yield* RouterService;
-  const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
-  const servicesStarted = yield* Effect.forEach(services, (service) =>
-    provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
-      Effect.map((runtime) => ({
-        name: String(service.name),
-        state: runtime.state ?? runtime.status,
-        endpoints: [
-          ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-          ...(routeUrls.get(service.name) ?? []),
-        ],
-      })),
-    ),
-  );
-
-  yield* events.publish(
-    PostGlobalStartEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      plan: loaded.plan,
-      cached: false,
-      timestamp: now(),
-    }),
-  );
-
-  return { app: loaded.plan.name, servicesStarted };
 });

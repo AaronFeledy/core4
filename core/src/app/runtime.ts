@@ -59,13 +59,7 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
     ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
     ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
   );
-  const layer = Layer.mergeAll(
-    appLayer,
-    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
-    ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
-    ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
-    ScratchAppServiceLayer.layer.pipe(Layer.provide(scratchDeps)),
-  );
+  const layer = Layer.mergeAll(scratchDeps, ScratchAppServiceLayer.layer.pipe(Layer.provide(scratchDeps)));
   const context: RuntimeContext = runtimeServiceContext(yield* Layer.build(layer));
   const runtimeScope = yield* Effect.scope;
 

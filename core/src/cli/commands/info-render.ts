@@ -1,4 +1,4 @@
-import type { InfoAppResult, InfoAppService, InfoLogSource, InfoServiceStatus } from "@lando/sdk/app";
+import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
 
 import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
+import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "./service-summary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
   readonly hostProxy?: {
@@ -24,22 +25,7 @@ const hasHostProxy = (result: InfoAppResult): result is InfoResultWithHostProxy 
 
 const hostProxyFor = (result: InfoAppResult) => (hasHostProxy(result) ? result.hostProxy : undefined);
 
-const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
-  switch (status) {
-    case "running":
-    case "healthy":
-      return "ok";
-    case "starting":
-      return "pending";
-    case "stopped":
-      return "skipped";
-    case "unhealthy":
-    case "error":
-      return "error";
-    default:
-      return "info";
-  }
-};
+const infoStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
 const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<SummaryRow["fields"]> => {
   if (sources.length === 0) return [];
@@ -74,7 +60,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       { label: "provider", value: service.provider },
       {
         label: "endpoints",
-        value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
+        value: endpointText(service.endpoints),
       },
       ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
       ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
@@ -170,7 +156,7 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
   const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
-    const renderedEndpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
+    const renderedEndpoints = endpointText(service.endpoints);
     const base = `${service.service}\t${service.status}\t${renderedEndpoints}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;

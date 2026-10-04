@@ -9,7 +9,8 @@ import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
-import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
+import { extractSpecParsedArgv } from "../../spec/command-boundary";
+import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 
@@ -42,16 +43,18 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   streaming: StreamFrame,
   streamingMode: "live",
   run: (input) => {
-    const flags = extractSpecFlags(input);
+    const flags = specFlagsOf(input);
     const parsedArgv = extractSpecParsedArgv(input);
-    if (typeof flags.subsystem === "string") return Effect.fail(subsystemDeferred("subsystem"));
-    if (flags.sidecar === true) return Effect.fail(subsystemDeferred("sidecar"));
-    const envelope =
-      (typeof flags.format === "string" && isEnvelopeResultFormat(flags.format)) || flags.json === true;
+    if (stringFlag(flags, "subsystem") !== undefined) return Effect.fail(subsystemDeferred("subsystem"));
+    if (booleanFlag(flags, "sidecar")) return Effect.fail(subsystemDeferred("sidecar"));
+    const format = stringFlag(flags, "format");
+    const service = stringFlag(flags, "service");
+    const user = stringFlag(flags, "user");
+    const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
       command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
-      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
-      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+      ...(service === undefined ? {} : { service }),
+      ...(user === undefined ? {} : { user }),
     };
     if (envelope) return execApp({ ...base, interactive: false, tty: false });
     const tty = true;
