@@ -5,6 +5,7 @@ import { Effect, Stream } from "effect";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { DataPlaneApiClient, DataPlaneHttpRequest, DataPlaneHttpResponse } from "./data-plane.ts";
+import { tryParseJson } from "./engine-json.ts";
 
 const helperDirectoryPrefix = "lando-log-file-helper-";
 const helperCleanupTimeout = "1 second";
@@ -46,10 +47,9 @@ const ensure2xx = (response: DataPlaneHttpResponse, providerId: string, details:
       );
 
 const parseExecId = (body: string, providerId: string) =>
-  Effect.try({
-    try: () => JSON.parse(body),
-    catch: (cause) => internal(providerId, "Docker exec create returned malformed JSON.", body, cause),
-  }).pipe(
+  tryParseJson(body, (cause) =>
+    internal(providerId, "Docker exec create returned malformed JSON.", body, cause),
+  ).pipe(
     Effect.flatMap((decoded) =>
       typeof decoded === "object" && decoded !== null && "Id" in decoded && typeof decoded.Id === "string"
         ? Effect.succeed(decoded.Id)

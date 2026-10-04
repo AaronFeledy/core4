@@ -7,6 +7,7 @@ import {
   type ProviderErrorContext,
   isSuccessStatus,
 } from "./engine-api.ts";
+import { encodeEngineFilters } from "./engine-json.ts";
 
 const Labels = Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String)));
 const Volumes = Schema.Struct({
@@ -30,12 +31,10 @@ export const inspectEngineResourceNames = Effect.fn("RuntimeProvider.inspectReso
       new ProviderUnavailableError({ ...errorFields, message: "Engine request transport is unavailable." }),
     );
   }
-  const filters = encodeURIComponent(
-    JSON.stringify({
-      ...(checked.namePrefix === undefined ? {} : { name: [checked.namePrefix] }),
-      ...(checked.label === undefined ? {} : { label: [`${checked.label.key}=${checked.label.value}`] }),
-    }),
-  );
+  const filters = encodeEngineFilters({
+    ...(checked.namePrefix === undefined ? {} : { name: [checked.namePrefix] }),
+    ...(checked.label === undefined ? {} : { label: [`${checked.label.key}=${checked.label.value}`] }),
+  });
   const paths = {
     volume: `/volumes?filters=${filters}`,
     container: `/containers/json?all=true&filters=${filters}`,

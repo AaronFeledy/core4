@@ -4,6 +4,7 @@ import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/erro
 import type { AppPlan } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
+import { encodeEngineFilters, parseJsonOrUndefined } from "../engine-json.ts";
 import { redactDetails, redactString, withApiReason } from "../redact.ts";
 
 /** Podman libpod filter map: filter key -> list of values, ANDed across entries. */
@@ -90,7 +91,7 @@ export interface VolumePruneOptions {
 }
 
 export const buildVolumePruneRequest = (options: VolumePruneOptions): EngineHttpRequest => {
-  const query = `filters=${encodeURIComponent(JSON.stringify(options.filters))}`;
+  const query = `filters=${encodeEngineFilters(options.filters)}`;
   const all = options.all === true ? "&all=true" : "";
   const dryRun = options.dryRun === true ? "&dryrun=true" : "";
   return { method: "POST", path: `/libpod/volumes/prune?${query}${all}${dryRun}` };
@@ -165,12 +166,7 @@ const parseDockerCompat = (record: object): VolumePruneParse => {
  * are redacted in {@link pruneVolumes}.
  */
 export const parseVolumePruneResult = (body: string): VolumePruneParse => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return EMPTY;
-  }
+  const parsed = parseJsonOrUndefined(body);
   if (Array.isArray(parsed)) return parseLibpodArray(parsed);
   if (typeof parsed === "object" && parsed !== null) return parseDockerCompat(parsed);
   return EMPTY;
