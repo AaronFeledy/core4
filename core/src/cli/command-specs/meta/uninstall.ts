@@ -16,7 +16,7 @@ import {
 import { readAppliedPlansFromUserData } from "../../commands/list-discovery";
 import { renderUninstallResult } from "../../commands/uninstall";
 import type { LandoCommandSpec } from "../../spec/command-base";
-import { specFlagsOf } from "../../spec/input-coercion";
+import { booleanFlag, specFlagsOf } from "../../spec/input-coercion";
 
 const CONTAINER_RUNTIMES = [
   { cmd: "docker", providerId: "docker" },
@@ -521,7 +521,7 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _writeText?: unknown;
     readonly _terminateRuntimeBinProcesses?: unknown;
   };
-  const purge = flags.purge === true;
+  const purge = booleanFlag(flags, "purge");
   const hasInjectedDiscovery = typeof extra._listDiscoveredApps === "function";
   const listDiscoveredApps = hasInjectedDiscovery
     ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
@@ -537,9 +537,9 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
             typeof extra._userDataRoot === "string" ? extra._userDataRoot : undefined,
           );
   return {
-    dryRun: flags["dry-run"] === true,
-    yes: flags.yes === true,
-    keepData: flags["keep-data"] === true && !purge,
+    dryRun: booleanFlag(flags, "dry-run"),
+    yes: booleanFlag(flags, "yes"),
+    keepData: booleanFlag(flags, "keep-data") && !purge,
     purge,
     listDiscoveredApps,
     ...(cleanupDiscoveredApps !== undefined ? { cleanupDiscoveredApps } : {}),
