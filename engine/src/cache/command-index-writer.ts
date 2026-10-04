@@ -197,7 +197,7 @@ const localIncludeSourcesFor = async (
   allowOutsideRoot: boolean,
 ): Promise<ReadonlyArray<LocalIncludeSource>> => {
   const sources: LocalIncludeSource[] = [];
-  for (const source of [...new Set(paths)].sort((left, right) => left.localeCompare(right))) {
+  for (const source of [...new Set(paths)].sort()) {
     const includePath = await localIncludePath(appRoot, source, allowOutsideRoot);
     if (includePath === undefined) continue;
     sources.push({
@@ -219,7 +219,7 @@ const readBunShellScriptSources = async (appRoot: string): Promise<ReadonlyArray
   const files: string[] = [];
   const visit = async (dir: string): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true });
-    entries.sort((a, b) => a.name.localeCompare(b.name));
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const absolutePath = join(dir, entry.name);

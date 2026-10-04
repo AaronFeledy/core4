@@ -14,9 +14,9 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version three when encoding normalized command input", () => {
+  test("uses version four when encoding normalized command input", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(3n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(4n);
   });
 
   test.each([2n, 3n])("returns a cache miss for a v2 payload with header %s", (headerVersion) => {
