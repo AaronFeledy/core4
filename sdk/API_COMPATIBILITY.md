@@ -896,7 +896,6 @@ It registers no JSON Schema.
 - `parseValidationIssuePath`
 - `suggestionForUnknownKey`
 - `validationIssue`
-- `validationIssueFromText`
 - `validationIssuesFromCause`
 - `validationIssuesFromSchemaIssue`
 

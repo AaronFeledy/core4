@@ -4,8 +4,8 @@ import { Result, Schema } from "effect";
 import {
   LandofileShape,
   formatValidationIssueLine,
+  parseValidationIssuePath,
   suggestionForUnknownKey,
-  validationIssueFromText,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 
@@ -42,14 +42,8 @@ describe("validation issues", () => {
     expect(formatValidationIssueLine(image ?? { path: [], message: "" })).toContain("services.web.imgae:");
   });
 
-  test("uses the message when the text is not a document path", () => {
-    expect(validationIssueFromText("not a path", "the message")).toEqual({
-      path: [],
-      message: "the message",
-    });
-    expect(validationIssueFromText("services.web.port", "Expected a number.")).toEqual({
-      path: ["services", "web", "port"],
-      message: "Expected a number.",
-    });
+  test("parses document paths and rejects prose", () => {
+    expect(parseValidationIssuePath("not a path")).toBeUndefined();
+    expect(parseValidationIssuePath("services.web.ports[0]")).toEqual(["services", "web", "ports", 0]);
   });
 });
