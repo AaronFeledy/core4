@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { Result, Schema } from "effect";
 
 import { NotImplementedError } from "../../errors/index.ts";
+import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
 import { GuideId } from "../guide-frontmatter.ts";
 
 /** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
@@ -264,15 +265,10 @@ export const InspectProps = Schema.Struct({
 export type InspectProps = typeof InspectProps.Type;
 
 /** Tab axis names and values — lowercase kebab-case (a-z, 0-9, hyphen). */
-const axisTokenPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-export const AxisToken = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(axisTokenPattern, {
-      message: "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
-      toJsonSchema: () => ({ pattern: axisTokenPattern.source }),
-    }),
-  ),
-).annotate({ identifier: "AxisToken" });
+export const AxisToken = patternString(KEBAB_CASE_ID_PATTERN, {
+  message: "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  toJsonSchema: () => ({ pattern: KEBAB_CASE_ID_PATTERN.source }),
+}).annotate({ identifier: "AxisToken" });
 export type AxisToken = typeof AxisToken.Type;
 
 export const TabsProps = Schema.Struct({

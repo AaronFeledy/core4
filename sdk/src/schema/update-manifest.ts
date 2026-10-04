@@ -1,8 +1,7 @@
 import { Schema } from "effect";
+import { SEMVER_LOOSE_PATTERN, SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
 const HTTPS_URL_PATTERN = /^https:\/\//u;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 export const UpdateChannel = Schema.Literals(["stable", "next", "dev"]);
 export type UpdateChannel = typeof UpdateChannel.Type;
@@ -16,19 +15,19 @@ export const UpdateManifestPlatform = Schema.Literals([
 ]);
 export type UpdateManifestPlatform = typeof UpdateManifestPlatform.Type;
 
-export const UpdateManifestHttpsUrl = Schema.String.pipe(
-  Schema.check(Schema.isPattern(HTTPS_URL_PATTERN, { message: "Expected an https:// URL." })),
-);
+export const UpdateManifestHttpsUrl = patternString(HTTPS_URL_PATTERN, {
+  message: "Expected an https:// URL.",
+});
 export type UpdateManifestHttpsUrl = typeof UpdateManifestHttpsUrl.Type;
 
-export const UpdateManifestSemver = Schema.String.pipe(
-  Schema.check(Schema.isPattern(SEMVER_PATTERN, { message: "Expected a semantic version." })),
-);
+export const UpdateManifestSemver = patternString(SEMVER_LOOSE_PATTERN, {
+  message: "Expected a semantic version.",
+});
 export type UpdateManifestSemver = typeof UpdateManifestSemver.Type;
 
-export const UpdateManifestSha256 = Schema.String.pipe(
-  Schema.check(Schema.isPattern(SHA256_PATTERN, { message: "Expected a lowercase SHA-256 hex digest." })),
-);
+export const UpdateManifestSha256 = patternString(SHA256_HEX_PATTERN, {
+  message: "Expected a lowercase SHA-256 hex digest.",
+});
 export type UpdateManifestSha256 = typeof UpdateManifestSha256.Type;
 
 export const UpdateManifestBinary = Schema.Struct({

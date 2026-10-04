@@ -1,6 +1,6 @@
 import { type SchemaAST as AST, Effect, Result, Schema } from "effect";
+import { SEMVER_CORE_PATTERN, patternString } from "./string-forms.ts";
 
-const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const MIN_UNSCHEDULED_DEPRECATION_SINCE = { major: 4, minor: 1, patch: 0 } as const satisfies Semver;
 
 type Semver = {
@@ -10,7 +10,7 @@ type Semver = {
 };
 
 const parseSemver = (value: string): Semver | undefined => {
-  const match = SEMVER_PATTERN.exec(value);
+  const match = SEMVER_CORE_PATTERN.exec(value);
   if (match === null) return undefined;
   const [, major, minor, patch] = match;
   if (major === undefined || minor === undefined || patch === undefined) return undefined;
@@ -32,14 +32,10 @@ const isAbsoluteHttpUrl = (value: string): boolean => {
   }
 };
 
-const SemverString = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(SEMVER_PATTERN, {
-      message: "Version must be a semver string in major.minor.patch form.",
-      toJsonSchema: () => ({ pattern: SEMVER_PATTERN.source }),
-    }),
-  ),
-);
+const SemverString = patternString(SEMVER_CORE_PATTERN, {
+  message: "Version must be a semver string in major.minor.patch form.",
+  toJsonSchema: () => ({ pattern: SEMVER_CORE_PATTERN.source }),
+});
 
 const OptionalHttpUrl = Schema.String.pipe(
   Schema.check(
@@ -93,11 +89,11 @@ const DEPRECATION_NOTICE_JSON_SCHEMA = {
   properties: {
     since: {
       type: "string",
-      pattern: SEMVER_PATTERN.source,
+      pattern: SEMVER_CORE_PATTERN.source,
     },
     removeIn: {
       type: "string",
-      pattern: SEMVER_PATTERN.source,
+      pattern: SEMVER_CORE_PATTERN.source,
     },
     severity: {
       type: "string",
