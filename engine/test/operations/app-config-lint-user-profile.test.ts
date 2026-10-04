@@ -43,3 +43,29 @@ test("lints user includes against runtime roots rather than a conflicting proces
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("reports a deferred expression failure as a lint violation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-expression-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: expression-lint",
+        "runtime: 4",
+        "services:",
+        "  database:",
+        "    type: mariadb",
+        '    database: "{{ app.nope }}"',
+        "",
+      ].join("\n"),
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.violations).toMatchObject([{ path: ["services", "database", "database"] }]);
+    expect(result.violations[0]?.message).toBeTruthy();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -48,13 +48,23 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
   const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  yield* resolveKnownEventSet({
+  const resolved = yield* resolveKnownEventSet({
     landofile: loaded.success,
     pluginRegistry,
     configService,
     fileSystem,
     pathsService,
     file: result.file,
-  });
+  }).pipe(Effect.result);
+  if (Result.isFailure(resolved)) {
+    if (resolved.failure._tag === "ConfigExpressionError") {
+      return {
+        ...result,
+        valid: false,
+        violations: [{ path: resolved.failure.path.split("."), message: resolved.failure.message }],
+      };
+    }
+    return yield* Effect.fail(resolved.failure);
+  }
   return result;
 });

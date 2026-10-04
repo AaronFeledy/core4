@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { Clock, Effect, Result } from "effect";
 
@@ -15,7 +16,7 @@ import type { HostTerminal, LandofileShape } from "@lando/sdk/schema";
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   AppPlanner,
-  type ConfigService,
+  ConfigService,
   EventService,
   LandofileService,
   RuntimeProviderRegistry,
@@ -29,6 +30,7 @@ import {
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { materializeLandofileScopes } from "../planner/landofile-scopes.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
@@ -116,11 +118,23 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
 ): Effect.fn.Return<RunToolingResult, RunToolingError, RunToolingServices> {
   const landofileService = yield* LandofileService;
 
-  const landofile =
+  const loadedLandofile =
     target === undefined
       ? yield* loadUserLandofile(landofileService)
       : yield* loadUserLandofileAt(landofileService, target.root);
   const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
+  // The freshly loaded declarations stay authoritative over the plan below, so
+  // they need the same deferred-scope resolution the planner applies, or an
+  // authored `{{ app.name }}` would reach the container as literal text.
+  const config = yield* ConfigService;
+  const globalConfig = yield* config.load;
+  const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
+  const { landofile } = yield* materializeLandofileScopes({
+    landofile: loadedLandofile,
+    appRoot: landofileRoot,
+    landofilePath: join(landofileRoot, LANDOFILE_NAME),
+    globalConfig,
+  });
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
   const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
   const servicesCanContributeTooling = Object.keys(landofile.services ?? {}).length > 0;

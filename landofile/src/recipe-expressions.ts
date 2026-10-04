@@ -1,6 +1,6 @@
 import {
   type EvaluationBudget,
-  type ExpressionTemplate,
+  type ExpressionContext,
   evaluateTemplateEither,
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
@@ -54,19 +54,6 @@ export const sourceHasUnescapedBracedForm = (source: string): boolean => {
   return false;
 };
 
-/**
- * True when a value site's expressions may resolve from loader-owned data.
- *
- * The raw source decides the braced question, not the AST: a parsed segment
- * cannot tell `${VAR}` from `$VAR`, and only the bare spelling is inert here.
- * Unescaped `${...}` parameter and `${secret:...}` references stay unsupported
- * on the load path - including on the files whose raw pre-parse scan is skipped
- * - so a site carrying one is left for the strict path to reject.
- */
-const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean =>
-  !sourceHasUnescapedBracedForm(source) &&
-  expressionInterpolationsTouchOnlyScopes(template, LOAD_RESOLVABLE_EXPRESSION_SCOPES);
-
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
   /** Location of the value site holding the expression. */
@@ -102,7 +89,7 @@ export const hostExpressionEnvironment = (): Record<string, string> => {
  * an id and nothing else, so it yields no scope and every `recipe.<option>`
  * reference stays unresolved.
  */
-const recipeOptionScope = (
+export const recipeOptionScope = (
   merged: Record<string, unknown>,
 ): Readonly<Record<string, unknown>> | undefined => {
   const recipe = merged.recipe;
@@ -128,55 +115,91 @@ export const materializeLoadScopeExpressions = (
   env: Readonly<Record<string, string>>,
 ): MaterializedLoadScopeExpressions => {
   const options = recipeOptionScope(merged);
-  const unresolved: UnresolvedLoadScopeExpression[] = [];
+  const materialized = materializeExpressionScopes(merged, filePath, {
+    context: { env, recipe: options },
+    scopes: LOAD_RESOLVABLE_EXPRESSION_SCOPES,
+    unavailableScopes: options === undefined ? ["recipe"] : [],
+  });
+  return {
+    value: materialized.value,
+    unresolved: materialized.unresolved.map(({ path, expression, reason }) => {
+      const parsed = parseExpressionEither(expression, { filePath, bareShellParameters: "preserve" });
+      const needsOptions =
+        Result.isSuccess(parsed) && !expressionInterpolationsTouchOnlyScopes(parsed.success, ["env"]);
+      return {
+        path,
+        reason: reason.startsWith("Expression budget exceeded")
+          ? "it exceeds the load-time expression budget"
+          : needsOptions
+            ? options === undefined
+              ? "the Landofile records no recipe options"
+              : "it references a recipe option the Landofile does not set"
+            : "it references an environment variable that is not set and declares no default",
+      };
+    }),
+  };
+};
+
+export const materializeExpressionScopes = <T extends object>(
+  merged: T,
+  filePath: string,
+  input: {
+    readonly context: ExpressionContext;
+    readonly scopes: ReadonlyArray<string>;
+    readonly budget?: EvaluationBudget;
+    readonly unavailableScopes?: ReadonlyArray<string>;
+  },
+): {
+  readonly value: T;
+  readonly unresolved: ReadonlyArray<UnresolvedLoadScopeExpression & { readonly expression: string }>;
+} => {
+  const unresolved: Array<UnresolvedLoadScopeExpression & { readonly expression: string }> = [];
 
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
     if (typeof value === "string") {
       if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
       if (Result.isFailure(parsed)) return value;
-      if (!resolvableAtLoad(value, parsed.success)) return value;
-      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.success, ["env"]);
-      if (needsOptions && options === undefined) {
-        unresolved.push({ path, reason: "the Landofile records no recipe options" });
+      if (
+        sourceHasUnescapedBracedForm(value) ||
+        !expressionInterpolationsTouchOnlyScopes(parsed.success, input.scopes)
+      ) {
         return value;
       }
-      const evaluated = evaluateTemplateEither(
-        parsed.success,
-        options === undefined ? { env } : { env, recipe: options },
-        { filePath, budget: LOAD_EXPRESSION_BUDGET },
-      );
+      const availableScopes = input.scopes.filter((scope) => !input.unavailableScopes?.includes(scope));
+      if (!expressionInterpolationsTouchOnlyScopes(parsed.success, availableScopes)) {
+        unresolved.push({ path, expression: value, reason: "The expression scope is unavailable." });
+        return value;
+      }
+      const evaluated = evaluateTemplateEither(parsed.success, input.context, {
+        filePath,
+        budget: input.budget ?? LOAD_EXPRESSION_BUDGET,
+      });
       if (Result.isFailure(evaluated)) {
-        let reason: string;
-        if (evaluated.failure.message.startsWith("Expression budget exceeded")) {
-          reason = "it exceeds the load-time expression budget";
-        } else if (needsOptions) {
-          reason = "it references a recipe option the Landofile does not set";
-        } else {
-          reason = "it references an environment variable that is not set and declares no default";
-        }
-        unresolved.push({ path, reason });
+        unresolved.push({ path, expression: value, reason: evaluated.failure.message });
         return value;
       }
       return evaluated.success;
     }
-    if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
+    if (Array.isArray(value)) {
+      const visited = value.map((entry, index) => visit(entry, [...path, index]));
+      return visited.every((entry, index) => entry === value[index]) ? value : visited;
+    }
     if (Predicate.isObjectOrArray(value)) {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-          key,
-          visit(entry, [...path, key]),
-        ]),
-      );
+      let changed = false;
+      const entries = Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+        const visited = path.length === 0 && key === "recipe" ? entry : visit(entry, [...path, key]);
+        if (visited !== entry) changed = true;
+        return [key, visited];
+      });
+      return changed ? Object.fromEntries(entries) : value;
     }
     return value;
   };
 
   // Provenance is inert data the user reads; never rewrite it.
-  const { recipe, ...rest } = merged;
-  const visited = visit(rest, []) as Record<string, unknown>;
   return {
-    value: recipe === undefined ? visited : { ...visited, recipe },
+    value: visit(merged, []) as T,
     unresolved,
   };
 };

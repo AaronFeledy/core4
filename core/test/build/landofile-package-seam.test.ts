@@ -76,9 +76,11 @@ describe("Landofile package seam", () => {
     expect(typeof packageModule.layer).toBe("function");
     expect(stringRecord(packageManifest.exports)).toMatchObject({
       ".": "./src/index.ts",
+      "./copy-provenance": "./src/copy-provenance.ts",
       "./includes": "./src/includes.ts",
       "./parser": "./src/parser.ts",
       "./ports": "./src/ports.ts",
+      "./recipe-expressions": "./src/recipe-expressions.ts",
       "./serializer": "./src/serializer.ts",
       "./service": "./src/service.ts",
       "./version-constraint": "./src/version-constraint.ts",

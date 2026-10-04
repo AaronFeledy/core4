@@ -13,6 +13,7 @@ import {
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling, validateServiceTypeReservedToolingNames } from "./effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
+import { materializeLandofileScopes } from "./landofile-scopes.ts";
 import { resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
 
@@ -27,7 +28,8 @@ export interface KnownEventSetInput {
 }
 
 export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
-  const { landofile, pluginRegistry, configService, fileSystem, pathsService } = input;
+  const { pluginRegistry, configService, fileSystem, pathsService } = input;
+  let landofile = input.landofile;
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const landofilePath = input.file ?? `${appRoot}/.lando.yml`;
   const appName = landofile.name ?? "app";
@@ -55,6 +57,9 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
               }),
           ),
         );
+  const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
+  const { appSlug, defaultDomain } = materialized;
+  landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
   const envProvider = readProviderEnvVar(process.env);
   const configProvider = globalConfig?.defaultProviderId;
@@ -120,6 +125,9 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   }
   return {
     ...seeds,
+    landofile,
+    appSlug,
+    defaultDomain,
     effectiveTooling,
     knownEventNames,
     appRoot,

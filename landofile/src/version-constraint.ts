@@ -77,6 +77,10 @@ export const hasSkippedUnsatisfiedVersionConstraint = (
 
 const landofileVersionConstraintEntries = new WeakMap<object, ReadonlyArray<VersionConstraintEntry>>();
 
+export const hasVersionConstraintEntries = (landofile: object): boolean =>
+  landofileVersionConstraintEntries.has(landofile) ||
+  (landofile as VersionConstraintCarrier)[VERSION_CONSTRAINT_ENTRIES_SYMBOL] !== undefined;
+
 export const rememberVersionConstraintEntries = <T extends object>(
   landofile: T,
   entries: ReadonlyArray<VersionConstraintEntry>,
