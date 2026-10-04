@@ -23,6 +23,7 @@ import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
 import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
+import { COMPILED_DECODER_ASTS } from "./compiled-decoder-targets";
 import {
   printCommandHelp,
   printHelpCatalogJson,
@@ -63,6 +64,7 @@ import {
   resolveJsonControl,
   resolveResultFormat,
 } from "./format-flags";
+import { install as installCompiledDecoders } from "./generated/compiled-decoders.mjs";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
@@ -209,6 +211,7 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+  installCompiledDecoders(COMPILED_DECODER_ASTS);
   if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
     setActiveLogLevel("none");
     const { runAgentRelayWorkerProcess } = await import("./agent-relay/worker-runtime");

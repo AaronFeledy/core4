@@ -122,6 +122,14 @@ export const CODEGEN_CATALOG = [
     dependsOn: ["setup-plugin-flags", "mcp-allowlist"],
   },
   {
+    // Imports `@lando/sdk/schema`; see `bootstrap-layers`.
+    dependsOn: ["core-service-env-catalog"],
+    id: "compiled-decoders",
+    ownership: "derived",
+    script: "build-compiled-decoders.ts",
+    workspace: "repo",
+  },
+  {
     id: "schema-snapshot",
     ownership: "derived",
     script: "build-schema-snapshot.ts",
