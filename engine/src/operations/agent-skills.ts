@@ -41,36 +41,38 @@ export type AgentSkillsError =
   | LandofileFormConflictError
   | ManagedFileError;
 
-export const resolveAgentSkillsAppRoot = (
-  options: AgentSkillsOptions,
-): Effect.Effect<string, LandofileNotFoundError | LandofileParseError | LandofileFormConflictError> =>
-  Effect.gen(function* () {
-    if (options.appRoot !== undefined && options.appRoot !== "") return options.appRoot;
-    const cwd = options.cwd ?? process.cwd();
-    const appRoot = yield* Effect.tryPromise({
-      try: () => findAppRoot(cwd),
-      catch: (cause) =>
-        cause instanceof LandofileFormConflictError
-          ? cause
-          : new LandofileParseError({
-              message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-              filePath: cwd,
-              line: undefined,
-              column: undefined,
-              cause,
-            }),
-    });
-    if (appRoot === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message:
-            "No .lando.yml or .lando.ts found. Run `lando init` to create an app before installing agent skills.",
-          cwd,
-        }),
-      );
-    }
-    return appRoot;
-  });
+export const resolveAgentSkillsAppRoot = Effect.fn("resolveAgentSkillsAppRoot")(
+  (
+    options: AgentSkillsOptions,
+  ): Effect.Effect<string, LandofileNotFoundError | LandofileParseError | LandofileFormConflictError> =>
+    Effect.gen(function* () {
+      if (options.appRoot !== undefined && options.appRoot !== "") return options.appRoot;
+      const cwd = options.cwd ?? process.cwd();
+      const appRoot = yield* Effect.tryPromise({
+        try: () => findAppRoot(cwd),
+        catch: (cause) =>
+          cause instanceof LandofileFormConflictError
+            ? cause
+            : new LandofileParseError({
+                message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
+                filePath: cwd,
+                line: undefined,
+                column: undefined,
+                cause,
+              }),
+      });
+      if (appRoot === undefined) {
+        return yield* Effect.fail(
+          new LandofileNotFoundError({
+            message:
+              "No .lando.yml or .lando.ts found. Run `lando init` to create an app before installing agent skills.",
+            cwd,
+          }),
+        );
+      }
+      return appRoot;
+    }),
+);
 
 const toEntries = (result: ManagedFileResult): ReadonlyArray<AgentSkillsFileResult> =>
   result.entries.map((entry) => ({
@@ -79,16 +81,18 @@ const toEntries = (result: ManagedFileResult): ReadonlyArray<AgentSkillsFileResu
     action: entry.action,
   }));
 
-const applyPack = (
-  verb: Exclude<AgentSkillsVerb, "remove">,
-  options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
-  Effect.gen(function* () {
-    const appRoot = yield* resolveAgentSkillsAppRoot(options);
-    const managed = yield* ManagedFileService;
-    const result = yield* Effect.scoped(managed.apply(agentSkillManagedFiles(appRoot)));
-    return { verb, appRoot, entries: toEntries(result) };
-  });
+const applyPack = Effect.fn("applyPack")(
+  (
+    verb: Exclude<AgentSkillsVerb, "remove">,
+    options: AgentSkillsOptions = {},
+  ): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+    Effect.gen(function* () {
+      const appRoot = yield* resolveAgentSkillsAppRoot(options);
+      const managed = yield* ManagedFileService;
+      const result = yield* Effect.scoped(managed.apply(agentSkillManagedFiles(appRoot)));
+      return { verb, appRoot, entries: toEntries(result) };
+    }),
+);
 
 export const installAgentSkills = (
   options: AgentSkillsOptions = {},
@@ -98,15 +102,17 @@ export const updateAgentSkills = (
   options: AgentSkillsOptions = {},
 ): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> => applyPack("update", options);
 
-export const removeAgentSkills = (
-  options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
-  Effect.gen(function* () {
-    const appRoot = yield* resolveAgentSkillsAppRoot(options);
-    const managed = yield* ManagedFileService;
-    const result = yield* managed.remove({
-      owner: AGENT_SKILLS_OWNER,
-      base: appRoot,
-    });
-    return { verb: "remove", appRoot, entries: toEntries(result) };
-  });
+export const removeAgentSkills = Effect.fn("removeAgentSkills")(
+  (
+    options: AgentSkillsOptions = {},
+  ): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+    Effect.gen(function* () {
+      const appRoot = yield* resolveAgentSkillsAppRoot(options);
+      const managed = yield* ManagedFileService;
+      const result = yield* managed.remove({
+        owner: AGENT_SKILLS_OWNER,
+        base: appRoot,
+      });
+      return { verb: "remove", appRoot, entries: toEntries(result) };
+    }),
+);
