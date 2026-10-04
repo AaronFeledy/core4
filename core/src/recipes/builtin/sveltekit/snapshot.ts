@@ -1,6 +1,6 @@
-import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { nodeWebSnapshotBuilders } from "../node-web-snapshot.ts";
+import { cond, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SVELTEKIT_RECIPE_VERSION = "0.1.0";
@@ -14,17 +14,10 @@ export const sveltekitProducer: RecipeProducer = {
   contentDigest: SVELTEKIT_CONTENT_DIGEST,
 };
 export const sveltekitDefaults = { node: "lts", adapter: "node", database: "none" } as const;
-const databaseEnabled = (): ExpressionNode =>
-  call("ne", { kind: "Path", head: "options", segments: [{ type: "prop", name: "database" }] }, lit("none"));
-const webService = (hasDatabase: boolean): ExpressionNode =>
-  obj([
-    ["type", lit("node:{{ recipe.node }}")],
-    ["port", lit(5173)],
-    ["environment", obj([["SVELTEKIT_ADAPTER", lit("{{ recipe.adapter }}")]])],
-    ["routes", arr(defaultRoute())],
-    ...(hasDatabase ? [["dependsOn", arr(lit("database"))] as const] : []),
-  ]);
-const web = (): ExpressionNode => cond(databaseEnabled(), webService(true), webService(false));
+const { databaseEnabled, web } = nodeWebSnapshotBuilders({
+  port: 5173,
+  env: [["SVELTEKIT_ADAPTER", "{{ recipe.adapter }}"]],
+});
 export const sveltekitSnapshot: RecipeSnapshot = {
   identity: sveltekitProducer,
   optionTypes: {

@@ -1,6 +1,6 @@
-import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { nodeWebSnapshotBuilders } from "../node-web-snapshot.ts";
+import { cond, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const ASTRO_RECIPE_VERSION = "0.1.0";
@@ -13,17 +13,10 @@ export const astroProducer: RecipeProducer = {
   contentDigest: ASTRO_CONTENT_DIGEST,
 };
 export const astroDefaults = { node: "lts", database: "none" } as const;
-const databaseEnabled = (): ExpressionNode =>
-  call("ne", { kind: "Path", head: "options", segments: [{ type: "prop", name: "database" }] }, lit("none"));
-const webService = (hasDatabase: boolean): ExpressionNode =>
-  obj([
-    ["type", lit("node:{{ recipe.node }}")],
-    ["port", lit(4321)],
-    ["environment", obj([["ASTRO_TELEMETRY_DISABLED", lit("1")]])],
-    ["routes", arr(defaultRoute())],
-    ...(hasDatabase ? [["dependsOn", arr(lit("database"))] as const] : []),
-  ]);
-const web = (): ExpressionNode => cond(databaseEnabled(), webService(true), webService(false));
+const { databaseEnabled, web } = nodeWebSnapshotBuilders({
+  port: 4321,
+  env: [["ASTRO_TELEMETRY_DISABLED", "1"]],
+});
 export const astroSnapshot: RecipeSnapshot = {
   identity: astroProducer,
   optionTypes: {
