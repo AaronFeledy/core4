@@ -4,6 +4,11 @@
 
 ## Compatibility notes
 
+- Router last-resort port constants, a port-pair schema, and an acquisition-pair
+  selector are additive exports. The selector preserves bind-pair precedence,
+  socket-helper fallback, and advertised-pair fallback. No JSON Schema artifact
+  is added or changed.
+
 - Published JSON Schema artifacts (`getJsonSchema`, `dist/schemas/**`, `dist/command-schemas/**`) are draft 2020-12 documents: `$schema` is `https://json-schema.org/draft/2020-12/schema` and shared definitions live under `$defs`. Editors get draft-07 artifacts from the new `getEditorJsonSchema("LandofileShape" | "GlobalConfig")` export, published as `landofile.schema.json` and `global-config.schema.json` with closed objects and generated descriptions. `LANDOFILE_EDITOR_SCHEMA_URL` is the one URL of the editor Landofile artifact; new Landofiles from `lando init` and `lando app:config:translate` reference it in a leading `# yaml-language-server: $schema=<url>` line, emitted through the additive `"editor-schema"` entry in `LANDOFILE_LEADING_COMMENT_BLOCKS`.
 
 - `@lando/sdk/schema/standard` is an additive, direct-import subpath exporting `LandofileStandardSchema`, `GlobalConfigStandardSchema`, `PluginManifestStandardSchema`, and `RecipeManifestStandardSchema`, plus their `LandofileStandardJSONSchema`, `GlobalConfigStandardJSONSchema`, `PluginManifestStandardJSONSchema`, and `RecipeManifestStandardJSONSchema` counterparts. Standard Schema V1 validation uses the canonical decoders, rejects excess properties, and reports all issues. Standard JSON Schema V1 exposes lazy `input({ target })` and `output({ target })` documents for `draft-2020-12` and `draft-07`; JSON Schema cannot enforce every runtime refinement. These views do not mutate the canonical schema instances and are not added to the schema barrel or its frozen export-name fixture.
@@ -351,6 +356,10 @@ It registers no JSON Schema.
 
 ## Additive schema exports
 
+- `ROUTER_LAST_RESORT_HTTP_PORT`
+- `ROUTER_LAST_RESORT_HTTPS_PORT`
+- `RouterPortPair`
+- `routerPortPairFromAcquisition`
 - `LANDOFILE_EDITOR_SCHEMA_URL`
 - `getEditorJsonSchema`
 - `AGENT_SOCKET_CONTAINER_DIR`
