@@ -274,7 +274,7 @@ describe("applyServiceHome", () => {
     expect(result).toBeInstanceOf(LandofileValidationError);
     expect(result).toMatchObject({
       _tag: "LandofileValidationError",
-      issues: ["services.web.home.path"],
+      issues: [{ path: ["services", "web", "home", "path"] }],
     });
     expect(String((result as LandofileValidationError).message)).toContain(
       "cannot mount over the filesystem root",
@@ -292,7 +292,7 @@ describe("applyServiceHome", () => {
     expect(result).toBeInstanceOf(LandofileValidationError);
     expect(result).toMatchObject({
       _tag: "LandofileValidationError",
-      issues: ["services.web.home.path"],
+      issues: [{ path: ["services", "web", "home", "path"] }],
     });
   });
 });

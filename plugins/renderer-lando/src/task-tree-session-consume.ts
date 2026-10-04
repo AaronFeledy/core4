@@ -26,91 +26,87 @@ export type SessionSubstrate = {
   readonly transcriptTail: { readonly close: Effect.Effect<void> };
 };
 
-export const commitOpenSession = <E>(
+export const commitOpenSession = Effect.fnUntraced(function* <E>(
   session: TaskTreeSession,
   substrate: SessionSubstrate | undefined,
   recordFailure: (cause: unknown) => E,
-): Effect.Effect<TaskTreeSession> =>
-  Effect.gen(function* () {
-    if (substrate === undefined || session.kind !== "open" || session.committed) return session;
-    if (substrate.viewModel.expandedTaskId !== undefined) {
-      yield* Effect.tryPromise({
-        try: () => substrate.controller.exitFullTail(),
-        catch: recordFailure,
-      }).pipe(Effect.ignore);
-      yield* substrate.transcriptTail.close;
-      substrate.viewModel.collapse();
-    }
-    substrate.closeSession();
-    substrate.controller.setFooter([]);
-    return markSessionCommitted(session);
-  });
+): Effect.fn.Return<TaskTreeSession> {
+  if (substrate === undefined || session.kind !== "open" || session.committed) return session;
+  if (substrate.viewModel.expandedTaskId !== undefined) {
+    yield* Effect.tryPromise({
+      try: () => substrate.controller.exitFullTail(),
+      catch: recordFailure,
+    }).pipe(Effect.ignore);
+    yield* substrate.transcriptTail.close;
+    substrate.viewModel.collapse();
+  }
+  substrate.closeSession();
+  substrate.controller.setFooter([]);
+  return markSessionCommitted(session);
+});
 
-const paintProvisional = (
+const paintProvisional = Effect.fnUntraced(function* (
   session: TaskTreeSession,
   active: SessionSubstrate | undefined,
   acquire: Effect.Effect<SessionSubstrate | undefined>,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    if (session.kind !== "armed" || !isProvisionalStartupCommand(session.commandId)) return;
-    const substrate = active ?? (yield* acquire);
-    if (substrate === undefined) return;
-    substrate.controller.setFooter(provisionalTitleFrame(session.commandId));
-  });
+): Effect.fn.Return<void> {
+  if (session.kind !== "armed" || !isProvisionalStartupCommand(session.commandId)) return;
+  const substrate = active ?? (yield* acquire);
+  if (substrate === undefined) return;
+  substrate.controller.setFooter(provisionalTitleFrame(session.commandId));
+});
 
-const consumeActive = (
+const consumeActive = Effect.fnUntraced(function* (
   event: LandoEvent,
   session: TaskTreeSession,
   active: SessionSubstrate,
-): Effect.Effect<TaskTreeSession> =>
-  Effect.gen(function* () {
-    let next = session;
-    if (event._tag === "task.tree.start" && next.kind === "armed") {
-      const commandId = next.commandId;
-      next = openArmedSession(next);
-      active.openSession(commandId);
-    }
-    yield* active.consume(event);
-    return next;
-  });
+): Effect.fn.Return<TaskTreeSession> {
+  let next = session;
+  if (event._tag === "task.tree.start" && next.kind === "armed") {
+    const commandId = next.commandId;
+    next = openArmedSession(next);
+    active.openSession(commandId);
+  }
+  yield* active.consume(event);
+  return next;
+});
 
-export const routeSessionEvent = <E>(
+export const routeSessionEvent = Effect.fnUntraced(function* <E>(
   event: LandoEvent,
   session: TaskTreeSession,
   active: SessionSubstrate | undefined,
   acquire: Effect.Effect<SessionSubstrate | undefined>,
   line: (event: LandoEvent) => void,
   recordFailure: (cause: unknown) => E,
-): Effect.Effect<{ readonly session: TaskTreeSession }> =>
-  Effect.gen(function* () {
-    const boundary = applyLifecycleBoundary(session, event);
-    switch (boundary.action) {
-      case "none":
-        break;
-      case "arm":
-        yield* paintProvisional(boundary.session, active, acquire);
-        return { session: boundary.session };
-      case "commit":
-        return { session: yield* commitOpenSession(boundary.session, active, recordFailure) };
-      case "clear":
-        if (active !== undefined) active.controller.setFooter([]);
-        return { session: boundary.session };
-      case "ignore":
-        return { session: boundary.session };
-      default:
-        return absurd<never>(boundary.action);
-    }
-    if (active !== undefined) {
-      return { session: yield* consumeActive(event, session, active) };
-    }
-    if (event._tag !== "task.tree.start") {
-      line(event);
-      return { session };
-    }
-    const substrate = yield* acquire;
-    if (substrate === undefined) {
-      line(event);
-      return { session };
-    }
-    return { session: yield* consumeActive(event, session, substrate) };
-  });
+): Effect.fn.Return<{ readonly session: TaskTreeSession }> {
+  const boundary = applyLifecycleBoundary(session, event);
+  switch (boundary.action) {
+    case "none":
+      break;
+    case "arm":
+      yield* paintProvisional(boundary.session, active, acquire);
+      return { session: boundary.session };
+    case "commit":
+      return { session: yield* commitOpenSession(boundary.session, active, recordFailure) };
+    case "clear":
+      if (active !== undefined) active.controller.setFooter([]);
+      return { session: boundary.session };
+    case "ignore":
+      return { session: boundary.session };
+    default:
+      return absurd<never>(boundary.action);
+  }
+  if (active !== undefined) {
+    return { session: yield* consumeActive(event, session, active) };
+  }
+  if (event._tag !== "task.tree.start") {
+    line(event);
+    return { session };
+  }
+  const substrate = yield* acquire;
+  if (substrate === undefined) {
+    line(event);
+    return { session };
+  }
+  return { session: yield* consumeActive(event, session, substrate) };
+});

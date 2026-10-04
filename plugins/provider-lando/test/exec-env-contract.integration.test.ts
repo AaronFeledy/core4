@@ -67,7 +67,7 @@ const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
   fileSync: [],
   metadata: {
     ...metadata,
-    resolvedAt: DateTime.unsafeMake(metadata.resolvedAt),
+    resolvedAt: DateTime.makeUnsafe(metadata.resolvedAt),
     source: "/srv/apps/envapp/.lando.yml",
   },
   extensions: {},

@@ -47,125 +47,124 @@ const HOST_PROXY_STATE_REMEDIATION: DoctorSolution = {
     "The persisted host-proxy worker state is unreadable or malformed. Inspect or remove that worker state, then retry.",
 };
 
-export const hostProxyTransportDoctorChecks = (
+export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
   options: HostProxyTransportDoctorOptions,
-): Effect.Effect<ReadonlyArray<DoctorCheck>, never, HostProxyDoctorFileSystem | PathsService> =>
-  Effect.gen(function* () {
-    const fileSystem = yield* HostProxyDoctorFileSystem;
-    const paths = yield* PathsService;
-    const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: options.sourceEnv });
-    const freshness = currentHostProxyAllowlistFreshness();
-    const checks: DoctorCheck[] = [];
-    const allowlistCheck = buildHostProxyAllowlistDoctorCheck(freshness, options);
-    if (allowlistCheck !== undefined) checks.push(allowlistCheck);
-    const limits = options.limits ?? DEFAULT_LIMITS;
-    const deadline = (yield* Clock.currentTimeMillis) + limits.budgetMs;
-    const rootStateOption = yield* fileSystem
-      .readRoot(paths.hostProxyRunRoot)
-      .pipe(Effect.timeoutOption(Duration.millis(Math.max(0, deadline - (yield* Clock.currentTimeMillis)))));
-    if (Option.isNone(rootStateOption)) return checks;
-    const rootState = rootStateOption.value;
-    switch (rootState._tag) {
-      case "absent":
-        return checks;
-      case "unreadable": {
-        const rawContext = {
-          workerState: "unreadable",
-          statePath: paths.hostProxyRunRoot,
-          reason: "worker-root-unreadable",
-          errorCode: rootState.errorCode,
-        };
-        checks.push({
-          name: "host-proxy-state",
-          status: "warn",
-          severity: "warn",
-          providerId: options.provider.id,
-          providerName: options.provider.displayName,
-          providerVersion: options.provider.version,
-          providerKind: options.providerKind,
-          runtimeStatus: options.runtimeStatus,
-          runtime: options.runtime,
-          capabilities: {},
-          context: Object.fromEntries(
-            Object.entries(rawContext).map(([key, value]) => [key, redactor.redactString(value)]),
-          ),
-          solutions: [HOST_PROXY_STATE_REMEDIATION],
-          selection: options.selection,
-        });
-        return checks;
-      }
-      case "entries":
-        break;
-      default: {
-        const exhaustive: never = rootState;
-        return exhaustive;
-      }
-    }
-    const workerEntries = rootState.entries
-      .filter((entry) => entry.isDirectory)
-      .sort((left, right) => compareCodePointStrings(left.name, right.name))
-      .slice(0, limits.maxWorkers);
-    for (const entry of workerEntries) {
-      const remainingMs = deadline - (yield* Clock.currentTimeMillis);
-      if (remainingMs <= 0) break;
-      const runDir = resolve(paths.hostProxyRunRoot, entry.name);
-      const recordPath = resolve(runDir, "worker.json");
-      const diagnoseEntry = Effect.gen(function* () {
-        const state = yield* readWorkerRecordStateAt(recordPath);
-        switch (state._tag) {
-          case "absent":
-            return undefined;
-          case "malformed":
-            return {
-              name: "host-proxy-state",
-              status: "warn",
-              severity: "warn",
-              providerId: options.provider.id,
-              providerName: options.provider.displayName,
-              providerVersion: options.provider.version,
-              providerKind: options.providerKind,
-              runtimeStatus: options.runtimeStatus,
-              runtime: options.runtime,
-              capabilities: {},
-              context: { workerState: "malformed", statePath: recordPath },
-              solutions: [HOST_PROXY_STATE_REMEDIATION],
-              selection: options.selection,
-            } satisfies DoctorCheck;
-          case "current": {
-            const ownedRunDir = resolve(paths.hostProxyRunDir(state.record.appId, state.record.appRoot));
-            if (ownedRunDir !== runDir) return undefined;
-            return yield* diagnoseHostProxyWorker({
-              doctor: options,
-              record: state.record,
-              current: true,
-              maxProbeServices: limits.maxProbeServices,
-            });
-          }
-          case "legacy": {
-            const ownedRunDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(state.record.appId));
-            if (ownedRunDir !== runDir) return undefined;
-            return yield* diagnoseHostProxyWorker({
-              doctor: options,
-              record: state.record,
-              current: false,
-              maxProbeServices: limits.maxProbeServices,
-            });
-          }
-          default: {
-            const exhaustive: never = state;
-            return exhaustive;
-          }
-        }
-      });
-      const bounded = yield* diagnoseEntry.pipe(Effect.timeoutOption(Duration.millis(remainingMs)));
-      if (Option.isNone(bounded)) break;
-      if (bounded.value === undefined) continue;
+): Effect.fn.Return<ReadonlyArray<DoctorCheck>, never, HostProxyDoctorFileSystem | PathsService> {
+  const fileSystem = yield* HostProxyDoctorFileSystem;
+  const paths = yield* PathsService;
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: options.sourceEnv });
+  const freshness = currentHostProxyAllowlistFreshness();
+  const checks: DoctorCheck[] = [];
+  const allowlistCheck = buildHostProxyAllowlistDoctorCheck(freshness, options);
+  if (allowlistCheck !== undefined) checks.push(allowlistCheck);
+  const limits = options.limits ?? DEFAULT_LIMITS;
+  const deadline = (yield* Clock.currentTimeMillis) + limits.budgetMs;
+  const rootStateOption = yield* fileSystem
+    .readRoot(paths.hostProxyRunRoot)
+    .pipe(Effect.timeoutOption(Duration.millis(Math.max(0, deadline - (yield* Clock.currentTimeMillis)))));
+  if (Option.isNone(rootStateOption)) return checks;
+  const rootState = rootStateOption.value;
+  switch (rootState._tag) {
+    case "absent":
+      return checks;
+    case "unreadable": {
+      const rawContext = {
+        workerState: "unreadable",
+        statePath: paths.hostProxyRunRoot,
+        reason: "worker-root-unreadable",
+        errorCode: rootState.errorCode,
+      };
       checks.push({
-        ...bounded.value,
+        name: "host-proxy-state",
+        status: "warn",
+        severity: "warn",
+        providerId: options.provider.id,
+        providerName: options.provider.displayName,
+        providerVersion: options.provider.version,
+        providerKind: options.providerKind,
+        runtimeStatus: options.runtimeStatus,
+        runtime: options.runtime,
+        capabilities: {},
         context: Object.fromEntries(
-          Object.entries(bounded.value.context).map(([key, value]) => [key, redactor.redactString(value)]),
+          Object.entries(rawContext).map(([key, value]) => [key, redactor.redactString(value)]),
         ),
+        solutions: [HOST_PROXY_STATE_REMEDIATION],
+        selection: options.selection,
       });
+      return checks;
     }
-    return checks;
-  });
+    case "entries":
+      break;
+    default: {
+      const exhaustive: never = rootState;
+      return exhaustive;
+    }
+  }
+  const workerEntries = rootState.entries
+    .filter((entry) => entry.isDirectory)
+    .sort((left, right) => compareCodePointStrings(left.name, right.name))
+    .slice(0, limits.maxWorkers);
+  for (const entry of workerEntries) {
+    const remainingMs = deadline - (yield* Clock.currentTimeMillis);
+    if (remainingMs <= 0) break;
+    const runDir = resolve(paths.hostProxyRunRoot, entry.name);
+    const recordPath = resolve(runDir, "worker.json");
+    const diagnoseEntry = Effect.gen(function* () {
+      const state = yield* readWorkerRecordStateAt(recordPath);
+      switch (state._tag) {
+        case "absent":
+          return undefined;
+        case "malformed":
+          return {
+            name: "host-proxy-state",
+            status: "warn",
+            severity: "warn",
+            providerId: options.provider.id,
+            providerName: options.provider.displayName,
+            providerVersion: options.provider.version,
+            providerKind: options.providerKind,
+            runtimeStatus: options.runtimeStatus,
+            runtime: options.runtime,
+            capabilities: {},
+            context: { workerState: "malformed", statePath: recordPath },
+            solutions: [HOST_PROXY_STATE_REMEDIATION],
+            selection: options.selection,
+          } satisfies DoctorCheck;
+        case "current": {
+          const ownedRunDir = resolve(paths.hostProxyRunDir(state.record.appId, state.record.appRoot));
+          if (ownedRunDir !== runDir) return undefined;
+          return yield* diagnoseHostProxyWorker({
+            doctor: options,
+            record: state.record,
+            current: true,
+            maxProbeServices: limits.maxProbeServices,
+          });
+        }
+        case "legacy": {
+          const ownedRunDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(state.record.appId));
+          if (ownedRunDir !== runDir) return undefined;
+          return yield* diagnoseHostProxyWorker({
+            doctor: options,
+            record: state.record,
+            current: false,
+            maxProbeServices: limits.maxProbeServices,
+          });
+        }
+        default: {
+          const exhaustive: never = state;
+          return exhaustive;
+        }
+      }
+    });
+    const bounded = yield* diagnoseEntry.pipe(Effect.timeoutOption(Duration.millis(remainingMs)));
+    if (Option.isNone(bounded)) break;
+    if (bounded.value === undefined) continue;
+    checks.push({
+      ...bounded.value,
+      context: Object.fromEntries(
+        Object.entries(bounded.value.context).map(([key, value]) => [key, redactor.redactString(value)]),
+      ),
+    });
+  }
+  return checks;
+});

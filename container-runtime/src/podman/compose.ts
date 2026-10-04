@@ -454,11 +454,8 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
 export const composePath = (plan: AppPlan, options: EmitComposeOptions): string =>
   pathJoin(options.userDataRoot, "apps", String(plan.id), "compose.yml");
 
-export const emitCompose = (
-  plan: AppPlan,
-  options: EmitComposeOptions,
-): Effect.Effect<EmitComposeResult, ProviderInternalError, FileSystem> =>
-  Effect.gen(function* () {
+export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
+  function* (plan: AppPlan, options: EmitComposeOptions) {
     const fileSystem = yield* FileSystem;
     const appRoot = pathJoin(options.userDataRoot, "apps", String(plan.id));
     const outputPath = composePath(plan, options);
@@ -478,8 +475,9 @@ export const emitCompose = (
     yield* fileSystem.writeAtomic(outputPath, content);
 
     return { path: outputPath, content };
-  }).pipe(
-    Effect.mapError((cause) => {
+  },
+  (effect, _plan, options) =>
+    Effect.mapError(effect, (cause) => {
       if (cause instanceof ProviderInternalError) {
         return cause;
       }
@@ -488,4 +486,4 @@ export const emitCompose = (
         cause,
       });
     }),
-  );
+);

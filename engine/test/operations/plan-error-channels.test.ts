@@ -55,7 +55,7 @@ import type { planApp } from "../../src/planner/assemble.ts";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const assertType = <T extends true>(value: T): T => value;
-type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Effect.Error<E>;
+type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>;
 
 // Given: independent member lists copied from the pre-refactor operation contracts.
 type LegacyLoadGlobalPlanError =

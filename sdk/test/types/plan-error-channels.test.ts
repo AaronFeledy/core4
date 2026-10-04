@@ -100,8 +100,8 @@ import type {
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 const assertType = <T extends true>(value: T): T => value;
-type ServiceOf<T> = T extends Context.Tag<infer _Id, infer _Service> ? Context.Tag.Service<T> : never;
-type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Effect.Error<E>;
+type ServiceOf<T> = T extends Context.Service<infer _Id, infer _Service> ? Context.Service.Shape<T> : never;
+type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>;
 
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.

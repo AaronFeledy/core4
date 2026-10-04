@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { Cause, Effect, Either, Option, Schema } from "effect";
+import { Cause, Effect, Option, Result, Schema } from "effect";
 
 import { StateStoreError } from "../errors/index.ts";
 
@@ -107,7 +107,7 @@ const parseStateStoreJson = (raw: Uint8Array, assertion: string): Effect.Effect<
   });
 
 const stateStoreContractCauseFailure = (assertion: string, cause: Cause.Cause<unknown>): ContractFailure => {
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (Option.isSome(failure)) {
     return failure.value instanceof ContractFailure
       ? failure.value
@@ -124,10 +124,8 @@ const stateStoreContractCauseFailure = (assertion: string, cause: Cause.Cause<un
  * fail behavior; key/namespace containment rejection; and advisory-lock
  * concurrent update serialization plus optional stale lock takeover.
  */
-export const runStateStoreContract = (
-  harness: StateStoreContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
+export const runStateStoreContract = Effect.fnUntraced(
+  function* (harness: StateStoreContractHarness): Effect.fn.Return<void, ContractFailure> {
     const store = harness.store;
     const failWith =
       (assertion: string) =>
@@ -352,30 +350,32 @@ export const runStateStoreContract = (
     const corruptFailBucket = yield* store
       .open(stateStoreDocSpec(harness, "corrupt-fail.json", { onCorrupt: "fail" }))
       .pipe(Effect.mapError(failWith("open resolves for corruption fail mode")));
-    const corruptFail = yield* Effect.either(corruptFailBucket.get);
+    const corruptFail = yield* Effect.result(corruptFailBucket.get);
     yield* requireStateStoreContract(
-      Either.isLeft(corruptFail) &&
-        corruptFail.left instanceof StateStoreError &&
-        corruptFail.left.reason === "decode" &&
-        corruptFail.left.operation === "get",
+      Result.isFailure(corruptFail) &&
+        corruptFail.failure instanceof StateStoreError &&
+        corruptFail.failure.reason === "decode" &&
+        corruptFail.failure.operation === "get",
       'onCorrupt "fail" surfaces a StateStoreError with reason decode',
       corruptFail,
     );
 
     // 5. Path containment: reject escaping key and namespace during open.
-    const keyEscape = yield* Effect.either(store.open(stateStoreDocSpec(harness, "../escape.json")));
+    const keyEscape = yield* Effect.result(store.open(stateStoreDocSpec(harness, "../escape.json")));
     yield* requireStateStoreContract(
-      Either.isLeft(keyEscape) && keyEscape.left.reason === "path" && keyEscape.left.operation === "open",
+      Result.isFailure(keyEscape) &&
+        keyEscape.failure.reason === "path" &&
+        keyEscape.failure.operation === "open",
       "a key escaping the state root is rejected with reason path",
       keyEscape,
     );
-    const namespaceEscape = yield* Effect.either(
+    const namespaceEscape = yield* Effect.result(
       store.open(stateStoreDocSpec(harness, "inside.json", { namespace: "../up" })),
     );
     yield* requireStateStoreContract(
-      Either.isLeft(namespaceEscape) &&
-        namespaceEscape.left.reason === "path" &&
-        namespaceEscape.left.operation === "open",
+      Result.isFailure(namespaceEscape) &&
+        namespaceEscape.failure.reason === "path" &&
+        namespaceEscape.failure.operation === "open",
       "a namespace escaping the state root is rejected with reason path",
       namespaceEscape,
     );
@@ -414,8 +414,8 @@ export const runStateStoreContract = (
         afterStale,
       );
     }
-  }).pipe(
-    Effect.catchAllCause((cause) =>
-      Effect.fail(stateStoreContractCauseFailure("StateStore contract completes without defects", cause)),
-    ),
-  );
+  },
+  Effect.catchCause((cause) =>
+    Effect.fail(stateStoreContractCauseFailure("StateStore contract completes without defects", cause)),
+  ),
+);

@@ -106,7 +106,7 @@ export interface AppFeatureContext {
  */
 export interface AppFeatureDefinition {
   readonly id: string;
-  readonly schema?: Schema.Schema<unknown>;
+  readonly schema?: Schema.Codec<unknown>;
   readonly priority: number;
   readonly activatedBy?: AppFeatureActivation;
   readonly selectors?: AppFeatureSelectors;

@@ -109,7 +109,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly suppressDeprecationDiagnostics?: boolean;
     readonly successExitCode?: (value: A) => number | undefined;
     readonly failureExitCode?: (error: unknown) => number | undefined;
-    readonly resultSchema?: Schema.Schema.AnyNoContext;
+    readonly resultSchema?: Schema.Codec<unknown, unknown>;
     readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
     readonly streamingMode?: "live";
     readonly preCommand?: boolean;

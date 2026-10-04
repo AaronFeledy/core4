@@ -18,7 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   RedactionService,
@@ -31,7 +31,7 @@ import {
   withStartedHostProxy,
 } from "../../src/operations/start-host-proxy.ts";
 import { withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transport-shim.ts";
 
 const PREPARE_SPY_SOCKET = "prepare-spy";
@@ -57,7 +57,7 @@ const tempDirs: string[] = [];
 const previousComposition = globalThis.__landoEngineCompositionInputs;
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00.000Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00.000Z"),
   source: "start-host-proxy.test",
   runtime: 4 as const,
 };
@@ -116,18 +116,24 @@ const capabilitiesFor = (
 });
 
 const runtimeLayer = Layer.mergeAll(
-  PrivateFileAccessLive,
-  EventServiceLive,
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  }),
-  Layer.succeed(ShellRunner, {
-    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    run: () => Effect.die("unused shell run in start-host-proxy test"),
-    runScript: () => Effect.die("unused shell runScript in start-host-proxy test"),
-    interactive: () => Effect.die("unused shell interactive in start-host-proxy test"),
-  }),
+  PrivateFileAccessService.layer,
+  LandoEventService.layer,
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    }),
+  ),
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      run: () => Effect.die("unused shell run in start-host-proxy test"),
+      runScript: () => Effect.die("unused shell runScript in start-host-proxy test"),
+      interactive: () => Effect.die("unused shell interactive in start-host-proxy test"),
+    }),
+  ),
 );
 
 beforeEach(() => {
@@ -184,7 +190,7 @@ const expectPrepareSpy = (exit: Exit.Exit<unknown, unknown>, target: HostProxySh
   expect(Exit.isFailure(exit)).toBe(true);
   expect(prepareCalls).toEqual([target]);
   if (!Exit.isFailure(exit)) return;
-  const error = Cause.failureOption(exit.cause);
+  const error = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(error)).toBe(true);
   if (Option.isNone(error)) return;
   expect(error.value).toBeInstanceOf(HostProxyTransportUnavailableError);

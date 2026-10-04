@@ -54,17 +54,19 @@ export const findNearestPluginPackageRoot = async (cwd: string, commandId: strin
   }
 };
 
-export const resolvePluginPackageRoot = (cwd: string | undefined, commandId: string) =>
-  Effect.gen(function* () {
-    const directory = cwd ?? process.cwd();
-    return yield* Effect.tryPromise({
-      try: () => findNearestPluginPackageRoot(directory, commandId),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Unable to locate plugin root from ${resolve(directory)}.`,
-              issues: [String(cause)],
-            }),
-    });
+export const resolvePluginPackageRoot = Effect.fnUntraced(function* (
+  cwd: string | undefined,
+  commandId: string,
+) {
+  const directory = cwd ?? process.cwd();
+  return yield* Effect.tryPromise({
+    try: () => findNearestPluginPackageRoot(directory, commandId),
+    catch: (cause) =>
+      cause instanceof PluginManifestError
+        ? cause
+        : new PluginManifestError({
+            message: `Unable to locate plugin root from ${resolve(directory)}.`,
+            issues: [String(cause)],
+          }),
   });
+});

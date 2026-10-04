@@ -124,6 +124,6 @@ Deferred post-v4.0 capabilities MUST remain architecturally possible:
 
 | Capability | Constraint |
 |---|---|
-| Persistent local agent | v4.0 remains transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in global `FiberRef`s, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
+| Persistent local agent | v4.0 remains transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
 | Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
 | Service-type `topLevelAlias` enforcement | Enforce when the 4.1 tooling schema lifts the current beta-wide rejection. |

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import rootManifest from "../../../package.json";
 import {
   deriveNpmDevVersion,
   deriveNpmNextVersion,
@@ -165,6 +166,29 @@ describe("npm dev package preparation", () => {
     });
   });
 
+  test("resolves catalog dependencies in every published dependency section", () => {
+    // Given
+    const sections = ["dependencies", "peerDependencies", "optionalDependencies", "devDependencies"];
+    const packageJson = Object.fromEntries(
+      sections.map((section) => [
+        section,
+        { effect: "catalog:", "@lando/sdk": "workspace:*", semver: "^7.8.5" },
+      ]),
+    );
+
+    // When
+    const prepared = preparePackageJson(packageJson, "4.0.0-dev.42");
+
+    // Then
+    for (const section of sections) {
+      expect(prepared[section]).toEqual({
+        effect: rootManifest.workspaces.catalog.effect,
+        "@lando/sdk": "4.0.0-dev.42",
+        semver: "^7.8.5",
+      });
+    }
+  });
+
   test("release orchestrator publishes dev workspaces on the dev tag", async () => {
     const source = await Bun.file(releaseScriptPath).text();
 
@@ -210,7 +234,7 @@ describe("npm dev package preparation", () => {
           dependencies: {
             "@lando/sdk": "workspace:*",
             "@lando/paths": "workspace:*",
-            effect: "^3.21.2",
+            effect: "catalog:",
           },
         },
         "4.0.0-dev.42",
@@ -288,7 +312,7 @@ describe("npm dev package preparation", () => {
         dependencies: {
           "@lando/sdk": "4.0.0-dev.42",
           "@lando/paths": "4.0.0-dev.42",
-          effect: "^3.21.2",
+          effect: rootManifest.workspaces.catalog.effect,
         },
         publishConfig: {
           tag: "dev",

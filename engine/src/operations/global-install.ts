@@ -32,7 +32,7 @@ const GlobalAppPathsResultSchema = Schema.Struct({
 
 const GlobalDistResultSchema = Schema.Struct({
   path: Schema.String,
-  status: Schema.Literal("created", "updated", "unchanged"),
+  status: Schema.Literals(["created", "updated", "unchanged"]),
   serviceIds: Schema.Array(Schema.String),
 });
 
@@ -50,9 +50,9 @@ const pluginInstallError = (plugin: string): GlobalAppError =>
       "Plugin global-service enablement is a later deliverable; run `lando global:install` with no argument to materialize the global app.",
   });
 
-export const globalInstall = (
+export const globalInstall = Effect.fn("AppOperation.globalInstall")(function* (
   options: GlobalInstallOptions = {},
-): Effect.Effect<
+): Effect.fn.Return<
   GlobalInstallResult,
   | GlobalAppError
   | GlobalDistConflictError
@@ -61,32 +61,31 @@ export const globalInstall = (
   | PluginManifestError
   | ProviderSelectionError,
   GlobalAppService | PluginRegistry | RuntimeProviderRegistry
-> =>
-  Effect.gen(function* () {
-    if (options.plugin !== undefined && options.plugin !== "") {
-      return yield* Effect.fail(pluginInstallError(options.plugin));
-    }
+> {
+  if (options.plugin !== undefined && options.plugin !== "") {
+    return yield* Effect.fail(pluginInstallError(options.plugin));
+  }
 
-    const globalApp = yield* GlobalAppService;
-    const pluginRegistry = yield* PluginRegistry;
-    const registry = yield* RuntimeProviderRegistry;
-    const manifests = yield* pluginRegistry.list;
-    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const services = yield* materializeGlobalServices({
-      manifests,
-      providerCapabilities: provider.capabilities,
-      providerId: provider.id,
-      loadServiceConfig: bundledFirstGlobalServiceLoader.load,
-    });
-
-    yield* Effect.scoped(globalApp.ensureRoot);
-    const user = yield* globalApp.ensureUserLandofile;
-    const dist = yield* globalApp.regenerateDist({ services });
-    const paths = yield* globalApp.paths;
-
-    return {
-      paths,
-      dist,
-      userLandofileCreated: user.created,
-    };
+  const globalApp = yield* GlobalAppService;
+  const pluginRegistry = yield* PluginRegistry;
+  const registry = yield* RuntimeProviderRegistry;
+  const manifests = yield* pluginRegistry.list;
+  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const services = yield* materializeGlobalServices({
+    manifests,
+    providerCapabilities: provider.capabilities,
+    providerId: provider.id,
+    loadServiceConfig: bundledFirstGlobalServiceLoader.load,
   });
+
+  yield* Effect.scoped(globalApp.ensureRoot);
+  const user = yield* globalApp.ensureUserLandofile;
+  const dist = yield* globalApp.regenerateDist({ services });
+  const paths = yield* globalApp.paths;
+
+  return {
+    paths,
+    dist,
+    userLandofileCreated: user.created,
+  };
+});

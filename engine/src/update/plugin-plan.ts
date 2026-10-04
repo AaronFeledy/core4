@@ -55,8 +55,8 @@ export interface PluginUpdatePlanRow {
   readonly kind: "plugin";
   readonly name: string;
   readonly currentVersion: string;
-  readonly targetVersion?: string | undefined;
-  readonly selector?: string | undefined;
+  readonly targetVersion?: string;
+  readonly selector?: string;
   readonly status: "failed" | "held" | "unchanged" | "update";
   readonly reason: PluginUpdateReason;
 }
@@ -65,10 +65,10 @@ export const PluginUpdatePlanRowSchema = Schema.Struct({
   kind: Schema.Literal("plugin"),
   name: Schema.String,
   currentVersion: Schema.String,
-  targetVersion: Schema.optional(Schema.String),
-  selector: Schema.optional(Schema.String),
-  status: Schema.Literal("failed", "held", "unchanged", "update"),
-  reason: Schema.Literal(
+  targetVersion: Schema.optionalKey(Schema.String),
+  selector: Schema.optionalKey(Schema.String),
+  status: Schema.Literals(["failed", "held", "unchanged", "update"]),
+  reason: Schema.Literals([
     "current-core-incompatible",
     "apply-failed",
     "downgrade",
@@ -85,7 +85,7 @@ export const PluginUpdatePlanRowSchema = Schema.Struct({
     "trust-required",
     "up-to-date",
     "bundled-with-core",
-  ),
+  ]),
 });
 
 export type UpdatePlanRow = CoreUpdatePlanRow | PluginUpdatePlanRow;

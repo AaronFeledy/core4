@@ -2,6 +2,7 @@
 import { resolve } from "node:path";
 
 import { buildConfig } from "../core/build.config.ts";
+import rootManifest from "../package.json";
 
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
@@ -73,10 +74,20 @@ export const deriveNpmNextVersion = (env: NodeJS.ProcessEnv = process.env): stri
   return `4.0.0-next.${runNumber}`;
 };
 
-const rewriteWorkspaceRanges = (dependencies: unknown, version: string): JsonObject | undefined => {
+const dependencyCatalog: Readonly<Record<string, string>> = rootManifest.workspaces.catalog;
+
+const rewriteDependencyRanges = (dependencies: unknown, version: string): JsonObject | undefined => {
   if (!isObject(dependencies)) return undefined;
   return Object.fromEntries(
-    Object.entries(dependencies).map(([name, range]) => [name, range === "workspace:*" ? version : range]),
+    Object.entries(dependencies).map(([name, range]) => {
+      if (range === "workspace:*") return [name, version];
+      if (range === "catalog:") {
+        const catalogVersion = dependencyCatalog[name];
+        if (catalogVersion === undefined) throw new TypeError(`Missing catalog version for ${name}`);
+        return [name, catalogVersion];
+      }
+      return [name, range];
+    }),
   );
 };
 
@@ -85,10 +96,10 @@ export const preparePackageJson = (
   version: string,
   tag: NpmDistTag = "dev",
 ): JsonObject => {
-  const dependencies = rewriteWorkspaceRanges(packageJson.dependencies, version);
-  const peerDependencies = rewriteWorkspaceRanges(packageJson.peerDependencies, version);
-  const optionalDependencies = rewriteWorkspaceRanges(packageJson.optionalDependencies, version);
-  const devDependencies = rewriteWorkspaceRanges(packageJson.devDependencies, version);
+  const dependencies = rewriteDependencyRanges(packageJson.dependencies, version);
+  const peerDependencies = rewriteDependencyRanges(packageJson.peerDependencies, version);
+  const optionalDependencies = rewriteDependencyRanges(packageJson.optionalDependencies, version);
+  const devDependencies = rewriteDependencyRanges(packageJson.devDependencies, version);
 
   return {
     ...packageJson,

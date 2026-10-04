@@ -51,10 +51,10 @@ const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, FrameworkPreset> = {
 };
 
 const PythonFeatureConfigSchema = Schema.Struct({
-  framework: Schema.Literal(...SUPPORTED_PYTHON_FRAMEWORKS),
-  version: Schema.Literal(...SUPPORTED_PYTHON_VERSIONS),
+  framework: Schema.Literals([...SUPPORTED_PYTHON_FRAMEWORKS]),
+  version: Schema.Literals([...SUPPORTED_PYTHON_VERSIONS]),
   port: Schema.Number,
-  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type PythonFeatureConfig = typeof PythonFeatureConfigSchema.Type;
 
@@ -148,7 +148,7 @@ const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
 
 export const pythonServiceFeature: ServiceFeatureDefinition = {
   id: PYTHON_FEATURE_ID,
-  schema: PythonFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: PythonFeatureConfigSchema as Schema.Codec<unknown>,
   priority: PYTHON_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

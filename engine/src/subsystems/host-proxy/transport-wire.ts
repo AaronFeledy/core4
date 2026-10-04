@@ -31,12 +31,12 @@ export type WireOk = typeof WireOk.Type;
 const WireError = Schema.TaggedStruct("error", {
   tag: Schema.String,
   message: Schema.String,
-  reason: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  reason: Schema.optionalKey(Schema.String),
+  remediation: Schema.optionalKey(Schema.String),
 });
 export type WireError = typeof WireError.Type;
 
-export const WireResponse = Schema.Union(WireOk, WireError);
+export const WireResponse = Schema.Union([WireOk, WireError]);
 export type WireResponse = typeof WireResponse.Type;
 
 export type HostProxyTransportError =

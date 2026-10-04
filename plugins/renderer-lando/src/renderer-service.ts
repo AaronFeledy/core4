@@ -7,10 +7,8 @@ import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 import { renderPlainLine } from "./format.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 
-const makeEventConsumerLive = (
-  handle: (event: LandoEvent) => void,
-): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
+const layerEventConsumer = (handle: (event: LandoEvent) => void): Layer.Layer<never, never, EventService> =>
+  Layer.effectDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
       const queue = yield* events.subscribeQueue;
@@ -21,15 +19,17 @@ const makeEventConsumerLive = (
       );
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
-          const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
-          if (Option.isSome(remaining)) for (const event of remaining.value) handle(event);
+          const remaining = yield* Queue.clear(queue).pipe(Effect.option);
+          if (Option.isSome(remaining)) {
+            for (const event of remaining.value) handle(event);
+          }
           yield* Fiber.interrupt(fiber);
         }),
       );
     }),
   );
 
-const nowTimestamp = (): DateTime.Utc => DateTime.unsafeNow();
+const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
 const makeMessageContract = (io: RendererIO) => {
   const output = outputJournalFor(io);
@@ -62,7 +62,7 @@ export const makeLandoService = (
     Renderer,
     (() => {
       const output = outputJournalFor(io);
-      return {
+      return Renderer.of({
         id: "lando",
         get capabilities() {
           return getCapabilities();
@@ -72,12 +72,12 @@ export const makeLandoService = (
           stdout: (chunk: string) => Effect.sync(() => output.writeStdout(chunk)),
           stderr: (chunk: string) => Effect.sync(() => output.writeStderr(chunk)),
         },
-      };
+      });
     })(),
   );
 
 export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
-  makeEventConsumerLive((event) => {
+  layerEventConsumer((event) => {
     const line = renderPlainLine(event);
     if (line !== null) io.writeStdout(`${line}\n`);
   });

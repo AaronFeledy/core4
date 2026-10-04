@@ -12,7 +12,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, LogLevel, Logger, Queue, Schema } from "effect";
+import { Effect, Layer, Logger, Queue, References, Schema } from "effect";
 
 import {
   type LandoEvent,
@@ -28,7 +28,7 @@ import { RENDERER_CAPABILITIES_TTY_INITIAL, type RendererIO } from "@lando/sdk/r
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
@@ -223,7 +223,9 @@ const drive = (
       for (const event of events) yield* svc.publish(event);
       yield* Effect.sleep("20 millis");
     }).pipe(
-      Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io, { createLiveRegion }), EventServiceLive)),
+      Effect.provide(
+        Layer.provideMerge(makeLandoEventConsumer(io, { createLiveRegion }), LandoEventService.layer),
+      ),
     ),
   );
 
@@ -318,7 +320,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -355,7 +357,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           yield* Effect.sleep("20 millis");
           inject?.("\r");
           yield* Effect.sleep("20 millis");
-          return [...(yield* Queue.takeAll(collector))];
+          return [...(yield* Queue.clear(collector))];
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -363,7 +365,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -403,7 +405,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           };
           inject?.("\x1b");
           yield* Effect.sleep("20 millis");
-          return [...(yield* Queue.takeAll(collector))];
+          return [...(yield* Queue.clear(collector))];
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -411,7 +413,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -456,7 +458,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           controller.exitFullTail = workingExit;
           inject?.("\x1b");
           yield* Effect.sleep("20 millis");
-          return [...(yield* Queue.takeAll(collector))];
+          return [...(yield* Queue.clear(collector))];
         }).pipe(
           Effect.provide(
             Layer.provideMerge(
@@ -464,7 +466,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -492,8 +494,8 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       },
     };
     const dependencies = Layer.merge(
-      EventServiceLive,
-      Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root })),
+      LandoEventService.layer,
+      Layer.succeed(PathsService, PathsService.of(makeLandoPaths({ userDataRoot: root }))),
     );
 
     try {
@@ -559,7 +561,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 makeLandoEventConsumer(io, {
                   createLiveRegion: () => Promise.resolve(controller),
                 }),
-                EventServiceLive,
+                LandoEventService.layer,
               ),
             ),
           ),
@@ -598,7 +600,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
       yield* Effect.sleep("20 millis");
       yield* transcriptReader.append(transcriptPath, "raw secret two");
       yield* Effect.sleep("20 millis");
-      publishedRawTranscript = [...(yield* Queue.takeAll(collector))].some((event) =>
+      publishedRawTranscript = [...(yield* Queue.clear(collector))].some((event) =>
         JSON.stringify(event).includes("raw secret"),
       );
     });
@@ -612,7 +614,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -664,7 +666,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -715,7 +717,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -801,7 +803,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -861,7 +863,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -926,7 +928,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -968,7 +970,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                   return Promise.resolve(controller);
                 },
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1028,7 +1030,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 },
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1089,7 +1091,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1138,7 +1140,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           Effect.provide(
             Layer.provideMerge(
               makeLandoEventConsumer(io, { createLiveRegion: () => Promise.resolve(controller) }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -1182,15 +1184,15 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     const { io, stdout } = ttyIo();
     const debugMessages: string[] = [];
     const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
-      if (logLevel === LogLevel.Debug) debugMessages.push(String(message));
+      if (logLevel === "Debug") debugMessages.push(String(message));
     });
     await Effect.runPromise(
       drive(io, () => Promise.reject(new Error("no native binding")), [
         treeStart(["web"]),
         taskStart("web"),
       ]).pipe(
-        Logger.withMinimumLogLevel(LogLevel.Debug),
-        Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
+        Effect.provide(Logger.layer([logger])),
+        Effect.provideService(References.MinimumLogLevel, "Debug"),
       ),
     );
     expect(stdout()).toContain("web");
@@ -1202,7 +1204,7 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     const second = ttyIo();
     const debugMessages: string[] = [];
     const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
-      if (logLevel === LogLevel.Debug) debugMessages.push(String(message));
+      if (logLevel === "Debug") debugMessages.push(String(message));
     });
     let attempts = 0;
     const createLiveRegion = (): Promise<FakeController> => {
@@ -1213,8 +1215,8 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     for (const { io } of [first, second]) {
       await Effect.runPromise(
         drive(io, createLiveRegion, [treeStart(["web"]), taskStart("web")]).pipe(
-          Logger.withMinimumLogLevel(LogLevel.Debug),
-          Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
+          Effect.provide(Logger.layer([logger])),
+          Effect.provideService(References.MinimumLogLevel, "Debug"),
         ),
       );
     }

@@ -302,7 +302,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
 
 export const nodeServiceFeature: ServiceFeatureDefinition = {
   id: NODE_FEATURE_ID,
-  schema: NodeFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: NodeFeatureConfigSchema as Schema.Codec<unknown>,
   priority: NODE_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

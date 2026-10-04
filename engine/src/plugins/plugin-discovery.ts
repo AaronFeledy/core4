@@ -94,7 +94,7 @@ export const findExternalServiceType = (
 };
 
 const warnPluginDiscoveryFailure = (
-  logger: Context.Tag.Service<typeof Logger> | undefined,
+  logger: Context.Service.Shape<typeof Logger> | undefined,
   source: "system" | "user" | "app",
   pluginName: string,
   cause: PluginManifestError | PluginLoadError,
@@ -105,12 +105,12 @@ const warnPluginDiscoveryFailure = (
         .warn(
           `Plugin discovery from ${source} source failed for ${pluginName}; skipping that plugin. ${cause._tag}: ${cause.message}`,
         )
-        .pipe(Effect.catchAll(() => Effect.void));
+        .pipe(Effect.catch(() => Effect.void));
 
 export const discoverInstalledPlugins = (
   source: "system" | "user" | "app",
   pluginsRoot: string,
-  logger: Context.Tag.Service<typeof Logger> | undefined,
+  logger: Context.Service.Shape<typeof Logger> | undefined,
 ): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
   Effect.tryPromise({
     try: async () => readInstalledPluginRegistry(pluginsRoot),
@@ -129,7 +129,7 @@ export const discoverInstalledPlugins = (
                 ),
         }).pipe(
           Effect.map((plugin) => [plugin] as ReadonlyArray<DiscoveredPlugin>),
-          Effect.catchAll((cause) =>
+          Effect.catch((cause) =>
             Effect.as(
               warnPluginDiscoveryFailure(logger, source, entry.name, cause),
               [] as ReadonlyArray<DiscoveredPlugin>,
@@ -139,7 +139,7 @@ export const discoverInstalledPlugins = (
       ),
     ),
     Effect.map((plugins) => plugins.flat()),
-    Effect.catchAll((cause) =>
+    Effect.catch((cause) =>
       Effect.as(
         warnPluginDiscoveryFailure(logger, source, "registry", cause),
         [] as ReadonlyArray<DiscoveredPlugin>,
@@ -147,27 +147,26 @@ export const discoverInstalledPlugins = (
     ),
   );
 
-export const mergeDiscoveredPlugins = (
+export const mergeDiscoveredPlugins = Effect.fnUntraced(function* (
   sources: ReadonlyArray<ReadonlyArray<DiscoveredPlugin>>,
-  logger: Context.Tag.Service<typeof Logger> | undefined,
-): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
-  Effect.gen(function* () {
-    const merged = new Map<string, DiscoveredPlugin>();
-    for (const source of sources) {
-      for (const plugin of source) {
-        const existing = merged.get(plugin.manifest.name);
-        if (existing !== undefined && logger !== undefined) {
-          yield* logger
-            .warn(
-              `Plugin ${plugin.manifest.name} from ${plugin.source} source overrides ${existing.source} source.`,
-            )
-            .pipe(Effect.catchAll(() => Effect.void));
-        }
-        merged.set(plugin.manifest.name, plugin);
+  logger: Context.Service.Shape<typeof Logger> | undefined,
+): Effect.fn.Return<ReadonlyArray<DiscoveredPlugin>> {
+  const merged = new Map<string, DiscoveredPlugin>();
+  for (const source of sources) {
+    for (const plugin of source) {
+      const existing = merged.get(plugin.manifest.name);
+      if (existing !== undefined && logger !== undefined) {
+        yield* logger
+          .warn(
+            `Plugin ${plugin.manifest.name} from ${plugin.source} source overrides ${existing.source} source.`,
+          )
+          .pipe(Effect.catch(() => Effect.void));
       }
+      merged.set(plugin.manifest.name, plugin);
     }
-    return [...merged.values()];
-  });
+  }
+  return [...merged.values()];
+});
 
 export const systemPluginsFromModules = (
   modules: ReadonlyArray<LandoPluginModule>,

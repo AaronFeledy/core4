@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { LandofileExpressionParseError } from "../errors/index.ts";
 import type {
@@ -948,10 +948,10 @@ export const parseExpression = (
 export const parseExpressionEither = (
   source: string,
   options: ParseExpressionOptions,
-): Either.Either<ExpressionTemplate, LandofileExpressionParseError> => {
+): Result.Result<ExpressionTemplate, LandofileExpressionParseError> => {
   try {
-    return Either.right(parseExpressionSync(source, options));
+    return Result.succeed(parseExpressionSync(source, options));
   } catch (cause) {
-    return Either.left(wrapUnknownParseError(source, options, cause));
+    return Result.fail(wrapUnknownParseError(source, options, cause));
   }
 };

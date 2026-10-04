@@ -5,7 +5,7 @@ import { DateTime, Schema } from "effect";
 import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "../../src/events/host-proxy.ts";
 import { LandoEvent } from "../../src/events/union.ts";
 
-const timestamp = DateTime.unsafeMake("2026-07-06T00:00:00.000Z");
+const timestamp = DateTime.makeUnsafe("2026-07-06T00:00:00.000Z");
 const appRef = {
   kind: "user" as const,
   id: AppId.make("demo"),

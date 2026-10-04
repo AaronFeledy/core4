@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
 import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
 import { runWindowsReplacement } from "../../src/update/windows.ts";
@@ -134,7 +134,7 @@ test.each(["lando.exe", "lando4", "digest-drift", "path-mismatch"])(
         scenario === "path-mismatch" ? join(f.root, "other", "lando4.exe") : f.input.executablePath,
     };
     const refusal = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         resolveOwnedExecutable({
           recordFile: input.installRecordFile,
           platform: "win32",
@@ -142,8 +142,8 @@ test.each(["lando.exe", "lando4", "digest-drift", "path-mismatch"])(
         }),
       ),
     );
-    if (Either.isRight(refusal)) throw new Error("Expected ownership refusal");
-    expect(refusal.left.reason).toBe(
+    if (Result.isSuccess(refusal)) throw new Error("Expected ownership refusal");
+    expect(refusal.failure.reason).toBe(
       scenario === "digest-drift"
         ? "digest-mismatch"
         : scenario === "path-mismatch"
@@ -161,8 +161,8 @@ test.each(["lando.exe", "lando4", "digest-drift", "path-mismatch"])(
     expect(moves).toEqual([]);
     expect((await Effect.runPromise(f.handoff.consumeDeferred(input.token)))?.coreFailure).toEqual({
       tag: "InstallOwnershipError",
-      message: refusal.left.message,
-      remediation: refusal.left.remediation,
+      message: refusal.failure.message,
+      remediation: refusal.failure.remediation,
     });
   },
 );

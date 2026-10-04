@@ -82,7 +82,7 @@ test("blocks failed descendants while independent app siblings continue", async 
           const queue = yield* events.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.buildApp(plan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
@@ -130,7 +130,7 @@ test("writes scratch app transcripts under the scratch build namespace", async (
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           yield* orchestrator.buildApp(plan);
-          return [...(yield* Queue.takeAll(queue))];
+          return [...(yield* Queue.clear(queue))];
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );
@@ -165,7 +165,7 @@ test("labels scratch app build-step-skip events with the scratch identity namesp
           yield* orchestrator.buildApp(plan);
           const queue = yield* eventService.subscribeQueue;
           yield* orchestrator.buildApp(plan);
-          return [...(yield* Queue.takeAll(queue))];
+          return [...(yield* Queue.clear(queue))];
         }),
       ).pipe(Effect.provide(makeLayer(provider))),
     );

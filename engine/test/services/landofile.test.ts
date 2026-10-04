@@ -14,8 +14,9 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-"));
@@ -31,18 +32,18 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discover = () =>
   Effect.runPromise(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
-describe("LandofileServiceLive", () => {
+describe("LandofileService layer", () => {
   test("loads all six normative positions in precedence order and accumulates provenance", async () => {
     await withTempCwd(async (dir) => {
       const files = [
@@ -161,7 +162,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(LandofileParseError);
       }
@@ -179,7 +180,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(LandofileFormConflictError);
       }
@@ -282,7 +283,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -318,7 +319,7 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
@@ -352,13 +353,15 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.unsupported");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.unsupported",
+            );
             expect(error.message).toContain("unsupported Compose-subset keys");
             expect(error.message).toContain("providers.<provider-id>");
           }
@@ -387,13 +390,15 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.unsupported");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.unsupported",
+            );
             expect(error.message).toContain("unsupported MVP keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
@@ -427,14 +432,16 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.unsupported");
-            expect(error.issues).toContain("services");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path)).sort()).toEqual([
+              "services.appserver.unsupported",
+              "services.web.unsupported",
+            ]);
             expect(error.message).toContain("unsupported service keys");
             expect(error.message).toContain("For type: compose services");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
@@ -456,13 +463,15 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.image");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.image",
+            );
             expect(error.message).toContain("unsupported MVP keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
@@ -484,13 +493,15 @@ describe("LandofileServiceLive", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.certs.key");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.certs.key",
+            );
             expect(error.message).toContain(
               "Remove unsupported keys or update the documented Landofile service schema.",
             );
@@ -501,7 +512,7 @@ describe("LandofileServiceLive", () => {
   });
 });
 
-describe("LandofileServiceLive — numeric/boolean environment values", () => {
+describe("LandofileService layer — numeric/boolean environment values", () => {
   test("coerces numeric and boolean environment values to strings", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -528,7 +539,7 @@ describe("LandofileServiceLive — numeric/boolean environment values", () => {
   });
 });
 
-describe("LandofileServiceLive — numeric ports coercion (bugbot PR#28 finding 2)", () => {
+describe("LandofileService layer — numeric ports coercion (bugbot PR#28 finding 2)", () => {
   test("canonicalizes numeric and short-string port scalars in ports: list", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -557,7 +568,7 @@ describe("LandofileServiceLive — numeric ports coercion (bugbot PR#28 finding 
   });
 });
 
-describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () => {
+describe("LandofileService layer — mounts, storage, and excludes (US-014)", () => {
   test("parses mounts: bind shorthand entries, volume object entries, and appMount.excludes patterns", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -618,7 +629,7 @@ describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () =
   });
 });
 
-describe("LandofileServiceLive — reserved section rejection (US-014)", () => {
+describe("LandofileService layer — reserved section rejection (US-014)", () => {
   const assertUnsupportedRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
@@ -670,7 +681,7 @@ describe("LandofileServiceLive — reserved section rejection (US-014)", () => {
       const exit = await discoverExit();
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") assertUnsupportedRejection(failure.value);
       }
@@ -722,7 +733,7 @@ describe("LandofileServiceLive — reserved section rejection (US-014)", () => {
   });
 });
 
-describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
+describe("LandofileService layer — tooling: parsing (US-017)", () => {
   test("parses tooling deprecation metadata without enabling runtime flag or arg definitions", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -813,7 +824,7 @@ describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
   });
 });
 
-describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)", () => {
+describe("LandofileService layer — tooling: unsupported-field rejection (US-017)", () => {
   const assertUnsupportedRejection = (error: unknown): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
@@ -829,7 +840,7 @@ describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)
       const exit = await discoverExit();
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") assertUnsupportedRejection(failure.value);
       }

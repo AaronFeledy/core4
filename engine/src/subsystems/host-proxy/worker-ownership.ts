@@ -52,12 +52,12 @@ export const terminateOwnedHostProxyWorker = (
         if (record === undefined) return removeRunDir(app, options.paths).pipe(Effect.as("absent" as const));
         return terminateControlRecord(record, options, removeRunDir(app, options.paths)).pipe(
           Effect.as("terminated" as const),
-          Effect.catchAll(() => Effect.succeed("absent" as const)),
+          Effect.catch(() => Effect.succeed("absent" as const)),
         );
       }),
     ),
     options.privateFileAccess,
-  ).pipe(Effect.catchAll(() => Effect.succeed("absent" as const)));
+  ).pipe(Effect.catch(() => Effect.succeed("absent" as const)));
 
 export const removeOwnedHostProxyWorkerState = (
   app: Pick<AppRef, "id" | "root">,
@@ -68,11 +68,11 @@ export const removeOwnedHostProxyWorkerState = (
     Effect.asVoid,
   );
 
-export const terminateOwnedHostProxyWorkersInRoot = (
-  userDataRoot: string,
-  options: Omit<TerminateHostProxyWorkerOptions, "paths">,
-): Effect.Effect<void, never> =>
-  Effect.gen(function* () {
+export const terminateOwnedHostProxyWorkersInRoot = Effect.fnUntraced(
+  function* (
+    userDataRoot: string,
+    options: Omit<TerminateHostProxyWorkerOptions, "paths">,
+  ): Effect.fn.Return<void, never> {
     const paths = makeLandoPaths({ userDataRoot });
     const entries = yield* Effect.promise(() =>
       readdir(paths.hostProxyRunRoot, { withFileTypes: true }).catch(() => []),
@@ -94,7 +94,7 @@ export const terminateOwnedHostProxyWorkersInRoot = (
             options,
             Effect.promise(() => rm(legacyDir, { recursive: true, force: true })),
           ),
-        ).pipe(Effect.catchAll(() => Effect.void));
+        ).pipe(Effect.catch(() => Effect.void));
         continue;
       }
       if (
@@ -105,4 +105,6 @@ export const terminateOwnedHostProxyWorkersInRoot = (
       const app = { id: record.appId, root: AbsolutePath.make(record.appRoot) };
       yield* terminateOwnedHostProxyWorker(app, { ...options, paths: { userDataRoot } }).pipe(Effect.asVoid);
     }
-  }).pipe(Effect.catchAll(() => Effect.void));
+  },
+  Effect.catch(() => Effect.void),
+);

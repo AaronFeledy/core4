@@ -1,3 +1,3 @@
 import { Schema } from "effect";
 
-export const Timestamp = Schema.DateTimeUtc;
+export const Timestamp = Schema.DateTimeUtcFromString;

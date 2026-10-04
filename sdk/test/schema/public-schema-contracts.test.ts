@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { TaskStartEvent } from "../../src/events/task.ts";
@@ -38,25 +38,25 @@ describe("public schema contracts", () => {
 
   for (const schemaName of JSON_SCHEMA_NAMES) {
     test(`${schemaName} decodes, rejects invalid input, and round-trips through encode/decode`, () => {
-      const schema: Schema.Schema.AnyNoContext = publicSchemaRegistry[schemaName];
-      const decoded = Schema.decodeUnknownEither(schema)(publicSchemaHappyPathFixture(schemaName), {
+      const schema: Schema.Codec<unknown, unknown> = Schema.make(publicSchemaRegistry[schemaName].ast);
+      const decoded = Schema.decodeUnknownResult(schema)(publicSchemaHappyPathFixture(schemaName), {
         onExcessProperty: "error",
       });
 
-      expect(Either.isRight(decoded), schemaName).toBe(true);
-      if (Either.isLeft(decoded)) return;
+      expect(Result.isSuccess(decoded), schemaName).toBe(true);
+      if (Result.isFailure(decoded)) return;
 
-      const invalid = Schema.decodeUnknownEither(schema)(undefined, { onExcessProperty: "error" });
-      expect(Either.isLeft(invalid), schemaName).toBe(true);
+      const invalid = Schema.decodeUnknownResult(schema)(undefined, { onExcessProperty: "error" });
+      expect(Result.isFailure(invalid), schemaName).toBe(true);
 
-      const encoded = Schema.encodeEither(schema)(decoded.right);
-      expect(Either.isRight(encoded), schemaName).toBe(true);
-      if (Either.isLeft(encoded)) return;
+      const encoded = Schema.encodeResult(schema)(decoded.success);
+      expect(Result.isSuccess(encoded), schemaName).toBe(true);
+      if (Result.isFailure(encoded)) return;
 
-      const decodedAgain = Schema.decodeUnknownEither(schema)(encoded.right, {
+      const decodedAgain = Schema.decodeUnknownResult(schema)(encoded.success, {
         onExcessProperty: "error",
       });
-      expect(Either.isRight(decodedAgain), schemaName).toBe(true);
+      expect(Result.isSuccess(decodedAgain), schemaName).toBe(true);
     });
   }
 });

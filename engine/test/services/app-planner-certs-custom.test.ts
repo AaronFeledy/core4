@@ -32,7 +32,7 @@ const expectCertsRejection = async (input: {
 
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-  const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+  const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
   expect(failure).toBeInstanceOf(LandofileValidationError);
   expect(String(failure)).toContain("services.web.certs");
   expect(String(failure)).toContain(input.remediation);
@@ -146,7 +146,7 @@ test("reports remediation when certs: true has no certificate authority availabl
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure).toBeInstanceOf(LandofileValidationError);
     expect(String(failure)).toContain("services.web.certs");
     expect(String(failure)).toContain("lando setup");

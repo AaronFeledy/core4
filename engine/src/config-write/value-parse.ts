@@ -6,7 +6,7 @@
  * collections (structured non-JSON input should use `--type json`).
  */
 
-import { Either } from "effect";
+import { Result } from "effect";
 
 export type ValueType = "string" | "number" | "boolean" | "json" | "yaml";
 
@@ -16,17 +16,17 @@ export interface ValueParseFailure {
   readonly message: string;
 }
 
-const fail = (type: ValueType, raw: string, message: string): Either.Either<never, ValueParseFailure> =>
-  Either.left({ type, raw, message });
+const fail = (type: ValueType, raw: string, message: string): Result.Result<never, ValueParseFailure> =>
+  Result.fail({ type, raw, message });
 
-const parseYamlScalar = (raw: string): Either.Either<unknown, ValueParseFailure> => {
+const parseYamlScalar = (raw: string): Result.Result<unknown, ValueParseFailure> => {
   const trimmed = raw.trim();
-  if (trimmed === "null" || trimmed === "~") return Either.right(null);
-  if (trimmed === "true") return Either.right(true);
-  if (trimmed === "false") return Either.right(false);
+  if (trimmed === "null" || trimmed === "~") return Result.succeed(null);
+  if (trimmed === "true") return Result.succeed(true);
+  if (trimmed === "false") return Result.succeed(false);
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
-      return Either.right(JSON.parse(trimmed) as unknown);
+      return Result.succeed(JSON.parse(trimmed) as unknown);
     } catch {
       return fail(
         "yaml",
@@ -39,35 +39,35 @@ const parseYamlScalar = (raw: string): Either.Either<unknown, ValueParseFailure>
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
-    return Either.right(trimmed.slice(1, -1));
+    return Result.succeed(trimmed.slice(1, -1));
   }
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
     const num = Number(trimmed);
-    if (Number.isFinite(num)) return Either.right(num);
+    if (Number.isFinite(num)) return Result.succeed(num);
   }
-  return Either.right(trimmed);
+  return Result.succeed(trimmed);
 };
 
-export const parseTypedValue = (raw: string, type: ValueType): Either.Either<unknown, ValueParseFailure> => {
+export const parseTypedValue = (raw: string, type: ValueType): Result.Result<unknown, ValueParseFailure> => {
   switch (type) {
     case "string":
-      return Either.right(raw);
+      return Result.succeed(raw);
     case "number": {
       const num = Number(raw.trim());
       if (raw.trim() === "" || !Number.isFinite(num)) {
         return fail("number", raw, `\`${raw}\` is not a finite number.`);
       }
-      return Either.right(num);
+      return Result.succeed(num);
     }
     case "boolean": {
       const t = raw.trim();
-      if (t === "true") return Either.right(true);
-      if (t === "false") return Either.right(false);
+      if (t === "true") return Result.succeed(true);
+      if (t === "false") return Result.succeed(false);
       return fail("boolean", raw, `\`${raw}\` is not a boolean (expected \`true\` or \`false\`).`);
     }
     case "json":
       try {
-        return Either.right(JSON.parse(raw) as unknown);
+        return Result.succeed(JSON.parse(raw) as unknown);
       } catch (cause) {
         return fail(
           "json",

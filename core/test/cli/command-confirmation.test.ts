@@ -46,26 +46,32 @@ describe("lifecycle confirmation boundary", () => {
           Effect.provide(
             makeLandoRuntime({ bootstrap: "app", telemetry: false }).pipe(
               Layer.merge(
-                Layer.succeed(InteractionService, {
-                  ...interaction.service,
-                  isInteractive: Effect.succeed(true),
-                }),
+                Layer.succeed(
+                  InteractionService,
+                  InteractionService.of({
+                    ...interaction.service,
+                    isInteractive: Effect.succeed(true),
+                  }),
+                ),
               ),
               Layer.merge(
-                Layer.succeed(RuntimeProviderRegistry, {
-                  list: Effect.die("Unexpected provider list"),
-                  capabilities: Effect.die("Unexpected capabilities"),
-                  select: () => Effect.die("Unexpected provider selection"),
-                  resolveTeardownEvidence: () => Effect.die("Unexpected teardown resolution"),
-                }),
+                Layer.succeed(
+                  RuntimeProviderRegistry,
+                  RuntimeProviderRegistry.of({
+                    list: Effect.die("Unexpected provider list"),
+                    capabilities: Effect.die("Unexpected capabilities"),
+                    select: () => Effect.die("Unexpected provider selection"),
+                    resolveTeardownEvidence: () => Effect.die("Unexpected teardown resolution"),
+                  }),
+                ),
               ),
             ),
           ),
-          Effect.either,
+          Effect.result,
         ),
       );
-      if (result._tag !== "Left") throw new TypeError("expected declined confirmation");
-      expect(result.left).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
+      if (result._tag !== "Failure") throw new TypeError("expected declined confirmation");
+      expect(result.failure).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
       expect(interaction.transcript()).toHaveLength(1);
       expect(interaction.transcript()[0]?.message).toBe(message);
     },
@@ -83,16 +89,25 @@ describe("lifecycle confirmation boundary", () => {
         const codes: number[] = [];
         const runtime = Layer.mergeAll(
           makeLandoRuntime({ bootstrap: "app", telemetry: false }),
-          Layer.succeed(InteractionService, {
-            ...interaction.service,
-            isInteractive: Effect.succeed(interactive),
-          }),
-          Layer.succeed(LandofileService, { discover: Effect.die("Unexpected app discovery") }),
-          Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.die("Unexpected provider list"),
-            capabilities: Effect.die("Unexpected provider capabilities"),
-            select: () => Effect.die("Unexpected provider selection"),
-          }),
+          Layer.succeed(
+            InteractionService,
+            InteractionService.of({
+              ...interaction.service,
+              isInteractive: Effect.succeed(interactive),
+            }),
+          ),
+          Layer.succeed(
+            LandofileService,
+            LandofileService.of({ discover: Effect.die("Unexpected app discovery") }),
+          ),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.die("Unexpected provider list"),
+              capabilities: Effect.die("Unexpected provider capabilities"),
+              select: () => Effect.die("Unexpected provider selection"),
+            }),
+          ),
         );
         // When
         const command: Effect.Effect<unknown, unknown, AppRuntimeServices> = run({ flags: {} });

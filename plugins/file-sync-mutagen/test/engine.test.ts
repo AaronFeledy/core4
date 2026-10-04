@@ -83,7 +83,7 @@ describe("@lando/file-sync-mutagen engine identity", () => {
     const exit = await runScopedExit(engine.createSession(buildSpec()));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(FileSyncStartError);
@@ -175,7 +175,7 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
           Effect.sync(() => {
             terminated.push(name);
           }).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               Effect.fail(
                 new FileSyncStopError({
                   engineId: ENGINE_ID,
@@ -198,7 +198,7 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
     expect(terminated.sort()).toEqual([mutagenSessionName(first), mutagenSessionName(second)].sort());
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const defects = Array.from(Cause.defects(exit.cause));
+      const defects = Array.from(exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect));
       expect(defects).toHaveLength(2);
       expect(defects.every((error) => error instanceof FileSyncStopError)).toBe(true);
     }
@@ -223,7 +223,7 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
     const exit = await runScopedExit(engine.createSession(spec));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(FileSyncStartError);
@@ -288,7 +288,7 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
     const exit = await runScopedExit(engine.createSession(spec));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(FileSyncStartError);
       }
@@ -339,7 +339,7 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(FileSyncStopError);
       }
@@ -431,7 +431,7 @@ describe("@lando/file-sync-mutagen engine streamEvents", () => {
     const exit = await Effect.runPromiseExit(Stream.runCollect(stream));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(FileSyncDriftError);
       }

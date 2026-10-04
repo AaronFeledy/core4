@@ -18,29 +18,27 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import {
-  type ScratchRegistryEntry,
-  ScratchRegistryLive,
-  makeScratchRegistry,
-} from "@lando/engine/scratch-app/registry";
+import * as BunDataMover from "@lando/data-mover/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
@@ -67,11 +65,14 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
-const scratchInitAppPortLive = Layer.succeed(ScratchInitAppPort, {
-  initApp: () => Promise.reject(new TypeError("scratch gc fixtures must not initialize recipes")),
-});
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
+const scratchInitAppPortLive = Layer.succeed(
+  ScratchInitAppPort,
+  ScratchInitAppPort.of({
+    initApp: () => Promise.reject(new TypeError("scratch gc fixtures must not initialize recipes")),
+  }),
+);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -122,14 +123,15 @@ const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise
   }
 };
 
-const die = (operation: string) => Effect.dieMessage(`scratch gc test provider should not call ${operation}`);
+const die = (operation: string) =>
+  Effect.die(new Error(`scratch gc test provider should not call ${operation}`));
 
 const makeLayer = (
   labelIds: ReadonlyArray<string>,
   pruned: string[],
   pruneScratch?: (id: string) => Effect.Effect<void, ScratchAppError>,
 ) => {
-  const provider: RuntimeProviderShape = {
+  const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
     id: String(providerId),
     displayName: "Scratch GC Test Provider",
@@ -164,35 +166,41 @@ const makeLayer = (
     copyFromService: () => Stream.die("scratch gc test provider should not call copyFromService"),
     exportArtifact: () => Stream.die("scratch gc test provider should not call exportArtifact"),
     importArtifact: () => die("importArtifact"),
-  };
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+  });
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
-  const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
-  const registryLive = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(provider),
-  });
-  const scannerLive = Layer.succeed(ScratchResourceScanner, {
-    listScratchIds: Effect.succeed(labelIds),
-    pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
-  });
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  const eventLive = LandoEventService.layer.pipe(Layer.provide(redactionLive));
+  const registryLive = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
+  const scannerLive = Layer.succeed(
+    ScratchResourceScanner,
+    ScratchResourceScanner.of({
+      listScratchIds: Effect.succeed(labelIds),
+      pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
+    }),
+  );
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
-    landofileServiceLive,
+    BunFileSystem.layer,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
     eventLive,
     redactionLive,
-    ScratchRegistryLive,
+    ScratchRegistryLayer.ScratchRegistry.layer,
     scannerLive,
     scratchInitAppPortLive,
-    DataMoverLive.pipe(
+    BunDataMover.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
+          stateStoreLayer,
           eventLive,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),
@@ -203,13 +211,13 @@ const makeLayer = (
   );
   return Layer.mergeAll(
     scratchDeps,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
   );
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
-  return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  return Layer.mergeAll(redactionLive, LandoEventService.layer.pipe(Layer.provide(redactionLive)));
 };
 
 const registryEntry = (cacheRoot: string, id: string): ScratchRegistryEntry => ({
@@ -224,7 +232,7 @@ const registryEntry = (cacheRoot: string, id: string): ScratchRegistryEntry => (
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
 
-describe("ScratchAppServiceLive gc", () => {
+describe("ScratchAppServiceLayer.layer gc", () => {
   test("cross-references registry, directories, and provider labels and prunes orphans", async () => {
     await withTempCache(async (cacheRoot) => {
       const scratchBase = join(cacheRoot, "scratch");

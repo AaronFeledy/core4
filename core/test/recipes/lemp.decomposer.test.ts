@@ -7,7 +7,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { lempDecomposer } from "../../src/recipes/builtin/lemp/decomposer.ts";
 import { lempRecipeYaml } from "../../src/recipes/builtin/lemp/manifest.ts";
 import { lempProducer, lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
@@ -158,7 +158,7 @@ describe("lemp decomposition", () => {
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment");
     const { recipe: _recipe, name: _name, ...fragment } = result.fragment;
     // When the declarative snapshot renders once.
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(lempSnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(lempSnapshot, options));
     // Then expression-shaped strings remain inert authoring data.
     expect<unknown>(rendered).toEqual(fragment);
   });

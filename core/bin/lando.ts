@@ -73,7 +73,7 @@ const main = async (): Promise<void> => {
     argv[2] !== undefined
   ) {
     const { runWindowsReplacementProcess } = await import("@lando/engine/operations/update");
-    const { Effect } = await import("effect");
+    const Effect = await import("effect/Effect");
     process.exitCode = (await Effect.runPromise(runWindowsReplacementProcess(argv[1], argv[2]))) ? 0 : 1;
     return;
   }

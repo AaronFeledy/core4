@@ -104,23 +104,22 @@ const resolveGlobalRouter: Effect.Effect<RouterConfig | undefined> = Effect.gen(
   if (configOpt._tag === "None") return undefined;
   return yield* configOpt.value.load.pipe(
     Effect.map((config) => config.router),
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 });
 
-export const resolveRouterConfigForApp = (
+export const resolveRouterConfigForApp = Effect.fnUntraced(function* (
   landofileRouter?: RouterConfig,
-): Effect.Effect<{
+): Effect.fn.Return<{
   readonly router: RouterConfig;
   readonly routerPin: RouterPin;
   readonly enabled: boolean;
-}> =>
-  Effect.gen(function* () {
-    const globalRouter = yield* resolveGlobalRouter;
-    const merged = mergeRouterConfig(globalRouter, landofileRouter);
-    return {
-      router: toSetupRouter(merged, globalRouter, landofileRouter),
-      routerPin: extractRouterPins(landofileRouter),
-      enabled: merged.enabled,
-    };
-  });
+}> {
+  const globalRouter = yield* resolveGlobalRouter;
+  const merged = mergeRouterConfig(globalRouter, landofileRouter);
+  return {
+    router: toSetupRouter(merged, globalRouter, landofileRouter),
+    routerPin: extractRouterPins(landofileRouter),
+    enabled: merged.enabled,
+  };
+});

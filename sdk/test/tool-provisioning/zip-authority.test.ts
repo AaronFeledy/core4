@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 import { ToolExtractError } from "@lando/sdk/errors";
 import { provisionTool } from "@lando/sdk/tool-provisioning";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { makeFakeDownloader, makeZip, sha256Hex } from "./_fixtures.ts";
 
 const regular = { name: "nested/tool", bytes: Buffer.from("real executable") };
@@ -194,7 +194,7 @@ test.each(cases)("ZIP authority: $name", async ({ bytes, accepts }) => {
     for (const [name, content] of Object.entries(previous)) await writeFile(join(binDir, name), content);
     // When: forced provisioning attempts selection before any publication.
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         Effect.scoped(
           provisionTool({
             manifest: {
@@ -215,11 +215,11 @@ test.each(cases)("ZIP authority: $name", async ({ bytes, accepts }) => {
     );
     // Then: only authoritative regular siblings install; rejected inputs preserve the entire install.
     if (accepts) {
-      expect(Either.isRight(result)).toBe(true);
+      expect(Result.isSuccess(result)).toBe(true);
       expect(await readFile(join(binDir, "tool"))).toEqual(regular.bytes);
     } else {
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(ToolExtractError);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(ToolExtractError);
       for (const [name, content] of Object.entries(previous))
         expect(await readFile(join(binDir, name), "utf8")).toBe(content);
     }

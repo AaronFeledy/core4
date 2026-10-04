@@ -17,7 +17,7 @@ const plan = (id: string, extensionId: string | undefined): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
     source: "scratch-labels.test",
     runtime: 4,
   },

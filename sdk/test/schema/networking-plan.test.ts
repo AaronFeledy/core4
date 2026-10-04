@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   LANDO_SHARED_CROSS_APP_NETWORK,
@@ -36,10 +36,10 @@ describe("NetworkingPlan schema", () => {
   });
 
   test("rejects a plan missing the required per-app bridge", () => {
-    const result = Schema.decodeUnknownEither(NetworkingPlan)({
+    const result = Schema.decodeUnknownResult(NetworkingPlan)({
       sharedNetworkMembership: { name: "lando_bridge_network", aliases: {} },
     });
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 });
 

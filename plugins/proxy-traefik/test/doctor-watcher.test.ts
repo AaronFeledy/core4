@@ -89,7 +89,7 @@ const makeDiskHarness = async (userDataRoot: string, text: string) => {
       exists: (path) =>
         Effect.tryPromise(() => access(path)).pipe(
           Effect.as(true),
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.catch(() => Effect.succeed(false)),
         ),
       readDir: (path) => Effect.tryPromise(() => readdir(path)),
       readText: (path) => Effect.tryPromise(() => readFile(path, "utf8")),

@@ -1,3 +1,5 @@
+import { Predicate } from "effect";
+
 const SCALAR_KEYS = [
   "id",
   "title",
@@ -13,11 +15,8 @@ const SCALAR_KEYS = [
   "migrations",
 ] as const;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
 const asRecords = (value: unknown): ReadonlyArray<Record<string, unknown>> =>
-  Array.isArray(value) ? value.filter(isRecord) : [];
+  Array.isArray(value) ? value.filter(Predicate.isObject) : [];
 
 const stripDrop = (item: Record<string, unknown>): Record<string, unknown> => {
   const { drop: _drop, ...rest } = item;
@@ -64,7 +63,7 @@ const mergeByKey = (
 export const stripExtendsAndDrop = (raw: Record<string, unknown>): Record<string, unknown> => {
   const { extends: _extends, ...rest } = raw;
   const stripList = (value: unknown): unknown =>
-    Array.isArray(value) ? value.map((item) => (isRecord(item) ? stripDrop(item) : item)) : value;
+    Array.isArray(value) ? value.map((item) => (Predicate.isObject(item) ? stripDrop(item) : item)) : value;
   return {
     ...rest,
     ...(Object.hasOwn(rest, "prompts") ? { prompts: stripList(rest.prompts) } : {}),

@@ -1,20 +1,20 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LogSource, LogSourceId, LogSourceInput } from "@lando/sdk/schema";
 
 describe("LogSourceId", () => {
   test("rejects the reserved console id", () => {
-    expect(Either.isLeft(Schema.decodeUnknownEither(LogSourceId)("console"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(LogSourceId)("console"))).toBe(true);
   });
 
   test("rejects an empty id", () => {
-    expect(Either.isLeft(Schema.decodeUnknownEither(LogSourceId)(""))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(LogSourceId)(""))).toBe(true);
   });
 
   test("accepts a normal id", () => {
-    expect(Either.isRight(Schema.decodeUnknownEither(LogSourceId)("slow-query"))).toBe(true);
+    expect(Result.isSuccess(Schema.decodeUnknownResult(LogSourceId)("slow-query"))).toBe(true);
   });
 });
 
@@ -50,25 +50,25 @@ describe("LogSource", () => {
   });
 
   test("rejects a declared source that reuses the reserved console id", () => {
-    const result = Schema.decodeUnknownEither(LogSource)({
+    const result = Schema.decodeUnknownResult(LogSource)({
       id: "console",
       path: "/var/log/app.log",
       stream: "stderr",
       strategy: "follow",
     });
 
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("rejects an unknown strategy", () => {
-    const result = Schema.decodeUnknownEither(LogSource)({
+    const result = Schema.decodeUnknownResult(LogSource)({
       id: "app",
       path: "/var/log/app.log",
       stream: "stderr",
       strategy: "sidecar",
     });
 
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 });
 
@@ -100,11 +100,11 @@ describe("LogSourceInput", () => {
   });
 
   test("rejects a user source whose path basename is the reserved console id", () => {
-    const result = Schema.decodeUnknownEither(LogSourceInput)({
+    const result = Schema.decodeUnknownResult(LogSourceInput)({
       path: "/var/log/console",
     });
 
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("rejects encoding sources that cannot be represented in Landofile logs input", () => {
@@ -116,10 +116,10 @@ describe("LogSourceInput", () => {
       required: true,
       timestamps: true,
     });
-    const result = Schema.encodeEither(LogSourceInput)(source);
+    const result = Schema.encodeResult(LogSourceInput)(source);
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(String(result.left)).toContain("Landofile log source input");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(String(result.failure)).toContain("Landofile log source input");
   });
 
   test("encodes decoded Landofile input and decodes it back to the same source", () => {

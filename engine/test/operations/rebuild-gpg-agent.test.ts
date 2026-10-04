@@ -68,7 +68,7 @@ for (const prepareExit of [0, 1]) {
     try {
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           Effect.scoped(
             Effect.gen(function* () {
               const scope = yield* Effect.acquireRelease(Scope.make(), (scopeHandle) =>
@@ -130,12 +130,12 @@ for (const prepareExit of [0, 1]) {
       });
       expect(closed).toBe(1);
       if (prepareExit === 0) {
-        expect(result._tag).toBe("Right");
+        expect(result._tag).toBe("Success");
         expect(calls).toEqual(["stop:web", "apply", "gpg-prepare", "build-app"]);
       } else {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: { _tag: "GpgAgentTransportError", stage: "worker" },
+          _tag: "Failure",
+          failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
         expect(calls).toEqual(["stop:web", "apply", "gpg-prepare", "stop:web"]);
       }

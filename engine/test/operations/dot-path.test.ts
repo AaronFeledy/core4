@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { getAtPath, setAtPath, unsetAtPath } from "../../src/config-write/dot-path.ts";
 import { type ValueType, parseTypedValue } from "../../src/config-write/value-parse.ts";
 
 const right = (raw: string, type: ValueType): unknown => {
   const result = parseTypedValue(raw, type);
-  if (Either.isLeft(result)) throw new Error(`expected Right, got Left: ${result.left.message}`);
-  return result.right;
+  if (Result.isFailure(result)) throw new Error(`expected Right, got Left: ${result.failure.message}`);
+  return result.success;
 };
-const isLeft = (raw: string, type: ValueType): boolean => Either.isLeft(parseTypedValue(raw, type));
+const isLeft = (raw: string, type: ValueType): boolean => Result.isFailure(parseTypedValue(raw, type));
 
 describe("dot-path get/set/unset round-trip", () => {
   test("getAtPath reads nested dot paths", () => {

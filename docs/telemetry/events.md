@@ -42,7 +42,7 @@ Records the categorized result of a `lando update` self-update attempt. Emitted 
 ### `deprecation-used`
 
 - **Owner:** `@lando/core`
-- **Trigger:** `engine/src/deprecation/telemetry.ts:DeprecationTelemetryLive (from DeprecationService events)`
+- **Trigger:** `engine/src/deprecation/telemetry.ts:DeprecationTelemetry.layer (from DeprecationService events)`
 - **Scope:** Library-eligible
 
 Records use of a deprecated public surface. Consumed from the runtime event bus and forwarded through the Telemetry service rather than a parallel reporter.

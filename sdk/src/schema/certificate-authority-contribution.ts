@@ -3,24 +3,24 @@ import { Schema } from "effect";
 import { DeprecationNotice } from "./deprecation.ts";
 
 export const CertificateAuthorityContribution = Schema.Struct({
-  id: Schema.propertySignature(Schema.String).annotations({
+  id: Schema.String.annotateKey({
     description: "Unique CertificateAuthority implementation id.",
   }),
-  module: Schema.propertySignature(Schema.String).annotations({
+  module: Schema.String.annotateKey({
     description: "Contained plugin module exporting the CertificateAuthority Layer.",
   }),
-  defaultFor: Schema.optional(
+  defaultFor: Schema.optionalKey(
     Schema.Struct({
-      platform: Schema.optional(Schema.Array(Schema.String)),
+      platform: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
-  ).annotations({ description: "Host matchers that nominate this implementation as a default." }),
-  enabledByDefault: Schema.optional(Schema.Boolean).annotations({
+  ).annotate({ description: "Host matchers that nominate this implementation as a default." }),
+  enabledByDefault: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Whether this contribution starts enabled after installation.",
   }),
-  summary: Schema.optional(Schema.String).annotations({
+  summary: Schema.optionalKey(Schema.String).annotate({
     description: "One-line implementation description for listings and diagnostics.",
   }),
-  deprecated: Schema.optional(DeprecationNotice).annotations({
+  deprecated: Schema.optionalKey(DeprecationNotice).annotate({
     description: "Optional lifecycle notice for this contribution.",
   }),
 });

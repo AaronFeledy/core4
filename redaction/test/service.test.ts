@@ -4,27 +4,30 @@ import { type Context, Effect, Layer } from "effect";
 import { SecretNotFoundError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
-import { RedactionService, RedactionServiceLive, createStandaloneRedactor } from "../src/service.ts";
+import { RedactionService, createStandaloneRedactor } from "../src/service.ts";
 
 const secretStoreLayer = (values: Record<string, string>) =>
-  Layer.succeed(SecretStore, {
-    id: "test",
-    get: (secret: string) => {
-      const value = values[secret];
-      return value === undefined
-        ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-        : Effect.succeed(value);
-    },
-    has: (secret: string) => Effect.succeed(values[secret] !== undefined),
-    list: Effect.succeed(Object.keys(values)),
-  });
+  Layer.succeed(
+    SecretStore,
+    SecretStore.of({
+      id: "test",
+      get: (secret: string) => {
+        const value = values[secret];
+        return value === undefined
+          ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
+          : Effect.succeed(value);
+      },
+      has: (secret: string) => Effect.succeed(values[secret] !== undefined),
+      list: Effect.succeed(Object.keys(values)),
+    }),
+  );
 
 const runWithStore = <A, E>(effect: Effect.Effect<A, E, RedactionService>, values: Record<string, string>) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(RedactionServiceLive), Effect.provide(secretStoreLayer(values))),
+    effect.pipe(Effect.provide(RedactionService.layer), Effect.provide(secretStoreLayer(values))),
   );
 
-describe("RedactionServiceLive", () => {
+describe("RedactionService.layer", () => {
   test("tag is importable and forProfile yields a Redactor", async () => {
     const redactor = await runWithStore(
       Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")),
@@ -60,7 +63,7 @@ describe("RedactionServiceLive", () => {
         listReads += 1;
         return ["LATER"];
       }),
-    } satisfies Context.Tag.Service<typeof SecretStore>;
+    } satisfies Context.Service.Shape<typeof SecretStore>;
 
     const program = Effect.gen(function* () {
       const service = yield* RedactionService;
@@ -72,7 +75,7 @@ describe("RedactionServiceLive", () => {
     });
 
     const counts = await Effect.runPromise(
-      program.pipe(Effect.provide(RedactionServiceLive), Effect.provide(Layer.succeed(SecretStore, store))),
+      program.pipe(Effect.provide(RedactionService.layer), Effect.provide(Layer.succeed(SecretStore, store))),
     );
     expect(counts).toEqual({ listReads: 1, getReads: 1 });
   });
@@ -86,11 +89,11 @@ describe("RedactionServiceLive", () => {
           : Effect.succeed("stillsecret"),
       has: () => Effect.succeed(true),
       list: Effect.succeed(["MISSING", "PRESENT"]),
-    } satisfies Context.Tag.Service<typeof SecretStore>;
+    } satisfies Context.Service.Shape<typeof SecretStore>;
 
     const redactor = await Effect.runPromise(
       Effect.flatMap(RedactionService, (service) => service.forProfile("secrets")).pipe(
-        Effect.provide(RedactionServiceLive),
+        Effect.provide(RedactionService.layer),
         Effect.provide(Layer.succeed(SecretStore, store)),
       ),
     );

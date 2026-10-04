@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LANDOFILE_EDITOR_SCHEMA_URL } from "@lando/sdk/schema";
 
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
@@ -62,6 +63,9 @@ describe("initApp destination + runPostInit", () => {
         expect(await fileExists(join(destination, ".lando.yml"))).toBe(true);
         expect(await fileExists(join(cwd, "scratch-empty-abc123", ".lando.yml"))).toBe(false);
         const rendered = await readFile(join(destination, ".lando.yml"), "utf8");
+        expect(rendered.startsWith(`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}\n`)).toBe(
+          true,
+        );
         expect(rendered).toContain("name: scratch-empty-abc123");
       });
     });

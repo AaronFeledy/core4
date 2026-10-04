@@ -24,27 +24,30 @@ import {
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
-import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistryLive, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { makeScratchAppServiceLive, readScratchLandofile } from "@lando/engine/scratch-app/service";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import * as BunDataMover from "@lando/data-mover/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import { makeScratchRegistry } from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { readScratchLandofile } from "@lando/engine/scratch-app/service";
+import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { makeLandoPaths } from "@lando/paths";
-import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeJsonRendererServiceLive } from "@lando/renderer/runtime";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(
-  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(
+  Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
@@ -61,8 +64,8 @@ import {
 import { scratchList } from "../../src/cli/commands/scratch.ts";
 import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -90,8 +93,8 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -158,10 +161,10 @@ interface HarnessOptions {
 }
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch run test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch run test provider should not call ${operation}`));
 
 const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
-  const provider: RuntimeProviderShape = {
+  const provider: RuntimeProviderShape = RuntimeProvider.of({
     id: String(providerId),
     displayName: "Scratch Run Test Provider",
     version: "0.0.0",
@@ -215,7 +218,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
           env: spec.env,
         });
       });
-      if (options.execNever === true) return record.pipe(Effect.zipRight(Effect.never));
+      if (options.execNever === true) return record.pipe(Effect.andThen(Effect.never));
       return record.pipe(
         Effect.as({
           exitCode: options.execExitCode ?? 0,
@@ -239,35 +242,38 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     copyFromService: () => Stream.die("scratch run test provider should not call copyFromService"),
     exportArtifact: () => Stream.die("scratch run test provider should not call exportArtifact"),
     importArtifact: () => die("importArtifact"),
-  };
-
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
-  );
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
-  const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
-  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
-  const registryLive = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
   });
+
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
+  );
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  const eventLive = LandoEventService.layer.pipe(Layer.provide(redactionLive));
+  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
+  const registryLive = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
-    PrivateFileAccessLive,
-    landofileServiceLive,
+    BunFileSystem.layer,
+    PrivateFileAccessService.layer,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
     eventLive,
     pathsLive,
     redactionLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
-    ScratchInitAppPortLive,
-    DataMoverLive.pipe(
+    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer,
+    ScratchInitAppPortLayer.layer,
+    BunDataMover.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
+          stateStoreLayer,
           eventLive,
           redactionLive,
           pathsLive,
@@ -276,23 +282,23 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       ),
     ),
   );
-  const buildOrchestratorLive = BuildOrchestratorLive.pipe(
-    Layer.provide(Layer.mergeAll(eventLive, pathsLive, registryLive, StateStoreLive)),
+  const buildOrchestratorLive = BuildOrchestratorLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(eventLive, pathsLive, registryLive, stateStoreLayer)),
   );
   return Layer.mergeAll(
     scratchDeps,
     buildOrchestratorLive,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(
       Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive)),
     ),
-    options.configLayer ?? ConfigServiceLive,
-    SecretStoreLive,
-  ).pipe(Layer.provide(PrivateFileAccessLive));
+    options.configLayer ?? LandoConfigService.layer,
+    EnvSecretStore.layer,
+  ).pipe(Layer.provide(PrivateFileAccessService.layer));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
-  const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
-  return Layer.mergeAll(redactionLive, EventServiceLive.pipe(Layer.provide(redactionLive)));
+  const redactionLive = RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer));
+  return Layer.mergeAll(redactionLive, LandoEventService.layer.pipe(Layer.provide(redactionLive)));
 };
 
 const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -662,7 +668,7 @@ describe("scratchRun", () => {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Exit.causeOption(exit);
+        const failure = Exit.getCause(exit);
         const rendered = JSON.stringify(failure);
         expect(rendered).toContain("ScratchRunTargetError");
         expect(rendered).toContain("toolbox");
@@ -711,7 +717,7 @@ describe("scratchRun", () => {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        expect(JSON.stringify(Exit.causeOption(exit))).toContain("ScratchAppError");
+        expect(JSON.stringify(Exit.getCause(exit))).toContain("ScratchAppError");
       }
       expect(recorded.appliedPlans).toHaveLength(0);
     });
@@ -748,7 +754,7 @@ describe("scratchRun", () => {
       const layer = makeHarnessLayer(recorded, { execNever: true });
       await Effect.runPromise(
         Effect.gen(function* () {
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             scratchRun({
               command: ["sleep", "infinity"],
               mount: true,
@@ -911,7 +917,7 @@ describe("scratch run cleanup and warm repeats", () => {
       const layer = makeHarnessLayer(recorded, { execNever: true });
       await Effect.runPromise(
         Effect.gen(function* () {
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             scratchRun({
               command: ["sleep", "infinity"],
               mount: true,
@@ -1083,7 +1089,7 @@ describe("scratch run rendering", () => {
         }).pipe(
           Effect.provide(makeHarnessLayer(recorded, { execStderr: "warn\n" })),
           Effect.provide(testSupportLayer()),
-          Effect.provide(makeJsonRendererServiceLive(io)),
+          Effect.provide(RendererRuntime.layerJsonService(io)),
         ),
       );
 
@@ -1094,17 +1100,7 @@ describe("scratch run rendering", () => {
 });
 
 describe("scratch run agent env forwarding", () => {
-  const AGENT_KEYS = [
-    "CLAUDECODE",
-    "CLAUDE_CODE",
-    "CURSOR_AGENT",
-    "OPENCODE",
-    "COPILOT_CLI",
-    "GEMINI_CLI",
-    "AGENT",
-    "CI",
-    "LANDO_AGENT_ENV",
-  ] as const;
+  const AGENT_KEYS = [...AGENT_CONTEXT_ENV_ALLOWLIST, "LANDO_AGENT_ENV"] as const;
 
   const withHostEnv = async <A>(
     env: Record<string, string | undefined>,

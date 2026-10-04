@@ -17,7 +17,7 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("lando-build-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-12T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-12T00:00:00Z"),
   source: "provider-lando/build-artifact.test.ts",
   runtime: 4 as const,
 };

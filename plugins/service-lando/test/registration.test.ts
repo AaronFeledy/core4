@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
@@ -42,12 +42,12 @@ const providerCapabilities = {
   providerExtensions: ["compose", "labels", "registryCredentials"],
 } as const;
 
-const registryLayer = Layer.merge(services, PluginRegistryLive);
+const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
+      Effect.provide(AppPlannerLayer.layer),
       Effect.provide(registryLayer),
     ),
   );
@@ -137,7 +137,7 @@ describe("@lando/service-lando registration", () => {
     });
 
     const encoded = Schema.encodeSync(AppPlan)(appPlan);
-    expect(Schema.decodeUnknownEither(AppPlan)(encoded)._tag).toBe("Right");
+    expect(Schema.decodeUnknownResult(AppPlan)(encoded)._tag).toBe("Success");
     expect(appPlan.provider).toBe(ProviderId.make("lando"));
     expect(appPlan.services[ServiceName.make("web")]?.type).toBe("node:lts");
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");
@@ -698,7 +698,7 @@ describe("@lando/service-lando registration", () => {
     }
 
     const BuildStepIds = Schema.Struct({
-      buildSteps: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+      buildSteps: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.optionalKey(Schema.String) }))),
     });
     const stepIds = (service: typeof web) =>
       Schema.decodeUnknownSync(BuildStepIds)(

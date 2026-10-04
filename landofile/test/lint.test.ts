@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { LandofileFormConflictError } from "@lando/sdk/errors";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 
 import {
   composeServiceDispositions,
@@ -39,8 +40,8 @@ describe("lintLandofile", () => {
     // Then
     expect(result.valid).toBe(false);
     expect(result.violations).toEqual([
-      { path: "services.web.routes[0]", message: expect.any(String), suggestedFix: expect.any(String) },
-      { path: "proxy.api[1]", message: expect.any(String), suggestedFix: expect.any(String) },
+      { path: ["services", "web", "routes", 0], message: expect.any(String), suggestion: expect.any(String) },
+      { path: ["proxy", "api", 1], message: expect.any(String), suggestion: expect.any(String) },
     ]);
   });
 
@@ -98,12 +99,12 @@ describe("lintLandofile", () => {
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
       expect(exit.value.violations).toEqual([
-        expect.objectContaining({ path: "", message: expect.stringMatching(/Unknown YAML alias/) }),
+        expect.objectContaining({ path: [], message: expect.stringMatching(/Unknown YAML alias/) }),
       ]);
       expect(
         exit.value.violations.some((entry) =>
           Object.values(composeTagDispositions).some(
-            (disposition) => entry.suggestedFix === disposition.remediation,
+            (disposition) => entry.suggestion === disposition.remediation,
           ),
         ),
       ).toBe(false);
@@ -155,7 +156,9 @@ describe("lintLandofile", () => {
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
       expect(exit.value.app).toBe("layered-app");
-      expect(exit.value.violations.some((violation) => violation.path === "recipe")).toBe(true);
+      expect(
+        exit.value.violations.some((violation) => formatValidationIssuePath(violation.path) === "recipe"),
+      ).toBe(true);
     }
   });
 
@@ -167,7 +170,7 @@ describe("lintLandofile", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(LandofileFormConflictError);
@@ -183,10 +186,10 @@ describe("lintLandofile", () => {
       expect(exit.value.valid).toBe(false);
       expect(exit.value.violations.length).toBeGreaterThan(0);
       const v = exit.value.violations[0];
-      expect(typeof v?.path).toBe("string");
+      expect(Array.isArray(v?.path)).toBe(true);
       expect(typeof v?.message).toBe("string");
-      expect(v?.path).toContain("bogusKey");
-      expect(v?.suggestedFix).toBeDefined();
+      expect(formatValidationIssuePath(v?.path ?? [])).toContain("bogusKey");
+      expect(v?.suggestion).toBeDefined();
     }
   });
 
@@ -229,14 +232,18 @@ describe("lintLandofile", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
-      const profilesViolation = exit.value.violations.find((entry) => entry.path === "profiles");
-      expect(profilesViolation?.suggestedFix).not.toContain("Unsupported Compose top-level key");
-      expect(profilesViolation?.suggestedFix).toContain("service-level key");
-      const extensionsViolation = exit.value.violations.find((entry) => entry.path === "extensions");
-      expect(extensionsViolation?.suggestedFix).not.toContain("Unsupported Compose top-level key");
-      expect(extensionsViolation?.suggestedFix).toContain("not a Compose key");
-      expect(extensionsViolation?.suggestedFix).toContain("x-*");
-      expect(extensionsViolation?.suggestedFix).toContain("providers.<provider-id>");
+      const profilesViolation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "profiles",
+      );
+      expect(profilesViolation?.suggestion).not.toContain("Unsupported Compose top-level key");
+      expect(profilesViolation?.suggestion).toContain("service-level key");
+      const extensionsViolation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "extensions",
+      );
+      expect(extensionsViolation?.suggestion).not.toContain("Unsupported Compose top-level key");
+      expect(extensionsViolation?.suggestion).toContain("not a Compose key");
+      expect(extensionsViolation?.suggestion).toContain("x-*");
+      expect(extensionsViolation?.suggestion).toContain("providers.<provider-id>");
     }
   });
 
@@ -250,8 +257,10 @@ describe("lintLandofile", () => {
     // Then
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
-      const violation = exit.value.violations.find((entry) => entry.path === "models");
-      expect(violation?.suggestedFix).toBe(composeTopLevelDispositions.models?.remediation);
+      const violation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "models",
+      );
+      expect(violation?.suggestion).toBe(composeTopLevelDispositions.models?.remediation);
     }
   });
 
@@ -261,12 +270,16 @@ describe("lintLandofile", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
-      const violation = exit.value.violations.find((entry) => entry.path === "services.web.bogus_nested");
-      expect(violation?.suggestedFix).toBe(
+      const violation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "services.web.bogus_nested",
+      );
+      expect(violation?.suggestion).toBe(
         'Remove the unknown key "bogus_nested"; it is not part of the canonical Landofile schema.',
       );
-      const parentViolation = exit.value.violations.find((entry) => entry.path === "services");
-      expect(parentViolation?.suggestedFix).toBeUndefined();
+      const parentViolation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "services",
+      );
+      expect(parentViolation?.suggestion).toBeUndefined();
     }
   });
 
@@ -277,8 +290,10 @@ describe("lintLandofile", () => {
 
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
-      const violation = exit.value.violations.find((entry) => entry.path === "services.web.deploy.replicas");
-      expect(violation?.suggestedFix).toBe(composeServiceDispositions["deploy.replicas"]?.remediation);
+      const violation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "services.web.deploy.replicas",
+      );
+      expect(violation?.suggestion).toBe(composeServiceDispositions["deploy.replicas"]?.remediation);
     }
   });
 
@@ -291,7 +306,7 @@ describe("lintLandofile", () => {
     if (Exit.isSuccess(exit)) {
       expect(
         exit.value.violations.some(
-          (entry) => entry.suggestedFix === composeTagDispositions["!reset"].remediation,
+          (entry) => entry.suggestion === composeTagDispositions["!reset"].remediation,
         ),
       ).toBe(true);
     }
@@ -306,7 +321,7 @@ describe("lintLandofile", () => {
     if (Exit.isSuccess(exit)) {
       expect(
         exit.value.violations.some(
-          (entry) => entry.suggestedFix === composeTagDispositions["!reset"].remediation,
+          (entry) => entry.suggestion === composeTagDispositions["!reset"].remediation,
         ),
       ).toBe(true);
     }
@@ -320,9 +335,19 @@ describe("lintLandofile", () => {
 
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
-      expect(exit.value.violations.some((entry) => entry.path === rejectedPath)).toBe(true);
-      expect(exit.value.violations.some((entry) => entry.path === "services.web.bogus_nested")).toBe(true);
-      expect(exit.value.violations.filter((entry) => entry.path.startsWith(rejectedPath))).toHaveLength(1);
+      expect(
+        exit.value.violations.some((entry) => formatValidationIssuePath(entry.path) === rejectedPath),
+      ).toBe(true);
+      expect(
+        exit.value.violations.some(
+          (entry) => formatValidationIssuePath(entry.path) === "services.web.bogus_nested",
+        ),
+      ).toBe(true);
+      expect(
+        exit.value.violations.filter((entry) =>
+          formatValidationIssuePath(entry.path).startsWith(rejectedPath),
+        ),
+      ).toHaveLength(1);
     }
   });
 
@@ -367,10 +392,12 @@ describe("lintLandofile", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
-      const violation = exit.value.violations.find((entry) => entry.path === "sshAgent.socket");
+      const violation = exit.value.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "sshAgent.socket",
+      );
       expect(violation?.message).toContain("Expected string");
-      expect(violation?.suggestedFix).toContain("sshAgent.socket");
-      expect(violation?.suggestedFix).toContain("string");
+      expect(violation?.suggestion).toContain("sshAgent.socket");
+      expect(violation?.suggestion).toContain("string");
     }
   });
 
@@ -391,7 +418,7 @@ describe("lintLandofile", () => {
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
       const violation = exit.value.violations[0];
-      expect(violation?.path).toBe("");
+      expect(formatValidationIssuePath(violation?.path ?? [])).toBe("");
       expect(violation?.line).toBe(1);
       expect(violation?.column).toBe(1);
     }

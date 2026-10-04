@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { resolveLandofileIncludes } from "../src/includes.ts";
 import { normalizeToolingTask } from "../src/tooling-normalize.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -34,12 +34,12 @@ test.each([
       expect(task).toBeDefined();
       if (task === undefined) throw new TypeError("Missing fixture task");
       const normalized = normalizeToolingTask("check", task);
-      expect(Either.isLeft(normalized)).toBe(rejected);
-      if (Either.isRight(normalized)) {
-        expect(normalized.right.env).toEqual({ VALUE: "task" });
-        expect(normalized.right.steps[0]?.env).toEqual({ VALUE: "step" });
+      expect(Result.isFailure(normalized)).toBe(rejected);
+      if (Result.isSuccess(normalized)) {
+        expect(normalized.success.env).toEqual({ VALUE: "task" });
+        expect(normalized.success.steps[0]?.env).toEqual({ VALUE: "step" });
       } else {
-        expect(normalized.left._tag).toBe("ToolingCompileError");
+        expect(normalized.failure._tag).toBe("ToolingCompileError");
       }
     } finally {
       await rm(root, { recursive: true, force: true });

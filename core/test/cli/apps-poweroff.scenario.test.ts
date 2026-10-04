@@ -18,11 +18,14 @@ let userDataRoot: string;
 let userCacheRoot: string;
 
 const fakeConfigService = (dataRoot: string) =>
-  Layer.succeed(ConfigService, {
-    get: <K extends string>(key: K) =>
-      Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
-    getEffective: () => Effect.succeed({} as never),
-  } as never);
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      get: <K extends string>(key: K) =>
+        Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+      getEffective: () => Effect.succeed({} as never),
+    } as never),
+  );
 
 const makePlan = (id: string, name: string, services: string[]) => ({
   version: 1,
@@ -173,7 +176,7 @@ describe("apps:poweroff command", () => {
     };
     const services = Layer.mergeAll(
       fakeConfigService(userDataRoot),
-      Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }),
+      Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
     );
 
     // When: poweroff uses its default runtime teardown seam.

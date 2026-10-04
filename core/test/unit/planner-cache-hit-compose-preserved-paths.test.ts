@@ -10,15 +10,15 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected planning to fail");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(failure)).toBe(true);
   if (!Option.isSome(failure)) throw new Error("Expected a typed planning failure");
   return failure.value;
@@ -42,8 +42,8 @@ test("fails closed when a cached preserved path is unsupported by the current pr
       },
     },
   });
-  const plannerLayer = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+  const plannerLayer = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
   );
   const runPlan = (capabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(

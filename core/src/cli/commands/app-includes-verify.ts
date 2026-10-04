@@ -3,18 +3,17 @@ import { dirname } from "node:path";
 import { Effect, Schema } from "effect";
 
 import {
+  type ComposeKeyRejectedError,
+  type LandofileIncludeError,
   type LandofileLoadExpressionError,
+  type LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileValidationError,
   type NotImplementedError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import type {
-  ComposeKeyRejectedError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  ToolingIncludeCycleError,
-} from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
 
 import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
@@ -37,16 +36,16 @@ export type {
 
 export type AppIncludesVerifyFormat = "text" | "json";
 
-const IncludeVerifyNullableStringSchema = Schema.Union(Schema.String, Schema.Literal(null));
+const IncludeVerifyNullableStringSchema = Schema.Union([Schema.String, Schema.Null]);
 
 const IncludeVerifyEntrySchema = Schema.Struct({
   source: Schema.String,
-  status: Schema.Union(
+  status: Schema.Union([
     Schema.Literal("ok"),
     Schema.Literal("mismatch"),
     Schema.Literal("missing"),
     Schema.Literal("stale"),
-  ),
+  ]),
   expected: IncludeVerifyNullableStringSchema,
   actual: IncludeVerifyNullableStringSchema,
 });
@@ -76,6 +75,7 @@ export interface AppIncludesVerifyOptions {
 export type AppIncludesVerifyError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileValidationError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -83,7 +83,7 @@ export type AppIncludesVerifyError =
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 
 /**
  * Read-only check that the current app's `.lando.lock.yml` matches its resolved
@@ -91,54 +91,52 @@ const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
  * `LandofileService`) so the command runs at the `minimal` bootstrap level, then
  * delegates to {@link verifyLandofileIncludes}, which never mutates the lockfile.
  */
-export const appIncludesVerify = (
+export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function* (
   options: AppIncludesVerifyOptions = {},
-): Effect.Effect<IncludeVerifyReport, AppIncludesVerifyError, StateStore> =>
-  Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
-    const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
-    if (filePath === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message: "No .lando.yml found. Run `lando init` to create one before verifying includes.",
-          cwd,
-        }),
-      );
-    }
-    const appRoot = dirname(filePath);
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(filePath).text(),
-      catch: (cause) =>
-        new LandofileParseError({
-          message: `Could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
-    });
-    const checkedContent = yield* rejectComposeTags(filePath, content);
-    const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
-    const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
-    yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-    const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Left") {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile ${filePath} is not valid: ${String(decoded.left)}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause: decoded.left,
-        }),
-      );
-    }
-    return yield* verifyLandofileIncludes({
-      landofile: decoded.right,
-      appRoot,
-      ...(options.deps === undefined ? {} : { deps: options.deps }),
-    });
+): Effect.fn.Return<IncludeVerifyReport, AppIncludesVerifyError, StateStore> {
+  const cwd = options.cwd ?? process.cwd();
+  const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
+  if (filePath === undefined) {
+    return yield* Effect.fail(
+      new LandofileNotFoundError({
+        message: "No .lando.yml found. Run `lando init` to create one before verifying includes.",
+        cwd,
+      }),
+    );
+  }
+  const appRoot = dirname(filePath);
+  const content = yield* Effect.tryPromise({
+    try: () => Bun.file(filePath).text(),
+    catch: (cause) =>
+      new LandofileParseError({
+        message: `Could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        filePath,
+        line: undefined,
+        column: undefined,
+        cause,
+      }),
   });
+  const checkedContent = yield* rejectComposeTags(filePath, content);
+  const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
+  const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
+  yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
+  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error", errors: "all" });
+  if (decoded._tag === "Failure") {
+    const issues = validationIssuesFromCause(decoded.failure);
+    return yield* Effect.fail(
+      new LandofileValidationError({
+        message: `Landofile ${filePath} is not valid: ${issues.map(formatValidationIssueLine).join(", ")}`,
+        file: filePath,
+        issues,
+      }),
+    );
+  }
+  return yield* verifyLandofileIncludes({
+    landofile: decoded.success,
+    appRoot,
+    ...(options.deps === undefined ? {} : { deps: options.deps }),
+  });
+});
 
 const summaryLine = (report: IncludeVerifyReport): string => {
   const counts: Record<IncludeVerifyStatus, number> = { ok: 0, mismatch: 0, missing: 0, stale: 0 };

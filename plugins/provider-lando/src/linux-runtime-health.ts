@@ -25,44 +25,44 @@ export interface LinuxRuntimeHealthDeps {
   readonly filesystem?: LinuxRuntimeFilesystem;
 }
 
-const currentRuntimeIsOwned = (deps: LinuxRuntimeHealthDeps): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const pid = yield* readRuntimePid(deps.pidPath);
-    if (pid === undefined || !(yield* deps.serviceRunner.isAlive(pid))) return false;
-    const spec = buildPodmanServiceArgs(deps);
-    const serviceProcess = yield* deps.serviceRunner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false);
-    return (
-      serviceProcess && (yield* recordedLaunchMatchesSpec(deps.pidPath, pid, spec, deps.runtimeBundleVersion))
-    );
-  });
+const currentRuntimeIsOwned = Effect.fnUntraced(function* (
+  deps: LinuxRuntimeHealthDeps,
+): Effect.fn.Return<boolean> {
+  const pid = yield* readRuntimePid(deps.pidPath);
+  if (pid === undefined || !(yield* deps.serviceRunner.isAlive(pid))) return false;
+  const spec = buildPodmanServiceArgs(deps);
+  const serviceProcess = yield* deps.serviceRunner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false);
+  return (
+    serviceProcess && (yield* recordedLaunchMatchesSpec(deps.pidPath, pid, spec, deps.runtimeBundleVersion))
+  );
+});
 
 export const linuxRuntimeIsHealthy = (
   deps: LinuxRuntimeHealthDeps,
 ): Effect.Effect<boolean, ProviderUnavailableError> =>
-  Effect.either(deps.podmanApi.ping).pipe(
+  Effect.result(deps.podmanApi.ping).pipe(
     Effect.flatMap((reachable) =>
-      reachable._tag === "Left" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
+      reachable._tag === "Failure" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
     ),
   );
 
-const findAliveServicePids = (
+const findAliveServicePids = Effect.fnUntraced(function* (
   deps: LinuxRuntimeHealthDeps,
   find:
     | ((spec: ReturnType<typeof buildPodmanServiceArgs>) => Effect.Effect<ReadonlyArray<number>>)
     | undefined,
-): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    if (find === undefined) return [];
-    const pids = yield* find(buildPodmanServiceArgs(deps));
-    const alive: number[] = [];
-    for (const pid of pids) {
-      if (yield* deps.serviceRunner.isAlive(pid)) alive.push(pid);
-    }
-    return alive;
-  });
+): Effect.fn.Return<ReadonlyArray<number>> {
+  if (find === undefined) return [];
+  const pids = yield* find(buildPodmanServiceArgs(deps));
+  const alive: number[] = [];
+  for (const pid of pids) {
+    if (yield* deps.serviceRunner.isAlive(pid)) alive.push(pid);
+  }
+  return alive;
+});
 
-export const stopDiscoveredRuntimeProcesses = (deps: LinuxRuntimeHealthDeps): Effect.Effect<void> =>
-  Effect.gen(function* () {
+export const stopDiscoveredRuntimeProcesses = Effect.fn("ProviderLando.stopDiscoveredRuntimeProcesses")(
+  function* (deps: LinuxRuntimeHealthDeps): Effect.fn.Return<void> {
     if (
       deps.serviceRunner.findMatchingServicePids === undefined &&
       deps.serviceRunner.findManagedServicePids === undefined
@@ -74,22 +74,22 @@ export const stopDiscoveredRuntimeProcesses = (deps: LinuxRuntimeHealthDeps): Ef
     for (const pid of new Set([...matching, ...managed])) {
       yield* deps.serviceRunner.terminate(pid);
     }
-  });
+  },
+);
 
 const bestEffortRemove = (path: string): Effect.Effect<void> =>
-  Effect.promise(() => rm(path, { force: true })).pipe(Effect.catchAll(() => Effect.void));
+  Effect.promise(() => rm(path, { force: true })).pipe(Effect.catch(() => Effect.void));
 
-export const reapLegacyStaleRuntime = (deps: LinuxRuntimeHealthDeps): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const pid = yield* readRuntimePid(deps.pidPath);
-    if (pid !== undefined && (yield* deps.serviceRunner.isAlive(pid))) {
-      const serviceProcess = yield* deps.serviceRunner.isServiceProcess?.(
-        pid,
-        buildPodmanServiceArgs(deps),
-      ) ?? Effect.succeed(false);
-      if (serviceProcess) yield* deps.serviceRunner.terminate(pid);
-    }
-    yield* bestEffortRemove(deps.socketPath);
-    yield* bestEffortRemove(deps.pidPath);
-    yield* bestEffortRemove(launchStatePath(deps.pidPath));
-  });
+export const reapLegacyStaleRuntime = Effect.fn("ProviderLando.reapLegacyStaleRuntime")(function* (
+  deps: LinuxRuntimeHealthDeps,
+): Effect.fn.Return<void> {
+  const pid = yield* readRuntimePid(deps.pidPath);
+  if (pid !== undefined && (yield* deps.serviceRunner.isAlive(pid))) {
+    const serviceProcess = yield* deps.serviceRunner.isServiceProcess?.(pid, buildPodmanServiceArgs(deps)) ??
+      Effect.succeed(false);
+    if (serviceProcess) yield* deps.serviceRunner.terminate(pid);
+  }
+  yield* bestEffortRemove(deps.socketPath);
+  yield* bestEffortRemove(deps.pidPath);
+  yield* bestEffortRemove(launchStatePath(deps.pidPath));
+});

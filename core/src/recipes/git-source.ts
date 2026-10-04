@@ -7,7 +7,7 @@ import { Effect } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as LandoConfigService from "@lando/engine/services/config";
 import type { ResolvedRecipe } from "./source";
 
 export interface GitRecipeCloneInput {
@@ -112,7 +112,7 @@ const userDataRoot = async (override: string | undefined): Promise<string> => {
   if (override !== undefined) return override;
   const resolved = await Effect.runPromise(
     Effect.flatMap(ConfigService, (config) => config.get("userDataRoot")).pipe(
-      Effect.provide(ConfigServiceLive),
+      Effect.provide(LandoConfigService.layer),
     ),
   );
   if (resolved === undefined) throw new Error("ConfigService returned no userDataRoot.");

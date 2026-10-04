@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type AgentSocketBridgeInput, AppId, PortNumber } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { type MachineSshBridgeHost, makeMachineSshBridge } from "../src/podman/machine-ssh-bridge.ts";
 
 const directories: string[] = [];
@@ -146,13 +146,13 @@ test("readiness failure closes SSH and reports the selected provider", async () 
   // Given: SSH rejects the forward.
   const f = await fixture("ssh", new Error("forward rejected"));
   // When: the bridge is acquired.
-  const result = await Effect.runPromise(Effect.either(Effect.scoped(f.bridge.openAgentSocketBridge(input))));
+  const result = await Effect.runPromise(Effect.result(Effect.scoped(f.bridge.openAgentSocketBridge(input))));
   // Then: the provider failure is actionable and partial resources are released.
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left.providerId).toBe("podman");
-    expect(result.left.operation).toBe("agent-socket-bridge");
-    expect(result.left.remediation).toContain("lando setup --provider=podman");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure.providerId).toBe("podman");
+    expect(result.failure.operation).toBe("agent-socket-bridge");
+    expect(result.failure.remediation).toContain("lando setup --provider=podman");
   }
   expect(f.events).toContain("close");
   expect(f.events.at(-1)).toContain("rmdir --");
@@ -163,11 +163,11 @@ test("a failed cleanup does not hide why the reverse forward failed", async () =
   const readyError = new Error("forward rejected");
   const f = await fixture("ssh", readyError, true);
   // When: the bridge is acquired.
-  const result = await Effect.runPromise(Effect.either(Effect.scoped(f.bridge.openAgentSocketBridge(input))));
+  const result = await Effect.runPromise(Effect.result(Effect.scoped(f.bridge.openAgentSocketBridge(input))));
   // Then: the reported failure still carries the original readiness error first.
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    const cause = result.left.cause;
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    const cause = result.failure.cause;
     expect(cause).toBeInstanceOf(AggregateError);
     if (cause instanceof AggregateError) expect(cause.errors[0]).toBe(readyError);
   }

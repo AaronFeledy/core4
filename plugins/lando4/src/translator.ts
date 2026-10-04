@@ -7,7 +7,7 @@
  * values, secrets, files, provider data, includes, `.lando.ts`, or commands:
  * expressions survive as their verbatim source text.
  */
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither, parseLandofile, validateConfigTranslateInput } from "@lando/sdk/landofile";
@@ -42,11 +42,11 @@ const YAML_MEDIA_TYPES: ReadonlySet<string> = new Set([
 type AuthoringFragmentWire = ConfigTranslateOutput["fragment"];
 
 const isLandofileLayer = Schema.is(LandofileLayer);
-const decodeFragment = Schema.decodeUnknown(LandofileAuthoringFragment);
-const decodeShape = Schema.decodeUnknown(LandofileAuthoringShape);
-const encodeFragment = Schema.encode(LandofileAuthoringFragment);
-const encodeShape = Schema.encode(LandofileAuthoringShape);
-const decodeRecord = Schema.decodeUnknown(Schema.Record({ key: Schema.String, value: Schema.Unknown }));
+const decodeFragment = Schema.decodeUnknownEffect(LandofileAuthoringFragment);
+const decodeShape = Schema.decodeUnknownEffect(LandofileAuthoringShape);
+const encodeFragment = Schema.encodeEffect(LandofileAuthoringFragment);
+const encodeShape = Schema.encodeEffect(LandofileAuthoringShape);
+const decodeRecord = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown));
 
 const translateError = (message: string, remediation?: string, cause?: unknown): ConfigTranslateError =>
   new ConfigTranslateError({
@@ -78,11 +78,11 @@ const rootDiagnostic = (
 const describe = (document: ConfigTranslateDocument): string => document.path ?? String(document.sourceId);
 
 /** Decode bounded raw bytes as UTF-8; the translator never touches the filesystem. */
-const readText = (document: ConfigTranslateDocument): Either.Either<string, string> => {
+const readText = (document: ConfigTranslateDocument): Result.Result<string, string> => {
   try {
-    return Either.right(new TextDecoder("utf-8", { fatal: true }).decode(document.bytes));
+    return Result.succeed(new TextDecoder("utf-8", { fatal: true }).decode(document.bytes));
   } catch (cause) {
-    return Either.left(`${describe(document)} is not valid UTF-8 text: ${String(cause)}`);
+    return Result.fail(`${describe(document)} is not valid UTF-8 text: ${String(cause)}`);
   }
 };
 
@@ -93,23 +93,23 @@ const readText = (document: ConfigTranslateDocument): Either.Either<string, stri
  */
 const parseDocument = (
   document: ConfigTranslateDocument,
-): Effect.Effect<Either.Either<AuthoringFragmentWire, string>, never, never> => {
+): Effect.Effect<Result.Result<AuthoringFragmentWire, string>, never, never> => {
   if (!YAML_MEDIA_TYPES.has(document.mediaType)) {
     return Effect.succeed(
-      Either.left(
+      Result.fail(
         `${describe(document)} is not canonical v4 YAML (media type ${document.mediaType}); TypeScript Landofiles and includes stay opaque and are never executed.`,
       ),
     );
   }
   const text = readText(document);
-  if (Either.isLeft(text)) return Effect.succeed(Either.left(text.left));
-  return parseLandofile({ file: describe(document), content: text.right, cwd: "." }).pipe(
+  if (Result.isFailure(text)) return Effect.succeed(Result.fail(text.failure));
+  return parseLandofile({ file: describe(document), content: text.success, cwd: "." }).pipe(
     Effect.flatMap((value) => decodeFragment(value, { onExcessProperty: "error" })),
     Effect.flatMap(encodeFragment),
     Effect.match({
-      onSuccess: (wire): Either.Either<AuthoringFragmentWire, string> => Either.right(wire),
-      onFailure: (cause): Either.Either<AuthoringFragmentWire, string> =>
-        Either.left(`${describe(document)} is not valid canonical v4 authoring data: ${cause.message}`),
+      onSuccess: (wire): Result.Result<AuthoringFragmentWire, string> => Result.succeed(wire),
+      onFailure: (cause): Result.Result<AuthoringFragmentWire, string> =>
+        Result.fail(`${describe(document)} is not valid canonical v4 authoring data: ${cause.message}`),
     }),
   );
 };
@@ -120,150 +120,147 @@ interface DecodedDocument {
   readonly wire: AuthoringFragmentWire;
 }
 
-const detect = (
+const detect = Effect.fn("Lando4ConfigTranslator.detect")(function* (
   input: ConfigTranslateDetectInput,
-): Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never> =>
-  Effect.gen(function* () {
-    const candidates = input.documents.filter((document) => YAML_MEDIA_TYPES.has(document.mediaType));
-    if (candidates.length === 0) return [];
-    let marked = false;
-    for (const document of candidates) {
-      const parsed = yield* parseDocument(document);
-      if (Either.isLeft(parsed)) return [];
-      // `runtime: 4` is the one marker a Lando 3 document cannot carry, so it is
-      // the sole basis for `exact`. Anything else that survives strict v4
-      // authoring decoding is only `likely`.
-      marked ||= typeof parsed.right === "object" && Reflect.get(parsed.right, "runtime") === 4;
-    }
-    return [
-      {
-        translator: LANDO4_TRANSLATOR_ID,
-        sourceIds: candidates.map((document) => document.sourceId),
-        confidence: marked ? "exact" : "likely",
-        summary: SUMMARY,
-      },
-    ];
-  });
+): Effect.fn.Return<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never> {
+  const candidates = input.documents.filter((document) => YAML_MEDIA_TYPES.has(document.mediaType));
+  if (candidates.length === 0) return [];
+  let marked = false;
+  for (const document of candidates) {
+    const parsed = yield* parseDocument(document);
+    if (Result.isFailure(parsed)) return [];
+    // `runtime: 4` is the one marker a Lando 3 document cannot carry, so it is
+    // the sole basis for `exact`. Anything else that survives strict v4
+    // authoring decoding is only `likely`.
+    marked ||= typeof parsed.success === "object" && Reflect.get(parsed.success, "runtime") === 4;
+  }
+  return [
+    {
+      translator: LANDO4_TRANSLATOR_ID,
+      sourceIds: candidates.map((document) => document.sourceId),
+      confidence: marked ? "exact" : "likely",
+      summary: SUMMARY,
+    },
+  ];
+});
 
-const translate = (
+const translate = Effect.fn("Lando4ConfigTranslator.translate")(function* (
   input: ConfigTranslateInput,
-): Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never> =>
-  Effect.gen(function* () {
-    if (input._tag === "recipe-request") {
-      return yield* Effect.fail(
-        translateError(
-          "The lando4 translator decodes canonical v4 Landofile document sets, not recipe requests.",
-          "Select the recipe translator for a recipe request.",
+): Effect.fn.Return<ConfigTranslateResult, ConfigTranslateError, never> {
+  if (input._tag === "recipe-request") {
+    return yield* Effect.fail(
+      translateError(
+        "The lando4 translator decodes canonical v4 Landofile document sets, not recipe requests.",
+        "Select the recipe translator for a recipe request.",
+      ),
+    );
+  }
+  yield* Effect.fromResult(validateConfigTranslateInput(input));
+  const writable = new Set<string>(input.writableLayerIds);
+  const selectedIds = new Set<string>(input.selectedSourceIds);
+  // Non-selected documents in single-layer mode are validation context, not
+  // omitted input, so they yield neither an output nor a diagnostic.
+  const selected = input.documents.filter(
+    (document) => input.mode === "full" || selectedIds.has(document.sourceId),
+  );
+
+  const diagnostics: ConfigTranslateDiagnostic[] = [];
+  const decoded: DecodedDocument[] = [];
+  for (const document of selected) {
+    const parsed = yield* parseDocument(document);
+    if (Result.isFailure(parsed)) {
+      diagnostics.push(rootDiagnostic(document, "unsupported", parsed.failure));
+      continue;
+    }
+    if (!isLandofileLayer(document.layerId)) {
+      diagnostics.push(
+        rootDiagnostic(
+          document,
+          "unsupported",
+          `${describe(document)} claims layer ${document.layerId}, which is not a v4 Landofile layer.`,
         ),
       );
+      continue;
     }
-    yield* validateConfigTranslateInput(input);
-    const writable = new Set<string>(input.writableLayerIds);
-    const selectedIds = new Set<string>(input.selectedSourceIds);
-    // Non-selected documents in single-layer mode are validation context, not
-    // omitted input, so they yield neither an output nor a diagnostic.
-    const selected = input.documents.filter(
-      (document) => input.mode === "full" || selectedIds.has(document.sourceId),
-    );
+    decoded.push({ document, layer: document.layerId, wire: parsed.success });
+  }
 
-    const diagnostics: ConfigTranslateDiagnostic[] = [];
-    const decoded: DecodedDocument[] = [];
-    for (const document of selected) {
-      const parsed = yield* parseDocument(document);
-      if (Either.isLeft(parsed)) {
-        diagnostics.push(rootDiagnostic(document, "unsupported", parsed.left));
-        continue;
-      }
-      if (!isLandofileLayer(document.layerId)) {
-        diagnostics.push(
-          rootDiagnostic(
-            document,
-            "unsupported",
-            `${describe(document)} claims layer ${document.layerId}, which is not a v4 Landofile layer.`,
-          ),
-        );
-        continue;
-      }
-      decoded.push({ document, layer: document.layerId, wire: parsed.right });
+  const claimants = new Map<string, ReadonlyArray<DecodedDocument>>();
+  for (const entry of decoded) {
+    claimants.set(entry.layer, [...(claimants.get(entry.layer) ?? []), entry]);
+  }
+
+  const outputs: ConfigTranslateOutput[] = [];
+  for (const entry of decoded) {
+    const sharing = claimants.get(entry.layer) ?? [];
+    if (sharing.length > 1) {
+      diagnostics.push(
+        rootDiagnostic(
+          entry.document,
+          "unsupported",
+          `Layer ${entry.layer} is claimed by ${sharing
+            .map(({ document }) => describe(document))
+            .join(", ")}; a v4 layer owns exactly one document.`,
+          "Remove the duplicate layer document and translate again.",
+        ),
+      );
+      continue;
     }
-
-    const claimants = new Map<string, ReadonlyArray<DecodedDocument>>();
-    for (const entry of decoded) {
-      claimants.set(entry.layer, [...(claimants.get(entry.layer) ?? []), entry]);
+    if (!writable.has(entry.layer)) {
+      diagnostics.push(
+        rootDiagnostic(
+          entry.document,
+          "dropped",
+          `${describe(entry.document)} is already canonical v4 at the ${entry.layer} layer, which this request cannot write, so it was omitted from the output set.`,
+          `Include ${entry.layer} in the writable layers to emit it.`,
+        ),
+      );
+      continue;
     }
+    outputs.push({
+      targetLayer: entry.layer,
+      fragment: entry.wire,
+      sourceIds: [entry.document.sourceId],
+    });
+  }
 
-    const outputs: ConfigTranslateOutput[] = [];
-    for (const entry of decoded) {
-      const sharing = claimants.get(entry.layer) ?? [];
-      if (sharing.length > 1) {
-        diagnostics.push(
-          rootDiagnostic(
-            entry.document,
-            "unsupported",
-            `Layer ${entry.layer} is claimed by ${sharing
-              .map(({ document }) => describe(document))
-              .join(", ")}; a v4 layer owns exactly one document.`,
-            "Remove the duplicate layer document and translate again.",
-          ),
-        );
-        continue;
-      }
-      if (!writable.has(entry.layer)) {
-        diagnostics.push(
-          rootDiagnostic(
-            entry.document,
-            "dropped",
-            `${describe(entry.document)} is already canonical v4 at the ${entry.layer} layer, which this request cannot write, so it was omitted from the output set.`,
-            `Include ${entry.layer} in the writable layers to emit it.`,
-          ),
-        );
-        continue;
-      }
-      outputs.push({
-        targetLayer: entry.layer,
-        fragment: entry.wire,
-        sourceIds: [entry.document.sourceId],
-      });
-    }
+  const sourceOrder = new Map(input.documents.map((document, index) => [document.sourceId, index]));
+  diagnostics.sort(
+    (left, right) => (sourceOrder.get(left.sourceId) ?? 0) - (sourceOrder.get(right.sourceId) ?? 0),
+  );
+  return { outputs, diagnostics, deletions: [] };
+});
 
-    const sourceOrder = new Map(input.documents.map((document, index) => [document.sourceId, index]));
-    diagnostics.sort(
-      (left, right) => (sourceOrder.get(left.sourceId) ?? 0) - (sourceOrder.get(right.sourceId) ?? 0),
-    );
-    return { outputs, diagnostics, deletions: [] };
-  });
-
-const encode = (
+const encode = Effect.fn("Lando4ConfigTranslator.encode")(function* (
   input: ConfigTranslateEncodeInput,
-): Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never> =>
-  Effect.gen(function* () {
-    // The context is the already-merged complete authoring tree. It must be a
-    // concrete mapping even when only a fragment is emitted; a root expression
-    // is not a Landofile. Only the fragment wire tree reaches the emitter, so
-    // lower layers are never flattened.
-    const context = yield* decodeShape(input.context, { onExcessProperty: "error" }).pipe(
-      Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
-    );
-    const contextWire = yield* encodeShape(context).pipe(
-      Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
-    );
-    yield* decodeRecord(contextWire).pipe(
-      Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
-    );
-    const wire = yield* (
-      input.fragment === undefined
-        ? Effect.succeed(contextWire)
-        : decodeFragment(input.fragment, { onExcessProperty: "error" }).pipe(Effect.flatMap(encodeFragment))
-    ).pipe(Effect.mapError(asTranslateError("The lando4 encoder received a non-authoring value:")));
-    const record = yield* decodeRecord(wire).pipe(
-      Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
-    );
-    const emitted = emitLandofileYamlEither(record, { sortKeys: true });
-    if (Either.isLeft(emitted)) {
-      return yield* Effect.fail(translateError(emitted.left.message, undefined, emitted.left));
-    }
-    return { text: emitted.right, diagnostics: [] };
-  });
+): Effect.fn.Return<ConfigTranslateEncodeResult, ConfigTranslateError, never> {
+  // The context is the already-merged complete authoring tree. It must be a
+  // concrete mapping even when only a fragment is emitted; a root expression
+  // is not a Landofile. Only the fragment wire tree reaches the emitter, so
+  // lower layers are never flattened.
+  const context = yield* decodeShape(input.context, { onExcessProperty: "error" }).pipe(
+    Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
+  );
+  const contextWire = yield* encodeShape(context).pipe(
+    Effect.mapError(asTranslateError("The lando4 encoder requires a complete authoring context:")),
+  );
+  yield* decodeRecord(contextWire).pipe(
+    Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
+  );
+  const wire = yield* (
+    input.fragment === undefined
+      ? Effect.succeed(contextWire)
+      : decodeFragment(input.fragment, { onExcessProperty: "error" }).pipe(Effect.flatMap(encodeFragment))
+  ).pipe(Effect.mapError(asTranslateError("The lando4 encoder received a non-authoring value:")));
+  const record = yield* decodeRecord(wire).pipe(
+    Effect.mapError(asTranslateError("The lando4 encoder requires a Landofile mapping at the root:")),
+  );
+  const emitted = emitLandofileYamlEither(record, { sortKeys: true, leadingCommentBlock: "editor-schema" });
+  if (Result.isFailure(emitted)) {
+    return yield* Effect.fail(translateError(emitted.failure.message, undefined, emitted.failure));
+  }
+  return { text: emitted.success, diagnostics: [] };
+});
 
 export const lando4ConfigTranslator: ConfigTranslatorShape = {
   id: LANDO4_TRANSLATOR_ID,

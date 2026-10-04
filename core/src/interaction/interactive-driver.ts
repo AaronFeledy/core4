@@ -13,7 +13,7 @@
  * command.
  *
  * Lives under `core/src/interaction/` (not `core/src/cli/`) so the default
- * `InteractionServiceLive` can wire it in as its rich-driver seam without a
+ * `InteractionServiceLayer.layer` can wire it in as its rich-driver seam without a
  * cli→core layering inversion.
  */
 

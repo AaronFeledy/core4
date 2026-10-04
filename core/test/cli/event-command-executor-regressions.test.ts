@@ -46,17 +46,17 @@ const makeHarness = (): Harness => {
       stdout: (chunk: string) => Effect.sync(() => output.push(chunk)),
       stderr: (chunk: string) => Effect.sync(() => output.push(chunk)),
     },
-  } satisfies Context.Tag.Service<typeof Renderer>;
+  } satisfies Context.Service.Shape<typeof Renderer>;
   const redaction = {
     registerValues: registerRedactionValues,
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],
     ) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  } satisfies Context.Tag.Service<typeof RedactionService>;
+  } satisfies Context.Service.Shape<typeof RedactionService>;
   return {
     output,
-    context: Context.make(Context.GenericTag<unknown>("test/runtime"), {}).pipe(
+    context: Context.make(Context.Service<unknown>("test/runtime"), {}).pipe(
       Context.add(EventService, events),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),

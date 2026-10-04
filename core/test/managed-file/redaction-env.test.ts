@@ -3,19 +3,19 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Chunk, Effect, Layer, Queue } from "effect";
+import { Effect, Layer, Queue } from "effect";
 
 import type { ManagedFile } from "@lando/sdk/schema";
 import { EventService, ManagedFileService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
-import { ManagedFileServiceLive as ManagedFileServiceUnprovided } from "@lando/managed-file/service";
-const ManagedFileServiceLive = ManagedFileServiceUnprovided.pipe(Layer.provide(ProcessRunnerLive));
-import { RedactionServiceLive } from "@lando/redaction/service";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import * as ManagedFileLayer from "@lando/managed-file/service";
+const managedFileLayer = ManagedFileLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+import { RedactionService } from "@lando/redaction/service";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 
-const file = (base: ManagedFile["base"], owner: string): ManagedFile => ({
+const file = (base: NonNullable<ManagedFile["base"]>, owner: string): ManagedFile => ({
   id: "cms:settings",
   owner,
   mode: "file",
@@ -37,10 +37,10 @@ describe("ManagedFile env redaction", () => {
 
     try {
       const emptySecretStore = makeTestSecretStore();
-      const redactionLive = RedactionServiceLive.pipe(Layer.provide(emptySecretStore.layer));
+      const redactionLive = RedactionService.layer.pipe(Layer.provide(emptySecretStore.layer));
       const layer = Layer.mergeAll(
-        EventServiceLive,
-        ManagedFileServiceLive.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, redactionLive))),
+        LandoEventService.layer,
+        managedFileLayer.pipe(Layer.provide(Layer.mergeAll(LandoEventService.layer, redactionLive))),
       );
 
       const collected = await Effect.runPromise(
@@ -49,10 +49,10 @@ describe("ManagedFile env redaction", () => {
             const eventService = yield* EventService;
             const queue = yield* eventService.subscribeQueue;
             const managed = yield* ManagedFileService;
-            yield* managed.apply([file(base as ManagedFile["base"], secret)]);
+            yield* managed.apply([file(base as NonNullable<ManagedFile["base"]>, secret)]);
             yield* Effect.sleep("25 millis");
-            const drained = yield* Queue.takeAll(queue);
-            return Chunk.toReadonlyArray(drained);
+            const drained = yield* Queue.clear(queue);
+            return drained;
           }).pipe(Effect.provide(layer)),
         ),
       );

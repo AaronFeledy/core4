@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/engine/operations/tooling";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -22,7 +22,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -130,8 +130,8 @@ const makeProvider = (
 const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(Layer.merge(services, AppPlannerLive)),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 
@@ -140,24 +140,33 @@ const makeToolingLayer = (options: {
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
-  const landofileLayer = Layer.succeed(LandofileService, {
-    discover: Effect.succeed(options.landofile),
-  });
-  const plannerLayer = Layer.succeed(AppPlanner, {
-    plan: () => Effect.succeed(options.plan),
-  });
-  const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(options.provider),
-  });
+  const landofileLayer = Layer.succeed(
+    LandofileService,
+    LandofileService.of({
+      discover: Effect.succeed(options.landofile),
+    }),
+  );
+  const plannerLayer = Layer.succeed(
+    AppPlanner,
+    AppPlanner.of({
+      plan: () => Effect.succeed(options.plan),
+    }),
+  );
+  const registryLayer = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(options.provider),
+    }),
+  );
   return Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
     registryLayer,
-    EventServiceLive,
-    ProviderExecToolingEngineLive,
+    LandoEventService.layer,
+    ProviderExecToolingEngine.layer,
     emptyConfigServiceLayer,
   );
 };

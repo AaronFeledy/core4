@@ -46,7 +46,9 @@ describe("SSH agent doctor posture", () => {
           upstreams.push(upstream);
           return { identities: 0 };
         },
-      }).pipe(Effect.provideService(LandofileService, { discover: Effect.succeed(landofile) })),
+      }).pipe(
+        Effect.provideService(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+      ),
     );
     // Then
     expect(check).toMatchObject({
@@ -69,7 +71,9 @@ describe("SSH agent doctor posture", () => {
       sshAgentPostureCheck({
         ...inputs(),
         globalConfig: { sshAgent: { sidecar: false } },
-      }).pipe(Effect.provideService(LandofileService, { discover: Effect.fail(failure) })),
+      }).pipe(
+        Effect.provideService(LandofileService, LandofileService.of({ discover: Effect.fail(failure) })),
+      ),
     );
     // Then
     expect(check).toMatchObject({
@@ -245,10 +249,13 @@ describe("SSH agent doctor posture", () => {
     // When
     const report = await Effect.runPromise(
       subsystemDoctor({ sshAgent: { ...input, globalConfig: undefined } }).pipe(
-        Effect.provideService(ConfigService, {
-          load: Effect.succeed(config),
-          get: (key) => Effect.succeed(config[key]),
-        }),
+        Effect.provideService(
+          ConfigService,
+          ConfigService.of({
+            load: Effect.succeed(config),
+            get: (key) => Effect.succeed(config[key]),
+          }),
+        ),
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );

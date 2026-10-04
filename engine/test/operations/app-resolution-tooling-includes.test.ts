@@ -23,7 +23,7 @@ test("loadUserLandofile resolves toolingIncludes-only injected services", async 
       name: "injected",
       toolingIncludes: { docs: { file: "./tasks.yml" } },
     };
-    const service = { discover: Effect.succeed(shape) } satisfies Context.Tag.Service<
+    const service = { discover: Effect.succeed(shape) } satisfies Context.Service.Shape<
       typeof LandofileService
     >;
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
-import { AppPlanSanitizerLive } from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
+import * as AppPlanSanitizerLayer from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
 import { hostProxyRunLandoFeature } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { withSshAgentOverlay } from "@lando/engine/subsystems/ssh-agent/overlay";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "@lando/engine/subsystems/ssh/intent";
@@ -31,7 +31,7 @@ const providerId = ProviderId.make("podman");
 const appId = AppId.make("overlay-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-25T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-25T00:00:00Z"),
   source: "provider-podman applied-plan sanitizer",
   runtime: 4 as const,
 };
@@ -118,6 +118,12 @@ const makePodmanApi = (): PodmanApiClient => {
   const running = new Set<string>();
   const request = (input: EngineHttpRequest) =>
     Effect.sync(() => {
+      if (input.method === "GET" && input.path.includes("/images/") && input.path.endsWith("/json")) {
+        return {
+          status: 200,
+          body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
+        };
+      }
       if (input.method === "GET" && input.path.startsWith("/networks/")) return { status: 200, body: "{}" };
       const container = input.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start)?$/u)?.[1];
       if (input.method === "GET" && input.path.endsWith("/json") && container !== undefined) {
@@ -169,7 +175,7 @@ test("an overlaid plan applied through provider-podman is persisted without the 
       env: {},
       conflictDetector: () => Effect.void,
       appliedPlanState: state,
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
 
   // When

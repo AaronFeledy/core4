@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { backdropDecomposer } from "../../src/recipes/builtin/backdrop/decomposer.ts";
 import { backdropRecipeYaml } from "../../src/recipes/builtin/backdrop/manifest.ts";
 import {
@@ -32,7 +32,7 @@ const decompose = (options: Readonly<Record<string, unknown>>) =>
 
 const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -95,7 +95,7 @@ describe("backdrop decomposition", () => {
 
   test("defers the settings database name to the app scope and survives snapshot encoding", () => {
     expect(BACKDROP_SETTINGS_VALUE).toContain('"database":"{{ app.name }}"');
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(backdropSnapshot, defaults)) as {
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(backdropSnapshot, defaults)) as {
       services: { appserver: { environment: { BACKDROP_SETTINGS: string } } };
     };
     expect(rendered.services.appserver.environment.BACKDROP_SETTINGS).toBe(BACKDROP_SETTINGS_VALUE);
@@ -117,15 +117,15 @@ describe("backdrop decomposition", () => {
     { options: { ...defaults, webroot: "app" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(
+      Effect.result(
         decomposer.decompose({ producer: backdropProducer, options, secrets: {} } as RecipeDecomposeInput),
       ),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -147,7 +147,7 @@ describe("backdrop decomposition", () => {
   test.each([defaults, alternatives, composerDisabled])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(backdropSnapshot, options))).toEqual(
+      expect(Result.getOrThrow(renderRecipeSnapshot(backdropSnapshot, options))).toEqual(
         authoringOf(options),
       );
     },

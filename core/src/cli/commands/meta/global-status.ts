@@ -45,7 +45,7 @@ export const GlobalStatusServiceSchema = Schema.Struct({
   type: Schema.String,
   provider: Schema.String,
   primary: Schema.Boolean,
-  status: Schema.Literal("unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"),
+  status: Schema.Literals(["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"]),
   endpoints: Schema.Array(Schema.String),
 });
 
@@ -187,50 +187,49 @@ export const renderGlobalStatusResult = (
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows].join("\n");
 };
 
-export const globalStatus = (
+export const globalStatus = Effect.fn("GlobalStatus.status")(function* (
   options: GlobalStatusOptions = {},
-): Effect.Effect<GlobalStatusResult, GlobalStatusError, GlobalStatusServices> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", materialized: false, services: [] };
+): Effect.fn.Return<GlobalStatusResult, GlobalStatusError, GlobalStatusServices> {
+  const loaded = yield* loadGlobalPlan();
+  if (!loaded.materialized) return { app: "global", materialized: false, services: [] };
 
-    const registry = yield* RuntimeProviderRegistry;
-    const degraded = (service: ServicePlan): GlobalStatusService => ({
-      app: String(loaded.plan.id),
-      service: String(service.name),
-      api: 4 as const,
-      type: service.type,
-      provider: String(service.provider),
-      primary: service.primary,
-      status: "unknown",
-      endpoints: publishedEndpointUrls(service.endpoints),
-    });
-
-    // Intentional: provider-unavailable degrades to "unknown" so status reports the materialized stack even when nothing is running.
-    const inspectService = (service: ServicePlan): Effect.Effect<GlobalStatusService, never, never> =>
-      registry.select(loaded.plan).pipe(
-        Effect.flatMap((provider) =>
-          provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }),
-        ),
-        Effect.map((runtime): GlobalStatusService => {
-          const status = statusText(runtime.state ?? runtime.status);
-          return {
-            app: String(loaded.plan.id),
-            service: String(service.name),
-            api: 4 as const,
-            type: service.type,
-            provider: String(service.provider),
-            primary: service.primary,
-            status,
-            endpoints:
-              status === "stopped" ? [] : publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-          };
-        }),
-        Effect.catchAll(() => Effect.succeed(degraded(service))),
-      );
-
-    const selected = yield* selectedServices(loaded.plan, options.services);
-    const services = yield* Effect.forEach(selected, inspectService);
-
-    return { app: loaded.plan.name, materialized: true, services };
+  const registry = yield* RuntimeProviderRegistry;
+  const degraded = (service: ServicePlan): GlobalStatusService => ({
+    app: String(loaded.plan.id),
+    service: String(service.name),
+    api: 4 as const,
+    type: service.type,
+    provider: String(service.provider),
+    primary: service.primary,
+    status: "unknown",
+    endpoints: publishedEndpointUrls(service.endpoints),
   });
+
+  // Intentional: provider-unavailable degrades to "unknown" so status reports the materialized stack even when nothing is running.
+  const inspectService = (service: ServicePlan): Effect.Effect<GlobalStatusService, never, never> =>
+    registry.select(loaded.plan).pipe(
+      Effect.flatMap((provider) =>
+        provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }),
+      ),
+      Effect.map((runtime): GlobalStatusService => {
+        const status = statusText(runtime.state ?? runtime.status);
+        return {
+          app: String(loaded.plan.id),
+          service: String(service.name),
+          api: 4 as const,
+          type: service.type,
+          provider: String(service.provider),
+          primary: service.primary,
+          status,
+          endpoints:
+            status === "stopped" ? [] : publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+        };
+      }),
+      Effect.catch(() => Effect.succeed(degraded(service))),
+    );
+
+  const selected = yield* selectedServices(loaded.plan, options.services);
+  const services = yield* Effect.forEach(selected, inspectService);
+
+  return { app: loaded.plan.name, materialized: true, services };
+});

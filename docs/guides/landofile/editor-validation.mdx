@@ -1,0 +1,82 @@
+---
+id: editor-validation
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 120000
+tags: [beta, docs, landofile, editor, schema]
+---
+
+# Validate a Landofile in your editor
+
+Put this on the first line of `.lando.yml`:
+
+```yaml
+# yaml-language-server: $schema=https://aaronfeledy.github.io/core4/schemas/landofile.schema.json
+```
+
+Any editor running the YAML language server (VS Code with the Red Hat YAML
+extension, Neovim with `yamlls`, Zed, JetBrains with the YAML plugin) reads
+that modeline, fetches the schema, and flags the same problems
+`lando app:config:lint` reports: unknown keys, wrong types, out-of-range
+ports. You also get completion and hover docs for every key.
+
+New Landofiles already have it. `lando init` and `lando app:config:translate`
+write the modeline on the first line of every file they create. Files you
+wrote before this shipped are never rewritten; add the line yourself.
+
+## Point VS Code at the schema without a modeline
+
+If you would rather not carry the comment in every repo, map the file name
+in `.vscode/settings.json` instead:
+
+```json
+{
+  "yaml.schemas": {
+    "https://aaronfeledy.github.io/core4/schemas/landofile.schema.json": [
+      ".lando.yml",
+      ".lando.*.yml"
+    ]
+  }
+}
+```
+
+The modeline wins when both are present, which is what you want: the file
+names the contract it was written against.
+
+## What the schema catches
+
+The editor schema is a draft-07 closed object generated from the same Effect
+Schema `lando` decodes with. It covers structure: unknown keys, wrong types,
+ranges, enums, required fields. A few checks need Lando itself, because JSON
+Schema cannot express them:
+
+| Check | Where it runs |
+| --- | --- |
+| Event names match tasks your services actually contribute | `lando app:config:lint` |
+| A versioned service type names a version Lando ships | `lando app:config:lint` |
+| Includes resolve and their lockfile is current | `lando app:config` |
+
+So keep running lint in CI. The editor handles the typo before you save; lint
+handles the rest before you push.
+
+## Next
+
+- [Lint a Landofile](./config-lint.mdx)
+- [JSON Schema artifacts](../schemas/json-schema-artifacts.mdx)
+
+<Guide>
+  <Scenario id="init-writes-modeline" render>
+    <Step name="scaffold-app">
+      <Variable name="appName" value="editor-validation-demo" display="editor-validation-demo" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+      <Verify file="editor-validation-demo/.lando.yml" expect={{ regex: "^# yaml-language-server: \\$schema=https://aaronfeledy.github.io/core4/schemas/landofile.schema.json" }} />
+    </Step>
+    <Step name="lint-passes">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>

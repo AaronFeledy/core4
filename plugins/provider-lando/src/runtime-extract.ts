@@ -1,7 +1,7 @@
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
@@ -360,8 +360,12 @@ const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtract
 const hasErrorCode = (cause: unknown, code: string): boolean =>
   typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
 
-const replaceRuntimeBinDir = async (tempDir: string, runtimeBinDir: string): Promise<void> => {
-  const backupDir = `${runtimeBinDir}.previous-${process.pid}-${Date.now()}`;
+const replaceRuntimeBinDir = async (
+  tempDir: string,
+  runtimeBinDir: string,
+  timestamp: number,
+): Promise<void> => {
+  const backupDir = `${runtimeBinDir}.previous-${process.pid}-${timestamp}`;
   let backupCreated = false;
 
   await rm(backupDir, { recursive: true, force: true });
@@ -393,69 +397,69 @@ const stripRuntimeBinPrefix = (safePath: string, stripTopLevelBin: boolean): str
   return safePath.startsWith("bin/") ? safePath.slice("bin/".length) : safePath;
 };
 
-export const installRuntimeBundle = (
+export const installRuntimeBundle = Effect.fn("ProviderLando.installRuntimeBundle")(function* (
   options: InstallRuntimeBundleOptions,
-): Effect.Effect<InstallRuntimeBundleResult, ProviderRuntimeExtractError> =>
-  Effect.gen(function* () {
-    const family = hostPlatformFamily(options.platform);
-    const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
-    const entrypointReady =
-      installedVersion === options.version
-        ? yield* Effect.promise(() => hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform))
-        : false;
-    if (entrypointReady) {
-      return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
-    }
+): Effect.fn.Return<InstallRuntimeBundleResult, ProviderRuntimeExtractError> {
+  const family = hostPlatformFamily(options.platform);
+  const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
+  const entrypointReady =
+    installedVersion === options.version
+      ? yield* Effect.promise(() => hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform))
+      : false;
+  if (entrypointReady) {
+    return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
+  }
 
-    const tempDir = `${options.runtimeBinDir}.tmp-${process.pid}-${Date.now()}`;
-    const extractImpl = options.extractImpl ?? extractRuntimeArchiveEntries;
+  const clock = yield* Clock.Clock;
+  const tempDir = `${options.runtimeBinDir}.tmp-${process.pid}-${yield* Clock.currentTimeMillis}`;
+  const extractImpl = options.extractImpl ?? extractRuntimeArchiveEntries;
 
-    yield* Effect.tryPromise({
-      try: async () => {
-        try {
-          const entries = extractImpl(options.archiveBytes, {
-            maxDecompressedBytes: options.maxDecompressedBytes,
-          });
-          const normalizedEntries = entries.map((entry) => ({
-            ...entry,
-            safePath: normalizeArchivePath(entry.path),
-          }));
-          const stripTopLevelBin =
-            normalizedEntries.length > 0 &&
-            normalizedEntries.every((entry) => entry.safePath === "bin" || entry.safePath.startsWith("bin/"));
-          let fileCount = 0;
-          await rm(tempDir, { recursive: true, force: true });
-          await mkdir(tempDir, { recursive: true });
-          for (const entry of normalizedEntries) {
-            const safePath = stripRuntimeBinPrefix(entry.safePath, stripTopLevelBin);
-            if (safePath === "") continue;
-            const target = stringJoin(tempDir, safePath);
-            await mkdir(stringParentDir(target), { recursive: true });
-            await writeFile(target, entry.bytes);
-            if (family !== "win32") {
-              await chmod(target, 0o755);
-            }
-            fileCount += 1;
+  yield* Effect.tryPromise({
+    try: async () => {
+      try {
+        const entries = extractImpl(options.archiveBytes, {
+          maxDecompressedBytes: options.maxDecompressedBytes,
+        });
+        const normalizedEntries = entries.map((entry) => ({
+          ...entry,
+          safePath: normalizeArchivePath(entry.path),
+        }));
+        const stripTopLevelBin =
+          normalizedEntries.length > 0 &&
+          normalizedEntries.every((entry) => entry.safePath === "bin" || entry.safePath.startsWith("bin/"));
+        let fileCount = 0;
+        await rm(tempDir, { recursive: true, force: true });
+        await mkdir(tempDir, { recursive: true });
+        for (const entry of normalizedEntries) {
+          const safePath = stripRuntimeBinPrefix(entry.safePath, stripTopLevelBin);
+          if (safePath === "") continue;
+          const target = stringJoin(tempDir, safePath);
+          await mkdir(stringParentDir(target), { recursive: true });
+          await writeFile(target, entry.bytes);
+          if (family !== "win32") {
+            await chmod(target, 0o755);
           }
-          if (fileCount === 0) {
-            throw new ProviderRuntimeExtractError("Runtime bundle archive does not contain any files.");
-          }
-          if (!(await hasInstalledRuntimeEntrypoint(tempDir, options.platform))) {
-            throw new ProviderRuntimeExtractError(
-              `Runtime bundle archive is missing required ${options.platform} entrypoints: ${runtimeEntrypointNames(options.platform).join(", ")}.`,
-            );
-          }
-          await writeFile(markerPath(tempDir), options.version);
-          await mkdir(stringParentDir(options.runtimeBinDir), { recursive: true });
-          await replaceRuntimeBinDir(tempDir, options.runtimeBinDir);
-        } catch (cause) {
-          await rm(tempDir, { recursive: true, force: true });
-          throw cause;
+          fileCount += 1;
         }
-      },
-      catch: (cause) =>
-        toExtractError(`Failed to install the Lando runtime bundle into ${options.runtimeBinDir}.`, cause),
-    });
-
-    return { installed: true, runtimeBinDir: options.runtimeBinDir, version: options.version };
+        if (fileCount === 0) {
+          throw new ProviderRuntimeExtractError("Runtime bundle archive does not contain any files.");
+        }
+        if (!(await hasInstalledRuntimeEntrypoint(tempDir, options.platform))) {
+          throw new ProviderRuntimeExtractError(
+            `Runtime bundle archive is missing required ${options.platform} entrypoints: ${runtimeEntrypointNames(options.platform).join(", ")}.`,
+          );
+        }
+        await writeFile(markerPath(tempDir), options.version);
+        await mkdir(stringParentDir(options.runtimeBinDir), { recursive: true });
+        await replaceRuntimeBinDir(tempDir, options.runtimeBinDir, clock.currentTimeMillisUnsafe());
+      } catch (cause) {
+        await rm(tempDir, { recursive: true, force: true });
+        throw cause;
+      }
+    },
+    catch: (cause) =>
+      toExtractError(`Failed to install the Lando runtime bundle into ${options.runtimeBinDir}.`, cause),
   });
+
+  return { installed: true, runtimeBinDir: options.runtimeBinDir, version: options.version };
+});

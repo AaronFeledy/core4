@@ -21,7 +21,7 @@ const appId = AppId.make("image-build-user-app");
 const serviceName = ServiceName.make("web");
 const baseTag = "lando-build-docker-web-privilege-key-base";
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00Z"),
   source: "image-build-user.test.ts",
   runtime: 4 as const,
 };

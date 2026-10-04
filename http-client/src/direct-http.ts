@@ -8,6 +8,7 @@ export interface DirectHttpInit {
   readonly headers: Headers;
   readonly signal: AbortSignal;
   readonly ca: ReadonlyArray<string> | undefined;
+  readonly body?: RequestInit["body"] | undefined;
 }
 
 export type DirectHttpTransport = (url: URL, init: DirectHttpInit) => Promise<Response>;
@@ -99,5 +100,19 @@ export const directHttpRequest: DirectHttpTransport = (url, init) =>
       },
     );
     request.once("error", reject);
-    request.end();
+    if (init.body === undefined) request.end();
+    else {
+      const body = new Response(init.body).body;
+      if (body === null) request.end();
+      else {
+        void (async () => {
+          for await (const chunk of body) {
+            if (!request.write(chunk)) await new Promise<void>((resolve) => request.once("drain", resolve));
+          }
+          request.end();
+        })().catch((error: unknown) =>
+          request.destroy(error instanceof Error ? error : new Error(String(error))),
+        );
+      }
+    }
   });

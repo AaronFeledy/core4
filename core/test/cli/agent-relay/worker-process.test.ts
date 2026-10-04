@@ -56,7 +56,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
           throw new Error(`Worker exited before ready: ${await new Response(proc.stderr).text()}`);
         text += new TextDecoder().decode(chunk.value);
       }
-      const ready = Schema.decodeUnknownSync(Schema.parseJson(AgentRelayWorkerReady))(text.trim());
+      const ready = Schema.decodeUnknownSync(Schema.fromJsonString(AgentRelayWorkerReady))(text.trim());
       expect(await identifyAgentRelayWorker(ready)).toMatchObject({
         pid: proc.pid,
         appId: "test",

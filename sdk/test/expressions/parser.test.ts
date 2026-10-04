@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import {
   type CallExpressionNode,
@@ -16,10 +16,10 @@ const parseTemplate = (
   options: Partial<Parameters<typeof parseExpressionEither>[1]> = {},
 ): ExpressionTemplate => {
   const result = parseExpressionEither(source, { filePath, ...options });
-  if (Either.isLeft(result)) {
-    throw result.left;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.right;
+  return result.success;
 };
 
 const interpolationExpression = (source: string): ExpressionNode => {
@@ -405,23 +405,23 @@ describe("parseExpression errors", () => {
   ): void => {
     const result = parseExpressionEither(source, { filePath, ...options });
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left._tag).toBe("LandofileExpressionParseError");
-    expect(result.left.filePath).toBe(filePath);
-    expect(result.left.line).toBe(expected.line);
-    expect(result.left.column).toBe(expected.column);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure._tag).toBe("LandofileExpressionParseError");
+    expect(result.failure.filePath).toBe(filePath);
+    expect(result.failure.line).toBe(expected.line);
+    expect(result.failure.column).toBe(expected.column);
   };
 
   test("rejects a namespaced function reference without a call", () => {
     const result = parseExpressionEither("{{ path.join }}", { filePath });
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left._tag).toBe("LandofileExpressionParseError");
-    expect(result.left.filePath).toBe(filePath);
-    expect(result.left.line).toBe(1);
-    expect(result.left.column).toBe(4);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure._tag).toBe("LandofileExpressionParseError");
+    expect(result.failure.filePath).toBe(filePath);
+    expect(result.failure.line).toBe(1);
+    expect(result.failure.column).toBe(4);
   });
 
   test("reports first-line errors with the base column offset", () => {

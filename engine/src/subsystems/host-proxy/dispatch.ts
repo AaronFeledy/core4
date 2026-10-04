@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect } from "effect";
 
 import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
 import type { EventError } from "@lando/sdk/errors";
@@ -67,8 +67,6 @@ const commandIdFromArgv = (argv: ReadonlyArray<string>): string => {
   return head;
 };
 
-const now = () => DateTime.unsafeNow();
-
 const redactedRequestSummary = (
   request: HostProxyRunLandoRequest,
   commandId: string,
@@ -92,67 +90,43 @@ const forwardedEnvFor = (
   LANDO_HOST_PROXY_DEPTH: String(depth + 1),
 });
 
-export const dispatchRunLando = (
+export const dispatchRunLando = Effect.fn("HostProxyService.dispatchRunLando")(function* (
   request: HostProxyRunLandoRequest,
   deps: DispatchRunLandoDeps,
-): Effect.Effect<
+): Effect.fn.Return<
   HostProxyRunLandoResult,
   HostProxyCommandNotAllowedError | EventError,
   EventService | RedactionService
-> =>
-  Effect.gen(function* () {
-    const events = yield* EventService;
-    const redaction = yield* RedactionService;
-    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+> {
+  const events = yield* EventService;
+  const redaction = yield* RedactionService;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
 
-    const commandId = commandIdFromArgv(request.argv);
-    const hostCwd = remapContainerCwd(request.cwd, deps.mountInfo);
-    const callId = deps.callId ?? `hp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const summary = redactedRequestSummary(request, commandId, hostCwd, redactor);
+  const commandId = commandIdFromArgv(request.argv);
+  const hostCwd = remapContainerCwd(request.cwd, deps.mountInfo);
+  const callId =
+    deps.callId ?? `hp-${yield* Clock.currentTimeMillis}-${Math.random().toString(36).slice(2, 10)}`;
+  const summary = redactedRequestSummary(request, commandId, hostCwd, redactor);
 
-    yield* events.publish(
-      PreHostProxyCallEvent.make({
-        app: deps.app,
-        callId,
-        request: summary,
-        callerService: deps.callerService,
-        depth: deps.depth,
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PreHostProxyCallEvent.make({
+      app: deps.app,
+      callId,
+      request: summary,
+      callerService: deps.callerService,
+      depth: deps.depth,
+      timestamp: yield* DateTime.now,
+    }),
+  );
 
-    if (!deps.allowlist.includes(commandId)) {
-      const error = new HostProxyCommandNotAllowedError({
-        message: `Command ${commandId} is not on the host-proxy runLando allowlist.`,
-        commandId,
-        effectiveAllowlist: [...deps.allowlist],
-        remediation:
-          "Only commands that declare `hostProxyAllowed: true` may be forwarded from a container through the runLando channel.",
-      });
-      yield* events.publish(
-        PostHostProxyCallEvent.make({
-          app: deps.app,
-          callId,
-          request: summary,
-          callerService: deps.callerService,
-          depth: deps.depth,
-          outcome: "failure",
-          failureDetail: error._tag,
-          timestamp: now(),
-        }),
-      );
-      return yield* Effect.fail(error);
-    }
-
-    const start = Date.now();
-    const result = yield* deps.executor({
+  if (!deps.allowlist.includes(commandId)) {
+    const error = new HostProxyCommandNotAllowedError({
+      message: `Command ${commandId} is not on the host-proxy runLando allowlist.`,
       commandId,
-      argv: request.argv,
-      cwd: hostCwd,
-      tty: request.tty,
-      env: forwardedEnvFor(request, deps.depth),
+      effectiveAllowlist: [...deps.allowlist],
+      remediation:
+        "Only commands that declare `hostProxyAllowed: true` may be forwarded from a container through the runLando channel.",
     });
-
     yield* events.publish(
       PostHostProxyCallEvent.make({
         app: deps.app,
@@ -160,12 +134,36 @@ export const dispatchRunLando = (
         request: summary,
         callerService: deps.callerService,
         depth: deps.depth,
-        outcome: result.envelope.ok ? "success" : "failure",
-        durationMs: Date.now() - start,
-        resultSummary: resultSummaryFor(result, redactor),
-        timestamp: now(),
+        outcome: "failure",
+        failureDetail: error._tag,
+        timestamp: yield* DateTime.now,
       }),
     );
+    return yield* Effect.fail(error);
+  }
 
-    return result;
+  const start = yield* Clock.currentTimeMillis;
+  const result = yield* deps.executor({
+    commandId,
+    argv: request.argv,
+    cwd: hostCwd,
+    tty: request.tty,
+    env: forwardedEnvFor(request, deps.depth),
   });
+
+  yield* events.publish(
+    PostHostProxyCallEvent.make({
+      app: deps.app,
+      callId,
+      request: summary,
+      callerService: deps.callerService,
+      depth: deps.depth,
+      outcome: result.envelope.ok ? "success" : "failure",
+      durationMs: (yield* Clock.currentTimeMillis) - start,
+      resultSummary: resultSummaryFor(result, redactor),
+      timestamp: yield* DateTime.now,
+    }),
+  );
+
+  return result;
+});

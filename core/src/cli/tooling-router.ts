@@ -95,24 +95,23 @@ export interface ResolveToolingRouteOptions {
   readonly cacheRoot?: string;
 }
 
-export const resolveAppCommandHelpAliases = (
+export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
   options: { readonly cwd?: string; readonly cacheRoot?: string } = {},
-): Effect.Effect<
+): Effect.fn.Return<
   ReadonlyArray<readonly [string, string]> | undefined,
   CacheError | CommandAliasConflictError | CommandAliasTargetError
-> =>
-  Effect.gen(function* () {
-    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
-    if (appRoot === undefined) return undefined;
-    const cache = yield* readFreshAppCommandCacheForCwd({
-      cwd: appRoot,
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    });
-    if (cache === null) return undefined;
-    const policyError = commandAliasPolicyError(cache);
-    if (policyError !== undefined) return yield* Effect.fail(policyError);
-    return activeCommandAliases(cache);
+> {
+  const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+  if (appRoot === undefined) return undefined;
+  const cache = yield* readFreshAppCommandCacheForCwd({
+    cwd: appRoot,
+    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   });
+  if (cache === null) return undefined;
+  const policyError = commandAliasPolicyError(cache);
+  if (policyError !== undefined) return yield* Effect.fail(policyError);
+  return activeCommandAliases(cache);
+});
 
 export const toolingName = (token: string): string | undefined => {
   if (token.startsWith("-")) return undefined;
@@ -120,132 +119,131 @@ export const toolingName = (token: string): string | undefined => {
   return token.includes(":") ? undefined : token;
 };
 
-export const resolveToolingRoute = (
+export const resolveToolingRoute = Effect.fnUntraced(function* (
   token: string | undefined,
   options: ResolveToolingRouteOptions = {},
-): Effect.Effect<ToolingRoute, CacheError | CommandAliasConflictError | CommandAliasTargetError> =>
-  Effect.gen(function* () {
-    if (token === undefined) return { _tag: "not-tooling" } as const;
-    if (canonicalBuiltIn(token) !== undefined) return { _tag: "not-tooling" } as const;
-    // Flags are never tooling tokens; bail before app-root/cache so enabled:false
-    // and disabled lists cannot capture --help/-h/--version/-V/-v.
-    if (token.startsWith("-")) return { _tag: "not-tooling" } as const;
-    const name = toolingName(token);
+): Effect.fn.Return<ToolingRoute, CacheError | CommandAliasConflictError | CommandAliasTargetError> {
+  if (token === undefined) return { _tag: "not-tooling" } as const;
+  if (canonicalBuiltIn(token) !== undefined) return { _tag: "not-tooling" } as const;
+  // Flags are never tooling tokens; bail before app-root/cache so enabled:false
+  // and disabled lists cannot capture --help/-h/--version/-V/-v.
+  if (token.startsWith("-")) return { _tag: "not-tooling" } as const;
+  const name = toolingName(token);
 
-    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
-    if (appRoot === undefined) return { _tag: "not-tooling" } as const;
+  const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+  if (appRoot === undefined) return { _tag: "not-tooling" } as const;
 
-    const cache = yield* readFreshAppCommandCacheForCwd({
-      cwd: appRoot,
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    });
-    if (cache === null) {
-      const registeredAlias = resolveBuiltInCommand(token);
-      if (registeredAlias !== undefined) {
-        return {
-          _tag: "built-in",
-          commandId: registeredAlias.spec.id,
-          entry: registeredAlias,
-        } as const;
-      }
-      if (name === undefined) return { _tag: "not-tooling" } as const;
-      const commandId = `app:${name}`;
-      return {
-        _tag: "cache-miss",
-        commandId,
-        name,
-        remediation: CACHE_REMEDIATION,
-      } as const;
-    }
-
-    const canonicalEntry = cache.entries.find((candidate) => candidate.id === token);
-    if (canonicalEntry !== undefined) {
-      const canonicalName = token.startsWith("app:") ? token.slice("app:".length) : token;
-      if (canonicalEntry.source === "bun-script") {
-        return {
-          _tag: "bun-script",
-          commandId: token,
-          name: canonicalName,
-          appRoot,
-        } as const;
-      }
-      return normalizedToolingRoute(token, canonicalName, canonicalEntry);
-    }
-
-    const policy = cache.aliasPolicy;
-    const aliasesEnabled = policy?.enabled !== false;
-    const policyError = commandAliasPolicyError(cache);
-    if (policyError !== undefined) return yield* Effect.fail(policyError);
-
-    const custom =
-      policy?.custom !== undefined && Object.hasOwn(policy.custom, token) ? policy.custom[token] : undefined;
-    if (aliasesEnabled && custom !== undefined) {
-      const builtInTarget = canonicalBuiltIn(custom);
-      if (builtInTarget !== undefined) {
-        return {
-          _tag: "built-in",
-          commandId: custom,
-          entry: builtInTarget,
-        } as const;
-      }
-      const customEntry = cache.entries.find((candidate) => candidate.id === custom);
-      const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
-      if (customEntry === undefined)
-        return {
-          _tag: "unknown-tooling",
-          commandId: custom,
-          name: customName,
-          remediation: CACHE_REMEDIATION,
-        } as const;
-      if (customEntry.source === "bun-script") {
-        return {
-          _tag: "bun-script",
-          commandId: custom,
-          name: customName,
-          appRoot,
-        } as const;
-      }
-      return normalizedToolingRoute(custom, customName, customEntry);
-    }
-
-    if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
-
+  const cache = yield* readFreshAppCommandCacheForCwd({
+    cwd: appRoot,
+    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+  });
+  if (cache === null) {
     const registeredAlias = resolveBuiltInCommand(token);
-    const isKnownAlias = custom !== undefined || registeredAlias !== undefined;
-    if (aliasesEnabled && registeredAlias !== undefined) {
+    if (registeredAlias !== undefined) {
       return {
         _tag: "built-in",
         commandId: registeredAlias.spec.id,
         entry: registeredAlias,
       } as const;
     }
-
-    if (name === undefined) {
-      if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
-      return { _tag: "not-tooling" } as const;
-    }
+    if (name === undefined) return { _tag: "not-tooling" } as const;
     const commandId = `app:${name}`;
-    const entry = cache.entries.find((candidate) => candidate.id === commandId);
-    if (entry === undefined) {
-      if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
-      return {
-        _tag: "unknown-tooling",
-        commandId,
-        name,
-        remediation: CACHE_REMEDIATION,
-      } as const;
-    }
+    return {
+      _tag: "cache-miss",
+      commandId,
+      name,
+      remediation: CACHE_REMEDIATION,
+    } as const;
+  }
 
-    if (entry.source === "bun-script") {
+  const canonicalEntry = cache.entries.find((candidate) => candidate.id === token);
+  if (canonicalEntry !== undefined) {
+    const canonicalName = token.startsWith("app:") ? token.slice("app:".length) : token;
+    if (canonicalEntry.source === "bun-script") {
       return {
         _tag: "bun-script",
-        commandId,
-        name,
+        commandId: token,
+        name: canonicalName,
         appRoot,
       } as const;
     }
-    return normalizedToolingRoute(commandId, name, entry);
-  });
+    return normalizedToolingRoute(token, canonicalName, canonicalEntry);
+  }
+
+  const policy = cache.aliasPolicy;
+  const aliasesEnabled = policy?.enabled !== false;
+  const policyError = commandAliasPolicyError(cache);
+  if (policyError !== undefined) return yield* Effect.fail(policyError);
+
+  const custom =
+    policy?.custom !== undefined && Object.hasOwn(policy.custom, token) ? policy.custom[token] : undefined;
+  if (aliasesEnabled && custom !== undefined) {
+    const builtInTarget = canonicalBuiltIn(custom);
+    if (builtInTarget !== undefined) {
+      return {
+        _tag: "built-in",
+        commandId: custom,
+        entry: builtInTarget,
+      } as const;
+    }
+    const customEntry = cache.entries.find((candidate) => candidate.id === custom);
+    const customName = custom.startsWith("app:") ? custom.slice("app:".length) : custom;
+    if (customEntry === undefined)
+      return {
+        _tag: "unknown-tooling",
+        commandId: custom,
+        name: customName,
+        remediation: CACHE_REMEDIATION,
+      } as const;
+    if (customEntry.source === "bun-script") {
+      return {
+        _tag: "bun-script",
+        commandId: custom,
+        name: customName,
+        appRoot,
+      } as const;
+    }
+    return normalizedToolingRoute(custom, customName, customEntry);
+  }
+
+  if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
+
+  const registeredAlias = resolveBuiltInCommand(token);
+  const isKnownAlias = custom !== undefined || registeredAlias !== undefined;
+  if (aliasesEnabled && registeredAlias !== undefined) {
+    return {
+      _tag: "built-in",
+      commandId: registeredAlias.spec.id,
+      entry: registeredAlias,
+    } as const;
+  }
+
+  if (name === undefined) {
+    if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
+    return { _tag: "not-tooling" } as const;
+  }
+  const commandId = `app:${name}`;
+  const entry = cache.entries.find((candidate) => candidate.id === commandId);
+  if (entry === undefined) {
+    if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
+    return {
+      _tag: "unknown-tooling",
+      commandId,
+      name,
+      remediation: CACHE_REMEDIATION,
+    } as const;
+  }
+
+  if (entry.source === "bun-script") {
+    return {
+      _tag: "bun-script",
+      commandId,
+      name,
+      appRoot,
+    } as const;
+  }
+  return normalizedToolingRoute(commandId, name, entry);
+});
 
 export const toolingRouteError = (
   route: Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>,

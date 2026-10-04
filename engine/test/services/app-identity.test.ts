@@ -10,7 +10,7 @@ import type { ProcessRunner } from "@lando/sdk/services";
 
 import { resolveAppIdentity } from "../../src/planner/app-identity.ts";
 
-const processRunner = (commonDir: string | undefined): Context.Tag.Service<typeof ProcessRunner> => ({
+const processRunner = (commonDir: string | undefined): Context.Service.Shape<typeof ProcessRunner> => ({
   run: () =>
     Effect.succeed({
       exitCode: commonDir === undefined ? 128 : 0,

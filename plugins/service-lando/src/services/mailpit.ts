@@ -10,7 +10,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
 
 export const MAILPIT_FEATURE_ID = "service-lando.mailpit";
-const MailpitServiceName = ServiceName.pipe(Schema.pattern(/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u));
+const MailpitServiceName = ServiceName.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u)));
 
 const appNameFor = (input: {
   readonly appName?: string | undefined;
@@ -76,7 +76,7 @@ export const mailpitServiceType: ServiceType = {
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: MailpitServiceConfig,
   resolve: (input) =>
-    Schema.decodeUnknown(MailpitServiceName)(input.name).pipe(
+    Schema.decodeUnknownEffect(MailpitServiceName)(input.name).pipe(
       Effect.map(() => ({
         base: "lando" as const,
         normalizedConfig: {

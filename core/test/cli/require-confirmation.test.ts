@@ -20,16 +20,19 @@ describe("requireConfirmation", () => {
     const result = await Effect.runPromise(
       Effect.scoped(
         requireConfirmation({ yes, message: "Confirm?" }).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             Effect.sync(() => {
               mutations += 1;
             }),
           ),
-          Effect.provideService(InteractionService, {
-            ...interaction.service,
-            isInteractive: Effect.succeed(interactive),
-          }),
-          Effect.either,
+          Effect.provideService(
+            InteractionService,
+            InteractionService.of({
+              ...interaction.service,
+              isInteractive: Effect.succeed(interactive),
+            }),
+          ),
+          Effect.result,
         ),
       ),
     );
@@ -38,15 +41,15 @@ describe("requireConfirmation", () => {
     expect(interaction.transcript()).toHaveLength(prompts);
     if (!proceeds) {
       expect(result).toMatchObject({
-        _tag: "Left",
-        left: {
+        _tag: "Failure",
+        failure: {
           _tag: "CommandConfirmationError",
           reason: interactive ? "declined" : "non-interactive",
           remediation: expect.stringContaining("--yes"),
         },
       });
     } else {
-      expect(result._tag).toBe("Right");
+      expect(result._tag).toBe("Success");
     }
   });
 

@@ -108,7 +108,7 @@ describe("landofile load-time route hostname expressions", () => {
 
       // Then
       if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
-      expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toBeInstanceOf(NotImplementedError);
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(NotImplementedError);
     });
   });
 
@@ -122,7 +122,7 @@ describe("landofile load-time route hostname expressions", () => {
 
       // Then
       if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
-      const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(NotImplementedError);
       expect(failure).toMatchObject({ _tag: "NotImplementedError" });
       if (failure instanceof NotImplementedError) {

@@ -16,15 +16,14 @@ import { stopApp } from "../../src/operations/stop.ts";
 import { acceleratedPlan, app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 
 const phases = ["preparing", "sessions-ready", "apply-intent"] as const;
-const interruptedRecovery = (phase: (typeof phases)[number]) =>
-  Effect.gen(function* () {
-    const harness = yield* recoveryHarness();
-    const original = yield* readJournal(app).pipe(Effect.provide(harness.layer));
-    const adopted = yield* beginAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer));
-    if (phase !== "preparing") yield* adopted.phase("sessions-ready");
-    if (phase === "apply-intent") yield* adopted.phase("apply-intent");
-    return { ...harness, original: original.pending, adopted };
-  });
+const interruptedRecovery = Effect.fnUntraced(function* (phase: (typeof phases)[number]) {
+  const harness = yield* recoveryHarness();
+  const original = yield* readJournal(app).pipe(Effect.provide(harness.layer));
+  const adopted = yield* beginAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer));
+  if (phase !== "preparing") yield* adopted.phase("sessions-ready");
+  if (phase === "apply-intent") yield* adopted.phase("apply-intent");
+  return { ...harness, original: original.pending, adopted };
+});
 
 test("version-1 journals without a recovery marker still decode", async () => {
   // Given an original version-1 journal without an adoption marker.

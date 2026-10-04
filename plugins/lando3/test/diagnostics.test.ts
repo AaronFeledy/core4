@@ -239,7 +239,8 @@ describe("canonical diagnostics", () => {
 
   test("deduplicates exact identity tuples while retaining the first and different kinds", () => {
     const first = generatedRecipe({ recipeId: "drupal", occurrence });
-    const duplicate = { ...first, message: "Later message", span: undefined };
+    const { span: _span, ...unlocated } = first;
+    const duplicate = { ...unlocated, message: "Later message" };
     const otherKind = { ...first, kind: "unsupported" as const };
     const otherSource = { ...first, sourceId: ConfigTranslateSourceId.make("other") };
     const dotted = { ...first, keyPath: ["a.b"] };

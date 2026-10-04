@@ -765,7 +765,7 @@ describe("ensureRuntime", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(RootlessPrerequisiteError);
@@ -795,7 +795,7 @@ describe("ensureRuntime", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(RuntimeLaunchError);
@@ -825,7 +825,7 @@ describe("ensureRuntime", () => {
       expect(Exit.isFailure(exit)).toBe(true);
       expect(calls).toEqual([["launch", canonicalArgs(p)]]);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -891,7 +891,7 @@ describe("ensureRuntime", () => {
       expect(Exit.isFailure(exit)).toBe(true);
       expect(calls).toEqual([["launch", canonicalArgs(p)]]);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -970,7 +970,7 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual(["inspect", "create", "start"]);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -1000,7 +1000,7 @@ describe("ensureRuntime", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
@@ -1054,16 +1054,16 @@ describe("ensureRuntime", () => {
           withLaunchLock: (body) =>
             Effect.sync(() => {
               phases.push("lock");
-            }).pipe(Effect.zipRight(body)),
+            }).pipe(Effect.andThen(body)),
           setupProgress: {
             launch: (body) =>
               Effect.sync(() => {
                 phases.push("launch");
-              }).pipe(Effect.zipRight(body)),
+              }).pipe(Effect.andThen(body)),
             readiness: (body) =>
               Effect.sync(() => {
                 phases.push("readiness");
-              }).pipe(Effect.zipRight(body)),
+              }).pipe(Effect.andThen(body)),
           },
           ...paths(dir),
         }),
@@ -1135,7 +1135,7 @@ describe("ensureRuntime", () => {
           withLaunchLock: (body) =>
             Effect.sync(() => {
               locks += 1;
-            }).pipe(Effect.zipRight(body)),
+            }).pipe(Effect.andThen(body)),
           ...paths(dir),
         }),
       );
@@ -1219,16 +1219,16 @@ describe("ensureRuntime", () => {
             Effect.sync(() => {
               locks += 1;
               running = true;
-            }).pipe(Effect.zipRight(body)),
+            }).pipe(Effect.andThen(body)),
           setupProgress: {
             launch: (body) =>
               Effect.sync(() => {
                 phases.push("launch");
-              }).pipe(Effect.zipRight(body)),
+              }).pipe(Effect.andThen(body)),
             readiness: (body) =>
               Effect.sync(() => {
                 phases.push("readiness");
-              }).pipe(Effect.zipRight(body)),
+              }).pipe(Effect.andThen(body)),
           },
           ...paths(dir),
         }),
@@ -1310,7 +1310,7 @@ describe("ensureRuntime", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value.message).toContain("\\\\.\\pipe\\podman-lando");

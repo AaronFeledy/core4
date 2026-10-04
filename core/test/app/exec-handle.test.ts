@@ -18,7 +18,7 @@ test("App handle exec passes provider stderr through the captured library Render
     `name: exec-handle\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    type: node:lts\n    primary: true\n`,
   );
   const stderr: string[] = [];
-  const provider = {
+  const provider = RuntimeProvider.of({
     ...TestRuntimeProvider,
     exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "library boom\n" }),
     execStream: () =>
@@ -26,7 +26,7 @@ test("App handle exec passes provider stderr through the captured library Render
         { kind: "stderr" as const, chunk: new TextEncoder().encode("library boom\n") },
         { exitCode: 1 },
       ]),
-  };
+  });
   const runtime = Layer.merge(
     makeLandoRuntime({
       bootstrap: "app",
@@ -35,23 +35,29 @@ test("App handle exec passes provider stderr through the captured library Render
         policy: "bundled-only",
         layers: [
           Layer.succeed(RuntimeProvider, provider),
-          Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([ProviderId.make(provider.id)]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([ProviderId.make(provider.id)]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
         ],
       },
     }),
-    Layer.succeed(Renderer, {
-      id: "exec-handle-test",
-      capabilities: { color: false, interactive: false, animation: false, notifications: false },
-      message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
-      output: {
-        stdout: () => Effect.void,
-        stderr: (chunk) => Effect.sync(() => void stderr.push(chunk)),
-      },
-    }),
+    Layer.succeed(
+      Renderer,
+      Renderer.of({
+        id: "exec-handle-test",
+        capabilities: { color: false, interactive: false, animation: false, notifications: false },
+        message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
+        output: {
+          stdout: () => Effect.void,
+          stderr: (chunk) => Effect.sync(() => void stderr.push(chunk)),
+        },
+      }),
+    ),
   );
 
   try {

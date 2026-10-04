@@ -30,7 +30,7 @@ export class AppLockTimeoutError extends Schema.TaggedError<AppLockTimeoutError>
 
 export class AppResolveError extends Schema.TaggedError<AppResolveError>()("AppResolveError", {
   message: Schema.String,
-  reason: Schema.Literal("ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"),
+  reason: Schema.Literals(["ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"]),
   /** The selector field(s) involved in the failure, for diagnostics. */
   detail: Schema.optional(Schema.String),
   remediation: Schema.optional(Schema.String),

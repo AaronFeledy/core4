@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,8 +7,8 @@ import { ServiceConfig } from "../landofile.ts";
 // Tomcat catalog service authoring contract
 // ============================================================================
 
-export const TomcatServiceConfig = Schema.extend(
-  ServiceConfig.pick(
+export const TomcatServiceConfig = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
     "image",
     "port",
     "user",
@@ -30,15 +31,18 @@ export const TomcatServiceConfig = Schema.extend(
     "networks",
     "security",
     "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(Schema.Literal("tomcat", "tomcat:9", "tomcat:10", "tomcat:11")).annotations({
-      description: "Tomcat catalog service type and supported major-version aliases.",
+  ]),
+)
+  .pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Literals(["tomcat", "tomcat:9", "tomcat:10", "tomcat:11"])).annotate({
+        description: "Tomcat catalog service type and supported major-version aliases.",
+      }),
     }),
-  }),
-).annotations({
-  identifier: "TomcatServiceConfig",
-  title: "Tomcat Service Config",
-  description: "Landofile configuration accepted by the Tomcat catalog service.",
-});
+  )
+  .annotate({
+    identifier: "TomcatServiceConfig",
+    title: "Tomcat Service Config",
+    description: "Landofile configuration accepted by the Tomcat catalog service.",
+  });
 export type TomcatServiceConfig = typeof TomcatServiceConfig.Type;

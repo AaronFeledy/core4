@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import * as SDK from "@lando/sdk/schema";
 
@@ -15,7 +15,7 @@ describe("ScanPlan", () => {
     // Given a resolved plan missing one field.
     const input = Object.fromEntries(Object.entries(settings).filter(([key]) => key !== field));
     // When decoded, then reject the incomplete plan.
-    expect(Either.isLeft(Schema.decodeUnknownEither(SDK.ScanPlan)(input))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ScanPlan)(input))).toBe(true);
   });
 
   test("round-trips a decoded scanner in ServicePlan", () => {

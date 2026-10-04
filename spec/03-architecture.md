@@ -94,7 +94,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `ProcessRunner` | Exact argv subprocess execution through `Bun.spawn` |
 | `ShellRunner` | Cross-platform shell-shaped execution through `Bun.$` |
 | `BunSelfRunner` | Embedded Bun self-spawn through `BUN_BE_BUN=1` (§2.1) |
-| `HttpClient` | Single Lando-owned network-egress boundary (§10.3.2) |
+| Effect `effect/http` `HttpClient` | Standard HTTP contract implemented by `@lando/http-client`, the single Lando-owned network-egress boundary (§10.3.2); replaces the SDK-owned HttpClient contract/tag |
 | `Downloader` | Verified artifact acquisition over `HttpClient` (§10.3.3) |
 | `DataMover` | Canonical local/volume byte movement and snapshots (§10.11); not plugin-replaceable |
 | `PrivilegeService` | Platform elevation boundary |

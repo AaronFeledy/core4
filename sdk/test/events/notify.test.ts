@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { CommandInvocationCorrelation, NotifyDesktopEvent } from "@lando/sdk/events";
 import { NotifyConfig } from "@lando/sdk/schema";
 
 describe("NotifyDesktopEvent", () => {
   test("decodes a valid notification", () => {
-    const decoded = Schema.decodeUnknownEither(NotifyDesktopEvent)({
+    const decoded = Schema.decodeUnknownResult(NotifyDesktopEvent)({
       _tag: "notify.desktop",
       title: "Done",
       body: "ok",
       urgency: "success",
     });
-    expect(Either.isRight(decoded)).toBe(true);
+    expect(Result.isSuccess(decoded)).toBe(true);
   });
 
   test("rejects empty title and overlong body", () => {

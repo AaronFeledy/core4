@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
@@ -45,7 +47,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   extensions: {},
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
 };
 const unavailable = (providerId: string, operation: string) =>
   new ProviderUnavailableError({
@@ -81,21 +83,31 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
     Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
   const dependencies = Layer.mergeAll(
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(PluginRegistry, {
-      list: Effect.succeed(modules.map((module) => module.manifest)),
-      load: unsupported,
-      loadServiceType: unsupported,
-      loadServiceFeature: unsupported,
-      loadAppFeature: unsupported,
-    }),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed(modules.map((module) => module.manifest)),
+        load: unsupported,
+        loadServiceType: unsupported,
+        loadServiceFeature: unsupported,
+        loadAppFeature: unsupported,
+      }),
+    ),
     Layer.succeed(Downloader, Effect.runSync(makeTestDownloader()).service),
-    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(HttpClient.HttpClient, httpClient),
+    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (value) => value }),
+    Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (value) => value })),
   );
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -119,7 +131,7 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
           verify: async () => undefined,
         }).pipe(Layer.provide(dependencies)),
       ),
-      Effect.either,
+      Effect.result,
     ),
   );
 };
@@ -141,7 +153,7 @@ test("recovers the persisted owner when an unrelated provider cannot initialize"
   // When
   const result = await run(modules);
   // Then
-  expect(result).toMatchObject({ _tag: "Right", right: { plan, providerId: "lando" } });
+  expect(result).toMatchObject({ _tag: "Success", success: { plan, providerId: "lando" } });
   expect(unrelatedInitializations).toBe(0);
 });
 
@@ -172,8 +184,8 @@ test.each([false, true])(
       true,
     );
     expect(result).toMatchObject({
-      _tag: "Right",
-      right: [
+      _tag: "Success",
+      success: [
         { providerId: "lando", appliedPlans: [plan], runtimeObserved: running, services: [], volumes: [] },
         { providerId: "podman", appliedPlans: [], runtimeObserved: false, services: [], volumes: [] },
       ],
@@ -188,7 +200,7 @@ test("propagates owner initialization failure after recovering its plan", async 
   // When
   const result = await run([moduleFor("lando", Effect.succeed([plan]), Effect.fail(failure))]);
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: failure });
+  expect(result).toMatchObject({ _tag: "Failure", failure });
 });
 
 test("propagates another provider's persisted inventory failure even with a matching owner", async () => {
@@ -200,7 +212,7 @@ test("propagates another provider's persisted inventory failure even with a matc
     moduleFor("podman", Effect.fail(failure), Effect.fail(unavailable("podman", "select"))),
   ]);
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: failure });
+  expect(result).toMatchObject({ _tag: "Failure", failure });
 });
 
 test("rejects a mismatched supplier without initializing its runtime", async () => {
@@ -210,8 +222,8 @@ test("rejects a mismatched supplier without initializing its runtime", async () 
   ]);
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "AppResolveError", detail: "applied-state-provider" },
+    _tag: "Failure",
+    failure: { _tag: "AppResolveError", detail: "applied-state-provider" },
   });
 });
 
@@ -226,7 +238,10 @@ test("rejects conflicting persisted root claims even when one runtime is unavail
     ),
   ]);
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "AppResolveError", reason: "ambiguous" } });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "AppResolveError", reason: "ambiguous" },
+  });
 });
 
 test("skips unavailable unused providers when no persisted owner exists", async () => {
@@ -238,7 +253,7 @@ test("skips unavailable unused providers when no persisted owner exists", async 
     moduleFor("podman", Effect.succeed([]), Effect.fail(failure)),
   ]);
   // Then
-  expect(result).toMatchObject({ _tag: "Right", right: undefined });
+  expect(result).toMatchObject({ _tag: "Success", success: undefined });
 });
 
 test.each([false, true])(
@@ -264,7 +279,7 @@ test.each([false, true])(
     // When
     const result = await run([moduleFor("lando", Effect.succeed([]), Effect.succeed(provider))]);
     // Then
-    expect(result).toMatchObject({ _tag: "Right", right: undefined });
+    expect(result).toMatchObject({ _tag: "Success", success: undefined });
     expect(inspected).toEqual(running ? ["services", "volumes"] : []);
   },
 );

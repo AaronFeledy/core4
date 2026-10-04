@@ -8,6 +8,6 @@
   "dependencies": {
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "effect": "^3.12.5"
+    "effect": "catalog:"
   }
 }

@@ -15,10 +15,14 @@ const DEFAULT_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 18443, 28443, 384
 
 const globalRouterLayer = (router: RouterConfig) => {
   const load = Effect.succeed({ router } as GlobalConfig);
-  return Layer.succeed(ConfigService, {
-    load,
-    get: <K extends keyof GlobalConfig>(key: K) => Effect.map(load, (config): GlobalConfig[K] => config[key]),
-  });
+  return Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load,
+      get: <K extends keyof GlobalConfig>(key: K) =>
+        Effect.map(load, (config): GlobalConfig[K] => config[key]),
+    }),
+  );
 };
 
 describe("mergeRouterConfig", () => {

@@ -10,7 +10,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { PrivateFileAccessLive, type PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Stream } from "effect";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { startGpgAgentSession, withStartedGpgAgent } from "../../src/operations/start-gpg-agent.ts";
@@ -25,7 +25,10 @@ import { makeHarness } from "./start-progress-topology-support.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, PathsService | PrivateFileAccessService>) =>
   Effect.runPromise(
-    effect.pipe(Effect.provideService(PathsService, makeLandoPaths()), Effect.provide(PrivateFileAccessLive)),
+    effect.pipe(
+      Effect.provideService(PathsService, makeLandoPaths()),
+      Effect.provide(PrivateFileAccessService.layer),
+    ),
   );
 
 const exec: RuntimeProviderShape["exec"] = () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
@@ -45,7 +48,7 @@ test("gpg capability-missing fails before apply", async () => {
   let applied = false;
   // When
   const result = await run(
-    Effect.either(
+    Effect.result(
       withStartedGpgAgent(
         plan,
         app,
@@ -63,8 +66,8 @@ test("gpg capability-missing fails before apply", async () => {
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "GpgAgentUnavailableError", reason: "capability-missing" },
+    _tag: "Failure",
+    failure: { _tag: "GpgAgentUnavailableError", reason: "capability-missing" },
   });
   expect(applied).toBe(false);
 });
@@ -85,7 +88,7 @@ test("gpg overlays eligible services and closes the session on use failure", asy
   };
   // When
   await run(
-    Effect.either(
+    Effect.result(
       withStartedGpgAgent(
         plan,
         app,
@@ -190,13 +193,13 @@ for (const exitCode of [0, 1]) {
           Effect.sync(() => {
             calls.push("apply");
           }).pipe(
-            Effect.zipRight(prepareGpgHome),
+            Effect.andThen(prepareGpgHome),
             Effect.tap(() => Effect.sync(() => calls.push("routes"))),
           ),
       },
     );
     // When
-    const results = await run(Effect.all([Effect.either(start), Effect.either(start)]));
+    const results = await run(Effect.all([Effect.result(start), Effect.result(start)]));
     // Then
     if (exitCode === 0) {
       expect(calls).toEqual([
@@ -209,14 +212,14 @@ for (const exitCode of [0, 1]) {
         "worker:app",
         "routes",
       ]);
-      expect(results.map((result) => result._tag)).toEqual(["Right", "Right"]);
+      expect(results.map((result) => result._tag)).toEqual(["Success", "Success"]);
       expect(closed).toBe(0);
     } else {
       expect(calls).toEqual(["apply", "web:1001:1001", "apply", "web:1001:1001"]);
       for (const result of results) {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: {
+          _tag: "Failure",
+          failure: {
             _tag: "GpgAgentTransportError",
             stage: "worker",
             remediation: expect.stringMatching(/install.*gpg.*image/i),
@@ -229,7 +232,7 @@ for (const exitCode of [0, 1]) {
   });
 }
 
-const fakeGnuPg = (exportExit: number): ProcessRunner["Type"] => ({
+const fakeGnuPg = (exportExit: number): ProcessRunner["Service"] => ({
   run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   stream: () => Stream.empty,
   streamWithExit: ({ cmd, args }) =>
@@ -285,7 +288,7 @@ test("startGpgAgentSession leaves the exported keyring on disk once the worker o
       ).pipe(
         Effect.provideService(ProcessRunner, fakeGnuPg(0)),
         Effect.provideService(PathsService, paths),
-        Effect.provide(PrivateFileAccessLive),
+        Effect.provide(PrivateFileAccessService.layer),
       ),
     );
     // Then
@@ -311,7 +314,7 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
   try {
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         startGpgAgentSession(
           plan,
           app,
@@ -322,13 +325,13 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
       ).pipe(
         Effect.provideService(ProcessRunner, fakeGnuPg(2)),
         Effect.provideService(PathsService, paths),
-        Effect.provide(PrivateFileAccessLive),
+        Effect.provide(PrivateFileAccessService.layer),
       ),
     );
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
+      _tag: "Failure",
+      failure: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
     });
     expect(terminated.count).toBe(1);
   } finally {
@@ -383,7 +386,7 @@ for (const prepareExit of [0, 1]) {
     try {
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           startApp(
             {},
             {
@@ -412,13 +415,13 @@ for (const prepareExit of [0, 1]) {
       );
       // Then
       if (prepareExit === 0) {
-        expect(result._tag).toBe("Right");
+        expect(result._tag).toBe("Success");
         expect(calls).toEqual(["apply", "gpg-prepare", "build-app", "routes", "post-start"]);
         expect(closed).toBe(0);
       } else {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: { _tag: "GpgAgentTransportError", stage: "worker" },
+          _tag: "Failure",
+          failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
         expect(calls).toEqual(["apply", "gpg-prepare", "destroy"]);
         expect(closed).toBe(1);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -12,6 +12,12 @@ import {
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "../../src/providers/applied-state-resolution.ts";
+
+const failureDetail = <A, E>(exit: Exit.Exit<A, E>): unknown => {
+  if (Exit.isSuccess(exit)) return undefined;
+  const error = Cause.findErrorOption(exit.cause);
+  return error._tag === "Some" ? (error.value as { readonly detail?: unknown }).detail : undefined;
+};
 
 const root = AbsolutePath.make("/tmp/applied-state-evidence");
 
@@ -87,7 +93,7 @@ const planFor = (providerId: string): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00.000Z"),
     source: "applied-state-resolution.test",
     runtime: 4,
   },
@@ -142,7 +148,7 @@ describe("observeProviderRuntime", () => {
     const result = await Effect.runPromiseExit(
       observeProviderRuntime([provider("lando", { appliedPlans: Effect.succeed([planFor("docker")]) })]),
     );
-    expect(String(result)).toContain("applied-state-provider");
+    expect(failureDetail(result)).toBe("applied-state-provider");
   });
 
   test("propagates runtime listing failures", async () => {
@@ -177,7 +183,7 @@ describe("resolveAppliedPlanEvidence", () => {
     const result = await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, []));
 
     expect(result._tag).toBe("Failure");
-    expect(String(result)).toContain("provider-evidence");
+    expect(failureDetail(result)).toBe("provider-evidence");
   });
 
   test("returns absence only after every provider confirms empty applied and runtime state", async () => {
@@ -223,7 +229,7 @@ describe("resolveAppliedPlanEvidence", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(String(result)).toContain("applied-state-provider");
+    expect(failureDetail(result)).toBe("applied-state-provider");
   });
 
   test("does not report absence while a provider still exposes runtime services", async () => {
@@ -245,7 +251,7 @@ describe("resolveAppliedPlanEvidence", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(String(result)).toContain("provider-resources");
+    expect(failureDetail(result)).toBe("provider-resources");
   });
 
   test("ignores runtime services owned by another app root", async () => {
@@ -291,7 +297,7 @@ describe("resolveAppliedPlanEvidence", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(String(result)).toContain("provider-resources");
+    expect(failureDetail(result)).toBe("provider-resources");
   });
 
   test("propagates provider runtime evidence failures", async () => {
@@ -417,13 +423,13 @@ describe("resolveTeardownEvidence", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(String(result)).toContain("applied-state-provider");
+    expect(failureDetail(result)).toBe("applied-state-provider");
   });
 
   test("does not infer absence when no provider can supply evidence", async () => {
     const result = await Effect.runPromiseExit(resolveTeardownEvidence(root, []));
 
     expect(result._tag).toBe("Failure");
-    expect(String(result)).toContain("provider-evidence");
+    expect(failureDetail(result)).toBe("provider-evidence");
   });
 });

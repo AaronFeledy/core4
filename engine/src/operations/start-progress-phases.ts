@@ -83,13 +83,12 @@ export const withGlobalStartProgress = <A, E, R>(input: {
       failure: `${input.plan.name} global services failed`,
       interrupt: `${input.plan.name} global services interrupted`,
     },
-    work: (tree) =>
-      Effect.gen(function* () {
-        for (const id of input.serviceIds) yield* tree.startTask(id);
-        const result = yield* input.work;
-        for (const id of input.serviceIds) yield* tree.completeTask(id);
-        return result;
-      }),
+    work: Effect.fnUntraced(function* (tree) {
+      for (const id of input.serviceIds) yield* tree.startTask(id);
+      const result = yield* input.work;
+      for (const id of input.serviceIds) yield* tree.completeTask(id);
+      return result;
+    }),
   });
 
 export const withRoutesStartProgress = <A, E, R>(input: {
@@ -106,11 +105,10 @@ export const withRoutesStartProgress = <A, E, R>(input: {
       failure: `${input.plan.name} routes failed`,
       interrupt: `${input.plan.name} routes interrupted`,
     },
-    work: (tree) =>
-      Effect.gen(function* () {
-        yield* tree.startTask("apply");
-        const result = yield* input.work;
-        yield* tree.completeTask("apply");
-        return result;
-      }),
+    work: Effect.fnUntraced(function* (tree) {
+      yield* tree.startTask("apply");
+      const result = yield* input.work;
+      yield* tree.completeTask("apply");
+      return result;
+    }),
   });

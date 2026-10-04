@@ -19,14 +19,17 @@ export type * from "../schema/recipe-decompose.ts";
  * input is built, so a secret value cannot enter a template, provenance, a
  * diagnostic, or an emitted file through this port.
  */
-export interface RecipeDecomposerShape {
-  /** Versioned identity every result of this decomposer records as its producer. */
-  readonly producer: RecipeDecomposeResult["provenance"]["producer"];
-  /** Decompose merged nonsecret options into authoring data plus inert provenance. */
-  readonly decompose: (
-    input: RecipeDecomposeInput,
-  ) => Effect.Effect<RecipeDecomposeResult, RecipeDecomposeError, never>;
-}
+export class RecipeDecomposer extends Context.Service<
+  RecipeDecomposer,
+  {
+    /** Versioned identity every result of this decomposer records as its producer. */
+    readonly producer: RecipeDecomposeResult["provenance"]["producer"];
+    /** Decompose merged nonsecret options into authoring data plus inert provenance. */
+    readonly decompose: (
+      input: RecipeDecomposeInput,
+    ) => Effect.Effect<RecipeDecomposeResult, RecipeDecomposeError, never>;
+  }
+>()("@lando/core/RecipeDecomposer") {}
 
 /**
  * Ports a decomposer factory closes over. Injecting the redactor here is what
@@ -44,7 +47,4 @@ export interface RecipeDecomposerPorts {
  */
 export type RecipeDecomposerFactory = (ports: RecipeDecomposerPorts) => RecipeDecomposerShape;
 
-export class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDecomposer")<
-  RecipeDecomposer,
-  RecipeDecomposerShape
->() {}
+export type RecipeDecomposerShape = RecipeDecomposer["Service"];

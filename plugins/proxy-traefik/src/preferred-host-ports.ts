@@ -111,7 +111,7 @@ const resolveClaim = (input: {
   const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
   return Effect.tryPromise(async () =>
     claimFromUnknown(JSON.parse(await readFile(acquisitionStateFile(paths), "utf8"))),
-  ).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  ).pipe(Effect.catch(() => Effect.succeed(undefined)));
 };
 
 const claimsPort = (claim: AcquisitionClaim | undefined, port: number): boolean =>
@@ -148,36 +148,34 @@ export const makePreferredHostPortsCheck = (
   readers: PreferredHostPortReaders = systemReaders,
 ): PluginDoctorCheckContribution => ({
   id: "preferred-host-ports",
-  run: (input) =>
-    Effect.gen(function* () {
-      const claim = yield* resolveClaim(input);
-      const snapshots = yield* Effect.forEach(
-        PREFERRED_PORTS,
-        (port) =>
-          Effect.promise(() => readers.readPort(port, input.platform).catch(() => idleSnapshot(port))),
-        { concurrency: "unbounded" },
-      );
+  run: Effect.fnUntraced(function* (input) {
+    const claim = yield* resolveClaim(input);
+    const snapshots = yield* Effect.forEach(
+      PREFERRED_PORTS,
+      (port) => Effect.promise(() => readers.readPort(port, input.platform).catch(() => idleSnapshot(port))),
+      { concurrency: "unbounded" },
+    );
 
-      const occupied = snapshots.filter(
-        (item) => item.listening && !claimsPort(claim, item.port) && !isLeftoverRootlessport(item),
-      );
-      const classified = occupied.find((item) => item.port === DESIRED_HTTP_PORT) ?? occupied[0];
-      if (classified === undefined) return [];
+    const occupied = snapshots.filter(
+      (item) => item.listening && !claimsPort(claim, item.port) && !isLeftoverRootlessport(item),
+    );
+    const classified = occupied.find((item) => item.port === DESIRED_HTTP_PORT) ?? occupied[0];
+    if (classified === undefined) return [];
 
-      const kind = classifyOccupancyHolder(holderInputOf(classified));
-      const identity = identityOf(classified);
-      const report = {
-        name: "preferred-host-ports",
-        status: "warn",
-        severity: "warn",
-        runtimeStatus: "preferred-port-occupied",
-        runtime: { running: false },
-        context: occupancyContext(occupied, kind, identity),
-        solutions: [...solutionsForOccupancyHolder(kind, identity)],
-      } satisfies PluginDoctorReport;
+    const kind = classifyOccupancyHolder(holderInputOf(classified));
+    const identity = identityOf(classified);
+    const report = {
+      name: "preferred-host-ports",
+      status: "warn",
+      severity: "warn",
+      runtimeStatus: "preferred-port-occupied",
+      runtime: { running: false },
+      context: occupancyContext(occupied, kind, identity),
+      solutions: [...solutionsForOccupancyHolder(kind, identity)],
+    } satisfies PluginDoctorReport;
 
-      return [report];
-    }),
+    return [report];
+  }),
 });
 
 export const preferredHostPortsCheck = makePreferredHostPortsCheck();

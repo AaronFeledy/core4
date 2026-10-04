@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isLegacyTagged, parseLegacyLandofile } from "@lando/sdk/landofile";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
-import { isPlainObject } from "../src/lowering-contract.ts";
+import { hasPlainObjectPrototype } from "../src/lowering-contract.ts";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { type Golden, dispositionInventory, referenceVariants } from "./fixtures/disposition-inventory.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
@@ -13,7 +13,7 @@ const translate = (yaml: string) => {
     decomposers: fakeDecomposers().decomposers,
     redactor: createRedactor("secrets"),
   });
-  return Effect.runPromise(Effect.either(translator.translate(documentSet([document(".lando.yml", yaml)]))));
+  return Effect.runPromise(Effect.result(translator.translate(documentSet([document(".lando.yml", yaml)]))));
 };
 const assertHosterRejection = (
   error: { readonly _tag: string; readonly cause?: unknown },
@@ -32,7 +32,7 @@ const walk = (value: unknown, path: Path = []): ReadonlyArray<Path> => {
   if (isLegacyTagged(value)) return [path]; // A tag is one authored value, not marker metadata.
   const children: ReadonlyArray<readonly [string | number, unknown]> = Array.isArray(value)
     ? Array.from(value.entries())
-    : isPlainObject(value)
+    : hasPlainObjectPrototype(value)
       ? Object.entries(value)
       : [];
   return [
@@ -51,10 +51,10 @@ const parseFixture = async (basename: string) => {
 const inventoryPaths = async (): Promise<ReadonlyArray<Path>> => {
   const landofile = await parseFixture("kitchen-sink.lando.yml");
   const global = await parseFixture("kitchen-sink.config.yml");
-  expect(isPlainObject(global)).toBe(true);
+  expect(hasPlainObjectPrototype(global)).toBe(true);
   return [
     ...walk(landofile),
-    ...Object.keys(isPlainObject(global) ? global : {}).map((key) => [key]),
+    ...Object.keys(hasPlainObjectPrototype(global) ? global : {}).map((key) => [key]),
     ...referenceVariants.map((key) => [key]),
   ];
 };
@@ -63,7 +63,7 @@ const atPath = (value: unknown, path: ReadonlyArray<string>): unknown => {
   const [key, ...rest] = path;
   if (key === undefined) return value;
   if (Array.isArray(value)) return atPath(value[Number(key)], rest);
-  return isPlainObject(value) ? atPath(value[key], rest) : undefined;
+  return hasPlainObjectPrototype(value) ? atPath(value[key], rest) : undefined;
 };
 const residuals = (value: unknown): ReadonlyArray<Path> =>
   walk(value).filter((path) => {
@@ -88,7 +88,7 @@ const residuals = (value: unknown): ReadonlyArray<Path> =>
         "persistent-storage",
         "sslExpose",
       ].includes(String(key)) ||
-      (key === "xdebug" && isPlainObject(atPath(value, path.map(String))))
+      (key === "xdebug" && hasPlainObjectPrototype(atPath(value, path.map(String))))
     );
   });
 
@@ -159,15 +159,15 @@ describe("Lando 3 disposition inventory", () => {
         // When translating through the production document-set boundary.
         const translated = await translate(golden.yaml);
         switch (translated._tag) {
-          case "Left":
-            assertHosterRejection(translated.left, golden);
+          case "Failure":
+            assertHosterRejection(translated.failure, golden);
             return;
-          case "Right":
+          case "Success":
             break;
           default:
             return translated satisfies never;
         }
-        const result = translated.right;
+        const result = translated.success;
         // Then assert a diagnostic at the exact authored path, or the output fragment.
         if ("kind" in golden.expect) {
           const expected = golden.expect;
@@ -204,11 +204,11 @@ describe("Lando 3 disposition inventory", () => {
         const translated = await translate(golden.yaml);
         // Then every emitted layer is free of runtime-only legacy keys.
         switch (translated._tag) {
-          case "Left":
-            assertHosterRejection(translated.left, golden);
+          case "Failure":
+            assertHosterRejection(translated.failure, golden);
             break;
-          case "Right":
-            expect(translated.right.outputs.flatMap(({ fragment }) => residuals(fragment))).toEqual([]);
+          case "Success":
+            expect(translated.success.outputs.flatMap(({ fragment }) => residuals(fragment))).toEqual([]);
             break;
           default:
             translated satisfies never;

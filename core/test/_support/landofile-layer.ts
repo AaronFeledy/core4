@@ -1,14 +1,17 @@
-import { LandofileServiceLive, makeEngineLandofileServiceLive } from "@lando/engine/services/landofile-live";
+import * as EngineLandofileServiceLayer from "@lando/engine/services/landofile-live";
 import { ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 
-export const NoopTransactionGuardLive = Layer.succeed(ManagedFileTransactionGuard, {
-  ensureConsistent: () => Effect.void,
-  pending: () => Effect.succeed(null),
-});
+export const layerTransactionGuard = Layer.succeed(
+  ManagedFileTransactionGuard,
+  ManagedFileTransactionGuard.of({
+    ensureConsistent: () => Effect.void,
+    pending: () => Effect.succeed(null),
+  }),
+);
 
-export const TestStateStoreLive = Layer.succeed(
+export const testStateStoreLayer = Layer.succeed(
   StateStore,
   makeStateStore({
     privateFileAccess: {
@@ -18,9 +21,9 @@ export const TestStateStoreLive = Layer.succeed(
   }),
 );
 
-const TestLandofileDependencies = Layer.merge(NoopTransactionGuardLive, TestStateStoreLive);
+const TestLandofileDependencies = Layer.merge(layerTransactionGuard, testStateStoreLayer);
 
-export const TestLandofileServiceLive = LandofileServiceLive.pipe(Layer.provide(TestLandofileDependencies));
+export const layer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(TestLandofileDependencies));
 
-export const makeTestLandofileServiceLive = (inputs: Parameters<typeof makeEngineLandofileServiceLive>[0]) =>
-  makeEngineLandofileServiceLive(inputs).pipe(Layer.provide(TestLandofileDependencies));
+export const layerWithInputs = (inputs: Parameters<typeof EngineLandofileServiceLayer.layer>[0]) =>
+  EngineLandofileServiceLayer.layer(inputs).pipe(Layer.provide(TestLandofileDependencies));

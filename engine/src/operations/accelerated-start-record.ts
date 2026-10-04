@@ -4,13 +4,13 @@ import { Effect, Schema } from "effect";
 
 export const PendingStart = Schema.Struct({
   attemptId: Schema.String,
-  recoveredFrom: Schema.optional(Schema.String),
+  recoveredFrom: Schema.optionalKey(Schema.String),
   appId: Schema.String,
   appRoot: Schema.String,
   providerId: Schema.String,
   engineId: Schema.String,
   mountPlanDigest: Schema.String,
-  phase: Schema.Literal("preparing", "sessions-ready", "apply-intent", "retained", "completed"),
+  phase: Schema.Literals(["preparing", "sessions-ready", "apply-intent", "retained", "completed"]),
   targets: Schema.Array(
     Schema.Struct({
       service: Schema.String,

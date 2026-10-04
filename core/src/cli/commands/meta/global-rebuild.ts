@@ -31,7 +31,7 @@ import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 export interface GlobalRebuildOptions {
   readonly signal?: AbortSignal;
@@ -84,73 +84,69 @@ export type GlobalRebuildServices =
   | RouterService
   | RuntimeProviderRegistry;
 
-export const globalRebuild = (
+export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
   options: GlobalRebuildOptions = {},
-): Effect.Effect<GlobalRebuildResult, GlobalRebuildError, GlobalRebuildServices> =>
-  Effect.gen(function* () {
-    yield* globalInstall({});
-    const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", materialized: false, servicesRebuilt: [] };
+): Effect.fn.Return<GlobalRebuildResult, GlobalRebuildError, GlobalRebuildServices> {
+  yield* globalInstall({});
+  const loaded = yield* loadGlobalPlan();
+  if (!loaded.materialized) return { app: "global", materialized: false, servicesRebuilt: [] };
 
-    const services = Object.values(loaded.plan.services);
-    if (services.length === 0) return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
+  const services = Object.values(loaded.plan.services);
+  if (services.length === 0) return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
 
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const events = yield* EventService;
-    const builder = yield* BuildOrchestrator;
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const events = yield* EventService;
+  const builder = yield* BuildOrchestrator;
 
-    yield* events.publish(
-      PreGlobalRebuildEvent.make({
-        scope: "global",
-        app: globalAppRef(loaded.plan),
-        plan: loaded.plan,
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PreGlobalRebuildEvent.make({
+      scope: "global",
+      app: globalAppRef(loaded.plan),
+      plan: loaded.plan,
+      timestamp: now(),
+    }),
+  );
 
-    yield* provider.destroy(
-      { app: loaded.plan.id, plan: loaded.plan },
-      { volumes: false, removeState: false },
-    );
+  yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes: false, removeState: false });
 
-    const builtPlan = yield* builder.build(loaded.plan);
-    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-    yield* Effect.scoped(
-      provider.apply(builtPlan, {
-        reconcile: true,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        serviceEnvironment,
-      }),
-    );
+  const builtPlan = yield* builder.build(loaded.plan);
+  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+  yield* Effect.scoped(
+    provider.apply(builtPlan, {
+      reconcile: true,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      serviceEnvironment,
+    }),
+  );
 
-    const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
-      provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-        Effect.map((runtime) => ({
-          name: String(service.name),
-          state: runtime.state ?? runtime.status,
-          endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-        })),
-      ),
-    );
+  const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
+    provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
+      Effect.map((runtime) => ({
+        name: String(service.name),
+        state: runtime.state ?? runtime.status,
+        endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+      })),
+    ),
+  );
 
-    // Re-observe the router before the post event: a rebuild that leaves the
-    // router's startup observation broken has not finished rebuilding.
-    const router = yield* RouterService;
-    yield* router.revalidateStartup;
+  // Re-observe the router before the post event: a rebuild that leaves the
+  // router's startup observation broken has not finished rebuilding.
+  const router = yield* RouterService;
+  yield* router.revalidateStartup;
 
-    yield* events.publish(
-      PostGlobalRebuildEvent.make({
-        scope: "global",
-        app: globalAppRef(builtPlan),
-        plan: builtPlan,
-        services: servicesRebuilt.map((service) => service.name),
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PostGlobalRebuildEvent.make({
+      scope: "global",
+      app: globalAppRef(builtPlan),
+      plan: builtPlan,
+      services: servicesRebuilt.map((service) => service.name),
+      timestamp: now(),
+    }),
+  );
 
-    return { app: builtPlan.name, materialized: true, servicesRebuilt };
-  });
+  return { app: builtPlan.name, materialized: true, servicesRebuilt };
+});
 
 export const renderGlobalRebuildResult = (result: GlobalRebuildResult): string => {
   if (!result.materialized) return "global app is not installed";

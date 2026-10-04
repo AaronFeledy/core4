@@ -1,5 +1,6 @@
 import type { InfoAppResult, InfoAppService, InfoLogSource, InfoServiceStatus } from "@lando/sdk/app";
 
+import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import {
   type SummaryDocument,
   type SummaryRow,
@@ -8,7 +9,7 @@ import {
   worstSummaryTone,
 } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
-import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
+import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 
 type InfoResultWithHostProxy = InfoAppResult & {
   readonly hostProxy?: {
@@ -155,8 +156,17 @@ const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };
 
+const infoHttpUrls = (result: InfoAppResult): ReadonlyArray<string> =>
+  result.services.flatMap((service) => service.endpoints);
+
 export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
-  if (isDecoratedContext(ctx)) return formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx));
+  const rendered = isDecoratedContext(ctx)
+    ? formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx))
+    : renderPlainInfoAppResult(result);
+  return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(rendered, infoHttpUrls(result)) : rendered;
+};
+
+const renderPlainInfoAppResult = (result: InfoAppResult): string => {
   const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {

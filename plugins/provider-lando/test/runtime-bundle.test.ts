@@ -30,7 +30,7 @@ const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) {
     throw new Error("expected effect to fail");
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag !== "Some") {
     throw new Error(`expected a tagged failure, got ${JSON.stringify(exit.cause)}`);
   }

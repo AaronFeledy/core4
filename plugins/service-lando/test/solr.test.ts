@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
@@ -191,7 +191,7 @@ describe("solr ServiceType", () => {
     ["solr", solrServiceType],
   ])("%s refuses an unsafe core before any command is generated", async (id, serviceType) => {
     const outcome = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         serviceType.resolve({
           name: "search",
           service: { type: "solr", cores: ["ok", ".."], command: ["solr-foreground"] },
@@ -201,11 +201,11 @@ describe("solr ServiceType", () => {
       ),
     );
 
-    expect(Either.isLeft(outcome)).toBe(true);
-    if (Either.isLeft(outcome)) {
-      expect(outcome.left._tag).toBe("ServiceTypeError");
-      expect(outcome.left.serviceType).toBe(id);
-      expect(outcome.left.message).toBe(
+    expect(Result.isFailure(outcome)).toBe(true);
+    if (Result.isFailure(outcome)) {
+      expect(outcome.failure._tag).toBe("ServiceTypeError");
+      expect(outcome.failure.serviceType).toBe(id);
+      expect(outcome.failure.message).toBe(
         'services.search.cores[1] ".." is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\\" are not allowed. Rename the core to a plain directory name.',
       );
     }

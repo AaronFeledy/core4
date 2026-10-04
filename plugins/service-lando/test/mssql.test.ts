@@ -319,12 +319,12 @@ describe("mssql ServiceType", () => {
           metadata,
           host: hostFacts("arm64"),
         })
-        .pipe(Effect.either),
+        .pipe(Effect.result),
     );
 
-    expect(result._tag).toBe("Right");
-    if (result._tag !== "Right") throw new Error("expected provider-free resolution to succeed");
-    expect(result.right.tooling?.sqlcmd?.cmd).toEqual([SQLCMD, "-S", "localhost", "-U", "sa", "-C"]);
+    expect(result._tag).toBe("Success");
+    if (result._tag !== "Success") throw new Error("expected provider-free resolution to succeed");
+    expect(result.success.tooling?.sqlcmd?.cmd).toEqual([SQLCMD, "-S", "localhost", "-U", "sa", "-C"]);
   });
 
   test("arm64 with architectureEmulation false fails closed in resolve", async () => {
@@ -339,12 +339,12 @@ describe("mssql ServiceType", () => {
           host: hostFacts("arm64"),
           capabilities: providerCapabilities(false),
         })
-        .pipe(Effect.either),
+        .pipe(Effect.result),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") throw new Error("expected arm64 without emulation to fail");
-    expect(result.left).toBeInstanceOf(ServiceTypeError);
-    expect(result.left.message).toContain(ARCH_REMEDIATION);
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new Error("expected arm64 without emulation to fail");
+    expect(result.failure).toBeInstanceOf(ServiceTypeError);
+    expect(result.failure.message).toContain(ARCH_REMEDIATION);
   });
 });

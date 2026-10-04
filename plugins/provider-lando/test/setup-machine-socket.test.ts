@@ -105,10 +105,10 @@ describe("Windows managed machine API socket activation", () => {
     });
     const runner = makeSystemPodmanMachineRunner("podman", "lando", "win32", spawn);
     const result = await Effect.runPromise(
-      Effect.either(runner.hostPortOwners?.([38080]) ?? Effect.succeed(new Map())),
+      Effect.result(runner.hostPortOwners?.([38080]) ?? Effect.succeed(new Map())),
     );
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") expect(result.left._tag).toBe("ProviderUnavailableError");
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure._tag).toBe("ProviderUnavailableError");
   });
   test("reads only candidate TCP listeners in the owned running WSL machine", async () => {
     const calls: string[][] = [];

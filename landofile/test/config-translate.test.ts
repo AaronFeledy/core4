@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect } from "effect";
+import { Cause, Effect, Option } from "effect";
 
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
 import { ConfigTranslateSourceId } from "@lando/sdk/schema";
@@ -72,7 +72,7 @@ describe("resolveConfigTranslators", () => {
     );
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected failure");
-    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(error).toBeInstanceOf(ConfigTranslatorConflictError);
     expect((error as ConfigTranslatorConflictError).id).toBe("lando-v3");
     expect((error as ConfigTranslatorConflictError).translators).toHaveLength(2);
@@ -131,9 +131,9 @@ test("rejects foreign output source identities with producing translator attribu
         deletions: [],
       }),
   });
-  const result = await Effect.runPromise(Effect.either(runConfigTranslator(translator, baseInput)));
-  expect(result._tag).toBe("Left");
-  if (result._tag === "Left") expect(result.left.translator).toBe("foreign");
+  const result = await Effect.runPromise(Effect.result(runConfigTranslator(translator, baseInput)));
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure.translator).toBe("foreign");
 });
 
 test.each(["source", "translator", "empty"])(
@@ -151,10 +151,10 @@ test.each(["source", "translator", "empty"])(
         ]),
     });
     const result = await Effect.runPromise(
-      Effect.either(detectConfigTranslators([translator], { documents: baseInput.documents })),
+      Effect.result(detectConfigTranslators([translator], { documents: baseInput.documents })),
     );
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left")
-      expect(result.left).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure")
+      expect(result.failure).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
   },
 );

@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { nodeApiDecomposer } from "../../src/recipes/builtin/node-api/decomposer.ts";
 import { nodeApiRecipeYaml } from "../../src/recipes/builtin/node-api/manifest.ts";
 import {
@@ -29,7 +29,7 @@ const decompose = (options: Readonly<Record<string, RecipeOptionValue>>) =>
 
 const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -85,10 +85,10 @@ describe("node-api decomposition", () => {
 
   test("drops the database service and dependency when the database is none", () => {
     const authoring = Schema.decodeUnknownSync(
-      Schema.Struct({ services: Schema.Record({ key: Schema.String, value: Schema.Unknown }) }),
+      Schema.Struct({ services: Schema.Record(Schema.String, Schema.Unknown) }),
     )(authoringOf(noDatabase));
     expect(Object.keys(authoring.services)).toEqual(["api"]);
-    const api = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optional(Schema.Unknown) }))(
+    const api = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optionalKey(Schema.Unknown) }))(
       authoring.services.api,
     );
     expect(api.dependsOn).toBeUndefined();
@@ -106,13 +106,13 @@ describe("node-api decomposition", () => {
     { options: { ...defaults, database: true }, path: "options.database" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(decomposer.decompose({ producer: nodeApiProducer, options, secrets: {} })),
+      Effect.result(decomposer.decompose({ producer: nodeApiProducer, options, secrets: {} })),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -136,7 +136,7 @@ describe("node-api decomposition", () => {
   test.each([defaults, alternatives, noDatabase])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(nodeApiSnapshot, options))).toEqual(authoringOf(options));
+      expect(Result.getOrThrow(renderRecipeSnapshot(nodeApiSnapshot, options))).toEqual(authoringOf(options));
     },
   );
 });

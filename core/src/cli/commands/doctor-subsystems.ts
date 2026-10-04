@@ -30,12 +30,12 @@ import {
 } from "@lando/sdk/services";
 
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
-import { HealthcheckRunnerLive } from "@lando/engine/subsystems/healthcheck/live";
-import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
-import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
-import { UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
-import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
-import { HttpClientLive } from "@lando/http-client/live";
+import * as ProviderHealthcheckRunner from "@lando/engine/subsystems/healthcheck/live";
+import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
+import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
+import * as ProviderUrlScanner from "@lando/engine/subsystems/scanner/live";
+import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
+import * as LandoHttpClient from "@lando/http-client/live";
 import { renderSolution } from "./doctor";
 import {
   type CertsDoctorStatus,
@@ -43,7 +43,7 @@ import {
   certsCheckContext,
   certsSubsystemId,
 } from "./doctor-certs-status";
-import { type HostDnsResolver, HostDnsResolverLive } from "./doctor-host-dns";
+import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
@@ -84,65 +84,66 @@ export interface SubsystemDoctorOptions {
 // `run()`/`scan()`, so the bootstrap placeholder provider satisfies the real
 // layers' dependencies while keeping `DefaultSubsystemDoctorLayer` self-contained.
 // Proxy readiness additionally reads `status()`.
-const DoctorRuntimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
+const doctorRuntimeProviderLayer = Layer.succeed(RuntimeProvider, RuntimeProvider.of(runtimeProviderService));
 
-const HealthcheckRunnerDoctorLive = HealthcheckRunnerLive.pipe(Layer.provide(DoctorRuntimeProviderLive));
+const healthcheckRunnerDoctorLayer = ProviderHealthcheckRunner.layer.pipe(
+  Layer.provide(doctorRuntimeProviderLayer),
+);
 
-const UrlScannerDoctorLive = UrlScannerLive.pipe(
-  Layer.provide(Layer.mergeAll(DoctorRuntimeProviderLive, HttpClientLive)),
+const urlScannerDoctorLayer = ProviderUrlScanner.layer.pipe(
+  Layer.provide(Layer.mergeAll(doctorRuntimeProviderLayer, LandoHttpClient.layer)),
 );
 
 export const DefaultSubsystemDoctorLayer: Layer.Layer<
   RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
 > = Layer.mergeAll(
-  RouterServiceUnavailableLive,
-  SshServiceUnavailableLive,
-  HealthcheckRunnerDoctorLive,
-  UrlScannerDoctorLive,
-  HostProxyServiceDisabledLive,
-  HostDnsResolverLive,
+  RouterServiceLayer.layerUnavailable,
+  SshServiceLayer.layerUnavailable,
+  healthcheckRunnerDoctorLayer,
+  urlScannerDoctorLayer,
+  HostProxyServiceLayer.layerDisabled,
+  HostDnsResolver.layer,
 );
 
-export const subsystemDoctor = (
+export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.Effect<
+): Effect.fn.Return<
   SubsystemDoctorResult,
   never,
   RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
-> =>
-  Effect.gen(function* () {
-    const fix = options.fix === true;
-    const proxy = yield* RouterService;
-    const ssh = yield* SshService;
-    const healthcheck = yield* HealthcheckRunner;
-    const scanner = yield* UrlScanner;
-    const hostProxy = yield* HostProxyService;
+> {
+  const fix = options.fix === true;
+  const proxy = yield* RouterService;
+  const ssh = yield* SshService;
+  const healthcheck = yield* HealthcheckRunner;
+  const scanner = yield* UrlScanner;
+  const hostProxy = yield* HostProxyService;
 
-    const proxyCheck = yield* buildProxyCheck(proxy, fix);
-    const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
-    const certsCheck = yield* buildIdCheck(CERTS_SPEC, certsSubsystemId(certs), fix).pipe(
-      Effect.map((check) => ({
-        ...check,
-        context: { ...check.context, ...certsCheckContext(certs) },
-      })),
-    );
-    const sshCheck = yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix });
-    const healthcheckCheck = yield* buildIdCheck(HEALTHCHECK_SPEC, healthcheck.id, fix);
-    const scannerCheck = yield* buildIdCheck(SCANNER_SPEC, scanner.id, fix);
-    const hostProxyCheck = yield* buildHostProxyCheck(hostProxy, fix);
+  const proxyCheck = yield* buildProxyCheck(proxy, fix);
+  const certs = options.certs ?? UNRESOLVED_CERTS_STATUS;
+  const certsCheck = yield* buildIdCheck(CERTS_SPEC, certsSubsystemId(certs), fix).pipe(
+    Effect.map((check) => ({
+      ...check,
+      context: { ...check.context, ...certsCheckContext(certs) },
+    })),
+  );
+  const sshCheck = yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix });
+  const healthcheckCheck = yield* buildIdCheck(HEALTHCHECK_SPEC, healthcheck.id, fix);
+  const scannerCheck = yield* buildIdCheck(SCANNER_SPEC, scanner.id, fix);
+  const hostProxyCheck = yield* buildHostProxyCheck(hostProxy, fix);
 
-    return {
-      checks: [
-        proxyCheck,
-        certsCheck,
-        sshCheck,
-        healthcheckCheck,
-        scannerCheck,
-        hostProxyCheck,
-        ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
-      ],
-    };
-  });
+  return {
+    checks: [
+      proxyCheck,
+      certsCheck,
+      sshCheck,
+      healthcheckCheck,
+      scannerCheck,
+      hostProxyCheck,
+      ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
+    ],
+  };
+});
 
 const renderCheck = (check: DoctorSubsystemCheck): ReadonlyArray<string> => {
   const lines = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];

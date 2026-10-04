@@ -22,10 +22,13 @@ const loaded = Schema.decodeUnknownSync(GlobalConfig)({
   },
   network: { proxy: { https: "http://user:proxy-pass-626@proxy.invalid:3128" } },
 });
-const runtime = Layer.succeed(ConfigService, {
-  load: Effect.succeed({ ...loaded, setup: { completed: true } }),
-  get: (key) => Effect.succeed(loaded[key]),
-});
+const runtime = Layer.succeed(
+  ConfigService,
+  ConfigService.of({
+    load: Effect.succeed({ ...loaded, setup: { completed: true } }),
+    get: (key) => Effect.succeed(loaded[key]),
+  }),
+);
 
 for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
   for (const format of ["table", "yaml", "json"] as const) {

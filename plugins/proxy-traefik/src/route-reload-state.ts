@@ -40,7 +40,7 @@ export const certificatePairIsCurrent = (
   certificatePem: string,
   privateKeyPem: string,
   hostnames: ReadonlyArray<string>,
-  now = Date.now(),
+  now: number,
 ): boolean => {
   try {
     const certificate = new X509Certificate(certificatePem);

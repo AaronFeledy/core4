@@ -55,7 +55,7 @@ test("pins both adoption helpers to the existing container rather than auto-crea
           Cmd: Schema.Array(Schema.String),
           HostConfig: Schema.Struct({
             VolumesFrom: Schema.Array(Schema.String),
-            Binds: Schema.optional(Schema.Array(Schema.String)),
+            Binds: Schema.optionalKey(Schema.Array(Schema.String)),
             NetworkMode: Schema.String,
           }),
         }),
@@ -70,7 +70,7 @@ test("pins both adoption helpers to the existing container rather than auto-crea
     return {
       volumesFrom: helper.HostConfig.VolumesFrom,
       ...Schema.decodeUnknownSync(
-        Schema.parseJson(Schema.Struct({ operation: Schema.String, root: Schema.String })),
+        Schema.fromJsonString(Schema.Struct({ operation: Schema.String, root: Schema.String })),
       )(helper.Cmd[3]),
     };
   });

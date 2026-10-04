@@ -33,7 +33,7 @@ import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
-const fixedDateTime = DateTime.unsafeMake("2026-06-22T00:00:00Z");
+const fixedDateTime = DateTime.makeUnsafe("2026-06-22T00:00:00Z");
 
 const metadata = {
   resolvedAt: fixedDateTime,
@@ -176,7 +176,7 @@ const matchingStoredSessions = (
 
 const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape => {
   let appliedPlan: AppPlan | undefined;
-  return {
+  return RuntimeProvider.of({
     ...provider,
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
       Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
@@ -209,7 +209,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
           }),
         ),
       ),
-  };
+  });
 };
 
 interface TrackingEngine {
@@ -222,7 +222,7 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
   const sessions = new Map<FileSyncSessionRef, FileSyncSessionSpec>();
   let activeCreates = 0;
   let maxConcurrentCreates = 0;
-  const engine: FileSyncEngineShape = {
+  const engine: FileSyncEngineShape = FileSyncEngine.of({
     id: "test",
     displayName: "Tracking File Sync",
     capabilities: {
@@ -234,21 +234,20 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
     },
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
-    createSession: (spec: FileSyncSessionSpec) =>
-      Effect.gen(function* () {
-        activeCreates += 1;
-        maxConcurrentCreates = Math.max(maxConcurrentCreates, activeCreates);
-        if (createDelayMs > 0) yield* Effect.sleep(`${createDelayMs} millis`);
-        const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
-        sessions.set(ref, spec);
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            sessions.delete(ref);
-          }),
-        );
-        activeCreates -= 1;
-        return ref;
-      }),
+    createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+      activeCreates += 1;
+      maxConcurrentCreates = Math.max(maxConcurrentCreates, activeCreates);
+      if (createDelayMs > 0) yield* Effect.sleep(`${createDelayMs} millis`);
+      const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+      sessions.set(ref, spec);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          sessions.delete(ref);
+        }),
+      );
+      activeCreates -= 1;
+      return ref;
+    }),
     flushSession: () => Effect.void,
     pauseSession: () => Effect.void,
     resumeSession: () => Effect.void,
@@ -258,7 +257,7 @@ const makeTrackingEngine = (createDelayMs = 0): TrackingEngine => {
       }),
     listSessions: (filter) => Effect.succeed(matchingStoredSessions(sessions, filter)),
     streamEvents: () => Stream.empty,
-  };
+  });
   return {
     sessions,
     get maxConcurrentCreates() {
@@ -280,15 +279,18 @@ const appLayer = (
     plugins: {
       policy: "bundled-only",
       layers: [
-        Layer.succeed(RuntimeProvider, fixtureProvider),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
-          capabilities: Effect.succeed(fixtureProvider.capabilities),
-          select: () => Effect.succeed(fixtureProvider),
-        }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-        Layer.succeed(FileSyncEngine, engine),
-        Layer.succeed(RouterService, TestRouterService),
+        Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
+            capabilities: Effect.succeed(fixtureProvider.capabilities),
+            select: () => Effect.succeed(fixtureProvider),
+          }),
+        ),
+        Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+        Layer.succeed(FileSyncEngine, FileSyncEngine.of(engine)),
+        Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       ],
     },
   });
@@ -366,27 +368,26 @@ describe("App handle managed lifecycle scopes", () => {
         },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
-        createSession: (spec: FileSyncSessionSpec) =>
-          Effect.gen(function* () {
-            createCalls += 1;
-            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
-            sessions.set(ref, {
-              ref,
-              app: spec.app,
-              service: spec.service,
-              mountKey: spec.mountKey,
-              spec,
-              status: "running",
-              lastUpdatedAt: fixedDateTime,
-            });
-            yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                createFinalizerCalls += 1;
-                sessions.delete(ref);
-              }),
-            );
-            return ref;
-          }),
+        createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+          createCalls += 1;
+          const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+          sessions.set(ref, {
+            ref,
+            app: spec.app,
+            service: spec.service,
+            mountKey: spec.mountKey,
+            spec,
+            status: "running",
+            lastUpdatedAt: fixedDateTime,
+          });
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              createFinalizerCalls += 1;
+              sessions.delete(ref);
+            }),
+          );
+          return ref;
+        }),
         flushSession: () => Effect.void,
         pauseSession: () => Effect.void,
         resumeSession: () => Effect.void,
@@ -486,16 +487,16 @@ describe("App handle managed lifecycle scopes", () => {
               hideSessions = true;
               const result =
                 method === "stop"
-                  ? yield* app.stop().pipe(Effect.either)
-                  : yield* app.destroy().pipe(Effect.either);
+                  ? yield* app.stop().pipe(Effect.result)
+                  : yield* app.destroy().pipe(Effect.result);
               return { result, sessions: tracking.sessions.size };
             }),
           ).pipe(Effect.provide(appLayer(engine, dir))),
         );
 
-        expect(insideScope.result._tag).toBe("Left");
-        if (insideScope.result._tag === "Left") {
-          expect(insideScope.result.left._tag).toBe("FileSyncStopError");
+        expect(insideScope.result._tag).toBe("Failure");
+        if (insideScope.result._tag === "Failure") {
+          expect(insideScope.result.failure._tag).toBe("FileSyncStopError");
         }
         expect(insideScope.sessions).toBe(1);
         expect(tracking.sessions.size).toBe(0);
@@ -511,7 +512,7 @@ describe("App handle managed lifecycle scopes", () => {
         destroy: (selector, options) =>
           Effect.sync(() => {
             destroys.push({ volumes: options.volumes, removeState: options.removeState });
-          }).pipe(Effect.zipRight(TestRuntimeProvider.destroy(selector, options))),
+          }).pipe(Effect.andThen(TestRuntimeProvider.destroy(selector, options))),
       };
       const secondStop = await Effect.runPromise(
         Effect.scoped(
@@ -519,13 +520,13 @@ describe("App handle managed lifecycle scopes", () => {
             const app = yield* resolveApp();
             yield* app.start();
             yield* app.stop();
-            return yield* app.stop().pipe(Effect.either);
+            return yield* app.stop().pipe(Effect.result);
           }),
         ).pipe(Effect.provide(appLayer(tracking.engine, dir, planWithFileSync(dir), provider))),
       );
 
-      expect(secondStop._tag).toBe("Left");
-      if (secondStop._tag === "Left") expect(secondStop.left._tag).toBe("FileSyncStopError");
+      expect(secondStop._tag).toBe("Failure");
+      if (secondStop._tag === "Failure") expect(secondStop.failure._tag).toBe("FileSyncStopError");
       expect(destroys).toEqual([{ volumes: false, removeState: false }]);
       expect(tracking.sessions.size).toBe(0);
     });
@@ -539,17 +540,16 @@ describe("App handle managed lifecycle scopes", () => {
         let finalizerCalls = 0;
         const provider: RuntimeProviderShape = {
           ...TestRuntimeProvider,
-          destroy: () =>
-            Effect.gen(function* () {
-              destroyCalls += 1;
-              return yield* Effect.fail(
-                new ProviderUnavailableError({
-                  providerId: TestRuntimeProvider.id,
-                  operation: "destroy",
-                  message: "stop failed",
-                }),
-              );
-            }),
+          destroy: Effect.fnUntraced(function* () {
+            destroyCalls += 1;
+            return yield* Effect.fail(
+              new ProviderUnavailableError({
+                providerId: TestRuntimeProvider.id,
+                operation: "destroy",
+                message: "stop failed",
+              }),
+            );
+          }),
         };
         const engine: FileSyncEngineShape = {
           id: "test",
@@ -563,18 +563,17 @@ describe("App handle managed lifecycle scopes", () => {
           },
           isAvailable: Effect.succeed(true),
           setup: () => Effect.void,
-          createSession: (spec: FileSyncSessionSpec) =>
-            Effect.gen(function* () {
-              const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
-              sessions.set(ref, spec);
-              yield* Effect.addFinalizer(() =>
-                Effect.sync(() => {
-                  finalizerCalls += 1;
-                  sessions.delete(ref);
-                }),
-              );
-              return ref;
-            }),
+          createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+            sessions.set(ref, spec);
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                finalizerCalls += 1;
+                sessions.delete(ref);
+              }),
+            );
+            return ref;
+          }),
           flushSession: () => Effect.void,
           pauseSession: () => Effect.void,
           resumeSession: () => Effect.void,
@@ -591,7 +590,7 @@ describe("App handle managed lifecycle scopes", () => {
             Effect.gen(function* () {
               const app = yield* resolveApp();
               yield* app.start();
-              const failed = yield* app[method]().pipe(Effect.either);
+              const failed = yield* app[method]().pipe(Effect.result);
               return {
                 destroyCalls,
                 failed: failed._tag,
@@ -604,7 +603,7 @@ describe("App handle managed lifecycle scopes", () => {
 
         expect(insideScope).toEqual({
           destroyCalls: 1,
-          failed: "Left",
+          failed: "Failure",
           finalizerCalls: 0,
           sessions: 1,
         });
@@ -640,21 +639,20 @@ describe("App handle managed lifecycle scopes", () => {
         },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
-        createSession: (spec: FileSyncSessionSpec) =>
-          Effect.gen(function* () {
-            createCalls += 1;
-            const ref = FileSyncSessionRef.make(
-              `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
-            );
-            sessions.set(ref, spec);
-            yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                finalizerCalls += 1;
-                sessions.delete(ref);
-              }),
-            );
-            return ref;
-          }),
+        createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+          createCalls += 1;
+          const ref = FileSyncSessionRef.make(
+            `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
+          );
+          sessions.set(ref, spec);
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              finalizerCalls += 1;
+              sessions.delete(ref);
+            }),
+          );
+          return ref;
+        }),
         flushSession: () => Effect.void,
         pauseSession: () => Effect.void,
         resumeSession: () => Effect.void,
@@ -727,27 +725,26 @@ describe("App handle managed lifecycle scopes", () => {
         },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
-        createSession: (spec: FileSyncSessionSpec) =>
-          Effect.gen(function* () {
-            createCalls += 1;
-            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
-            sessions.set(ref, {
-              ref,
-              app: spec.app,
-              service: spec.service,
-              mountKey: spec.mountKey,
-              spec,
-              status: "running",
-              lastUpdatedAt: fixedDateTime,
-            });
-            yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                finalizerCalls += 1;
-                sessions.delete(ref);
-              }),
-            );
-            return ref;
-          }),
+        createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+          createCalls += 1;
+          const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+          sessions.set(ref, {
+            ref,
+            app: spec.app,
+            service: spec.service,
+            mountKey: spec.mountKey,
+            spec,
+            status: "running",
+            lastUpdatedAt: fixedDateTime,
+          });
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              finalizerCalls += 1;
+              sessions.delete(ref);
+            }),
+          );
+          return ref;
+        }),
         flushSession: () => Effect.void,
         pauseSession: () => Effect.void,
         resumeSession: () => Effect.void,
@@ -796,28 +793,26 @@ describe("App handle managed lifecycle scopes", () => {
         },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
-        createSession: (spec: FileSyncSessionSpec) =>
-          Effect.gen(function* () {
-            createCalls += 1;
-            const ref = FileSyncSessionRef.make(
-              `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
-            );
-            sessions.set(ref, spec);
-            yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                finalizerCalls += 1;
-                sessions.delete(ref);
-              }),
-            );
-            return ref;
-          }),
-        flushSession: () =>
-          Effect.gen(function* () {
-            flushCalls += 1;
-            if (flushCalls === 2) {
-              return yield* Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }));
-            }
-          }),
+        createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+          createCalls += 1;
+          const ref = FileSyncSessionRef.make(
+            `${spec.app.id}-${spec.service}-${spec.mountKey}-${createCalls}`,
+          );
+          sessions.set(ref, spec);
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              finalizerCalls += 1;
+              sessions.delete(ref);
+            }),
+          );
+          return ref;
+        }),
+        flushSession: Effect.fnUntraced(function* () {
+          flushCalls += 1;
+          if (flushCalls === 2) {
+            return yield* Effect.fail(new FileSyncStartError({ engineId: "test", message: "sync failed" }));
+          }
+        }),
         pauseSession: () => Effect.void,
         resumeSession: () => Effect.void,
         terminateSession: (ref) =>
@@ -833,13 +828,13 @@ describe("App handle managed lifecycle scopes", () => {
           Effect.gen(function* () {
             const app = yield* resolveApp();
             yield* app.start();
-            const failedReuse = yield* app.start().pipe(Effect.either);
-            const blockedRetry = yield* app.start().pipe(Effect.either);
+            const failedReuse = yield* app.start().pipe(Effect.result);
+            const blockedRetry = yield* app.start().pipe(Effect.result);
             return {
               createCalls,
               failedReuse: failedReuse._tag,
               blockedRetry: blockedRetry._tag,
-              blockedMessage: blockedRetry._tag === "Left" ? blockedRetry.left.message : "",
+              blockedMessage: blockedRetry._tag === "Failure" ? blockedRetry.failure.message : "",
               finalizerCalls,
               flushCalls,
               sessions: sessions.size,
@@ -848,8 +843,8 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(engine, dir))),
       );
 
-      expect(insideScope.failedReuse).toBe("Left");
-      expect(insideScope.blockedRetry).toBe("Left");
+      expect(insideScope.failedReuse).toBe("Failure");
+      expect(insideScope.blockedRetry).toBe("Failure");
       expect(insideScope.blockedMessage).toContain("automatic recovery is not available");
       expect(insideScope.createCalls).toBe(1);
       expect(insideScope.flushCalls).toBe(2);
@@ -867,20 +862,19 @@ describe("App handle managed lifecycle scopes", () => {
       let finalizerCalls = 0;
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        apply: () =>
-          Effect.gen(function* () {
-            applyCalls += 1;
-            if (applyCalls === 2) {
-              return yield* Effect.fail(
-                new ProviderUnavailableError({
-                  providerId: TestRuntimeProvider.id,
-                  operation: "apply",
-                  message: "apply failed",
-                }),
-              );
-            }
-            return { changed: false };
-          }),
+        apply: Effect.fnUntraced(function* () {
+          applyCalls += 1;
+          if (applyCalls === 2) {
+            return yield* Effect.fail(
+              new ProviderUnavailableError({
+                providerId: TestRuntimeProvider.id,
+                operation: "apply",
+                message: "apply failed",
+              }),
+            );
+          }
+          return { changed: false };
+        }),
       };
       const engine: FileSyncEngineShape = {
         id: "test",
@@ -894,27 +888,26 @@ describe("App handle managed lifecycle scopes", () => {
         },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
-        createSession: (spec: FileSyncSessionSpec) =>
-          Effect.gen(function* () {
-            createCalls += 1;
-            const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
-            sessions.set(ref, {
-              ref,
-              app: spec.app,
-              service: spec.service,
-              mountKey: spec.mountKey,
-              spec,
-              status: "running",
-              lastUpdatedAt: fixedDateTime,
-            });
-            yield* Effect.addFinalizer(() =>
-              Effect.sync(() => {
-                finalizerCalls += 1;
-                sessions.delete(ref);
-              }),
-            );
-            return ref;
-          }),
+        createSession: Effect.fnUntraced(function* (spec: FileSyncSessionSpec) {
+          createCalls += 1;
+          const ref = FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
+          sessions.set(ref, {
+            ref,
+            app: spec.app,
+            service: spec.service,
+            mountKey: spec.mountKey,
+            spec,
+            status: "running",
+            lastUpdatedAt: fixedDateTime,
+          });
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              finalizerCalls += 1;
+              sessions.delete(ref);
+            }),
+          );
+          return ref;
+        }),
         flushSession: () => Effect.void,
         pauseSession: () => Effect.void,
         resumeSession: () => Effect.void,
@@ -931,14 +924,14 @@ describe("App handle managed lifecycle scopes", () => {
           Effect.gen(function* () {
             const app = yield* resolveApp();
             yield* app.start();
-            const failedReuse = yield* app.start().pipe(Effect.either);
-            const blockedRetry = yield* app.start().pipe(Effect.either);
+            const failedReuse = yield* app.start().pipe(Effect.result);
+            const blockedRetry = yield* app.start().pipe(Effect.result);
             return {
               applyCalls,
               createCalls,
               failedReuse: failedReuse._tag,
               blockedRetry: blockedRetry._tag,
-              blockedMessage: blockedRetry._tag === "Left" ? blockedRetry.left.message : "",
+              blockedMessage: blockedRetry._tag === "Failure" ? blockedRetry.failure.message : "",
               finalizerCalls,
               sessions: sessions.size,
             };
@@ -949,8 +942,8 @@ describe("App handle managed lifecycle scopes", () => {
       expect(insideScope).toEqual({
         applyCalls: 2,
         createCalls: 1,
-        failedReuse: "Left",
-        blockedRetry: "Left",
+        failedReuse: "Failure",
+        blockedRetry: "Failure",
         blockedMessage: expect.stringContaining("automatic recovery is not available"),
         finalizerCalls: 0,
         sessions: 1,
@@ -1089,15 +1082,21 @@ describe("App handle managed lifecycle scopes", () => {
               plugins: {
                 policy: "bundled-only",
                 layers: [
-                  Layer.succeed(RuntimeProvider, fixtureProvider),
-                  Layer.succeed(RuntimeProviderRegistry, {
-                    list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
-                    capabilities: Effect.succeed(fixtureProvider.capabilities),
-                    select: () => Effect.succeed(fixtureProvider),
-                  }),
-                  Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
-                  Layer.succeed(FileSyncEngine, tracking.engine),
-                  Layer.succeed(RouterService, TestRouterService),
+                  Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
+                  Layer.succeed(
+                    RuntimeProviderRegistry,
+                    RuntimeProviderRegistry.of({
+                      list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
+                      capabilities: Effect.succeed(fixtureProvider.capabilities),
+                      select: () => Effect.succeed(fixtureProvider),
+                    }),
+                  ),
+                  Layer.succeed(
+                    AppPlanner,
+                    AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                  ),
+                  Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
+                  Layer.succeed(RouterService, RouterService.of(TestRouterService)),
                 ],
               },
             });

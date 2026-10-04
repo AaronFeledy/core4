@@ -17,10 +17,13 @@ import {
 const runWithDefault = (): Promise<McpDoctorResult> =>
   Effect.runPromise(mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)));
 
-const identityRedactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(identityRedactor),
-});
+const identityRedactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(identityRedactor),
+  }),
+);
 
 describe("mcpDoctor", () => {
   test("reports a passing MCP check when allowlist, catalog, and canary round-trip all succeed", async () => {

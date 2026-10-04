@@ -22,6 +22,7 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
+import { validationIssue } from "@lando/sdk/schema";
 
 const CERTS_FEATURE_ID = "lando.certs" as const;
 
@@ -50,14 +51,14 @@ interface ResolveCertsFeatureInput {
         NoCertificateAuthorityError | AmbiguousCertificateAuthoritiesError | PluginLoadError
       >
     | undefined;
-  readonly fileSystem?: Pick<Context.Tag.Service<typeof FileSystem>, "stat" | "readFile"> | undefined;
+  readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
 }
 
 const validationError = (input: ResolveCertsFeatureInput, message: string): LandofileValidationError =>
   new LandofileValidationError({
     message: `services.${input.serviceName}.certs ${message}`,
     file: `${input.appRoot}/.lando.yml`,
-    issues: [`services.${input.serviceName}.certs`],
+    issues: [validationIssue(["services", input.serviceName, "certs"], message)],
   });
 
 const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;
@@ -115,50 +116,48 @@ const resolveAuthoredPath = (
     }),
   );
 
-const issueCertificate = (
+const issueCertificate = Effect.fn("CertificateAuthority.issue")(function* (
   input: ResolveCertsFeatureInput,
-): Effect.Effect<CertsFeatureConfig, LandofileValidationError> =>
-  Effect.gen(function* () {
-    const resolveAuthority = input.resolveCertificateAuthority;
-    if (resolveAuthority === undefined) {
-      return yield* Effect.fail(
-        validationError(input, `requires an active certificate authority. ${CA_REMEDIATION}`),
-      );
-    }
-    const ca = yield* resolveAuthority.pipe(
+): Effect.fn.Return<CertsFeatureConfig, LandofileValidationError> {
+  const resolveAuthority = input.resolveCertificateAuthority;
+  if (resolveAuthority === undefined) {
+    return yield* Effect.fail(
+      validationError(input, `requires an active certificate authority. ${CA_REMEDIATION}`),
+    );
+  }
+  const ca = yield* resolveAuthority.pipe(
+    Effect.mapError((cause) =>
+      validationError(
+        input,
+        `${cause.message} ${"remediation" in cause ? cause.remediation : CA_REMEDIATION}`,
+      ),
+    ),
+  );
+  const cn = internalAlias(input.serviceName, input.appName);
+  const sans = certificateSans(input);
+  const issued = yield* ca
+    .issueCert({ cn, sans })
+    .pipe(
       Effect.mapError((cause) =>
-        validationError(
-          input,
-          `${cause.message} ${"remediation" in cause ? cause.remediation : CA_REMEDIATION}`,
-        ),
+        validationError(input, `could not be issued: ${cause.message}. ${CA_REMEDIATION}`),
       ),
     );
-    const cn = internalAlias(input.serviceName, input.appName);
-    const sans = certificateSans(input);
-    const issued = yield* ca
-      .issueCert({ cn, sans })
-      .pipe(
-        Effect.mapError((cause) =>
-          validationError(input, `could not be issued: ${cause.message}. ${CA_REMEDIATION}`),
-        ),
-      );
-    return { certPath: issued.certPath, keyPath: issued.keyPath, cn, sans, caId: ca.id };
-  });
+  return { certPath: issued.certPath, keyPath: issued.keyPath, cn, sans, caId: ca.id };
+});
 
-export const resolveCertsFeature = (
+export const resolveCertsFeature = Effect.fnUntraced(function* (
   input: ResolveCertsFeatureInput,
-): Effect.Effect<
+): Effect.fn.Return<
   { readonly id: typeof CERTS_FEATURE_ID; readonly config: CertsFeatureConfig },
   LandofileValidationError
-> =>
-  Effect.gen(function* () {
-    const { certs } = input;
-    if (certs === undefined || certs === false) return { id: CERTS_FEATURE_ID, config: {} };
-    if (certs === true) return { id: CERTS_FEATURE_ID, config: yield* issueCertificate(input) };
+> {
+  const { certs } = input;
+  if (certs === undefined || certs === false) return { id: CERTS_FEATURE_ID, config: {} };
+  if (certs === true) return { id: CERTS_FEATURE_ID, config: yield* issueCertificate(input) };
 
-    const authoredCert = typeof certs === "string" ? certs : certs.cert;
-    const authoredKey = typeof certs === "string" ? undefined : certs.key;
-    const certPath = yield* resolveAuthoredPath(input, authoredCert);
-    const keyPath = authoredKey === undefined ? undefined : yield* resolveAuthoredPath(input, authoredKey);
-    return { id: CERTS_FEATURE_ID, config: { certPath, ...(keyPath === undefined ? {} : { keyPath }) } };
-  });
+  const authoredCert = typeof certs === "string" ? certs : certs.cert;
+  const authoredKey = typeof certs === "string" ? undefined : certs.key;
+  const certPath = yield* resolveAuthoredPath(input, authoredCert);
+  const keyPath = authoredKey === undefined ? undefined : yield* resolveAuthoredPath(input, authoredKey);
+  return { id: CERTS_FEATURE_ID, config: { certPath, ...(keyPath === undefined ? {} : { keyPath }) } };
+});

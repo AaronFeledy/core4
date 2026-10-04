@@ -23,17 +23,16 @@ export type StageStreamInput<E, R> = {
   readonly expectedSizeBytes?: number;
 };
 
-export const stageVerifiedStream = <E, R>(
+export const stageVerifiedStream = Effect.fnUntraced(function* <E, R>(
   input: StageStreamInput<E, R>,
-): Effect.Effect<StagedStream, E | VerifiedStreamError, Scope.Scope | R> =>
-  Effect.gen(function* () {
-    const path = join(input.scratchDir, `.lando-stage-${input.prefix}-${randomUUID()}`);
-    yield* Effect.addFinalizer(() => Effect.promise(() => unlink(path).catch(() => undefined)));
-    const verified = yield* persistVerifiedStream({
-      body: input.body,
-      destinationPath: path,
-      ...(input.expectedSha256 === undefined ? {} : { expectedSha256: input.expectedSha256 }),
-      ...(input.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: input.expectedSizeBytes }),
-    });
-    return { path, verified };
+): Effect.fn.Return<StagedStream, E | VerifiedStreamError, Scope.Scope | R> {
+  const path = join(input.scratchDir, `.lando-stage-${input.prefix}-${randomUUID()}`);
+  yield* Effect.addFinalizer(() => Effect.promise(() => unlink(path).catch(() => undefined)));
+  const verified = yield* persistVerifiedStream({
+    body: input.body,
+    destinationPath: path,
+    ...(input.expectedSha256 === undefined ? {} : { expectedSha256: input.expectedSha256 }),
+    ...(input.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: input.expectedSizeBytes }),
   });
+  return { path, verified };
+});

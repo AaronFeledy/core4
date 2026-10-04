@@ -5,14 +5,8 @@ import { StreamFrame } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
 
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
-import {
-  makeJsonRenderer,
-  makeJsonRendererServiceLive,
-  makePlainRenderer,
-  makePlainRendererServiceLive,
-  makeVerboseRenderer,
-  makeVerboseRendererServiceLive,
-} from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { makeJsonRenderer, makePlainRenderer, makeVerboseRenderer } from "@lando/renderer/runtime";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const landoService = (io: RendererIO) =>
@@ -182,25 +176,25 @@ describe("Renderer message contract: verbose (stdout human + payload trace)", ()
 });
 
 describe("Renderer service tag exposure", () => {
-  test("makePlainRendererServiceLive provides Renderer with a working message contract", async () => {
+  test("RendererRuntime.layerPlainService provides Renderer with a working message contract", async () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const renderer = yield* Renderer;
       expect(renderer.id).toBe("plain");
       yield* renderer.message.error("nope", "do x");
     });
-    await Effect.runPromise(program.pipe(Effect.provide(makePlainRendererServiceLive(io))));
+    await Effect.runPromise(program.pipe(Effect.provide(RendererRuntime.layerPlainService(io))));
     expect(io.stdoutLines()).toEqual(["✗ nope", "  ↳ do x"]);
   });
 
-  test("makeJsonRendererServiceLive provides Renderer that writes to stderr", async () => {
+  test("RendererRuntime.layerJsonService provides Renderer that writes to stderr", async () => {
     const io = createBufferedRendererIO();
     const program = Effect.gen(function* () {
       const renderer = yield* Renderer;
       expect(renderer.id).toBe("json");
       yield* renderer.message.info("hi");
     });
-    await Effect.runPromise(program.pipe(Effect.provide(makeJsonRendererServiceLive(io))));
+    await Effect.runPromise(program.pipe(Effect.provide(RendererRuntime.layerJsonService(io))));
     expect(io.stdout()).toBe("");
     expect(io.stderrLines().length).toBe(1);
   });
@@ -211,7 +205,7 @@ describe("Renderer service tag exposure", () => {
     const verboseId = await Effect.runPromise(
       Effect.gen(function* () {
         return (yield* Renderer).id;
-      }).pipe(Effect.provide(makeVerboseRendererServiceLive(verboseIo))),
+      }).pipe(Effect.provide(RendererRuntime.layerVerboseService(verboseIo))),
     );
     const landoId = await Effect.runPromise(
       Effect.gen(function* () {

@@ -48,7 +48,7 @@ export const containerDiedEventPayloadsFor = (
 ): Effect.Effect<ReadonlyArray<unknown>> => {
   if (payloads !== undefined) return Effect.succeed(payloads);
   const candidate = provider.getContainerDiedEvents;
-  if (candidate !== undefined) return candidate.pipe(Effect.catchAll(() => Effect.succeed([])));
+  if (candidate !== undefined) return candidate.pipe(Effect.catch(() => Effect.succeed([])));
   return Effect.succeed([]);
 };
 

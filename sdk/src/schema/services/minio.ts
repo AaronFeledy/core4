@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,8 +7,8 @@ import { ServiceConfig } from "../landofile.ts";
 // MinIO catalog service authoring contract
 // ============================================================================
 
-export const MinIOServiceConfig = Schema.extend(
-  ServiceConfig.pick(
+export const MinIOServiceConfig = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
     "image",
     "port",
     "user",
@@ -29,15 +30,18 @@ export const MinIOServiceConfig = Schema.extend(
     "networks",
     "security",
     "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(Schema.Literal("minio")).annotations({
-      description: "MinIO catalog service type.",
+  ]),
+)
+  .pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Literal("minio")).annotate({
+        description: "MinIO catalog service type.",
+      }),
     }),
-  }),
-).annotations({
-  identifier: "MinIOServiceConfig",
-  title: "MinIO Service Config",
-  description: "Landofile configuration accepted by the MinIO catalog service.",
-});
+  )
+  .annotate({
+    identifier: "MinIOServiceConfig",
+    title: "MinIO Service Config",
+    description: "Landofile configuration accepted by the MinIO catalog service.",
+  });
 export type MinIOServiceConfig = typeof MinIOServiceConfig.Type;

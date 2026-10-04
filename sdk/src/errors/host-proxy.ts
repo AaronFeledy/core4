@@ -35,7 +35,7 @@ export class HostProxyAuthenticationError extends Schema.TaggedError<HostProxyAu
   "HostProxyAuthenticationError",
   {
     message: Schema.String,
-    reason: Schema.Literal("missing", "stale", "cross-app"),
+    reason: Schema.Literals(["missing", "stale", "cross-app"]),
     remediation: Schema.String,
   },
 ) {}

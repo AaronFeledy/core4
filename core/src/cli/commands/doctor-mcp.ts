@@ -19,16 +19,17 @@
  * All context values are routed through the `RedactionService` redactor, and no
  * raw tool payload (including the canary secret) is ever placed in the check.
  */
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Predicate, Schema } from "effect";
 
-import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import * as EnvSecretStore from "@lando/engine/services/secret-store";
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
-import { type McpDispatchDeps, type McpRunInput, dispatchTool } from "@lando/mcp/dispatch";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry } from "@lando/mcp/registry";
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
-import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
+import { startStdioClient } from "@lando/mcp/testing";
+import { RedactionService } from "@lando/redaction/service";
+import { serviceLayer } from "../../mcp-command-executor";
 import type { LandoCommandSpec } from "../spec/command-base";
 import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -63,20 +64,10 @@ const canarySpec: LandoCommandSpec = {
   bootstrap: "minimal",
   resultSchema: Schema.Struct({ token: Schema.String }),
   run: () => Effect.succeed({ token: MCP_DOCTOR_CANARY_SECRET }),
+  redactionTokens: () => [MCP_DOCTOR_CANARY_SECRET],
 };
 
 const canaryEntry: McpCommandEntry = { spec: canarySpec };
-
-const canaryExecute: McpExecute = (entry, runInput) =>
-  entry.spec.run(runInput).pipe(
-    Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
-    Effect.catchAll((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
-  ) as Effect.Effect<CommandResultOutcome, never>;
-
-type McpExecute = (
-  entry: McpCommandEntry,
-  runInput: McpRunInput,
-) => Effect.Effect<CommandResultOutcome, never>;
 
 export const isMcpDefaultAllowlistFresh = (ids: ReadonlyArray<string>): boolean => {
   const expected = computeMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST.map((id) => ({ id, mcpAllowed: true })));
@@ -126,82 +117,99 @@ const mcpDoctorSolutions = (signals: McpDoctorSignals): ReadonlyArray<DoctorSolu
  * round-trips with its secret redacted; otherwise a `fail` check carrying the
  * failing signals and a remediation.
  */
-export const mcpDoctor = (): Effect.Effect<McpDoctorResult, never, RedactionService> =>
-  Effect.gen(function* () {
-    const redaction = yield* RedactionService;
-    const redactor = yield* redaction.forProfile("secrets", {
-      redactionTokens: [MCP_DOCTOR_CANARY_SECRET],
-      sourceEnv: process.env,
-    });
+export const mcpDoctor = Effect.fn("McpDoctor.check")(function* (): Effect.fn.Return<
+  McpDoctorResult,
+  never,
+  RedactionService
+> {
+  const redaction = yield* RedactionService;
+  const redactor = yield* redaction.forProfile("secrets", {
+    redactionTokens: [MCP_DOCTOR_CANARY_SECRET],
+    sourceEnv: process.env,
+  });
 
-    const allowlistFreshResult = yield* Effect.either(
-      Effect.try(() => isMcpDefaultAllowlistFresh(MCP_DEFAULT_ALLOWLIST)),
-    );
-    const allowlistFresh = allowlistFreshResult._tag === "Right" && allowlistFreshResult.right;
+  const allowlistFreshResult = yield* Effect.result(
+    Effect.try(() => isMcpDefaultAllowlistFresh(MCP_DEFAULT_ALLOWLIST)),
+  );
+  const allowlistFresh = allowlistFreshResult._tag === "Success" && allowlistFreshResult.success;
 
-    const catalog = yield* Effect.either(
-      Effect.try(() =>
-        buildCatalog({
+  const catalog = yield* Effect.result(
+    Effect.try(() =>
+      buildCatalog({
+        commandEntries: [canaryEntry],
+        effective: computeEffectiveAllowlist({ defaults: [CANARY_TOOL_ID] }),
+      }),
+    ),
+  );
+  const catalogTools = catalog._tag === "Success" ? catalog.success.tools.length : 0;
+  const catalogGenerated =
+    catalog._tag === "Success" &&
+    catalogTools > 0 &&
+    Predicate.isObject(catalog.success.tools[0]?.inputSchema);
+
+  const dispatch = yield* Effect.result(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const service = yield* McpService;
+        const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
+        const response = yield* client.request("tools/call", { name: CANARY_TOOL_ID });
+        yield* client.close;
+        yield* Fiber.join(client.fiber);
+        return response;
+      }),
+    ).pipe(
+      Effect.provide(serviceLayer),
+      Effect.provideService(
+        McpRuntimeConfig,
+        McpRuntimeConfig.of({
           commandEntries: [canaryEntry],
-          effective: computeEffectiveAllowlist({ defaults: [CANARY_TOOL_ID] }),
+          defaultAllowlist: [CANARY_TOOL_ID],
+          runtimeLayer: Layer.succeed(RedactionService, redaction),
         }),
       ),
-    );
-    const catalogTools = catalog._tag === "Right" ? catalog.right.tools.length : 0;
-    const catalogGenerated =
-      catalog._tag === "Right" &&
-      catalogTools > 0 &&
-      typeof catalog.right.tools[0]?.inputSchema === "object" &&
-      catalog.right.tools[0]?.inputSchema !== null;
+      Effect.timeout("10 seconds"),
+    ),
+  );
+  const toolResult = dispatch._tag === "Success" ? dispatch.success.result : undefined;
+  const structured = Predicate.isObject(toolResult) ? toolResult.structuredContent : undefined;
+  const canaryRoundTrip = Predicate.isObject(structured) && structured.ok === true;
+  const envelopeText = dispatch._tag === "Success" ? JSON.stringify(dispatch.success) : "";
+  const canaryRedacted = canaryRoundTrip && !envelopeText.includes(MCP_DOCTOR_CANARY_SECRET);
+  const canaryError =
+    dispatch._tag === "Failure" ? redactor.redactString(dispatch.failure.message) : undefined;
 
-    const deps: McpDispatchDeps = {
-      registry: new Map([[CANARY_TOOL_ID, canaryEntry]]),
-      effective: new Set([CANARY_TOOL_ID]),
-      allowlistSource: "doctor-canary",
-      redactor,
-      execute: canaryExecute,
-    };
-    const dispatch = yield* Effect.either(dispatchTool({ toolId: CANARY_TOOL_ID }, deps));
-    const canaryRoundTrip = dispatch._tag === "Right" && dispatch.right.ok === true;
-    const envelopeText = dispatch._tag === "Right" ? JSON.stringify(dispatch.right.envelope) : "";
-    const canaryRedacted = canaryRoundTrip && !envelopeText.includes(MCP_DOCTOR_CANARY_SECRET);
-    const canaryError =
-      dispatch._tag === "Left"
-        ? redactor.redactString(dispatch.left.message ?? dispatch.left._tag)
-        : undefined;
+  const passed = allowlistFresh && catalogGenerated && canaryRoundTrip && canaryRedacted;
 
-    const passed = allowlistFresh && catalogGenerated && canaryRoundTrip && canaryRedacted;
+  const context: Record<string, string> = {
+    allowlistFresh: redactor.redactString(String(allowlistFresh)),
+    allowlistSize: redactor.redactString(String(MCP_DEFAULT_ALLOWLIST.length)),
+    catalogGenerated: redactor.redactString(String(catalogGenerated)),
+    catalogTools: redactor.redactString(String(catalogTools)),
+    canaryRoundTrip: redactor.redactString(String(canaryRoundTrip)),
+    canaryRedacted: redactor.redactString(String(canaryRedacted)),
+  };
+  if (allowlistFreshResult._tag === "Failure")
+    context.allowlistError = redactor.redactString(String(allowlistFreshResult.failure));
+  if (canaryError !== undefined) context.canaryError = canaryError;
 
-    const context: Record<string, string> = {
-      allowlistFresh: redactor.redactString(String(allowlistFresh)),
-      allowlistSize: redactor.redactString(String(MCP_DEFAULT_ALLOWLIST.length)),
-      catalogGenerated: redactor.redactString(String(catalogGenerated)),
-      catalogTools: redactor.redactString(String(catalogTools)),
-      canaryRoundTrip: redactor.redactString(String(canaryRoundTrip)),
-      canaryRedacted: redactor.redactString(String(canaryRedacted)),
-    };
-    if (allowlistFreshResult._tag === "Left")
-      context.allowlistError = redactor.redactString(String(allowlistFreshResult.left));
-    if (canaryError !== undefined) context.canaryError = canaryError;
-
-    const check: McpDoctorCheck = {
-      name: "mcp",
-      status: passed ? "pass" : "fail",
-      severity: passed ? "info" : "error",
-      context,
-      solutions: passed
-        ? []
-        : mcpDoctorSolutions({ allowlistFresh, catalogGenerated, canaryRoundTrip, canaryRedacted }),
-    };
-    return { checks: [check] };
-  });
+  const check: McpDoctorCheck = {
+    name: "mcp",
+    status: passed ? "pass" : "fail",
+    severity: passed ? "info" : "error",
+    context,
+    solutions: passed
+      ? []
+      : mcpDoctorSolutions({ allowlistFresh, catalogGenerated, canaryRoundTrip, canaryRedacted }),
+  };
+  return { checks: [check] };
+});
 
 /**
  * Default layer for {@link mcpDoctor}: provides `RedactionService` from the
  * env-backed `SecretStore`, so the check needs no ambient services beyond it.
  */
-export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionServiceLive.pipe(
-  Layer.provide(SecretStoreLive),
+export const DefaultMcpDoctorLayer: Layer.Layer<RedactionService, never, never> = RedactionService.layer.pipe(
+  Layer.provide(EnvSecretStore.layer),
 );
 
 const renderCheck = (check: McpDoctorCheck): ReadonlyArray<string> => {

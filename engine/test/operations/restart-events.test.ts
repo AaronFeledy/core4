@@ -102,7 +102,7 @@ describe("restart lifecycle brackets", () => {
     const operation = restartApp({}, target, {
       scope,
       onStopped: Deferred.succeed(callbackEntered, undefined).pipe(
-        Effect.zipRight(Deferred.await(releaseCallback)),
+        Effect.andThen(Deferred.await(releaseCallback)),
       ),
     }).pipe(Effect.provideService(ToolingEngine, recordingEngine([])), Effect.provide(harness.layer));
     const restart = Effect.runFork(operation);

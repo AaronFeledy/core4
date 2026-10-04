@@ -1,5 +1,4 @@
-import { HttpRequestError } from "@lando/sdk/errors";
-import type { HttpRequest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import type { DirectHttpTransport } from "./direct-http.ts";
 import { type ResolvedNetworkTrust, fetchInitForNetwork, usesDirectEndpoint } from "./network-trust.ts";
 
@@ -8,20 +7,34 @@ export interface HttpTransports {
   readonly direct: DirectHttpTransport;
 }
 
+class RedirectError extends Schema.TaggedError<RedirectError>()("RedirectError", {
+  message: Schema.String,
+  urlOrigin: Schema.String,
+}) {}
+
 interface RequestNetwork {
   readonly transports: HttpTransports;
   readonly trust: ResolvedNetworkTrust | undefined;
   readonly systemCaPems: ReadonlyArray<string>;
 }
 
+export interface NetworkRequest {
+  readonly url: string;
+  readonly method?: string;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly body?: RequestInit["body"] | undefined;
+  readonly redirect?: "follow" | "manual" | "error";
+}
+
 export const requestWithNetworkTrust = async (
-  request: HttpRequest,
+  request: NetworkRequest,
   network: RequestNetwork,
   signal: AbortSignal,
 ): Promise<Response> => {
   let url = new URL(request.url);
   let method = request.method ?? "GET";
-  const headers = new Headers(request.headers?.map(({ name, value }) => [name, value]));
+  const headers = new Headers(request.headers);
+  let body = request.body;
   const { trust, transports, systemCaPems } = network;
   const startsDirect = usesDirectEndpoint(url, trust);
   const ca =
@@ -35,12 +48,13 @@ export const requestWithNetworkTrust = async (
     signal.throwIfAborted();
     const response =
       startsDirect && usesDirectEndpoint(url, trust)
-        ? await transports.direct(url, { method, headers, signal, ca })
+        ? await transports.direct(url, { method, headers, signal, ca, body })
         : await transports.fetch(url.href, {
             method,
             headers,
             signal,
             redirect: "manual",
+            body,
             ...(trust === undefined ? {} : fetchInitForNetwork(url.href, trust, systemCaPems)),
           });
     const location = response.headers.get("location");
@@ -53,7 +67,7 @@ export const requestWithNetworkTrust = async (
     }
     await response.body?.cancel();
     if (request.redirect === "error" || redirects === 20) {
-      throw new HttpRequestError({
+      throw new RedirectError({
         message: request.redirect === "error" ? "redirect forbidden by request policy" : "too many redirects",
         urlOrigin: url.origin,
       });
@@ -64,7 +78,7 @@ export const requestWithNetworkTrust = async (
       next.username !== "" ||
       next.password !== ""
     ) {
-      throw new HttpRequestError({ message: "unsupported redirect target", urlOrigin: url.origin });
+      throw new RedirectError({ message: "unsupported redirect target", urlOrigin: url.origin });
     }
     headers.delete("host");
     headers.delete("proxy-authorization");
@@ -78,6 +92,7 @@ export const requestWithNetworkTrust = async (
       (response.status === 303 && method !== "HEAD" && method !== "GET")
     ) {
       method = "GET";
+      body = undefined;
       for (const name of [
         "content-length",
         "content-type",

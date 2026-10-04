@@ -141,13 +141,13 @@ const loadAcquisitionState: Effect.Effect<AcquisitionState | undefined> = Effect
   const resolved = makeLandoPaths();
   const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
   const text = yield* Effect.tryPromise(() => readFile(acquisitionStateFile(paths), "utf8")).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
   if (text === undefined) return undefined;
   return yield* Effect.try({
     try: () => Schema.decodeUnknownSync(AcquisitionState)(JSON.parse(text)),
     catch: (error) => error,
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  }).pipe(Effect.catch(() => Effect.succeed(undefined)));
 });
 
 const toPublishState = (state: AcquisitionState): TraefikPublishState => ({

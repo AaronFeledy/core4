@@ -41,12 +41,12 @@ describe.serial("live start scanner", () => {
               // Then: the scanner called exactly the published authority and start succeeded.
               expect(cli.exitCode).toBe(0);
               const json = cli.stdout.split("\n").find((line) => line.startsWith('{"_tag":"result"'));
-              const result = Schema.decodeUnknownSync(Schema.parseJson(Schema.Struct({ envelope })))(
+              const result = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ envelope })))(
                 json,
               ).envelope;
               expect(result.ok).toBe(true);
               const url = result.result.servicesStarted[0]?.endpoints[0];
-              if (url === undefined) return yield* Effect.dieMessage("start published no URL");
+              if (url === undefined) return yield* Effect.die(new Error("start published no URL"));
               const request = yield* recordedRequest(fixture.root);
               expect(request).toEqual({ host: new URL(url).host, path, method: "GET" });
               const warningLine = cli.stdout
@@ -54,7 +54,8 @@ describe.serial("live start scanner", () => {
                 .find((line) => line.startsWith('{"_tag":"event","event":"message.warn"'));
               expect(warningLine !== undefined).toBe(path === "/fail");
               if (warningLine !== undefined) {
-                const body = Schema.decodeUnknownSync(Schema.parseJson(warning))(warningLine).payload.body;
+                const body = Schema.decodeUnknownSync(Schema.fromJsonString(warning))(warningLine).payload
+                  .body;
                 expect(body).toContain(`${url}/fail`);
                 expect(body).toContain("503");
               }
@@ -97,13 +98,14 @@ describe.serial("live start scanner", () => {
             );
             expect(yield* Effect.promise(() => independent.text())).toBe("published-responder");
             // When: interrupt only after the container observes the in-flight scanner GET.
-            const exit = yield* Fiber.interrupt(start);
+            yield* Fiber.interrupt(start);
+            const exit = yield* Fiber.await(start);
             // Then: interruption propagates rather than becoming a successful warning.
-            expect(Exit.isInterrupted(exit)).toBe(true);
+            expect(Exit.hasInterrupts(exit)).toBe(true);
             yield* closed.pipe(Effect.timeout("5 seconds"));
             console.log(
               "SCANNER_INTERRUPTED",
-              JSON.stringify({ request, interrupted: Exit.isInterrupted(exit), streamClosed: true }),
+              JSON.stringify({ request, interrupted: Exit.hasInterrupts(exit), streamClosed: true }),
             );
           }),
         ).pipe(Effect.timeout("120 seconds")),

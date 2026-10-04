@@ -1,27 +1,33 @@
-import { ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Effect, SchemaTransformation } from "effect";
+import { Schema } from "effect";
 
 import { parseComposeDuration } from "./compose-duration.ts";
 import { CommandSpec } from "./primitives.ts";
 
-const ComposeTest = Schema.Union(Schema.String, Schema.Array(Schema.String));
+const ComposeTest = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
+
+// JSON Schema publishes the encoded side, so both sides of HealthcheckField carry the description.
+const HEALTHCHECK_FIELD_DESCRIPTION =
+  "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.";
 
 const ComposeHealthcheckAccepted = Schema.Struct({
-  kind: Schema.optional(Schema.Literal("command", "http", "tcp", "none")),
-  command: Schema.optional(CommandSpec),
-  url: Schema.optional(Schema.String),
-  port: Schema.optional(Schema.Number),
-  intervalSeconds: Schema.optional(Schema.Number),
-  timeoutSeconds: Schema.optional(Schema.Number),
-  retries: Schema.optional(Schema.Union(Schema.Number, Schema.String)),
-  startPeriodSeconds: Schema.optional(Schema.Number),
-  startInterval: Schema.optional(Schema.String),
-  test: Schema.optional(ComposeTest),
-  disable: Schema.optional(Schema.Union(Schema.Boolean, Schema.String)),
-  interval: Schema.optional(Schema.String),
-  timeout: Schema.optional(Schema.String),
-  start_period: Schema.optional(Schema.String),
-  start_interval: Schema.optional(Schema.String),
-});
+  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
+  command: Schema.optionalKey(CommandSpec),
+  url: Schema.optionalKey(Schema.String),
+  port: Schema.optionalKey(Schema.Number),
+  intervalSeconds: Schema.optionalKey(Schema.Number),
+  timeoutSeconds: Schema.optionalKey(Schema.Number),
+  retries: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
+  startPeriodSeconds: Schema.optionalKey(Schema.Number),
+  startInterval: Schema.optionalKey(Schema.String),
+  test: Schema.optionalKey(ComposeTest),
+  disable: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.String])),
+  interval: Schema.optionalKey(Schema.String),
+  timeout: Schema.optionalKey(Schema.String),
+  start_period: Schema.optionalKey(Schema.String),
+  start_interval: Schema.optionalKey(Schema.String),
+}).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });
 
 /**
  * Canonical Lando healthcheck fields, re-exported by `landofile.ts` as the
@@ -29,20 +35,19 @@ const ComposeHealthcheckAccepted = Schema.Struct({
  * can extend it without an import cycle back through `landofile.ts`.
  */
 export const HealthcheckCanonicalBase = Schema.Struct({
-  kind: Schema.optional(Schema.Literal("command", "http", "tcp", "none")),
-  command: Schema.optional(CommandSpec),
-  url: Schema.optional(Schema.String),
-  port: Schema.optional(Schema.Number),
-  intervalSeconds: Schema.optional(Schema.Number),
-  timeoutSeconds: Schema.optional(Schema.Number),
-  retries: Schema.optional(Schema.Number),
-  startPeriodSeconds: Schema.optional(Schema.Number),
+  kind: Schema.optionalKey(Schema.Literals(["command", "http", "tcp", "none"])),
+  command: Schema.optionalKey(CommandSpec),
+  url: Schema.optionalKey(Schema.String),
+  port: Schema.optionalKey(Schema.Number),
+  intervalSeconds: Schema.optionalKey(Schema.Number),
+  timeoutSeconds: Schema.optionalKey(Schema.Number),
+  retries: Schema.optionalKey(Schema.Number),
+  startPeriodSeconds: Schema.optionalKey(Schema.Number),
 });
 
-const ComposeHealthcheckCanonical = Schema.extend(
-  HealthcheckCanonicalBase,
-  Schema.Struct({
-    startInterval: Schema.optional(Schema.String).annotations({
+const ComposeHealthcheckCanonical = HealthcheckCanonicalBase.pipe(
+  Schema.fieldsAssign({
+    startInterval: Schema.optionalKey(Schema.String).annotate({
       description: "Raw Compose start_interval duration preserved losslessly for runtime extensions.",
     }),
   }),
@@ -62,44 +67,48 @@ const normalizeTest = (test: AcceptedHealthcheck["test"]): NormalizedTest => {
   switch (marker) {
     case "NONE":
       if (test.length !== 1) {
-        throw new ParseResult.Type(
-          ComposeTest.ast,
+        throw new SchemaIssue.InvalidValue(
+          { message: 'Landofile service healthcheck.test marker "NONE" must be the only array entry.' },
           test,
-          'Landofile service healthcheck.test marker "NONE" must be the only array entry.',
         );
       }
       return { kind: "none" };
     case "CMD":
       if (test.length < 2) {
-        throw new ParseResult.Type(
-          ComposeTest.ast,
+        throw new SchemaIssue.InvalidValue(
+          { message: 'Landofile service healthcheck.test marker "CMD" requires at least one argv entry.' },
           test,
-          'Landofile service healthcheck.test marker "CMD" requires at least one argv entry.',
         );
       }
       return { kind: "command", command: test.slice(1) };
     case "CMD-SHELL": {
       const command = test[1];
       if (test.length !== 2 || command === undefined) {
-        throw new ParseResult.Type(
-          ComposeTest.ast,
+        throw new SchemaIssue.InvalidValue(
+          {
+            message:
+              'Landofile service healthcheck.test marker "CMD-SHELL" requires exactly one command string.',
+          },
           test,
-          'Landofile service healthcheck.test marker "CMD-SHELL" requires exactly one command string.',
         );
       }
       return { kind: "command", command };
     }
     case undefined:
-      throw new ParseResult.Type(
-        ComposeTest.ast,
+      throw new SchemaIssue.InvalidValue(
+        {
+          message:
+            'Landofile service healthcheck.test must use a non-empty array beginning with "CMD", "CMD-SHELL", or "NONE".',
+        },
         test,
-        'Landofile service healthcheck.test must use a non-empty array beginning with "CMD", "CMD-SHELL", or "NONE".',
       );
     default:
-      throw new ParseResult.Type(
-        ComposeTest.ast,
+      throw new SchemaIssue.InvalidValue(
+        {
+          message:
+            'Landofile service healthcheck.test marker is unsupported; expected "CMD", "CMD-SHELL", or "NONE".',
+        },
         test,
-        'Landofile service healthcheck.test marker is unsupported; expected "CMD", "CMD-SHELL", or "NONE".',
       );
   }
 };
@@ -109,10 +118,9 @@ const normalizeDisable = (disable: AcceptedHealthcheck["disable"]): boolean | un
   const normalized = disable.trim().toLowerCase();
   if (normalized === "true") return true;
   if (normalized === "false") return false;
-  throw new ParseResult.Type(
-    ComposeHealthcheckAccepted.ast,
+  throw new SchemaIssue.InvalidValue(
+    { message: 'Landofile service healthcheck.disable must be a boolean or the string "true" or "false".' },
     disable,
-    'Landofile service healthcheck.disable must be a boolean or the string "true" or "false".',
   );
 };
 
@@ -121,10 +129,9 @@ const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | und
   const normalized = Number(retries);
   const formatIsValid = typeof retries === "number" || /^[0-9]+$/.test(retries);
   if (formatIsValid && Number.isSafeInteger(normalized) && normalized >= 0) return normalized;
-  throw new ParseResult.Type(
-    ComposeHealthcheckAccepted.ast,
+  throw new SchemaIssue.InvalidValue(
+    { message: "Landofile service healthcheck.retries must be a non-negative decimal integer." },
     retries,
-    "Landofile service healthcheck.retries must be a non-negative decimal integer.",
   );
 };
 
@@ -187,19 +194,19 @@ const encodeHealthcheck = (
   ...(input.startInterval === undefined ? {} : { start_interval: input.startInterval }),
 });
 
-export const HealthcheckField = Schema.transformOrFail(
-  ComposeHealthcheckAccepted,
-  ComposeHealthcheckCanonical,
-  {
-    strict: true,
-    decode: (input) => {
-      try {
-        return ParseResult.succeed(decodeHealthcheck(input));
-      } catch (error) {
-        if (error instanceof ParseResult.Type) return ParseResult.fail(error);
-        throw error;
-      }
-    },
-    encode: (input) => ParseResult.succeed(encodeHealthcheck(input)),
-  },
-);
+export const HealthcheckField = ComposeHealthcheckAccepted.pipe(
+  Schema.decodeTo(
+    ComposeHealthcheckCanonical,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        try {
+          return Effect.succeed(decodeHealthcheck(input));
+        } catch (error) {
+          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+          throw error;
+        }
+      },
+      encode: (input) => Effect.succeed(encodeHealthcheck(input)),
+    }),
+  ),
+).annotate({ description: HEALTHCHECK_FIELD_DESCRIPTION });

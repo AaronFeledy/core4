@@ -19,27 +19,35 @@ import {
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
 
 const provider = { ...TestRuntimeProvider, id: "lando" };
 
 const globalAppLayer = Layer.mergeAll(
-  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-  Layer.succeed(PluginRegistry, {
-    list: Effect.succeed([]),
-    load: () => Effect.die("not needed"),
-    loadServiceType: () => Effect.die("not needed"),
-    loadServiceFeature: () => Effect.die("not needed"),
-    loadAppFeature: () => Effect.die("not needed"),
-  }),
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(provider.id)]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  }),
+  GlobalAppServiceLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+  ),
+  Layer.succeed(
+    PluginRegistry,
+    PluginRegistry.of({
+      list: Effect.succeed([]),
+      load: () => Effect.die("not needed"),
+      loadServiceType: () => Effect.die("not needed"),
+      loadServiceFeature: () => Effect.die("not needed"),
+      loadAppFeature: () => Effect.die("not needed"),
+    }),
+  ),
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(provider.id)]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  ),
 );
 
 const overlayContent = [
@@ -97,7 +105,7 @@ const parseAndValidate = async (content: string) => {
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;

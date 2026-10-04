@@ -26,6 +26,45 @@ const writeCore = async (name: string, contents: string): Promise<string> => {
 };
 
 describe("check-network-boundary", () => {
+  test("flags FetchHttpClient subpath imports outside the egress owner", async () => {
+    await writeCore("fetch-client.ts", 'import * as Client from "effect/http/FetchHttpClient";\n');
+    const result = await checkNetworkBoundary({ root });
+    expect(result.offenders).toEqual([
+      { file: "core/src/fetch-client.ts", line: 1, match: "effect/http/FetchHttpClient" },
+    ]);
+  });
+
+  test("flags aliased FetchHttpClient imports from the HTTP barrel", async () => {
+    await writeCore("fetch-barrel.ts", 'import { FetchHttpClient as Client } from "effect/http";\n');
+    const result = await checkNetworkBoundary({ root });
+    expect(result.offenders).toEqual([
+      { file: "core/src/fetch-barrel.ts", line: 1, match: "effect/http FetchHttpClient" },
+    ]);
+  });
+
+  test("flags dynamic FetchHttpClient imports outside the egress owner", async () => {
+    await writeCore("fetch-dynamic.ts", 'const client = import("effect/http/FetchHttpClient");\n');
+    const result = await checkNetworkBoundary({ root });
+    expect(result.offenders).toEqual([
+      { file: "core/src/fetch-dynamic.ts", line: 1, match: "effect/http/FetchHttpClient" },
+    ]);
+  });
+
+  test("allows standard HttpClient imports", async () => {
+    await writeCore("http-client.ts", 'import { HttpClient } from "effect/http";\n');
+    const result = await checkNetworkBoundary({ root });
+    expect(result.ok).toBe(true);
+  });
+
+  test("allows FetchHttpClient imports within the egress owner", async () => {
+    await mkdir(join(root, "http-client", "src"), { recursive: true });
+    await writeFile(
+      join(root, "http-client", "src", "adapter.ts"),
+      'import * as Client from "effect/http/FetchHttpClient";\n',
+    );
+    const result = await checkNetworkBoundary({ root });
+    expect(result.ok).toBe(true);
+  });
   test("flags a direct global fetch call", async () => {
     await writeCore("a.ts", `export const f = async () => fetch("https://example.com");\n`);
     const result = await checkNetworkBoundary({ root });

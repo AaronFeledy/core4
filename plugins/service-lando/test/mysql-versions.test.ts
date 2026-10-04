@@ -78,11 +78,11 @@ describe("MySQL managed versions", () => {
   });
 
   test("Given the MySQL service schema, when decoding an unknown key, then it rejects it", () => {
-    const decoded = Schema.decodeUnknownEither(mysqlServiceType.schema, { onExcessProperty: "error" })({
+    const decoded = Schema.decodeUnknownResult(mysqlServiceType.schema, { onExcessProperty: "error" })({
       type: "mysql",
       unsupported: true,
     });
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });

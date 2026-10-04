@@ -1,4 +1,4 @@
-import { Effect, FiberRef } from "effect";
+import { Context, Effect } from "effect";
 
 import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
@@ -16,8 +16,15 @@ export interface VolumeCoordination {
   readonly verify: Effect.Effect<void, VolumeOperationError>;
 }
 
-const heldCoordinationKeys = FiberRef.unsafeMake<ReadonlySet<string>>(new Set());
-const activeLocatedVolumes = FiberRef.unsafeMake<ReadonlyArray<LocatedPlanVolume>>([]);
+const HeldCoordinationKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldCoordinationKeys", {
+  defaultValue: (): ReadonlySet<string> => new Set(),
+});
+const ActiveLocatedVolumes = Context.Reference<ReadonlyArray<LocatedPlanVolume>>(
+  "@lando/engine/ActiveLocatedVolumes",
+  {
+    defaultValue: (): ReadonlyArray<LocatedPlanVolume> => [],
+  },
+);
 
 const failure = (providerId: string, message: string) =>
   new VolumeOperationError({
@@ -121,51 +128,51 @@ const verifyLocatedVolumes = (
 export const verifyActiveVolumeCoordination = (
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
 ): Effect.Effect<void, VolumeOperationError> =>
-  FiberRef.get(activeLocatedVolumes).pipe(
-    Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)),
-  );
+  ActiveLocatedVolumes.pipe(Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)));
 
 export const withVolumeCoordinationLock = <A, E>(
   stateStore: StateStoreShape,
   coordinationKey: string,
   body: Effect.Effect<A, E>,
 ): Effect.Effect<A, E | StateStoreError> =>
-  FiberRef.get(heldCoordinationKeys).pipe(
+  HeldCoordinationKeys.pipe(
     Effect.flatMap((held) =>
       held.has(coordinationKey) ? body : stateStore.withLock(physicalVolumeLockKey(coordinationKey), body),
     ),
   );
 
-export const withPlanVolumeCoordination = <A, E>(input: {
+export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoordination")(function* <
+  A,
+  E,
+>(input: {
   readonly plan: AppPlan;
   readonly provider: Pick<RuntimeProviderShape, "id" | "locateVolume">;
   readonly stateStore: StateStoreShape;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E>;
-}): Effect.Effect<A, E | VolumeOperationError | StateStoreError> =>
-  Effect.gen(function* () {
-    const planVolumes = yield* locatePlanVolumes(input.plan, input.provider);
-    const located = uniqueByCoordinationKey(planVolumes);
-    const keys = located.map((volume) => volume.locator.coordinationKey);
-    const held = yield* FiberRef.get(heldCoordinationKeys);
-    const coordination: VolumeCoordination = {
-      locators: located.map((volume) => volume.locator),
-      verify: verifyLocatedVolumes(located, input.provider),
-    };
-    if (keys.every((key) => held.has(key))) return yield* input.body(coordination);
+}): Effect.fn.Return<A, E | VolumeOperationError | StateStoreError> {
+  const planVolumes = yield* locatePlanVolumes(input.plan, input.provider);
+  const located = uniqueByCoordinationKey(planVolumes);
+  const keys = located.map((volume) => volume.locator.coordinationKey);
+  const held = yield* HeldCoordinationKeys;
+  const coordination: VolumeCoordination = {
+    locators: located.map((volume) => volume.locator),
+    verify: verifyLocatedVolumes(located, input.provider),
+  };
+  if (keys.every((key) => held.has(key))) return yield* input.body(coordination);
 
-    const lockAll = (index: number): Effect.Effect<A, E | VolumeOperationError | StateStoreError> => {
-      const volume = located[index];
-      if (volume === undefined) {
-        return verifyLocatedVolumes(located, input.provider).pipe(Effect.zipRight(input.body(coordination)));
-      }
-      return input.stateStore.withLock(
-        physicalVolumeLockKey(volume.locator.coordinationKey),
-        lockAll(index + 1),
-      );
-    };
-
-    return yield* lockAll(0).pipe(
-      Effect.locally(activeLocatedVolumes, located),
-      Effect.locally(heldCoordinationKeys, new Set([...held, ...keys])),
+  const lockAll = (index: number): Effect.Effect<A, E | VolumeOperationError | StateStoreError> => {
+    const volume = located[index];
+    if (volume === undefined) {
+      return verifyLocatedVolumes(located, input.provider).pipe(Effect.andThen(input.body(coordination)));
+    }
+    return input.stateStore.withLock(
+      physicalVolumeLockKey(volume.locator.coordinationKey),
+      lockAll(index + 1),
     );
-  });
+  };
+
+  return yield* lockAll(0).pipe(
+    Effect.provideService(ActiveLocatedVolumes, located),
+    Effect.provideService(HeldCoordinationKeys, new Set([...held, ...keys])),
+  );
+});

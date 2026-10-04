@@ -35,7 +35,7 @@ const service: ServicePlan = {
   dependsOn: [],
   hostAliases: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-11T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-11T00:00:00.000Z"),
     source: "secret-environment.test",
     runtime: 4,
   },

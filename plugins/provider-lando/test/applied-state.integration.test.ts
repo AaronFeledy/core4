@@ -36,7 +36,7 @@ import { inspectAppliedPlan } from "../src/applied-state.ts";
 const providerId = ProviderId.make("lando");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "applied-state.integration.test",
   runtime: 4 as const,
 };

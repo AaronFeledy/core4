@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { GlobalConfig, GlobalConfigView, JSON_SCHEMA_NAMES } from "@lando/sdk/schema";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 test("public view keeps maps and drops unknown state when encoding loaded config", () => {
   // Given
@@ -18,9 +18,9 @@ test("public view rejects an invalid map when encoding", () => {
   // Given
   const loaded = Schema.decodeUnknownSync(GlobalConfig)({});
   // When
-  const encoded = Schema.encodeUnknownEither(GlobalConfigView)({ ...loaded, appEnv: { TEAM: 42 } });
+  const encoded = Schema.encodeUnknownResult(GlobalConfigView)({ ...loaded, appEnv: { TEAM: 42 } });
   // Then
-  expect(Either.isLeft(encoded)).toBe(true);
+  expect(Result.isFailure(encoded)).toBe(true);
 });
 
 test("public view participates in snapshot generation", () => {

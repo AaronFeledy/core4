@@ -8,7 +8,7 @@ import { Cause, Effect, Exit } from "effect";
 import { RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
+import * as RecipeManifestServiceLayer from "../../src/recipes/manifest/service.ts";
 import {
   type NpmPackument,
   type NpmRegistryClient,
@@ -120,7 +120,7 @@ const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetc
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected tagged failure");
   return failure.value;
@@ -182,7 +182,7 @@ describe("resolveNpmRecipeSource", () => {
       expect(await Bun.file(result.source).exists()).toBe(true);
       const manifest = await Effect.runPromise(
         Effect.flatMap(RecipeManifestService, (svc) => svc.parse(result.source, result.manifestYaml)).pipe(
-          Effect.provide(RecipeManifestServiceLive),
+          Effect.provide(RecipeManifestServiceLayer.layer),
         ),
       );
       expect(manifest.id).toBe("npm-recipe");

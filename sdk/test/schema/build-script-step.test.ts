@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Result, Schema } from "effect";
 
 import { BuildBlock, ServiceConfig } from "../../src/schema/landofile.ts";
 
@@ -15,12 +16,12 @@ const expectAccepted = (input: unknown, expected: typeof BuildBlock.Type): void 
 const expectRejected = (input: unknown): ReadonlyArray<string> => {
   const messages: string[] = [];
   for (const options of decodeOptions) {
-    const result = Schema.decodeUnknownEither(BuildBlock)(input, options);
-    expect(Either.isLeft(result)).toBe(true);
-    if (!Either.isLeft(result)) continue;
+    const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
+    expect(Result.isFailure(result)).toBe(true);
+    if (!Result.isFailure(result)) continue;
     messages.push(
-      ParseResult.ArrayFormatter.formatErrorSync(result.left)
-        .map(({ message }) => message)
+      SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+        .issues.map(({ path, message }) => `${path?.join(".")}: ${message}`)
         .join("\n"),
     );
   }
@@ -92,19 +93,19 @@ describe("build step objects", () => {
 
   test("rejects an unknown key on an object step", () => {
     // Given — every Landofile decode path in core decodes with onExcessProperty: "error"
-    const result = Schema.decodeUnknownEither(ServiceConfig)(
+    const result = Schema.decodeUnknownResult(ServiceConfig)(
       { build: { app: { run: "echo hi", cmd: "echo bye" } } },
       { onExcessProperty: "error" },
     );
 
-    // When / Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (!Either.isLeft(result)) return;
+    // When / Then — the issue path names the offending key, as Landofile diagnostics render it
+    expect(Result.isFailure(result)).toBe(true);
+    if (!Result.isFailure(result)) return;
     expect(
-      ParseResult.ArrayFormatter.formatErrorSync(result.left)
-        .map(({ message }) => message)
+      SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+        .issues.map(({ path, message }) => `${path?.join(".")}: ${message}`)
         .join("\n"),
-    ).toContain("cmd");
+    ).toContain("build.app.cmd");
   });
 
   test("keeps object steps inside the Lando key family", () => {

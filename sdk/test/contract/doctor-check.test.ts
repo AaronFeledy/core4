@@ -81,25 +81,26 @@ describe("Doctor check contract", () => {
 
     const autoFixCheck = {
       id: "daemon-socket",
-      run: ({ fix }: { fix: boolean }): Effect.Effect<DoctorCheckResult, DoctorCheckError> =>
-        Effect.gen(function* () {
-          if (fix) {
-            yield* Ref.set(stateRef, "fixed");
-            yield* Ref.set(fixedRef, true);
-          }
-          return {
-            id: "daemon-socket",
-            issues: [
-              {
-                severity: "error" as const,
-                context: { socket: "missing" },
-                solutionKind: "automatic" as const,
-                solution: "Recreate the daemon socket.",
-                command: "lando doctor --fix",
-              },
-            ],
-          };
-        }),
+      run: Effect.fnUntraced(function* ({
+        fix,
+      }: { fix: boolean }): Effect.fn.Return<DoctorCheckResult, DoctorCheckError> {
+        if (fix) {
+          yield* Ref.set(stateRef, "fixed");
+          yield* Ref.set(fixedRef, true);
+        }
+        return {
+          id: "daemon-socket",
+          issues: [
+            {
+              severity: "error" as const,
+              context: { socket: "missing" },
+              solutionKind: "automatic" as const,
+              solution: "Recreate the daemon socket.",
+              command: "lando doctor --fix",
+            },
+          ],
+        };
+      }),
     };
 
     const harness: DoctorCheckContractHarness = {

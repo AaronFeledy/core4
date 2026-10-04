@@ -15,7 +15,7 @@ import { AbsolutePath, PortablePath } from "./primitives.ts";
  * `landofile` round-trip structured content through the shared codec module;
  * `toml`/`ini` are reserved and fail with a `format` remediation until 4.x.
  */
-export const FileFormat = Schema.Literal(
+export const FileFormat = Schema.Literals([
   "text",
   "env",
   "json",
@@ -25,7 +25,7 @@ export const FileFormat = Schema.Literal(
   "landofile",
   "javascript",
   "typescript",
-);
+]);
 export type FileFormat = typeof FileFormat.Type;
 
 const TextContentSource = Schema.Struct({
@@ -45,7 +45,7 @@ const TemplateContentSource = Schema.Struct({
   /** Template file (relative to base) rendered through `TemplateRenderer` before encode. */
   file: PortablePath,
   /** Variables passed to the template renderer. */
-  vars: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  vars: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
 
 const InlineContentSource = Schema.Struct({
@@ -53,7 +53,7 @@ const InlineContentSource = Schema.Struct({
   /** Inline template string rendered through `TemplateRenderer` before encode. */
   template: Schema.String,
   /** Variables passed to the template renderer. */
-  vars: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  vars: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
 
 /**
@@ -61,12 +61,12 @@ const InlineContentSource = Schema.Struct({
  * `text` (verbatim), `structured` (codec-encoded data), `template` (a template
  * file rendered before encode), and `inline` (an inline template string).
  */
-export const ContentSource = Schema.Union(
+export const ContentSource = Schema.Union([
   TextContentSource,
   StructuredContentSource,
   TemplateContentSource,
   InlineContentSource,
-);
+]);
 export type ContentSource = typeof ContentSource.Type;
 
 /**
@@ -78,13 +78,13 @@ export const ManagedFile = Schema.Struct({
   id: Schema.String,
   owner: Schema.String,
   path: PortablePath,
-  mode: Schema.Literal("file", "block", "keys"),
+  mode: Schema.Literals(["file", "block", "keys"]),
   format: FileFormat,
   content: ContentSource,
-  marker: Schema.optional(Schema.String),
-  perms: Schema.optional(Schema.String),
-  onConflict: Schema.optional(Schema.Literal("skip", "overwrite", "fail")),
-  base: Schema.optional(AbsolutePath),
+  marker: Schema.optionalKey(Schema.String),
+  perms: Schema.optionalKey(Schema.String),
+  onConflict: Schema.optionalKey(Schema.Literals(["skip", "overwrite", "fail"])),
+  base: Schema.optionalKey(AbsolutePath),
 });
 export type ManagedFile = typeof ManagedFile.Type;
 
@@ -95,14 +95,14 @@ export type ManagedFile = typeof ManagedFile.Type;
  * in-place user edit (`conflict`), or a marker-removed file recorded as adopted
  * (`adopt-detected`).
  */
-export const ManagedFileAction = Schema.Literal(
+export const ManagedFileAction = Schema.Literals([
   "create",
   "update",
   "skip-unchanged",
   "skip-adopted",
   "conflict",
   "adopt-detected",
-);
+]);
 export type ManagedFileAction = typeof ManagedFileAction.Type;
 
 /**
@@ -127,8 +127,8 @@ export type ManagedFilePlan = typeof ManagedFilePlan.Type;
 export const ManagedFileInfo = Schema.Struct({
   path: PortablePath,
   owner: Schema.String,
-  mode: Schema.Literal("file", "block", "keys"),
-  state: Schema.Literal("managed", "adopted", "conflict", "missing", "drifted"),
+  mode: Schema.Literals(["file", "block", "keys"]),
+  state: Schema.Literals(["managed", "adopted", "conflict", "missing", "drifted"]),
 });
 export type ManagedFileInfo = typeof ManagedFileInfo.Type;
 
@@ -142,7 +142,7 @@ export const ManagedFileResult = Schema.Struct({
       id: Schema.String,
       path: PortablePath,
       action: ManagedFileAction,
-      backup: Schema.optional(PortablePath),
+      backup: Schema.optionalKey(PortablePath),
     }),
   ),
 });

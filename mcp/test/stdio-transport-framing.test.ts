@@ -1,182 +1,115 @@
-import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, TestClock, TestContext } from "effect";
+import { expect, test } from "bun:test";
+import { McpService } from "@lando/mcp/service";
+import { makeStdioClient } from "@lando/mcp/testing";
+import { Effect, Fiber, Stdio } from "effect";
+import { TestClock } from "effect/testing";
+import { serverLayer } from "./server";
+import { expectMcpTransportFailure } from "./stdio-transport-test-support";
 
-import type { McpCatalog } from "@lando/sdk/schema";
-
-import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
-import {
-  expectMcpTransportFailure,
-  expectPolledMcpTransportFailure,
-} from "./stdio-transport-test-support.ts";
-
-const encoder = new TextEncoder();
-const catalog = { tools: [] } satisfies McpCatalog;
-
-const inputFromChunks = (chunks: ReadonlyArray<string>, close: boolean): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    start: (controller) => {
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-      if (close) controller.close();
-    },
-  });
-
-const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
-const parseJsonObject = (line: string): Readonly<Record<string, unknown>> => {
-  const parsed: unknown = JSON.parse(line);
-  if (!isJsonObject(parsed)) {
-    throw new Error("expected JSON-RPC line to decode to an object");
-  }
-  return parsed;
-};
-
-describe("makeStdioMcpTransport inbound framing limits", () => {
-  test("stdio-oversized-frame-disconnects before parsing a frame over 1 MiB", async () => {
-    // Given
-    const writes: string[] = [];
-    const frame = JSON.stringify({
-      jsonrpc: "2.0",
-      id: 10,
-      method: "tools/list",
-      params: { padding: "x".repeat(1024 * 1024) },
-    });
-    const input = inputFromChunks([`${frame}\n`], true);
-
-    // When
-    const exit = await Effect.runPromise(
+test("stdio-oversized-frame-disconnects before parsing a frame over 1 MiB", async () => {
+  const result = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) => Effect.sync(() => writes.push(line)),
-        });
-        return yield* transport.receive.pipe(Effect.exit);
-      }).pipe(Effect.scoped),
-    );
-
-    // Then
-    expectMcpTransportFailure(exit);
-  });
-
-  test("stdio-partial-frame-eof-disconnects without parsing the trailing buffer", async () => {
-    // Given
-    const writes: string[] = [];
-    const input = inputFromChunks(
-      [JSON.stringify({ jsonrpc: "2.0", id: 11, method: "tools/list", params: {} })],
-      true,
-    );
-
-    // When
-    const exit = await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) => Effect.sync(() => writes.push(line)),
-        });
-        return yield* transport.receive.pipe(Effect.exit);
-      }).pipe(Effect.scoped),
-    );
-
-    // Then
-    expectMcpTransportFailure(exit);
-  });
-
-  test("stdio-malformed-frame-single-parse-error", async () => {
-    // Given
-    const writes: string[] = [];
-    const input = inputFromChunks(
-      [
-        '{"jsonrpc":"2.0","id":12,"method":"tools/list",}\n',
-        `${JSON.stringify({ jsonrpc: "2.0", id: 13, method: "tools/list", params: {} })}\n`,
-      ],
-      true,
-    );
-
-    // When
-    const exit = await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) => Effect.sync(() => writes.push(line)),
-        });
-        return yield* transport.receive.pipe(Effect.exit);
-      }).pipe(Effect.scoped),
-    );
-
-    // Then
-    expect(writes.map(parseJsonObject)).toEqual([
-      expect.objectContaining({
-        jsonrpc: "2.0",
-        id: null,
-        error: expect.objectContaining({ code: -32700, message: "Parse error" }),
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provide(client.layer), Effect.forkScoped);
+        yield* client.raw(
+          new TextEncoder().encode(
+            `${JSON.stringify({ jsonrpc: "2.0", id: 10, method: "tools/list", params: { padding: "x".repeat(1024 * 1024) } })}\n`,
+          ),
+        );
+        const exit = yield* Fiber.await(fiber);
+        return { exit, messages: yield* client.messages };
       }),
-    ]);
-    expectMcpTransportFailure(exit);
-  });
+    ).pipe(Effect.provide(serverLayer())),
+  );
+  const error = expectMcpTransportFailure(result.exit);
+  expect(error?.message).toBe("MCP stdio frame exceeded the 1 MiB inbound limit.");
+  expect(result.messages).toEqual([]);
+});
 
-  test("stdio-partial-frame-deadline-terminates", async () => {
-    // Given
-    const chunkRead = Promise.withResolvers<void>();
-    let sent = false;
-    const input = new ReadableStream<Uint8Array>({
-      pull: (controller) => {
-        if (sent) return;
-        sent = true;
-        controller.enqueue(encoder.encode('{"jsonrpc":"2.0","id":14'));
-        chunkRead.resolve();
-      },
-    });
-
-    // When
-    const completion = await Effect.runPromise(
+test("stdio-partial-frame-eof-disconnects without parsing the trailing buffer", async () => {
+  const exit = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({ catalog, input, write: () => Effect.void });
-        const receiveFiber = yield* transport.receive.pipe(Effect.fork);
-        yield* Effect.promise(() => chunkRead.promise);
-        yield* Effect.yieldNow();
-        yield* TestClock.adjust("5 seconds");
-        const poll = yield* Fiber.poll(receiveFiber);
-        yield* Fiber.interrupt(receiveFiber);
-        return poll;
-      }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
-    );
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provide(client.layer), Effect.forkScoped);
+        yield* client.raw(new TextEncoder().encode('{"jsonrpc":"2.0","id":11,"method":"tools/list"}'));
+        yield* client.close;
+        return yield* Fiber.await(fiber);
+      }),
+    ).pipe(Effect.provide(serverLayer())),
+  );
+  expect(expectMcpTransportFailure(exit)?.message).toBe(
+    "MCP stdio closed with an incomplete non-whitespace frame.",
+  );
+});
 
-    // Then
-    expectPolledMcpTransportFailure(completion);
-  });
-
-  test("stdio-slow-loris-cannot-extend-the-partial-frame-deadline", async () => {
-    // Given
-    let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
-    const input = new ReadableStream<Uint8Array>({
-      start: (streamController) => {
-        controller = streamController;
-      },
-    });
-    if (controller === undefined) throw new Error("expected the input controller to be initialized");
-    const inputController = controller;
-
-    // When
-    const completion = await Effect.runPromise(
+test("stdio-malformed-frame-single-parse-error", async () => {
+  const observed = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({ catalog, input, write: () => Effect.void });
-        const receiveFiber = yield* transport.receive.pipe(Effect.fork);
-        inputController.enqueue(encoder.encode('{"jsonrpc":"2.0"'));
-        yield* Effect.yieldNow();
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provide(client.layer), Effect.forkScoped);
+        yield* client.raw(new TextEncoder().encode('{"jsonrpc":"2.0","id":12,"method":"tools/list",}\n'));
+        const exit = yield* Fiber.await(fiber);
+        return { exit, messages: yield* client.messages };
+      }),
+    ).pipe(Effect.provide(serverLayer())),
+  );
+  expectMcpTransportFailure(observed.exit);
+  expect(observed.messages).toEqual([
+    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error", _tag: "ParseError" } },
+  ]);
+});
+
+test.each([false, true])("partial-frame deadline remains 5 seconds with slow-loris=%s", async (drip) => {
+  const exit = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provide(client.layer), Effect.forkScoped);
+        yield* client.raw(new TextEncoder().encode('{"jsonrpc":"2.0"'));
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust("0 millis");
         yield* TestClock.adjust("4 seconds");
-        inputController.enqueue(encoder.encode(',"id":15'));
-        yield* Effect.yieldNow();
+        if (drip) yield* client.raw(new TextEncoder().encode(',"id":15'));
         yield* TestClock.adjust("1 second");
-        const poll = yield* Fiber.poll(receiveFiber);
-        yield* Fiber.interrupt(receiveFiber);
-        return poll;
-      }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
-    );
+        return yield* Fiber.await(fiber);
+      }),
+    ).pipe(Effect.provide(serverLayer()), Effect.provide(TestClock.layer())),
+  );
+  expect(expectMcpTransportFailure(exit)?.message).toBe(
+    "MCP stdio partial frame exceeded the 5 second deadline.",
+  );
+});
 
-    // Then
-    expectPolledMcpTransportFailure(completion);
-  });
+test("accepts fragmented and multiple complete frames without leaking partial EOF bytes", async () => {
+  const exit = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provideService(Stdio.Stdio, client.stdio), Effect.forkScoped);
+        yield* client.initialize();
+        yield* client.raw(new TextEncoder().encode("  \n\t"));
+        yield* client.close;
+        return yield* Fiber.await(fiber);
+      }),
+    ).pipe(Effect.provide(serverLayer())),
+  );
+  expect(exit._tag).toBe("Success");
 });

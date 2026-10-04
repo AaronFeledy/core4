@@ -3,7 +3,7 @@ import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { toMarkdown } from "mdast-util-to-markdown";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkMdx from "remark-mdx";
@@ -124,13 +124,13 @@ const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<
 
 const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): GuideFrontmatter => {
   const decoded = decodeGuideFrontmatterEither(input);
-  if (Either.isRight(decoded)) return decoded.right;
+  if (Result.isSuccess(decoded)) return decoded.success;
   throw new GuideFrontmatterValidationError({
     message: `Recipe README frontmatter is invalid at ${sourcePath}.`,
     sourcePath,
     field: "frontmatter",
     rejectedValue: input,
-    issues: [String(decoded.left)],
+    issues: [String(decoded.failure)],
     remediation: `Fix the recipe README frontmatter in ${sourcePath}.`,
   });
 };

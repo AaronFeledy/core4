@@ -1,10 +1,10 @@
 import { Schema } from "effect";
 
-export const ServiceDependencyCondition = Schema.Literal(
+export const ServiceDependencyCondition = Schema.Literals([
   "service_started",
   "service_healthy",
   "service_completed_successfully",
-).annotations({
+]).annotate({
   identifier: "ServiceDependencyCondition",
   title: "Service Dependency Condition",
   description:

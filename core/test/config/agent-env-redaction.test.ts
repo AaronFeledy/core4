@@ -5,19 +5,22 @@ import { SecretNotFoundError } from "@lando/core/errors";
 import { SecretStore } from "@lando/core/services";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST, resolveAgentContextEnv } from "@lando/engine/config/agent-env";
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 
-const emptySecretStore = Layer.succeed(SecretStore, {
-  id: "test",
-  get: (secret: string) => Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` })),
-  has: () => Effect.succeed(false),
-  list: Effect.succeed([]),
-});
+const emptySecretStore = Layer.succeed(
+  SecretStore,
+  SecretStore.of({
+    id: "test",
+    get: (secret: string) => Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` })),
+    has: () => Effect.succeed(false),
+    list: Effect.succeed([]),
+  }),
+);
 
 const redactorForForwardedEnv = (sourceEnv: Record<string, string>) =>
   Effect.runPromise(
     Effect.flatMap(RedactionService, (service) => service.forProfile("secrets", { sourceEnv })).pipe(
-      Effect.provide(RedactionServiceLive),
+      Effect.provide(RedactionService.layer),
       Effect.provide(emptySecretStore),
     ),
   );

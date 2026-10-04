@@ -121,7 +121,7 @@ describe("lando4 translator omissions", () => {
       ["dropped", ".lando.yml"],
       ["unsupported", ".lando.local.yml"],
     ]);
-    expect(validateConfigTranslateResult(input, result)._tag).toBe("Right");
+    expect(validateConfigTranslateResult(input, result)._tag).toBe("Success");
   });
 
   test("fails a recipe request rather than inventing recipe output", async () => {

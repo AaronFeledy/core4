@@ -22,7 +22,7 @@ export const PostHttpCallEvent = Schema.TaggedStruct("post-http-call", {
   status: Schema.optional(Schema.Number),
   callerId: Schema.optional(Schema.String),
   onBehalfOf: Schema.optional(Schema.String),
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   durationMs: Schema.optional(Schema.Number),
   failureDetail: Schema.optional(Schema.String),
   timestamp: Timestamp,

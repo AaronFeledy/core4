@@ -16,97 +16,96 @@ const primaryRoutes = [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", s
 
 export const drupalDecomposer = ((ports) => ({
   producer: drupalProducer,
-  decompose: (input) =>
-    Effect.gen(function* () {
-      const message = ports.redactor.redactString("Drupal recipe input is invalid.");
-      if (input.producer.recipeId !== "drupal") {
+  decompose: Effect.fn("DrupalRecipe.decompose")(function* (input) {
+    const message = ports.redactor.redactString("Drupal recipe input is invalid.");
+    if (input.producer.recipeId !== "drupal") {
+      return yield* Effect.fail(
+        new RecipeDecomposeError({
+          recipeId: "drupal",
+          reason: "missing-recipe",
+          message,
+          remediation: "Select the drupal recipe.",
+        }),
+      );
+    }
+    for (const [name, descriptor] of Object.entries(drupalSnapshot.optionTypes)) {
+      if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
         return yield* Effect.fail(
           new RecipeDecomposeError({
             recipeId: "drupal",
-            reason: "missing-recipe",
+            reason: "option-type",
+            path: `options.${name}`,
             message,
-            remediation: "Select the drupal recipe.",
+            remediation: recipeOptionRemediation(descriptor),
           }),
         );
       }
-      for (const [name, descriptor] of Object.entries(drupalSnapshot.optionTypes)) {
-        if (!optionValueMatchesDescriptor(descriptor, input.options[name])) {
-          return yield* Effect.fail(
-            new RecipeDecomposeError({
-              recipeId: "drupal",
-              reason: "option-type",
-              path: `options.${name}`,
-              message,
-              remediation: recipeOptionRemediation(descriptor),
-            }),
-          );
-        }
-      }
-      const provenance: LandofileRecipeProvenance = {
-        id: "drupal",
-        version: DRUPAL_RECIPE_VERSION,
-        producer: drupalProducer,
-        options: input.options,
-      };
-      const nginx = input.options.webserver === "nginx";
-      const database = { type: "{{ recipe.database }}" };
-      return {
-        fragment: {
-          runtime: 4,
-          recipe: provenance,
-          services: nginx
-            ? {
-                appserver: {
-                  type: "php:{{ recipe.php }}",
-                  primary: true,
-                  framework: "drupal",
-                  via: "fpm",
-                  webroot: "{{ recipe.webroot }}",
-                  composer: "{{ recipe.composer }}",
-                  dependsOn: ["database"],
-                },
-                edge: {
-                  type: "nginx",
-                  backend: "appserver",
-                  webroot: "{{ recipe.webroot }}",
-                  routes: primaryRoutes,
-                },
-                database,
-              }
-            : {
-                appserver: {
-                  type: "php:{{ recipe.php }}",
-                  primary: true,
-                  framework: "drupal",
-                  webroot: "{{ recipe.webroot }}",
-                  composer: "{{ recipe.composer }}",
-                  allowOverride: true,
-                  port: 80,
-                  dependsOn: ["database"],
-                  routes: primaryRoutes,
-                },
-                database,
+    }
+    const provenance: LandofileRecipeProvenance = {
+      id: "drupal",
+      version: DRUPAL_RECIPE_VERSION,
+      producer: drupalProducer,
+      options: input.options,
+    };
+    const nginx = input.options.webserver === "nginx";
+    const database = { type: "{{ recipe.database }}" };
+    return {
+      fragment: {
+        runtime: 4,
+        recipe: provenance,
+        services: nginx
+          ? {
+              appserver: {
+                type: "php:{{ recipe.php }}",
+                primary: true,
+                framework: "drupal",
+                via: "fpm",
+                webroot: "{{ recipe.webroot }}",
+                composer: "{{ recipe.composer }}",
+                dependsOn: ["database"],
               },
-          tooling: {
-            drush: {
-              service: "appserver",
-              description: "Run Drush inside the appserver service.",
-              cmds: [DRUSH_TOOLING_COMMAND],
+              edge: {
+                type: "nginx",
+                backend: "appserver",
+                webroot: "{{ recipe.webroot }}",
+                routes: primaryRoutes,
+              },
+              database,
+            }
+          : {
+              appserver: {
+                type: "php:{{ recipe.php }}",
+                primary: true,
+                framework: "drupal",
+                webroot: "{{ recipe.webroot }}",
+                composer: "{{ recipe.composer }}",
+                allowOverride: true,
+                port: 80,
+                dependsOn: ["database"],
+                routes: primaryRoutes,
+              },
+              database,
             },
-            composer: {
-              service: "appserver",
-              description: "Run Composer inside the appserver service.",
-              cmds: ["composer"],
-            },
-            "drupal-scaffold": {
-              service: "appserver",
-              description: "Scaffold Drupal and project-local Drush into the mounted app root.",
-              arguments: false,
-              cmd: DRUPAL_SCAFFOLD_AUTHORING_COMMAND,
-            },
+        tooling: {
+          drush: {
+            service: "appserver",
+            description: "Run Drush inside the appserver service.",
+            cmds: [DRUSH_TOOLING_COMMAND],
+          },
+          composer: {
+            service: "appserver",
+            description: "Run Composer inside the appserver service.",
+            cmds: ["composer"],
+          },
+          "drupal-scaffold": {
+            service: "appserver",
+            description: "Scaffold Drupal and project-local Drush into the mounted app root.",
+            arguments: false,
+            cmd: DRUPAL_SCAFFOLD_AUTHORING_COMMAND,
           },
         },
-        provenance,
-      };
-    }),
+      },
+      provenance,
+    };
+  }),
 })) satisfies RecipeDecomposerFactory;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { AbsolutePath, type LogSource, LogSourceId } from "@lando/sdk/schema";
@@ -35,10 +35,10 @@ const merge = (input: {
   });
 
 const expectFailure = (result: ReturnType<typeof merge>): LandofileValidationError => {
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isRight(result)) throw new Error("expected log source merge failure");
-  expect(result.left).toBeInstanceOf(LandofileValidationError);
-  return result.left;
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) throw new Error("expected log source merge failure");
+  expect(result.failure).toBeInstanceOf(LandofileValidationError);
+  return result.failure;
 };
 
 describe("mergeLogSources", () => {
@@ -48,11 +48,11 @@ describe("mergeLogSources", () => {
       userSources: [source({ id: "access", path: "/app/logs/access.log", strategy: "follow" })],
     });
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isLeft(result)) throw result.left;
-    expect(result.right).toHaveLength(1);
-    expect(String(result.right[0]?.path)).toBe("/app/logs/access.log");
-    expect(result.right[0]?.strategy).toBe("follow");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isFailure(result)) throw result.failure;
+    expect(result.success).toHaveLength(1);
+    expect(String(result.success[0]?.path)).toBe("/app/logs/access.log");
+    expect(result.success[0]?.strategy).toBe("follow");
   });
 
   test("rejects duplicate ids within service-type sources", () => {

@@ -64,6 +64,13 @@ const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
  */
 const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
   {
+    abstraction: "HttpClient",
+    makeExport: "makeHttpClientContractSuite",
+    runExport: "runHttpClientContract",
+    defaultPolicy: "built-in",
+    invocationFiles: ["core/test/http-client/contract.test.ts"],
+  },
+  {
     abstraction: "ToolingEngine",
     makeExport: "makeToolingEngineContractSuite",
     runExport: "runToolingEngineContractSuite",

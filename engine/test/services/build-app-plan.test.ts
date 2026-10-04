@@ -29,7 +29,7 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
         dependsOn: [],
         hostAliases: [],
         metadata: {
-          resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+          resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
           source: "build-app-plan.test",
           runtime: 4,
         },
@@ -41,7 +41,7 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
     stores: [],
     fileSync: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
       source: "build-app-plan.test",
       runtime: 4,
     },
@@ -50,6 +50,55 @@ const planWithSteps = (buildSteps: ReadonlyArray<unknown>): AppPlan => {
 };
 
 describe("appSteps", () => {
+  test("batches ready steps in input order and waits for every internal predecessor", () => {
+    // Given
+    const steps = appSteps(
+      planWithSteps([
+        { id: "z", phase: "app", command: { command: ["z"] } },
+        { id: "a", phase: "app", command: { command: ["a"] } },
+        { id: "join", phase: "app", command: { command: ["join"] } },
+      ]),
+    ).map((entry, index) => ({
+      ...entry,
+      step: { ...entry.step, dependsOn: index === 2 ? ["web:app:z", "web:app:a"] : ["external:running"] },
+    }));
+    // When
+    const result = appStepBatches(steps);
+    // Then
+    expect(result._tag).toBe("Batches");
+    if (result._tag === "Batches") {
+      expect(result.batches.map((batch) => batch.map(({ step }) => step.id))).toEqual([
+        ["web:app:z", "web:app:a"],
+        ["web:app:join"],
+      ]);
+    }
+  });
+
+  test("reports residual cycle and blocked-tail edges after removing ready steps", () => {
+    // Given
+    const steps = appSteps(
+      planWithSteps([
+        { id: "ready", phase: "app", command: { command: ["ready"] } },
+        { id: "a", phase: "app", command: { command: ["a"] } },
+        { id: "b", phase: "app", command: { command: ["b"] } },
+        { id: "tail", phase: "app", command: { command: ["tail"] } },
+      ]),
+    ).map((entry, index) => ({
+      ...entry,
+      step: {
+        ...entry.step,
+        dependsOn: [[], ["web:app:b", "web:app:ready"], ["web:app:a"], ["web:app:b"]][index] ?? [],
+      },
+    }));
+    // When
+    const result = appStepBatches(steps);
+    // Then
+    expect(result).toEqual({
+      _tag: "Cycle",
+      edges: ["web:app:a -> web:app:b", "web:app:b -> web:app:a", "web:app:tail -> web:app:b"],
+    });
+  });
+
   test("orders authored steps for the same service after explicit dependencies", () => {
     // Given
     const plan = planWithSteps([

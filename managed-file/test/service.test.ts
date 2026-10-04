@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Exit, type Scope } from "effect";
+import { Cause, Effect, Exit, Option, type Scope } from "effect";
 
 import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
@@ -190,7 +190,7 @@ describe("ManagedFileService (in-memory)", () => {
     const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([mf])));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error?._tag).toBe("ManagedFileError");
       expect(error?.reason).toBe("conflict");
     }
@@ -212,8 +212,8 @@ describe("ManagedFileService (in-memory)", () => {
 
     const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([desired])));
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error.reason).toBe("conflict");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).reason).toBe("conflict");
     }
     expect(store.read("orphan.txt")).toBe(orphanedDisk);
 
@@ -394,8 +394,8 @@ describe("ManagedFileService (in-memory)", () => {
     const mf = file({ id: "a:esc", path: "../escape.txt" });
     const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([mf])));
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error.reason).toBe("path");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).reason).toBe("path");
     }
   });
 
@@ -501,8 +501,8 @@ describe("ManagedFileService block mode", () => {
 
     const exit = await Effect.runPromiseExit(Effect.scoped(store.service.apply([desired])));
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error.reason).toBe("conflict");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).reason).toBe("conflict");
     }
     expect(store.read("settings.conf")).toBe(orphanedDisk);
 
@@ -657,8 +657,8 @@ describe("ManagedFileService (disk backend)", () => {
         );
 
         expect(Exit.isFailure(exit)).toBe(true);
-        if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-          expect(exit.cause.error.reason).toBe("path");
+        if (Exit.isFailure(exit)) {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).reason).toBe("path");
         }
       } finally {
         await rm(outside, { recursive: true, force: true });

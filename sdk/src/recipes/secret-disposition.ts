@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 import {
   RecipeDecomposeError,
   RecipeSecretDispositionError,
@@ -48,7 +48,7 @@ const matchesDeclaredSink = (binding: InitBinding, disposition: RecipeSecretDisp
  */
 export const validateRecipeSecretPrompts = (
   manifest: RecipeManifest,
-): Either.Either<
+): Result.Result<
   ReadonlyArray<{ readonly promptName: string; readonly disposition: RecipeSecretDisposition }>,
   RecipeSecretDispositionError
 > => {
@@ -56,7 +56,7 @@ export const validateRecipeSecretPrompts = (
   const result: { promptName: string; disposition: RecipeSecretDisposition }[] = [];
   for (const prompt of prompts) {
     const fail = (reason: RecipeSecretDispositionError["reason"]) =>
-      Either.left(
+      Result.fail(
         new RecipeSecretDispositionError({
           recipeId: manifest.id,
           promptName: prompt.name,
@@ -88,7 +88,7 @@ export const validateRecipeSecretPrompts = (
     }
     result.push({ promptName: prompt.name, disposition });
   }
-  return Either.right(result);
+  return Result.succeed(result);
 };
 
 /**
@@ -98,12 +98,13 @@ export const validateRecipeSecretPrompts = (
  */
 export const approvedSecretReferencesOnly = (
   input: RecipeDecomposeInput,
-): Either.Either<RecipeDecomposeInput, RecipeDecomposeError> => {
-  const secrets = Schema.decodeUnknownEither(
-    Schema.Record({ key: Schema.String, value: ConfigTranslateSecretReference }),
-  )(input.secrets, { onExcessProperty: "error" });
-  if (Either.isLeft(secrets))
-    return Either.left(
+): Result.Result<RecipeDecomposeInput, RecipeDecomposeError> => {
+  const secrets = Schema.decodeUnknownResult(Schema.Record(Schema.String, ConfigTranslateSecretReference))(
+    input.secrets,
+    { onExcessProperty: "error" },
+  );
+  if (Result.isFailure(secrets))
+    return Result.fail(
       new RecipeDecomposeError({
         recipeId: input.producer.recipeId,
         reason: "invalid-secret-reference",
@@ -113,7 +114,7 @@ export const approvedSecretReferencesOnly = (
           "Resolve raw secret answers to approved references or init-only sinks before decomposition.",
       }),
     );
-  return Either.right({ ...input, secrets: secrets.right });
+  return Result.succeed({ ...input, secrets: secrets.success });
 };
 
 /**

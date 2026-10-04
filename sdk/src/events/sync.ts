@@ -18,7 +18,7 @@ const DatasetBase = {
 };
 
 const PostFields = {
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   failureDetail: Schema.optional(Schema.String),
   durationMs: Schema.optional(Schema.Number),
 };

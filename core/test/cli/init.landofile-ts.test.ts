@@ -8,10 +8,10 @@ import { type LandofileShape, ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
@@ -82,7 +82,7 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-        Effect.provide(LandofileServiceLive),
+        Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );
   } finally {
@@ -113,8 +113,8 @@ const withEnv = async <T>(
 const planLandofile = (landofile: LandofileShape) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 
@@ -158,7 +158,9 @@ describe("node-ts recipe pipeline", () => {
   });
 
   test("encoded node-ts Landofile contains no forbidden node builtin or URL-scheme import", async () => {
-    const { text: tsSource } = await previewBuiltinRecipe("node-ts", "demo-app");
+    const { text } = await previewBuiltinRecipe("node-ts", "demo-app");
+    // The editor-schema modeline is a comment, not an import; inspect only the document body.
+    const tsSource = text.replace(/^# yaml-language-server: .*\n/, "");
 
     const importPattern = /\b(?:import|require)\s*(?:\(\s*)?["'`]([^"'`]+)["'`]/g;
     const matchedSpecifiers: string[] = [];

@@ -90,7 +90,7 @@ export const makeTestInteractionService = (
     return engine.promptAll(specs, mergeAnswers(seeded, options));
   };
 
-  const service: InteractionServiceShape = {
+  const service = InteractionService.of({
     id: engine.id,
     isInteractive: engine.isInteractive,
     prompt: (spec) => {
@@ -112,7 +112,7 @@ export const makeTestInteractionService = (
       records.push({ name: spec.name ?? "secret", type: "secret", message: spec.message });
       return engine.secret(mergeAnswers(seeded, spec) as SecretSpec);
     },
-  };
+  });
 
   return {
     service,

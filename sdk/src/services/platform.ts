@@ -34,7 +34,7 @@ import type { PrivilegeService } from "./process.ts";
 export interface CaSetupOptions {
   readonly force: boolean;
   readonly skipTrustInstall?: boolean;
-  readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
+  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
 }
 
 export interface CertificateSpec {
@@ -48,51 +48,51 @@ export interface CertificateResult {
   readonly caPath: string;
 }
 
-export interface CertificateAuthorityShape {
-  readonly id: string;
-  readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
-  readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
-}
-
-export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAuthority")<
+export class CertificateAuthority extends Context.Service<
   CertificateAuthority,
-  CertificateAuthorityShape
->() {}
+  {
+    readonly id: string;
+    readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
+    readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
+  }
+>()("@lando/core/CertificateAuthority") {}
 
-export interface RouterServiceShape {
-  readonly id: string;
-  readonly capabilities: ProxyCapabilities;
-  /** Resolve and persist route publication ports before starting required global services. */
-  readonly prepare?: (
-    config: ProxyConfig,
-  ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
-  readonly setup: (
-    config: ProxyConfig,
-    options?: { readonly autoApprove?: boolean },
-  ) => Effect.Effect<
-    void,
-    ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
-    Scope.Scope
-  >;
-  /**
-   * Re-observe router startup against the running router and refresh whatever
-   * persisted startup observation the implementation keeps. Distinct from
-   * `setup`: it acquires no ports, starts no services, and takes no Scope.
-   */
-  readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
-  readonly applyRoutes: (
-    routes: ReadonlyArray<RoutePlan>,
-    appId: AppId,
-  ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
-  readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
-  readonly status: Effect.Effect<ProxyStatus, ProxyError>;
-  readonly stop: Effect.Effect<void, ProxyError>;
-}
+export type CertificateAuthorityShape = CertificateAuthority["Service"];
 
-export class RouterService extends Context.Tag("@lando/core/RouterService")<
+export class RouterService extends Context.Service<
   RouterService,
-  RouterServiceShape
->() {}
+  {
+    readonly id: string;
+    readonly capabilities: ProxyCapabilities;
+    /** Resolve and persist route publication ports before starting required global services. */
+    readonly prepare?: (
+      config: ProxyConfig,
+    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
+    readonly setup: (
+      config: ProxyConfig,
+      options?: { readonly autoApprove?: boolean },
+    ) => Effect.Effect<
+      void,
+      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      Scope.Scope
+    >;
+    /**
+     * Re-observe router startup against the running router and refresh whatever
+     * persisted startup observation the implementation keeps. Distinct from
+     * `setup`: it acquires no ports, starts no services, and takes no Scope.
+     */
+    readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
+    readonly applyRoutes: (
+      routes: ReadonlyArray<RoutePlan>,
+      appId: AppId,
+    ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
+    readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly status: Effect.Effect<ProxyStatus, ProxyError>;
+    readonly stop: Effect.Effect<void, ProxyError>;
+  }
+>()("@lando/core/RouterService") {}
+
+export type RouterServiceShape = RouterService["Service"];
 
 export interface SshSetupOptions {
   readonly force: boolean;
@@ -104,13 +104,16 @@ export interface SshAgentSocket {
   readonly runtimeVolume?: string;
 }
 
-export interface SshServiceShape {
-  readonly id: string;
-  readonly setup: (options: SshSetupOptions) => Effect.Effect<void, SshError>;
-  readonly getAgentSocket: (appId: AppId) => Effect.Effect<SshAgentSocket, SshError>;
-}
+export class SshService extends Context.Service<
+  SshService,
+  {
+    readonly id: string;
+    readonly setup: (options: SshSetupOptions) => Effect.Effect<void, SshError>;
+    readonly getAgentSocket: (appId: AppId) => Effect.Effect<SshAgentSocket, SshError>;
+  }
+>()("@lando/core/SshService") {}
 
-export class SshService extends Context.Tag("@lando/core/SshService")<SshService, SshServiceShape>() {}
+export type SshServiceShape = SshService["Service"];
 
 export interface HealthcheckResult {
   readonly healthy: boolean;
@@ -121,19 +124,19 @@ export interface HealthcheckResult {
 
 export type HealthcheckRunError = HealthcheckTimeoutError | HealthcheckError;
 
-export interface HealthcheckRunnerShape {
-  readonly id: string;
-  readonly run: (
-    plan: HealthcheckPlan,
-    appId: AppId,
-    service: ServiceName,
-  ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
-}
-
-export class HealthcheckRunner extends Context.Tag("@lando/core/HealthcheckRunner")<
+export class HealthcheckRunner extends Context.Service<
   HealthcheckRunner,
-  HealthcheckRunnerShape
->() {}
+  {
+    readonly id: string;
+    readonly run: (
+      plan: HealthcheckPlan,
+      appId: AppId,
+      service: ServiceName,
+    ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
+  }
+>()("@lando/core/HealthcheckRunner") {}
+
+export type HealthcheckRunnerShape = HealthcheckRunner["Service"];
 
 export interface ScanEndpoint {
   readonly service: ServiceName;
@@ -164,27 +167,30 @@ export interface PortCollision {
   readonly apps: ReadonlyArray<{ readonly appId: AppId; readonly service: ServiceName }>;
 }
 
-export interface UrlScannerShape {
-  readonly id: string;
-  /**
-   * Per-service settings come from options.plan.services[name].scanner.
-   * Omitting the plan scans with the scanner's own defaults.
-   * When `urls` is provided, those host-facing URLs are probed instead of
-   * rediscovering endpoints from the captured provider.
-   */
-  readonly scan: (
-    appId: AppId,
-    options?: {
-      readonly plan?: AppPlan;
-      readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
-    },
-  ) => Effect.Effect<ScanResult, ScannerError>;
-  readonly detectCollisions: (
-    appIds: ReadonlyArray<AppId>,
-  ) => Effect.Effect<ReadonlyArray<PortCollision>, ScannerError | PortCollisionError>;
-}
+export class UrlScanner extends Context.Service<
+  UrlScanner,
+  {
+    readonly id: string;
+    /**
+     * Per-service settings come from options.plan.services[name].scanner.
+     * Omitting the plan scans with the scanner's own defaults.
+     * When `urls` is provided, those host-facing URLs are probed instead of
+     * rediscovering endpoints from the captured provider.
+     */
+    readonly scan: (
+      appId: AppId,
+      options?: {
+        readonly plan?: AppPlan;
+        readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+      },
+    ) => Effect.Effect<ScanResult, ScannerError>;
+    readonly detectCollisions: (
+      appIds: ReadonlyArray<AppId>,
+    ) => Effect.Effect<ReadonlyArray<PortCollision>, ScannerError | PortCollisionError>;
+  }
+>()("@lando/core/UrlScanner") {}
 
-export class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<UrlScanner, UrlScannerShape>() {}
+export type UrlScannerShape = UrlScanner["Service"];
 
 /**
  * `HostProxyService` resolves `*.<base-domain>` (default `lndo.site`) to a
@@ -221,31 +227,31 @@ export interface HostProxyStatus {
   readonly loopback: string;
 }
 
-export interface HostProxyServiceShape {
-  readonly id: string;
-  readonly setup: (options: HostProxySetupOptions) => Effect.Effect<void, HostProxyError>;
-  readonly status: () => Effect.Effect<HostProxyStatus, HostProxyError>;
-  readonly teardown: () => Effect.Effect<void, HostProxyError>;
-}
-
-export class HostProxyService extends Context.Tag("@lando/core/HostProxyService")<
+export class HostProxyService extends Context.Service<
   HostProxyService,
-  HostProxyServiceShape
->() {}
+  {
+    readonly id: string;
+    readonly setup: (options: HostProxySetupOptions) => Effect.Effect<void, HostProxyError>;
+    readonly status: () => Effect.Effect<HostProxyStatus, HostProxyError>;
+    readonly teardown: () => Effect.Effect<void, HostProxyError>;
+  }
+>()("@lando/core/HostProxyService") {}
 
-export class PluginSource extends Context.Tag("@lando/core/PluginSource")<
+export type HostProxyServiceShape = HostProxyService["Service"];
+
+export class PluginSource extends Context.Service<
   PluginSource,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/PluginSource") {}
 
-export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
+export class UpdateService extends Context.Service<
   UpdateService,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/UpdateService") {}
 
 /**
  * SecretStore resolves `${secret:...}` references in Landofiles.
@@ -258,12 +264,15 @@ export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
  * CLI stores list references resolved in this process. Values MUST be redacted from log/event output
  * (see `@lando/sdk/secrets`).
  */
-export interface SecretStoreShape {
-  readonly id: string;
-  readonly schemes?: ReadonlyArray<string>;
-  readonly get: (secret: string) => Effect.Effect<string, SecretStoreError>;
-  readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
-  readonly list: Effect.Effect<ReadonlyArray<string>>;
-}
+export class SecretStore extends Context.Service<
+  SecretStore,
+  {
+    readonly id: string;
+    readonly schemes?: ReadonlyArray<string>;
+    readonly get: (secret: string) => Effect.Effect<string, SecretStoreError>;
+    readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
+    readonly list: Effect.Effect<ReadonlyArray<string>>;
+  }
+>()("@lando/core/SecretStore") {}
 
-export class SecretStore extends Context.Tag("@lando/core/SecretStore")<SecretStore, SecretStoreShape>() {}
+export type SecretStoreShape = SecretStore["Service"];

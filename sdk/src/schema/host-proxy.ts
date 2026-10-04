@@ -15,7 +15,7 @@ import { AbsolutePath, AppId } from "./primitives.ts";
  */
 
 /** Machine-readable host-proxy failure codes carried on an `error` response. */
-export const HostProxyErrorCode = Schema.Literal(
+export const HostProxyErrorCode = Schema.Literals([
   "command-not-allowed",
   "allowlist-conflict",
   "scheme-not-allowed",
@@ -23,11 +23,11 @@ export const HostProxyErrorCode = Schema.Literal(
   "backpressure",
   "token-mismatch",
   "internal",
-);
+]);
 export type HostProxyErrorCode = typeof HostProxyErrorCode.Type;
 
 /** Env forwarded from the container, already filtered to the shim allowlist. */
-const HostProxyEnv = Schema.Record({ key: Schema.String, value: Schema.String });
+const HostProxyEnv = Schema.Record(Schema.String, Schema.String);
 
 /**
  * `runLando` re-enters Lando's command runtime on the host. `argv` is the
@@ -38,7 +38,7 @@ export const HostProxyRunLandoRequest = Schema.TaggedStruct("runLando", {
   argv: Schema.Array(Schema.String),
   cwd: AbsolutePath,
   tty: Schema.Boolean,
-  env: Schema.optional(HostProxyEnv),
+  env: Schema.optionalKey(HostProxyEnv),
 });
 export type HostProxyRunLandoRequest = typeof HostProxyRunLandoRequest.Type;
 
@@ -49,11 +49,11 @@ export type HostProxyRunLandoRequest = typeof HostProxyRunLandoRequest.Type;
  * Container-initiated `notify`/`clipboardCopy` are unsupported and deliberately
  * absent — there is no deprecation shim.
  */
-export const HostProxyRequest = Schema.Union(
+export const HostProxyRequest = Schema.Union([
   HostProxyRunLandoRequest,
   Schema.TaggedStruct("openUrl", {
     url: Schema.String,
-    target: Schema.optional(Schema.String),
+    target: Schema.optionalKey(Schema.String),
   }),
   Schema.TaggedStruct("openPath", {
     path: AbsolutePath,
@@ -62,9 +62,9 @@ export const HostProxyRequest = Schema.Union(
     argv: Schema.Array(Schema.String),
     cwd: AbsolutePath,
     tty: Schema.Boolean,
-    env: Schema.optional(HostProxyEnv),
+    env: Schema.optionalKey(HostProxyEnv),
   }),
-);
+]);
 export type HostProxyRequest = typeof HostProxyRequest.Type;
 
 /** Closed set of HostProxyRequest `_tag` values (schema-surface test seam). */
@@ -72,14 +72,14 @@ export const HOST_PROXY_REQUEST_TAGS = ["runLando", "openUrl", "openPath", "runB
 export type HostProxyRequestTag = (typeof HOST_PROXY_REQUEST_TAGS)[number];
 
 /** Canonical host-proxy response union. */
-export const HostProxyResponse = Schema.Union(
-  Schema.TaggedStruct("ok", { data: Schema.optional(Schema.Unknown) }),
+export const HostProxyResponse = Schema.Union([
+  Schema.TaggedStruct("ok", { data: Schema.optionalKey(Schema.Unknown) }),
   Schema.TaggedStruct("error", {
     code: HostProxyErrorCode,
     message: Schema.String,
-    remediation: Schema.optional(Schema.String),
+    remediation: Schema.optionalKey(Schema.String),
   }),
-);
+]);
 export type HostProxyResponse = typeof HostProxyResponse.Type;
 
 /** A host loopback worker that a provider can expose through a private guest socket. */

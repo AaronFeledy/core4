@@ -135,11 +135,12 @@ export const applyServiceHome = (input: {
   if (resolved instanceof HomePathCapabilityError) return resolved;
   if (resolved === undefined) return input.servicePlan;
 
-  const target = plannedContainerDestination(
-    resolved,
-    input.appRoot,
-    `services.${input.serviceName}.home.path`,
-  );
+  const target = plannedContainerDestination(resolved, input.appRoot, [
+    "services",
+    input.serviceName,
+    "home",
+    "path",
+  ]);
   if (target instanceof LandofileValidationError) return target;
 
   const occupied = input.servicePlan.storage.some((mount) => mount.target === target);

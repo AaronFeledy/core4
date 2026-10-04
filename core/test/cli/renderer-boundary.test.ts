@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
-import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
+import * as RendererOutput from "@lando/renderer/output";
+import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
@@ -21,7 +22,7 @@ afterEach(() => {
   process.exitCode = 0;
 });
 
-describe("makeRendererServiceLiveForMode", () => {
+describe("RendererOutput.layerServiceForMode", () => {
   for (const mode of ["lando", "json", "plain", "verbose"] as const) {
     test(`selects the ${mode} renderer`, () => {
       const id = Effect.runSync(
@@ -29,7 +30,7 @@ describe("makeRendererServiceLiveForMode", () => {
           const renderer = yield* Renderer;
           return renderer.id;
         }).pipe(
-          Effect.provide(makeRendererServiceLiveForMode(mode, landoRenderer, createBufferedRendererIO())),
+          Effect.provide(RendererOutput.layerServiceForMode(mode, landoRenderer, createBufferedRendererIO())),
         ),
       );
       expect(id).toBe(mode);
@@ -49,7 +50,7 @@ describe("runWithRendererHandling", () => {
     severity: "info",
     note: "Prefer the new surface when convenient.",
   };
-  const timestamp = DateTime.unsafeMake("2026-06-12T12:00:00.000Z");
+  const timestamp = DateTime.makeUnsafe("2026-06-12T12:00:00.000Z");
   const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
   test("writes render(value) to stdout on success", async () => {
@@ -440,7 +441,7 @@ describe("runWithRendererHandling", () => {
         return "ok";
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "plain",
         io,
         render: (value) => value,
@@ -462,7 +463,7 @@ describe("runWithRendererHandling", () => {
         yield* deprecations.use({ kind: "config-key", id: "legacy.key", notice: infoNotice, timestamp });
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "plain",
         io,
         render: () => undefined,
@@ -483,7 +484,7 @@ describe("runWithRendererHandling", () => {
         return yield* deprecations.summary();
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "plain",
         io,
         deprecationWarnings: false,
@@ -506,7 +507,7 @@ describe("runWithRendererHandling", () => {
         yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
       }),
       {
-        runtime: DeprecationServiceLive,
+        runtime: DeprecationServiceLayer.layer,
         rendererMode: "json",
         io,
         render: () => undefined,
@@ -565,7 +566,7 @@ describe("write helpers", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(
       writeResultLine("hello").pipe(
-        Effect.provide(makeRendererServiceLiveForMode("lando", landoRenderer, io)),
+        Effect.provide(RendererOutput.layerServiceForMode("lando", landoRenderer, io)),
       ),
     );
     expect(io.stdout()).toBe("hello\n");
@@ -575,7 +576,7 @@ describe("write helpers", () => {
     const io = createBufferedRendererIO();
     Effect.runSync(
       writeDiagnosticLine("oops").pipe(
-        Effect.provide(makeRendererServiceLiveForMode("json", landoRenderer, io)),
+        Effect.provide(RendererOutput.layerServiceForMode("json", landoRenderer, io)),
       ),
     );
     expect(io.stderr()).toBe("oops\n");

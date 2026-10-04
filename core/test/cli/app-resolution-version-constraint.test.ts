@@ -14,11 +14,11 @@ import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live"
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 
-const fakeLandofileService = (shape: LandofileShape): Context.Tag.Service<typeof LandofileService> => ({
+const fakeLandofileService = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> => ({
   discover: Effect.succeed(shape),
 });
 
@@ -26,27 +26,30 @@ const capturingRendererLayer = (
   sink: { warnings: string[]; stderr?: string[] },
   id = "test",
 ): Layer.Layer<Renderer> =>
-  Layer.succeed(Renderer, {
-    id,
-    capabilities: {
-      color: false,
-      interactive: false,
-      animation: false,
-      notifications: false,
-    },
-    message: {
-      info: () => Effect.void,
-      warn: (body: string) =>
-        Effect.sync(() => {
-          sink.warnings.push(body);
-        }),
-      error: () => Effect.void,
-    },
-    output: {
-      stdout: () => Effect.void,
-      stderr: (chunk: string) => Effect.sync(() => sink.stderr?.push(chunk)),
-    },
-  } as Context.Tag.Service<typeof Renderer>);
+  Layer.succeed(
+    Renderer,
+    Renderer.of({
+      id,
+      capabilities: {
+        color: false,
+        interactive: false,
+        animation: false,
+        notifications: false,
+      },
+      message: {
+        info: () => Effect.void,
+        warn: (body: string) =>
+          Effect.sync(() => {
+            sink.warnings.push(body);
+          }),
+        error: () => Effect.void,
+      },
+      output: {
+        stdout: () => Effect.void,
+        stderr: (chunk: string) => Effect.sync(() => sink.stderr?.push(chunk)),
+      },
+    } as Context.Service.Shape<typeof Renderer>),
+  );
 
 describe("assertLandoVersionConstraint", () => {
   test("passes when the running version satisfies the constraint", async () => {
@@ -226,7 +229,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
 
       const error = await Effect.runPromise(
         Effect.flatMap(LandofileService, (service) => Effect.flip(loadUserLandofile(service))).pipe(
-          Effect.provide(LandofileServiceLive),
+          Effect.provide(TestLandofileServiceLayer.layer),
         ),
       );
 

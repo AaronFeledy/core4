@@ -7,7 +7,7 @@ import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { Effect } from "effect";
 
-import { TestLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -83,7 +83,7 @@ describe("lando init — Drupal recipe", () => {
         process.chdir(appDir);
         const loaded = await Effect.runPromise(
           Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-            Effect.provide(TestLandofileServiceLive),
+            Effect.provide(TestLandofileServiceLayer.layer),
           ),
         );
         // App identity and proxy domain are bound later by the planner, not init.

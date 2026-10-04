@@ -4,7 +4,7 @@ import type { ConfigError } from "../errors/index.ts";
 import type { PluginTrustState } from "../schema/index.ts";
 export type { PluginTrustState } from "../schema/index.ts";
 
-export class PluginTrustStore extends Context.Tag("@lando/core/PluginTrustStore")<
+export class PluginTrustStore extends Context.Service<
   PluginTrustStore,
   {
     readonly read: Effect.Effect<PluginTrustState, ConfigError>;
@@ -14,4 +14,4 @@ export class PluginTrustStore extends Context.Tag("@lando/core/PluginTrustStore"
     readonly isAuthoringRootTrusted: (path: string) => Effect.Effect<boolean, ConfigError>;
     readonly trustAuthoringRoot: (path: string) => Effect.Effect<void, ConfigError>;
   }
->() {}
+>()("@lando/core/PluginTrustStore") {}

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { compressionFromExportPath, isGzipPath, isZstdPath } from "../src/compression.ts";
 import type { SqlCreds } from "../src/creds.ts";
 import {
   type SqlFamily,
@@ -13,7 +14,6 @@ import {
   mssqlPrepareBackupCommand,
   resetCommand,
 } from "../src/families.ts";
-import { isGzipPath, wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
 
 const SECRET = "s3cret-pass";
 const creds: SqlCreds = {
@@ -251,7 +251,7 @@ describe("family command builders", () => {
   });
 });
 
-describe("gzip helpers", () => {
+describe("dump path helpers", () => {
   test("isGzipPath is true only when the basename ends with .gz", () => {
     expect(isGzipPath("/tmp/dump.sql.gz")).toBe(true);
     expect(isGzipPath("dump.sql.gz")).toBe(true);
@@ -260,38 +260,18 @@ describe("gzip helpers", () => {
     expect(isGzipPath("archive.gz/dump.sql")).toBe(false);
   });
 
-  test("wrapImportCommand is unchanged when gzip is false", () => {
-    const command = ["mysql", "-u", "alice"] as const;
-    expect(wrapImportCommand(command, false)).toEqual(command);
+  test("isZstdPath is true only when the basename ends with .zst", () => {
+    expect(isZstdPath("/tmp/dump.sql.zst")).toBe(true);
+    expect(isZstdPath("dump.sql.zst")).toBe(true);
+    expect(isZstdPath("dump.SQL.ZST")).toBe(false);
+    expect(isZstdPath("dump.zst.sql")).toBe(false);
+    expect(isZstdPath("archive.zst/dump.sql")).toBe(false);
   });
 
-  test("wrapImportCommand pipes gunzip through a quoted command", () => {
-    expect(wrapImportCommand(["mysql", "-u", "alice"], true)).toEqual([
-      "sh",
-      "-c",
-      "gunzip | 'mysql' '-u' 'alice'",
-    ]);
-  });
-
-  test("wrapExportCommand pipes the quoted command into gzip", () => {
-    expect(wrapExportCommand(["mysqldump", "-u", "alice"], true)).toEqual([
-      "sh",
-      "-c",
-      "'mysqldump' '-u' 'alice' | gzip",
-    ]);
-  });
-
-  test("wrapExportCommand appends gzip to an existing mongo shell script", () => {
-    const dump = dumpCommand("mongodb", creds);
-    const wrapped = wrapExportCommand(dump, true);
-    expect(wrapped[0]).toBe("sh");
-    expect(wrapped[2]).toContain('mongodump --archive --uri="$MONGO_URI"');
-    expect(wrapped[2]?.endsWith(" | gzip")).toBe(true);
-    expect(argvHasSecret(wrapped)).toBe(false);
-  });
-
-  test("wrap quotes single quotes with POSIX escaping", () => {
-    const wrapped = wrapImportCommand(["mysql", "-e", "SELECT 'x'"], true);
-    expect(wrapped[2]).toBe("gunzip | 'mysql' '-e' 'SELECT '\\''x'\\'''");
+  test("export suffix selects gzip, zstd, or none", () => {
+    expect(compressionFromExportPath("database.sql.gz")).toBe("gzip");
+    expect(compressionFromExportPath("database.sql.zst")).toBe("zstd");
+    expect(compressionFromExportPath("database.sql")).toBe("none");
+    expect(compressionFromExportPath("dump.bak")).toBe("none");
   });
 });

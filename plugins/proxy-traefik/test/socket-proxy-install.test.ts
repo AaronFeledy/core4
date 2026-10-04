@@ -36,7 +36,7 @@ const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, st
 
 const failureTag = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const option = Cause.failureOption(exit.cause);
+  const option = Cause.findErrorOption(exit.cause);
   if (option._tag !== "Some") throw new Error("expected a tagged failure");
   return option.value;
 };
@@ -49,7 +49,7 @@ type RunCall = {
 const makeRunner = (
   handler: (input: ProcessSpawnOptions) => ProcessResult,
 ): {
-  readonly service: Context.Tag.Service<typeof ProcessRunner>;
+  readonly service: Context.Service.Shape<typeof ProcessRunner>;
   readonly calls: () => ReadonlyArray<RunCall>;
 } => {
   const calls: RunCall[] = [];
@@ -74,7 +74,7 @@ const makeRunner = (
 const makePrivilege = (
   result: ProcessResult | ((command: ReadonlyArray<string>) => ProcessResult),
 ): {
-  readonly service: Context.Tag.Service<typeof PrivilegeService>;
+  readonly service: Context.Service.Shape<typeof PrivilegeService>;
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
 } => {
   const calls: Array<ReadonlyArray<string>> = [];

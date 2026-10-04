@@ -36,10 +36,10 @@ export const volumeCreationLabels = (
   ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
 });
 
-const CreatedVolume = Schema.parseJson(
+const CreatedVolume = Schema.fromJsonString(
   Schema.Struct({
     Name: Schema.String,
-    Labels: Schema.Record({ key: Schema.String, value: Schema.String }),
+    Labels: Schema.Record(Schema.String, Schema.String),
   }),
 );
 

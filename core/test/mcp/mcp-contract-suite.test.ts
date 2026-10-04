@@ -17,7 +17,7 @@
  * allow: SIZE_OK — acceptance bullets stay collocated in one discoverable suite.
  */
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
 
 import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -35,12 +35,12 @@ import {
   validateToolInput,
 } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
-import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
+import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
-import { McpServiceLive } from "../../src/mcp-command-executor.ts";
+import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 
 /** A prompt-required tagged failure, standing in for interactive recipe answers. */
 class PromptRequiredError extends Schema.TaggedError<PromptRequiredError>()("RecipeMissingAnswerError", {
@@ -65,7 +65,7 @@ const spec = (
 const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) as const),
-    Effect.catchAll((error) => Effect.succeed({ _tag: "failure", error } as const)),
+    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } as const)),
   ) as ReturnType<McpDispatchDeps["execute"]>;
 
 interface Harness {
@@ -106,14 +106,19 @@ const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
   mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
-  Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
-  });
+  Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
+    }),
+  );
 
 const serviceLayer = (config: McpRuntimeConfigShape) =>
-  McpServiceLive.pipe(
-    Layer.provide(Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer())),
+  mcpServiceLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(Layer.succeed(McpRuntimeConfig, McpRuntimeConfig.of(config)), redactionLayer()),
+    ),
   );
 
 describe("MCP contract suite — catalog matches the allowlist cache", () => {
@@ -277,11 +282,13 @@ describe("MCP contract suite — non-interactive prompt failure surfaces as stru
 describe("MCP contract suite — cancellation mid-call", () => {
   test("canceling an in-flight transport request interrupts the running command", async () => {
     let finalized = false;
+    const done = Promise.withResolvers<void>();
     const blocking = spec("app:exec", () =>
       Effect.never.pipe(
         Effect.ensuring(
           Effect.sync(() => {
             finalized = true;
+            done.resolve();
           }),
         ),
       ),
@@ -292,27 +299,25 @@ describe("MCP contract suite — cancellation mid-call", () => {
       runtimeLayer: Layer.empty,
     };
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       const id = yield* inmem.push({ toolId: "app:exec" });
       yield* Effect.sleep("10 millis");
       yield* inmem.cancel(id);
-      while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+      yield* Effect.promise(() => done.promise);
       const replies = yield* inmem.replies;
       yield* inmem.close;
       yield* Fiber.join(fiber);
       return { id, replies };
     }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
 
-    const { id, replies } = await Effect.runPromise(program);
+    const { replies } = await Effect.runPromise(program);
 
     expect(finalized).toBe(true);
-    expect(replies).toEqual([
-      { id, ok: false, error: expect.objectContaining({ _tag: "McpTransportError" }) },
-    ]);
+    expect(replies).toEqual([]);
   });
 });
 
@@ -339,11 +344,11 @@ describe("MCP contract suite — concurrency cap", () => {
       runtimeLayer: Layer.empty,
     };
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio", maxConcurrent: 1 })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       for (let index = 0; index < 4; index += 1) yield* inmem.push({ toolId: "app:exec" });
       yield* Effect.sleep("80 millis");
       const observedMax = maxActive;

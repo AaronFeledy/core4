@@ -63,44 +63,43 @@ export const validateGpgAgentSocketCapability = (capabilities: Capabilities) =>
       )
     : Effect.succeed(capabilities.agentSocket.delivery);
 
-export const startGpgAgentSession = (
+export const startGpgAgentSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: Capabilities,
   intent: GpgAgentIntent,
   options: GpgAgentSessionOptions = {},
-) =>
-  Effect.gen(function* () {
-    const delivery = yield* validateGpgAgentSocketCapability(capabilities);
-    const paths = yield* PathsService;
-    const runnerOption = yield* Effect.serviceOption(ProcessRunner);
-    if (Option.isNone(runnerOption)) return yield* Effect.fail(missingGnuPg());
-    const runner = runnerOption.value;
-    const upstream = yield* discoverHostGpgAgent({
-      runner,
-      ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
-      launch: true,
-      ...options.discovery,
-    });
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const session = yield* startDetachedAgentRelayWorker({
-      app,
-      plan,
-      upstream: { _tag: "unix", path: upstream.path },
-      delivery,
-      kind: "gpg",
-      socketName: GPG_AGENT_SOCKET_NAME,
-      paths: { ...paths.roots, platform: paths.platform },
-      privateFileAccess,
-      ...(options.spawnWorker === undefined ? {} : { spawnWorker: options.spawnWorker }),
-    }).pipe(Effect.mapError(gpgTransportError));
-    // Starting the worker resets its state directory, so the keyring is published only once the worker owns it.
-    const keyringDir = join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring");
-    yield* exportPublicKeyring({ runner, destDir: keyringDir }).pipe(
-      Effect.onError(() => Effect.promise(() => session.close())),
-    );
-    return { session, keyringDir } satisfies GpgAgentSession;
+) {
+  const delivery = yield* validateGpgAgentSocketCapability(capabilities);
+  const paths = yield* PathsService;
+  const runnerOption = yield* Effect.serviceOption(ProcessRunner);
+  if (Option.isNone(runnerOption)) return yield* Effect.fail(missingGnuPg());
+  const runner = runnerOption.value;
+  const upstream = yield* discoverHostGpgAgent({
+    runner,
+    ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
+    launch: true,
+    ...options.discovery,
   });
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const session = yield* startDetachedAgentRelayWorker({
+    app,
+    plan,
+    upstream: { _tag: "unix", path: upstream.path },
+    delivery,
+    kind: "gpg",
+    socketName: GPG_AGENT_SOCKET_NAME,
+    paths: { ...paths.roots, platform: paths.platform },
+    privateFileAccess,
+    ...(options.spawnWorker === undefined ? {} : { spawnWorker: options.spawnWorker }),
+  }).pipe(Effect.mapError(gpgTransportError));
+  // Starting the worker resets its state directory, so the keyring is published only once the worker owns it.
+  const keyringDir = join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring");
+  yield* exportPublicKeyring({ runner, destDir: keyringDir }).pipe(
+    Effect.onError(() => Effect.promise(() => session.close())),
+  );
+  return { session, keyringDir } satisfies GpgAgentSession;
+});
 
 /** Seeds each opted-in service's GNUPGHOME from the mounted public keyring and links the relayed agent socket. */
 const prepareGpgHome = (plan: AppPlan, exec: RuntimeProviderShape["exec"]) =>
@@ -135,7 +134,7 @@ const prepareGpgHome = (plan: AppPlan, exec: RuntimeProviderShape["exec"]) =>
     { discard: true },
   );
 
-export const withStartedGpgAgent = <A, E, R>(
+export const withStartedGpgAgent = Effect.fnUntraced(function* <A, E, R>(
   plan: AppPlan,
   app: AppRef,
   capabilities: Capabilities,
@@ -153,40 +152,37 @@ export const withStartedGpgAgent = <A, E, R>(
     ) => Effect.Effect<A, E, R>;
     readonly startSession?: () => Effect.Effect<GpgAgentSession, AgentError>;
   },
-): Effect.Effect<A, E | AgentError, R | PathsService | PrivateFileAccessService> =>
-  Effect.gen(function* () {
-    if (
-      app.kind === "global" ||
-      plan.id === "global" ||
-      intent.forward === false ||
-      gpgAgentEligibleServices(plan).length === 0
-    ) {
-      return yield* options.use(plan, Effect.void);
-    }
-    const keep = yield* Ref.make(false);
-    const acquire = options.startSession?.() ?? startGpgAgentSession(plan, app, capabilities, intent);
-    return yield* Effect.acquireUseRelease(
-      acquire,
-      (agent) =>
-        options
-          .use(withGpgAgentOverlay(plan, agent.session, agent.keyringDir), prepareGpgHome(plan, options.exec))
-          .pipe(
-            Effect.tap(() =>
-              Effect.gen(function* () {
-                if (options.managed !== undefined) {
-                  yield* Effect.addFinalizer(() => Effect.promise(() => agent.session.close())).pipe(
-                    Effect.provideService(Scope.Scope, options.managed.scope),
-                  );
-                }
-                yield* Ref.set(keep, true);
-              }),
-            ),
-          ),
-      (agent) =>
-        Ref.get(keep).pipe(
-          Effect.flatMap((retained) =>
-            retained ? Effect.void : Effect.promise(() => agent.session.close()),
+): Effect.fn.Return<A, E | AgentError, R | PathsService | PrivateFileAccessService> {
+  if (
+    app.kind === "global" ||
+    plan.id === "global" ||
+    intent.forward === false ||
+    gpgAgentEligibleServices(plan).length === 0
+  ) {
+    return yield* options.use(plan, Effect.void);
+  }
+  const keep = yield* Ref.make(false);
+  const acquire = options.startSession?.() ?? startGpgAgentSession(plan, app, capabilities, intent);
+  return yield* Effect.acquireUseRelease(
+    acquire,
+    (agent) =>
+      options
+        .use(withGpgAgentOverlay(plan, agent.session, agent.keyringDir), prepareGpgHome(plan, options.exec))
+        .pipe(
+          Effect.tap(() =>
+            Effect.gen(function* () {
+              if (options.managed !== undefined) {
+                yield* Effect.addFinalizer(() => Effect.promise(() => agent.session.close())).pipe(
+                  Effect.provideService(Scope.Scope, options.managed.scope),
+                );
+              }
+              yield* Ref.set(keep, true);
+            }),
           ),
         ),
-    );
-  });
+    (agent) =>
+      Ref.get(keep).pipe(
+        Effect.flatMap((retained) => (retained ? Effect.void : Effect.promise(() => agent.session.close()))),
+      ),
+  );
+});

@@ -29,6 +29,7 @@ import {
 } from "@lando/sdk/errors";
 import type { RecipeManifest } from "@lando/sdk/schema";
 
+import { validationIssue } from "@lando/sdk/schema";
 import { BUNDLED_RECIPES } from "./bundled";
 import { flattenRecipe } from "./manifest/flatten";
 import { validateRecipeManifestObject } from "./manifest/service";
@@ -119,14 +120,14 @@ const idMismatchError = (
       `Recipe id "${declaredId}" must match the directory basename "${dirBasename}" ` +
       `(recipe at ${manifestPath}).`,
     source: manifestPath,
-    issues: [`id: "${declaredId}" must equal directory basename "${dirBasename}"`],
+    issues: [validationIssue([], `id: "${declaredId}" must equal directory basename "${dirBasename}"`)],
   });
 
-const resolveLocalTs = (
+const resolveLocalTs = Effect.fnUntraced(function* (
   ref: string,
   expanded: string,
   tsPath: string,
-): Effect.Effect<
+): Effect.fn.Return<
   ResolvedRecipe,
   | RecipeExtendsError
   | RecipeManifestNotFoundError
@@ -134,30 +135,29 @@ const resolveLocalTs = (
   | RecipeManifestParseError
   | RecipeSourceError
   | NotImplementedError
-> =>
-  Effect.gen(function* () {
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(tsPath).text(),
-      catch: (cause) =>
-        new RecipeManifestNotFoundError({
-          message: `Could not read recipe.ts at ${tsPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
-          source: tsPath,
-        }),
-    });
-    const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
-    const flat = yield* flattenRecipe(tsPath, parsed);
-    const manifest = yield* validateRecipeManifestObject(tsPath, flat);
-    const dirBasename = basename(expanded);
-    if (manifest.id !== dirBasename) {
-      return yield* Effect.fail(idMismatchError(manifest.id, dirBasename, tsPath));
-    }
-    return { id: ref, source: tsPath, manifestYaml: "", root: expanded, manifest };
+> {
+  const content = yield* Effect.tryPromise({
+    try: () => Bun.file(tsPath).text(),
+    catch: (cause) =>
+      new RecipeManifestNotFoundError({
+        message: `Could not read recipe.ts at ${tsPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        source: tsPath,
+      }),
   });
+  const parsed = yield* loadRecipeTs({ filePath: tsPath, recipeRoot: expanded, content });
+  const flat = yield* flattenRecipe(tsPath, parsed);
+  const manifest = yield* validateRecipeManifestObject(tsPath, flat);
+  const dirBasename = basename(expanded);
+  if (manifest.id !== dirBasename) {
+    return yield* Effect.fail(idMismatchError(manifest.id, dirBasename, tsPath));
+  }
+  return { id: ref, source: tsPath, manifestYaml: "", root: expanded, manifest };
+});
 
-const resolveLocal = (
+const resolveLocal = Effect.fnUntraced(function* (
   ref: string,
   options: ResolveRecipeOptions,
-): Effect.Effect<
+): Effect.fn.Return<
   ResolvedRecipe,
   | RecipeExtendsError
   | RecipeManifestNotFoundError
@@ -165,61 +165,62 @@ const resolveLocal = (
   | RecipeManifestParseError
   | RecipeSourceError
   | NotImplementedError
-> =>
-  Effect.gen(function* () {
-    const expanded = expandLocalPath(ref, options);
-    const manifestPath = resolve(expanded, "recipe.yml");
-    const tsPath = resolve(expanded, "recipe.ts");
-    const [yamlExists, tsExists] = yield* Effect.tryPromise({
-      try: () => Promise.all([Bun.file(manifestPath).exists(), Bun.file(tsPath).exists()]),
-      catch: (cause) =>
-        new RecipeManifestNotFoundError({
-          message: `Could not stat recipe manifest at ${expanded}: ${cause instanceof Error ? cause.message : String(cause)}.`,
-          source: expanded,
-        }),
-    });
-
-    if (yamlExists && tsExists) {
-      return yield* Effect.fail(
-        new RecipeManifestValidationError({
-          message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
-          source: expanded,
-          issues: ["recipe.yml and recipe.ts are mutually exclusive in a recipe directory"],
-        }),
-      );
-    }
-
-    if (tsExists) return yield* resolveLocalTs(ref, expanded, tsPath);
-
-    if (!yamlExists) {
-      return yield* Effect.fail(
-        new RecipeManifestNotFoundError({
-          message: `Neither recipe.yml nor recipe.ts found in ${expanded}.`,
-          source: manifestPath,
-        }),
-      );
-    }
-
-    const manifestYaml = yield* Effect.tryPromise({
-      try: () => Bun.file(manifestPath).text(),
-      catch: (cause) =>
-        new RecipeManifestNotFoundError({
-          message: `Could not read recipe.yml at ${manifestPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
-          source: manifestPath,
-        }),
-    });
-    const dirBasename = basename(expanded);
-    const declaredId = extractTopLevelId(manifestYaml);
-    if (declaredId !== undefined && declaredId !== dirBasename) {
-      return yield* Effect.fail(idMismatchError(declaredId, dirBasename, manifestPath));
-    }
-    return {
-      id: ref,
-      source: manifestPath,
-      manifestYaml,
-      root: expanded,
-    };
+> {
+  const expanded = expandLocalPath(ref, options);
+  const manifestPath = resolve(expanded, "recipe.yml");
+  const tsPath = resolve(expanded, "recipe.ts");
+  const [yamlExists, tsExists] = yield* Effect.tryPromise({
+    try: () => Promise.all([Bun.file(manifestPath).exists(), Bun.file(tsPath).exists()]),
+    catch: (cause) =>
+      new RecipeManifestNotFoundError({
+        message: `Could not stat recipe manifest at ${expanded}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        source: expanded,
+      }),
   });
+
+  if (yamlExists && tsExists) {
+    return yield* Effect.fail(
+      new RecipeManifestValidationError({
+        message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
+        source: expanded,
+        issues: [
+          validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
+        ],
+      }),
+    );
+  }
+
+  if (tsExists) return yield* resolveLocalTs(ref, expanded, tsPath);
+
+  if (!yamlExists) {
+    return yield* Effect.fail(
+      new RecipeManifestNotFoundError({
+        message: `Neither recipe.yml nor recipe.ts found in ${expanded}.`,
+        source: manifestPath,
+      }),
+    );
+  }
+
+  const manifestYaml = yield* Effect.tryPromise({
+    try: () => Bun.file(manifestPath).text(),
+    catch: (cause) =>
+      new RecipeManifestNotFoundError({
+        message: `Could not read recipe.yml at ${manifestPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        source: manifestPath,
+      }),
+  });
+  const dirBasename = basename(expanded);
+  const declaredId = extractTopLevelId(manifestYaml);
+  if (declaredId !== undefined && declaredId !== dirBasename) {
+    return yield* Effect.fail(idMismatchError(declaredId, dirBasename, manifestPath));
+  }
+  return {
+    id: ref,
+    source: manifestPath,
+    manifestYaml,
+    root: expanded,
+  };
+});
 
 export const resolveRecipeRef = (
   ref: string,

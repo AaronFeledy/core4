@@ -5,11 +5,15 @@ import {
   boxBottom,
   boxSeparator,
   boxTop,
+  dimText,
   displayWidth,
   fieldLabelWidth,
   hyperlink,
+  linkKnownHttpUrls,
   resolveSummaryWidth,
+  shouldEmitHyperlinks,
   stripAnsi,
+  styleBoxBottom,
   toneChip,
   truncateToWidth,
   wrapFieldToWidth,
@@ -314,9 +318,26 @@ describe("hyperlink", () => {
     expect(hyperlink("docs", "")).toBe("docs");
   });
 
-  test("returns visible text unchanged for a non-http target", () => {
+  test("wraps a safe file target in OSC 8 with ST terminators", () => {
+    expect(hyperlink("/tmp/app", "file:///tmp/app")).toBe(
+      `${ESC}]8;;file:///tmp/app${ST}/tmp/app${ESC}]8;;${ST}`,
+    );
+  });
+
+  test("returns visible text unchanged for a non-http non-file target", () => {
     expect(hyperlink("db", "tcp://localhost:5432")).toBe("db");
-    expect(hyperlink("file", "file:///tmp/x")).toBe("file");
+    expect(hyperlink("ide", "vscode://file/tmp/x")).toBe("ide");
+    expect(hyperlink("script", "javascript:alert(1)")).toBe("script");
+    expect(hyperlink("payload", "data:text/plain,hi")).toBe("payload");
+    expect(hyperlink("rel", "/tmp/app")).toBe("rel");
+    expect(hyperlink("rel", "./readme")).toBe("rel");
+  });
+
+  test("keeps an SGR-styled label linked as the summary painters hand it over", () => {
+    const dimmed = dimText("https://example.com/docs");
+    expect(hyperlink(dimmed, "https://example.com/docs")).toBe(
+      `${ESC}]8;;https://example.com/docs${ST}${dimmed}${ESC}]8;;${ST}`,
+    );
   });
 
   test("returns visible text unchanged when the target contains C0, DEL, or ESC", () => {
@@ -324,5 +345,149 @@ describe("hyperlink", () => {
     expect(hyperlink("x", `https://example.com/${BEL}`)).toBe("x");
     expect(hyperlink("x", "https://example.com/\u0000")).toBe("x");
     expect(hyperlink("x", "https://example.com/\u007f")).toBe("x");
+    expect(hyperlink("x", `file:///tmp/${ESC}x`)).toBe("x");
+  });
+});
+
+describe("shouldEmitHyperlinks", () => {
+  test("emits on a TTY when TERM is set and NO_COLOR is unset", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color" } })).toBe(true);
+  });
+
+  test("treats empty NO_COLOR as unset", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "" } })).toBe(true);
+  });
+
+  test("stays plain when stdout is not a TTY", () => {
+    expect(shouldEmitHyperlinks({ isTTY: false, env: { TERM: "xterm-256color" } })).toBe(false);
+  });
+
+  test("stays plain when NO_COLOR is set", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "1" } })).toBe(false);
+  });
+
+  test("stays plain when TERM is dumb", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "dumb" } })).toBe(false);
+  });
+
+  test("stays plain when env is missing", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true })).toBe(false);
+  });
+});
+
+describe("linkKnownHttpUrls", () => {
+  test("wraps each intact http(s) URL and leaves other text alone", () => {
+    const text = "web\thttps://app.lndo.site, http://localhost:3000, tcp://localhost:5432";
+    expect(
+      linkKnownHttpUrls(text, ["https://app.lndo.site", "http://localhost:3000", "tcp://localhost:5432"]),
+    ).toBe(
+      `web\t${hyperlink("https://app.lndo.site", "https://app.lndo.site")}, ${hyperlink("http://localhost:3000", "http://localhost:3000")}, tcp://localhost:5432`,
+    );
+  });
+
+  test("leaves a URL plain when wrapping split the label", () => {
+    expect(linkKnownHttpUrls("https://example.com/very", ["https://example.com/very/long"])).toBe(
+      "https://example.com/very",
+    );
+  });
+
+  test("links a prefix pair as whole tokens with one OSC each", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const line = `${shortUrl}, ${longUrl}`;
+    const out = linkKnownHttpUrls(line, [shortUrl, longUrl]);
+    const hrefs = [...out.matchAll(new RegExp(`${ESC}\\]8;;(.*?)(?:${ESC}\\\\|\\x07)`, "g"))]
+      .map((match) => match[1] ?? "")
+      .filter((href) => href.length > 0);
+    expect(hrefs).toEqual([shortUrl, longUrl]);
+    expect(out).toContain(hyperlink(shortUrl, shortUrl));
+    expect(out).toContain(hyperlink(longUrl, longUrl));
+    expect(out).not.toContain(`${ESC}]8;;${shortUrl}${ST}${ESC}]8;`);
+    expect(stripAnsi(out)).toBe(line);
+  });
+
+  test("does not rewrite a URL already wrapped in OSC 8", () => {
+    const longUrl = "http://localhost:8080";
+    const shortUrl = "http://localhost:80";
+    const already = hyperlink(longUrl, longUrl);
+    expect(linkKnownHttpUrls(`${already}, ${shortUrl}`, [shortUrl, longUrl])).toBe(
+      `${already}, ${hyperlink(shortUrl, shortUrl)}`,
+    );
+  });
+
+  test("leaves a wrapped head of a longer endpoint plain even when it equals a shorter one", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const wrapped = `${shortUrl}\n80`;
+    expect(linkKnownHttpUrls(wrapped, [shortUrl, longUrl])).toBe(wrapped);
+    expect(linkKnownHttpUrls(`${shortUrl}, ${longUrl}`, [shortUrl, longUrl])).toBe(
+      `${hyperlink(shortUrl, shortUrl)}, ${hyperlink(longUrl, longUrl)}`,
+    );
+  });
+
+  test("links a shorter endpoint on its own line when a longer prefix sibling is also known", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const line = `${shortUrl}\n${longUrl}`;
+    const out = linkKnownHttpUrls(line, [shortUrl, longUrl]);
+    expect(out).toBe(`${hyperlink(shortUrl, shortUrl)}\n${hyperlink(longUrl, longUrl)}`);
+    expect(stripAnsi(out)).toBe(line);
+  });
+
+  test("leaves a multi-break wrapped head plain when the first line equals a shorter endpoint", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080/very/long/extra/path";
+    const label = "endpoints";
+    const width = shortUrl.length + label.length + 3;
+    const lines = wrapFieldToWidth(label, longUrl, label.length, width);
+    expect(lines[0]?.endsWith(shortUrl)).toBe(true);
+    expect(lines.length).toBeGreaterThan(2);
+    const text = lines.join("\n");
+    const suffix = longUrl.slice(shortUrl.length);
+    const afterHead = text.indexOf(shortUrl) + shortUrl.length;
+    let rest = afterHead;
+    while (rest < text.length && text.charCodeAt(rest) <= 0x20) rest += 1;
+    expect(text.slice(rest).startsWith(suffix)).toBe(false);
+    expect(text.slice(rest)).toContain("\n");
+    const out = linkKnownHttpUrls(text, [shortUrl, longUrl]);
+    expect(out).toBe(text);
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
+  test("leaves a framed multi-break wrapped head plain when the first line equals a shorter endpoint", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080/very/long/extra/path";
+    const label = "endpoints";
+    const width = 37;
+    const innerWidth = width - 4;
+    const lines = wrapFieldToWidth(label, longUrl, label.length, innerWidth - 2);
+    expect(lines[0]?.endsWith(shortUrl)).toBe(true);
+    expect(lines.length).toBeGreaterThan(2);
+    const framed = lines.map((segment) => boxBody(`  ${segment}`, width, styleBoxBottom)).join("\n");
+    expect(stripAnsi(framed)).toContain(shortUrl);
+    expect(stripAnsi(framed)).not.toContain(longUrl);
+    const out = linkKnownHttpUrls(framed, [shortUrl, longUrl]);
+    expect(out).toBe(framed);
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
+  test("links a shorter endpoint on its own framed line when a longer prefix sibling is also known", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const other = "http://example.com/other";
+    const width = 80;
+    const framed = [shortUrl, other]
+      .map((url) => boxBody(`  endpoints : ${url}`, width, styleBoxBottom))
+      .join("\n");
+    const out = linkKnownHttpUrls(framed, [shortUrl, longUrl, other]);
+    expect(out).toContain(hyperlink(shortUrl, shortUrl));
+    expect(out).toContain(hyperlink(other, other));
+    expect(stripAnsi(out)).toBe(stripAnsi(framed));
+  });
+
+  test("copies a BEL-terminated OSC 8 span whole instead of re-linking its label", () => {
+    const url = "http://localhost:8080";
+    const already = `${ESC}]8;;${url}${BEL}${url}${ESC}]8;;${BEL}`;
+    expect(linkKnownHttpUrls(`${already} ${url}`, [url])).toBe(`${already} ${hyperlink(url, url)}`);
   });
 });

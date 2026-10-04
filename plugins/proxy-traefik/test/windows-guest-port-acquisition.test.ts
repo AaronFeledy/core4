@@ -76,18 +76,17 @@ const makeFixture = (platform: "win32" | "linux" = "win32", fingerprint?: Acquis
         Effect.succeed(
           serviceId === ServiceName.make("traefik") ? ports.filter((port) => running.has(port)) : [],
         ),
-      ensureRunning: () =>
-        Effect.gen(function* () {
-          starts += 1;
-          const state = yield* readAcquisitionState(fileSystem, fixturePaths);
-          if (state !== undefined) {
-            running.add(state.httpPort);
-            running.add(state.httpsPort);
-            guestOccupied.add(state.httpPort);
-            guestOccupied.add(state.httpsPort);
-          }
-          return [{ name: "traefik", state: "running", endpoints: [] }];
-        }),
+      ensureRunning: Effect.fnUntraced(function* () {
+        starts += 1;
+        const state = yield* readAcquisitionState(fileSystem, fixturePaths);
+        if (state !== undefined) {
+          running.add(state.httpPort);
+          running.add(state.httpsPort);
+          guestOccupied.add(state.httpPort);
+          guestOccupied.add(state.httpsPort);
+        }
+        return [{ name: "traefik", state: "running", endpoints: [] }];
+      }),
     },
     probeBind: (_host, port) =>
       Effect.sync(() => {

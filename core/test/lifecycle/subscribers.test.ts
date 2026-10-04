@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import {
   ConfigError,
@@ -19,6 +21,11 @@ import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+
+const stubHttpClient = (): HttpClient.HttpClient =>
+  HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
 
 const manifest = (subscribers: ReadonlyArray<Record<string, unknown>>) =>
   Schema.decodeUnknownSync(PluginManifest)({
@@ -221,7 +228,7 @@ describe("subscriber runtime", () => {
       // Then: the concrete tagged failure is complete and no partial index is published.
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(SubscriberLevelMismatchError);
@@ -254,7 +261,7 @@ describe("subscriber runtime", () => {
       // Then: mismatch rejection leaves the registration closure unpublished.
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toMatchObject({
@@ -315,7 +322,7 @@ describe("subscriber runtime", () => {
     // Then: strict membership validation rejects the selector without publishing an index.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PluginManifestError);
@@ -340,7 +347,7 @@ describe("subscriber runtime", () => {
     // Then: the tagged manifest failure identifies the subscriber and no index becomes visible.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PluginManifestError);
@@ -361,7 +368,7 @@ describe("subscriber runtime", () => {
     // Then: the existing ConfigError identifies the offending array entry.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -386,7 +393,7 @@ describe("subscriber runtime", () => {
     // Then: the offending index and remediation are reported as ConfigError.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
@@ -440,6 +447,7 @@ describe("subscriber runtime", () => {
       stateStore: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       privateFileAccess: ownerOnlyFileAccess,
       pluginStateRoot: Schema.decodeUnknownSync(AbsolutePath)("/tmp/lando-subscriber-test"),
+      httpClient: stubHttpClient(),
       publishRender: () => Effect.void,
     });
     const event = Schema.decodeUnknownSync(MessageInfoEvent)({

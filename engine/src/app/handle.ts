@@ -1,4 +1,5 @@
-import { Effect, type Runtime, Stream } from "effect";
+import type { Context } from "effect";
+import { DateTime, Effect, Stream } from "effect";
 
 import type {
   App,
@@ -38,7 +39,9 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
   stream: line.stream,
   line: line.line,
   ...(line.source === undefined ? {} : { source: LogSourceId.make(line.source) }),
-  ...(line.timestamp === undefined ? {} : { timestamp: new Date(line.timestamp) }),
+  ...(line.timestamp === undefined
+    ? {}
+    : { timestamp: DateTime.toDate(DateTime.makeUnsafe(line.timestamp)) }),
 });
 
 export type AppHandleRuntimeServices =
@@ -55,7 +58,7 @@ export type AppHandleRuntimeServices =
  */
 export const makeAppHandle = (
   target: ResolvedAppTarget,
-  runtime: Runtime.Runtime<AppHandleRuntimeServices>,
+  runtime: Context.Context<AppHandleRuntimeServices>,
   ops: AppOperations,
   lifecycle: AppLifecycle,
 ): App => {
@@ -65,79 +68,70 @@ export const makeAppHandle = (
     ref,
     root,
     plan: Effect.succeed(plan),
-    start: (options?: StartAppOptions) =>
-      lifecycle.serialize(
-        Effect.gen(function* () {
-          const current = yield* lifecycle.current;
-          if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
-            return yield* ops
-              .startApp(options, target, {
-                scope: current,
-                onScopeClosedByStartApp: lifecycle.forgetIfCurrent(current),
-              })
-              .pipe(Effect.provide(runtime));
-          }
-          if (options?.detached === true) {
-            return yield* ops
-              .startApp(options, target, undefined, { beforeStart: lifecycle.closeCurrent })
-              .pipe(Effect.provide(runtime));
-          }
-          const scope = yield* lifecycle.stageFresh;
-          return yield* ops
-            .startApp(
-              options,
-              target,
-              { scope, onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope) },
-              {
-                beforeStart: lifecycle.replaceCurrent(scope),
-                onFailedStart: lifecycle.discardIfCurrent(scope),
-              },
-            )
-            .pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discard(scope)),
-            );
-        }),
-      ),
+    start: Effect.fn("App.start")(function* (options?: StartAppOptions) {
+      const current = yield* lifecycle.current;
+      if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
+        return yield* ops
+          .startApp(options, target, {
+            scope: current,
+            onScopeClosedByStartApp: lifecycle.forgetIfCurrent(current),
+          })
+          .pipe(Effect.provide(runtime));
+      }
+      if (options?.detached === true) {
+        return yield* ops
+          .startApp(options, target, undefined, { beforeStart: lifecycle.closeCurrent })
+          .pipe(Effect.provide(runtime));
+      }
+      const scope = yield* lifecycle.stageFresh;
+      return yield* ops
+        .startApp(
+          options,
+          target,
+          { scope, onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope) },
+          {
+            beforeStart: lifecycle.replaceCurrent(scope),
+            onFailedStart: lifecycle.discardIfCurrent(scope),
+          },
+        )
+        .pipe(
+          Effect.provide(runtime),
+          Effect.onError(() => lifecycle.discard(scope)),
+        );
+    }, lifecycle.serialize),
     stop: (options?: StopAppOptions) =>
       lifecycle.serialize(ops.stopApp(options, target, lifecycle.closeCurrent).pipe(Effect.provide(runtime))),
-    restart: (options?: RestartAppOptions) =>
-      lifecycle.serialize(
-        Effect.gen(function* () {
-          const scope = yield* lifecycle.stageFresh;
-          return yield* ops
-            .restartApp(options, target, {
-              scope,
-              onStopped: lifecycle.replaceCurrent(scope),
-              onFailedStart: lifecycle.discard(scope),
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
-            .pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discard(scope)),
-            );
-        }),
-      ),
-    rebuild: (options?: RebuildAppOptions) =>
-      lifecycle.serialize(
-        Effect.gen(function* () {
-          if (options?.services !== undefined && options.services.length > 0) {
-            return yield* ops.rebuildApp(options, target).pipe(Effect.provide(runtime));
-          }
-          const scope = yield* lifecycle.stageFresh;
-          return yield* ops
-            .rebuildApp(options, target, {
-              scope,
-              onStopped: lifecycle.replaceCurrent(scope),
-              onFailedStart: lifecycle.discard(scope),
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
-            .pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discard(scope)),
-            );
-        }),
-      ),
+    restart: Effect.fn("App.restart")(function* (options?: RestartAppOptions) {
+      const scope = yield* lifecycle.stageFresh;
+      return yield* ops
+        .restartApp(options, target, {
+          scope,
+          onStopped: lifecycle.replaceCurrent(scope),
+          onFailedStart: lifecycle.discard(scope),
+          onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+        })
+        .pipe(
+          Effect.provide(runtime),
+          Effect.onError(() => lifecycle.discard(scope)),
+        );
+    }, lifecycle.serialize),
+    rebuild: Effect.fn("App.rebuild")(function* (options?: RebuildAppOptions) {
+      if (options?.services !== undefined && options.services.length > 0) {
+        return yield* ops.rebuildApp(options, target).pipe(Effect.provide(runtime));
+      }
+      const scope = yield* lifecycle.stageFresh;
+      return yield* ops
+        .rebuildApp(options, target, {
+          scope,
+          onStopped: lifecycle.replaceCurrent(scope),
+          onFailedStart: lifecycle.discard(scope),
+          onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+        })
+        .pipe(
+          Effect.provide(runtime),
+          Effect.onError(() => lifecycle.discard(scope)),
+        );
+    }, lifecycle.serialize),
     destroy: (options?: DestroyAppOptions) =>
       lifecycle.serialize(
         ops.destroyApp(options, target, lifecycle.closeCurrent).pipe(Effect.provide(runtime)),

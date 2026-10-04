@@ -121,88 +121,87 @@ const inheritTty = (options: ExecAppRuntimeOptions): boolean => options.tty === 
 
 const inheritStdin = (options: ExecAppRuntimeOptions): boolean => options.stdinStream !== undefined;
 
-export const execApp = (
+export const execApp = Effect.fn("AppOperation.exec")(function* (
   options: ExecAppRuntimeOptions,
   appTarget?: ResolvedAppTarget,
-): Effect.Effect<ExecAppResult, ExecAppError, ExecAppServices> =>
-  Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const planner = yield* AppPlanner;
-    const registry = yield* RuntimeProviderRegistry;
+): Effect.fn.Return<ExecAppResult, ExecAppError, ExecAppServices> {
+  const landofileService = yield* LandofileService;
+  const planner = yield* AppPlanner;
+  const registry = yield* RuntimeProviderRegistry;
 
-    let plan: AppPlan;
-    let landofile: LandofileShape;
-    if (appTarget?.plan !== undefined) {
-      plan = appTarget.plan;
-      landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
-    } else {
-      landofile = yield* loadUserLandofile(landofileService);
-      const capabilities = yield* registry.capabilities;
-      plan = yield* planner.plan(landofile, capabilities);
-    }
+  let plan: AppPlan;
+  let landofile: LandofileShape;
+  if (appTarget?.plan !== undefined) {
+    plan = appTarget.plan;
+    landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
+  } else {
+    landofile = yield* loadUserLandofile(landofileService);
+    const capabilities = yield* registry.capabilities;
+    plan = yield* planner.plan(landofile, capabilities);
+  }
 
-    const split = splitExecServiceCommand(plan, options.service, options.command);
-    if (split.command.length === 0) {
-      const list = availableServiceList(plan.services);
-      const first = split.service ?? list.split(", ")[0];
-      return yield* Effect.fail(
-        new ToolingExecError({
-          message: "exec requires a command to run.",
-          tool: "app:exec",
-          ...(first === undefined || first.length === 0
-            ? {}
-            : { remediation: `Example: lando exec ${first} -- <command>` }),
-        }),
-      );
-    }
+  const split = splitExecServiceCommand(plan, options.service, options.command);
+  if (split.command.length === 0) {
+    const list = availableServiceList(plan.services);
+    const first = split.service ?? list.split(", ")[0];
+    return yield* Effect.fail(
+      new ToolingExecError({
+        message: "exec requires a command to run.",
+        tool: "app:exec",
+        ...(first === undefined || first.length === 0
+          ? {}
+          : { remediation: `Example: lando exec ${first} -- <command>` }),
+      }),
+    );
+  }
 
-    const service = yield* resolveService(split.service, plan);
-    const provider = yield* registry.select(plan);
-    const target: ExecTarget = {
-      app: plan.id,
-      service: service.name,
-      plan,
-      ...(options.user === undefined ? {} : { user: options.user }),
-    };
-    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-    const env = withAgentContextEnv(options.env, process.env, {
-      allowlist,
-      lowerThanEnv: service.environment,
-    });
-    const tty = inheritTty(options);
-    const attachStdin = inheritStdin(options);
-    const mergedEnv = withTerminalEnv({
-      tty,
-      hostEnv: process.env,
-      ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
-      serviceEnv: service.environment,
-      ...(env === undefined ? {} : { env }),
-    });
-    const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
-    const spec: CommandSpec = {
-      command: split.command,
-      ...(cwd === undefined ? {} : { cwd }),
-      ...(mergedEnv === undefined || Object.keys(mergedEnv).length === 0 ? {} : { env: mergedEnv }),
-      ...(tty
-        ? {
-            tty: true,
-            ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
-          }
-        : {}),
-      ...(attachStdin ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
-    };
-
-    const sink = yield* Effect.serviceOption(StreamFrameSink);
-    const result = yield* collectExecStream(provider.execStream(target, spec), sink);
-
-    const withTokens: ExecAppResultWithTokens = {
-      app: plan.name,
-      service: String(service.name),
-      command: split.command,
-      exitCode: result.exitCode,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      redactionTokens: collectAppPlanRedactionTokens(plan),
-    };
-    return withTokens;
+  const service = yield* resolveService(split.service, plan);
+  const provider = yield* registry.select(plan);
+  const target: ExecTarget = {
+    app: plan.id,
+    service: service.name,
+    plan,
+    ...(options.user === undefined ? {} : { user: options.user }),
+  };
+  const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+  const env = withAgentContextEnv(options.env, process.env, {
+    allowlist,
+    lowerThanEnv: service.environment,
   });
+  const tty = inheritTty(options);
+  const attachStdin = inheritStdin(options);
+  const mergedEnv = withTerminalEnv({
+    tty,
+    hostEnv: process.env,
+    ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
+    serviceEnv: service.environment,
+    ...(env === undefined ? {} : { env }),
+  });
+  const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
+  const spec: CommandSpec = {
+    command: split.command,
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(mergedEnv === undefined || Object.keys(mergedEnv).length === 0 ? {} : { env: mergedEnv }),
+    ...(tty
+      ? {
+          tty: true,
+          ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
+        }
+      : {}),
+    ...(attachStdin ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
+  };
+
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const result = yield* collectExecStream(provider.execStream(target, spec), sink);
+
+  const withTokens: ExecAppResultWithTokens = {
+    app: plan.name,
+    service: String(service.name),
+    command: split.command,
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    redactionTokens: collectAppPlanRedactionTokens(plan),
+  };
+  return withTokens;
+});

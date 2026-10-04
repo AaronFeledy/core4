@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 import {
   optionValueMatchesDescriptor,
   recipeMigratability,
@@ -23,22 +23,25 @@ test.each([
 );
 test("option descriptor rejection names the option in path", () => {
   const result = validateOptionValues({ php: { kind: "string" } }, {}, { php: 8 });
-  expect(Either.isLeft(result) && [result.left.reason, result.left.path]).toEqual(["option-type", "php"]);
+  expect(Result.isFailure(result) && [result.failure.reason, result.failure.path]).toEqual([
+    "option-type",
+    "php",
+  ]);
 });
 test("undeclared option is unsupported-option", () => {
   const result = validateOptionValues({}, {}, { php: 8 });
-  expect(Either.isLeft(result) && [result.left.reason, result.left.path]).toEqual([
+  expect(Result.isFailure(result) && [result.failure.reason, result.failure.path]).toEqual([
     "unsupported-option",
     "php",
   ]);
 });
 test("defaults merge under supplied options", () => {
   expect(
-    Either.getOrThrow(validateOptionValues({ php: { kind: "string" } }, { php: "8.2" }, { php: "8.4" })),
+    Result.getOrThrow(validateOptionValues({ php: { kind: "string" } }, { php: "8.2" }, { php: "8.4" })),
   ).toEqual({ php: "8.4" });
 });
 test("missing required options are rejected", () => {
-  expect(Either.isLeft(validateOptionValues({ php: { kind: "string" } }, {}, {}))).toBe(true);
+  expect(Result.isFailure(validateOptionValues({ php: { kind: "string" } }, {}, {}))).toBe(true);
 });
 test.each(["bundled", "plugin", "local"] as const)("missing snapshot for %s", (sourceKind) => {
   expect(

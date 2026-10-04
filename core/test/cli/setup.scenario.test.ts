@@ -20,7 +20,7 @@ import {
 } from "@lando/sdk/services";
 
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
 interface EventSink {
@@ -48,14 +48,17 @@ const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
 }) as unknown as typeof fetch;
 
 const makeEventServiceLayer = (sink: EventSink) =>
-  Layer.succeed(EventService, {
-    publish: sink.publish,
-    subscribe: () => Stream.die("not used in setup scenario test"),
-    subscribeQueue: Effect.die("not used in setup scenario test"),
-    waitFor: () => Effect.die("not used in setup scenario test"),
-    waitForAny: () => Effect.die("not used in setup scenario test"),
-    query: () => Effect.succeed([]),
-  });
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: sink.publish,
+      subscribe: () => Stream.die("not used in setup scenario test"),
+      subscribeQueue: Effect.die("not used in setup scenario test"),
+      waitFor: () => Effect.die("not used in setup scenario test"),
+      waitForAny: () => Effect.die("not used in setup scenario test"),
+      query: () => Effect.succeed([]),
+    }),
+  );
 
 const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
   const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
@@ -79,18 +82,18 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
       eventService: { publish: sink.publish },
     }),
   );
-  const registry = {
+  const registry = RuntimeProviderRegistry.of({
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
-  };
+  });
   return Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     makeEventServiceLayer(sink),
     makeConfigServiceLayer(),
-    Layer.succeed(Downloader, testDownloader.service),
-    Layer.succeed(InteractionService, testInteraction.service),
-    makeHttpClientLive(okProbeFetch),
+    Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
+    Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
+    httpClientLayerWith({ fetch: okProbeFetch }),
   );
 };
 
@@ -100,10 +103,13 @@ const makeConfigServiceLayer = () => {
     telemetry: { enabled: false },
   });
   const load = Effect.succeed(config);
-  return Layer.succeed(ConfigService, {
-    load,
-    get: (key) => Effect.map(load, (c) => c[key]),
-  });
+  return Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load,
+      get: (key) => Effect.map(load, (c) => c[key]),
+    }),
+  );
 };
 
 describe("meta:setup task tree progress", () => {
@@ -210,18 +216,18 @@ describe("meta:setup task tree progress", () => {
           eventService: { publish: sink.publish },
         }),
       );
-      const registry = {
+      const registry = RuntimeProviderRegistry.of({
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
-      };
+      });
       const layer = Layer.mergeAll(
         Layer.succeed(RuntimeProviderRegistry, registry),
         makeEventServiceLayer(sink),
         makeConfigServiceLayer(),
-        Layer.succeed(Downloader, testDownloader.service),
-        Layer.succeed(InteractionService, testInteraction.service),
-        makeHttpClientLive(okProbeFetch),
+        Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
+        Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
+        httpClientLayerWith({ fetch: okProbeFetch }),
       );
 
       const exit = await Effect.runPromiseExit(

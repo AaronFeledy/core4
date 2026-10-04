@@ -13,7 +13,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { meilisearch1ServiceType } from "../src/services/meilisearch.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -30,9 +30,9 @@ const metadata = {
 };
 
 const waitForMeilisearch = async (port: number, timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/health`);
       if (resp.ok) {
@@ -129,9 +129,9 @@ describe("meilisearch service type — live integration: index create + document
           expect(typeof addBody.taskUid).toBe("number");
 
           // 3. Wait for the indexing task to succeed.
-          const indexDeadline = Date.now() + 30_000;
+          const indexDeadline = (await Effect.runPromise(Clock.currentTimeMillis)) + 30_000;
           let indexed = false;
-          while (Date.now() < indexDeadline) {
+          while ((await Effect.runPromise(Clock.currentTimeMillis)) < indexDeadline) {
             const taskResp = await fetch(`http://127.0.0.1:${MEILI_PORT}/tasks/${String(addBody.taskUid)}`, {
               headers: { Authorization: `Bearer ${MASTER_KEY}` },
             });
@@ -165,7 +165,7 @@ describe("meilisearch service type — live integration: index create + document
           expect(searchBody.hits.length).toBeGreaterThan(0);
           expect(searchBody.hits[0]?.title).toBe("Casablanca");
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });
