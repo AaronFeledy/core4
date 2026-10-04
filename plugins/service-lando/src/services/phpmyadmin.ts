@@ -14,7 +14,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { appNameFor } from "../app-name.ts";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
@@ -46,14 +46,7 @@ const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: ctx.serviceName,
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 20,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
 
   applyAuthoredProcessFields(ctx);
 };

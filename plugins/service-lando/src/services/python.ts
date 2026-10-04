@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import { loopbackTcpHealthcheck, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -128,14 +128,7 @@ const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
   };
   ctx.addMount(mount);
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 10,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
 

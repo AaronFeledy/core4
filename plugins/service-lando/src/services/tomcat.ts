@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import { AbsolutePath, PortNumber, PortablePath } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -47,14 +47,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: ctx.serviceName,
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 20,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
 
   applyAuthoredProcessFields(ctx);
 };

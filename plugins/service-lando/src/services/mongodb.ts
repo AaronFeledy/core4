@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -80,14 +80,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 };
 
 export const mongodbServiceFeature: ServiceFeatureDefinition = {
