@@ -8,7 +8,6 @@ import {
   appId,
   drive,
   endpointsOf,
-  httpFailure,
   httpStatus,
   publishedEndpoint,
   requestSequence,
@@ -212,7 +211,7 @@ describe("makeUrlScanner", () => {
     // Given an explicit TCP-only list and a discoverable HTTP endpoint.
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const scanner = makeUrlScanner({ stream: http.stream, listEndpoints: source.listEndpoints });
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints });
 
     // When scanning the explicit list.
     const result = await drive(
@@ -226,18 +225,25 @@ describe("makeUrlScanner", () => {
   });
 
   test("reports malformed supplied URLs instead of silently skipping them", async () => {
-    const http = requestSequence([httpFailure("Invalid URL")]);
+    const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([]);
     const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
+      { http: http.http, listEndpoints: source.listEndpoints },
       { retry: 1 },
     );
 
     const result = await drive(scanner.scan(appId, { urls: [{ service: web, url: "http://[broken" }] }));
 
     expect(result.endpoints).toEqual([
-      { service: web, url: "http://[broken", reachable: false, outcome: "red", detail: "Invalid URL" },
+      {
+        service: web,
+        url: "http://[broken",
+        reachable: false,
+        outcome: "red",
+        detail: "InvalidUrl error (GET http://[broken)",
+      },
     ]);
+    expect(http.requests).toEqual([]);
   });
 
   test("enabled false short-circuits without probing", async () => {
