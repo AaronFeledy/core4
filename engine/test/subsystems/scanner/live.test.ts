@@ -4,14 +4,7 @@ import { DateTime } from "effect";
 import { AbsolutePath, type AppPlan, ProviderId, type ScanPlan, ServiceName } from "@lando/sdk/schema";
 
 import * as liveModule from "../../../src/subsystems/scanner/live.ts";
-import {
-  appId,
-  drive,
-  endpointsOf,
-  httpStatus,
-  publishedEndpoint,
-  requestSequence,
-} from "./support.ts";
+import { appId, drive, endpointsOf, httpStatus, publishedEndpoint, requestSequence } from "./support.ts";
 
 const { makeUrlScanner } = liveModule;
 
@@ -227,10 +220,7 @@ describe("makeUrlScanner", () => {
   test("reports malformed supplied URLs instead of silently skipping them", async () => {
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([]);
-    const scanner = makeUrlScanner(
-      { http: http.http, listEndpoints: source.listEndpoints },
-      { retry: 1 },
-    );
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints }, { retry: 1 });
 
     const result = await drive(scanner.scan(appId, { urls: [{ service: web, url: "http://[broken" }] }));
 
