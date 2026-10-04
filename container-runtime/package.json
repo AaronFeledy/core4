@@ -61,7 +61,8 @@
     "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
     "./podman/container-events": "./src/podman/container-events.ts",
     "./podman/health": "./src/podman/health.ts",
-    "./podman/version-floor": "./src/podman/version-floor.ts"
+    "./podman/version-floor": "./src/podman/version-floor.ts",
+    "./provider-assembly": "./src/provider-assembly.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "container-runtime", "provider"],

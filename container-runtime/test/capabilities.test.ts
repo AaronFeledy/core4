@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   type ProviderCapabilityConstants,
   agentSocketCapabilities,
   buildProviderCapabilities,
+  decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
   hostProxyCapabilities,
   hostProxyContainerTargets,
@@ -20,6 +21,28 @@ const baseConstants: Omit<ProviderCapabilityConstants, "composeSpec"> = {
 };
 
 describe("container runtime capability helpers", () => {
+  test.each(["docker", "lando"])(
+    "preserves %s decoder error fields for invalid input",
+    async (providerId) => {
+      const input = { bindMounts: "invalid" };
+      const error = await Effect.runPromise(Effect.flip(decodeProviderCapabilitiesFor(providerId)(input)));
+      expect(error).toMatchObject({
+        _tag: "ProviderCapabilityError",
+        providerId,
+        operation: "capabilities",
+        message: `provider-${providerId} returned invalid ProviderCapabilities.`,
+        capability: "ProviderCapabilities",
+        requiredValue: "@lando/sdk/schema ProviderCapabilities",
+        actualValue: input,
+      });
+      expect(error.cause).toBeInstanceOf(Schema.SchemaError);
+    },
+  );
+  test("decodes valid capabilities without changing their shape", async () => {
+    const input = buildProviderCapabilities({ ...baseConstants, composeSpec: "portable" });
+    const actual = await Effect.runPromise(decodeProviderCapabilitiesFor("docker")(input));
+    expect(actual).toEqual(input);
+  });
   test("buildProviderCapabilities carries agentSocket when declared", () => {
     // Given: a provider declaring guest bridge delivery.
     const constants = {

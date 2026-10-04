@@ -13,6 +13,10 @@ const providerSource = readFileSync(
   join(import.meta.dir, "../../../plugins/provider-lando/src/index.ts"),
   "utf8",
 );
+const assemblySource = readFileSync(
+  join(import.meta.dir, "../../../container-runtime/src/provider-assembly.ts"),
+  "utf8",
+);
 
 describe("lando runtime registry wiring", () => {
   test("makeLandoPaths exposes all private runtime paths under userDataRoot/runtime", () => {
@@ -26,7 +30,8 @@ describe("lando runtime registry wiring", () => {
   });
 
   test("provider descriptor resolves private runtime paths from PathsService", () => {
-    expect(providerSource).toContain("const paths = yield* PathsService");
+    expect(providerSource).toMatch(/\{[^}]*\bpaths\b[^}]*\}\s*=\s*yield\* providerHostInputs/);
+    expect(assemblySource).toContain("yield* PathsService");
     expect(registrySource).not.toContain("runtimeBinDir:");
 
     const requiredWiring = [
