@@ -2,6 +2,7 @@ import { Flags } from "./spec/metadata";
 
 import { RendererSelectionError } from "@lando/sdk/errors";
 
+import { scanArgvFlags } from "./argv-walk";
 import type { RendererMode } from "./renderer-selection";
 
 export const RESULT_FORMATS = ["text", "json", "table", "yaml", "ndjson"] as const;
@@ -130,56 +131,36 @@ export const extractFormatFlags = (argv: ReadonlyArray<string>): ExtractFormatFl
   let jsonList = false;
   let jsonFields: readonly string[] | undefined;
   let jq: string | undefined;
-  const remaining: string[] = [];
-  let afterDoubleDash = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-
-    if (afterDoubleDash) {
-      remaining.push(arg);
-      continue;
-    }
-    if (arg === "--") {
-      afterDoubleDash = true;
-      remaining.push(arg);
-      continue;
-    }
-
+  const remaining = scanArgvFlags(argv, (arg, next) => {
     if (arg === "-j") {
       json = true;
-      continue;
+      return { consumed: 0 };
     }
 
     if (arg === JSON_LONG_FLAG) {
       json = true;
-      const next = argv[index + 1];
       if (next !== undefined && isSpaceFormJsonFieldList(next)) {
         jsonList = false;
         jsonFields = parseJsonFieldList(next);
-        index += 1;
-      } else {
-        jsonList = true;
-        jsonFields = undefined;
+        return { consumed: 1 };
       }
-      continue;
+      jsonList = true;
+      jsonFields = undefined;
+      return { consumed: 0 };
     }
 
     if (arg.startsWith(JSON_EQ_PREFIX)) {
       json = true;
       jsonList = false;
       jsonFields = parseJsonFieldList(arg.slice(JSON_EQ_PREFIX.length));
-      continue;
+      return { consumed: 0 };
     }
 
     if (arg === JQ_LONG_FLAG) {
-      const next = argv[index + 1];
       if (next === undefined || next.startsWith("-")) throw missingJqValueError();
       jq = next;
       json = true;
-      index += 1;
-      continue;
+      return { consumed: 1 };
     }
 
     if (arg.startsWith(JQ_EQ_PREFIX)) {
@@ -187,26 +168,24 @@ export const extractFormatFlags = (argv: ReadonlyArray<string>): ExtractFormatFl
       if (value === "") throw missingJqValueError();
       jq = value;
       json = true;
-      continue;
+      return { consumed: 0 };
     }
 
     if (arg === FORMAT_LONG_FLAG) {
-      const next = argv[index + 1];
       if (next === undefined || next.startsWith("-")) throw missingFormatValueError();
       format = validate(next);
-      index += 1;
-      continue;
+      return { consumed: 1 };
     }
 
     if (arg.startsWith(FORMAT_EQ_PREFIX)) {
       const value = arg.slice(FORMAT_EQ_PREFIX.length);
       if (value === "") throw missingFormatValueError();
       format = validate(value);
-      continue;
+      return { consumed: 0 };
     }
 
-    remaining.push(arg);
-  }
+    return undefined;
+  });
 
   return {
     json,
