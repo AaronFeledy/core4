@@ -181,6 +181,14 @@ describe("resolveGitRecipeSource", () => {
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(RecipeSourceError);
       if (failure instanceof RecipeSourceError) expect(failure.kind).toBe("subpath-invalid");
+      expect(failure).toMatchObject({
+        source: path,
+        message:
+          path === "/absolute"
+            ? `Git recipe --path must be relative and stay inside the cloned repository: ${path}`
+            : `Git recipe --path escapes the cloned repository: ${path}`,
+        remediation: "Pass a relative path inside the repository, such as --path=packages/foo.",
+      });
     });
   });
 
@@ -198,6 +206,12 @@ describe("resolveGitRecipeSource", () => {
         }),
       );
       expect(expectFailure(exit)).toBeInstanceOf(RecipeManifestNotFoundError);
+      const manifestPath = join(dir, "data", "recipe-cache", "git", "abc123def456", "recipe.yml");
+      expect(expectFailure(exit)).toMatchObject({
+        message: `recipe.yml not found at ${manifestPath}.`,
+        source: manifestPath,
+      });
+      expect(expectFailure(exit)).not.toHaveProperty("remediation");
     });
   });
 
@@ -218,6 +232,11 @@ describe("resolveGitRecipeSource", () => {
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(RecipeSourceError);
       if (failure instanceof RecipeSourceError) expect(failure.kind).toBe("subpath-missing");
+      expect(failure).toMatchObject({
+        source: "https://example.test/recipes.git",
+        message: "recipe.yml not found at git recipe subpath packages/missing.",
+        remediation: "Choose a --path that contains recipe.yml at its top level.",
+      });
     });
   });
 
