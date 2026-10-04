@@ -2,32 +2,23 @@ import { Effect } from "effect";
 import { Result, Schema } from "effect";
 
 import { DeprecationNotice, DeprecationSeverity } from "../schema/deprecation.ts";
-
-const GUIDE_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+import { KEBAB_CASE_ID_PATTERN, patternString } from "../schema/string-forms.ts";
 
 export { DeprecationNotice, DeprecationSeverity };
 
-export const GuideId = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(GUIDE_ID_PATTERN, {
-      message: "Guide id must be lowercase kebab-case (a-z, 0-9, hyphen).",
-      toJsonSchema: () => ({ pattern: GUIDE_ID_PATTERN.source }),
-    }),
-  ),
-).annotate({ identifier: "GuideId" });
+export const GuideId = patternString(KEBAB_CASE_ID_PATTERN, {
+  message: "Guide id must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  toJsonSchema: () => ({ pattern: KEBAB_CASE_ID_PATTERN.source }),
+}).annotate({ identifier: "GuideId" });
 export type GuideId = typeof GuideId.Type;
 
 export const GuidePlatform = Schema.Literals(["darwin", "linux", "win32", "wsl"]);
 export type GuidePlatform = typeof GuidePlatform.Type;
 
-const TabAxisValue = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(GUIDE_ID_PATTERN, {
-      message: "Axis values must be lowercase kebab-case (a-z, 0-9, hyphen).",
-      toJsonSchema: () => ({ pattern: GUIDE_ID_PATTERN.source }),
-    }),
-  ),
-);
+const TabAxisValue = patternString(KEBAB_CASE_ID_PATTERN, {
+  message: "Axis values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  toJsonSchema: () => ({ pattern: KEBAB_CASE_ID_PATTERN.source }),
+});
 
 const TabAxis = Schema.Array(TabAxisValue).pipe(
   Schema.check(Schema.isMinLength(1, { message: "An axis must declare at least one value." })),
@@ -39,14 +30,10 @@ const TabAxis = Schema.Array(TabAxisValue).pipe(
   ),
 );
 
-const AxisName = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(GUIDE_ID_PATTERN, {
-      message: "Axis names must be lowercase kebab-case (a-z, 0-9, hyphen).",
-      toJsonSchema: () => ({ pattern: GUIDE_ID_PATTERN.source }),
-    }),
-  ),
-);
+const AxisName = patternString(KEBAB_CASE_ID_PATTERN, {
+  message: "Axis names must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  toJsonSchema: () => ({ pattern: KEBAB_CASE_ID_PATTERN.source }),
+});
 
 const Axes = Schema.Record(AxisName, TabAxis).pipe(
   Schema.check(
