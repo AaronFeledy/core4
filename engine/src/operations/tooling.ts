@@ -123,26 +123,14 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
       ? yield* loadUserLandofile(landofileService)
       : yield* loadUserLandofileAt(landofileService, target.root);
   const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
-  // The freshly loaded declarations stay authoritative over the plan below, so
-  // they need the same deferred-scope resolution the planner applies, or an
-  // authored `{{ app.name }}` would reach the container as literal text.
-  const config = yield* ConfigService;
-  const globalConfig = yield* config.load;
-  const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
-  const { landofile } = yield* materializeLandofileScopes({
-    landofile: loadedLandofile,
-    appRoot: landofileRoot,
-    landofilePath: join(landofileRoot, LANDOFILE_NAME),
-    globalConfig,
-  });
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
-  const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
-  const servicesCanContributeTooling = Object.keys(landofile.services ?? {}).length > 0;
+  const authoredTaskNames = new Set(Object.keys(loadedLandofile.tooling ?? {}));
+  const servicesCanContributeTooling = Object.keys(loadedLandofile.services ?? {}).length > 0;
 
   if (
     target === undefined &&
     !servicesCanContributeTooling &&
-    authoredTooling[toolingLookupKey] === undefined &&
+    !authoredTaskNames.has(toolingLookupKey) &&
     appRoot !== undefined
   ) {
     const scriptResult = yield* runBunShellTooling(options, appRoot);
@@ -151,7 +139,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
 
   const planResult =
     target === undefined
-      ? yield* Effect.result(resolveToolingPlan({ landofile, appRoot }))
+      ? yield* Effect.result(resolveToolingPlan({ landofile: loadedLandofile, appRoot }))
       : Result.succeed(target.plan);
   if (Result.isFailure(planResult)) {
     if (appRoot !== undefined) {
@@ -161,6 +149,20 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     return yield* Effect.fail(planResult.failure);
   }
   const plan = planResult.success;
+  // The freshly loaded declarations stay authoritative over the plan, so they
+  // need the same deferred-scope resolution the planner applied, or an authored
+  // `{{ app.name }}` would reach the container as literal text. This runs only
+  // once a plan exists so the script fallback above keeps its old inputs.
+  const config = yield* ConfigService;
+  const globalConfig = yield* config.load;
+  const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
+  const { landofile } = yield* materializeLandofileScopes({
+    landofile: loadedLandofile,
+    appRoot: landofileRoot,
+    landofilePath: join(landofileRoot, LANDOFILE_NAME),
+    globalConfig,
+  });
+  const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
   const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
   const task = tooling[toolingLookupKey];
   const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);

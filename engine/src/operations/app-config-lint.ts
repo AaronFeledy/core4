@@ -3,6 +3,7 @@ import { loadLandofileLayers } from "@lando/landofile/service";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
 import { resolveKnownEventSet } from "../planner/event-set.ts";
+import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 
 import type {
   CommandAliasConflictError,
@@ -61,7 +62,9 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
       return {
         ...result,
         valid: false,
-        violations: [{ path: resolved.failure.path.split("."), message: resolved.failure.message }],
+        violations: [
+          { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
+        ],
       };
     }
     return yield* Effect.fail(resolved.failure);

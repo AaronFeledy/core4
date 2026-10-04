@@ -8,7 +8,7 @@ import {
   recipeOptionScope,
 } from "@lando/landofile/recipe-expressions";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import type { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
+import type { GlobalConfig, LandofileShape, ValidationIssuePath } from "@lando/sdk/schema";
 
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { normalizeAppSlug } from "./naming.ts";
@@ -38,6 +38,21 @@ export interface MaterializedLandofileScopes {
  * route-hostname pass. A document with no deferred sites is returned as-is so
  * object identity and provenance are untouched on the common path.
  */
+const ARRAY_INDEX_SEGMENT = /^(?:0|[1-9][0-9]*)$/;
+
+/**
+ * Recover the structured issue path from a {@link ConfigExpressionError}
+ * raised by {@link materializeLandofileScopes}.
+ *
+ * The error carries the path as dotted text; array positions were written as
+ * decimal indexes, so they come back as numbers the way `ValidationIssuePath`
+ * documents them.
+ */
+export const configExpressionIssuePath = (error: ConfigExpressionError): ValidationIssuePath =>
+  error.path.length === 0
+    ? []
+    : error.path.split(".").map((segment) => (ARRAY_INDEX_SEGMENT.test(segment) ? Number(segment) : segment));
+
 export const materializeLandofileScopes = (
   input: MaterializeLandofileScopesInput,
 ): Effect.Effect<MaterializedLandofileScopes, ConfigExpressionError> => {

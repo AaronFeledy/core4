@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
+import { ConfigError, LandofileValidationError, PluginManifestError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -20,6 +20,7 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  ConfigService,
   type EventFor,
   EventService,
   type EventServiceShape,
@@ -184,6 +185,7 @@ const makeLayer = (options: {
   readonly planError?: LandofileValidationError;
   readonly planCalls?: number[];
   readonly planCwds?: string[];
+  readonly configLayer?: Layer.Layer<ConfigService>;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
@@ -217,7 +219,7 @@ const makeLayer = (options: {
     plannerLayer,
     registryLayer,
     ProviderExecToolingEngine.layer,
-    emptyConfigServiceLayer,
+    options.configLayer ?? emptyConfigServiceLayer,
   );
 };
 
@@ -895,6 +897,42 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(result.service).toBe(":host");
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("hi-from-bun-sh");
+      expect(calls).toHaveLength(0);
+      expect(planCalls).toHaveLength(0);
+    });
+  });
+
+  test("a script task runs without loading global config or resolving unrelated expressions", async () => {
+    await withAppRoot(async (root) => {
+      // Given a zero-service Landofile whose only authored task carries an
+      // unresolvable deferred expression, plus a global config that cannot load
+      await writeBunShScript(
+        root,
+        "greet.bun.sh",
+        ["# ---", "# desc: Print a greeting", "# ---", "echo -n 'hi-from-bun-sh'", ""].join("\n"),
+      );
+      const plan = makePlan([]);
+      const { provider, calls } = makeProvider([]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { other: { service: ":host", cmd: "echo {{ app.nope }}" } },
+      };
+      const planCalls: number[] = [];
+      const brokenConfig = Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.fail(new ConfigError({ message: "config unavailable" })),
+          get: () => Effect.fail(new ConfigError({ message: "config unavailable" })),
+        }),
+      );
+      const layer = makeLayer({ landofile, plan, provider, planCalls, configLayer: brokenConfig });
+
+      // When the script-backed task is invoked
+      const result = await Effect.runPromise(runTooling({ name: "greet" }).pipe(runtimeFor(layer)));
+
+      // Then the shortcut path still runs the script untouched
+      expect(result.stdout).toBe("hi-from-bun-sh");
+      expect(result.exitCode).toBe(0);
       expect(calls).toHaveLength(0);
       expect(planCalls).toHaveLength(0);
     });
