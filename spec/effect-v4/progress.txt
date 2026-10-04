@@ -514,3 +514,14 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): Bugbot reported no bugs on the build commit. The gate review's other acceptance checks passed and were not demoted.
 - Verification: guide lint, coverage, transcripts, and drift against origin/main passed. Spot checks passed: command trace, tracer retention, trace selection, and jq emit (23).
 ---
+
+## 2026-10-03 22:15 CDT - US-669 Drift Audit
+- Trigger: 2 cycles, +2143/−71 across 46 files, 2 commits
+- Ceremony: three helpers were exported with no outside importer. The second trace-enable wrap stays, because pre-command failures omit the invocation and only the compiled entry supplies flag values for redaction.
+- Scar: the CLI reporter stored a cause and looked it up by identity after reporting that same cause, so rendering never changed.
+- Weakened proof: the OTLP receiver test required service.name but not version, OS, or architecture.
+- Re-checked deferrals: the prose-only export guide matches the acceptance text. Scenarios cover the JSON trace and the host parent span. No owned regression was parked as out of scope.
+- Fixed: internal helpers are no longer exported; the cause stash is gone; the exporter test requires the resource attributes.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (213 tests across tracing, retention, selection, host observability, schema, config redaction, command result, machine output, and exports).
+---

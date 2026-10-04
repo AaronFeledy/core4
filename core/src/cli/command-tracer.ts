@@ -2,7 +2,7 @@ import type { CommandTrace, CommandTraceSpan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Effect, Exit, Option, Tracer } from "effect";
 
-export const COMMAND_TRACE_CAPACITY = 10_000;
+const COMMAND_TRACE_CAPACITY = 10_000;
 
 export const makeCommandTracer = (options: {
   readonly redactor: Redactor;

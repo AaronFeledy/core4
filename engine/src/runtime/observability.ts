@@ -33,10 +33,10 @@ const hostOwns = <A>(
   return value !== undefined && value !== landoValue;
 };
 
-export const hasHostLoggers = (context: Context.Context<never>): boolean =>
+const hasHostLoggers = (context: Context.Context<never>): boolean =>
   hostOwns(context, References.CurrentLoggers, Context.get(context, LandoLogDefaults).loggers);
 
-export const hasHostLogLevel = (context: Context.Context<never>): boolean =>
+const hasHostLogLevel = (context: Context.Context<never>): boolean =>
   hostOwns(context, References.MinimumLogLevel, Context.get(context, LandoLogDefaults).level);
 
 /**

@@ -179,10 +179,9 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   }
   const sourceEnv = options.sourceEnv ?? process.env;
   const extraTokens = options.extraRedactionTokens ?? [];
-  const reportedCauses = new Set<Cause.Cause<unknown>>();
-  const reporter = ErrorReporter.make(({ cause }) => {
-    reportedCauses.add(cause);
-  });
+  // Installed so command defects reach ErrorReporter. Display stays on formatError,
+  // which is the bug-report renderer for pre-command failures.
+  const reporter = ErrorReporter.make(() => undefined);
   const { landoRenderer } = await import("./renderer/bundled-renderers");
   const io = options.io ?? createStdioRendererIO();
   let brokenPipe = false;
@@ -282,9 +281,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
-      if (Cause.hasDies(cause)) yield* ErrorReporter.report(cause);
-      const reported = [...reportedCauses].find((candidate) => candidate === cause);
-      const error = yield* renderFailureEvidence(taggedFailureFromCause(reported ?? cause));
+      const error = yield* renderFailureEvidence(taggedFailureFromCause(cause));
       if (envelopeFormat) {
         const outcome = {
           _tag: "failure",

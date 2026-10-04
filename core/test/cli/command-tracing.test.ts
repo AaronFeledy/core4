@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { CORE_VERSION } from "@lando/engine/version";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
@@ -135,6 +136,9 @@ test("exports redacted spans to the base endpoint after completion", async () =>
     expect(requests[0]?.team).toBe("header-secret-669");
     const body = requests[0]?.body ?? "";
     expect(body).toContain('"key":"service.name","value":{"stringValue":"lando"}');
+    expect(body).toContain(`"key":"service.version","value":{"stringValue":"${CORE_VERSION}"}`);
+    expect(body).toContain(`"key":"os.type","value":{"stringValue":"${process.platform}"}`);
+    expect(body).toContain(`"key":"host.arch","value":{"stringValue":"${process.arch}"}`);
     expect(body).toContain("lando meta:probe");
     expect(body).not.toContain("env-secret-export-669");
     expect(body).not.toContain("flag-secret-669");
