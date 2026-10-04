@@ -1,8 +1,8 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -142,16 +142,7 @@ export const rubyServiceFeature: ServiceFeatureDefinition = {
   id: RUBY_FEATURE_ID,
   schema: RubyFeatureConfigSchema as Schema.Codec<unknown>,
   priority: RUBY_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyRubyFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.ruby failed to apply",
-          feature: RUBY_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(RUBY_FEATURE_ID, "service-lando.ruby failed to apply", applyRubyFeature),
 };
 
 const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedRubyVersion): ServiceConfig => ({
@@ -168,42 +159,34 @@ export const makeRubyServiceType = (version: SupportedRubyVersion): ServiceType 
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.try({
-      try: () => {
-        const resolvedVersion = validateVersion(input.service.type, version);
-        const framework = validateFramework(input.service.framework);
-        const preset = FRAMEWORK_PRESETS[framework];
-        const endpointPort = input.service.port ?? preset.port;
-        return {
-          base: "lando" as const,
-          normalizedConfig: normalizedService(input.service, resolvedVersion),
-          features: [
-            {
-              id: RUBY_FEATURE_ID,
-              config: {
-                framework,
-                version: resolvedVersion,
-                port: endpointPort,
-                webroot: preset.webroot,
-                defaultCommand: preset.defaultCommand,
-              },
+    serviceTypeResolve(`ruby:${version}`, `Failed to resolve ruby:${version}`, () => {
+      const resolvedVersion = validateVersion(input.service.type, version);
+      const framework = validateFramework(input.service.framework);
+      const preset = FRAMEWORK_PRESETS[framework];
+      const endpointPort = input.service.port ?? preset.port;
+      return {
+        base: "lando" as const,
+        normalizedConfig: normalizedService(input.service, resolvedVersion),
+        features: [
+          {
+            id: RUBY_FEATURE_ID,
+            config: {
+              framework,
+              version: resolvedVersion,
+              port: endpointPort,
+              webroot: preset.webroot,
+              defaultCommand: preset.defaultCommand,
             },
-            {
-              id: "lando.env",
-              config: {
-                appPaths: { appRoot: "/app", projectMount: "/app" },
-                webroot: preset.webroot,
-              },
+          },
+          {
+            id: "lando.env",
+            config: {
+              appPaths: { appRoot: "/app", projectMount: "/app" },
+              webroot: preset.webroot,
             },
-          ],
-        };
-      },
-      catch: (cause) =>
-        new ServiceTypeError({
-          message: cause instanceof Error ? cause.message : `Failed to resolve ruby:${version}`,
-          serviceType: `ruby:${version}`,
-          cause,
-        }),
+          },
+        ],
+      };
     }),
 });
 

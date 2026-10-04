@@ -1,8 +1,8 @@
 import { Effect, Predicate, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
@@ -124,16 +124,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
 export const composeServiceFeature: ServiceFeatureDefinition = {
   id: COMPOSE_FEATURE_ID,
   priority: COMPOSE_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyCompose(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : `${COMPOSE_FEATURE_ID} failed to apply`,
-          feature: COMPOSE_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(COMPOSE_FEATURE_ID, `${COMPOSE_FEATURE_ID} failed to apply`, applyCompose),
 };
 
 export const composeServiceType: ServiceType = {

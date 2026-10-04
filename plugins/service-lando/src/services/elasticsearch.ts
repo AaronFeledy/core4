@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
@@ -8,6 +7,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -52,16 +52,11 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
   id: ELASTICSEARCH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyElasticsearchFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "elasticsearch service feature failed to apply",
-          feature: ELASTICSEARCH_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    ELASTICSEARCH_FEATURE_ID,
+    "elasticsearch service feature failed to apply",
+    applyElasticsearchFeature,
+  ),
 };
 
 const IDENTITY: ServiceImageIdentity = {

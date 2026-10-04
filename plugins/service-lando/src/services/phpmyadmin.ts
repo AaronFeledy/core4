@@ -1,10 +1,6 @@
 import { Effect, Schema, absurd } from "effect";
 
-import {
-  AppFeatureSelectorMatchedNothingError,
-  type PhpMyAdminHostsCredsError,
-  ServiceFeatureError,
-} from "@lando/sdk/errors";
+import { AppFeatureSelectorMatchedNothingError, type PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import { PortNumber, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import type {
@@ -18,6 +14,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { appNameFor } from "../app-name.ts";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
@@ -65,16 +62,11 @@ export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
   id: PHPMYADMIN_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyPhpMyAdminFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "phpmyadmin service feature failed to apply",
-          feature: PHPMYADMIN_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    PHPMYADMIN_FEATURE_ID,
+    "phpmyadmin service feature failed to apply",
+    applyPhpMyAdminFeature,
+  ),
 };
 
 const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({

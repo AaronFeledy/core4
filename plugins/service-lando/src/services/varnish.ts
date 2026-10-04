@@ -1,9 +1,10 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -107,16 +108,11 @@ export const varnishServiceFeature: ServiceFeatureDefinition = {
   id: VARNISH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyVarnishFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "varnish service feature failed to apply",
-          feature: VARNISH_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    VARNISH_FEATURE_ID,
+    "varnish service feature failed to apply",
+    applyVarnishFeature,
+  ),
 };
 
 const makeVarnishServiceType = (id: string, image: string): ServiceType => ({

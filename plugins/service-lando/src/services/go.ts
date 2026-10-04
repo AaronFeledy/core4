@@ -1,6 +1,5 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceAppMountIntent,
@@ -9,6 +8,7 @@ import type {
   ServiceMountIntent,
   ServiceType,
 } from "@lando/sdk/services";
+import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -140,16 +140,7 @@ export const goServiceFeature: ServiceFeatureDefinition = {
   id: GO_FEATURE_ID,
   schema: GoFeatureConfigSchema as Schema.Codec<unknown>,
   priority: GO_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyGoFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.go failed to apply",
-          feature: GO_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(GO_FEATURE_ID, "service-lando.go failed to apply", applyGoFeature),
 };
 
 const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedGoVersion): ServiceConfig => ({
@@ -166,39 +157,31 @@ const makeGoServiceType = (version: SupportedGoVersion): ServiceType => ({
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.try({
-      try: () => {
-        const resolvedVersion = validateVersion(input.service.type, version);
-        const framework = validateFramework(input.service.framework);
-        const preset = FRAMEWORK_PRESETS[framework];
-        const endpointPort = input.service.port ?? preset.port;
+    serviceTypeResolve(`go:${version}`, `Failed to resolve go:${version}`, () => {
+      const resolvedVersion = validateVersion(input.service.type, version);
+      const framework = validateFramework(input.service.framework);
+      const preset = FRAMEWORK_PRESETS[framework];
+      const endpointPort = input.service.port ?? preset.port;
 
-        return {
-          base: "lando" as const,
-          normalizedConfig: normalizedService(input.service, resolvedVersion),
-          features: [
-            {
-              id: GO_FEATURE_ID,
-              config: {
-                framework,
-                version: resolvedVersion,
-                port: endpointPort,
-                defaultCommand: preset.defaultCommand,
-              },
+      return {
+        base: "lando" as const,
+        normalizedConfig: normalizedService(input.service, resolvedVersion),
+        features: [
+          {
+            id: GO_FEATURE_ID,
+            config: {
+              framework,
+              version: resolvedVersion,
+              port: endpointPort,
+              defaultCommand: preset.defaultCommand,
             },
-            {
-              id: "lando.env",
-              config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
-            },
-          ],
-        };
-      },
-      catch: (cause) =>
-        new ServiceTypeError({
-          message: cause instanceof Error ? cause.message : `Failed to resolve go:${version}`,
-          serviceType: `go:${version}`,
-          cause,
-        }),
+          },
+          {
+            id: "lando.env",
+            config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+          },
+        ],
+      };
     }),
 });
 

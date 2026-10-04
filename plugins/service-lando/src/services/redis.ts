@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -74,15 +75,11 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
           feature: REDIS_FEATURE_ID,
         }),
       );
-    return Effect.try({
-      try: () => applyRedisFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "redis service feature failed to apply",
-          feature: REDIS_FEATURE_ID,
-          cause,
-        }),
-    });
+    return serviceFeatureApply(
+      REDIS_FEATURE_ID,
+      "redis service feature failed to apply",
+      applyRedisFeature,
+    )(ctx);
   },
 };
 

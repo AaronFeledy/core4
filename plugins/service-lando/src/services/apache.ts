@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, type LogSource, LogSourceId, PortNumber, PortablePath } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
@@ -8,6 +7,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -189,16 +189,7 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   id: APACHE_FEATURE_ID,
   schema: Schema.Unknown,
   priority: APACHE_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyApacheFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.apache failed to apply",
-          feature: APACHE_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
 };
 
 export const apacheServiceType: ServiceType = {

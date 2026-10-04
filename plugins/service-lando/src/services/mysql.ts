@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type LogSource,
@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -129,16 +130,7 @@ export const mysqlServiceFeature: ServiceFeatureDefinition = {
   id: MYSQL_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMysqlFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "mysql service feature failed to apply",
-          feature: MYSQL_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(MYSQL_FEATURE_ID, "mysql service feature failed to apply", applyMysqlFeature),
 };
 
 const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({

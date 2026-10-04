@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type LogSource,
@@ -11,6 +10,7 @@ import {
   type ServiceCreds,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -128,16 +128,11 @@ export const mariadbServiceFeature: ServiceFeatureDefinition = {
   id: MARIADB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMariadbFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "mariadb service feature failed to apply",
-          feature: MARIADB_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    MARIADB_FEATURE_ID,
+    "mariadb service feature failed to apply",
+    applyMariadbFeature,
+  ),
 };
 
 export const mariadbServiceType: ServiceType = {

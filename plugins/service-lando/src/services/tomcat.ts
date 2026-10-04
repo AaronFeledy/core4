@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, PortNumber, PortablePath } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -63,16 +63,7 @@ export const tomcatServiceFeature: ServiceFeatureDefinition = {
   id: TOMCAT_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyTomcatFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "tomcat service feature failed to apply",
-          feature: TOMCAT_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(TOMCAT_FEATURE_ID, "tomcat service feature failed to apply", applyTomcatFeature),
 };
 
 const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
