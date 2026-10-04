@@ -1,4 +1,4 @@
-import { Cause, Effect, Either, Exit, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Result, Schema } from "effect";
 
 import {
   LandofileShape,
@@ -64,177 +64,176 @@ export interface ServiceCompositionContractInput {
  * yields a `ServiceTypeResolution` with decoded `normalizedConfig` and a stable
  * (replay-equal) `features` array — and never returns a `ServicePlan`.
  */
-export const runServiceCompositionContract = (
+export const runServiceCompositionContract = Effect.fnUntraced(function* (
   input: ServiceCompositionContractInput,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const serviceType = input.serviceType;
-    const serviceName = input.serviceName ?? "web";
-    const appName = input.appName ?? "myapp";
-    const appRoot = input.appRoot ?? `/srv/apps/${appName}`;
+): Effect.fn.Return<void, ContractFailure> {
+  const serviceType = input.serviceType;
+  const serviceName = input.serviceName ?? "web";
+  const appName = input.appName ?? "myapp";
+  const appRoot = input.appRoot ?? `/srv/apps/${appName}`;
 
-    yield* requireServiceComposition(
-      isNonEmptyString(serviceType.id),
-      "service type exposes a non-empty id",
-      serviceType.id,
-    );
-    yield* requireServiceComposition(
-      isNonEmptyString(serviceType.name),
-      "service type exposes a non-empty name",
-      serviceType.name,
-    );
-    yield* requireServiceComposition(
-      serviceType.base === "l337" || serviceType.base === "lando",
-      "service type declares a base of l337 or lando",
-      serviceType.base,
-    );
-    yield* requireServiceComposition(
-      typeof serviceType.resolve === "function",
-      "service type resolve is callable",
-      typeof serviceType.resolve,
-    );
+  yield* requireServiceComposition(
+    isNonEmptyString(serviceType.id),
+    "service type exposes a non-empty id",
+    serviceType.id,
+  );
+  yield* requireServiceComposition(
+    isNonEmptyString(serviceType.name),
+    "service type exposes a non-empty name",
+    serviceType.name,
+  );
+  yield* requireServiceComposition(
+    serviceType.base === "l337" || serviceType.base === "lando",
+    "service type declares a base of l337 or lando",
+    serviceType.base,
+  );
+  yield* requireServiceComposition(
+    typeof serviceType.resolve === "function",
+    "service type resolve is callable",
+    typeof serviceType.resolve,
+  );
 
-    const decodedLandofile = Schema.decodeUnknownEither(LandofileShape)({
-      name: appName,
-      services: { [serviceName]: input.landofileService },
-    });
-    yield* requireServiceComposition(
-      Either.isRight(decodedLandofile),
-      "landofile service input decodes through LandofileShape",
-      Either.isLeft(decodedLandofile) ? decodedLandofile.left : undefined,
-    );
-    if (Either.isLeft(decodedLandofile)) return;
-
-    const decodedService = decodedLandofile.right.services?.[ServiceName.make(serviceName)];
-    yield* requireServiceComposition(
-      decodedService !== undefined,
-      "landofile decode preserves the requested service entry",
-      { serviceName },
-    );
-    if (decodedService === undefined) return;
-
-    const makeInput = (): ServiceTypeInput => ({
-      name: serviceName,
-      service: decodedService,
-      appRoot,
-      appName,
-      ...(input.providerId === undefined ? {} : { provider: input.providerId }),
-      primary: false,
-      metadata: {
-        resolvedAt: "2026-05-10T18:51:00Z",
-        source: "@lando/sdk/test/service-composition-contract",
-        runtime: 4,
-      },
-      host: {
-        os: "linux",
-        user: "test",
-        uid: "1000",
-        gid: "1000",
-        home: "/home/test",
-        arch: "x64",
-      },
-    });
-
-    const resolution = yield* serviceType
-      .resolve(makeInput())
-      .pipe(
-        Effect.mapError((cause) => serviceCompositionFailure("service type resolve succeeds", String(cause))),
-      );
-
-    yield* requireServiceComposition(
-      typeof resolution === "object" && resolution !== null,
-      "resolve returns a ServiceTypeResolution object",
-      resolution,
-    );
-    yield* requireServiceComposition(
-      !Schema.is(ServicePlan)(resolution as unknown),
-      "resolve returns a resolution, not a hand-built ServicePlan",
-      { keys: Object.keys(resolution as unknown as Record<string, unknown>) },
-    );
-    yield* requireServiceComposition(
-      resolution.base === serviceType.base,
-      "resolution base matches the declared service type base",
-      { declared: serviceType.base, resolved: resolution.base },
-    );
-
-    const normalizedDecodes = Schema.is(ServiceConfig)(resolution.normalizedConfig);
-    yield* requireServiceComposition(
-      normalizedDecodes,
-      "resolution normalizedConfig is a valid ServiceConfig",
-      resolution.normalizedConfig,
-    );
-
-    yield* requireServiceComposition(
-      Array.isArray(resolution.features),
-      "resolution features is an array of FeatureRefs",
-      resolution.features,
-    );
-    for (const [index, feature] of resolution.features.entries()) {
-      yield* requireServiceComposition(
-        isNonEmptyString(feature.id),
-        "resolution feature declares a non-empty id",
-        { index, feature },
-      );
-    }
-
-    const logSources = resolution.logSources ?? [];
-    yield* requireServiceComposition(
-      Array.isArray(logSources),
-      "resolution logSources is an array of LogSources",
-      resolution.logSources,
-    );
-    const sourceIds = new Set<string>();
-    for (const [index, source] of logSources.entries()) {
-      yield* requireServiceComposition(
-        Schema.is(LogSource)(source),
-        "resolution logSource is a valid LogSource",
-        { index, source },
-      );
-      yield* requireServiceComposition(
-        !sourceIds.has(String(source.id)),
-        "resolution logSource ids are unique within the service",
-        { index, source },
-      );
-      sourceIds.add(String(source.id));
-      yield* requireServiceComposition(source.path.startsWith("/"), "resolution logSource path is absolute", {
-        index,
-        source,
-      });
-      yield* requireServiceComposition(
-        resolution.base === "lando" || source.strategy !== "redirect",
-        "resolution logSource strategy is supported by the base",
-        { base: resolution.base, index, source },
-      );
-    }
-
-    const second = yield* serviceType
-      .resolve(makeInput())
-      .pipe(
-        Effect.mapError((cause) =>
-          serviceCompositionFailure("service type resolve is replay-safe", String(cause)),
-        ),
-      );
-    yield* requireServiceComposition(
-      second.base === resolution.base &&
-        stableJson(second.normalizedConfig) === stableJson(resolution.normalizedConfig),
-      "resolution base + normalizedConfig stable across replays",
-      {
-        first: { base: resolution.base, normalizedConfig: resolution.normalizedConfig },
-        second: { base: second.base, normalizedConfig: second.normalizedConfig },
-      },
-    );
-    yield* requireServiceComposition(
-      second.features.length === resolution.features.length &&
-        second.features.every((feature, index) => feature.id === resolution.features[index]?.id),
-      "resolution feature list is stable across replays",
-      { first: resolution.features, second: second.features },
-    );
-    yield* requireServiceComposition(
-      stableJson(second.logSources ?? []) === stableJson(logSources),
-      "resolution logSources are stable across replays",
-      { first: logSources, second: second.logSources ?? [] },
-    );
+  const decodedLandofile = Schema.decodeUnknownResult(LandofileShape)({
+    name: appName,
+    services: { [serviceName]: input.landofileService },
   });
+  yield* requireServiceComposition(
+    Result.isSuccess(decodedLandofile),
+    "landofile service input decodes through LandofileShape",
+    Result.isFailure(decodedLandofile) ? decodedLandofile.failure : undefined,
+  );
+  if (Result.isFailure(decodedLandofile)) return;
+
+  const decodedService = decodedLandofile.success.services?.[ServiceName.make(serviceName)];
+  yield* requireServiceComposition(
+    decodedService !== undefined,
+    "landofile decode preserves the requested service entry",
+    { serviceName },
+  );
+  if (decodedService === undefined) return;
+
+  const makeInput = (): ServiceTypeInput => ({
+    name: serviceName,
+    service: decodedService,
+    appRoot,
+    appName,
+    ...(input.providerId === undefined ? {} : { provider: input.providerId }),
+    primary: false,
+    metadata: {
+      resolvedAt: DateTime.formatIso(DateTime.makeUnsafe("2026-05-10T18:51:00Z")),
+      source: "@lando/sdk/test/service-composition-contract",
+      runtime: 4,
+    },
+    host: {
+      os: "linux",
+      user: "test",
+      uid: "1000",
+      gid: "1000",
+      home: "/home/test",
+      arch: "x64",
+    },
+  });
+
+  const resolution = yield* serviceType
+    .resolve(makeInput())
+    .pipe(
+      Effect.mapError((cause) => serviceCompositionFailure("service type resolve succeeds", String(cause))),
+    );
+
+  yield* requireServiceComposition(
+    typeof resolution === "object" && resolution !== null,
+    "resolve returns a ServiceTypeResolution object",
+    resolution,
+  );
+  yield* requireServiceComposition(
+    !Schema.is(ServicePlan)(resolution as unknown),
+    "resolve returns a resolution, not a hand-built ServicePlan",
+    { keys: Object.keys(resolution as unknown as Record<string, unknown>) },
+  );
+  yield* requireServiceComposition(
+    resolution.base === serviceType.base,
+    "resolution base matches the declared service type base",
+    { declared: serviceType.base, resolved: resolution.base },
+  );
+
+  const normalizedDecodes = Schema.is(ServiceConfig)(resolution.normalizedConfig);
+  yield* requireServiceComposition(
+    normalizedDecodes,
+    "resolution normalizedConfig is a valid ServiceConfig",
+    resolution.normalizedConfig,
+  );
+
+  yield* requireServiceComposition(
+    Array.isArray(resolution.features),
+    "resolution features is an array of FeatureRefs",
+    resolution.features,
+  );
+  for (const [index, feature] of resolution.features.entries()) {
+    yield* requireServiceComposition(
+      isNonEmptyString(feature.id),
+      "resolution feature declares a non-empty id",
+      { index, feature },
+    );
+  }
+
+  const logSources = resolution.logSources ?? [];
+  yield* requireServiceComposition(
+    Array.isArray(logSources),
+    "resolution logSources is an array of LogSources",
+    resolution.logSources,
+  );
+  const sourceIds = new Set<string>();
+  for (const [index, source] of logSources.entries()) {
+    yield* requireServiceComposition(
+      Schema.is(LogSource)(source),
+      "resolution logSource is a valid LogSource",
+      { index, source },
+    );
+    yield* requireServiceComposition(
+      !sourceIds.has(String(source.id)),
+      "resolution logSource ids are unique within the service",
+      { index, source },
+    );
+    sourceIds.add(String(source.id));
+    yield* requireServiceComposition(source.path.startsWith("/"), "resolution logSource path is absolute", {
+      index,
+      source,
+    });
+    yield* requireServiceComposition(
+      resolution.base === "lando" || source.strategy !== "redirect",
+      "resolution logSource strategy is supported by the base",
+      { base: resolution.base, index, source },
+    );
+  }
+
+  const second = yield* serviceType
+    .resolve(makeInput())
+    .pipe(
+      Effect.mapError((cause) =>
+        serviceCompositionFailure("service type resolve is replay-safe", String(cause)),
+      ),
+    );
+  yield* requireServiceComposition(
+    second.base === resolution.base &&
+      stableJson(second.normalizedConfig) === stableJson(resolution.normalizedConfig),
+    "resolution base + normalizedConfig stable across replays",
+    {
+      first: { base: resolution.base, normalizedConfig: resolution.normalizedConfig },
+      second: { base: second.base, normalizedConfig: second.normalizedConfig },
+    },
+  );
+  yield* requireServiceComposition(
+    second.features.length === resolution.features.length &&
+      second.features.every((feature, index) => feature.id === resolution.features[index]?.id),
+    "resolution feature list is stable across replays",
+    { first: resolution.features, second: second.features },
+  );
+  yield* requireServiceComposition(
+    stableJson(second.logSources ?? []) === stableJson(logSources),
+    "resolution logSources are stable across replays",
+    { first: logSources, second: second.logSources ?? [] },
+  );
+});
 
 const serviceFeatureFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({
@@ -396,100 +395,97 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
  * does not inspect provider capabilities, and its emitted mount/app-mount intent
  * never includes a realization decision.
  */
-export const runServiceFeatureContract = (
+export const runServiceFeatureContract = Effect.fnUntraced(function* (
   input: ServiceFeatureContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const feature = input.feature;
+): Effect.fn.Return<void, ContractFailure> {
+  const feature = input.feature;
 
-    yield* requireServiceFeature(
-      isNonEmptyString(feature.id),
-      "service feature exposes a non-empty id",
-      feature.id,
-    );
-    yield* requireServiceFeature(
-      Number.isFinite(feature.priority),
-      "service feature exposes a finite priority",
-      feature.priority,
-    );
-    yield* requireServiceFeature(
-      typeof feature.apply === "function",
-      "service feature apply is callable",
-      typeof feature.apply,
-    );
-    yield* requireServiceFeature(
-      feature.requires === undefined ||
-        (Array.isArray(feature.requires) && feature.requires.every(isNonEmptyString)),
-      "service feature requires is an array of non-empty capability strings",
-      feature.requires,
-    );
+  yield* requireServiceFeature(
+    isNonEmptyString(feature.id),
+    "service feature exposes a non-empty id",
+    feature.id,
+  );
+  yield* requireServiceFeature(
+    Number.isFinite(feature.priority),
+    "service feature exposes a finite priority",
+    feature.priority,
+  );
+  yield* requireServiceFeature(
+    typeof feature.apply === "function",
+    "service feature apply is callable",
+    typeof feature.apply,
+  );
+  yield* requireServiceFeature(
+    feature.requires === undefined ||
+      (Array.isArray(feature.requires) && feature.requires.every(isNonEmptyString)),
+    "service feature requires is an array of non-empty capability strings",
+    feature.requires,
+  );
 
-    const { context, recorded } = makeRecordingServiceFeatureContext(input);
-    const applyEffect = yield* Effect.try({
-      try: () => feature.apply(context),
-      catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
-    });
-    const applyExit = yield* Effect.exit(applyEffect);
-    if (Exit.isFailure(applyExit)) {
-      yield* Effect.fail(serviceFeatureFailure("feature apply succeeds", Cause.pretty(applyExit.cause)));
-      return;
-    }
-
-    yield* requireServiceFeature(
-      recorded.forbiddenReads.size === 0,
-      "feature does not inspect provider capabilities",
-      Array.from(recorded.forbiddenReads),
-    );
-
-    const mountWithRealization = recorded.mounts.find(hasRealizationDecision);
-    yield* requireServiceFeature(
-      mountWithRealization === undefined,
-      "feature emits mount intent without realization decisions",
-      mountWithRealization,
-    );
-
-    const appMountWithRealization = recorded.appMounts.find(hasRealizationDecision);
-    yield* requireServiceFeature(
-      appMountWithRealization === undefined,
-      "feature emits app mount intent without realization decisions",
-      appMountWithRealization,
-    );
-
-    const storageWithRealization = recorded.storage.find(hasRealizationDecision);
-    yield* requireServiceFeature(
-      storageWithRealization === undefined,
-      "feature emits storage intent without realization decisions",
-      storageWithRealization,
-    );
-
-    const endpointWithRealization = recorded.endpoints.find(hasRealizationDecision);
-    yield* requireServiceFeature(
-      endpointWithRealization === undefined,
-      "feature emits endpoint intent without realization decisions",
-      endpointWithRealization,
-    );
-
-    const second = makeRecordingServiceFeatureContext(input);
-    const secondApplyEffect = yield* Effect.try({
-      try: () => feature.apply(second.context),
-      catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
-    });
-    const secondApplyExit = yield* Effect.exit(secondApplyEffect);
-    if (Exit.isFailure(secondApplyExit)) {
-      yield* Effect.fail(
-        serviceFeatureFailure("feature apply succeeds", Cause.pretty(secondApplyExit.cause)),
-      );
-      return;
-    }
-
-    const firstDraft = recordingServiceFeatureDraft(recorded);
-    const secondDraft = recordingServiceFeatureDraft(second.recorded);
-    yield* requireServiceFeature(
-      stableJson(firstDraft) === stableJson(secondDraft),
-      "service feature apply is deterministic/idempotent",
-      { first: firstDraft, second: secondDraft },
-    );
+  const { context, recorded } = makeRecordingServiceFeatureContext(input);
+  const applyEffect = yield* Effect.try({
+    try: () => feature.apply(context),
+    catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
   });
+  const applyExit = yield* Effect.exit(applyEffect);
+  if (Exit.isFailure(applyExit)) {
+    yield* Effect.fail(serviceFeatureFailure("feature apply succeeds", Cause.pretty(applyExit.cause)));
+    return;
+  }
+
+  yield* requireServiceFeature(
+    recorded.forbiddenReads.size === 0,
+    "feature does not inspect provider capabilities",
+    Array.from(recorded.forbiddenReads),
+  );
+
+  const mountWithRealization = recorded.mounts.find(hasRealizationDecision);
+  yield* requireServiceFeature(
+    mountWithRealization === undefined,
+    "feature emits mount intent without realization decisions",
+    mountWithRealization,
+  );
+
+  const appMountWithRealization = recorded.appMounts.find(hasRealizationDecision);
+  yield* requireServiceFeature(
+    appMountWithRealization === undefined,
+    "feature emits app mount intent without realization decisions",
+    appMountWithRealization,
+  );
+
+  const storageWithRealization = recorded.storage.find(hasRealizationDecision);
+  yield* requireServiceFeature(
+    storageWithRealization === undefined,
+    "feature emits storage intent without realization decisions",
+    storageWithRealization,
+  );
+
+  const endpointWithRealization = recorded.endpoints.find(hasRealizationDecision);
+  yield* requireServiceFeature(
+    endpointWithRealization === undefined,
+    "feature emits endpoint intent without realization decisions",
+    endpointWithRealization,
+  );
+
+  const second = makeRecordingServiceFeatureContext(input);
+  const secondApplyEffect = yield* Effect.try({
+    try: () => feature.apply(second.context),
+    catch: (cause) => serviceFeatureFailure("feature apply succeeds", String(cause)),
+  });
+  const secondApplyExit = yield* Effect.exit(secondApplyEffect);
+  if (Exit.isFailure(secondApplyExit)) {
+    yield* Effect.fail(serviceFeatureFailure("feature apply succeeds", Cause.pretty(secondApplyExit.cause)));
+    return;
+  }
+
+  const firstDraft = recordingServiceFeatureDraft(recorded);
+  const secondDraft = recordingServiceFeatureDraft(second.recorded);
+  yield* requireServiceFeature(
+    stableJson(firstDraft) === stableJson(secondDraft),
+    "service feature apply is deterministic/idempotent",
+    { first: firstDraft, second: secondDraft },
+  );
+});
 
 const appFeatureFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({
@@ -651,105 +647,104 @@ const makeRecordingAppFeatureContext = (
  * conflict), never inspects provider capabilities, and surfaces its
  * `requires.globalServices` declarations.
  */
-export const runAppFeatureContract = (
+export const runAppFeatureContract = Effect.fnUntraced(function* (
   input: AppFeatureContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const feature = input.feature;
+): Effect.fn.Return<void, ContractFailure> {
+  const feature = input.feature;
 
-    yield* requireAppFeature(isNonEmptyString(feature.id), "app feature exposes a non-empty id", feature.id);
-    yield* requireAppFeature(
-      Number.isFinite(feature.priority),
-      "app feature exposes a finite priority",
-      feature.priority,
-    );
-    yield* requireAppFeature(
-      typeof feature.apply === "function",
-      "app feature apply is callable",
-      typeof feature.apply,
-    );
-    const globalServices = feature.requires?.globalServices ?? [];
-    yield* requireAppFeature(
-      globalServices.every(isNonEmptyString),
-      "app feature requires.globalServices entries are non-empty ids",
-      globalServices,
-    );
+  yield* requireAppFeature(isNonEmptyString(feature.id), "app feature exposes a non-empty id", feature.id);
+  yield* requireAppFeature(
+    Number.isFinite(feature.priority),
+    "app feature exposes a finite priority",
+    feature.priority,
+  );
+  yield* requireAppFeature(
+    typeof feature.apply === "function",
+    "app feature apply is callable",
+    typeof feature.apply,
+  );
+  const globalServices = feature.requires?.globalServices ?? [];
+  yield* requireAppFeature(
+    globalServices.every(isNonEmptyString),
+    "app feature requires.globalServices entries are non-empty ids",
+    globalServices,
+  );
 
-    const activatedServices = input.services.filter((service) => matchesActivation(feature, service));
-    const expectNoActivation =
-      input.expectNoActivation === true ||
-      (feature.activatedBy !== undefined && activatedServices.length === 0);
+  const activatedServices = input.services.filter((service) => matchesActivation(feature, service));
+  const expectNoActivation =
+    input.expectNoActivation === true ||
+    (feature.activatedBy !== undefined && activatedServices.length === 0);
 
-    if (expectNoActivation) {
-      const { context, records, selectedNames, forbiddenReads } = makeRecordingAppFeatureContext(input, {
-        forceNoSelection: true,
-      });
-      const applyExit = yield* Effect.exit(feature.apply(context));
-      if (Exit.isFailure(applyExit)) {
-        yield* Effect.fail(appFeatureFailure("app feature apply succeeds", Cause.pretty(applyExit.cause)));
-        return;
-      }
-
-      const mutatedServices = Array.from(records.entries())
-        .filter(([, record]) => record.mutated)
-        .map(([serviceName]) => serviceName);
-      yield* requireAppFeature(
-        selectedNames.length === 0 && mutatedServices.length === 0,
-        "app feature with no activation match is a no-op (no mutation, no selected services)",
-        { selectedNames, mutatedServices },
-      );
-      yield* requireAppFeature(
-        forbiddenReads.size === 0,
-        "app feature does not inspect provider capabilities",
-        Array.from(forbiddenReads),
-      );
-      return;
-    }
-
-    yield* requireAppFeature(
-      feature.activatedBy === undefined || activatedServices.length > 0,
-      "app feature activation matches at least one seeded service",
-      { activatedBy: feature.activatedBy },
-    );
-
-    const { context, records, selectedNames, conflicts, forbiddenReads } =
-      makeRecordingAppFeatureContext(input);
-
-    yield* requireAppFeature(
-      selectedNames.length > 0,
-      "app feature selectors match at least one service draft",
-      { selectors: feature.selectors },
-    );
-
+  if (expectNoActivation) {
+    const { context, records, selectedNames, forbiddenReads } = makeRecordingAppFeatureContext(input, {
+      forceNoSelection: true,
+    });
     const applyExit = yield* Effect.exit(feature.apply(context));
     if (Exit.isFailure(applyExit)) {
       yield* Effect.fail(appFeatureFailure("app feature apply succeeds", Cause.pretty(applyExit.cause)));
       return;
     }
 
+    const mutatedServices = Array.from(records.entries())
+      .filter(([, record]) => record.mutated)
+      .map(([serviceName]) => serviceName);
+    yield* requireAppFeature(
+      selectedNames.length === 0 && mutatedServices.length === 0,
+      "app feature with no activation match is a no-op (no mutation, no selected services)",
+      { selectedNames, mutatedServices },
+    );
     yield* requireAppFeature(
       forbiddenReads.size === 0,
       "app feature does not inspect provider capabilities",
       Array.from(forbiddenReads),
     );
+    return;
+  }
 
-    yield* requireAppFeature(
-      conflicts.length === 0,
-      "app feature mutations are idempotent (no divergent writes)",
-      conflicts,
-    );
+  yield* requireAppFeature(
+    feature.activatedBy === undefined || activatedServices.length > 0,
+    "app feature activation matches at least one seeded service",
+    { activatedBy: feature.activatedBy },
+  );
 
-    const requiresEffect = yield* Effect.exit(feature.apply(makeRecordingAppFeatureContext(input).context));
-    yield* requireAppFeature(
-      Exit.isSuccess(requiresEffect),
-      "app feature apply is replay-safe",
-      Exit.isFailure(requiresEffect) ? Cause.pretty(requiresEffect.cause) : undefined,
-    );
+  const { context, records, selectedNames, conflicts, forbiddenReads } =
+    makeRecordingAppFeatureContext(input);
 
-    const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
-    yield* requireAppFeature(
-      selectedNames.length === 0 || mutatedSelected,
-      "app feature mutates at least one selected service draft",
-      { selectedNames },
-    );
-  });
+  yield* requireAppFeature(
+    selectedNames.length > 0,
+    "app feature selectors match at least one service draft",
+    { selectors: feature.selectors },
+  );
+
+  const applyExit = yield* Effect.exit(feature.apply(context));
+  if (Exit.isFailure(applyExit)) {
+    yield* Effect.fail(appFeatureFailure("app feature apply succeeds", Cause.pretty(applyExit.cause)));
+    return;
+  }
+
+  yield* requireAppFeature(
+    forbiddenReads.size === 0,
+    "app feature does not inspect provider capabilities",
+    Array.from(forbiddenReads),
+  );
+
+  yield* requireAppFeature(
+    conflicts.length === 0,
+    "app feature mutations are idempotent (no divergent writes)",
+    conflicts,
+  );
+
+  const requiresEffect = yield* Effect.exit(feature.apply(makeRecordingAppFeatureContext(input).context));
+  yield* requireAppFeature(
+    Exit.isSuccess(requiresEffect),
+    "app feature apply is replay-safe",
+    Exit.isFailure(requiresEffect) ? Cause.pretty(requiresEffect.cause) : undefined,
+  );
+
+  const mutatedSelected = selectedNames.some((name) => records.get(name)?.mutated === true);
+  yield* requireAppFeature(
+    selectedNames.length === 0 || mutatedSelected,
+    "app feature mutates at least one selected service draft",
+    { selectedNames },
+  );
+});

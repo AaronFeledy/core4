@@ -77,157 +77,156 @@ const sortFragment = (fragment: object): Readonly<Record<string, unknown>> =>
 const optionMemoKey = (recipeId: string, options: Readonly<Record<string, string | boolean>>): string =>
   JSON.stringify({ recipeId, options: Object.fromEntries(Object.entries(options).sort()) });
 
-export const lowerRecipeViews = (
+export const lowerRecipeViews = Effect.fnUntraced(function* (
   ports: Lando3TranslatorPorts,
   folded: ReadonlyArray<LegacyPrefixView>,
   established?: EstablishedRecipe,
-): Effect.Effect<LoweredRecipes, ConfigTranslateError, never> =>
-  Effect.gen(function* () {
-    const prefixes: LoweredPrefix[] = [];
-    const diagnostics: ConfigTranslateDiagnostic[] = [];
-    const memo = new Map<string, LoweredPrefix["fragment"]>();
-    let decomposeCalls = 0;
-    if (established !== undefined)
-      memo.set(optionMemoKey(established.recipeId, established.options), established.fragment);
-    const views =
-      established === undefined
-        ? requiredOptionViews(folded)
-        : folded.filter((view) => view.recipe !== undefined || view.config !== undefined);
-    for (const view of views) {
-      let classification = classifyRecipe(view.recipe);
-      if (classification === undefined && established !== undefined && view.config !== undefined) {
-        const map = BUNDLED_RECIPE_OPTION_MAPS.get(established.recipeId);
-        if (map === undefined)
-          return yield* Effect.fail(
-            new ConfigTranslateError({
-              translator: "lando3",
-              message: `The already converted ${established.recipeId} recipe has no bundled option map.`,
-              remediation: `Convert the app in one pass, or replace recipe ${established.recipeId} with explicit v4 services.`,
-            }),
-          );
-        classification = {
-          _tag: "supported",
-          recipeId: established.recipeId,
-          legacyId: established.recipeId,
-          pinned: {},
-          map,
-        };
+): Effect.fn.Return<LoweredRecipes, ConfigTranslateError, never> {
+  const prefixes: LoweredPrefix[] = [];
+  const diagnostics: ConfigTranslateDiagnostic[] = [];
+  const memo = new Map<string, LoweredPrefix["fragment"]>();
+  let decomposeCalls = 0;
+  if (established !== undefined)
+    memo.set(optionMemoKey(established.recipeId, established.options), established.fragment);
+  const views =
+    established === undefined
+      ? requiredOptionViews(folded)
+      : folded.filter((view) => view.recipe !== undefined || view.config !== undefined);
+  for (const view of views) {
+    let classification = classifyRecipe(view.recipe);
+    if (classification === undefined && established !== undefined && view.config !== undefined) {
+      const map = BUNDLED_RECIPE_OPTION_MAPS.get(established.recipeId);
+      if (map === undefined)
+        return yield* Effect.fail(
+          new ConfigTranslateError({
+            translator: "lando3",
+            message: `The already converted ${established.recipeId} recipe has no bundled option map.`,
+            remediation: `Convert the app in one pass, or replace recipe ${established.recipeId} with explicit v4 services.`,
+          }),
+        );
+      classification = {
+        _tag: "supported",
+        recipeId: established.recipeId,
+        legacyId: established.recipeId,
+        pinned: {},
+        map,
+      };
+    }
+    if (classification === undefined) continue;
+    const occurrence = occurrencesAt(view.recipe, []).at(-1) ?? occurrencesAt(view.config, []).at(-1);
+    if (occurrence === undefined) continue;
+    switch (classification._tag) {
+      case "unsupported": {
+        const diagnostic = unsupportedRecipe({ ...classification, occurrence });
+        return yield* Effect.fail(
+          recipeFailure(view, {
+            recipeId: classification.legacyId,
+            reason: classification.reason,
+            keyPath: ["recipe"],
+            message: diagnostic.message,
+            remediation: diagnostic.remediation ?? "Use explicit v4 services.",
+          }),
+        );
       }
-      if (classification === undefined) continue;
-      const occurrence = occurrencesAt(view.recipe, []).at(-1) ?? occurrencesAt(view.config, []).at(-1);
-      if (occurrence === undefined) continue;
-      switch (classification._tag) {
-        case "unsupported": {
-          const diagnostic = unsupportedRecipe({ ...classification, occurrence });
-          return yield* Effect.fail(
-            recipeFailure(view, {
-              recipeId: classification.legacyId,
-              reason: classification.reason,
-              keyPath: ["recipe"],
-              message: diagnostic.message,
-              remediation: diagnostic.remediation ?? "Use explicit v4 services.",
-            }),
-          );
-        }
-        case "supported":
-          break;
-        default:
-          return classification satisfies never;
+      case "supported":
+        break;
+      default:
+        return classification satisfies never;
+    }
+    const { recipeId } = classification;
+    const factory = ports.decomposers.get(recipeId);
+    if (factory === undefined)
+      return yield* Effect.fail(
+        recipeFailure(view, {
+          recipeId,
+          reason: "unknown",
+          keyPath: ["recipe"],
+          message: `The bundled ${recipeId} decomposer is unavailable.`,
+          remediation: `Provide the missing bundled ${recipeId} decomposer before converting.`,
+        }),
+      );
+    const mapped = mapConfigOptions(
+      classification,
+      view.config,
+      established?.recipeId === recipeId ? established.options : undefined,
+    );
+    if (mapped.blocked !== undefined)
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          translator: "lando3",
+          message: "config is a tagged file reference and was not read.",
+          remediation:
+            "Inline config as a mapping before converting, or run the app with Lando 3. File tags are not resolved during conversion.",
+        }),
+      );
+    for (const invalid of mapped.invalid) {
+      const diagnostic = invalidOptionValue({
+        recipeId,
+        legacyKey: invalid.legacyKey,
+        option: invalid.option,
+        occurrence: invalid.occurrences.at(-1) ?? occurrence,
+        ...(invalid.spec.kind === "enum"
+          ? { kind: "enum" as const, allowed: invalid.spec.values }
+          : { kind: invalid.spec.kind }),
+      });
+      return yield* Effect.fail(
+        recipeFailure(view, {
+          recipeId,
+          reason: "invalid-option",
+          keyPath: ["config", invalid.legacyKey],
+          message: diagnostic.message,
+          remediation: diagnostic.remediation ?? "Choose a supported option value.",
+        }),
+      );
+    }
+    for (const entry of mapped.dropped)
+      for (const authored of entry.occurrences) {
+        diagnostics.push(droppedConfigKey({ recipeId, legacyKey: entry.legacyKey, occurrence: authored }));
       }
-      const { recipeId } = classification;
-      const factory = ports.decomposers.get(recipeId);
-      if (factory === undefined)
+    const key = optionMemoKey(recipeId, mapped.options);
+    let fragment = memo.get(key);
+    if (fragment === undefined) {
+      const decomposer = factory({ redactor: ports.redactor });
+      if (decomposer.producer.recipeId !== recipeId)
         return yield* Effect.fail(
           recipeFailure(view, {
             recipeId,
             reason: "unknown",
             keyPath: ["recipe"],
-            message: `The bundled ${recipeId} decomposer is unavailable.`,
-            remediation: `Provide the missing bundled ${recipeId} decomposer before converting.`,
+            message: `The bundled ${recipeId} decomposer has a mismatched producer.`,
+            remediation: `Provide the bundled ${recipeId} decomposer with a matching producer recipeId.`,
           }),
         );
-      const mapped = mapConfigOptions(
-        classification,
-        view.config,
-        established?.recipeId === recipeId ? established.options : undefined,
-      );
-      if (mapped.blocked !== undefined)
+      decomposeCalls += 1;
+      const decomposed = yield* decomposer
+        .decompose({ producer: decomposer.producer, options: mapped.options, secrets: {} })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new ConfigTranslateError({
+                translator: "lando3",
+                cause,
+                message: ports.redactor.redactString(cause.message),
+                remediation: ports.redactor.redactString(cause.remediation),
+              }),
+          ),
+        );
+      if (!isPlainRecord(decomposed.fragment))
         return yield* Effect.fail(
           new ConfigTranslateError({
             translator: "lando3",
-            message: "config is a tagged file reference and was not read.",
-            remediation:
-              "Inline config as a mapping before converting, or run the app with Lando 3. File tags are not resolved during conversion.",
+            message: `The bundled ${recipeId} decomposer returned a non-mapping fragment.`,
+            remediation: `Repair the bundled ${recipeId} decomposer to return an authoring mapping.`,
           }),
         );
-      for (const invalid of mapped.invalid) {
-        const diagnostic = invalidOptionValue({
-          recipeId,
-          legacyKey: invalid.legacyKey,
-          option: invalid.option,
-          occurrence: invalid.occurrences.at(-1) ?? occurrence,
-          ...(invalid.spec.kind === "enum"
-            ? { kind: "enum" as const, allowed: invalid.spec.values }
-            : { kind: invalid.spec.kind }),
-        });
-        return yield* Effect.fail(
-          recipeFailure(view, {
-            recipeId,
-            reason: "invalid-option",
-            keyPath: ["config", invalid.legacyKey],
-            message: diagnostic.message,
-            remediation: diagnostic.remediation ?? "Choose a supported option value.",
-          }),
-        );
-      }
-      for (const entry of mapped.dropped)
-        for (const authored of entry.occurrences) {
-          diagnostics.push(droppedConfigKey({ recipeId, legacyKey: entry.legacyKey, occurrence: authored }));
-        }
-      const key = optionMemoKey(recipeId, mapped.options);
-      let fragment = memo.get(key);
-      if (fragment === undefined) {
-        const decomposer = factory({ redactor: ports.redactor });
-        if (decomposer.producer.recipeId !== recipeId)
-          return yield* Effect.fail(
-            recipeFailure(view, {
-              recipeId,
-              reason: "unknown",
-              keyPath: ["recipe"],
-              message: `The bundled ${recipeId} decomposer has a mismatched producer.`,
-              remediation: `Provide the bundled ${recipeId} decomposer with a matching producer recipeId.`,
-            }),
-          );
-        decomposeCalls += 1;
-        const decomposed = yield* decomposer
-          .decompose({ producer: decomposer.producer, options: mapped.options, secrets: {} })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ConfigTranslateError({
-                  translator: "lando3",
-                  cause,
-                  message: ports.redactor.redactString(cause.message),
-                  remediation: ports.redactor.redactString(cause.remediation),
-                }),
-            ),
-          );
-        if (!isPlainRecord(decomposed.fragment))
-          return yield* Effect.fail(
-            new ConfigTranslateError({
-              translator: "lando3",
-              message: `The bundled ${recipeId} decomposer returned a non-mapping fragment.`,
-              remediation: `Repair the bundled ${recipeId} decomposer to return an authoring mapping.`,
-            }),
-          );
-        fragment = sortFragment({ recipe: decomposed.provenance, ...decomposed.fragment });
-        memo.set(key, fragment);
-      }
-      prefixes.push({ targetLayer: view.targetLayer, sourceIds: view.sourceIds, fragment });
-      diagnostics.push(generatedRecipe({ recipeId, occurrence }));
+      fragment = sortFragment({ recipe: decomposed.provenance, ...decomposed.fragment });
+      memo.set(key, fragment);
     }
-    return { prefixes, diagnostics, decomposeCalls };
-  });
+    prefixes.push({ targetLayer: view.targetLayer, sourceIds: view.sourceIds, fragment });
+    diagnostics.push(generatedRecipe({ recipeId, occurrence }));
+  }
+  return { prefixes, diagnostics, decomposeCalls };
+});
 
 export const recipeLayerOutputs = (
   folded: ReadonlyArray<LegacyPrefixView>,

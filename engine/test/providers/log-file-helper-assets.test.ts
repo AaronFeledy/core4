@@ -7,9 +7,9 @@ import { Effect } from "effect";
 
 import { LogFileHelperAssets } from "@lando/sdk/services";
 
+import * as LogFileHelperAssetsLayer from "../../src/providers/log-file-helper-payloads.ts";
 import {
   LOG_FILE_HELPER_DIST_ROOT_ENV,
-  LogFileHelperAssetsLive,
   loadLogFileHelperPayloads,
   resolveLogFileHelperPayloadPath,
 } from "../../src/providers/log-file-helper-payloads.ts";
@@ -32,7 +32,7 @@ test("LogFileHelperAssets loads helper payloads once per layer build", async () 
         const firstAccess = yield* assets.payloads;
         const secondAccess = yield* assets.payloads;
         return [firstAccess, secondAccess] as const;
-      }).pipe(Effect.provide(LogFileHelperAssetsLive)),
+      }).pipe(Effect.provide(LogFileHelperAssetsLayer.layer)),
     );
 
     // Then

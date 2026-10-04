@@ -39,11 +39,14 @@ test.each(["running", "exited"])(
           return { identities: 0 };
         },
       }).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          list: Effect.succeed([provider.id]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([provider.id]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
       ),
     );
     // Then

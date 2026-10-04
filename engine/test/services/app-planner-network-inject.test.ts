@@ -12,9 +12,9 @@ import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -23,10 +23,13 @@ const PEM = (name: string): string => `-----BEGIN CERTIFICATE-----\n${name}\n---
 const digest = (pem: string): string => createNodeHash("sha256").update(pem, "utf-8").digest("hex");
 
 const configLayer = (config: GlobalConfig) =>
-  Layer.succeed(ConfigService, {
-    load: Effect.succeed(config),
-    get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-  });
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load: Effect.succeed(config),
+      get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+    }),
+  );
 
 const planEffect = (input: {
   readonly appRoot: string;
@@ -35,8 +38,8 @@ const planEffect = (input: {
   readonly landofile: LandofileShape;
 }) => {
   const dependencies = Layer.mergeAll(
-    PluginRegistryLive,
-    FileSystemLive,
+    PluginRegistryLayer.layer,
+    BunFileSystem.layer,
     configLayer(input.config),
     Layer.succeed(
       PathsService,
@@ -48,7 +51,7 @@ const planEffect = (input: {
       }),
     ),
   );
-  const planner = AppPlannerLive.pipe(Layer.provide(dependencies));
+  const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.flatMap(AppPlanner, (service) =>
     service.plan(rememberLandofileAppRoot(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(planner));
@@ -84,7 +87,7 @@ const expectProjectCaRejection = async (input: {
 
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-  const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+  const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
   expect(failure).toBeInstanceOf(LandofileValidationError);
   expect(String(failure)).toContain("security.ca");
   expect(String(failure)).toContain(input.remediation);
@@ -253,7 +256,7 @@ test("fails planning when a configured global CA is unreadable", async () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure).toBeInstanceOf(LandofileValidationError);
     expect(String(failure)).toContain(missingPath);
     expect(String(failure)).toContain("LANDO_NETWORK_CA_CERTS");

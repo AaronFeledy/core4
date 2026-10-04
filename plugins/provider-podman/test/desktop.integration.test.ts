@@ -12,7 +12,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import {
   PodmanMachineNotRunningError,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   resolvePodmanDesktopMachine,
 } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -33,7 +33,7 @@ const appId = AppId.make("desktop-app");
 const serviceName = ServiceName.make("web");
 
 const metadata: PlanMetadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-27T00:00:00Z"),
   source: "provider-podman desktop integration",
   runtime: 4,
 };
@@ -279,7 +279,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PodmanMachineNotRunningError);
@@ -313,7 +313,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PodmanMachineNotRunningError);
         if (failure.value instanceof PodmanMachineNotRunningError) {
@@ -347,7 +347,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(PodmanMachineNotRunningError);
           if (failure.value instanceof PodmanMachineNotRunningError) {
@@ -387,7 +387,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       if (failure._tag === "Some") {
         expect(failure.value).not.toBeInstanceOf(PodmanMachineNotRunningError);
         expect(failure.value).toBeInstanceOf(ProviderUnavailableError);

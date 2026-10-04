@@ -8,7 +8,7 @@ import { InteractionService, Renderer } from "@lando/sdk/services";
 import { makeInteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
 
-type RendererService = Context.Tag.Service<typeof Renderer>;
+type RendererService = Context.Service.Shape<typeof Renderer>;
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
   Readable.from(lines.map((line) => `${line}\n`));
@@ -23,7 +23,7 @@ const neverStdin = (): NodeJS.ReadableStream =>
 const capturingRenderer = (id = "plain") => {
   let out = "";
   let err = "";
-  const service: RendererService = {
+  const service: RendererService = Renderer.of({
     id,
     capabilities: { color: false, interactive: false, animation: false, notifications: false },
     message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
@@ -37,7 +37,7 @@ const capturingRenderer = (id = "plain") => {
           err += chunk;
         }),
     },
-  };
+  });
   return { service, out: () => out, err: () => err };
 };
 
@@ -47,9 +47,9 @@ const buildPrompter = (
   stdout?: NodeJS.WritableStream,
 ) => {
   const interaction = makeInteractionService({ stdin, ...(stdout === undefined ? {} : { stdout }) });
-  let layer = Layer.succeed(InteractionService, interaction);
+  let layer = Layer.succeed(InteractionService, InteractionService.of(interaction));
   if (renderer !== undefined) {
-    layer = Layer.merge(layer, Layer.succeed(Renderer, renderer));
+    layer = Layer.merge(layer, Layer.succeed(Renderer, Renderer.of(renderer)));
   }
   return Effect.runPromise(makeInteractionPrompter.pipe(Effect.provide(layer)));
 };

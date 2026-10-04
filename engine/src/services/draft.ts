@@ -57,7 +57,7 @@ export interface DraftServicePlan {
 
 /** Deterministic metadata stamped on every composed plan (no wall-clock). */
 export const deterministicMetadata: ServicePlan["metadata"] = {
-  resolvedAt: DateTime.unsafeMake("1970-01-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00Z"),
   source: "service-feature-composition",
   runtime: 4,
 };

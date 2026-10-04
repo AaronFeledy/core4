@@ -12,16 +12,16 @@ export type DbCommandStep = typeof DbCommandStep.Type;
 
 export const DbCommandResult = Schema.Struct({
   service: Schema.String,
-  family: Schema.optional(Schema.String),
-  file: Schema.optional(Schema.String),
-  snapshotId: Schema.optional(Schema.String),
-  snapshots: Schema.optional(Schema.Array(SnapshotInfo)),
-  pruneCandidates: Schema.optional(Schema.Array(SnapshotId)),
-  prunedSnapshotIds: Schema.optional(Schema.Array(SnapshotId)),
-  retentionApplied: Schema.optional(Schema.Boolean),
-  seedStatus: Schema.optional(Schema.Literal("seeded")),
-  accelerated: Schema.optional(Schema.Boolean),
-  sizeBytes: Schema.optional(Schema.Number),
+  family: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String),
+  snapshotId: Schema.optionalKey(Schema.String),
+  snapshots: Schema.optionalKey(Schema.Array(SnapshotInfo)),
+  pruneCandidates: Schema.optionalKey(Schema.Array(SnapshotId)),
+  prunedSnapshotIds: Schema.optionalKey(Schema.Array(SnapshotId)),
+  retentionApplied: Schema.optionalKey(Schema.Boolean),
+  seedStatus: Schema.optionalKey(Schema.Literal("seeded")),
+  accelerated: Schema.optionalKey(Schema.Boolean),
+  sizeBytes: Schema.optionalKey(Schema.Number),
   steps: Schema.Array(DbCommandStep),
 });
 export type DbCommandResult = typeof DbCommandResult.Type;

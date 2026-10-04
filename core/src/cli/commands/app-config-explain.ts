@@ -10,7 +10,7 @@ import {
 } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
 import { sameRecipeVersion } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { getAtPath } from "@lando/engine/config-write/dot-path";
 import { parseLandofile } from "@lando/landofile/parser";
@@ -132,15 +132,15 @@ const compareAgainstSnapshot = (
   }
 
   const rendered = renderRecipeSnapshot(snapshot, provenance.options);
-  if (Either.isLeft(rendered)) {
+  if (Result.isFailure(rendered)) {
     return {
-      comparison: blocked("render-failed", rendered.left.message),
+      comparison: blocked("render-failed", rendered.failure.message),
       takenOver: empty,
       services: [],
     };
   }
 
-  const generated = generatedServiceNames(rendered.right);
+  const generated = generatedServiceNames(rendered.success);
   const mappings = Object.entries(provenance.services ?? {});
   const unknown = mappings.filter(([name]) => !generated.has(name)).map(([name]) => name);
   if (unknown.length > 0) {
@@ -173,12 +173,12 @@ const compareAgainstSnapshot = (
   }
 
   const takenOver = new Map<string, ExplainTakenOverSite[]>();
-  for (const site of collectRecipeSites(rendered.right, filePath)) {
+  for (const site of collectRecipeSites(rendered.success, filePath)) {
     const path = applyServiceMap(site.path, serviceMap);
     const current = getAtPath(document, path);
     if (typeof current === "string") {
       const parsed = parseExpressionEither(current, { filePath });
-      if (Either.isRight(parsed) && isDeepStrictEqual(parsed.right, site.template)) continue;
+      if (Result.isSuccess(parsed) && isDeepStrictEqual(parsed.success, site.template)) continue;
     }
     for (const option of site.options) {
       const entries = takenOver.get(option) ?? [];
@@ -216,11 +216,11 @@ const readProvenance = (
     };
   }
   const validated = validateLandofileRecipeProvenance(raw);
-  if (Either.isLeft(validated)) {
+  if (Result.isFailure(validated)) {
     const reason: ExplainBlockedReason =
-      validated.left.reason === "service-map-not-injective" ? "invalid-service-map" : "invalid-provenance";
+      validated.failure.reason === "service-map-not-injective" ? "invalid-service-map" : "invalid-provenance";
     const facts =
-      validated.left.reason === "service-map-not-injective" ? provenanceWithoutServiceMap(raw) : undefined;
+      validated.failure.reason === "service-map-not-injective" ? provenanceWithoutServiceMap(raw) : undefined;
     return {
       form: "declarative",
       recipe:
@@ -230,20 +230,20 @@ const readProvenance = (
             ? { id: (raw as { readonly id: string }).id }
             : undefined,
       ...(facts === undefined ? {} : { provenance: facts }),
-      blockedComparison: blocked(reason, validated.left.message),
+      blockedComparison: blocked(reason, validated.failure.message),
     };
   }
-  if (isBareRecipeReference(validated.right)) {
+  if (isBareRecipeReference(validated.success)) {
     return {
       form: "bare",
-      recipe: { id: validated.right },
+      recipe: { id: validated.success },
       blockedComparison: blocked(
         "bare-provenance",
         "This Landofile records a recipe id with no producer identity or option values.",
       ),
     };
   }
-  const provenance = validated.right;
+  const provenance = validated.success;
   return {
     form: "declarative",
     recipe: { id: provenance.id, version: provenance.version, producer: provenance.producer },
@@ -257,159 +257,157 @@ const readProvenance = (
  * exists to show, and following includes is forbidden outright. Nothing here
  * writes a file, builds a plan, contacts a provider, or executes app code.
  */
-export const appConfigExplain = (
+export const appConfigExplain = Effect.fn("AppConfigExplain.explain")(function* (
   options: AppConfigExplainOptions = {},
-): Effect.Effect<AppConfigExplainResult, AppConfigExplainError, never> =>
-  Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
-    const discovered = yield* Effect.tryPromise({
-      try: () => discoverRecipeAnalysisRoot(cwd),
-      catch: (cause) =>
-        cause instanceof LandofileNotFoundError
-          ? cause
-          : new LandofileNotFoundError({
-              message: cause instanceof Error ? cause.message : `No Landofile found from ${cwd}.`,
-              cwd,
-            }),
-    });
-    const { appRoot, dualForm } = discovered;
-
-    const programmaticPath = join(appRoot, PROGRAMMATIC_LANDOFILE);
-    const landofilePath = join(appRoot, CANONICAL_LANDOFILE);
-    const [programmaticFile, yamlExists] = yield* Effect.promise(() =>
-      Promise.all([Bun.file(programmaticPath).exists(), Bun.file(landofilePath).exists()]),
-    );
-    const programmatic = dualForm || programmaticFile;
-    if (programmatic && !yamlExists) {
-      return {
-        landofilePath: programmaticPath,
-        form: "programmatic",
-        comparison: blocked(
-          "programmatic-landofile",
-          "A programmatic Landofile is opaque to provenance comparison and is never executed for it.",
-        ),
-        bounds: { _tag: "complete" },
-        services: [],
-        options: [],
-      } satisfies AppConfigExplainResult;
-    }
-
-    const bytes = yield* Effect.tryPromise({
-      try: () =>
-        Bun.file(landofilePath)
-          .slice(0, APP_CONFIG_EXPLAIN_MAX_BYTES + 1)
-          .bytes(),
-      catch: (cause) =>
-        new LandofileParseError({
-          message: cause instanceof Error ? cause.message : `Failed to read ${landofilePath}.`,
-          filePath: landofilePath,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
-    });
-    if (bytes.byteLength > APP_CONFIG_EXPLAIN_MAX_BYTES) {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile exceeds the ${APP_CONFIG_EXPLAIN_MAX_BYTES}-byte explain limit.`,
-          filePath: landofilePath,
-          line: undefined,
-          column: undefined,
-          cause: "input-budget",
-        }),
-      );
-    }
-    const content = new TextDecoder().decode(bytes);
-    const parsed = yield* parseLandofile({ file: landofilePath, content, cwd: appRoot });
-    const document = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<string, unknown>;
-
-    const { recipe: recipeField, ...authoring } = document;
-    const currentSites = collectRecipeSites(authoring, landofilePath);
-    const read = readProvenance(recipeField);
-
-    const includes = document.includes !== undefined;
-    const skipSemantic = programmatic || includes || read.blockedComparison !== undefined;
-    const semantic =
-      skipSemantic || read.provenance === undefined
-        ? undefined
-        : compareAgainstSnapshot(read.provenance, document, landofilePath);
-
-    const comparison: ExplainComparison = programmatic
-      ? blocked(
-          "programmatic-landofile",
-          "A programmatic Landofile is opaque to provenance comparison and is never executed for it.",
-        )
-      : (read.blockedComparison ??
-        (includes
-          ? blocked(
-              "includes-present",
-              "This Landofile pulls in `includes:`, whose content is never followed for comparison.",
-            )
-          : (semantic?.comparison ??
-            blocked("no-recipe", "This Landofile records no `recipe:` provenance."))));
-
-    const matched = comparison.status === "matched";
-    const recordedOptions = readOptions(read.provenance);
-    const defaults = readDefaults(matched ? lookupRecipeSnapshot(read.provenance?.id ?? "") : undefined);
-    const takenOver = semantic?.takenOver ?? new Map<string, ReadonlyArray<ExplainTakenOverSite>>();
-
-    const referencesByOption = new Map<string, ExplainReference[]>();
-    for (const site of currentSites) {
-      for (const name of site.options) {
-        const entries = referencesByOption.get(name) ?? [];
-        entries.push({ path: site.path, expression: site.source });
-        referencesByOption.set(name, entries);
-      }
-    }
-
-    const names = [...new Set([...recordedOptions.keys(), ...referencesByOption.keys()])].sort();
-    const reported = names.map((name) => {
-      const value = recordedOptions.get(name);
-      const fallback = defaults.get(name);
-      const declaredDefault = matched && fallback !== undefined ? fallback : undefined;
-      const references = (referencesByOption.get(name) ?? []).toSorted((left, right) =>
-        left.path.localeCompare(right.path),
-      );
-      return {
-        name,
-        ...(value === undefined ? {} : { value }),
-        ...(declaredDefault === undefined ? {} : { default: declaredDefault }),
-        ...(matched && value !== undefined
-          ? {
-              status: isDeepStrictEqual(value, declaredDefault)
-                ? ("accepted-by-value" as const)
-                : ("chosen-by-value" as const),
-            }
-          : {}),
-        references: references.slice(0, EXPLAIN_MAX_SITES_PER_OPTION),
-        takenOver: (takenOver.get(name) ?? []).slice(0, EXPLAIN_MAX_SITES_PER_OPTION),
-      };
-    });
-
-    const services = semantic?.services ?? [];
-    const omitted = {
-      services: Math.max(0, services.length - EXPLAIN_MAX_SERVICES),
-      options: Math.max(0, reported.length - EXPLAIN_MAX_OPTIONS),
-      references: reported.reduce(
-        (count, option) =>
-          count + Math.max(0, (referencesByOption.get(option.name) ?? []).length - option.references.length),
-        0,
-      ),
-      takenOver: reported.reduce(
-        (count, option) =>
-          count + Math.max(0, (takenOver.get(option.name) ?? []).length - option.takenOver.length),
-        0,
-      ),
-    };
-    const truncated = Object.values(omitted).some((count) => count > 0);
-
-    return {
-      landofilePath,
-      form: read.form,
-      ...(read.recipe === undefined ? {} : { recipe: read.recipe }),
-      comparison,
-      bounds: truncated ? { _tag: "truncated", omitted } : { _tag: "complete" },
-      services: services.slice(0, EXPLAIN_MAX_SERVICES),
-      options: reported.slice(0, EXPLAIN_MAX_OPTIONS),
-    } satisfies AppConfigExplainResult;
+): Effect.fn.Return<AppConfigExplainResult, AppConfigExplainError, never> {
+  const cwd = options.cwd ?? process.cwd();
+  const discovered = yield* Effect.tryPromise({
+    try: () => discoverRecipeAnalysisRoot(cwd),
+    catch: (cause) =>
+      cause instanceof LandofileNotFoundError
+        ? cause
+        : new LandofileNotFoundError({
+            message: cause instanceof Error ? cause.message : `No Landofile found from ${cwd}.`,
+            cwd,
+          }),
   });
+  const { appRoot, dualForm } = discovered;
+
+  const programmaticPath = join(appRoot, PROGRAMMATIC_LANDOFILE);
+  const landofilePath = join(appRoot, CANONICAL_LANDOFILE);
+  const [programmaticFile, yamlExists] = yield* Effect.promise(() =>
+    Promise.all([Bun.file(programmaticPath).exists(), Bun.file(landofilePath).exists()]),
+  );
+  const programmatic = dualForm || programmaticFile;
+  if (programmatic && !yamlExists) {
+    return {
+      landofilePath: programmaticPath,
+      form: "programmatic",
+      comparison: blocked(
+        "programmatic-landofile",
+        "A programmatic Landofile is opaque to provenance comparison and is never executed for it.",
+      ),
+      bounds: { _tag: "complete" },
+      services: [],
+      options: [],
+    } satisfies AppConfigExplainResult;
+  }
+
+  const bytes = yield* Effect.tryPromise({
+    try: () =>
+      Bun.file(landofilePath)
+        .slice(0, APP_CONFIG_EXPLAIN_MAX_BYTES + 1)
+        .bytes(),
+    catch: (cause) =>
+      new LandofileParseError({
+        message: cause instanceof Error ? cause.message : `Failed to read ${landofilePath}.`,
+        filePath: landofilePath,
+        line: undefined,
+        column: undefined,
+        cause,
+      }),
+  });
+  if (bytes.byteLength > APP_CONFIG_EXPLAIN_MAX_BYTES) {
+    return yield* Effect.fail(
+      new LandofileParseError({
+        message: `Landofile exceeds the ${APP_CONFIG_EXPLAIN_MAX_BYTES}-byte explain limit.`,
+        filePath: landofilePath,
+        line: undefined,
+        column: undefined,
+        cause: "input-budget",
+      }),
+    );
+  }
+  const content = new TextDecoder().decode(bytes);
+  const parsed = yield* parseLandofile({ file: landofilePath, content, cwd: appRoot });
+  const document = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<string, unknown>;
+
+  const { recipe: recipeField, ...authoring } = document;
+  const currentSites = collectRecipeSites(authoring, landofilePath);
+  const read = readProvenance(recipeField);
+
+  const includes = document.includes !== undefined;
+  const skipSemantic = programmatic || includes || read.blockedComparison !== undefined;
+  const semantic =
+    skipSemantic || read.provenance === undefined
+      ? undefined
+      : compareAgainstSnapshot(read.provenance, document, landofilePath);
+
+  const comparison: ExplainComparison = programmatic
+    ? blocked(
+        "programmatic-landofile",
+        "A programmatic Landofile is opaque to provenance comparison and is never executed for it.",
+      )
+    : (read.blockedComparison ??
+      (includes
+        ? blocked(
+            "includes-present",
+            "This Landofile pulls in `includes:`, whose content is never followed for comparison.",
+          )
+        : (semantic?.comparison ?? blocked("no-recipe", "This Landofile records no `recipe:` provenance."))));
+
+  const matched = comparison.status === "matched";
+  const recordedOptions = readOptions(read.provenance);
+  const defaults = readDefaults(matched ? lookupRecipeSnapshot(read.provenance?.id ?? "") : undefined);
+  const takenOver = semantic?.takenOver ?? new Map<string, ReadonlyArray<ExplainTakenOverSite>>();
+
+  const referencesByOption = new Map<string, ExplainReference[]>();
+  for (const site of currentSites) {
+    for (const name of site.options) {
+      const entries = referencesByOption.get(name) ?? [];
+      entries.push({ path: site.path, expression: site.source });
+      referencesByOption.set(name, entries);
+    }
+  }
+
+  const names = [...new Set([...recordedOptions.keys(), ...referencesByOption.keys()])].sort();
+  const reported = names.map((name) => {
+    const value = recordedOptions.get(name);
+    const fallback = defaults.get(name);
+    const declaredDefault = matched && fallback !== undefined ? fallback : undefined;
+    const references = (referencesByOption.get(name) ?? []).toSorted((left, right) =>
+      left.path.localeCompare(right.path),
+    );
+    return {
+      name,
+      ...(value === undefined ? {} : { value }),
+      ...(declaredDefault === undefined ? {} : { default: declaredDefault }),
+      ...(matched && value !== undefined
+        ? {
+            status: isDeepStrictEqual(value, declaredDefault)
+              ? ("accepted-by-value" as const)
+              : ("chosen-by-value" as const),
+          }
+        : {}),
+      references: references.slice(0, EXPLAIN_MAX_SITES_PER_OPTION),
+      takenOver: (takenOver.get(name) ?? []).slice(0, EXPLAIN_MAX_SITES_PER_OPTION),
+    };
+  });
+
+  const services = semantic?.services ?? [];
+  const omitted = {
+    services: Math.max(0, services.length - EXPLAIN_MAX_SERVICES),
+    options: Math.max(0, reported.length - EXPLAIN_MAX_OPTIONS),
+    references: reported.reduce(
+      (count, option) =>
+        count + Math.max(0, (referencesByOption.get(option.name) ?? []).length - option.references.length),
+      0,
+    ),
+    takenOver: reported.reduce(
+      (count, option) =>
+        count + Math.max(0, (takenOver.get(option.name) ?? []).length - option.takenOver.length),
+      0,
+    ),
+  };
+  const truncated = Object.values(omitted).some((count) => count > 0);
+
+  return {
+    landofilePath,
+    form: read.form,
+    ...(read.recipe === undefined ? {} : { recipe: read.recipe }),
+    comparison,
+    bounds: truncated ? { _tag: "truncated", omitted } : { _tag: "complete" },
+    services: services.slice(0, EXPLAIN_MAX_SERVICES),
+    options: reported.slice(0, EXPLAIN_MAX_OPTIONS),
+  } satisfies AppConfigExplainResult;
+});

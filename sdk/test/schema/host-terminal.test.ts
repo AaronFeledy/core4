@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { HostTerminal } from "@lando/sdk/schema";
 
@@ -9,20 +9,20 @@ describe("HostTerminal", () => {
     const input = { term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 };
 
     // When
-    const decoded = Schema.decodeUnknownEither(HostTerminal)(input, { onExcessProperty: "error" });
+    const decoded = Schema.decodeUnknownResult(HostTerminal)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isRight(decoded)).toBe(true);
+    expect(Result.isSuccess(decoded)).toBe(true);
   });
 
   test.each([{ columns: 0 }, { columns: -1 }, { columns: 1.5 }, { rows: 0 }, { rows: -1 }, { rows: 1.5 }])(
     "rejects non-positive or fractional dimensions: %j",
     (input) => {
       // When
-      const decoded = Schema.decodeUnknownEither(HostTerminal)(input, { onExcessProperty: "error" });
+      const decoded = Schema.decodeUnknownResult(HostTerminal)(input, { onExcessProperty: "error" });
 
       // Then
-      expect(Either.isLeft(decoded)).toBe(true);
+      expect(Result.isFailure(decoded)).toBe(true);
     },
   );
 });

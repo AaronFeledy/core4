@@ -4,26 +4,27 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, type Context, Effect, Exit, Layer, Option, Queue, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { FileSyncStartError, SecretNotFoundError, ShellExecError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent, SecretStore, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import {
   type DownloaderEvents,
+  makeDownloaderEvents,
   makeDownloaderService,
-  makeLiveDownloaderEvents,
 } from "@lando/http-client/downloader";
-import type { HttpClientShape } from "@lando/http-client/service";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
 
 /**
  * These assertions target each surface's shipped redaction point:
- * ShellRunner and BunSelfRunner redact emitted events through RedactionServiceLive;
+ * ShellRunner and BunSelfRunner redact emitted events through RedactionService.layer;
  * ShellRunner also redacts ShellExecError fields before failing; Downloader
  * redacts lifecycle events at its DownloaderEvents seam; HostProxyServiceDisabled
  * emits only static status fields while host-proxy diagnostics use the CLI
@@ -38,33 +39,39 @@ const PATTERN_SOUP = `${SECRET_SOUP_FIXTURE.text.replace("superSecretTokenLonger
 const CANONICAL_SENTINEL = "[redacted]";
 const LEGACY_SENTINEL = "[REDACTED]";
 
-const secretStoreLayer = Layer.succeed(SecretStore, {
-  id: "redaction-proof-secrets",
-  get: (secret: string) => {
-    const index = Number(secret.replace("SECRET_", ""));
-    const value = SECRET_SOUP_FIXTURE.registeredSecrets[index];
-    return value === undefined
-      ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
-      : Effect.succeed(value);
-  },
-  has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
-  list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
-} satisfies Context.Tag.Service<typeof SecretStore>);
+const secretStoreLayer = Layer.succeed(
+  SecretStore,
+  SecretStore.of({
+    id: "redaction-proof-secrets",
+    get: (secret: string) => {
+      const index = Number(secret.replace("SECRET_", ""));
+      const value = SECRET_SOUP_FIXTURE.registeredSecrets[index];
+      return value === undefined
+        ? Effect.fail(new SecretNotFoundError({ secret, message: `missing ${secret}` }))
+        : Effect.succeed(value);
+    },
+    has: (secret: string) => Effect.succeed(/^SECRET_\d+$/u.test(secret)),
+    list: Effect.succeed(SECRET_SOUP_FIXTURE.registeredSecrets.map((_value, index) => `SECRET_${index}`)),
+  } satisfies Context.Service.Shape<typeof SecretStore>),
+);
 
-const realRedactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStoreLayer));
-const shellRunnerLive = makeShellRunnerLive(() => {
+const realRedactionLayer = RedactionService.layer.pipe(Layer.provide(secretStoreLayer));
+const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by redaction service tests.");
 });
 
 const captureEventLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event) => Effect.sync(() => void events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  } satisfies Context.Tag.Service<typeof EventService>);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) => Effect.sync(() => void events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    } satisfies Context.Service.Shape<typeof EventService>),
+  );
 
 const capturingDownloaderEvents = (): {
   readonly events: DownloaderEvents;
@@ -78,30 +85,16 @@ const capturingDownloaderEvents = (): {
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  } satisfies Context.Tag.Service<typeof EventService>;
-  return { events: makeLiveDownloaderEvents(Option.some(eventService)), captured };
+  } satisfies Context.Service.Shape<typeof EventService>;
+  return { events: makeDownloaderEvents(Option.some(eventService)), captured };
 };
 
-const fakeHttpClient = (url: string, payload: string): HttpClientShape => ({
-  id: "redaction-proof-http",
-  capabilities: {
-    schemes: ["https"],
-    streaming: true,
-    upload: false,
-    customCa: false,
-    proxyAware: false,
-  },
-  request: () => Effect.die("request not used"),
-  stream: (request) =>
+const fakeHttpClient = (url: string, payload: string): HttpClient.HttpClient =>
+  HttpClient.make((request) =>
     request.url === url
-      ? Effect.succeed({
-          status: 200,
-          headers: [],
-          body: Stream.fromIterable([new TextEncoder().encode(payload)]),
-        })
+      ? Effect.succeed(HttpClientResponse.fromWeb(request, new Response(payload)))
       : Effect.die(new Error(`unexpected download URL ${request.url}`)),
-  upload: () => Effect.die("upload not used"),
-});
+  );
 
 const shellSingleQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -120,7 +113,7 @@ const assertPatternSecretsGone = (serialized: string): void =>
   assertCanonicalRedaction(serialized, [REGISTERED_SECRET, UNREGISTERED_BEARER]);
 
 describe("audited services compose canonical redaction", () => {
-  test("ShellRunner redacts shell events and ShellExecError fields through RedactionServiceLive", async () => {
+  test("ShellRunner redacts shell events and ShellExecError fields through RedactionService.layer", async () => {
     const events: LandoEvent[] = [];
     const cwd = await mkdtemp(join(tmpdir(), `lando-redaction-${REGISTERED_SECRET}-`));
     try {
@@ -143,7 +136,7 @@ describe("audited services compose canonical redaction", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected ShellRunner to fail");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure)).toBe(true);
       if (!Option.isSome(failure)) throw new Error("expected ShellExecError failure");
       expect(failure.value).toBeInstanceOf(ShellExecError);
@@ -164,7 +157,7 @@ describe("audited services compose canonical redaction", () => {
     }
   });
 
-  test("BunSelfRunner redacts published event fields through RedactionServiceLive", async () => {
+  test("BunSelfRunner redacts published event fields through RedactionService.layer", async () => {
     const events: LandoEvent[] = [];
     const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
 

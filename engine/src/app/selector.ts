@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 
 import type { AppSelector } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
@@ -32,8 +32,8 @@ const present = (value: unknown): boolean => value !== undefined && value !== nu
  */
 export const normalizeAppSelector = (
   selector?: AppSelector,
-): Either.Either<NormalizedAppSelector, AppResolveError> => {
-  if (selector === undefined) return Either.right({ kind: "cwd" });
+): Result.Result<NormalizedAppSelector, AppResolveError> => {
+  if (selector === undefined) return Result.succeed({ kind: "cwd" });
 
   const candidate = selector as {
     readonly id?: unknown;
@@ -48,7 +48,7 @@ export const normalizeAppSelector = (
   const root = typeof candidate.root === "string" ? candidate.root : undefined;
 
   if (hasId && hasLandofile) {
-    return Either.left(
+    return Result.fail(
       new AppResolveError({
         message: "App selector cannot combine `id` and `landofile`; choose one.",
         reason: "ambiguous",
@@ -59,7 +59,7 @@ export const normalizeAppSelector = (
 
   if (hasId) {
     const id = candidate.id as string;
-    return Either.right({
+    return Result.succeed({
       kind: "id",
       id,
       ...(root === undefined ? {} : { root }),
@@ -69,7 +69,7 @@ export const normalizeAppSelector = (
 
   if (hasLandofile) {
     if (typeof candidate.landofile === "string") {
-      return Either.right({
+      return Result.succeed({
         kind: "landofile-path",
         path: candidate.landofile,
         ...(root === undefined ? {} : { root }),
@@ -77,7 +77,7 @@ export const normalizeAppSelector = (
       });
     }
     if (root === undefined) {
-      return Either.left(
+      return Result.fail(
         new AppResolveError({
           message: "A decoded Landofile selector must be paired with an explicit `root`.",
           reason: "missing-root",
@@ -85,7 +85,7 @@ export const normalizeAppSelector = (
         }),
       );
     }
-    return Either.right({
+    return Result.succeed({
       kind: "landofile-shape",
       shape: candidate.landofile as LandofileShape,
       root,
@@ -94,8 +94,8 @@ export const normalizeAppSelector = (
   }
 
   if (hasRoot && root !== undefined) {
-    return Either.right({ kind: "root", root, ...(cwd === undefined ? {} : { cwd }) });
+    return Result.succeed({ kind: "root", root, ...(cwd === undefined ? {} : { cwd }) });
   }
 
-  return Either.right({ kind: "cwd", ...(cwd === undefined ? {} : { cwd }) });
+  return Result.succeed({ kind: "cwd", ...(cwd === undefined ? {} : { cwd }) });
 };

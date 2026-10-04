@@ -4,13 +4,14 @@ import { deserialize, serialize } from "node:v8";
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import type { NormalizedToolingArg, NormalizedToolingFlag } from "@lando/landofile/tooling-normalize";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
+import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
 
 import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 3n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 4n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -42,10 +43,8 @@ export const normalizeAppCommandAliasPolicy = (landofile: LandofileShape): Comma
   if (policy === undefined) return undefined;
   return {
     enabled: policy.enabled ?? true,
-    disabled: [...new Set(policy.disabled ?? [])].sort((left, right) => left.localeCompare(right)),
-    custom: Object.fromEntries(
-      Object.entries(policy.custom ?? {}).sort(([left], [right]) => left.localeCompare(right)),
-    ),
+    disabled: [...new Set(policy.disabled ?? [])].sort(),
+    custom: policy.custom ?? {},
   };
 };
 
@@ -78,22 +77,8 @@ export interface PluginCommandIndexPayload {
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
 
-const stable = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, child]) => [key, stable(child)]),
-    );
-  }
-  return value;
-};
-
 const stableFingerprint = (value: unknown): string =>
-  createHash("sha256")
-    .update(JSON.stringify(stable(value)))
-    .digest("hex");
+  createHash("sha256").update(canonicalCacheJson(value)).digest("hex");
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,
@@ -108,14 +93,24 @@ export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<
   stableFingerprint(
     manifests
       .map(normalizeManifest)
-      .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api),
+      .sort(
+        (a, b) =>
+          compareFingerprintText(a.name, b.name) ||
+          compareFingerprintText(a.version, b.version) ||
+          a.api - b.api,
+      ),
   );
 
 export const derivePluginCommandPluginListSha = (manifests: ReadonlyArray<PluginManifest>): string =>
   stableFingerprint(
     manifests
       .map((manifest) => ({ name: manifest.name, version: manifest.version, api: manifest.api }))
-      .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api),
+      .sort(
+        (a, b) =>
+          compareFingerprintText(a.name, b.name) ||
+          compareFingerprintText(a.version, b.version) ||
+          a.api - b.api,
+      ),
   );
 
 export const derivePluginCommandIdsByPlugin = (
@@ -129,10 +124,10 @@ export const derivePluginCommandIdsByPlugin = (
             manifest.name,
             [...(manifest.contributes?.commands ?? [])]
               .map((entry) => (typeof entry === "string" ? entry : entry.id))
-              .sort((a, b) => a.localeCompare(b)),
+              .sort(),
           ] as const,
       )
-      .sort(([a], [b]) => a.localeCompare(b)),
+      .sort(([a], [b]) => compareFingerprintText(a, b)),
   );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>

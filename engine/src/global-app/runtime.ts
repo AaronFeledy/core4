@@ -16,7 +16,7 @@ import {
 import { ensureGlobalServicesRunning } from "../operations/ensure-global-services.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "../providers/managed.ts";
 
-export const GlobalAppRuntimeLive = Layer.effect(
+export const layer = Layer.effect(
   GlobalAppService,
   Effect.gen(function* () {
     const globalApp = yield* GlobalAppService;
@@ -30,7 +30,7 @@ export const GlobalAppRuntimeLive = Layer.effect(
       Context.add(PluginRegistry, yield* PluginRegistry),
       Context.add(RuntimeProviderRegistry, yield* RuntimeProviderRegistry),
     );
-    return {
+    return GlobalAppService.of({
       ...globalApp,
       ensureProviderReady: registry.select(MANAGED_PROVIDER_SELECT_PLAN).pipe(
         Effect.flatMap((provider) => provider.ensureReady ?? Effect.void),
@@ -150,6 +150,6 @@ export const GlobalAppRuntimeLive = Layer.effect(
               }),
           ),
         ),
-    };
+    });
   }),
 );

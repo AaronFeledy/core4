@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
@@ -11,7 +9,9 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "solr:9";
@@ -37,10 +37,12 @@ const PRECREATE_WITH_CONFIG_SCRIPT =
  * precreate or overlay config outside its own data directory.
  */
 export const SolrCoreName = Schema.String.pipe(
-  Schema.filter((core) => CORE_NAME.test(core) && !RESERVED_CORE_NAMES.has(core), {
-    identifier: "SolrCoreName",
-    description: "Solr core name resolving to a single directory under /var/solr/data.",
-  }),
+  Schema.check(
+    Schema.makeFilter((core) => CORE_NAME.test(core) && !RESERVED_CORE_NAMES.has(core), {
+      identifier: "SolrCoreName",
+      description: "Solr core name resolving to a single directory under /var/solr/data.",
+    }),
+  ),
 );
 
 const isSolrCoreName = Schema.is(SolrCoreName);
@@ -79,11 +81,6 @@ const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: bo
     String(port),
     ...cores,
   ];
-};
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
 };
 
 const applySolrFeature = (ctx: ServiceFeatureContext): void => {
@@ -125,9 +122,7 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 60,
   });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
 
 export const solrServiceFeature: ServiceFeatureDefinition = {

@@ -7,7 +7,7 @@ tags: [beta, docs, services, router, scanner]
 
 # Turn the router off and tune the post-start URL scanner
 
-Lando starts a shared router for every app and, once the app is up, pokes each published URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
+Lando starts a shared router for every app and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
 
 ```yaml
 name: router-and-scanner-demo
@@ -98,6 +98,12 @@ So a global `router.enabled: false` turns the router off for every app on the ma
 ## Tune the scanner per service
 
 Once the app is up, `lando start` probes every HTTP and HTTPS URL each service publishes before returning. A URL that doesn't answer, or answers with a status outside the accepted set, gets a warning. A failed probe doesn't fail `lando start`; the app is up and the warning tells you which URL to go look at. Cancelling during the scan still interrupts start and closes its in-flight requests.
+
+The scanner skips `tcp://`, `udp://`, and database endpoints; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol. If you know that port serves HTTP, check it directly:
+
+```sh
+curl --fail http://localhost:9080/
+```
 
 The default probe hits `/`, accepts any 2xx, retries twice after the first attempt, and gives up on a URL after 20 seconds. Change that under `services.<name>.scanner`:
 
@@ -190,7 +196,7 @@ Per-service `scanner:` settings override the global one. A global `false` turns 
     <Step name="lint-invalid-retries">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "services\\.app\\.scanner\\.retries" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />

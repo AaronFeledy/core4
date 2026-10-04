@@ -150,7 +150,7 @@ export const unknownKeyDiagnostics = (
         kind: "dropped" as const,
         sourceId: occurrence?.sourceId ?? fallback,
         keyPath: [...keyPath],
-        span: spanOf(occurrence),
+        ...spanOf(occurrence),
         message: `${formatPath(keyPath)} is not a Lando 3 key and was ignored by Lando 3 as well.`,
         remediation: `Remove ${formatPath(keyPath)}, or author the Lando 4 value you intended.`,
       };

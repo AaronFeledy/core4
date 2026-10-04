@@ -11,6 +11,7 @@
  */
 
 import { replaceLiteralBounded, retainWithinBytes } from "./bounded-redaction.ts";
+import { redactedInspection } from "./inspection.ts";
 
 /** Sentinel written in place of a redacted secret value. */
 export const REDACTED = "[redacted]" as const;
@@ -47,7 +48,7 @@ export interface SecretRedactor {
 export const createSecretRedactor = (
   values: Iterable<string>,
   authoritativeValues: Iterable<string> = [],
-): SecretRedactor => {
+): SecretRedactor & typeof redactedInspection => {
   const authoritative = [...authoritativeValues].filter((value) => value.length > 0);
   const unsafe = authoritative.filter((value) => !isUsableExactRedactionValue(value));
   const unique = Array.from(new Set([...values, ...authoritative])).filter(isUsableExactRedactionValue);
@@ -57,12 +58,14 @@ export const createSecretRedactor = (
 
   if (unique.length === 0 && unsafe.length === 0) {
     return {
+      ...redactedInspection,
       redact: (text) => text,
       redactBounded: retainWithinBytes,
     };
   }
 
   return {
+    ...redactedInspection,
     redact: (text) => {
       // Suppress the entire detail rather than corrupt an ANSI sequence with a numeric replacement.
       if (unsafe.some((value) => text.includes(value))) return REDACTED;

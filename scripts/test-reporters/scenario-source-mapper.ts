@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
 const GENERATED_GUIDE_SEGMENT = "/test/scenarios/generated/guides/";
-const STACK_FRAME_RE = /^(?<indent>\s+at\s+)(?<target>.+?\.ts):(?<line>\d+):(?<column>\d+)$/;
+const STACK_FRAME_RE = /^(?<indent>\s+at\s+)(?:.+? \()?(?<target>.+?\.ts):(?<line>\d+):(?<column>\d+)\)?$/;
 
 interface RewriteOptions {
   readonly repoRoot?: string;
@@ -186,7 +186,9 @@ const mapStackLine = (line: string, repoRoot: string, generatedRoot?: string): M
 };
 
 const shouldPrefixFailureLine = (line: string): boolean =>
-  line.startsWith("error: ") || /^\([^)]+Failure\) Error: /.test(line);
+  line.startsWith("error: ") ||
+  /^(?:\([^)]+Failure\) )?[\w.]*Error: /.test(line) ||
+  /^\w+Failure: /.test(line);
 
 const failureMessageForFrame = (
   lines: ReadonlyArray<string>,

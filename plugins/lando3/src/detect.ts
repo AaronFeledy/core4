@@ -4,7 +4,7 @@ import type {
   ConfigTranslateDocument,
   ConfigTranslateMatch,
 } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import {
   LANDO3_LAYER_BASENAMES,
   LANDO3_SOURCE_LAYERS,
@@ -110,12 +110,12 @@ export const lando3Signals = (document: ConfigTranslateDocument): ReadonlyArray<
       mode: "legacy",
       file,
       content: new TextDecoder().decode(document.bytes),
-    }).pipe(Effect.either),
+    }).pipe(Effect.result),
   );
-  if (Either.isLeft(parsed)) return [];
+  if (Result.isFailure(parsed)) return [];
 
   const signals = new Set<Lando3Signal>();
-  const root = parsed.right.value;
+  const root = parsed.success.value;
   if (isMapping(root)) {
     if (Object.hasOwn(root, "recipe") && Object.hasOwn(root, "config")) signals.add("recipe-config");
     for (const service of mappings(root.services)) {

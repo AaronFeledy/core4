@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { type Context, Effect, type FiberId, FiberRef } from "effect";
+import { Context, Effect, Semaphore } from "effect";
 
 import {
   AppIdReservedError,
@@ -54,15 +54,17 @@ const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
       }),
   });
 
-const cwdResolutionLock = Effect.unsafeMakeSemaphore(1);
-const cwdResolutionOwner = FiberRef.unsafeMake<FiberId.Runtime | undefined>(undefined);
+const cwdResolutionLock = Semaphore.makeUnsafe(1);
+const CwdResolutionOwner = Context.Reference<number | undefined>("@lando/landofile/CwdResolutionOwner", {
+  defaultValue: () => undefined,
+});
 
 export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | LandofileParseError, R> =>
-  Effect.fiberIdWith((fiberId) =>
-    FiberRef.get(cwdResolutionOwner).pipe(
+  Effect.flatMap(Effect.fiberId, (fiberId) =>
+    CwdResolutionOwner.pipe(
       Effect.flatMap((owner) => {
         const useAtRoot = Effect.suspend(() =>
           root === process.cwd()
@@ -73,10 +75,12 @@ export const withResolvedCwd = <A, E, R>(
                 (original) => Effect.sync(() => process.chdir(original)),
               ),
         );
-        const ownsLock = owner?.id === fiberId.id && owner.startTimeMillis === fiberId.startTimeMillis;
+        const ownsLock = owner === fiberId;
         return ownsLock
           ? useAtRoot
-          : cwdResolutionLock.withPermits(1)(useAtRoot.pipe(Effect.locally(cwdResolutionOwner, fiberId)));
+          : cwdResolutionLock.withPermits(1)(
+              useAtRoot.pipe(Effect.provideService(CwdResolutionOwner, fiberId)),
+            );
       }),
     ),
   );
@@ -91,10 +95,10 @@ export interface UserAppResolutionOptions {
 
 export interface UserAppResolution {
   readonly loadUserLandofile: (
-    landofileService: Context.Tag.Service<typeof LandofileService>,
+    landofileService: Context.Service.Shape<typeof LandofileService>,
   ) => Effect.Effect<LandofileShape, UserLandofileError>;
   readonly loadUserLandofileAt: (
-    landofileService: Context.Tag.Service<typeof LandofileService>,
+    landofileService: Context.Service.Shape<typeof LandofileService>,
     root: string,
   ) => Effect.Effect<LandofileShape, UserLandofileError>;
   readonly loadUserLandofileFile: (filePath: string) => Effect.Effect<LandofileShape, UserLandofileError>;
@@ -112,7 +116,7 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
     );
 
   const loadUserLandofile = (
-    landofileService: Context.Tag.Service<typeof LandofileService>,
+    landofileService: Context.Service.Shape<typeof LandofileService>,
   ): Effect.Effect<LandofileShape, UserLandofileError> =>
     landofileService.discover.pipe(
       Effect.flatMap((landofile) => {

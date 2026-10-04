@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { getAtPath, setAtPath, unsetAtPath } from "@lando/engine/config-write/dot-path";
 import { parseExpressionEither } from "@lando/sdk/expressions";
 import type { RecipeMigrationHunk } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 import { applyServiceMap, dotPath } from "./app-config-recipe-analysis.ts";
 
 /** Compare complete authoring expressions, not a matching substring. */
@@ -11,7 +11,9 @@ export const matchesGenerated = (current: unknown, generated: unknown): boolean 
     const actual = parseExpressionEither(current, { filePath: ".lando.yml" });
     const expected = parseExpressionEither(generated, { filePath: ".lando.yml" });
     return (
-      Either.isRight(actual) && Either.isRight(expected) && isDeepStrictEqual(actual.right, expected.right)
+      Result.isSuccess(actual) &&
+      Result.isSuccess(expected) &&
+      isDeepStrictEqual(actual.success, expected.success)
     );
   }
   return isDeepStrictEqual(current, generated);

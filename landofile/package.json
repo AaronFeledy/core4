@@ -25,6 +25,7 @@
     "./compose/rejection-trie": "./src/compose/rejection-trie.ts",
     "./compose/rejections": "./src/compose/rejections.ts",
     "./config-translate": "./src/config-translate.ts",
+    "./copy-provenance": "./src/copy-provenance.ts",
     "./decode": "./src/decode.ts",
     "./discovery": "./src/discovery.ts",
     "./env-file": "./src/env-file.ts",
@@ -40,6 +41,7 @@
     "./merge": "./src/merge.ts",
     "./parser": "./src/parser.ts",
     "./ports": "./src/ports.ts",
+    "./recipe-expressions": "./src/recipe-expressions.ts",
     "./route-filters": "./src/route-filters.ts",
     "./route-normalize": "./src/route-normalize.ts",
     "./schema": "./src/schema.ts",
@@ -64,7 +66,7 @@
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",
-    "effect": "^3.21.2",
+    "effect": "catalog:",
     "semver": "^7.8.5"
   },
   "devDependencies": {

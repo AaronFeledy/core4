@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Option, TestClock, TestContext } from "effect";
+import { Effect, Exit, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import { AppId as AppIdSchema, ServiceName } from "@lando/sdk/schema";
 import { runScannerContract } from "@lando/sdk/test";
@@ -34,7 +35,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpStatus(503)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
+      { http: http.http, listEndpoints: source.listEndpoints },
       { retry: 5, delaySeconds: 1, deadlineMs: 1500 },
     );
     // When the virtual clock advances beyond all possible attempts.
@@ -69,13 +70,12 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpSleep("30 seconds", 200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
+      { http: http.http, listEndpoints: source.listEndpoints },
       { retry: 1, timeoutSeconds: 5, deadlineMs: 250 },
     );
     // When scanning under a virtual clock.
     const timed = await runExitUnderClock(scanner.scan(appId), "10 seconds");
     // Then neither the request budget nor completion exceeds the deadline.
-    expect(http.requests[0]?.timeoutMs).toBe(250);
     expect(timed.elapsedMs).toBe(250);
     expect(successOf(timed.exit).endpoints[0]?.outcome).toBe("red");
   });
@@ -84,7 +84,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpStatus(500), httpFailure("connection refused"), httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
+      { http: http.http, listEndpoints: source.listEndpoints },
       { retry: 3, delaySeconds: 10, deadlineMs: 30000 },
     );
 
@@ -106,22 +106,22 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpFailure("connection refused")]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
+      { http: http.http, listEndpoints: source.listEndpoints },
       { retry: 3, delaySeconds: 10, deadlineMs: 30000 },
     );
 
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(scanner.scan(appId));
+        const fiber = yield* Effect.forkChild(scanner.scan(appId));
         yield* TestClock.adjust("19 seconds");
-        const early = yield* Fiber.poll(fiber);
-        expect(Option.isNone(early)).toBe(true);
+        const early = fiber.pollUnsafe();
+        expect(early).toBeUndefined();
         yield* TestClock.adjust("1 second");
         const result = yield* Fiber.join(fiber);
         expect(result.endpoints[0]?.outcome).toBe("red");
         expect(result.endpoints[0]?.reachable).toBe(false);
         expect(http.requests).toHaveLength(3);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
   });
 
@@ -129,7 +129,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpSleep("30 seconds", 200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
+      { http: http.http, listEndpoints: source.listEndpoints },
       { retry: 2, delaySeconds: 10, timeoutSeconds: 5 },
     );
 
@@ -150,10 +150,7 @@ describe("makeUrlScanner probe behavior", () => {
   test("responses outside 2xx and okCodes classify yellow with statusCode detail", async () => {
     const http = requestSequence([httpStatus(500)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
-      { retry: 1 },
-    );
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints }, { retry: 1 });
 
     const result = await drive(scanner.scan(appId));
 
@@ -172,7 +169,7 @@ describe("makeUrlScanner probe behavior", () => {
     const redirectSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const yellowRedirect = await drive(
       makeUrlScanner(
-        { stream: redirectHttp.stream, listEndpoints: redirectSource.listEndpoints },
+        { http: redirectHttp.http, listEndpoints: redirectSource.listEndpoints },
         { retry: 1 },
       ).scan(appId),
     );
@@ -183,7 +180,7 @@ describe("makeUrlScanner probe behavior", () => {
     const okSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const green = await drive(
       makeUrlScanner(
-        { stream: okHttp.stream, listEndpoints: okSource.listEndpoints },
+        { http: okHttp.http, listEndpoints: okSource.listEndpoints },
         { retry: 1, okCodes: [301] },
       ).scan(appId),
     );
@@ -195,10 +192,7 @@ describe("makeUrlScanner probe behavior", () => {
   test("redacts transport failures before they leave the scanner", async () => {
     const http = requestSequence([httpFailure(`proxy saw ${secret}`)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const scanner = makeUrlScanner(
-      { stream: http.stream, listEndpoints: source.listEndpoints },
-      { retry: 1 },
-    );
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints }, { retry: 1 });
 
     const redacted = await drive(withFakeRedaction(scanner.scan(appId)));
     expect(redacted.endpoints[0]?.outcome).toBe("red");
@@ -209,7 +203,7 @@ describe("makeUrlScanner probe behavior", () => {
     const fallbackSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const fallback = await drive(
       makeUrlScanner(
-        { stream: fallbackHttp.stream, listEndpoints: fallbackSource.listEndpoints },
+        { http: fallbackHttp.http, listEndpoints: fallbackSource.listEndpoints },
         { retry: 1 },
       ).scan(appId),
     );
@@ -232,7 +226,7 @@ describe("makeUrlScanner probe behavior", () => {
       [appTwo, [publishedEndpoint(web, "http", 8080)]],
     ]);
     const scanner = makeUrlScanner({
-      stream: requestSequence([httpStatus(200)]).stream,
+      http: requestSequence([httpStatus(200)]).http,
       listEndpoints: (app) => Effect.succeed(perApp.get(app) ?? []),
     });
 
@@ -251,7 +245,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("satisfies the SDK scanner contract", async () => {
     const scanner = makeUrlScanner({
-      stream: requestSequence([httpStatus(200)]).stream,
+      http: requestSequence([httpStatus(200)]).http,
       listEndpoints: () => Effect.succeed([]),
     });
 

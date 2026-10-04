@@ -13,17 +13,37 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
 import * as boundary from "../src/transcript-path-boundary.ts";
-import { TranscriptTailReader, TranscriptTailReaderLive } from "../src/transcript-tail-reader.ts";
+import { TranscriptTailReadError, TranscriptTailReader } from "../src/transcript-tail-reader.ts";
 
 const readerLayer = (userDataRoot: string) =>
-  TranscriptTailReaderLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths({ userDataRoot }))));
+  TranscriptTailReader.layer.pipe(
+    Layer.provide(Layer.succeed(PathsService, PathsService.of(makeLandoPaths({ userDataRoot })))),
+  );
+
+test("transcript read errors preserve their fields and rendering through schema decoding", () => {
+  // Given
+  const path = AbsolutePath.make("/tmp/transcript.log");
+  const cause = new Error("read failed");
+  // When
+  const error = Schema.decodeUnknownSync(TranscriptTailReadError)({
+    _tag: "TranscriptTailReadError",
+    path,
+    cause,
+  });
+  // Then
+  expect(error).toBeInstanceOf(TranscriptTailReadError);
+  expect(error.path).toBe(path);
+  expect(error.cause).toBe(cause);
+  expect(error.message).toBe("");
+  expect(String(error)).toBe("TranscriptTailReadError");
+});
 
 test("the scoped transcript reader pages backward and forward from the file tail", async () => {
   const directory = await mkdtemp(join(tmpdir(), "lando-transcript-tail-"));

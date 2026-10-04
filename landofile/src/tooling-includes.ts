@@ -12,6 +12,7 @@ import {
 import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
+import { hasIncludeCycle } from "./include-graph.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { parseLandofile } from "./parser.ts";
 import { assertToolingFragment } from "./tooling-fragment.ts";
@@ -64,8 +65,8 @@ const COLLISION_REMEDIATION =
 const CYCLE_REMEDIATION = "Break the tooling include cycle so no fragment transitively includes itself.";
 
 const withIncludeVars = (task: unknown, vars: Readonly<Record<string, ToolingVarLiteral>>): unknown => {
-  if (Object.keys(vars).length === 0 || !Predicate.isRecord(task)) return task;
-  const taskVars = Predicate.isRecord(task.vars) ? task.vars : {};
+  if (Object.keys(vars).length === 0 || !Predicate.isObject(task)) return task;
+  const taskVars = Predicate.isObject(task.vars) ? task.vars : {};
   return { ...task, vars: { ...vars, ...taskVars } };
 };
 
@@ -125,7 +126,7 @@ const loadFragment = (
     Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.map((parsed) => ({
       filePath,
-      tooling: Predicate.isRecord(parsed.tooling) ? parsed.tooling : {},
+      tooling: Predicate.isObject(parsed.tooling) ? parsed.tooling : {},
       nested: parsed as Pick<LandofileShape, "includes" | "toolingIncludes">,
     })),
   );
@@ -136,80 +137,79 @@ interface ResolveContext {
   readonly maxDepth: number;
 }
 
-const resolveEntries = (
+const resolveEntries = Effect.fnUntraced(function* (
   entries: ReadonlyArray<NormalizedToolingInclude>,
   ctx: ResolveContext,
   depth: number,
   stack: ReadonlyArray<string>,
-): Effect.Effect<Contribution, ToolingIncludeError> =>
-  Effect.gen(function* () {
-    const tasks = new Map<string, unknown>();
-    const internal = new Set<string>();
-    const paths: string[] = [];
-    if (entries.length === 0) return { tasks, internal, paths };
-    if (depth > ctx.maxDepth) {
+): Effect.fn.Return<Contribution, ToolingIncludeError> {
+  const tasks = new Map<string, unknown>();
+  const internal = new Set<string>();
+  const paths: string[] = [];
+  if (entries.length === 0) return { tasks, internal, paths };
+  if (depth > ctx.maxDepth) {
+    return yield* Effect.fail(
+      includeError({
+        message: `Tooling includes exceed the maximum depth of ${ctx.maxDepth}.`,
+        source: entries[0]?.source ?? "toolingIncludes",
+        kind: "max-depth",
+        remediation: "Flatten the tooling include chain so it nests no deeper than the supported limit.",
+      }),
+    );
+  }
+
+  for (const entry of entries) {
+    const namespaceFailure = assertNamespacing(entry);
+    if (namespaceFailure !== undefined) return yield* Effect.fail(namespaceFailure);
+
+    const filePath = yield* locateFragment(entry, ctx.appRoot, ctx.sourceRoot);
+    if (filePath === undefined) continue;
+    const identity = yield* Effect.promise(() => realpathOrSelf(filePath));
+    if (hasIncludeCycle(stack, identity)) {
       return yield* Effect.fail(
-        includeError({
-          message: `Tooling includes exceed the maximum depth of ${ctx.maxDepth}.`,
-          source: entries[0]?.source ?? "toolingIncludes",
-          kind: "max-depth",
-          remediation: "Flatten the tooling include chain so it nests no deeper than the supported limit.",
+        new ToolingIncludeCycleError({
+          message: `Tooling include cycle detected at ${entry.source}.`,
+          source: entry.source,
+          remediation: CYCLE_REMEDIATION,
         }),
       );
     }
 
-    for (const entry of entries) {
-      const namespaceFailure = assertNamespacing(entry);
-      if (namespaceFailure !== undefined) return yield* Effect.fail(namespaceFailure);
+    const fragment = yield* loadFragment(entry, filePath);
+    const nested = yield* resolveEntries(
+      normalizeToolingIncludes(fragment.nested),
+      { ...ctx, sourceRoot: dirname(filePath) },
+      depth + 1,
+      [...stack, identity],
+    );
+    paths.push(filePath, ...nested.paths);
 
-      const filePath = yield* locateFragment(entry, ctx.appRoot, ctx.sourceRoot);
-      if (filePath === undefined) continue;
-      const identity = yield* Effect.promise(() => realpathOrSelf(filePath));
-      if (stack.includes(identity)) {
-        return yield* Effect.fail(
-          new ToolingIncludeCycleError({
-            message: `Tooling include cycle detected at ${entry.source}.`,
-            source: entry.source,
-            remediation: CYCLE_REMEDIATION,
-          }),
-        );
-      }
+    const excluded = new Set(entry.excludes);
+    const contributed = new Map<string, unknown>([...nested.tasks, ...Object.entries(fragment.tooling)]);
+    for (const name of excluded) contributed.delete(name);
 
-      const fragment = yield* loadFragment(entry, filePath);
-      const nested = yield* resolveEntries(
-        normalizeToolingIncludes(fragment.nested),
-        { ...ctx, sourceRoot: dirname(filePath) },
-        depth + 1,
-        [...stack, identity],
-      );
-      paths.push(filePath, ...nested.paths);
-
-      const excluded = new Set(entry.excludes);
-      const contributed = new Map<string, unknown>([...nested.tasks, ...Object.entries(fragment.tooling)]);
-      for (const name of excluded) contributed.delete(name);
-
-      for (const [name, task] of contributed) {
-        for (const id of taskIds(entry, name)) {
-          if (tasks.has(id)) {
-            return yield* Effect.fail(
-              includeError({
-                message: `Tooling includes both contribute task "${id}".`,
-                source: entry.source,
-                kind: "forbidden-field",
-                remediation: COLLISION_REMEDIATION,
-              }),
-            );
-          }
-          tasks.set(id, withIncludeVars(task, entry.vars));
-          if (entry.internal || (!Object.hasOwn(fragment.tooling, name) && nested.internal.has(name))) {
-            internal.add(id);
-          }
+    for (const [name, task] of contributed) {
+      for (const id of taskIds(entry, name)) {
+        if (tasks.has(id)) {
+          return yield* Effect.fail(
+            includeError({
+              message: `Tooling includes both contribute task "${id}".`,
+              source: entry.source,
+              kind: "forbidden-field",
+              remediation: COLLISION_REMEDIATION,
+            }),
+          );
+        }
+        tasks.set(id, withIncludeVars(task, entry.vars));
+        if (entry.internal || (!Object.hasOwn(fragment.tooling, name) && nested.internal.has(name))) {
+          internal.add(id);
         }
       }
     }
+  }
 
-    return { tasks, internal, paths };
-  });
+  return { tasks, internal, paths };
+});
 
 export const resolveToolingIncludes = (
   options: ResolveToolingIncludesOptions,

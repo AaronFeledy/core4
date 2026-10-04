@@ -32,7 +32,7 @@ test("bundled mkcert setup issues certs through the production app planner", asy
   const caPath = join(caRoot, "rootCA.pem");
   const setupMarker = join(root, "mkcert-trust-installed");
   const fakeMkcert = "cross-platform fake mkcert binary";
-  const processRunner = {
+  const processRunner = ProcessRunner.of({
     run: (input) =>
       Effect.promise(async () => {
         if (input.cmd !== binaryPath) {
@@ -63,7 +63,7 @@ test("bundled mkcert setup issues certs through the production app planner", asy
       }),
     stream: () => Stream.empty,
     streamWithExit: () => Stream.empty,
-  } satisfies Context.Tag.Service<typeof ProcessRunner>;
+  } satisfies Context.Service.Shape<typeof ProcessRunner>);
 
   try {
     await mkdir(appRoot, { recursive: true });

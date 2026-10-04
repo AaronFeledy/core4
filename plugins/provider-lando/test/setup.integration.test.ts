@@ -18,7 +18,7 @@ import {
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   makeRuntimeProvider,
   makeSystemPodmanMachineRunner,
   providerStatePath,
@@ -74,7 +74,7 @@ describe("provider-lando setup", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -96,7 +96,7 @@ describe("provider-lando setup", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -236,7 +236,7 @@ describe("provider-lando setup", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(PodmanMachinePrerequisiteError);
@@ -264,7 +264,7 @@ describe("provider-lando setup", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -326,7 +326,7 @@ describe("provider-lando setup", () => {
       expect(calls).toEqual([]);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
@@ -375,7 +375,7 @@ describe("provider-lando setup", () => {
         expect(calls).toEqual([]);
         expect(Exit.isFailure(exit)).toBe(true);
         if (Exit.isFailure(exit)) {
-          const failure = Cause.failureOption(exit.cause);
+          const failure = Cause.findErrorOption(exit.cause);
           expect(failure._tag).toBe("Some");
           if (failure._tag === "Some") {
             expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
@@ -766,7 +766,7 @@ describe("provider-lando setup", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
@@ -798,7 +798,7 @@ describe("provider-lando setup", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
@@ -1081,7 +1081,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
@@ -1112,7 +1112,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);

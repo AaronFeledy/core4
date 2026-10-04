@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
@@ -7,18 +5,12 @@ import { PortNumber, ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const MAILPIT_FEATURE_ID = "service-lando.mailpit";
-const MailpitServiceName = ServiceName.pipe(Schema.pattern(/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u));
-
-const appNameFor = (input: {
-  readonly appName?: string | undefined;
-  readonly appRoot: string;
-}): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
+const MailpitServiceName = ServiceName.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u)));
 
 const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -47,10 +39,7 @@ const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 15,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const mailpitServiceFeature: ServiceFeatureDefinition = {
@@ -76,7 +65,7 @@ export const mailpitServiceType: ServiceType = {
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: MailpitServiceConfig,
   resolve: (input) =>
-    Schema.decodeUnknown(MailpitServiceName)(input.name).pipe(
+    Schema.decodeUnknownEffect(MailpitServiceName)(input.name).pipe(
       Effect.map(() => ({
         base: "lando" as const,
         normalizedConfig: {

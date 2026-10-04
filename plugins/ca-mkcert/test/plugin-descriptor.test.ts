@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { CA_ID, PLUGIN_NAME, engine, manifest, plugin } from "../src/index.ts";
+import { CA_ID, PLUGIN_NAME, layer, manifest, plugin } from "../src/index.ts";
 
 describe("@lando/ca-mkcert plugin descriptor", () => {
   test("plugin.name matches manifest.name", () => {
@@ -12,12 +12,12 @@ describe("@lando/ca-mkcert plugin descriptor", () => {
     const caIds = (manifest.contributes?.certificateAuthorities ?? []).map((entry) => entry.id);
 
     expect(caIds).toContain(CA_ID);
-    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(engine);
+    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(layer);
     expect(plugin.layer).toBeUndefined();
   });
 
   test("descriptor values are reference-identical to existing exports", () => {
     expect(plugin.manifest).toBe(manifest);
-    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(engine);
+    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(layer);
   });
 });

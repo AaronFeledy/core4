@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { makeProviderLayer } from "@lando/provider-docker";
+import { layer as makeProviderLayer } from "@lando/provider-docker";
 import { RuntimeProvider } from "@lando/sdk/services";
 
 describe("provider-docker isAvailable", () => {

@@ -50,17 +50,16 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
     yes: Flags.boolean({ char: "y", description: "Alias of --trust.", default: false }),
     force: Flags.boolean({ description: "Re-install even if already present.", default: false }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const parsed = extractInput(input);
-      if (parsed.spec === "") {
-        return yield* Effect.fail(missingSpecError());
-      }
-      return yield* pluginAdd({
-        spec: parsed.spec,
-        trust: parsed.trust || parsed.yes,
-        nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
-      });
-    }),
+  run: Effect.fn("PluginAddCommand.run")(function* (input: unknown) {
+    const parsed = extractInput(input);
+    if (parsed.spec === "") {
+      return yield* Effect.fail(missingSpecError());
+    }
+    return yield* pluginAdd({
+      spec: parsed.spec,
+      trust: parsed.trust || parsed.yes,
+      nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
+    });
+  }),
   render: (result) => renderPluginAddResult(result as PluginAddResult),
 };

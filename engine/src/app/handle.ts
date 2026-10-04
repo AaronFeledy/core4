@@ -1,4 +1,5 @@
-import { Effect, type Runtime, Stream } from "effect";
+import type { Context } from "effect";
+import { DateTime, Effect, Stream } from "effect";
 
 import type {
   App,
@@ -29,6 +30,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
+import { provideRuntime } from "../runtime/observability.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
 import { confirmRemoteSyncWithInteraction } from "./remote-confirmation.ts";
@@ -38,7 +40,9 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
   stream: line.stream,
   line: line.line,
   ...(line.source === undefined ? {} : { source: LogSourceId.make(line.source) }),
-  ...(line.timestamp === undefined ? {} : { timestamp: new Date(line.timestamp) }),
+  ...(line.timestamp === undefined
+    ? {}
+    : { timestamp: DateTime.toDate(DateTime.makeUnsafe(line.timestamp)) }),
 });
 
 export type AppHandleRuntimeServices =
@@ -55,94 +59,84 @@ export type AppHandleRuntimeServices =
  */
 export const makeAppHandle = (
   target: ResolvedAppTarget,
-  runtime: Runtime.Runtime<AppHandleRuntimeServices>,
+  runtime: Context.Context<AppHandleRuntimeServices>,
   ops: AppOperations,
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
+  const provide = <A, E, R>(program: Effect.Effect<A, E, R>) => provideRuntime(program, runtime);
   const implementation = {
     id: plan.id,
     ref,
     root,
     plan: Effect.succeed(plan),
-    start: (options?: StartAppOptions) =>
-      lifecycle.serialize(
-        Effect.gen(function* () {
-          const current = yield* lifecycle.current;
-          if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
-            return yield* ops
-              .startApp(options, target, {
-                scope: current,
-                onScopeClosedByStartApp: lifecycle.forgetIfCurrent(current),
-              })
-              .pipe(Effect.provide(runtime));
-          }
-          if (options?.detached === true) {
-            return yield* ops
-              .startApp(options, target, undefined, { beforeStart: lifecycle.closeCurrent })
-              .pipe(Effect.provide(runtime));
-          }
-          const scope = yield* lifecycle.stageFresh;
-          return yield* ops
-            .startApp(
-              options,
-              target,
-              { scope, onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope) },
-              {
-                beforeStart: lifecycle.replaceCurrent(scope),
-                onFailedStart: lifecycle.discardIfCurrent(scope),
-              },
-            )
-            .pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discard(scope)),
-            );
-        }),
-      ),
+    start: Effect.fn("App.start")(function* (options?: StartAppOptions) {
+      const current = yield* lifecycle.current;
+      if (current !== undefined && options?.detached !== true && options?.reconcile !== true) {
+        return yield* ops
+          .startApp(options, target, {
+            scope: current,
+            onScopeClosedByStartApp: lifecycle.forgetIfCurrent(current),
+          })
+          .pipe(provide);
+      }
+      if (options?.detached === true) {
+        return yield* ops
+          .startApp(options, target, undefined, { beforeStart: lifecycle.closeCurrent })
+          .pipe(provide);
+      }
+      const scope = yield* lifecycle.stageFresh;
+      return yield* ops
+        .startApp(
+          options,
+          target,
+          { scope, onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope) },
+          {
+            beforeStart: lifecycle.replaceCurrent(scope),
+            onFailedStart: lifecycle.discardIfCurrent(scope),
+          },
+        )
+        .pipe(
+          provide,
+          Effect.onError(() => lifecycle.discard(scope)),
+        );
+    }, lifecycle.serialize),
     stop: (options?: StopAppOptions) =>
-      lifecycle.serialize(ops.stopApp(options, target, lifecycle.closeCurrent).pipe(Effect.provide(runtime))),
-    restart: (options?: RestartAppOptions) =>
-      lifecycle.serialize(
-        Effect.gen(function* () {
-          const scope = yield* lifecycle.stageFresh;
-          return yield* ops
-            .restartApp(options, target, {
-              scope,
-              onStopped: lifecycle.replaceCurrent(scope),
-              onFailedStart: lifecycle.discard(scope),
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
-            .pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discard(scope)),
-            );
-        }),
-      ),
-    rebuild: (options?: RebuildAppOptions) =>
-      lifecycle.serialize(
-        Effect.gen(function* () {
-          if (options?.services !== undefined && options.services.length > 0) {
-            return yield* ops.rebuildApp(options, target).pipe(Effect.provide(runtime));
-          }
-          const scope = yield* lifecycle.stageFresh;
-          return yield* ops
-            .rebuildApp(options, target, {
-              scope,
-              onStopped: lifecycle.replaceCurrent(scope),
-              onFailedStart: lifecycle.discard(scope),
-              onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
-            })
-            .pipe(
-              Effect.provide(runtime),
-              Effect.onError(() => lifecycle.discard(scope)),
-            );
-        }),
-      ),
+      lifecycle.serialize(ops.stopApp(options, target, lifecycle.closeCurrent).pipe(provide)),
+    restart: Effect.fn("App.restart")(function* (options?: RestartAppOptions) {
+      const scope = yield* lifecycle.stageFresh;
+      return yield* ops
+        .restartApp(options, target, {
+          scope,
+          onStopped: lifecycle.replaceCurrent(scope),
+          onFailedStart: lifecycle.discard(scope),
+          onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+        })
+        .pipe(
+          provide,
+          Effect.onError(() => lifecycle.discard(scope)),
+        );
+    }, lifecycle.serialize),
+    rebuild: Effect.fn("App.rebuild")(function* (options?: RebuildAppOptions) {
+      if (options?.services !== undefined && options.services.length > 0) {
+        return yield* ops.rebuildApp(options, target).pipe(provide);
+      }
+      const scope = yield* lifecycle.stageFresh;
+      return yield* ops
+        .rebuildApp(options, target, {
+          scope,
+          onStopped: lifecycle.replaceCurrent(scope),
+          onFailedStart: lifecycle.discard(scope),
+          onScopeClosedByStartApp: lifecycle.forgetIfCurrent(scope),
+        })
+        .pipe(
+          provide,
+          Effect.onError(() => lifecycle.discard(scope)),
+        );
+    }, lifecycle.serialize),
     destroy: (options?: DestroyAppOptions) =>
-      lifecycle.serialize(
-        ops.destroyApp(options, target, lifecycle.closeCurrent).pipe(Effect.provide(runtime)),
-      ),
-    info: (options?: InfoAppOptions) => ops.infoApp(options, target).pipe(Effect.provide(runtime)),
+      lifecycle.serialize(ops.destroyApp(options, target, lifecycle.closeCurrent).pipe(provide)),
+    info: Effect.fn("App.info")((options?: InfoAppOptions) => ops.infoApp(options, target).pipe(provide)),
     exec: (options: ExecAppOptions) =>
       ops.execApp(options, target).pipe(
         Effect.tap((result) =>
@@ -150,50 +144,46 @@ export const makeAppHandle = (
             ? Effect.void
             : Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(result.stderr))),
         ),
-        Effect.provide(runtime),
+        provide,
       ),
     tooling: (id: string, options?: ToolingOptions) =>
-      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(Effect.provide(runtime)),
+      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(provide),
     logs: (options?: LogsAppOptions) =>
       Stream.unwrap(
         ops.logsApp(options, target).pipe(
           Effect.map((result) => Stream.fromIterable(result.lines.map(toLogChunk))),
-          Effect.provide(runtime),
+          provide,
         ),
       ),
     pull: (options?: PullAppOptions) =>
-      ops.appPull(options, target, confirmRemoteSyncWithInteraction).pipe(Effect.provide(runtime)),
+      ops.appPull(options, target, confirmRemoteSyncWithInteraction).pipe(provide),
     push: (options?: PushAppOptions) =>
-      ops.appPush(options, target, confirmRemoteSyncWithInteraction).pipe(Effect.provide(runtime)),
-    share: (options?: ShareAppOptions) => ops.appShare(options, target).pipe(Effect.provide(runtime)),
-    shareList: () => ops.appShareList({ cwd: root }, target).pipe(Effect.provide(runtime)),
-    shareStop: (options: ShareStopAppOptions) =>
-      ops.appShareStop({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      ops.appPush(options, target, confirmRemoteSyncWithInteraction).pipe(provide),
+    share: (options?: ShareAppOptions) => ops.appShare(options, target).pipe(provide),
+    shareList: () => ops.appShareList({ cwd: root }, target).pipe(provide),
+    shareStop: (options: ShareStopAppOptions) => ops.appShareStop({ cwd: root, ...options }).pipe(provide),
     remote: {
-      list: () => ops.appRemoteList({ cwd: root }).pipe(Effect.provide(runtime)),
-      add: (options: AppRemoteMutationOptions) =>
-        ops.appRemoteAdd({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+      list: () => ops.appRemoteList({ cwd: root }).pipe(provide),
+      add: (options: AppRemoteMutationOptions) => ops.appRemoteAdd({ cwd: root, ...options }).pipe(provide),
       remove: (options: AppRemoteRemoveOptions) =>
-        ops.appRemoteRemove({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
-      test: (options?: AppRemoteTestOptions) =>
-        ops.appRemoteTest({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
-      setup: (options?: AppRemoteSetupOptions) =>
-        ops.appRemoteSetup({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+        ops.appRemoteRemove({ cwd: root, ...options }).pipe(provide),
+      test: (options?: AppRemoteTestOptions) => ops.appRemoteTest({ cwd: root, ...options }).pipe(provide),
+      setup: (options?: AppRemoteSetupOptions) => ops.appRemoteSetup({ cwd: root, ...options }).pipe(provide),
       env: {
         list: (options?: AppRemoteTestOptions) =>
-          ops.appRemoteEnvList({ cwd: root, ...options }).pipe(Effect.provide(runtime)),
+          ops.appRemoteEnvList({ cwd: root, ...options }).pipe(provide),
       },
     },
     config: {
       lint: (options?: { readonly cwd?: string }) =>
-        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }).pipe(Effect.provide(runtime)),
+        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }).pipe(provide),
     },
     events: {
       subscribe: (name?: string) =>
         Stream.unwrap(
           EventService.pipe(
             Effect.map((events) => events.subscribe(name ?? "*")),
-            Effect.provide(runtime),
+            provide,
           ),
         ),
     },

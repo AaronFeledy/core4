@@ -2,11 +2,11 @@ import { Context } from "effect";
 
 import type { AppPlan } from "../schema/index.ts";
 
-export interface AppPlanSanitizerShape {
-  readonly sanitizeForPersistence: (plan: AppPlan) => AppPlan;
-}
-
-export class AppPlanSanitizer extends Context.Tag("@lando/core/AppPlanSanitizer")<
+export class AppPlanSanitizer extends Context.Service<
   AppPlanSanitizer,
-  AppPlanSanitizerShape
->() {}
+  {
+    readonly sanitizeForPersistence: (plan: AppPlan) => AppPlan;
+  }
+>()("@lando/core/AppPlanSanitizer") {}
+
+export type AppPlanSanitizerShape = AppPlanSanitizer["Service"];

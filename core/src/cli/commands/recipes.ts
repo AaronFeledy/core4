@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
+import { validationIssue } from "@lando/sdk/schema";
 import { getRecipeCatalog } from "../../recipes/catalog";
 import { renderRecipeCatalog } from "../../recipes/catalog-render";
 import { parseRecipe } from "../../recipes/manifest/service";
@@ -53,8 +54,8 @@ export const RecipesPromptSchema = Schema.Struct({
   name: Schema.String,
   type: Schema.String,
   message: Schema.String,
-  default: Schema.optional(Schema.String),
-  choices: Schema.optional(Schema.Array(Schema.String)),
+  default: Schema.optionalKey(Schema.String),
+  choices: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 export const RecipesDescribeResultSchema = Schema.Struct({
@@ -124,23 +125,22 @@ const recipeManifestPath = (path: string, cwd: string): string => {
     : resolve(expanded, "recipe.yml");
 };
 
-export const recipesDescribe = (
+export const recipesDescribe = Effect.fn("Recipes.describe")(function* (
   ref: string,
   options: { readonly cwd: string },
-): Effect.Effect<RecipesDescribeResult, RecipesManifestError> =>
-  Effect.gen(function* () {
-    if (expandsAsLocalPath(ref)) {
-      const manifestPath = recipeManifestPath(ref, options.cwd);
-      const manifestYaml = yield* readManifestText(manifestPath);
-      yield* ensureSingleRecipeManifestForm(manifestPath);
-      const manifest = yield* parseRecipe(manifestPath, manifestYaml);
-      yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
-      return describeFromManifest(manifest, manifestPath);
-    }
-    const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
-    const manifest = resolved.manifest ?? (yield* parseRecipe(resolved.source, resolved.manifestYaml));
-    return describeFromManifest(manifest, resolved.source);
-  });
+): Effect.fn.Return<RecipesDescribeResult, RecipesManifestError> {
+  if (expandsAsLocalPath(ref)) {
+    const manifestPath = recipeManifestPath(ref, options.cwd);
+    const manifestYaml = yield* readManifestText(manifestPath);
+    yield* ensureSingleRecipeManifestForm(manifestPath);
+    const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+    yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
+    return describeFromManifest(manifest, manifestPath);
+  }
+  const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
+  const manifest = resolved.manifest ?? (yield* parseRecipe(resolved.source, resolved.manifestYaml));
+  return describeFromManifest(manifest, resolved.source);
+});
 
 export const renderRecipesDescribeResult = (result: RecipesDescribeResult): string => {
   const lines = [
@@ -209,7 +209,9 @@ const ensureSingleRecipeManifestForm = (
             new RecipeManifestValidationError({
               message: `Both recipe.yml and recipe.ts are present in ${recipeRoot}. A recipe ships one or the other, never both.`,
               source: recipeRoot,
-              issues: ["recipe.yml and recipe.ts are mutually exclusive in a recipe directory"],
+              issues: [
+                validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
+              ],
             }),
           )
         : Effect.void,
@@ -229,29 +231,30 @@ const ensureRecipeIdMatchesDirectory = (
         new RecipeManifestValidationError({
           message: `Recipe id "${manifest.id}" must match the directory basename "${dirBasename}" (recipe at ${manifestPath}).`,
           source: manifestPath,
-          issues: [`id: "${manifest.id}" must equal directory basename "${dirBasename}"`],
+          issues: [
+            validationIssue([], `id: "${manifest.id}" must equal directory basename "${dirBasename}"`),
+          ],
         }),
       );
 };
 
-export const recipesValidate = (
+export const recipesValidate = Effect.fn("Recipes.validate")(function* (
   path: string,
   options: { readonly cwd: string },
-): Effect.Effect<RecipesValidateResult, RecipesManifestError> =>
-  Effect.gen(function* () {
-    const manifestPath = recipeManifestPath(path, options.cwd);
-    const manifestYaml = yield* readManifestText(manifestPath);
-    yield* ensureSingleRecipeManifestForm(manifestPath);
-    const manifest = yield* parseRecipe(manifestPath, manifestYaml);
-    yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
-    return {
-      valid: true as const,
-      id: manifest.id,
-      source: manifestPath,
-      prompts: manifest.prompts?.length ?? 0,
-      files: manifest.files?.length ?? 0,
-    };
-  });
+): Effect.fn.Return<RecipesValidateResult, RecipesManifestError> {
+  const manifestPath = recipeManifestPath(path, options.cwd);
+  const manifestYaml = yield* readManifestText(manifestPath);
+  yield* ensureSingleRecipeManifestForm(manifestPath);
+  const manifest = yield* parseRecipe(manifestPath, manifestYaml);
+  yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
+  return {
+    valid: true as const,
+    id: manifest.id,
+    source: manifestPath,
+    prompts: manifest.prompts?.length ?? 0,
+    files: manifest.files?.length ?? 0,
+  };
+});
 
 export const renderRecipesValidateResult = (result: RecipesValidateResult): string =>
   `${result.source} is a valid recipe manifest (id: ${result.id}, ${result.prompts} prompt${

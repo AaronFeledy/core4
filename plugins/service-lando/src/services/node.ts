@@ -12,6 +12,7 @@ import type {
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
@@ -271,7 +272,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
 
@@ -287,7 +288,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  applyAuthoredProcessFields(ctx, ["entrypoint"]);
   const globals = normalizeNpmGlobals(service.globals);
   if (globals.length > 0) {
     ctx.addBuildStep({
@@ -302,7 +303,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
 
 export const nodeServiceFeature: ServiceFeatureDefinition = {
   id: NODE_FEATURE_ID,
-  schema: NodeFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: NodeFeatureConfigSchema as Schema.Codec<unknown>,
   priority: NODE_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

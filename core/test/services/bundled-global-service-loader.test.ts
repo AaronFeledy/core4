@@ -25,7 +25,7 @@ const entry = (plugin: string, id: string, module?: string): PendingGlobalServic
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
 };

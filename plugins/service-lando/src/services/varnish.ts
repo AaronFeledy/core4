@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
@@ -7,6 +5,8 @@ import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
@@ -21,11 +21,6 @@ const ARTIFACTS = {
 
 export const VARNISH_FEATURE_ID = "service-lando.varnish";
 export const VARNISH_VCL_TARGET = VCL_TARGET;
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const vclOverrideBindSource = (
   service: ServiceFeatureContext["normalizedConfig"],
@@ -82,9 +77,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  applyAuthoredProcessFields(ctx, ["command", "entrypoint", "workingDirectory"]);
   // Official varnish images run as a non-root USER; varnishd also jails away from root.
   // Root plus `-j none` is required to bind :80 under rootless Podman.
   ctx.setUser(service.user ?? "root");

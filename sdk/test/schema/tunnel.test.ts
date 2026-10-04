@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LandoEvent } from "../../src/events/index.ts";
 import {
@@ -110,19 +110,19 @@ describe("tunnel SDK schemas", () => {
   });
 
   test("rejects invalid tunnel status and malformed target shapes", () => {
-    expect(Either.isLeft(Schema.decodeUnknownEither(TunnelStatus)("exposed"))).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(TunnelTarget)({ _tag: "hostPort", port: 8080 }))).toBe(
+    expect(Result.isFailure(Schema.decodeUnknownResult(TunnelStatus)("exposed"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(TunnelTarget)({ _tag: "hostPort", port: 8080 }))).toBe(
       true,
     );
-    expect(Either.isLeft(Schema.decodeUnknownEither(TunnelTarget)({ _tag: "route", routeId: "" }))).toBe(
+    expect(Result.isFailure(Schema.decodeUnknownResult(TunnelTarget)({ _tag: "route", routeId: "" }))).toBe(
       true,
     );
     expect(
-      Either.isLeft(Schema.decodeUnknownEither(TunnelTarget)({ _tag: "route", routeId: "../../host" })),
+      Result.isFailure(Schema.decodeUnknownResult(TunnelTarget)({ _tag: "route", routeId: "../../host" })),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({
           _tag: "route",
           routeId: "https",
           hostname: "example.test\nX-Forwarded-Host: evil.test",
@@ -130,73 +130,75 @@ describe("tunnel SDK schemas", () => {
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(Schema.decodeUnknownEither(TunnelTarget)({ _tag: "service", service: "web", port: 0 })),
-    ).toBe(true);
-    expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({ _tag: "service", service: "web/default", port: 8080 }),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "service", service: "web", port: 0 }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({ _tag: "service", service: "web", port: 3.14 }),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "service", service: "web/default", port: 8080 }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({ _tag: "loopback", url: "https://example.test" }),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "service", service: "web", port: 3.14 }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(Schema.decodeUnknownEither(TunnelTarget)({ _tag: "loopback", url: "not-a-url" })),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "loopback", url: "https://example.test" }),
+      ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({
+      Result.isFailure(Schema.decodeUnknownResult(TunnelTarget)({ _tag: "loopback", url: "not-a-url" })),
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({
           _tag: "loopback",
           url: "http://user:pass@127.0.0.1:8888",
         }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({
           _tag: "loopback",
           url: "http://127.0.0.1:8888?token=secret",
         }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({ _tag: "loopback", url: "http://2130706433:8888" }),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "loopback", url: "http://2130706433:8888" }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({ _tag: "loopback", url: "http://localhost:0" }),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "loopback", url: "http://localhost:0" }),
       ),
     ).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelTarget)({ _tag: "loopback", url: "http://localhost:0001" }),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "loopback", url: "http://localhost:0001" }),
       ),
     ).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(TunnelStartRequest)({ app: "my-app" }))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(TunnelStartRequest)({ app: "my-app" }))).toBe(true);
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelStartRequest)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelStartRequest)({
           app: "my-app",
           target: { _tag: "route", routeId: "https" },
           provider: "../provider",
         }),
       ),
     ).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(TunnelStatusRequest)({ sessionId: "tun_1\nnext" }))).toBe(
-      true,
-    );
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(TunnelSession)({
+      Result.isFailure(Schema.decodeUnknownResult(TunnelStatusRequest)({ sessionId: "tun_1\nnext" })),
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelSession)({
           id: "tun_1",
           app: "my-app",
           provider: "quick",

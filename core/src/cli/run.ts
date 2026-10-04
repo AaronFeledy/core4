@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
   JsonJqConflictError,
@@ -23,6 +23,7 @@ import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
 import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
+import { COMPILED_DECODER_ASTS } from "./compiled-decoder-targets";
 import {
   printCommandHelp,
   printHelpCatalogJson,
@@ -63,6 +64,7 @@ import {
   resolveJsonControl,
   resolveResultFormat,
 } from "./format-flags";
+import { install as installCompiledDecoders } from "./generated/compiled-decoders.mjs";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
@@ -74,6 +76,7 @@ import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveToolingRoute, toolingHelpRequested } from "./tooling-router";
+import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -135,8 +138,16 @@ const HELP_SPECIAL_FLAGS = {
 } as const;
 
 const readAppCommandCacheOrNull = async () => {
-  const cache = await Effect.runPromise(Effect.either(readFreshAppCommandCacheForCwd()));
-  return cache._tag === "Right" ? cache.right : null;
+  const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  const cache = exit.value;
+  return cache._tag === "Success" ? cache.success : null;
+};
+
+const resolveToolingRouteExit = async (token: string | undefined) => {
+  const exit = await Effect.runPromiseExit(Effect.result(resolveToolingRoute(token)));
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  return exit.value;
 };
 
 const printAllHelp = async (): Promise<void> => {
@@ -200,6 +211,7 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+  installCompiledDecoders(COMPILED_DECODER_ASTS);
   if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
     setActiveLogLevel("none");
     const { runAgentRelayWorkerProcess } = await import("./agent-relay/worker-runtime");
@@ -219,32 +231,40 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
-      ? await Effect.runPromise(Effect.either(resolveToolingRoute(rawHead)))
+      ? await resolveToolingRouteExit(rawHead)
       : undefined;
   const isBunOrXAlias =
-    passthroughAliasResolution?._tag === "Right" &&
-    passthroughAliasResolution.right._tag === "built-in" &&
-    (passthroughAliasResolution.right.commandId === "meta:bun" ||
-      passthroughAliasResolution.right.commandId === "meta:x");
+    passthroughAliasResolution?._tag === "Success" &&
+    passthroughAliasResolution.success._tag === "built-in" &&
+    (passthroughAliasResolution.success.commandId === "meta:bun" ||
+      passthroughAliasResolution.success.commandId === "meta:x");
   const isBunOrXPassthrough =
     rawHead === "meta:bun" ||
     rawHead === "meta:x" ||
     isBunOrXAlias ||
     ((rawHead === "bun" || rawHead === "x") &&
-      passthroughAliasResolution?._tag === "Right" &&
-      passthroughAliasResolution.right._tag === "not-tooling");
+      passthroughAliasResolution?._tag === "Success" &&
+      passthroughAliasResolution.success._tag === "not-tooling");
 
   let argv: ReadonlyArray<string> = rawArgv;
+  setActiveTrace(undefined);
   if (!isBunOrXPassthrough) {
     argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
     const isProtocolStdoutCommand =
       rawHead === "mcp" ||
       rawHead === "meta:mcp" ||
-      (passthroughAliasResolution?._tag === "Right" &&
-        passthroughAliasResolution.right._tag === "built-in" &&
-        passthroughAliasResolution.right.commandId === "meta:mcp");
+      (passthroughAliasResolution?._tag === "Success" &&
+        passthroughAliasResolution.success._tag === "built-in" &&
+        passthroughAliasResolution.success.commandId === "meta:mcp");
     try {
       const configGlobals = await readConfigCliGlobals();
+      const trace = resolveTrace({
+        argv,
+        env: process.env,
+        ...(configGlobals.tracing === undefined ? {} : { config: configGlobals.tracing }),
+      });
+      argv = trace.remainingArgv;
+      setActiveTrace(trace);
       const logLevelResolution = resolveLogLevel({
         argv,
         env: process.env,
@@ -349,13 +369,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     (passthroughAliasResolution !== undefined || !isReservedNamespaceHead(argv[0]))
   ) {
     const argvTail = argv.slice(1);
-    const aliasResolution =
-      passthroughAliasResolution ?? (await Effect.runPromise(Effect.either(resolveToolingRoute(argv[0]))));
-    if (aliasResolution._tag === "Left") {
-      await renderAliasResolutionFailure(aliasResolution.left);
+    const aliasResolution = passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0]));
+    if (aliasResolution._tag === "Failure") {
+      await renderAliasResolutionFailure(aliasResolution.failure);
       return;
     }
-    const route = aliasResolution.right;
+    const route = aliasResolution.success;
     if (route._tag === "built-in") {
       builtInCommand = route.entry;
       argv = [route.commandId, ...argvTail];

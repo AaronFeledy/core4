@@ -1,4 +1,5 @@
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import {
@@ -61,20 +62,20 @@ const decodeFeatureConfig = (
   const rawConfig = feature.config ?? {};
   if (feature.definition.schema === undefined) return Effect.succeed(sortRecord(rawConfig));
 
-  const decoded = Schema.decodeUnknownEither(feature.definition.schema)(rawConfig, {
+  const decoded = Schema.decodeUnknownResult(feature.definition.schema)(rawConfig, {
     onExcessProperty: "error",
   });
-  if (Either.isRight(decoded)) return recordConfig(decoded.right, feature.id);
+  if (Result.isSuccess(decoded)) return recordConfig(decoded.success, feature.id);
 
-  const details = ParseResult.ArrayFormatter.formatErrorSync(decoded.left)
-    .map((issue) => issue.message)
+  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue)
+    .issues.map((issue) => issue.message)
     .join("; ");
   return Effect.fail(
     new ServiceFeatureError({
       message:
         details.length > 0 ? `Invalid service feature config: ${details}` : "Invalid service feature config",
       feature: feature.id,
-      cause: decoded.left,
+      cause: decoded.failure,
     }),
   );
 };
@@ -233,39 +234,40 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureErr
   };
 };
 
-export const composeService = (input: ComposeServiceInput): Effect.Effect<ServicePlan, ServiceFeatureError> =>
-  Effect.gen(function* () {
-    const draft = makeDraft(input.base);
-    const orderedFeatures = stableFeatureOrder(input);
-    draft.featureIds = orderedFeatures.map((feature) => feature.id);
+export const composeService = Effect.fn("ServiceFeature.composeService")(function* (
+  input: ComposeServiceInput,
+): Effect.fn.Return<ServicePlan, ServiceFeatureError> {
+  const draft = makeDraft(input.base);
+  const orderedFeatures = stableFeatureOrder(input);
+  draft.featureIds = orderedFeatures.map((feature) => feature.id);
 
-    yield* Effect.forEach(
-      orderedFeatures,
-      (feature) =>
-        Effect.gen(function* () {
-          const config = yield* decodeFeatureConfig(feature);
-          yield* feature.definition.apply(makeContext(input, draft, config));
-        }),
-      { discard: true },
-    );
+  yield* Effect.forEach(
+    orderedFeatures,
+    (feature) =>
+      Effect.gen(function* () {
+        const config = yield* decodeFeatureConfig(feature);
+        yield* feature.definition.apply(makeContext(input, draft, config));
+      }),
+    { discard: true },
+  );
 
-    // Explicit endpoint intent replaces feature defaults, including an empty list.
-    if (input.normalizedConfig.endpoints !== undefined) {
-      draft.endpoints = input.normalizedConfig.endpoints.map((endpoint) => {
-        switch (endpoint.protocol) {
-          case "unix":
-            return { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) };
-          case "http":
-          case "https":
-          case "tcp":
-          case "udp":
-            return { ...endpoint };
-          default:
-            return endpoint satisfies never;
-        }
-      });
-    }
-    const finalized = finalizeDraft(draft);
-    if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
-    return finalized;
-  });
+  // Explicit endpoint intent replaces feature defaults, including an empty list.
+  if (input.normalizedConfig.endpoints !== undefined) {
+    draft.endpoints = input.normalizedConfig.endpoints.map((endpoint) => {
+      switch (endpoint.protocol) {
+        case "unix":
+          return { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) };
+        case "http":
+        case "https":
+        case "tcp":
+        case "udp":
+          return { ...endpoint };
+        default:
+          return endpoint satisfies never;
+      }
+    });
+  }
+  const finalized = finalizeDraft(draft);
+  if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
+  return finalized;
+});

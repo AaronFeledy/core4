@@ -1,4 +1,5 @@
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 
 import { collectSecretEnvValues } from "@lando/redaction/service";
 
@@ -26,15 +27,13 @@ const stringEnv = (env: EnvMap): Record<string, string | undefined> | undefined 
   return collected;
 };
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 export const collectAppPlanRedactionTokens = (
   plan: Pick<AppPlan, "services"> | { readonly services: Readonly<Record<string, ServiceEnvSource>> },
 ): ReadonlyArray<string> =>
   Object.values(plan.services).flatMap((service) => {
     const compose = service?.extensions?.compose;
-    const labels = isRecord(compose) && isRecord(compose.labels) ? compose.labels : undefined;
+    const labels =
+      Predicate.isObject(compose) && Predicate.isObject(compose.labels) ? compose.labels : undefined;
     return [
       ...collectSecretEnvValues(stringEnv(service?.environment)),
       ...collectSecretEnvValues(stringEnv(labels)),
@@ -46,7 +45,8 @@ export const collectLandofileRedactionTokens = (
 ): ReadonlyArray<string> => {
   const serviceTokens = Object.values(landofile.services ?? {}).flatMap((service) => {
     const compose = service?.extensions?.compose;
-    const composeLabels = isRecord(compose) && isRecord(compose.labels) ? compose.labels : undefined;
+    const composeLabels =
+      Predicate.isObject(compose) && Predicate.isObject(compose.labels) ? compose.labels : undefined;
     return [
       ...collectSecretEnvValues(stringEnv(service?.environment)),
       ...collectSecretEnvValues(service?.password === undefined ? undefined : { password: service.password }),

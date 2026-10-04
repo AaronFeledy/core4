@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
 import { wordpressRecipeYaml } from "../../src/recipes/builtin/wordpress/manifest.ts";
 import {
@@ -19,7 +19,7 @@ import {
 
 const validInput: RecipeDecomposeInput = {
   producer: wordpressProducer,
-  options: { php: "8.3", redis: false },
+  options: { php: "8.4", redis: false },
   secrets: {},
 };
 const typedOptionFailureInput: RecipeDecomposeInput = { ...validInput, options: { php: 83, redis: false } };
@@ -29,8 +29,8 @@ const missingRecipeInput: RecipeDecomposeInput = {
 };
 const decomposer = wordpressDecomposer({ redactor: createStandaloneRedactor("secrets") });
 const cases = [
-  { php: "8.3", redis: false },
-  { php: "8.2", redis: true },
+  { php: "8.4", redis: false },
+  { php: "8.1", redis: true },
 ] as const;
 
 describe("wordpress decomposition", () => {
@@ -86,8 +86,8 @@ describe("wordpress decomposition", () => {
 
   test.each([
     { options: { php: 83, redis: false }, path: "options.php" },
-    { options: { php: "8.4", redis: false }, path: "options.php" },
-    { options: { php: "8.3", redis: "true" }, path: "options.redis" },
+    { options: { php: "8.0", redis: false }, path: "options.php" },
+    { options: { php: "8.4", redis: "true" }, path: "options.redis" },
   ])("rejects a bad option when input is %j", ({ options, path }) => {
     // Given / When
     const error = Effect.runSync(Effect.flip(decomposer.decompose({ ...validInput, options })));
@@ -121,10 +121,13 @@ describe("wordpress decomposition", () => {
     expect(wordpressSnapshot.identity.manifestVersion).toBe(manifest.version);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(wordpressSnapshot.optionTypes).toEqual({
-      php: { kind: "enum", values: ["8.2", "8.3"] },
+      php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] },
       redis: { kind: "boolean" },
     });
-    expect(wordpressSnapshot.defaults).toEqual({ php: "8.3", redis: false });
+    expect(wordpressSnapshot.defaults).toEqual({ php: "8.4", redis: false });
+    expect(wordpressRecipeYaml).toContain("default: '8.4'");
+    expect(wordpressRecipeYaml).toContain("value: '8.1'");
+    expect(wordpressRecipeYaml).toContain("value: '8.6'");
   });
 
   test.each([...cases])("renders the same snapshot when options are %j", (options) => {
@@ -134,9 +137,9 @@ describe("wordpress decomposition", () => {
       recipe: _recipe,
       name: _name,
       ...authoring
-    } = Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(fragment);
+    } = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(fragment);
     // When
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(wordpressSnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(wordpressSnapshot, options));
     // Then
     expect<unknown>(rendered).toEqual(authoring);
   });

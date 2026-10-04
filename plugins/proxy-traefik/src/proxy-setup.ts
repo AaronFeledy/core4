@@ -41,45 +41,43 @@ export const advertisedPorts = (decision: AcquisitionDecision): AuthorityPorts =
   https: decision.httpsPort,
 });
 
-export const publishFallbackWarn = (
+export const publishFallbackWarn = Effect.fnUntraced(function* (
   dependencies: TraefikProxyDependencies,
   decision: AcquisitionDecision,
-): Effect.Effect<void, unknown> =>
-  Effect.gen(function* () {
-    const body = decision.notices.join(" ");
-    const fromContext = yield* Effect.serviceOption(EventService);
-    const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
-    if (events === undefined) return;
-    yield* events
-      .publish(
-        MessageWarnEvent.make({
-          _tag: "message.warn",
-          body,
-          timestamp: DateTime.unsafeNow(),
-        }),
-      )
-      .pipe(Effect.catchAll(() => Effect.void));
-  });
+) {
+  const body = decision.notices.join(" ");
+  const fromContext = yield* Effect.serviceOption(EventService);
+  const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
+  if (events === undefined) return;
+  yield* events
+    .publish(
+      MessageWarnEvent.make({
+        _tag: "message.warn",
+        body,
+        timestamp: DateTime.nowUnsafe(),
+      }),
+    )
+    .pipe(Effect.catch(() => Effect.void));
+});
 
-export const assertAdvertisedForward = (
+export const assertAdvertisedForward = Effect.fn("TraefikRouter.assertAdvertisedForward")(function* (
   dependencies: Pick<TraefikProxyDependencies, "probeForward" | "events">,
   advertised: AuthorityPorts,
-): Effect.Effect<void, unknown> =>
-  Effect.gen(function* () {
-    const probe = dependencies.probeForward ?? probeForward;
-    const http = yield* probe(LOOPBACK_HOST, advertised.http, "http");
-    const https = yield* probe(LOOPBACK_HOST, advertised.https, "https");
-    if (http.kind === "success" && https.kind === "success") return;
-    const fromContext = yield* Effect.serviceOption(EventService);
-    const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
-    if (events === undefined) return;
-    yield* events
-      .publish(
-        MessageWarnEvent.make({
-          _tag: "message.warn",
-          body: `Advertised proxy ports ${String(advertised.http)}/${String(advertised.https)} did not answer HTTP. Run \`lando doctor\`, then \`lando global:restart\`.`,
-          timestamp: DateTime.unsafeNow(),
-        }),
-      )
-      .pipe(Effect.catchAll(() => Effect.void));
-  });
+) {
+  const probe = dependencies.probeForward ?? probeForward;
+  const http = yield* probe(LOOPBACK_HOST, advertised.http, "http");
+  const https = yield* probe(LOOPBACK_HOST, advertised.https, "https");
+  if (http.kind === "success" && https.kind === "success") return;
+  const fromContext = yield* Effect.serviceOption(EventService);
+  const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
+  if (events === undefined) return;
+  yield* events
+    .publish(
+      MessageWarnEvent.make({
+        _tag: "message.warn",
+        body: `Advertised proxy ports ${String(advertised.http)}/${String(advertised.https)} did not answer HTTP. Run \`lando doctor\`, then \`lando global:restart\`.`,
+        timestamp: DateTime.nowUnsafe(),
+      }),
+    )
+    .pipe(Effect.catch(() => Effect.void));
+});

@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
-import { Either, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 
 export interface InstalledPluginRegistryEntry {
   readonly name: string;
@@ -34,15 +34,12 @@ const InstalledPluginRegistryEntryShape = Schema.Struct({
   name: Schema.String,
   version: Schema.String,
   path: Schema.String,
-  requestedSelector: Schema.optional(Schema.String),
-  source: Schema.optional(Schema.Literal("installed", "linked")),
-  linkedPath: Schema.optional(Schema.String),
+  requestedSelector: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literals(["installed", "linked"])),
+  linkedPath: Schema.optionalKey(Schema.String),
 });
 
 const installedPluginRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
-
-const isRecord = (value: unknown): value is RawInstalledPluginRegistry =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const corruptRegistryError = (path: string, cause: unknown): Error =>
   new Error(`Installed plugin registry is corrupt: ${path}. ${String(cause)}`);
@@ -56,7 +53,7 @@ const readRawInstalledPluginRegistry = async (pluginsRoot: string): Promise<RawI
   } catch (cause) {
     throw corruptRegistryError(path, cause);
   }
-  if (!isRecord(parsed)) throw corruptRegistryError(path, "registry root is not an object");
+  if (!Predicate.isObject(parsed)) throw corruptRegistryError(path, "registry root is not an object");
   return parsed;
 };
 
@@ -71,7 +68,7 @@ export const readRawInstalledPluginRegistryEntries = async (
   } catch {
     return {};
   }
-  if (!isRecord(parsed)) return {};
+  if (!Predicate.isObject(parsed)) return {};
   return parsed;
 };
 
@@ -96,17 +93,17 @@ export const inspectInstalledPluginRegistry = async (
   const registry: Record<string, InstalledPluginRegistryEntry> = {};
   const failures: InstalledPluginRegistryFailure[] = [];
   for (const [name, entry] of Object.entries(raw)) {
-    const decoded = Schema.decodeUnknownEither(InstalledPluginRegistryEntryShape)(entry, {
+    const decoded = Schema.decodeUnknownResult(InstalledPluginRegistryEntryShape)(entry, {
       onExcessProperty: "error",
     });
-    if (Either.isRight(decoded)) {
-      registry[name] = decoded.right;
+    if (Result.isSuccess(decoded)) {
+      registry[name] = decoded.success;
     } else {
       failures.push({
         pluginId: name,
-        pluginPath: isRecord(entry) && typeof entry.path === "string" ? entry.path : pluginsRoot,
+        pluginPath: Predicate.isObject(entry) && typeof entry.path === "string" ? entry.path : pluginsRoot,
         metadataPath,
-        cause: decoded.left,
+        cause: decoded.failure,
       });
     }
   }
@@ -154,7 +151,7 @@ export const readInstalledPluginRegistryEntry = async (
 ): Promise<{ readonly source?: string; readonly path?: string } | undefined> => {
   const registry = await readRawInstalledPluginRegistryEntries(pluginsRoot);
   const entry = registry[name];
-  if (!isRecord(entry)) return undefined;
+  if (!Predicate.isObject(entry)) return undefined;
   return {
     ...(typeof entry.source === "string" ? { source: entry.source } : {}),
     ...(typeof entry.path === "string" ? { path: entry.path } : {}),

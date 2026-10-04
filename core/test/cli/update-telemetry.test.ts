@@ -24,7 +24,7 @@ const makeTelemetry = () => {
   return { telemetry, records };
 };
 
-const noopProcessRunner = {
+const noopProcessRunner = ProcessRunner.of({
   run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   stream: () => {
     throw new Error("stream is not used by update telemetry tests");
@@ -32,7 +32,7 @@ const noopProcessRunner = {
   streamWithExit: () => {
     throw new Error("streamWithExit is not used by update telemetry tests");
   },
-} satisfies typeof ProcessRunner.Service;
+} satisfies typeof ProcessRunner.Service);
 
 describe("update telemetry", () => {
   test("inventory freezes update outcome and deprecation-used fields", () => {
@@ -144,7 +144,7 @@ describe("update telemetry", () => {
         runUpdate: () => Effect.succeed({ updatedCore: false, updatedPlugins: [] }),
       }).pipe(
         Effect.provideService(ProcessRunner, noopProcessRunner),
-        Effect.provideService(Telemetry, telemetry),
+        Effect.provideService(Telemetry, Telemetry.of(telemetry)),
       ),
     );
 
@@ -178,14 +178,16 @@ describe("update telemetry", () => {
         runUpdate: () => Effect.fail(failure),
       }).pipe(
         Effect.provideService(ProcessRunner, noopProcessRunner),
-        Effect.provideService(Telemetry, telemetry),
+        Effect.provideService(Telemetry, Telemetry.of(telemetry)),
       ),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       expect(
-        Cause.failureOption(exit.cause).pipe((option) => (option._tag === "Some" ? option.value : undefined)),
+        Cause.findErrorOption(exit.cause).pipe((option) =>
+          option._tag === "Some" ? option.value : undefined,
+        ),
       ).toBe(failure);
     }
 

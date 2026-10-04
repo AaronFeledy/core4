@@ -18,7 +18,7 @@ const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." 
 const appId = AppId.make("recreate-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"),
   source: "container-runtime/bring-up-recreate.test.ts",
   runtime: 4 as const,
 };
@@ -207,7 +207,15 @@ describe("Podman publish-port recreate", () => {
           mounts:
             type === undefined
               ? []
-              : [{ type, source, target, readOnly: true, realization: "passthrough" as const }],
+              : [
+                  {
+                    type,
+                    ...(source === undefined ? {} : { source }),
+                    target,
+                    readOnly: true,
+                    realization: "passthrough" as const,
+                  },
+                ],
         },
       },
     };
@@ -279,7 +287,9 @@ describe("Podman publish-port recreate", () => {
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then: recreate must not treat 409-create as success on the leftover container.
-    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    const failures = Exit.isFailure(exit)
+      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
+      : [];
     expect(failures).toContainEqual(
       expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.remove", service: "web" }),
     );

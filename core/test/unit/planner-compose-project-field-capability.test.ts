@@ -10,9 +10,9 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-project-field-")));
@@ -29,14 +29,18 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(FileSystemLive, PluginRegistryLive)))),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(
+          Layer.provide(Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layer)),
+        ),
+      ),
     ),
   );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected planning to fail");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(failure)).toBe(true);
   if (!Option.isSome(failure)) throw new Error("Expected a typed planning failure");
   return failure.value;

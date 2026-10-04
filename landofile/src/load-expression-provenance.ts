@@ -7,6 +7,8 @@ export interface LandofileReferencedFile {
 
 const referencedFiles = new WeakMap<object, ReadonlyArray<LandofileReferencedFile>>();
 
+export const hasLandofileReferencedFiles = (landofile: object): boolean => referencedFiles.has(landofile);
+
 export const rememberLandofileReferencedFiles = <A extends object>(
   landofile: A,
   files: ReadonlyArray<LandofileReferencedFile>,

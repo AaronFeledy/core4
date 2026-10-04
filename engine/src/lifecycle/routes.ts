@@ -16,26 +16,25 @@ import { resolveRouterConfigForApp, routerEnabled } from "../config/router-confi
 import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
-export const applyAppRoutes = (
+export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   proxy: RouterServiceShape,
   plan: AppPlan,
   landofileRouter?: RouterConfig,
-): Effect.Effect<
+): Effect.fn.Return<
   ProxyApplyResult,
   ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError | ProxyApplyError
-> =>
-  Effect.gen(function* () {
-    if (!routerEnabled(plan)) {
-      // Best-effort: a disabled plan must not leave previously published hostnames live.
-      yield* proxy.removeRoutes(plan.id).pipe(Effect.catchAll(() => Effect.void));
-      return { app: plan.id, appliedRoutes: [], authorities: [] };
-    }
-    const defaultDomain = yield* resolveProxyDefaultDomain;
-    const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
-    return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(
-      Effect.zipRight(proxy.applyRoutes(plan.routes, plan.id)),
-    );
-  });
+> {
+  if (!routerEnabled(plan)) {
+    // Best-effort: a disabled plan must not leave previously published hostnames live.
+    yield* proxy.removeRoutes(plan.id).pipe(Effect.catch(() => Effect.void));
+    return { app: plan.id, appliedRoutes: [], authorities: [] };
+  }
+  const defaultDomain = yield* resolveProxyDefaultDomain;
+  const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
+  return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(
+    Effect.andThen(proxy.applyRoutes(plan.routes, plan.id)),
+  );
+});
 
 export const teardownAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
   provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });

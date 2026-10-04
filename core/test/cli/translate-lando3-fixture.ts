@@ -66,4 +66,4 @@ export const withFixture = async (
     await rm(root, { recursive: true, force: true });
   }
 };
-export const failure = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.either(effect));
+export const failure = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(Effect.result(effect));

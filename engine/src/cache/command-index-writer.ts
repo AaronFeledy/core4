@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
+import { isPathWithin } from "@lando/paths";
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
@@ -143,14 +144,6 @@ const localIncludePathsForLandofile = (landofile: LandofileShape): ReadonlyArray
     .filter((source) => !isRemoteInclude(source));
 };
 
-const pathIsUnderRoot = (root: string, path: string): boolean => {
-  const relativePath = relative(root, path);
-  return (
-    relativePath === "" ||
-    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-  );
-};
-
 const realpathIfPresent = async (path: string): Promise<string | undefined> => {
   try {
     return await realpath(path);
@@ -167,7 +160,7 @@ const localIncludePath = async (
 ): Promise<{ readonly filePath: string; readonly relativePath: string } | undefined> => {
   if (isRemoteInclude(source)) return undefined;
   const candidate = isAbsolute(source) ? source : resolve(appRoot, source);
-  if (!pathIsUnderRoot(appRoot, candidate)) {
+  if (!isPathWithin(appRoot, candidate)) {
     if (!allowOutsideRoot || !isAbsolute(source)) return undefined;
     const realCandidate = await realpathIfPresent(candidate);
     return {
@@ -181,7 +174,7 @@ const localIncludePath = async (
   if (realCandidate === undefined) {
     return { filePath: candidate, relativePath: relative(appRoot, candidate).split(sep).join("/") };
   }
-  if (!pathIsUnderRoot(realRoot, realCandidate)) {
+  if (!isPathWithin(realRoot, realCandidate)) {
     throw new CacheError({
       message: `Local include ${source} resolves outside the app root.`,
       key: "app-command",
@@ -197,7 +190,7 @@ const localIncludeSourcesFor = async (
   allowOutsideRoot: boolean,
 ): Promise<ReadonlyArray<LocalIncludeSource>> => {
   const sources: LocalIncludeSource[] = [];
-  for (const source of [...new Set(paths)].sort((left, right) => left.localeCompare(right))) {
+  for (const source of [...new Set(paths)].sort()) {
     const includePath = await localIncludePath(appRoot, source, allowOutsideRoot);
     if (includePath === undefined) continue;
     sources.push({
@@ -219,7 +212,7 @@ const readBunShellScriptSources = async (appRoot: string): Promise<ReadonlyArray
   const files: string[] = [];
   const visit = async (dir: string): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true });
-    entries.sort((a, b) => a.name.localeCompare(b.name));
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const absolutePath = join(dir, entry.name);
@@ -377,7 +370,7 @@ const writeAppCommandCacheTask = async (
     toolingFingerprint,
     entriesFingerprint,
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-    generatedAtMs: (options.now ?? Date.now)(),
+    generatedAtMs: options.now === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : options.now(),
     entries: options.entries,
   };
 
@@ -389,7 +382,7 @@ const writeAppCommandCacheTask = async (
 export const writeAppCommandCache = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, never> =>
-  writeAppCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writeAppCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export interface WritePluginCommandCacheOptions {
   readonly manifests?: ReadonlyArray<PluginManifest>;
@@ -438,7 +431,7 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
     manifestFingerprint,
     pluginListSha,
     commandsByPlugin,
-    generatedAtMs: (options.now ?? Date.now)(),
+    generatedAtMs: options.now === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : options.now(),
     entries: compilePluginCommands(manifests),
   };
 
@@ -648,7 +641,7 @@ export const writePluginCommandCacheStrict = (
 export const writePluginCommandCache = (
   options: WritePluginCommandCacheOptions = {},
 ): Effect.Effect<string | undefined, never> =>
-  writePluginCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writePluginCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export const invalidatePluginCommandCache = (
   options: { readonly cacheRoot?: string } = {},

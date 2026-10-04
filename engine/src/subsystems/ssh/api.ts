@@ -11,10 +11,13 @@ const SSH_UNAVAILABLE_ID = "unavailable" as const;
 const SSH_UNAVAILABLE_MESSAGE =
   "SshService is not selected. Install and select the bundled SSH agent plugin, then run `lando setup` to provision the SSH sidecar.";
 
-export const SshServiceUnavailableLive = Layer.succeed(SshService, {
-  id: SSH_UNAVAILABLE_ID,
-  setup: (_opts) =>
-    Effect.fail(new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: SSH_UNAVAILABLE_ID })),
-  getAgentSocket: (_appId) =>
-    Effect.fail(new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: SSH_UNAVAILABLE_ID })),
-});
+export const layerUnavailable = Layer.succeed(
+  SshService,
+  SshService.of({
+    id: SSH_UNAVAILABLE_ID,
+    setup: (_opts) =>
+      Effect.fail(new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: SSH_UNAVAILABLE_ID })),
+    getAgentSocket: (_appId) =>
+      Effect.fail(new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: SSH_UNAVAILABLE_ID })),
+  }),
+);

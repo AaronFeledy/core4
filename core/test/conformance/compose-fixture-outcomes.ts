@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { Predicate } from "effect";
 
 import type { LandofileShape } from "@lando/core/schema";
 import { ServiceName } from "@lando/core/schema";
@@ -19,9 +20,6 @@ import {
   requirePresentValue,
   serviceDocumentPath,
 } from "./compose-fixture-source-values.ts";
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isContainedPath = (root: string, candidate: string): boolean => {
   const pathFromRoot = relative(root, candidate);
@@ -71,7 +69,7 @@ const assertPreservedMatch = (match: ComposeDispositionMatch, context: OutcomeCo
   const source = preservedSourceValue(match, service);
   requirePresentValue(source, match, "decoded service config");
   const compose = context.plan.services[ServiceName.make(match.service)]?.extensions.compose;
-  if (!isRecord(compose)) throw new ComposeFixtureOutcomeError("Compose extension missing");
+  if (!Predicate.isObject(compose)) throw new ComposeFixtureOutcomeError("Compose extension missing");
 
   if (match.matrixPath.startsWith("depends_on.*.restart")) {
     const dependencyName = serviceDocumentPath(match).split(".")[1];

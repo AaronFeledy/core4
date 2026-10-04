@@ -10,13 +10,13 @@ import { landoServiceType } from "../src/services/lando.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const FeatureExtension = Schema.Struct({
-  buildSteps: Schema.optional(
+  buildSteps: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
-        id: Schema.optional(Schema.String),
+        id: Schema.optionalKey(Schema.String),
         phase: Schema.String,
         command: Schema.Unknown,
-        user: Schema.optional(Schema.String),
+        user: Schema.optionalKey(Schema.String),
       }),
     ),
   ),

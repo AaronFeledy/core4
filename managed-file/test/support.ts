@@ -8,14 +8,14 @@ import type { ManagedFileService } from "@lando/sdk/services";
 import { type LedgerEntry, type ManagedFileBackend, makeManagedFileService } from "../src/service.ts";
 
 export interface TestManagedFileStore {
-  readonly service: Context.Tag.Service<typeof ManagedFileService>;
+  readonly service: Context.Service.Shape<typeof ManagedFileService>;
   readonly read: (relPath: string) => string | null;
   readonly seed: (relPath: string, content: string) => void;
   readonly ledger: () => ReadonlyArray<LedgerEntry>;
 }
 
-export const makeTestManagedFileStore = (): Effect.Effect<TestManagedFileStore> =>
-  Effect.gen(function* () {
+export const makeTestManagedFileStore = Effect.fnUntraced(
+  function* (): Effect.fn.Return<TestManagedFileStore> {
     const base = "/lando-managed-file-test/app";
     const files = new Map<string, string>();
     let entries: ReadonlyArray<LedgerEntry> = [];
@@ -70,4 +70,5 @@ export const makeTestManagedFileStore = (): Effect.Effect<TestManagedFileStore> 
       },
       ledger: () => entries,
     } satisfies TestManagedFileStore;
-  });
+  },
+);

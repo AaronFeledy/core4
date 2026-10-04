@@ -1,0 +1,77 @@
+---
+id: export-traces
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, cli, tracing, otlp]
+---
+
+# Export traces to your collector
+
+Point Lando at an OTLP/HTTP endpoint and every command ships its spans there.
+
+```sh
+lando config set tracing.otlp.endpoint http://localhost:4318
+lando start
+```
+
+Lando posts OTLP JSON to `<endpoint>/v1/traces`. Give it the base URL, not the `/v1/traces` path. Any collector that speaks OTLP/HTTP JSON works: the OpenTelemetry Collector, Jaeger, Tempo, Honeycomb, and the rest.
+
+Nothing is sent until you set an endpoint. There is no default collector and no phone-home.
+
+## Configure the exporter
+
+Two global config keys:
+
+```yaml
+tracing:
+  otlp:
+    endpoint: https://otlp.example.com
+    headers:
+      Authorization: Bearer abc123
+```
+
+| Key | What it does |
+| --- | --- |
+| `tracing.otlp.endpoint` | OTLP/HTTP base URL. Lando appends `/v1/traces`. |
+| `tracing.otlp.headers` | Extra request headers, for auth tokens and tenant ids. |
+
+Set headers with `--type=json`:
+
+```sh
+lando config set tracing.otlp.headers '{"Authorization":"Bearer abc123"}' --type=json
+```
+
+Header values are secrets. `lando config` prints them redacted, and so does `--format=json`.
+
+When neither key is set, Lando reads the standard OpenTelemetry environment:
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.example.com
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer abc123,x-tenant=lando"
+```
+
+`OTEL_EXPORTER_OTLP_HEADERS` is the usual `k=v,k2=v2` list. Config wins over the env when both are present.
+
+## What gets exported
+
+Every span the tracer records, with these resource attributes:
+
+| Attribute | Value |
+| --- | --- |
+| `service.name` | `lando` |
+| `service.version` | The running Lando version. |
+| `os.type` | Host OS. |
+| `host.arch` | Host architecture. |
+
+Span attributes pass through redaction before they leave the process. A secret in your env or a flag reaches neither the text tree, the JSON envelope, nor the collector.
+
+A configured endpoint turns the tracer on for export. `--trace` is only about your terminal: add it when you also want the timing tree printed locally. See [Trace a slow command](./trace-a-command.mdx).
+
+## Export never blocks the command
+
+Export is fire-and-forget. The command finishes, prints its result, then flushes spans in the background for at most one second. A collector that is down, slow, or rejecting requests changes nothing about the exit status or the output. If the flush misses the one-second window, the remaining spans are dropped and the command still exits clean.
+
+Keep the collector close when you care about completeness. A high-latency endpoint loses the tail of long traces.
+
+Need Lando's spans inside your own tracer instead of a collector? See [Observe an embedded runtime](../library/embedding-observability.mdx).

@@ -33,7 +33,7 @@ const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
   source: "container-runtime/compose-knobs-transport.test.ts",
   runtime: 4 as const,
 };

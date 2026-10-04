@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@lando/sdk": "workspace:*",
-    "effect": "^3.21.2",
+    "effect": "catalog:",
     "mustache": "^4.2.0"
   },
   "devDependencies": {

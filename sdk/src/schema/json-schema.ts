@@ -1,4 +1,4 @@
-import { Either, JSONSchema, Schema } from "effect";
+import { Result, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 import {
   AgentSocketBridgeInput,
@@ -140,20 +140,11 @@ import {
   TunnelReadyEvent,
   TunnelStatusEvent,
 } from "../events/index.ts";
-import {
-  AccessExpressionNode,
-  ArrayLiteralExpressionNode,
-  CallExpressionNode,
-  ConditionalExpressionNode,
-  ExpressionNode,
-  ExpressionTemplate,
-  LiteralExpressionNode,
-  ObjectLiteralExpressionNode,
-  PathExpressionNode,
-} from "../expressions/ast.ts";
+import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
 import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
+import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -167,6 +158,7 @@ import {
   NetworkConfig,
   NetworkProxyConfig,
   TelemetryConfig,
+  TracingConfig,
 } from "./config.ts";
 import {
   ArchiveFormat,
@@ -210,14 +202,11 @@ import {
   PreparedFileSyncTarget,
 } from "./file-sync-engine.ts";
 import { HostTerminal } from "./host-terminal.ts";
-import {
-  HttpClientCapabilities,
-  HttpRequest,
-  HttpResponse,
-  HttpStreamResponse,
-  HttpUploadRequest,
-} from "./http-client.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
+import {
+  repairLandofileExtensions,
+  repairTemplateLiteralExtensionRecords,
+} from "./json-schema-extensions.ts";
 import {
   KeymapConfig,
   RendererActionId,
@@ -413,7 +402,11 @@ import {
 import { VolumeIdentity } from "./volume-identity.ts";
 import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
 
-const catalogServiceSchemaRegistry = {
+const schemaRegistry = <const Name extends string>(
+  schemas: Readonly<Record<Name, PublicSchema>>,
+): Readonly<Record<Name, PublicSchema>> => schemas;
+
+const catalogServiceSchemaRegistry = schemaRegistry({
   DotnetServiceConfig,
   LocalStackServiceConfig,
   MailhogServiceConfig,
@@ -426,7 +419,7 @@ const catalogServiceSchemaRegistry = {
   RabbitMQServiceConfig,
   TomcatServiceConfig,
   VarnishServiceConfig,
-};
+});
 
 export {
   assertJsonSchemaDeprecationsValid,
@@ -438,7 +431,7 @@ export {
 
 type JsonObject = Record<string, unknown>;
 
-export type PublicSchema = Schema.Schema.AnyNoContext;
+export type PublicSchema = Schema.Top;
 
 export type PublicSchemaMetadata = {
   readonly id: JsonSchemaName;
@@ -456,7 +449,7 @@ export type PublicSchemaReferencePage = {
   readonly content: string;
 };
 
-const basePublicSchemaRegistry = {
+const basePublicSchemaRegistry = schemaRegistry({
   SshAgentConfig,
   GpgAgentConfig,
   AgentSocketKind,
@@ -797,15 +790,13 @@ const basePublicSchemaRegistry = {
   CommandResultFormat,
   CommandWarning,
   CommandResultEnvelope,
+  CommandTraceSpan,
+  CommandTrace,
   StreamFrame,
-  HttpClientCapabilities,
-  HttpRequest,
-  HttpResponse,
-  HttpStreamResponse,
-  HttpUploadRequest,
+  TracingConfig,
   PreHttpCallEvent,
   PostHttpCallEvent,
-} as const;
+});
 
 const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   typeof ConfigTranslateSchemas & {
@@ -1251,12 +1242,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   CommandResultFormat: "Public Lando schema contract for Command Result Format.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
+  CommandTraceSpan: "One finished span in a command-invocation timing tree.",
+  CommandTrace: "Command-invocation timing tree for machine-output and display.",
   StreamFrame: "Public Lando schema contract for Stream Frame.",
-  HttpClientCapabilities: "Public Lando schema contract for Http Client Capabilities.",
-  HttpRequest: "Public Lando schema contract for Http Request.",
-  HttpResponse: "Public Lando schema contract for Http Response.",
-  HttpStreamResponse: "Public Lando schema contract for Http Stream Response.",
-  HttpUploadRequest: "Public Lando schema contract for Http Upload Request.",
+  TracingConfig: "Global tracing export policy (global tracing).",
   VolumeLocator: "Stable provider locator for one native volume before or after creation.",
   PreHttpCallEvent: "Public Lando schema contract for Pre Http Call Event.",
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",
@@ -1283,32 +1272,20 @@ const annotatedCatalogSchema = <Name extends keyof typeof catalogServiceSchemaRe
   schemaName: Name,
   schema: (typeof catalogServiceSchemaRegistry)[Name],
 ): (typeof catalogServiceSchemaRegistry)[Name] =>
-  schema.annotations({
-    identifier: AST.getIdentifierAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : schemaName,
-    ),
-    title: AST.getTitleAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : titleFromSchemaName(schemaName),
-    ),
-    description: AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : CATALOG_SERVICE_SCHEMA_DESCRIPTIONS[schemaName],
-    ),
+  schema.annotate({
+    identifier: AST.resolveIdentifier(schema.ast) ?? schemaName,
+    title: AST.resolveTitle(schema.ast) ?? titleFromSchemaName(schemaName),
+    description: AST.resolveDescription(schema.ast) ?? CATALOG_SERVICE_SCHEMA_DESCRIPTIONS[schemaName],
   }) as (typeof catalogServiceSchemaRegistry)[Name];
 
 const annotatedPublicSchema = <Name extends keyof typeof rawPublicSchemaRegistry>(
   schemaName: Name,
   schema: (typeof rawPublicSchemaRegistry)[Name],
 ): (typeof rawPublicSchemaRegistry)[Name] =>
-  schema.annotations({
-    identifier: AST.getIdentifierAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : schemaName,
-    ),
-    title: AST.getTitleAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : titleFromSchemaName(schemaName),
-    ),
-    description: AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : PUBLIC_SCHEMA_DESCRIPTIONS[schemaName],
-    ),
+  schema.annotate({
+    identifier: AST.resolveIdentifier(schema.ast) ?? schemaName,
+    title: AST.resolveTitle(schema.ast) ?? titleFromSchemaName(schemaName),
+    description: AST.resolveDescription(schema.ast) ?? PUBLIC_SCHEMA_DESCRIPTIONS[schemaName],
   }) as (typeof rawPublicSchemaRegistry)[Name];
 
 const rawCatalogPublicSchemaRegistry = Object.fromEntries(
@@ -1355,12 +1332,8 @@ const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
   const schema = publicSchemaRegistry[schemaName];
   const artifactFilename = schemaArtifactFilename(schemaName);
   const docsBasename = artifactFilename.replace(/\.json$/, "");
-  const titleAnnotation = AST.getTitleAnnotation(schema.ast).pipe((option) =>
-    option._tag === "Some" ? option.value : undefined,
-  );
-  const descriptionAnnotation = AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
-    option._tag === "Some" ? option.value : undefined,
-  );
+  const titleAnnotation = AST.resolveTitle(schema.ast);
+  const descriptionAnnotation = AST.resolveDescription(schema.ast);
   return {
     id: schemaName,
     title:
@@ -1513,37 +1486,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "DownloaderCapabilities.mirror",
   "DownloaderCapabilities.offline",
   "DownloaderCapabilities.schemes",
-  "HttpClientCapabilities.customCa",
-  "HttpClientCapabilities.proxyAware",
-  "HttpClientCapabilities.schemes",
-  "HttpClientCapabilities.streaming",
-  "HttpClientCapabilities.upload",
-  "HttpRequest.allowFileSource",
-  "HttpRequest.callerId",
-  "HttpRequest.headers",
-  "HttpRequest.method",
-  "HttpRequest.offline",
-  "HttpRequest.onBehalfOf",
-  "HttpRequest.redactionTokens",
-  "HttpRequest.redirect",
-  "HttpRequest.timeoutMs",
-  "HttpRequest.url",
-  "HttpResponse.contentLength",
-  "HttpResponse.headers",
-  "HttpResponse.status",
-  "HttpResponse.statusText",
-  "HttpStreamResponse.headers",
-  "HttpStreamResponse.status",
-  "HttpStreamResponse.statusText",
-  "HttpUploadRequest.callerId",
-  "HttpUploadRequest.contentLength",
-  "HttpUploadRequest.contentType",
-  "HttpUploadRequest.headers",
-  "HttpUploadRequest.method",
-  "HttpUploadRequest.onBehalfOf",
-  "HttpUploadRequest.redactionTokens",
-  "HttpUploadRequest.source",
-  "HttpUploadRequest.url",
   "PostHttpCallEvent._tag",
   "PostHttpCallEvent.callerId",
   "PostHttpCallEvent.durationMs",
@@ -1714,7 +1656,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "VolumeSnapshotSpec.labels",
   "VolumeSnapshotSpec.snapshotId",
   "VolumeSnapshotSpec.volume",
-  "ConfigLintViolation.suggestedFix",
+  "ConfigLintViolation.suggestion",
   "DataStoreMountPlan.readOnly",
   "DataStoreMountPlan.store",
   "DataStoreMountPlan.subpath",
@@ -2631,8 +2573,8 @@ export type PublicSchemaAnnotationExemptions = {
   readonly fields?: ReadonlySet<string>;
 };
 
-const hasOwnUsefulDescription = (annotations: AST.Annotations): boolean => {
-  const value = annotations[AST.DescriptionAnnotationId];
+const hasOwnUsefulDescription = (annotations: Schema.Annotations.Annotations | undefined): boolean => {
+  const value = annotations?.description ?? annotations?.expected;
   return typeof value === "string" && value.trim().length > 0 && !BUILT_IN_DESCRIPTIONS.has(value);
 };
 
@@ -2642,20 +2584,20 @@ const hasOwnUsefulDescription = (annotations: AST.Annotations): boolean => {
  */
 const hasOptionalMemberUsefulDescription = (type: AST.AST): boolean => {
   if (!AST.isUnion(type)) return false;
-  const declared = type.types.filter((member) => !AST.isUndefinedKeyword(member));
+  const declared = type.types.filter((member) => !AST.isUndefined(member));
   return declared.length === 1 && hasOwnUsefulDescription((declared[0] as AST.AST).annotations);
 };
 
-const hasSchemaStringAnnotation = (ast: AST.AST, key: symbol): boolean => {
-  const annotation = AST.getAnnotation<string>(key)(ast);
-  return annotation._tag === "Some" && annotation.value.trim().length > 0;
+const hasSchemaStringAnnotation = (ast: AST.AST, key: string): boolean => {
+  const annotation = AST.resolveAt<unknown>(key)(ast);
+  return typeof annotation === "string" && annotation.trim().length > 0;
 };
 
 const hasSchemaUsefulDescription = (ast: AST.AST): boolean => {
-  const annotation = AST.getDescriptionAnnotation(ast);
-  if (annotation._tag !== "Some" || annotation.value.trim().length === 0) return false;
-  if (!BUILT_IN_DESCRIPTIONS.has(annotation.value)) return true;
-  return AST.getIdentifierAnnotation(ast)._tag === "Some" && ast._tag !== "TypeLiteral";
+  const annotation = AST.resolveDescription(ast);
+  if (annotation === undefined || annotation.trim().length === 0) return false;
+  if (!BUILT_IN_DESCRIPTIONS.has(annotation)) return true;
+  return AST.resolveIdentifier(ast) !== undefined && ast._tag !== "Objects";
 };
 
 const fieldName = (name: PropertyKey): string => (typeof name === "symbol" ? name.toString() : String(name));
@@ -2666,30 +2608,45 @@ const isSelfExplanatoryPublicField = (schemaName: string, name: string): boolean
   ) || name.startsWith("x-");
 
 const hasUsefulFieldDescription = (property: AST.PropertySignature): boolean =>
-  hasOwnUsefulDescription(property.annotations) ||
+  hasOwnUsefulDescription(property.type.context?.annotations) ||
   hasOwnUsefulDescription(property.type.annotations) ||
+  hasOwnUsefulDescription(AST.resolve(property.type)) ||
   hasOptionalMemberUsefulDescription(property.type);
 
 const inheritsLandofileFieldDescription = (schemaName: string, name: PropertyKey): boolean => {
   if (!/^LandofileAuthoring(?:Shape|Fragment)(?:Wire)?$/.test(schemaName)) return false;
-  const property = AST.getPropertySignatures(LandofileShape.ast).find((entry) => entry.name === name);
+  const property = propertySignatures(LandofileShape.ast).find((entry) => entry.name === name);
   return property !== undefined && hasUsefulFieldDescription(property);
 };
 
-const schemaFromAst = (ast: AST.AST): Schema.Schema.AnyNoContext =>
-  Schema.make(ast) as Schema.Schema.AnyNoContext;
+const propertySignatures = (ast: AST.AST): ReadonlyArray<AST.PropertySignature> => {
+  if (AST.isObjects(ast)) return ast.propertySignatures;
+  if (ast.encoding !== undefined) return propertySignatures(AST.toEncoded(ast));
+  if (AST.isSuspend(ast)) return propertySignatures(ast.thunk());
+  if (AST.isUnion(ast)) {
+    const [first, ...rest] = ast.types.map(propertySignatures);
+    return (
+      first?.filter((property) =>
+        rest.every((members) => members.some((member) => member.name === property.name)),
+      ) ?? []
+    );
+  }
+  return [];
+};
+
+const schemaFromAst = (ast: AST.AST): Schema.Codec<unknown> => Schema.make<Schema.Codec<unknown>>(ast);
 
 const validateExamples = (
   schemaName: JsonSchemaName | string,
   path: string,
-  schema: Schema.Schema.AnyNoContext,
+  schema: Schema.Top,
 ): ReadonlyArray<PublicSchemaAnnotationIssue> => {
-  const examples = AST.getExamplesAnnotation(schema.ast);
-  if (examples._tag === "None") return [];
+  const examples = AST.resolveAt<ReadonlyArray<unknown>>("examples")(schema.ast);
+  if (examples === undefined) return [];
 
-  return examples.value.flatMap((example, index): ReadonlyArray<PublicSchemaAnnotationIssue> => {
-    const decoded = Schema.decodeUnknownEither(schema)(example);
-    if (Either.isRight(decoded)) return [];
+  return examples.flatMap((example, index): ReadonlyArray<PublicSchemaAnnotationIssue> => {
+    const decoded = Schema.decodeUnknownResult(schemaFromAst(schema.ast))(example);
+    if (Result.isSuccess(decoded)) return [];
     return [
       {
         schema: schemaName,
@@ -2707,14 +2664,14 @@ export const validatePublicSchemaAnnotations = (
   const issues: PublicSchemaAnnotationIssue[] = [];
   for (const [schemaName, schema] of Object.entries(registry)) {
     const isTopLevelExempt = exemptions.topLevel?.has(schemaName) ?? false;
-    if (!isTopLevelExempt && !hasSchemaStringAnnotation(schema.ast, AST.IdentifierAnnotationId)) {
+    if (!isTopLevelExempt && !hasSchemaStringAnnotation(schema.ast, "identifier")) {
       issues.push({
         schema: schemaName,
         path: schemaName,
         message: "Missing required identifier annotation.",
       });
     }
-    if (!isTopLevelExempt && !hasSchemaStringAnnotation(schema.ast, AST.TitleAnnotationId)) {
+    if (!isTopLevelExempt && !hasSchemaStringAnnotation(schema.ast, "title")) {
       issues.push({ schema: schemaName, path: schemaName, message: "Missing required title annotation." });
     }
     if (!isTopLevelExempt && !hasSchemaUsefulDescription(schema.ast)) {
@@ -2727,7 +2684,7 @@ export const validatePublicSchemaAnnotations = (
 
     issues.push(...validateExamples(schemaName, schemaName, schema));
 
-    for (const property of AST.getPropertySignatures(schema.ast)) {
+    for (const property of propertySignatures(schema.ast)) {
       const name = fieldName(property.name);
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
@@ -2737,7 +2694,7 @@ export const validatePublicSchemaAnnotations = (
         !(
           AST.isUnion(schema.ast) &&
           schema.ast.types.every((member) => {
-            const field = AST.getPropertySignatures(member).find((entry) => entry.name === property.name);
+            const field = propertySignatures(member).find((entry) => entry.name === property.name);
             return field !== undefined && hasUsefulFieldDescription(field);
           })
         ) &&
@@ -2778,76 +2735,17 @@ export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaRe
     }),
   }));
 
-const landofileJsonSchema = (): JsonObject => {
-  const schema = getJsonSchemaWithDeprecations(LandofileShape) as JsonObject;
-  schema.additionalProperties = false;
-  schema.patternProperties = {
-    "^x-": {
-      $id: "/schemas/unknown",
-      title: "unknown",
-    },
-  };
-  schema.propertyNames = undefined;
+const landofileJsonSchema = () => {
+  const schema = getJsonSchemaWithDeprecations(LandofileShape, { onExcessProperty: "error" });
+  repairLandofileExtensions(schema);
   return schema;
-};
-
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const repairTemplateLiteralExtensionRecords = (value: unknown): void => {
-  if (Array.isArray(value)) {
-    for (const entry of value) repairTemplateLiteralExtensionRecords(entry);
-    return;
-  }
-  if (!isJsonObject(value)) return;
-
-  const properties = value.properties;
-  const propertyNames = value.propertyNames;
-  const patternProperties = value.patternProperties;
-  if (
-    isJsonObject(properties) &&
-    Object.keys(properties).length > 0 &&
-    isJsonObject(propertyNames) &&
-    propertyNames.pattern === "^x-[\\s\\S]*?$" &&
-    isJsonObject(patternProperties) &&
-    Object.hasOwn(patternProperties, "")
-  ) {
-    value.additionalProperties = false;
-    value.patternProperties = { "^x-": patternProperties[""] };
-    value.propertyNames = undefined;
-  }
-
-  for (const nested of Object.values(value)) repairTemplateLiteralExtensionRecords(nested);
-};
-
-const expressionNodeDefinitions = () => {
-  const placeholder = { ExpressionNode: { anyOf: [] } };
-  const options = { definitions: placeholder } satisfies Parameters<typeof JSONSchema.fromAST>[1];
-  return {
-    ExpressionNode: {
-      anyOf: [
-        JSONSchema.fromAST(LiteralExpressionNode.ast, options),
-        JSONSchema.fromAST(ArrayLiteralExpressionNode.ast, options),
-        JSONSchema.fromAST(ObjectLiteralExpressionNode.ast, options),
-        JSONSchema.fromAST(PathExpressionNode.ast, options),
-        JSONSchema.fromAST(AccessExpressionNode.ast, options),
-        JSONSchema.fromAST(CallExpressionNode.ast, options),
-        JSONSchema.fromAST(ConditionalExpressionNode.ast, options),
-      ],
-    },
-  } satisfies Parameters<typeof JSONSchema.fromAST>[1]["definitions"];
 };
 
 const expressionJsonSchema = (
   schemaName: "ExpressionNode" | "ExpressionTemplate" | "AuthoringExpression",
 ) => {
   const schema = { ExpressionNode, ExpressionTemplate, AuthoringExpression }[schemaName];
-  const definitions = expressionNodeDefinitions();
-  return {
-    $schema: "http://json-schema.org/draft-07/schema#",
-    $defs: definitions,
-    ...JSONSchema.fromAST(schema.ast, { definitions }),
-  };
+  return getJsonSchemaWithDeprecations(schema);
 };
 
 const schemaForPublicName = (schemaName: JsonSchemaName) => {
@@ -2868,7 +2766,9 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     schemaName === "LandofileAuthoringShapeWire" ||
     schemaName === "LandofileAuthoringFragmentWire"
   ) {
-    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
+    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName], {
+      onExcessProperty: "error",
+    });
     repairTemplateLiteralExtensionRecords(schema);
     return schema;
   }
@@ -2878,5 +2778,5 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     schemaName === "AuthoringExpression"
   )
     return expressionJsonSchema(schemaName);
-  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName));
+  return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName), { onExcessProperty: "error" });
 };

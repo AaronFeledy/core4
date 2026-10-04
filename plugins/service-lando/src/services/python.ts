@@ -5,6 +5,7 @@ import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schem
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
@@ -51,10 +52,10 @@ const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, FrameworkPreset> = {
 };
 
 const PythonFeatureConfigSchema = Schema.Struct({
-  framework: Schema.Literal(...SUPPORTED_PYTHON_FRAMEWORKS),
-  version: Schema.Literal(...SUPPORTED_PYTHON_VERSIONS),
+  framework: Schema.Literals([...SUPPORTED_PYTHON_FRAMEWORKS]),
+  version: Schema.Literals([...SUPPORTED_PYTHON_VERSIONS]),
   port: Schema.Number,
-  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type PythonFeatureConfig = typeof PythonFeatureConfigSchema.Type;
 
@@ -108,7 +109,7 @@ const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["user"]);
   const appMount = {
     source: AbsolutePath.make(ctx.appRoot),
     target: APP_MOUNT_TARGET,
@@ -136,7 +137,7 @@ const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 10,
   });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  applyAuthoredProcessFields(ctx, ["entrypoint"]);
 
   ctx.addExtension("lando-service-python", {
     framework,
@@ -148,7 +149,7 @@ const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
 
 export const pythonServiceFeature: ServiceFeatureDefinition = {
   id: PYTHON_FEATURE_ID,
-  schema: PythonFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: PythonFeatureConfigSchema as Schema.Codec<unknown>,
   priority: PYTHON_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

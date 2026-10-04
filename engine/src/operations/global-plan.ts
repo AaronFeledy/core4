@@ -1,7 +1,13 @@
-import { Effect, ParseResult } from "effect";
+import { Effect } from "effect";
 
 import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type LandofileShape,
+  LandofileShape as LandofileShapeSchema,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   type AppPlannerError,
@@ -41,14 +47,8 @@ export type LoadGlobalPlanError =
 
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid Landofile."];
-};
+const validationIssues = (cause: unknown) =>
+  validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
 
 const validateGlobalLandofile = (
   filePath: string,
@@ -57,11 +57,11 @@ const validateGlobalLandofile = (
   decodeOrFail(LandofileShapeSchema, (cause) => {
     const issues = validationIssues(cause);
     return new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
+      message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
       file: filePath,
       issues,
     });
-  })(parsed, { onExcessProperty: "error" });
+  })(parsed, { onExcessProperty: "error", errors: "all" });
 
 export const decodeGlobalLandofile = (input: {
   readonly file: string;
@@ -92,31 +92,28 @@ const withProcessCwd = <A, E, R>(
     (original) => Effect.sync(() => process.chdir(original)),
   );
 
-export const loadGlobalPlan = (): Effect.Effect<
+export const loadGlobalPlan = Effect.fnUntraced(function* (): Effect.fn.Return<
   LoadGlobalPlanResult,
   LoadGlobalPlanError,
   LoadGlobalPlanServices
-> =>
-  Effect.gen(function* () {
-    const globalApp = yield* GlobalAppService;
-    const fileSystem = yield* FileSystem;
-    const paths = yield* globalApp.paths;
-    const exists = yield* fileSystem.exists(paths.distLandofile);
-    if (!exists) return { materialized: false, paths };
+> {
+  const globalApp = yield* GlobalAppService;
+  const fileSystem = yield* FileSystem;
+  const paths = yield* globalApp.paths;
+  const exists = yield* fileSystem.exists(paths.distLandofile);
+  if (!exists) return { materialized: false, paths };
 
-    const content = yield* fileSystem.readText(paths.distLandofile);
-    const landofile = yield* decodeGlobalLandofile({
-      file: paths.distLandofile,
-      content,
-      cwd: paths.root,
-    });
-    const registry = yield* RuntimeProviderRegistry;
-    const managed = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
-    const planner = yield* AppPlanner;
-    const landofileForPlan = { ...landofile, provider: MANAGED_PROVIDER_ID };
-    const plan = yield* withProcessCwd(paths.root, () =>
-      planner.plan(landofileForPlan, managed.capabilities),
-    );
-
-    return { materialized: true, paths, landofile: landofileForPlan, plan };
+  const content = yield* fileSystem.readText(paths.distLandofile);
+  const landofile = yield* decodeGlobalLandofile({
+    file: paths.distLandofile,
+    content,
+    cwd: paths.root,
   });
+  const registry = yield* RuntimeProviderRegistry;
+  const managed = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const planner = yield* AppPlanner;
+  const landofileForPlan = { ...landofile, provider: MANAGED_PROVIDER_ID };
+  const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofileForPlan, managed.capabilities));
+
+  return { materialized: true, paths, landofile: landofileForPlan, plan };
+});

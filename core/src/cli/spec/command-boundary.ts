@@ -31,7 +31,7 @@ export interface PreCommandFailureInput {
   readonly error: unknown;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
-  readonly resultSchema?: Schema.Schema.AnyNoContext;
+  readonly resultSchema?: Schema.Codec<unknown, unknown>;
   readonly failureExitCode?: number;
   readonly deprecationWarnings?: boolean;
   readonly io?: RendererIO;
@@ -105,7 +105,7 @@ interface CommandFlagValueValidationInput {
   readonly definitions: Readonly<Record<string, unknown>>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
-  readonly resultSchema: Schema.Schema.AnyNoContext;
+  readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly deprecationWarnings?: boolean;
   readonly allowUnknownFlags?: boolean;
 }

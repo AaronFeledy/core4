@@ -7,7 +7,7 @@ import { PathsService, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 
 test("lints user includes against runtime roots rather than a conflicting process profile", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-profile-lint-"));
@@ -25,7 +25,7 @@ test("lints user includes against runtime roots rather than a conflicting proces
     process.env.LANDO_USER_CONF_ROOT = join(root, "host");
     const result = await Effect.runPromise(
       appConfigLint({ cwd: root }).pipe(
-        Effect.provide(PluginRegistryLive),
+        Effect.provide(PluginRegistryLayer.layer),
         Effect.provideService(PathsService, paths),
         Effect.provideService(
           StateStore,
@@ -40,6 +40,64 @@ test("lints user includes against runtime roots rather than a conflicting proces
   } finally {
     if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reports an array-position expression failure with a numeric path segment", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-expression-lint-index-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: expression-lint",
+        "runtime: 4",
+        "services:",
+        "  database:",
+        "    type: mariadb",
+        "tooling:",
+        "  seed:",
+        "    service: database",
+        "    cmds:",
+        '      - "echo ok"',
+        '      - "echo {{ app.nope }}"',
+        "",
+      ].join("\n"),
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.violations).toEqual([
+      { path: ["tooling", "seed", "cmds", 1], message: expect.any(String) },
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reports a deferred expression failure as a lint violation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-expression-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: expression-lint",
+        "runtime: 4",
+        "services:",
+        "  database:",
+        "    type: mariadb",
+        '    database: "{{ app.nope }}"',
+        "",
+      ].join("\n"),
+    );
+    const result = await Effect.runPromise(
+      appConfigLint({ cwd: root }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    expect(result.valid).toBe(false);
+    expect(result.violations).toMatchObject([{ path: ["services", "database", "database"] }]);
+    expect(result.violations[0]?.message).toBeTruthy();
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

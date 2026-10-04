@@ -2,7 +2,7 @@ import { discoverHostGpgAgent } from "@lando/engine/subsystems/gpg-agent/discove
 import { resolveGpgAgentIntent } from "@lando/engine/subsystems/gpg-agent/intent";
 import type { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
-import { Effect, Either, Option } from "effect";
+import { type Context, Effect, Option, Result } from "effect";
 
 export const GPG_AGENT_SECURITY =
   "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
@@ -14,46 +14,45 @@ export interface GpgAgentPostureDetail {
   readonly security: string;
 }
 
-export const gpgAgentPostureDetail = (input: {
+export const gpgAgentPostureDetail = Effect.fnUntraced(function* (input: {
   readonly landofile: Pick<LandofileShape, "gpgAgent">;
   readonly globalGpg?: GlobalConfig["gpgAgent"];
-  readonly runner?: Pick<ProcessRunner["Type"], "run">;
+  readonly runner?: Pick<Context.Service.Shape<typeof ProcessRunner>, "run">;
   readonly exists?: (path: string) => Promise<boolean>;
-}): Effect.Effect<GpgAgentPostureDetail | undefined> =>
-  Effect.gen(function* () {
-    const intent = resolveGpgAgentIntent({
-      landofile: input.landofile,
-      ...(input.globalGpg === undefined ? {} : { globalConfig: { gpgAgent: input.globalGpg } }),
-    });
-    if (intent.forward === false) return undefined;
-    const provided = input.runner;
-    const service = provided === undefined ? yield* Effect.serviceOption(ProcessRunner) : Option.none();
-    const runner = provided ?? (Option.isSome(service) ? service.value : undefined);
-    const exists = input.exists;
-    const discovered =
-      runner === undefined
-        ? Either.left(undefined)
-        : yield* Effect.either(
-            discoverHostGpgAgent({
-              runner,
-              ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
-              // Doctor only observes: it must never start a gpg-agent on the host.
-              launch: false,
-              ...(exists === undefined
-                ? {}
-                : { inspectPath: async (path: string) => ((await exists(path)) ? "socket" : "missing") }),
-            }),
-          );
-    const exported =
-      runner === undefined
-        ? Either.left(undefined)
-        : yield* Effect.either(runner.run({ cmd: "gpg", args: ["--batch", "--export"], timeoutMs: 5_000 }));
-    return {
-      forward: true,
-      upstream: Either.isRight(discovered)
-        ? { source: discovered.right.source, reachable: true }
-        : { source: "none", reachable: false },
-      keyringExported: Either.isRight(exported) && exported.right.exitCode === 0,
-      security: GPG_AGENT_SECURITY,
-    };
+}): Effect.fn.Return<GpgAgentPostureDetail | undefined> {
+  const intent = resolveGpgAgentIntent({
+    landofile: input.landofile,
+    ...(input.globalGpg === undefined ? {} : { globalConfig: { gpgAgent: input.globalGpg } }),
   });
+  if (intent.forward === false) return undefined;
+  const provided = input.runner;
+  const service = provided === undefined ? yield* Effect.serviceOption(ProcessRunner) : Option.none();
+  const runner = provided ?? (Option.isSome(service) ? service.value : undefined);
+  const exists = input.exists;
+  const discovered =
+    runner === undefined
+      ? Result.fail(undefined)
+      : yield* Effect.result(
+          discoverHostGpgAgent({
+            runner,
+            ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
+            // Doctor only observes: it must never start a gpg-agent on the host.
+            launch: false,
+            ...(exists === undefined
+              ? {}
+              : { inspectPath: async (path: string) => ((await exists(path)) ? "socket" : "missing") }),
+          }),
+        );
+  const exported =
+    runner === undefined
+      ? Result.fail(undefined)
+      : yield* Effect.result(runner.run({ cmd: "gpg", args: ["--batch", "--export"], timeoutMs: 5_000 }));
+  return {
+    forward: true,
+    upstream: Result.isSuccess(discovered)
+      ? { source: discovered.success.source, reachable: true }
+      : { source: "none", reachable: false },
+    keyringExported: Result.isSuccess(exported) && exported.success.exitCode === 0,
+    security: GPG_AGENT_SECURITY,
+  };
+});

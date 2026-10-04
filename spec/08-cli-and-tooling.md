@@ -792,6 +792,8 @@ Payloadless commands return an empty result object.
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
+Validation failures carry structured `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `suggestion`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, so one run reports every problem in the file.
+
 #### 8.11.2 The single serialization seam
 
 `encodeCommandResult` is the only JSON result serializer. It schema-encodes success or tagged failure, preserves exit status, wraps the envelope, and passes it through `RedactionService` before output. Per-command render helpers produce only human formats. §13.4 MUST reject any other command-result `JSON.stringify` path.
@@ -827,5 +829,23 @@ The ordered path is schema encode → optional projection → envelope → redac
 - Non-JSON format with projection or jq is an error.
 - On command failure, jq still evaluates the failure envelope.
 - `encodeCommandResult` remains the only serializer.
+
+#### 8.11.6 Command tracing and the `trace` envelope field
+
+A global `--trace` flag (and `LANDO_TRACE=1` through the env helper) enables the tracer for one dispatcher-routed command. Without it, and without a configured exporter (below), the CLI composition provides `References.TracerEnabled` as `false` and the level-`none` fast path is unchanged.
+
+Each traced command runs under one root span `lando <command-id>` with init, run, and render children; §6 `Effect.fn` boundaries supply the rest. The Lando `Tracer` retains finished spans in a bounded buffer of 10,000 and counts overflow.
+
+Output:
+
+- Text renderers print a timing tree to stderr after the result, collapsing spans under 1% of the root duration.
+- `--format json` adds an optional `trace` envelope field typed by the public `CommandTrace` schema: `{ totalDurationMs, spans: [{ id, name, parent?, startOffsetMs, durationMs, status: ok|error|interrupted, attributes }], droppedSpans }`. JSON spans are not collapsed. `CommandTrace` is published from `@lando/sdk`, registered in `JSON_SCHEMA_REGISTRY`, and snapshot-governed by §13.2.
+- Span attributes pass through `RedactionService` before retention, rendering, or export.
+
+Opt-in OTLP export:
+
+- Global config `tracing.otlp.endpoint` (OTLP/HTTP base URL; Lando posts JSON to `<endpoint>/v1/traces`) and `tracing.otlp.headers` (values are secrets in every config view). When both are unset, `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` (`k=v,k2=v2`) are read through the env helper. Config wins over env.
+- When configured, spans export over Lando's `HttpClient` with resource attributes `service.name=lando`, `service.version`, `os.type`, and `host.arch`.
+- Export is fire-and-forget. Export failure MUST NOT change exit status or result output. The flush runs after the completion line and is bounded to 1 second. Nothing is sent when neither config nor env names an endpoint.
 
 ---

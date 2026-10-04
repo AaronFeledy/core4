@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import {
   type ExpressionContext,
@@ -14,10 +14,10 @@ const filePath = "/app/.lando.yml";
 
 const parseTemplate = (source: string): ExpressionTemplate => {
   const result = parseExpressionEither(source, { filePath });
-  if (Either.isLeft(result)) {
-    throw result.left;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.right;
+  return result.success;
 };
 
 const interpolationExpression = (source: string): ExpressionNode => {
@@ -32,36 +32,36 @@ const interpolationExpression = (source: string): ExpressionNode => {
 
 const evaluateExpressionValue = (source: string, context: ExpressionContext = {}): unknown => {
   const result = evaluateExpressionEither(interpolationExpression(source), context, { filePath });
-  if (Either.isLeft(result)) {
-    throw result.left;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.right;
+  return result.success;
 };
 
 const evaluateTemplateValue = (source: string, context: ExpressionContext = {}): unknown => {
   const result = evaluateTemplateEither(parseTemplate(source), context, { filePath });
-  if (Either.isLeft(result)) {
-    throw result.left;
+  if (Result.isFailure(result)) {
+    throw result.failure;
   }
-  return result.right;
+  return result.success;
 };
 
 const evaluateExpressionFailure = (source: string, context: ExpressionContext = {}) => {
   const result = evaluateExpressionEither(interpolationExpression(source), context, { filePath });
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isRight(result)) {
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) {
     throw new Error("expected evaluation failure");
   }
-  return result.left;
+  return result.failure;
 };
 
 const evaluateTemplateFailure = (source: string, context: ExpressionContext = {}) => {
   const result = evaluateTemplateEither(parseTemplate(source), context, { filePath });
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isRight(result)) {
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isSuccess(result)) {
     throw new Error("expected template evaluation failure");
   }
-  return result.left;
+  return result.failure;
 };
 
 describe("evaluateExpression happy paths", () => {
@@ -257,7 +257,7 @@ describe("evaluateExpression forbidden helpers", () => {
     );
 
     // Then
-    expect(result).toEqual(Either.right({ path: "./corp.pem", content: "certificate" }));
+    expect(result).toEqual(Result.succeed({ path: "./corp.pem", content: "certificate" }));
   });
 
   for (const [helper, source] of [

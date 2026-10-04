@@ -8,20 +8,20 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { laravelDecomposer } from "../../src/recipes/builtin/laravel/decomposer.ts";
 import { laravelRecipeYaml } from "../../src/recipes/builtin/laravel/manifest.ts";
 import { laravelProducer, laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
 
 const defaults = {
-  php: "8.3",
+  php: "8.4",
   database: "mariadb:11.4",
   composer: "2",
   webroot: "/app/public",
   worker: false,
 };
 const alternate = {
-  php: "8.4",
+  php: "8.1",
   database: "postgres:16",
   composer: "2.7.7",
   webroot: "/app/web",
@@ -161,6 +161,6 @@ describe("Laravel deterministic decomposition", () => {
     const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
     const { recipe: _recipe, ...fragment } = result.fragment;
-    expect(Either.getOrThrow(renderRecipeSnapshot(laravelSnapshot, options))).toEqual(fragment);
+    expect(Result.getOrThrow(renderRecipeSnapshot(laravelSnapshot, options))).toEqual(fragment);
   });
 });

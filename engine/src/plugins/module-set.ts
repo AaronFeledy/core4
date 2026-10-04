@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { ConfigTranslatorConflictError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -221,12 +221,12 @@ const addConfigTranslators = (
 
 const capabilityIndexCache = new WeakMap<
   ReadonlyArray<LandoPluginModule>,
-  Either.Either<PluginCapabilityIndex, PluginCapabilityIndexError>
+  Result.Result<PluginCapabilityIndex, PluginCapabilityIndexError>
 >();
 
 export const makePluginCapabilityIndex = (
   modules: ReadonlyArray<LandoPluginModule>,
-): Either.Either<PluginCapabilityIndex, PluginCapabilityIndexError> => {
+): Result.Result<PluginCapabilityIndex, PluginCapabilityIndexError> => {
   const cached = capabilityIndexCache.get(modules);
   if (cached !== undefined) return cached;
   const computed = computePluginCapabilityIndex(modules);
@@ -236,7 +236,7 @@ export const makePluginCapabilityIndex = (
 
 const computePluginCapabilityIndex = (
   modules: ReadonlyArray<LandoPluginModule>,
-): Either.Either<PluginCapabilityIndex, PluginCapabilityIndexError> => {
+): Result.Result<PluginCapabilityIndex, PluginCapabilityIndexError> => {
   const runtimeProviders = mutableMapFor<"runtimeProviders">();
   const commands = mutableMapFor<"commands">();
   const configTranslators = mutableMapFor<"configTranslators">();
@@ -259,7 +259,7 @@ const computePluginCapabilityIndex = (
 
   for (const module of modules) {
     const mismatch = descriptorMismatch(module);
-    if (mismatch !== undefined) return Either.left(mismatch);
+    if (mismatch !== undefined) return Result.fail(mismatch);
 
     const add = <Key, Value>(
       target: Map<Key, Value>,
@@ -295,12 +295,12 @@ const computePluginCapabilityIndex = (
       ),
     ];
     const duplicate = additions.find((error) => error !== undefined);
-    if (duplicate !== undefined) return Either.left(duplicate);
+    if (duplicate !== undefined) return Result.fail(duplicate);
     const translatorConflict = addConfigTranslators(configTranslators, configTranslatorOwners, module);
-    if (translatorConflict !== undefined) return Either.left(translatorConflict);
+    if (translatorConflict !== undefined) return Result.fail(translatorConflict);
   }
 
-  return Either.right({
+  return Result.succeed({
     runtimeProviders,
     commands,
     configTranslators,

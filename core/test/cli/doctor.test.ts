@@ -71,25 +71,26 @@ const resultEnvelope = (ndjson: string) => {
   return frame.envelope;
 };
 
-const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
-  list: Effect.succeed([ProviderId.make(provider.id)]),
-  capabilities: Effect.succeed(provider.capabilities),
-  select: () => Effect.succeed(provider),
-});
+const buildRegistry = (provider: typeof TestRuntimeProvider) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
 
 const buildConfigService = (
   overrides: Partial<GlobalConfig> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
     ...overrides,
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const buildLayers = (
@@ -98,7 +99,7 @@ const buildLayers = (
 ): Layer.Layer<ConfigService | PathsService | RuntimeProviderRegistry> =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-    Layer.succeed(ConfigService, buildConfigService(configOverrides)),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService(configOverrides))),
     doctorPathsLayer,
   );
 
@@ -493,7 +494,7 @@ describe("meta:doctor command", () => {
   liveTest(
     "live: Windows provider-lando doctor surfaces win32 capabilities and socket/machine status",
     async () => {
-      const { makeProviderLayer } = await import("@lando/provider-lando");
+      const { layer: makeProviderLayer } = await import("@lando/provider-lando");
       const { RuntimeProvider } = await import("@lando/sdk/services");
 
       const layer = makeProviderLayer({ platform: "win32", sanitizeAppliedPlan: stripHostProxyRunLando });
@@ -504,7 +505,7 @@ describe("meta:doctor command", () => {
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(RuntimeProviderRegistry, registry),
-              Layer.succeed(ConfigService, buildConfigService()),
+              Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
               doctorPathsLayer,
             ),
           ),
@@ -528,7 +529,7 @@ describe("meta:doctor command", () => {
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-              Layer.succeed(ConfigService, buildConfigService({ defaultProviderId: null })),
+              Layer.succeed(ConfigService, ConfigService.of(buildConfigService({ defaultProviderId: null }))),
               doctorPathsLayer,
             ),
           ),
@@ -670,7 +671,7 @@ describe("meta:doctor command", () => {
             Effect.provide(
               Layer.mergeAll(
                 Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-                Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+                Layer.succeed(ConfigService, ConfigService.of(buildConfigServiceWith(dataRoot))),
                 doctorPathsLayer,
               ),
             ),
@@ -714,11 +715,11 @@ describe("meta:doctor command", () => {
       try {
         const socket = "/run/user/1000/podman/podman.sock";
         await writeProviderLandoState(dataRoot, socket);
-        const registry = {
+        const registry = RuntimeProviderRegistry.of({
           list: Effect.succeed([ProviderId.make("podman")]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.die("provider-podman should not be constructed when conflict is pre-detected"),
-        };
+        });
         const result = await Effect.runPromise(
           doctor({
             env: { LANDO_PROVIDER: "podman", XDG_RUNTIME_DIR: "/run/user/1000" },
@@ -727,7 +728,7 @@ describe("meta:doctor command", () => {
             Effect.provide(
               Layer.mergeAll(
                 Layer.succeed(RuntimeProviderRegistry, registry),
-                Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+                Layer.succeed(ConfigService, ConfigService.of(buildConfigServiceWith(dataRoot))),
                 doctorPathsLayer,
               ),
             ),
@@ -762,7 +763,7 @@ describe("meta:doctor command", () => {
             Effect.provide(
               Layer.mergeAll(
                 Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-                Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+                Layer.succeed(ConfigService, ConfigService.of(buildConfigServiceWith(dataRoot))),
                 doctorPathsLayer,
               ),
             ),

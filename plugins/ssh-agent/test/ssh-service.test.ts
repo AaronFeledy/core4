@@ -6,7 +6,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { sshService } from "../src/ssh-service.ts";
+import { layer as sshService } from "../src/ssh-service.ts";
 
 const globalApp = {
   id: "global" as const,
@@ -27,15 +27,18 @@ const globalApp = {
     }),
 };
 
-const setup = (userDataRoot: string) =>
-  Effect.gen(function* () {
+const setup = Effect.fnUntraced(
+  function* (_userDataRoot: string) {
     const ssh = yield* SshService;
     return yield* ssh.setup({ force: false });
-  }).pipe(
-    Effect.provide(sshService),
-    Effect.provideService(PathsService, makeLandoPaths({ platform: "linux", userDataRoot, env: {} })),
-    Effect.provideService(GlobalAppService, globalApp),
-  );
+  },
+  Effect.provide(sshService),
+  (effect, userDataRoot) =>
+    effect.pipe(
+      Effect.provideService(PathsService, makeLandoPaths({ platform: "linux", userDataRoot, env: {} })),
+    ),
+  Effect.provideService(GlobalAppService, globalApp),
+);
 
 test("publishes both the host socket and the runtime volume", async () => {
   const socket = await Effect.runPromise(

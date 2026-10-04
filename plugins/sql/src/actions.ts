@@ -72,7 +72,7 @@ const requireExecOk = (
         }),
       );
 
-export const runExport = (
+export const runExport = Effect.fn("Sql.export")(function* (
   mover: SqlMover,
   exec: SqlExec,
   input: {
@@ -84,10 +84,10 @@ export const runExport = (
     readonly file: string;
     readonly compression: DumpCompression;
   },
-) => {
+) {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
-  return withHostDumpCompression({
+  return yield* withHostDumpCompression({
     path: input.file,
     compression: input.compression,
     direction: "export",
@@ -125,9 +125,9 @@ export const runExport = (
       });
     },
   });
-};
+});
 
-export const runImport = (
+export const runImport = Effect.fn("Sql.import")(function* (
   mover: SqlMover,
   exec: SqlExec,
   input: {
@@ -140,10 +140,10 @@ export const runImport = (
     readonly compression: DumpCompression;
     readonly expectedDigest?: string;
   },
-) => {
+) {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
-  return withHostDumpCompression({
+  return yield* withHostDumpCompression({
     path: input.file,
     compression: input.compression,
     direction: "import",
@@ -189,19 +189,19 @@ export const runImport = (
       });
     },
   });
-};
+});
 
-export const runReset = (
+export const runReset = Effect.fn("Sql.reset")(function* (
   exec: SqlExec,
   service: string,
   family: SqlFamily,
   creds: SqlCreds,
   env: Readonly<Record<string, string>>,
-) => {
+) {
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
   const command = resetCommand(family, usesMysqlRoot ? { user: "root", database: creds.database } : creds);
   const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
-  return exec(service, command, resetEnv).pipe(
+  return yield* exec(service, command, resetEnv).pipe(
     Effect.flatMap((result) => requireExecOk(result, service, command)),
   );
-};
+});

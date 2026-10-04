@@ -32,7 +32,7 @@ export interface HostPathAccess {
 
 export interface DiscoverProxydInput {
   readonly exists: HostPathAccess["exists"];
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
 }
 
 export type SocketProxyInstallOutcome =
@@ -47,16 +47,16 @@ export type SocketProxyStartOutcome =
 
 export interface InstallSocketProxyInput extends HostPathAccess {
   readonly user: string;
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
-  readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
+  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly serviceType?: SocketProxyServiceType;
   readonly httpTarget: number;
   readonly httpsTarget: number;
 }
 
 export interface StartSocketsInput {
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
-  readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
+  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly probeForward?: (
     host: string,
     port: number,
@@ -68,36 +68,33 @@ const SOCKET_UNITS = ["lando-proxy-http.socket", "lando-proxy-https.socket"] as 
 const HTTP_SERVICE_PATH = "/etc/systemd/system/lando-proxy-http.service";
 const HTTPS_SERVICE_PATH = "/etc/systemd/system/lando-proxy-https.service";
 
-export const discoverProxydBinary = (
+export const discoverProxydBinary = Effect.fn("SocketProxy.discoverProxydBinary")(function* (
   input: DiscoverProxydInput,
-): Effect.Effect<string, ProxydBinaryNotFound> =>
-  Effect.gen(function* () {
-    for (const candidate of PROXYD_CANDIDATES) {
-      if (yield* input.exists(candidate)) return candidate;
-    }
-    const lookup = yield* input.processRunner
-      .run({ cmd: "sh", args: ["-c", "command -v systemd-socket-proxyd"] })
-      .pipe(Effect.catchAll(() => Effect.succeed(failedResult(1))));
-    const found = lookup.stdout.trim();
-    if (lookup.exitCode === 0 && found.length > 0) return found;
-    return yield* Effect.fail(
-      new ProxydBinaryNotFound({
-        message: "systemd-socket-proxyd is not installed on this host.",
-        remediation:
-          "Install systemd (systemd-socket-proxyd) or continue with high-port Traefik authorities.",
-      }),
-    );
-  });
+) {
+  for (const candidate of PROXYD_CANDIDATES) {
+    if (yield* input.exists(candidate)) return candidate;
+  }
+  const lookup = yield* input.processRunner
+    .run({ cmd: "sh", args: ["-c", "command -v systemd-socket-proxyd"] })
+    .pipe(Effect.catch(() => Effect.succeed(failedResult(1))));
+  const found = lookup.stdout.trim();
+  if (lookup.exitCode === 0 && found.length > 0) return found;
+  return yield* Effect.fail(
+    new ProxydBinaryNotFound({
+      message: "systemd-socket-proxyd is not installed on this host.",
+      remediation: "Install systemd (systemd-socket-proxyd) or continue with high-port Traefik authorities.",
+    }),
+  );
+});
 
-export const isSocketProxyInstalled = (access: HostPathAccess): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    for (const path of SOCKET_UNIT_PATHS) {
-      if (!(yield* access.exists(path))) return false;
-      const text = yield* access.readText(path).pipe(Effect.catchAll(() => Effect.succeed("")));
-      if (!text.includes(UNIT_MARKER)) return false;
-    }
-    return true;
-  });
+export const isSocketProxyInstalled = Effect.fnUntraced(function* (access: HostPathAccess) {
+  for (const path of SOCKET_UNIT_PATHS) {
+    if (!(yield* access.exists(path))) return false;
+    const text = yield* access.readText(path).pipe(Effect.catch(() => Effect.succeed("")));
+    if (!text.includes(UNIT_MARKER)) return false;
+  }
+  return true;
+});
 
 const hopTargetPattern = (port: number): RegExp => new RegExp(`127\\.0\\.0\\.1:${port}(?!\\d)`, "u");
 
@@ -109,85 +106,71 @@ const hopPortFromUnit = (text: string): number | undefined => {
   return Number.isSafeInteger(port) && port > 0 ? port : undefined;
 };
 
-export const readHelperHopTargets = (
-  access: HostPathAccess,
-): Effect.Effect<{ readonly httpTarget: number; readonly httpsTarget: number } | undefined> =>
-  Effect.gen(function* () {
-    const httpUnit = yield* access
-      .readText(HTTP_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-    const httpsUnit = yield* access
-      .readText(HTTPS_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-    const httpTarget = hopPortFromUnit(httpUnit);
-    const httpsTarget = hopPortFromUnit(httpsUnit);
-    if (httpTarget === undefined || httpsTarget === undefined) return undefined;
-    return { httpTarget, httpsTarget };
-  });
+export const readHelperHopTargets = Effect.fnUntraced(function* (access: HostPathAccess) {
+  const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+  const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+  const httpTarget = hopPortFromUnit(httpUnit);
+  const httpsTarget = hopPortFromUnit(httpsUnit);
+  if (httpTarget === undefined || httpsTarget === undefined) return undefined;
+  return { httpTarget, httpsTarget };
+});
 
-const hopsMatchTargets = (
+const hopsMatchTargets = Effect.fnUntraced(function* (
   access: HostPathAccess,
   httpTarget: number,
   httpsTarget: number,
-): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const httpUnit = yield* access
-      .readText(HTTP_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-    const httpsUnit = yield* access
-      .readText(HTTPS_SERVICE_PATH)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-    const hopPattern = /127\.0\.0\.1:\d+/u;
-    if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
-    return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
-  });
+) {
+  const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+  const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+  const hopPattern = /127\.0\.0\.1:\d+/u;
+  if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
+  return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
+});
 
-export const installSocketProxy = (
+export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(function* (
   input: InstallSocketProxyInput,
-): Effect.Effect<SocketProxyInstallOutcome> =>
-  Effect.gen(function* () {
-    if (yield* isSocketProxyInstalled(input)) {
-      if (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget)) {
-        return { kind: "already-installed" };
-      }
+): Effect.fn.Return<SocketProxyInstallOutcome> {
+  if (yield* isSocketProxyInstalled(input)) {
+    if (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget)) {
+      return { kind: "already-installed" };
     }
-    const binary = yield* discoverProxydBinary(input).pipe(
-      Effect.catchTag("ProxydBinaryNotFound", () => Effect.succeed(undefined)),
-    );
-    if (binary === undefined) return { kind: "proxyd-missing" };
-    const script = buildInstallScript({
-      user: input.user,
-      binary,
-      serviceType: input.serviceType ?? "notify",
-      httpTarget: input.httpTarget,
-      httpsTarget: input.httpsTarget,
-    });
-    const elevated = yield* input.privilege.elevate(["/bin/sh", "-c", script]);
-    if (elevated.exitCode !== 0) {
-      return { kind: "elevation-refused", exitCode: elevated.exitCode, stderr: elevated.stderr };
-    }
-    return { kind: "installed" };
+  }
+  const binary = yield* discoverProxydBinary(input).pipe(
+    Effect.catchTag("ProxydBinaryNotFound", () => Effect.succeed(undefined)),
+  );
+  if (binary === undefined) return { kind: "proxyd-missing" };
+  const script = buildInstallScript({
+    user: input.user,
+    binary,
+    serviceType: input.serviceType ?? "notify",
+    httpTarget: input.httpTarget,
+    httpsTarget: input.httpsTarget,
   });
+  const elevated = yield* input.privilege.elevate(["/bin/sh", "-c", script]);
+  if (elevated.exitCode !== 0) {
+    return { kind: "elevation-refused", exitCode: elevated.exitCode, stderr: elevated.stderr };
+  }
+  return { kind: "installed" };
+});
 
-const controlSockets = (
+const controlSockets = Effect.fn("SocketProxy.controlSockets")(function* (
   verb: "start" | "stop",
   input: StartSocketsInput,
-): Effect.Effect<SocketProxyStartOutcome> =>
-  Effect.gen(function* () {
-    const args = [verb, ...SOCKET_UNITS];
-    const unelevated = yield* input.processRunner
-      .run({ cmd: "systemctl", args })
-      .pipe(Effect.catchAll((error) => Effect.succeed(failedResult(1, error.message))));
-    const result =
-      unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["systemctl", ...args]);
-    if (result.exitCode !== 0) {
-      return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
-    }
-    const probe = input.probeForward ?? probeForward;
-    const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT, "http");
-    const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT, "https");
-    return { kind: "started", http, https };
-  });
+): Effect.fn.Return<SocketProxyStartOutcome> {
+  const args = [verb, ...SOCKET_UNITS];
+  const unelevated = yield* input.processRunner
+    .run({ cmd: "systemctl", args })
+    .pipe(Effect.catch((error) => Effect.succeed(failedResult(1, error.message))));
+  const result =
+    unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["systemctl", ...args]);
+  if (result.exitCode !== 0) {
+    return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
+  }
+  const probe = input.probeForward ?? probeForward;
+  const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT, "http");
+  const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT, "https");
+  return { kind: "started", http, https };
+});
 
 export const startSockets = (input: StartSocketsInput): Effect.Effect<SocketProxyStartOutcome> =>
   controlSockets("start", input);

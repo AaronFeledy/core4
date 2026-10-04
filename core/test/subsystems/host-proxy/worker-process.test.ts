@@ -30,7 +30,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
     source: "worker-process.test",
     runtime: 4,
   },
@@ -154,7 +154,7 @@ describe("detached host-proxy worker payload delivery", () => {
     try {
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Success") throw new Error("Expected oversized startup to fail.");
-      const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toMatchObject({
         _tag: "HostProxyTransportUnavailableError",
         message: "Host-proxy worker startup payload exceeds the 16 MiB limit.",
@@ -192,7 +192,7 @@ describe("detached host-proxy worker payload delivery", () => {
     try {
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Success") throw new Error("Expected payload delivery deadline to fail.");
-      const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toMatchObject({
         _tag: "HostProxyTransportUnavailableError",
         message: "Host-proxy worker startup payload delivery timed out after 15 seconds.",
@@ -275,7 +275,7 @@ describe("detached host-proxy worker readiness diagnostics", () => {
     try {
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Success") throw new Error("Expected crashed worker to fail.");
-      const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toMatchObject({
         _tag: "HostProxyTransportUnavailableError",
         remediation: `Inspect ${join(logsDir, "host-proxy-worker-demo.log")} for the worker crash.`,

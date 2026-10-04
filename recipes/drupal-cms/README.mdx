@@ -23,7 +23,7 @@ lando start
 lando info
 ```
 
-`--yes` uses PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The generated `.lando/php/drupal-cms.ini` sets a 512M PHP memory limit for both Drush and web requests. Edit that file if your site needs another limit. Pass `--answer` to change the stack choices. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The generated `.lando/php/drupal-cms.ini` sets a 512M PHP memory limit for both Drush and web requests. Edit that file if your site needs another limit. Pass `--answer` to change the stack choices. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe drupal-cms --name=my-drupal-cms-app --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2

@@ -92,7 +92,7 @@ test("uses the inspected identity instead of an edited-plan name-based start", a
     resume: (_service: string, identity: { readonly containerId: string; readonly imageIdentity: string }) =>
       Effect.sync(() => {
         resumed.push({ containerId: identity.containerId, imageIdentity: identity.imageIdentity });
-      }).pipe(Effect.zipRight(harness.deps.resume(_service, identity))),
+      }).pipe(Effect.andThen(harness.deps.resume(_service, identity))),
   };
 
   const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
@@ -118,7 +118,7 @@ test("returns a running database to running when nonmutating snapshot capture fa
   const deps = {
     ...harness.deps,
     snapshot: (...args: Parameters<typeof harness.deps.snapshot>) =>
-      harness.deps.snapshot(...args).pipe(Effect.zipRight(Effect.fail(new FakeRestoreError()))),
+      harness.deps.snapshot(...args).pipe(Effect.andThen(Effect.fail(new FakeRestoreError()))),
   };
 
   const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
@@ -147,7 +147,7 @@ test("rejects a replaced volume when replacement occurs while waiting for its lo
     withVolumeLock: <A, E>(_instance: string, body: Effect.Effect<A, E>) =>
       Effect.sync(() => {
         replaced = true;
-      }).pipe(Effect.zipRight(body)),
+      }).pipe(Effect.andThen(body)),
   };
 
   // When: reset acquires the old instance's lock.

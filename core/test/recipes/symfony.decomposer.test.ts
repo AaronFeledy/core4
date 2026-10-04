@@ -7,13 +7,13 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { symfonyDecomposer } from "../../src/recipes/builtin/symfony/decomposer.ts";
 import { symfonyRecipeYaml } from "../../src/recipes/builtin/symfony/manifest.ts";
 import { symfonyProducer, symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
 
-const defaults = { php: "8.3", database: "postgres:16", composer: "2", webroot: "/app/public" };
-const alternate = { php: "8.4", database: "mariadb:11.4", composer: "2.7.7", webroot: "/app/web" };
+const defaults = { php: "8.4", database: "postgres:16", composer: "2", webroot: "/app/public" };
+const alternate = { php: "8.1", database: "mariadb:11.4", composer: "2.7.7", webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: symfonyProducer, options: defaults, secrets: {} };
 const decomposer = symfonyDecomposer({
   redactor: { redactString: (text) => text, redactValue: (value) => value },
@@ -138,7 +138,7 @@ describe("symfony decomposition", () => {
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
     const { recipe: _recipe, ...fragment } = result.fragment;
     // When the declarative snapshot renders once.
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(symfonySnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(symfonySnapshot, options));
     // Then expression-shaped strings remain inert authoring data.
     expect<unknown>(rendered).toEqual(fragment);
   });

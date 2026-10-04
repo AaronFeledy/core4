@@ -24,7 +24,7 @@ const lampOptions = {
     composer: enumeration(["2", "2.7.7", "false"]),
     webroot: { kind: "string" },
   },
-  defaults: { php: "8.3", database: "mariadb:11.4", composer: "2", webroot: "/app" },
+  defaults: { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "/app" },
   renames: composerRename,
 } as const;
 const drupalVersions = ["11", "10"] as const;
@@ -49,7 +49,7 @@ export const BUNDLED_RECIPE_OPTION_MAPS: ReadonlyMap<string, RecipeOptionMap> = 
       },
       defaults: {
         drupal: "11",
-        php: "8.3",
+        php: "8.4",
         webserver: "apache",
         database: "mariadb:11.4",
         composer: "2",
@@ -62,8 +62,8 @@ export const BUNDLED_RECIPE_OPTION_MAPS: ReadonlyMap<string, RecipeOptionMap> = 
     "wordpress",
     {
       recipeId: "wordpress",
-      options: { php: enumeration(["8.2", "8.3"]), redis: { kind: "boolean" } },
-      defaults: { php: "8.3", redis: false },
+      options: { php: enumeration(PHP_VERSIONS), redis: { kind: "boolean" } },
+      defaults: { php: "8.4", redis: false },
       renames: composerRename,
     },
   ],
@@ -72,8 +72,8 @@ export const BUNDLED_RECIPE_OPTION_MAPS: ReadonlyMap<string, RecipeOptionMap> = 
     "lemp",
     {
       recipeId: "lemp",
-      options: { php: enumeration(["8.2", "8.3"]) },
-      defaults: { php: "8.3" },
+      options: { php: enumeration(PHP_VERSIONS) },
+      defaults: { php: "8.4" },
       renames: composerRename,
     },
   ],
@@ -89,7 +89,7 @@ export const BUNDLED_RECIPE_OPTION_MAPS: ReadonlyMap<string, RecipeOptionMap> = 
         worker: { kind: "boolean" },
       },
       defaults: {
-        php: "8.3",
+        php: "8.4",
         database: "mariadb:11.4",
         composer: "2",
         webroot: "/app/public",
@@ -108,7 +108,7 @@ export const BUNDLED_RECIPE_OPTION_MAPS: ReadonlyMap<string, RecipeOptionMap> = 
         composer: enumeration(["2", "2.7.7"]),
         webroot: { kind: "string" },
       },
-      defaults: { php: "8.3", database: "postgres:16", composer: "2", webroot: "/app/public" },
+      defaults: { php: "8.4", database: "postgres:16", composer: "2", webroot: "/app/public" },
       renames: composerRename,
     },
   ],

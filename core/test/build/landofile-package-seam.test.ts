@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { Predicate } from "effect";
 
 import { describe, expect, test } from "bun:test";
 
@@ -8,17 +9,14 @@ import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 const packageManifestPath = resolve(repositoryRoot, "landofile/package.json");
 
-const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const readJsonObject = async (path: string): Promise<Readonly<Record<string, unknown>>> => {
   const value: unknown = await Bun.file(path).json();
-  if (isJsonObject(value)) return value;
+  if (Predicate.isObject(value)) return value;
   throw new TypeError(`Expected a JSON object at ${path}`);
 };
 
 const stringRecord = (value: unknown): Readonly<Record<string, string>> => {
-  if (!isJsonObject(value)) return {};
+  if (!Predicate.isObject(value)) return {};
   return Object.fromEntries(
     Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
@@ -30,7 +28,7 @@ const stringArray = (value: unknown): readonly string[] =>
 const projectReferencePaths = (value: unknown): readonly string[] => {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
-    if (!isJsonObject(entry) || typeof entry.path !== "string") return [];
+    if (!Predicate.isObject(entry) || typeof entry.path !== "string") return [];
     return [entry.path];
   });
 };
@@ -60,7 +58,10 @@ describe("Landofile package seam", () => {
     expect(packageManifest.private).toBe(true);
     expect(packageManifest.main).toBe("./src/index.ts");
     expect(packageManifest.types).toBe("./src/index.ts");
-    expect(stringArray(rootManifest.workspaces)).toContain("landofile");
+    expect(Predicate.isObject(rootManifest.workspaces)).toBe(true);
+    if (!Predicate.isObject(rootManifest.workspaces))
+      throw new TypeError("Expected workspace catalog configuration");
+    expect(stringArray(rootManifest.workspaces.packages)).toContain("landofile");
     expect(projectReferencePaths(rootTsconfig.references)).toContain("./landofile");
     expect(scripts).toEqual({
       build: "tsc -b",
@@ -69,15 +70,17 @@ describe("Landofile package seam", () => {
       typecheck: "tsc -b",
     });
     expect(packageEntry).toEndWith("/landofile/src/index.ts");
-    expect(isJsonObject(packageModule)).toBe(true);
-    if (!isJsonObject(packageModule))
+    expect(Predicate.isObject(packageModule)).toBe(true);
+    if (!Predicate.isObject(packageModule))
       throw new TypeError("Expected the Landofile entry point to be a module");
-    expect(typeof packageModule.makeLandofileServiceLive).toBe("function");
+    expect(typeof packageModule.layer).toBe("function");
     expect(stringRecord(packageManifest.exports)).toMatchObject({
       ".": "./src/index.ts",
+      "./copy-provenance": "./src/copy-provenance.ts",
       "./includes": "./src/includes.ts",
       "./parser": "./src/parser.ts",
       "./ports": "./src/ports.ts",
+      "./recipe-expressions": "./src/recipe-expressions.ts",
       "./serializer": "./src/serializer.ts",
       "./service": "./src/service.ts",
       "./version-constraint": "./src/version-constraint.ts",
@@ -119,7 +122,7 @@ describe("Landofile package seam", () => {
     const devDependencies = stringRecord(packageManifest.devDependencies);
 
     // Then
-    expect(dependencies.effect).toBe("^3.21.2");
+    expect(dependencies.effect).toBe("catalog:");
     expect(dependencies.semver).toBe("^7.8.5");
     expect(devDependencies["@types/semver"]).toBe("^7.7.1");
   });
@@ -150,7 +153,7 @@ describe("Landofile package seam", () => {
     const sdkModule: unknown = await import("@lando/sdk/landofile");
 
     // Then
-    if (!isJsonObject(coreModule) || !isJsonObject(sdkModule)) {
+    if (!Predicate.isObject(coreModule) || !Predicate.isObject(sdkModule)) {
       throw new TypeError("Expected both serializer entry points to be modules");
     }
     expect(Object.keys(coreModule).sort()).toEqual(Object.keys(sdkModule).sort());

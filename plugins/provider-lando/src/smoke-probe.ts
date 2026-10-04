@@ -194,16 +194,15 @@ export const runHealthSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
     }),
   );
 
-export const runSmokeReadinessProbe = (
+export const runSmokeReadinessProbe = Effect.fn("ProviderLando.runSmokeReadinessProbe")(function* (
   deps: SmokeProbeDeps,
-): Effect.Effect<void, ProviderLandoSmokeError, Scope.Scope> =>
-  Effect.gen(function* () {
-    const baseImage = deps.baseImage ?? DEFAULT_BASE_IMAGE;
-    yield* ensureSmokeBaseImage(deps, baseImage);
-    yield* runContainerSmokeProbe(deps, baseImage);
-    yield* runBuildSmokeProbe(deps, baseImage);
-    yield* runHealthSmokeProbe(deps, baseImage);
-  });
+): Effect.fn.Return<void, ProviderLandoSmokeError, Scope.Scope> {
+  const baseImage = deps.baseImage ?? DEFAULT_BASE_IMAGE;
+  yield* ensureSmokeBaseImage(deps, baseImage);
+  yield* runContainerSmokeProbe(deps, baseImage);
+  yield* runBuildSmokeProbe(deps, baseImage);
+  yield* runHealthSmokeProbe(deps, baseImage);
+});
 
 export { DEFAULT_BASE_IMAGE, ProviderLandoSmokeError } from "./smoke-probe-support.ts";
 export type { SmokeOperation, SmokeProbeDeps } from "./smoke-probe-support.ts";

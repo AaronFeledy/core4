@@ -4,7 +4,7 @@ import { type IncomingMessage, createServer, request as httpRequest } from "node
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Predicate, Stream } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -57,8 +57,7 @@ const tempRoot = async (): Promise<string> => {
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/srv/apps/demo" };
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
 
 const coreBuildHostProxyShimScript = async (): Promise<string> => {
   const packageJson: unknown = await Bun.file(
@@ -79,10 +78,13 @@ const envelope: CommandResultEnvelope = {
   deprecations: [],
 };
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+  }),
+);
 
 type CapturedEvent = {
   readonly _tag: string;
@@ -92,14 +94,20 @@ type CapturedEvent = {
 };
 
 const eventLayerFor = (events: CapturedEvent[] = []) =>
-  Layer.succeed(EventService, {
-    publish: (event: CapturedEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-    subscribe: () => Effect.die("unused"),
-    waitFor: () => Effect.die("unused"),
-  } as never);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: CapturedEvent) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Stream.die("unused"),
+      subscribeQueue: Effect.die("unused"),
+      waitForAny: () => Effect.die("unused"),
+      query: () => Effect.die("unused"),
+      waitFor: () => Effect.die("unused"),
+    }),
+  );
 
 const runWithEvents = <Value, Error>(
   program: Effect.Effect<Value, Error, EventService | RedactionService>,
@@ -112,11 +120,17 @@ const runExitWithEvents = <Value, Error>(
 ) =>
   Effect.runPromiseExit(program.pipe(Effect.provide(Layer.mergeAll(redactionLayer, eventLayerFor(events)))));
 
-const unusedEventLayer = Layer.succeed(EventService, {
-  publish: () => Effect.void,
-  subscribe: () => Effect.die("unused"),
-  waitFor: () => Effect.die("unused"),
-} as never);
+const unusedEventLayer = Layer.succeed(
+  EventService,
+  EventService.of({
+    publish: () => Effect.void,
+    subscribe: () => Stream.die("unused"),
+    subscribeQueue: Effect.die("unused"),
+    waitForAny: () => Effect.die("unused"),
+    query: () => Effect.die("unused"),
+    waitFor: () => Effect.die("unused"),
+  }),
+);
 
 const run = <Value, Error>(program: Effect.Effect<Value, Error, EventService | RedactionService>) =>
   Effect.runPromise(program.pipe(Effect.provide(Layer.mergeAll(redactionLayer, unusedEventLayer))));
@@ -357,20 +371,20 @@ describe("host-proxy runLando physical transport", () => {
     expect(Exit.isFailure(missing)).toBe(true);
     expect(Exit.isFailure(stale)).toBe(true);
     expect(Exit.isFailure(crossApp)).toBe(true);
-    if (Exit.isFailure(missing) && missing.cause._tag === "Fail") {
-      expect(missing.cause.error).toBeInstanceOf(HostProxyAuthenticationError);
-      if (missing.cause.error instanceof HostProxyAuthenticationError)
-        expect(missing.cause.error.reason).toBe("missing");
+    if (Exit.isFailure(missing)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(missing.cause));
+      expect(error).toBeInstanceOf(HostProxyAuthenticationError);
+      if (error instanceof HostProxyAuthenticationError) expect(error.reason).toBe("missing");
     }
-    if (Exit.isFailure(stale) && stale.cause._tag === "Fail") {
-      expect(stale.cause.error).toBeInstanceOf(HostProxyAuthenticationError);
-      if (stale.cause.error instanceof HostProxyAuthenticationError)
-        expect(stale.cause.error.reason).toBe("stale");
+    if (Exit.isFailure(stale)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(stale.cause));
+      expect(error).toBeInstanceOf(HostProxyAuthenticationError);
+      if (error instanceof HostProxyAuthenticationError) expect(error.reason).toBe("stale");
     }
-    if (Exit.isFailure(crossApp) && crossApp.cause._tag === "Fail") {
-      expect(crossApp.cause.error).toBeInstanceOf(HostProxyAuthenticationError);
-      if (crossApp.cause.error instanceof HostProxyAuthenticationError)
-        expect(crossApp.cause.error.reason).toBe("cross-app");
+    if (Exit.isFailure(crossApp)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(crossApp.cause));
+      expect(error).toBeInstanceOf(HostProxyAuthenticationError);
+      if (error instanceof HostProxyAuthenticationError) expect(error.reason).toBe("cross-app");
     }
     await session.close();
   });
@@ -423,12 +437,16 @@ describe("host-proxy runLando physical transport", () => {
     );
 
     expect(Exit.isFailure(recursion)).toBe(true);
-    if (Exit.isFailure(recursion) && recursion.cause._tag === "Fail") {
-      expect(recursion.cause.error).toBeInstanceOf(HostProxyRecursionError);
+    if (Exit.isFailure(recursion)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(recursion.cause))).toBeInstanceOf(
+        HostProxyRecursionError,
+      );
     }
     expect(Exit.isFailure(saturated)).toBe(true);
-    if (Exit.isFailure(saturated) && saturated.cause._tag === "Fail") {
-      expect(saturated.cause.error).toBeInstanceOf(HostProxyBackpressureError);
+    if (Exit.isFailure(saturated)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(saturated.cause))).toBeInstanceOf(
+        HostProxyBackpressureError,
+      );
     }
     release?.();
     await first;
@@ -451,8 +469,10 @@ describe("host-proxy runLando physical transport", () => {
     const exit = await runExit(sendHostProxyRunLando(session, { argv: ["open"], cwd: "/app", tty: false }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(HostProxyCommandNotAllowedError);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+        HostProxyCommandNotAllowedError,
+      );
     }
     await session.close();
   });
@@ -499,8 +519,8 @@ describe("host-proxy runLando physical transport", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(HostProxySocketStaleError);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(HostProxySocketStaleError);
     }
   });
 
@@ -597,7 +617,7 @@ describe("host-proxy runLando physical transport", () => {
           maxRunning = Math.max(maxRunning, running);
           accept?.();
         }).pipe(
-          Effect.zipRight(Effect.promise(() => blocker)),
+          Effect.andThen(Effect.promise(() => blocker)),
           Effect.ensuring(
             Effect.sync(() => {
               running -= 1;
@@ -624,8 +644,7 @@ describe("host-proxy runLando physical transport", () => {
     const saturated = exits.filter(
       (exit) =>
         Exit.isFailure(exit) &&
-        exit.cause._tag === "Fail" &&
-        exit.cause.error instanceof HostProxyBackpressureError,
+        Option.getOrUndefined(Cause.findErrorOption(exit.cause)) instanceof HostProxyBackpressureError,
     );
     expect(maxRunning).toBe(1);
     expect(saturated.length).toBeGreaterThan(0);
@@ -700,7 +719,7 @@ describe("host-proxy runLando physical transport", () => {
             maxRunning = Math.max(maxRunning, running);
             accepted?.();
           }).pipe(
-            Effect.zipRight(Effect.never),
+            Effect.andThen(Effect.never),
             Effect.ensuring(
               Effect.sync(() => {
                 running -= 1;
@@ -747,7 +766,7 @@ describe("host-proxy runLando physical transport", () => {
     const session = await sessionFor(
       () =>
         Effect.sync(() => accepted?.()).pipe(
-          Effect.zipRight(Effect.never),
+          Effect.andThen(Effect.never),
           Effect.ensuring(
             Effect.sync(() => {
               interrupted = true;
@@ -768,9 +787,9 @@ describe("host-proxy runLando physical transport", () => {
     expect(Exit.isFailure(closed)).toBe(true);
     const interruptedExit = await inFlight;
     expect(Exit.isFailure(interruptedExit)).toBe(true);
-    if (Exit.isFailure(interruptedExit) && interruptedExit.cause._tag === "Fail") {
-      expect(interruptedExit.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
-      const error = interruptedExit.cause.error;
+    if (Exit.isFailure(interruptedExit)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(interruptedExit.cause));
+      expect(error).toBeInstanceOf(HostProxyTransportUnavailableError);
       if (error instanceof HostProxyTransportUnavailableError)
         expect(error.socketPath).toBe(socketPathOf(session));
     }
@@ -835,8 +854,10 @@ describe("host-proxy runLando physical transport", () => {
 
     expect(chmodCalled).toBe(true);
     expect(Exit.isFailure(failed)).toBe(true);
-    if (Exit.isFailure(failed) && failed.cause._tag === "Fail")
-      expect(failed.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+    if (Exit.isFailure(failed))
+      expect(Option.getOrThrow(Cause.findErrorOption(failed.cause))).toBeInstanceOf(
+        HostProxyTransportUnavailableError,
+      );
     expect(server.listening).toBe(false);
     await expectMissingPath(socketPath);
   });

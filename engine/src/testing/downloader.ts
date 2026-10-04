@@ -1,22 +1,13 @@
-/** In-memory `Downloader` double: production `makeDownloaderService` over a stub `HttpClient`. */
-import { Effect, Stream } from "effect";
+/** In-memory `Downloader` double: production `makeDownloaderService` over a stub Effect `HttpClient`. */
+import { Effect } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities } from "@lando/sdk/schema";
 import { createSecretRedactor } from "@lando/sdk/secrets";
-import type { DownloaderShape } from "@lando/sdk/services";
-import type { LandoEvent } from "@lando/sdk/services";
+import type { DownloaderShape, LandoEvent } from "@lando/sdk/services";
 
 import { type DownloaderEvents, makeDownloaderService } from "@lando/http-client/downloader";
-import type { HttpClientShape } from "@lando/http-client/service";
-
-const TEST_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
 
 export interface TestDownloaderHandle {
   readonly service: DownloaderShape;
@@ -24,7 +15,7 @@ export interface TestDownloaderHandle {
   readonly serve: (url: string, bytes: Uint8Array) => void;
   /** Snapshot the lifecycle events the downloader published. */
   readonly events: () => ReadonlyArray<LandoEvent>;
-  /** Number of egress stream calls issued through the in-memory `HttpClient`. */
+  /** Number of egress GET calls issued through the in-memory `HttpClient`. */
   readonly streamCallCount: () => number;
   /** Total bytes streamed through the in-memory `HttpClient`. */
   readonly bytesStreamed: () => number;
@@ -37,38 +28,25 @@ export const makeTestDownloader = (): Effect.Effect<TestDownloaderHandle> =>
     let streamCalls = 0;
     let bytesStreamed = 0;
 
-    const http: HttpClientShape = {
-      id: "test-downloader-http",
-      capabilities: TEST_HTTP_CAPABILITIES,
-      request: (request) =>
-        Effect.suspend(() => {
-          const body = sources.get(request.url);
-          if (body === undefined) {
-            return Effect.fail(
-              new HttpRequestError({ message: "no source registered", urlOrigin: request.url, status: 404 }),
-            );
-          }
-          return Effect.succeed({ status: 200, headers: [], contentLength: body.length });
-        }),
-      stream: (request) =>
-        Effect.suspend(() => {
-          streamCalls += 1;
-          const body = sources.get(request.url);
-          if (body === undefined) {
-            return Effect.fail(
-              new HttpRequestError({ message: "no source registered", urlOrigin: request.url, status: 404 }),
-            );
-          }
-          bytesStreamed += body.length;
-          return Effect.succeed({
-            status: 200,
-            headers: [],
-            body: Stream.fromIterable([body]),
-          });
-        }),
-      upload: (request) =>
-        Effect.fail(new HttpUploadError({ message: "upload not supported", urlOrigin: request.url })),
-    };
+    const http = HttpClient.make((request, url) =>
+      Effect.gen(function* () {
+        streamCalls += 1;
+        const body = sources.get(url.href) ?? sources.get(request.url);
+        if (body === undefined) {
+          return yield* Effect.fail(
+            new HttpClientError.HttpClientError({
+              reason: new HttpClientError.TransportError({
+                request,
+                cause: "no source registered",
+                description: "no source registered",
+              }),
+            }),
+          );
+        }
+        bytesStreamed += body.length;
+        return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+      }),
+    );
 
     const { redact } = createSecretRedactor([]);
     const events: DownloaderEvents = {
@@ -78,7 +56,7 @@ export const makeTestDownloader = (): Effect.Effect<TestDownloaderHandle> =>
 
     return {
       service: makeDownloaderService(http, events),
-      serve: (url, bytes) => void sources.set(url, bytes),
+      serve: (url, body) => void sources.set(url, body),
       events: () => [...captured],
       streamCallCount: () => streamCalls,
       bytesStreamed: () => bytesStreamed,

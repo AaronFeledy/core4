@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { ParseResult, Schema } from "effect";
+import { Schema } from "effect";
 
 import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "@lando/sdk/schema";
 
@@ -28,7 +28,7 @@ describe("CommandResultFormat", () => {
   });
 
   test("rejects an unknown format", () => {
-    expect(() => Schema.decodeUnknownSync(CommandResultFormat)("xml")).toThrow(ParseResult.ParseError);
+    expect(() => Schema.decodeUnknownSync(CommandResultFormat)("xml")).toThrow(Schema.SchemaError);
   });
 });
 
@@ -65,7 +65,7 @@ describe("CommandWarning", () => {
   });
 
   test("rejects a missing message", () => {
-    expect(() => Schema.decodeUnknownSync(CommandWarning)({ code: "x" })).toThrow(ParseResult.ParseError);
+    expect(() => Schema.decodeUnknownSync(CommandWarning)({ code: "x" })).toThrow(Schema.SchemaError);
   });
 });
 
@@ -89,6 +89,35 @@ describe("CommandResultEnvelope", () => {
     expect(decoded.warnings).toHaveLength(1);
     expect(decoded.deprecations).toHaveLength(1);
 
+    expect(Schema.encodeSync(CommandResultEnvelope)(decoded)).toEqual(wire);
+  });
+
+  test("round-trips an optional command trace on the envelope", () => {
+    const wire = {
+      apiVersion: "v4" as const,
+      command: "app:info",
+      ok: true,
+      result: {},
+      warnings: [],
+      deprecations: [],
+      trace: {
+        totalDurationMs: 5,
+        spans: [
+          {
+            id: "root",
+            name: "lando app:info",
+            startOffsetMs: 0,
+            durationMs: 5,
+            status: "ok" as const,
+            attributes: { "lando.command.id": "app:info" },
+          },
+        ],
+        droppedSpans: 0,
+      },
+    };
+    const decoded = Schema.decodeUnknownSync(CommandResultEnvelope)(wire);
+    expect(decoded.trace?.totalDurationMs).toBe(5);
+    expect(decoded.trace?.spans[0]?.name).toBe("lando app:info");
     expect(Schema.encodeSync(CommandResultEnvelope)(decoded)).toEqual(wire);
   });
 
@@ -135,7 +164,7 @@ describe("CommandResultEnvelope", () => {
         warnings: [],
         deprecations: [],
       }),
-    ).toThrow(ParseResult.ParseError);
+    ).toThrow(Schema.SchemaError);
   });
 });
 
@@ -187,7 +216,7 @@ describe("StreamFrame", () => {
 
   test("rejects an unknown frame tag", () => {
     expect(() => Schema.decodeUnknownSync(StreamFrame)({ _tag: "exit", code: 0 })).toThrow(
-      ParseResult.ParseError,
+      Schema.SchemaError,
     );
   });
 

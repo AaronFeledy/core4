@@ -1,6 +1,9 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 
 import { buildBuiltInCommandIndex } from "./built-in-command-index";
+import { appAgentSkillsInstallSpec } from "./command-specs/app/agent/skills/install";
+import { appAgentSkillsRemoveSpec } from "./command-specs/app/agent/skills/remove";
+import { appAgentSkillsUpdateSpec } from "./command-specs/app/agent/skills/update";
 import { appCacheRefreshSpec } from "./command-specs/app/cache/refresh";
 import { appConfigSpec } from "./command-specs/app/config";
 import { appConfigExplainSpec } from "./command-specs/app/config/explain";
@@ -142,6 +145,9 @@ const registered = (registration: BuiltInCommandRegistration): BuiltInCommandEnt
 export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>> = Object.freeze(
   Object.fromEntries(
     [
+      appAgentSkillsInstallSpec,
+      appAgentSkillsUpdateSpec,
+      appAgentSkillsRemoveSpec,
       appCacheRefreshSpec,
       appConfigSpec,
       appConfigLintSpec,

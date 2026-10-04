@@ -5,7 +5,7 @@ import { DateTime, Schema } from "effect";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { BuildResultEntry, findCompleteBuildResult } from "../../src/services/build-results.ts";
 
-const completedAt = DateTime.unsafeMake("2026-07-12T15:00:00.000Z");
+const completedAt = DateTime.makeUnsafe("2026-07-12T15:00:00.000Z");
 const requiredEntry = {
   buildKey: "a".repeat(64),
   service: ServiceName.make("web"),

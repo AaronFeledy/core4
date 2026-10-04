@@ -1,3 +1,5 @@
+import { Predicate } from "effect";
+
 import { JsonProjectionError } from "../errors/command.ts";
 
 export const JSON_PROJECTION_REASONS = {
@@ -10,8 +12,7 @@ export type JsonProjectionReason = (typeof JSON_PROJECTION_REASONS)[keyof typeof
 
 const PATH_SEPARATOR = ".";
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
+const isPlainObject = Predicate.isObject;
 
 const schemaFields = (schema: unknown): Record<string, unknown> | undefined => {
   if (schema === null || (typeof schema !== "object" && typeof schema !== "function")) {

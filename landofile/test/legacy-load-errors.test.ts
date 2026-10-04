@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileParseError, ManagedFileTransactionError } from "@lando/sdk/errors";
 import { ManagedFileTransactionGuard } from "@lando/sdk/services";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import * as legacyKeys from "../src/legacy-keys.ts";
 import { legacyLoadFailure } from "../src/legacy-load-failure.ts";
 import { loadLandofileLayers } from "../src/service.ts";
@@ -33,9 +33,9 @@ test.each([
   const sourceFile = join(root, ".lando.yml");
   await writeFile(sourceFile, content);
   // When
-  const result = await Effect.runPromise(Effect.either(load()));
+  const result = await Effect.runPromise(Effect.result(load()));
   // Then
-  expect(Either.isLeft(result) && result.left).toMatchObject({
+  expect(Result.isFailure(result) && result.failure).toMatchObject({
     _tag: "Lando3LandofileDetected",
     appRoot: root,
     sourceFile,
@@ -52,9 +52,9 @@ test.each(["base", "dist", "upstream", "local", "user"])(
     await writeFile(canonicalFile, "name: native\nservices:\n  web:\n    type: php:8.3\n");
     await writeFile(join(root, filename), "services:\n  web:\n    overrides: {}\n");
     // When
-    const result = await Effect.runPromise(Effect.either(load()));
+    const result = await Effect.runPromise(Effect.result(load()));
     // Then
-    expect(Either.isLeft(result) && result.left).toMatchObject({
+    expect(Result.isFailure(result) && result.failure).toMatchObject({
       _tag: "LandofileDialectMixError",
       appRoot: root,
       canonicalFile,
@@ -72,9 +72,9 @@ test.each([
   // Given
   await writeFile(join(root, ".lando.yml"), content);
   // When
-  const result = await Effect.runPromise(Effect.either(load()));
+  const result = await Effect.runPromise(Effect.result(load()));
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("LandofileValidationError");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("LandofileValidationError");
 });
 
 test("loads v4 catalog types even when a legacy recipe filename exists", async () => {
@@ -98,9 +98,9 @@ test("detects the recipe filename only after canonical v4 failure", async () => 
   await writeFile(join(root, ".lando.yml"), "unknown: true\n");
   await writeFile(join(root, ".lando.recipe.yml"), "not yaml");
   // When
-  const result = await Effect.runPromise(Effect.either(load()));
+  const result = await Effect.runPromise(Effect.result(load()));
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("Lando3LandofileDetected");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("Lando3LandofileDetected");
 });
 
 test.each([
@@ -111,9 +111,9 @@ test.each([
   // Given
   await writeFile(join(root, ".lando.yml"), `${padding}\nrecipe: lamp\nconfig: {}\n`);
   // When
-  const result = await Effect.runPromise(Effect.either(load()));
+  const result = await Effect.runPromise(Effect.result(load()));
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe(tag);
+  expect(Result.isFailure(result) && result.failure._tag).toBe(tag);
 });
 
 test("blocks pending transactions before inspecting legacy content", async () => {
@@ -130,19 +130,22 @@ test("blocks pending transactions before inspecting legacy content", async () =>
   // When
   const result = await Effect.runPromise(
     load().pipe(
-      Effect.provideService(ManagedFileTransactionGuard, {
-        ensureConsistent: () =>
-          Effect.suspend(() => {
-            calls++;
-            return Effect.fail(failure);
-          }),
-        pending: () => Effect.succeed(null),
-      }),
-      Effect.either,
+      Effect.provideService(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          ensureConsistent: () =>
+            Effect.suspend(() => {
+              calls++;
+              return Effect.fail(failure);
+            }),
+          pending: () => Effect.succeed(null),
+        }),
+      ),
+      Effect.result,
     ),
   );
   // Then
-  expect(Either.isLeft(result) && result.left).toBe(failure);
+  expect(Result.isFailure(result) && result.failure).toBe(failure);
   expect(calls).toBe(1);
 });
 
@@ -150,18 +153,18 @@ test("detects legacy raw keys after a native syntax error", async () => {
   // Given
   await writeFile(join(root, ".lando.yml"), "recipe: lamp\nconfig: {}\nmounts:\n  - {a: 1}\n");
   // When
-  const result = await Effect.runPromise(Effect.either(load()));
+  const result = await Effect.runPromise(Effect.result(load()));
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("Lando3LandofileDetected");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("Lando3LandofileDetected");
 });
 
 test("preserves a syntax error without legacy evidence", async () => {
   // Given
   await writeFile(join(root, ".lando.yml"), "mounts:\n  - {a: 1}\n");
   // When
-  const result = await Effect.runPromise(Effect.either(load()));
+  const result = await Effect.runPromise(Effect.result(load()));
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("LandofileParseError");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("LandofileParseError");
 });
 
 test("preserves the exact original failure object when the hint is ambiguous", async () => {
@@ -175,8 +178,8 @@ test("preserves the exact original failure object when the hint is ambiguous", a
   });
   // When
   const result = await Effect.runPromise(
-    Effect.either(legacyLoadFailure(original, "recipe: lamp\n", { appRoot: root, sourceFile })),
+    Effect.result(legacyLoadFailure(original, "recipe: lamp\n", { appRoot: root, sourceFile })),
   );
   // Then
-  expect(Either.isLeft(result) && result.left).toBe(original);
+  expect(Result.isFailure(result) && result.failure).toBe(original);
 });

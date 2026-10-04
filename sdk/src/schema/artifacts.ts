@@ -11,7 +11,7 @@ export const ArtifactRef = Schema.Struct({
   /** Provider-specific identifier (image name, registry URL, OCI ref…). */
   ref: Schema.String,
   /** Optional digest for reproducibility. */
-  digest: Schema.optional(Schema.String),
+  digest: Schema.optionalKey(Schema.String),
 });
 export type ArtifactRef = typeof ArtifactRef.Type;
 
@@ -20,52 +20,55 @@ const ArtifactBuildSpecCommon = Schema.Struct({
   /** Build context root (absolute, host path). */
   context: AbsolutePath,
   /** Build args (string-keyed; values may be expression-resolved upstream). */
-  args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  args: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Target stage (multi-stage builds). */
-  target: Schema.optional(Schema.String),
+  target: Schema.optionalKey(Schema.String),
   /** Content hash for buildKey computation. */
-  contentHash: Schema.optional(Schema.String),
+  contentHash: Schema.optionalKey(Schema.String),
 });
 
-const ArtifactBuildSpecSource = Schema.Union(
+const ArtifactBuildSpecSource = Schema.Union([
   Schema.Struct({
     /** Optional dockerfile/spec path relative to `context`. */
-    spec: Schema.optional(PortablePath),
-    specInline: Schema.optional(Schema.Never),
+    spec: Schema.optionalKey(PortablePath),
+    specInline: Schema.optionalKey(Schema.Never),
   }),
   Schema.Struct({
-    spec: Schema.optional(Schema.Never),
+    spec: Schema.optionalKey(Schema.Never),
     /** Inline build-spec contents used in place of a context-relative spec file. */
-    specInline: Schema.String.annotations({
+    specInline: Schema.String.annotate({
       description: "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
     }),
   }),
-);
+]);
 
 /**
  * Build spec — describes an artifact build from
  * source.
  */
-export const ArtifactBuildSpec = ArtifactBuildSpecCommon.pipe(Schema.extend(ArtifactBuildSpecSource));
+export const ArtifactBuildSpec = Schema.Union([
+  ArtifactBuildSpecCommon.pipe(Schema.fieldsAssign(ArtifactBuildSpecSource.members[0].fields)),
+  ArtifactBuildSpecCommon.pipe(Schema.fieldsAssign(ArtifactBuildSpecSource.members[1].fields)),
+]);
 export type ArtifactBuildSpec = typeof ArtifactBuildSpec.Type;
 
 /**
  * One `build.artifact:` / `build.app:` entry. A bare string runs as the
  * service's planned user; the object form names the user for that step alone.
  */
-export const BuildScriptStep = Schema.Union(
+export const BuildScriptStep = Schema.Union([
   Schema.String,
   Schema.Struct({
-    run: Schema.String.pipe(Schema.minLength(1)).annotations({
+    run: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
       description: "Shell command run for this build step.",
     }),
-    user: Schema.optional(ContainerUser).annotations({
+    user: Schema.optionalKey(ContainerUser).annotate({
       description: "Container identity this step runs as. Defaults to the service's planned user.",
     }),
   }),
-);
+]);
 export type BuildScriptStep = typeof BuildScriptStep.Type;
 
 /** Build script for `build.artifact:` and `build.app:` entries. */
-export const BuildScript = Schema.Union(BuildScriptStep, Schema.Array(BuildScriptStep));
+export const BuildScript = Schema.Union([BuildScriptStep, Schema.Array(BuildScriptStep)]);
 export type BuildScript = typeof BuildScript.Type;

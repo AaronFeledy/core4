@@ -20,7 +20,7 @@ import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
  * `capabilities` is a getter returning the current immutable snapshot object
  * (at most two snapshots per run: initial, then optional monotonic promotion).
  */
-export class Renderer extends Context.Tag("@lando/core/Renderer")<
+export class Renderer extends Context.Service<
   Renderer,
   {
     readonly id: string;
@@ -35,19 +35,19 @@ export class Renderer extends Context.Tag("@lando/core/Renderer")<
       readonly stderr: (chunk: string) => Effect.Effect<void>;
     };
   }
->() {}
+>()("@lando/core/Renderer") {}
 
 /**
  * Telemetry — optional usage stats. Off by default in CLI mode; off by
  * default in library mode.
  */
-export class Telemetry extends Context.Tag("@lando/core/Telemetry")<
+export class Telemetry extends Context.Service<
   Telemetry,
   {
     readonly enabled: boolean;
     readonly record: (event: string, data: Readonly<Record<string, unknown>>) => Effect.Effect<void, never>;
   }
->() {}
+>()("@lando/core/Telemetry") {}
 
 /**
  * A normalized tooling invocation passed to a `ToolingEngine`.
@@ -121,7 +121,7 @@ export interface ToolingEngineResult {
  * name still authored as the task `service:` value, etc.) and an `AppPlan`
  * for any plan-level data they need (primary-service lookup, provider id).
  */
-export class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
+export class ToolingEngine extends Context.Service<
   ToolingEngine,
   {
     readonly id: string;
@@ -131,26 +131,26 @@ export class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
       provider: RuntimeProviderShape,
     ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingCompileError | ToolingExecError>;
   }
->() {}
+>()("@lando/core/ToolingEngine") {}
 
 /**
  * SchemaValidator — validate Landofile/manifest data. Default: Effect Schema.
  */
-export class SchemaValidator extends Context.Tag("@lando/core/SchemaValidator")<
+export class SchemaValidator extends Context.Service<
   SchemaValidator,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/SchemaValidator") {}
 
 /**
  * CommandFramework — argv parsing, manifest, help, plugin install commands.
  *
  * Default: native Lando dispatcher. Replaceable but not recommended.
  */
-export class CommandFramework extends Context.Tag("@lando/core/CommandFramework")<
+export class CommandFramework extends Context.Service<
   CommandFramework,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/CommandFramework") {}

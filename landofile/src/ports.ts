@@ -51,7 +51,7 @@ export interface TemplateEngineInputs {
 }
 
 export interface LandofileRuntimeInputs {
-  readonly transactionGuard?: Context.Tag.Service<typeof ManagedFileTransactionGuard>;
+  readonly transactionGuard?: Context.Service.Shape<typeof ManagedFileTransactionGuard>;
   readonly stateStore?: StateStoreShape;
   readonly ports: LandofileRuntimePorts;
   readonly templates: TemplateEngineInputs;

@@ -11,12 +11,22 @@
  *
  * `--debug` raises the floor to `debug`. `--verbose` only changes Renderer.
  */
-import { type Context, Effect, Logger as EffectLogger, Layer, LogLevel, Option, absurd } from "effect";
+import {
+  type Context,
+  Effect,
+  Logger as EffectLogger,
+  Layer,
+  type LogLevel,
+  Option,
+  References,
+  absurd,
+} from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
+import { withLandoLogDefaults } from "../runtime/observability.ts";
 import {
   type DiagnosticLineWriter,
   type LoggerMode,
@@ -27,7 +37,7 @@ import {
 export { Logger };
 export type { DiagnosticLineWriter, LoggerMode };
 
-export interface LoggerLiveOptions {
+export interface LoggerLayerOptions {
   readonly mode?: LoggerMode;
   readonly logLevel?: DiagnosticLogLevel | undefined;
   readonly structured?: boolean;
@@ -38,15 +48,15 @@ export interface LoggerLiveOptions {
 const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): LogLevel.LogLevel => {
   switch (level) {
     case "error":
-      return LogLevel.Error;
+      return "Error";
     case "warn":
-      return LogLevel.Warning;
+      return "Warn";
     case "info":
-      return LogLevel.Info;
+      return "Info";
     case "debug":
-      return LogLevel.Debug;
+      return "Debug";
     case "trace":
-      return LogLevel.Trace;
+      return "Trace";
     default:
       return absurd<never>(level);
   }
@@ -63,26 +73,25 @@ const redactRecord = (
   return output;
 };
 
-const redactPayload = (
+const redactPayload = Effect.fnUntraced(function* (
   message: string,
   data: Readonly<Record<string, unknown>> | undefined,
-): Effect.Effect<{
+): Effect.fn.Return<{
   readonly message: string;
   readonly data: Readonly<Record<string, unknown>> | undefined;
-}> =>
-  Effect.gen(function* () {
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    return yield* Option.match(redaction, {
-      onNone: () => Effect.succeed({ message, data }),
-      onSome: (service) =>
-        service.forProfile("secrets", { sourceEnv: process.env }).pipe(
-          Effect.map((redactor) => ({
-            message: redactor.redactString(message),
-            data: data === undefined ? undefined : redactRecord(redactor, data),
-          })),
-        ),
-    });
+}> {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  return yield* Option.match(redaction, {
+    onNone: () => Effect.succeed({ message, data }),
+    onSome: (service) =>
+      service.forProfile("secrets", { sourceEnv: process.env }).pipe(
+        Effect.map((redactor) => ({
+          message: redactor.redactString(message),
+          data: data === undefined ? undefined : redactRecord(redactor, data),
+        })),
+      ),
   });
+});
 
 const log = (
   write: (message: string) => Effect.Effect<void>,
@@ -97,41 +106,52 @@ const log = (
     ),
   );
 
-const makeLoggerService = (): Context.Tag.Service<typeof Logger> => ({
-  debug: (message, data) => log(Effect.logDebug, message, data),
-  info: (message, data) => log(Effect.logInfo, message, data),
-  warn: (message, data) => log(Effect.logWarning, message, data),
-  error: (message, data) => log(Effect.logError, message, data),
-});
+const makeLoggerService = (): Context.Service.Shape<typeof Logger> =>
+  Logger.of({
+    debug: (message, data) => log(Effect.logDebug, message, data),
+    info: (message, data) => log(Effect.logInfo, message, data),
+    warn: (message, data) => log(Effect.logWarning, message, data),
+    error: (message, data) => log(Effect.logError, message, data),
+  });
 
 const loggerServiceLayer = (): Layer.Layer<Logger> => Layer.succeed(Logger, makeLoggerService());
 
 const noopWriteLine: DiagnosticLineWriter = () => {};
 
-export const LoggerLive = (options: LoggerLiveOptions = {}): Layer.Layer<Logger> => {
+const defaultLayer = (options: LoggerLayerOptions): Layer.Layer<Logger> => {
   const logLevel = options.logLevel;
   if (logLevel === "none" || (logLevel === undefined && options.mode === "silent")) {
-    return Layer.mergeAll(
-      loggerServiceLayer(),
-      EffectLogger.replace(EffectLogger.defaultLogger, makeEffectLogger("silent")),
-    );
+    return Layer.mergeAll(loggerServiceLayer(), EffectLogger.layer([]));
   }
   if (logLevel === undefined) {
     return Layer.mergeAll(
       loggerServiceLayer(),
-      EffectLogger.replace(EffectLogger.defaultLogger, makeEffectLogger(options.mode ?? "pretty")),
+      EffectLogger.layer([makeEffectLogger(options.mode ?? "pretty")]),
     );
   }
   return Layer.mergeAll(
     loggerServiceLayer(),
-    EffectLogger.replace(
-      EffectLogger.defaultLogger,
+    EffectLogger.layer([
       makeStderrEffectLogger({
         structured: options.structured === true,
         stderrIsTTY: options.stderrIsTTY === true,
         writeLine: options.writeLine ?? noopWriteLine,
       }),
-    ),
-    EffectLogger.minimumLogLevel(toEffectLogLevel(logLevel)),
+    ]),
+    Layer.succeed(References.LogToStderr, true),
+    Layer.succeed(References.MinimumLogLevel, toEffectLogLevel(logLevel)),
   );
 };
+
+/**
+ * Lando's logging defaults, applied only where the embedding host has not
+ * provided its own `References.CurrentLoggers` / `References.MinimumLogLevel`.
+ * An explicit `logLevel`/`mode` option tunes those defaults; it never replaces
+ * a host-provided logger or level.
+ */
+export const layer = (options: LoggerLayerOptions = {}): Layer.Layer<Logger> =>
+  Layer.effectContext(
+    Effect.contextWith((host: Context.Context<never>) =>
+      Layer.build(defaultLayer(options)).pipe(Effect.map((defaults) => withLandoLogDefaults(host, defaults))),
+    ),
+  );

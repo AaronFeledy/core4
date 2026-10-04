@@ -1,3 +1,4 @@
+import { phpPromptYaml } from "../php-stack.ts";
 import { lempSnapshotYaml } from "./snapshot.ts";
 
 export const LEMP_RECIPE_ID = "lemp";
@@ -22,13 +23,7 @@ prompts:
     validate:
       pattern: ^[a-z][a-z0-9-]*$
       message: App name must be lowercase kebab-case.
-  - name: php
-    type: select
-    message: PHP version
-    default: '8.3'
-    choices:
-      - value: '8.2'
-      - value: '8.3'
+${phpPromptYaml}
 files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml

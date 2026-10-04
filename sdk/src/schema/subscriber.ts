@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { Schema } from "effect";
 
 // ====
@@ -8,19 +9,19 @@ import { Schema } from "effect";
  * cli-command-terminal (expands to every canonical command's run/error pair).
  * No regex, wildcard, or partial match.
  */
-export const SubscriberSelector = Schema.Union(
+export const SubscriberSelector = Schema.Union([
   Schema.Struct({
-    event: Schema.String.annotations({
+    event: Schema.String.annotate({
       description: "Exact built-in or generated lifecycle event name.",
     }),
   }),
   Schema.Struct({
-    family: Schema.Literal("cli-command-terminal").annotations({
+    family: Schema.Literal("cli-command-terminal").annotate({
       description:
         "Precomputed family: cli-<canonical-id>-run and cli-<canonical-id>-error for every command.",
     }),
   }),
-);
+]);
 export type SubscriberSelector = typeof SubscriberSelector.Type;
 
 /**
@@ -36,25 +37,30 @@ export type PublishedGlobalConfigKey = typeof PublishedGlobalConfigKey.Type;
  * Plugin priority is restricted to the default band (100..999); omitted → 500.
  */
 export const SubscriberManifestEntry = Schema.Struct({
-  id: Schema.String.annotations({
+  id: Schema.String.annotate({
     description: "Subscriber id unique within the contributing plugin.",
   }),
-  selectors: Schema.Array(SubscriberSelector).pipe(Schema.minItems(1)).annotations({
-    description: "One or more exact-event or cli-command-terminal family selectors.",
-  }),
-  module: Schema.String.annotations({
+  selectors: Schema.Array(SubscriberSelector)
+    .pipe(Schema.check(Schema.isMinLength(1)))
+    .annotate({
+      description: "One or more exact-event or cli-command-terminal family selectors.",
+    }),
+  module: Schema.String.annotate({
     description: "Relative module path whose default export is a SubscriberFactory.",
   }),
-  priority: Schema.optionalWith(
-    Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(100), Schema.lessThanOrEqualTo(999)),
-    { default: () => 500 },
-  ).annotations({
-    description: "Priority in the plugin default band 100..999 (default 500).",
-  }),
-  abortOnError: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+  priority: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThanOrEqualTo(100)),
+    Schema.check(Schema.isLessThanOrEqualTo(999)),
+  )
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 500)))
+    .annotate({
+      description: "Priority in the plugin default band 100..999 (default 500).",
+    }),
+  abortOnError: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
     description: "When true, subscriber errors at post-* events abort the step (default false).",
   }),
-  configKey: Schema.optional(PublishedGlobalConfigKey).annotations({
+  configKey: Schema.optionalKey(PublishedGlobalConfigKey).annotate({
     description: "Optional published global-config key projected as the factory's second argument.",
   }),
 });

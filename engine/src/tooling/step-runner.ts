@@ -92,59 +92,57 @@ const resolveScalarRecord = (
 type ToolingStepEntry = Exclude<NonNullable<ToolingTaskShape["cmds"]>[number], string>;
 
 /** Resolves expressions inside an object-form command step, preserving its per-step overrides. */
-const resolveStepEntry = (
+const resolveStepEntry = Effect.fnUntraced(function* (
   step: ToolingStepEntry,
   context: ExpressionContext,
-): Effect.Effect<ToolingStepEntry, ToolingStepExpressionError> =>
-  Effect.gen(function* () {
-    const cmd = yield* resolveString(step.cmd, context);
-    const service = step.service === undefined ? undefined : yield* resolveString(step.service, context);
-    const dir =
-      step.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(step.dir), context));
-    const user = step.user === undefined ? undefined : yield* resolveString(step.user, context);
-    const env = step.env === undefined ? undefined : yield* resolveScalarRecord(step.env, context);
-    return {
-      ...step,
-      cmd,
-      ...(service === undefined ? {} : { service }),
-      ...(dir === undefined ? {} : { dir }),
-      ...(user === undefined ? {} : { user }),
-      ...(env === undefined ? {} : { env }),
-    };
-  });
+): Effect.fn.Return<ToolingStepEntry, ToolingStepExpressionError> {
+  const cmd = yield* resolveString(step.cmd, context);
+  const service = step.service === undefined ? undefined : yield* resolveString(step.service, context);
+  const dir =
+    step.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(step.dir), context));
+  const user = step.user === undefined ? undefined : yield* resolveString(step.user, context);
+  const env = step.env === undefined ? undefined : yield* resolveScalarRecord(step.env, context);
+  return {
+    ...step,
+    cmd,
+    ...(service === undefined ? {} : { service }),
+    ...(dir === undefined ? {} : { dir }),
+    ...(user === undefined ? {} : { user }),
+    ...(env === undefined ? {} : { env }),
+  };
+});
 
-export const resolveToolingTaskShape = (
+export const resolveToolingTaskShape = Effect.fnUntraced(function* (
   task: ToolingTaskShape,
   context: ExpressionContext,
-): Effect.Effect<ToolingTaskShape, ToolingStepExpressionError> =>
-  Effect.gen(function* () {
-    let cmd: ToolingTaskShape["cmd"];
-    if (typeof task.cmd === "string") {
-      cmd = yield* resolveString(task.cmd, context);
-    } else if (task.cmd !== undefined) {
-      cmd = yield* Effect.forEach(task.cmd, (value) => resolveString(value, context));
-    }
-    const cmds =
-      task.cmds === undefined
-        ? undefined
-        : yield* Effect.forEach(
-            task.cmds,
-            (value): Effect.Effect<string | ToolingStepEntry, ToolingStepExpressionError> =>
-              typeof value === "string" ? resolveString(value, context) : resolveStepEntry(value, context),
-          );
-    const service = task.service === undefined ? undefined : yield* resolveString(task.service, context);
-    const dir =
-      task.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(task.dir), context));
-    const env = task.env === undefined ? undefined : yield* resolveScalarRecord(task.env, context);
-    return {
-      ...task,
-      ...(cmd === undefined ? {} : { cmd }),
-      ...(cmds === undefined ? {} : { cmds }),
-      ...(service === undefined ? {} : { service }),
-      ...(dir === undefined ? {} : { dir }),
-      ...(env === undefined ? {} : { env }),
-    };
-  });
+): Effect.fn.Return<ToolingTaskShape, ToolingStepExpressionError> {
+  let cmd: ToolingTaskShape["cmd"];
+  if (typeof task.cmd === "string") {
+    cmd = yield* resolveString(task.cmd, context);
+  } else if (task.cmd !== undefined) {
+    cmd = yield* Effect.forEach(task.cmd, (value) => resolveString(value, context));
+  }
+  const cmds =
+    task.cmds === undefined
+      ? undefined
+      : yield* Effect.forEach(
+          task.cmds,
+          (value): Effect.Effect<string | ToolingStepEntry, ToolingStepExpressionError> =>
+            typeof value === "string" ? resolveString(value, context) : resolveStepEntry(value, context),
+        );
+  const service = task.service === undefined ? undefined : yield* resolveString(task.service, context);
+  const dir =
+    task.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(task.dir), context));
+  const env = task.env === undefined ? undefined : yield* resolveScalarRecord(task.env, context);
+  return {
+    ...task,
+    ...(cmd === undefined ? {} : { cmd }),
+    ...(cmds === undefined ? {} : { cmds }),
+    ...(service === undefined ? {} : { service }),
+    ...(dir === undefined ? {} : { dir }),
+    ...(env === undefined ? {} : { env }),
+  };
+});
 
 const conditionError = (condition: string, cause?: unknown) =>
   new ToolingStepConditionError({
@@ -167,62 +165,61 @@ export const conditionAllows = (
   );
 };
 
-const resolveCmd = (leaf: ToolingCmdStepLeaf, context: ExpressionContext) =>
-  Effect.gen(function* () {
-    const command = yield* resolveString(leaf.command, context);
-    const service = leaf.service === undefined ? undefined : yield* resolveString(leaf.service, context);
-    const user = leaf.user === undefined ? undefined : yield* resolveString(leaf.user, context);
-    const dir =
-      leaf.dir === undefined ? undefined : PortablePath.make(yield* resolveString(leaf.dir, context));
-    const env = leaf.env === undefined ? undefined : yield* resolveScalarRecord(leaf.env, context);
-    return {
-      kind: "cmd" as const,
+const resolveCmd = Effect.fnUntraced(function* (leaf: ToolingCmdStepLeaf, context: ExpressionContext) {
+  const command = yield* resolveString(leaf.command, context);
+  const service = leaf.service === undefined ? undefined : yield* resolveString(leaf.service, context);
+  const user = leaf.user === undefined ? undefined : yield* resolveString(leaf.user, context);
+  const dir = leaf.dir === undefined ? undefined : PortablePath.make(yield* resolveString(leaf.dir, context));
+  const env = leaf.env === undefined ? undefined : yield* resolveScalarRecord(leaf.env, context);
+  return {
+    kind: "cmd" as const,
+    authoredIndex: leaf.authoredIndex,
+    command,
+    silent: leaf.silent,
+    ignoreError: leaf.ignoreError,
+    ...(service === undefined ? {} : { service }),
+    ...(user === undefined ? {} : { user }),
+    ...(dir === undefined ? {} : { dir }),
+    ...(env === undefined ? {} : { env }),
+  };
+});
+
+const resolveTask = Effect.fnUntraced(function* (leaf: ToolingTaskStepLeaf, context: ExpressionContext) {
+  const task = yield* resolveString(leaf.task, context);
+  const overlay = yield* resolveRecord(leaf.vars ?? {}, context);
+  const vars = { ...(context.vars ?? {}), ...overlay };
+  return {
+    leaf: {
+      kind: "task" as const,
       authoredIndex: leaf.authoredIndex,
-      command,
+      task,
+      vars,
       silent: leaf.silent,
       ignoreError: leaf.ignoreError,
-      ...(service === undefined ? {} : { service }),
-      ...(user === undefined ? {} : { user }),
-      ...(dir === undefined ? {} : { dir }),
-      ...(env === undefined ? {} : { env }),
-    };
-  });
+    },
+    context: { ...context, vars },
+  };
+});
 
-const resolveTask = (leaf: ToolingTaskStepLeaf, context: ExpressionContext) =>
-  Effect.gen(function* () {
-    const task = yield* resolveString(leaf.task, context);
-    const overlay = yield* resolveRecord(leaf.vars ?? {}, context);
-    const vars = { ...(context.vars ?? {}), ...overlay };
-    return {
-      leaf: {
-        kind: "task" as const,
-        authoredIndex: leaf.authoredIndex,
-        task,
-        vars,
-        silent: leaf.silent,
-        ignoreError: leaf.ignoreError,
-      },
-      context: { ...context, vars },
-    };
-  });
-
-const resolveCommand = (leaf: ToolingCommandStepLeaf, context: ExpressionContext) =>
-  Effect.gen(function* () {
-    const command = yield* resolveString(leaf.command, context);
-    const flags = yield* resolveCommandRecord(leaf.flags, context);
-    const args = yield* resolveCommandRecord(leaf.args, context);
-    const raw = yield* Effect.forEach(leaf.raw, (value) => resolveString(value, context));
-    return {
-      kind: "command" as const,
-      authoredIndex: leaf.authoredIndex,
-      command,
-      flags,
-      args,
-      raw,
-      silent: leaf.silent,
-      ignoreError: leaf.ignoreError,
-    };
-  });
+const resolveCommand = Effect.fnUntraced(function* (
+  leaf: ToolingCommandStepLeaf,
+  context: ExpressionContext,
+) {
+  const command = yield* resolveString(leaf.command, context);
+  const flags = yield* resolveCommandRecord(leaf.flags, context);
+  const args = yield* resolveCommandRecord(leaf.args, context);
+  const raw = yield* Effect.forEach(leaf.raw, (value) => resolveString(value, context));
+  return {
+    kind: "command" as const,
+    authoredIndex: leaf.authoredIndex,
+    command,
+    flags,
+    args,
+    raw,
+    silent: leaf.silent,
+    ignoreError: leaf.ignoreError,
+  };
+});
 
 export const resolveLeaf = (leaf: ToolingStepLeaf, context: ExpressionContext) => {
   switch (leaf.kind) {

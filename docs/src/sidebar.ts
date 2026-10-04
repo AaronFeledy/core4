@@ -53,6 +53,7 @@ export const sidebar = [
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
           { label: "Run the LAMP recipe", slug: "guides/recipes/lamp-workflow" },
+          { label: "Run the LEMP recipe", slug: "guides/recipes/lemp-workflow" },
           { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
@@ -101,6 +102,8 @@ export const sidebar = [
           { label: "Everyday commands", slug: "guides/cli/everyday-commands" },
           { label: "Refresh a stale app cache", slug: "guides/cli/cache-refresh" },
           { label: "See more CLI output", slug: "guides/cli/verbosity-and-debug" },
+          { label: "Trace a slow command", slug: "guides/cli/trace-a-command" },
+          { label: "Export traces", slug: "guides/cli/export-traces" },
           { label: "Start a scratch app from a recipe", slug: "guides/scratch/scratch-from-recipe" },
           { label: "Run a command in a disposable scratch", slug: "guides/scratch/disposable-tool-runner" },
           { label: "Fork the current app into a scratch", slug: "guides/scratch/fork-existing-app" },
@@ -155,6 +158,7 @@ export const sidebar = [
         items: [
           { label: "Drive Lando through MCP", slug: "guides/agent-native/mcp" },
           { label: "Inspect a running app", slug: "guides/agent-native/in-container-context" },
+          { label: "Install project-local agent skills", slug: "guides/agent-native/project-skills" },
         ],
       },
     ],

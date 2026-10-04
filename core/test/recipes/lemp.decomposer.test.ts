@@ -7,14 +7,14 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { lempDecomposer } from "../../src/recipes/builtin/lemp/decomposer.ts";
 import { lempRecipeYaml } from "../../src/recipes/builtin/lemp/manifest.ts";
 import { lempProducer, lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
 
 const validInput: RecipeDecomposeInput = {
   producer: lempProducer,
-  options: { php: "8.3" },
+  options: { php: "8.4" },
   secrets: {},
 };
 const typedOptionFailureInput: RecipeDecomposeInput = { ...validInput, options: { php: 83 } };
@@ -93,7 +93,7 @@ describe("lemp decomposition", () => {
     await Effect.runPromise(runRecipeDecomposerContractSuite(harness));
   });
 
-  test.each(["8.3", "8.2"])("preserves the exact authoring fragment when php is %s", (php) => {
+  test.each(["8.4", "8.1", "8.6"])("preserves the exact authoring fragment when php is %s", (php) => {
     // Given merged default or non-default options.
     const options = { php };
     // When decomposition runs without an Effect context.
@@ -105,7 +105,7 @@ describe("lemp decomposition", () => {
     expect(Object.keys(result.fragment.services ?? {})).toEqual(["web", "appserver", "database"]);
   });
 
-  test.each([{ php: "8.4" }, { php: 83 }, { php: false }, { php: ["8.3"] }])(
+  test.each([{ php: "8.0" }, { php: 83 }, { php: false }, { php: ["8.3"] }])(
     "rejects invalid php option %j",
     ({ php }) => {
       // Given a value outside the persistable PHP enum.
@@ -134,8 +134,13 @@ describe("lemp decomposition", () => {
       { type: "message", text: "Run 'lando start' inside the new app directory to bring the LEMP stack up." },
     ]);
     expect(manifest.snapshot?.assets).toEqual([]);
-    expect(manifest.snapshot?.optionTypes).toEqual({ php: { kind: "enum", values: ["8.2", "8.3"] } });
-    expect(manifest.snapshot?.defaults).toEqual({ php: "8.3" });
+    expect(manifest.snapshot?.optionTypes).toEqual({
+      php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] },
+    });
+    expect(manifest.snapshot?.defaults).toEqual({ php: "8.4" });
+    expect(lempRecipeYaml).toContain("default: '8.4'");
+    expect(lempRecipeYaml).toContain("value: '8.1'");
+    expect(lempRecipeYaml).toContain("value: '8.6'");
   });
 
   test("publishes a self-consistent migratable snapshot", () => {
@@ -151,14 +156,14 @@ describe("lemp decomposition", () => {
     expect(manifest.snapshot).toEqual(lempSnapshot);
   });
 
-  test.each(["8.3", "8.2"])("matches snapshot rendering when php is %s", (php) => {
+  test.each(["8.4", "8.1", "8.6"])("matches snapshot rendering when php is %s", (php) => {
     // Given the decomposed authoring data without provenance or app name.
     const options = { php };
     const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment");
     const { recipe: _recipe, name: _name, ...fragment } = result.fragment;
     // When the declarative snapshot renders once.
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(lempSnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(lempSnapshot, options));
     // Then expression-shaped strings remain inert authoring data.
     expect<unknown>(rendered).toEqual(fragment);
   });

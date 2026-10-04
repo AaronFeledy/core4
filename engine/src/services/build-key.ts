@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
 
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
+import { canonicalJson } from "@lando/sdk/digest";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
+import { compareFingerprintText } from "../cache/canonical.ts";
 import { CORE_VERSION } from "../version.ts";
 
 interface StableBuildInput {
@@ -40,24 +42,18 @@ interface AppBuildKeyInput {
   readonly user?: string;
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const stableValue = (value: unknown): unknown => {
+const normalizeSecretReferences = (value: unknown): unknown => {
   if (typeof value === "string") return secretAwareString(value);
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (!isRecord(value)) return value;
+  if (Array.isArray(value)) return value.map(normalizeSecretReferences);
+  if (!Predicate.isObject(value)) return value;
   return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => [key, stableValue(entry)]),
+    Object.entries(value).map(([key, entry]) => [key, normalizeSecretReferences(entry)]),
   );
 };
 
 const stableHash = (value: unknown): string =>
   createHash("sha256")
-    .update(JSON.stringify(stableValue(value)))
+    .update(canonicalJson(normalizeSecretReferences(value)))
     .digest("hex");
 
 const secretAwareString = (value: string): unknown => {
@@ -69,7 +65,7 @@ const stableStringRecord = (
   record: Readonly<Record<string, string>>,
 ): ReadonlyArray<readonly [string, unknown]> =>
   Object.entries(record)
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareFingerprintText(left, right))
     .map(([key, value]) => [key, secretAwareString(value)] as const);
 
 const isGeneratedLandoEnv = (key: string): boolean => key === "LANDO" || key.startsWith("LANDO_");
@@ -151,13 +147,13 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
 
 export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!isRecord(extension)) return [];
+  if (!Predicate.isObject(extension)) return [];
   const buildSteps = extension.buildSteps;
-  return Array.isArray(buildSteps) ? buildSteps.map(stableValue) : [];
+  return Array.isArray(buildSteps) ? buildSteps.map(normalizeSecretReferences) : [];
 };
 
 const artifactBuildStepInput = (step: unknown): unknown => {
-  if (!isRecord(step)) return step;
+  if (!Predicate.isObject(step)) return step;
   return {
     id: step.id,
     phase: step.phase,
@@ -168,7 +164,7 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     caFiles: Array.isArray(step.caFiles)
       ? step.caFiles
           .map((descriptor) =>
-            isRecord(descriptor)
+            Predicate.isObject(descriptor)
               ? {
                   digest: typeof descriptor.digest === "string" ? descriptor.digest : undefined,
                   archiveName:
@@ -176,22 +172,22 @@ const artifactBuildStepInput = (step: unknown): unknown => {
                 }
               : undefined,
           )
-          .sort((left, right) => stableHash(left).localeCompare(stableHash(right)))
+          .sort((left, right) => compareFingerprintText(stableHash(left), stableHash(right)))
       : undefined,
   };
 };
 
 export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> =>
   buildStepsFor(service)
-    .filter((step) => !isRecord(step) || step.phase !== "app")
+    .filter((step) => !Predicate.isObject(step) || step.phase !== "app")
     .map(artifactBuildStepInput);
 
 const configSourcesFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!isRecord(extension) || !Array.isArray(extension.configSources)) return [];
+  if (!Predicate.isObject(extension) || !Array.isArray(extension.configSources)) return [];
   return extension.configSources
-    .filter(isRecord)
-    .sort((left, right) => String(left.key).localeCompare(String(right.key)))
+    .filter(Predicate.isObject)
+    .sort((left, right) => compareFingerprintText(String(left.key), String(right.key)))
     .map((source) => ({
       key: source.key,
       digest: typeof source.digest === "string" ? source.digest : undefined,

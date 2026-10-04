@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { runTooling } from "@lando/engine/operations/tooling";
 import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { configTranslators } from "@lando/lando3";
 import {
   RedactionService,
@@ -31,7 +31,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 /**
@@ -83,7 +83,7 @@ const convert = async (text: string): Promise<LandofileShape> => {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-22T00:00:00Z"),
   source: "lando3-tooling-events-runtime.test",
   runtime: 4 as const,
 };
@@ -132,40 +132,52 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   const provider = {
     ...TestRuntimeProvider,
     execStream: (target: ExecTarget, spec: CommandSpec) =>
-      Effect.succeed({ exitCode: record(spec.command, String(target.service)) }),
+      Stream.fromEffect(Effect.sync(() => ({ exitCode: record(spec.command, String(target.service)) }))),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
-    EventServiceLive,
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.sync(() => {
-          const exitCode = record(invocation.commands[0] ?? [], String(invocation.service));
-          return {
-            tool: invocation.tool,
-            service: String(invocation.service),
-            exitCode,
-            stdout: "",
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    LandoEventService.layer,
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      }),
+    ),
+    Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "recording",
+        run: (invocation) =>
+          Effect.sync(() => {
+            const exitCode = record(invocation.commands[0] ?? [], String(invocation.service));
+            return {
+              tool: invocation.tool,
+              service: String(invocation.service),
+              exitCode,
+              stdout: "",
+              stderr: "",
+            };
+          }),
+      }),
+    ),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
-  return Effect.runPromise(runTooling({ name: "build" }).pipe(Effect.provide(layer), Effect.either)).then(
+  return Effect.runPromise(runTooling({ name: "build" }).pipe(Effect.provide(layer), Effect.result)).then(
     (result) => ({ result, executed }),
   );
 };
@@ -176,7 +188,7 @@ test("runs converted brackets around the body in Lando 3 order and services", as
   // When
   const { result, executed } = await run(landofile);
   // Then
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(executed).toEqual([
     "node: echo before",
     "node: echo body-one",
@@ -192,7 +204,7 @@ test("stops before the body when a converted pre step fails", async () => {
   // When
   const { result, executed } = await run(landofile, "node: echo before");
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(executed).toEqual(["node: echo before"]);
 });
 
@@ -202,7 +214,7 @@ test("skips the post bracket when the converted body fails", async () => {
   // When
   const { result, executed } = await run(landofile, "node: echo body-one");
   // Then
-  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 7 } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 7 } });
   expect(executed).toEqual(["node: echo before", "node: echo body-one"]);
 });
 
@@ -212,7 +224,7 @@ test("fails the run and skips the tail when a converted post step fails", async 
   // When
   const { result, executed } = await run(landofile, "appserver: echo after");
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(executed).toEqual([
     "node: echo before",
     "node: echo body-one",

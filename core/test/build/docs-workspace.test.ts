@@ -12,7 +12,7 @@ describe("docs workspace", () => {
     // When its workspace and script configuration is inspected
     // Then docs is a workspace with the generated-reference build entrypoint
     expect(rootPackage).toMatchObject({
-      workspaces: expect.arrayContaining(["docs"]),
+      workspaces: { packages: expect.arrayContaining(["docs"]) },
       scripts: {
         "docs:build": "bun run codegen && bun run --filter='@lando/docs' build",
       },

@@ -7,7 +7,7 @@ import {
 } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import * as kit from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 const producer: RecipeProducer = {
   sourceKind: "plugin",
@@ -67,19 +67,19 @@ const harness: kit.RecipeDecomposerContractHarness = {
   secretProbe: { marker, input: { ...validInput, options: { ...validInput.options, probe: marker } } },
 };
 const run = (overrides: Partial<kit.RecipeDecomposerContractHarness>) =>
-  Effect.runPromise(Effect.either(kit.runRecipeDecomposerContractSuite({ ...harness, ...overrides })));
-const expectFailure = (result: Either.Either<void, kit.ContractFailure>, assertion: string) => {
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left).toBeInstanceOf(kit.ContractFailure);
-    expect(result.left.assertion).toContain(assertion);
+  Effect.runPromise(Effect.result(kit.runRecipeDecomposerContractSuite({ ...harness, ...overrides })));
+const expectFailure = (result: Result.Result<void, kit.ContractFailure>, assertion: string) => {
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(kit.ContractFailure);
+    expect(result.failure.assertion).toContain(assertion);
   }
 };
 
 describe("RecipeDecomposer contract", () => {
   test("passes for the reference decomposer", async () => {
     // Given a pure reference; when the suite runs; then all laws hold.
-    expect(Either.isRight(await run({}))).toBe(true);
+    expect(Result.isSuccess(await run({}))).toBe(true);
   });
   test("fails when the recorded producer drifts from the declared producer", async () => {
     // Given foreign provenance; when checked; then identity drift is rejected.

@@ -34,7 +34,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import {
@@ -42,14 +42,14 @@ import {
   createStandaloneRedactor,
   registerRedactionValues,
 } from "@lando/redaction/service";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
+import * as GlobalAppServiceLayer from "../../src/global-app/service.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
+import * as LandoConfigService from "../../src/services/config.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
-import { NoopTransactionGuardLive } from "../services/landofile-layer.ts";
+import * as TestLandofileLayers from "../services/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -63,7 +63,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "start-progress-topology.test",
   runtime: 4 as const,
 };
@@ -204,14 +204,14 @@ export const makeHarness = (
                   : {
                       rollback: Effect.sync(() => {
                         options.onFileSyncRollback?.();
-                      }).pipe(Effect.zipRight(options.fileSyncRollbackEffect ?? Effect.void)),
+                      }).pipe(Effect.andThen(options.fileSyncRollbackEffect ?? Effect.void)),
                     }),
               };
             }),
         }),
     apply: (appliedPlan, applyOptions) =>
       Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
-        Effect.zipRight(options.applyEffect ?? Effect.succeed({ changed: true })),
+        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
       ),
     inspect: (target) =>
       Effect.succeed<ServiceRuntimeInfo>({
@@ -224,7 +224,7 @@ export const makeHarness = (
       }),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
-        Effect.zipRight(options.destroyEffect ?? Effect.void),
+        Effect.andThen(options.destroyEffect ?? Effect.void),
         Effect.as({ kind: "destroyed" as const }),
       ),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
@@ -252,71 +252,97 @@ export const makeHarness = (
   };
   const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
-    Layer.succeed(StateStore, {
-      ...stateStore.service,
-      withLock: (key, body) =>
-        Effect.sync(() => options.onVolumeLock?.(key)).pipe(
-          Effect.zipRight(stateStore.service.withLock(key, body)),
-        ),
-    }),
-    NoopTransactionGuardLive,
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
+    PrivateFileAccessService.layer,
+    Layer.succeed(
+      StateStore,
+      StateStore.of({
+        ...stateStore.service,
+        withLock: (key, body) =>
+          Effect.sync(() => options.onVolumeLock?.(key)).pipe(
+            Effect.andThen(stateStore.service.withLock(key, body)),
+          ),
+      }),
+    ),
+    TestLandofileLayers.layerTransactionGuard,
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
+    ),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Schema.is(LandoEventSchema)(event)
-          ? Effect.sync(() => {
-              events.push(event);
-              if (event._tag === "task.tree.start" && event.parentId === applyTreeId(String(plannedApp.id))) {
-                signalApplyTreeStart();
-              }
-            }).pipe(Effect.zipRight(options.onPublish?.(event) ?? Effect.void))
-          : Effect.die(new TypeError(`Unexpected event in start progress topology test: ${event._tag}`)),
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, redactionOptions) =>
-        Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
-    }),
-    Layer.succeed(PluginRegistry, {
-      list: Effect.succeed([]),
-      load: () => Effect.die("not used"),
-      loadServiceType: () => Effect.die("not used"),
-      loadServiceFeature: () => Effect.die("not used"),
-      loadAppFeature: () => Effect.die("not used"),
-    }),
-    ConfigServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-    Layer.succeed(RouterService, {
-      ...TestRouterService,
-      applyRoutes: (routes, app) =>
-        TestRouterService.applyRoutes(routes, app).pipe(
-          Effect.tap(() => options.afterApplyRoutes ?? Effect.void),
-        ),
-      removeRoutes: (app) =>
-        Effect.sync(() => options.onRemoveRoutes?.()).pipe(
-          Effect.zipRight(TestRouterService.removeRoutes(app)),
-        ),
-    }),
-    makeShellRunnerLive(() => {
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Schema.is(LandoEventSchema)(event)
+            ? Effect.sync(() => {
+                events.push(event);
+                if (
+                  event._tag === "task.tree.start" &&
+                  event.parentId === applyTreeId(String(plannedApp.id))
+                ) {
+                  signalApplyTreeStart();
+                }
+              }).pipe(Effect.andThen(options.onPublish?.(event) ?? Effect.void))
+            : Effect.die(new TypeError(`Unexpected event in start progress topology test: ${event._tag}`)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, redactionOptions) =>
+          Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
+      }),
+    ),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed([]),
+        load: () => Effect.die("not used"),
+        loadServiceType: () => Effect.die("not used"),
+        loadServiceFeature: () => Effect.die("not used"),
+        loadAppFeature: () => Effect.die("not used"),
+      }),
+    ),
+    LandoConfigService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
+    Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...TestRouterService,
+        applyRoutes: (routes, app) =>
+          TestRouterService.applyRoutes(routes, app).pipe(
+            Effect.tap(() => options.afterApplyRoutes ?? Effect.void),
+          ),
+        removeRoutes: (app) =>
+          Effect.sync(() => options.onRemoveRoutes?.()).pipe(
+            Effect.andThen(TestRouterService.removeRoutes(app)),
+          ),
+      }),
+    ),
+    BunShellRunner.layer(() => {
       throw new TypeError("Interactive shell IO is not used by start progress topology tests.");
     }),
-    Layer.succeed(BuildOrchestrator, {
-      build: (appPlan) => Effect.succeed(appPlan),
-      buildApp: (appPlan) =>
-        Effect.sync(() => {
-          options.onBuildApp?.(appPlan);
-        }),
-    }),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (appPlan) => Effect.succeed(appPlan),
+        buildApp: (appPlan) =>
+          Effect.sync(() => {
+            options.onBuildApp?.(appPlan);
+          }),
+      }),
+    ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );

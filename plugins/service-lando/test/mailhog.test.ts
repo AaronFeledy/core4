@@ -24,22 +24,25 @@ const featureOverrides = new Map([[MAILHOG_FEATURE_ID, mailhogServiceFeature]]);
 
 const testDeprecationLayer = () => {
   const uses = new Map<string, { readonly use: DeprecationUse; count: number }>();
-  return Layer.succeed(DeprecationService, {
-    use: (use) =>
-      Effect.sync(() => {
-        const key = `${use.kind}:${use.id}`;
-        const existing = uses.get(key);
-        uses.set(key, { use: existing?.use ?? use, count: (existing?.count ?? 0) + 1 });
-      }),
-    summary: () =>
-      Effect.sync(
-        (): ReadonlyArray<DeprecationSummaryEntry> =>
-          [...uses.values()].map((record) => ({ ...record.use, count: record.count })),
-      ),
-    lookup: () => Effect.succeed(Option.none()),
-    register: () => Effect.void,
-    registerAlias: () => Effect.void,
-  });
+  return Layer.succeed(
+    DeprecationService,
+    DeprecationService.of({
+      use: (use) =>
+        Effect.sync(() => {
+          const key = `${use.kind}:${use.id}`;
+          const existing = uses.get(key);
+          uses.set(key, { use: existing?.use ?? use, count: (existing?.count ?? 0) + 1 });
+        }),
+      summary: () =>
+        Effect.sync(
+          (): ReadonlyArray<DeprecationSummaryEntry> =>
+            [...uses.values()].map((record) => ({ ...record.use, count: record.count })),
+        ),
+      lookup: () => Effect.succeed(Option.none()),
+      register: () => Effect.void,
+      registerAlias: () => Effect.void,
+    }),
+  );
 };
 
 const serviceConfig = (serviceDefinition: Record<string, unknown>) => {

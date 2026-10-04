@@ -9,7 +9,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 
 import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 import { IMPORTED_PEM, PEM, withApp } from "./landofile-load-expression-support.ts";
 
 test("enforces the configured recursion limit", async () => {
@@ -30,11 +30,14 @@ test("enforces the configured recursion limit", async () => {
     );
     const config = Schema.decodeUnknownSync(GlobalConfig)({ loadMaxRecursionDepth: 1 });
     const layer = Layer.merge(
-      LandofileServiceLive,
-      Layer.succeed(ConfigService, {
-        load: Effect.succeed(config),
-        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-      }),
+      TestLandofileServiceLayer.layer,
+      Layer.succeed(
+        ConfigService,
+        ConfigService.of({
+          load: Effect.succeed(config),
+          get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+        }),
+      ),
     );
 
     // When
@@ -44,7 +47,7 @@ test("enforces the configured recursion limit", async () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected limit failure");
-    expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toBeInstanceOf(LandofileLoadLimitError);
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(LandofileLoadLimitError);
   });
 });
 
@@ -75,7 +78,7 @@ test("enforces the file-byte limit", async () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected load limit");
-    expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toMatchObject({ kind: "file-bytes" });
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({ kind: "file-bytes" });
   });
 });
 
@@ -137,7 +140,7 @@ test("enforces the per-expression file-count limit", async () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected load limit");
-    expect(Option.getOrThrow(Cause.failureOption(exit.cause))).toMatchObject({
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
       kind: "files-per-expression",
     });
   });

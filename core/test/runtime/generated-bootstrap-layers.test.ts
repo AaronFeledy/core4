@@ -39,8 +39,8 @@ describe("generated bootstrap layers", () => {
 
     // When: command-registry and subscriber-runtime composition is inspected.
     const subscriberInstall =
-      "makeSubscriberRuntimeWithPrivateFileAccessLive(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
-    const commandRegistryInstall = "CommandRegistryLive.pipe(";
+      "SubscriberRuntimeLayer.layerWithPrivateFileAccess(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
+    const commandRegistryInstall = "CommandRegistryLayer.layer.pipe(";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
     for (const source of [minimal, plugins]) {
@@ -48,15 +48,15 @@ describe("generated bootstrap layers", () => {
       expect(countOccurrences(source, commandRegistryInstall)).toBe(0);
     }
 
-    expect(minimal).not.toContain("makePluginRegistryLive");
-    expect(minimal).toContain('from "@lando/managed-file/transaction"');
+    expect(minimal).not.toContain("PluginRegistryLayer.layerWith");
+    expect(minimal).toContain('from "@lando/managed-file/transaction-guard"');
     expect(minimal).toContain(
-      "    ManagedFileTransactionGuardWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+      "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
     );
     expect(minimal).toContain(
-      "    StateStoreWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+      "    StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
     );
-    expect(commands).toContain("makeEngineLandofileServiceLive");
+    expect(commands).toContain("EngineLandofileServiceLayer.layer");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
     expect(commands).toContain("Effect.map(PathsService");
     expect(commands).toContain("resolveUserIncludesDir: () => paths.userIncludesDir");
@@ -88,20 +88,22 @@ describe("generated bootstrap layers", () => {
     const plugins = await readFile(resolve(generatedLayersDir, "plugins.ts"), "utf8");
 
     // Then: only the plugins tier constructs the registry, fed by the same graph the plugin registry sees.
-    expect(minimal).not.toContain("makeConfigTranslatorRegistryLive");
-    expect(countOccurrences(plugins, "makeConfigTranslatorRegistryLive(bundledPluginModules())")).toBe(1);
-    expect(plugins).toContain(
-      "const configTranslatorRegistryLive = makeConfigTranslatorRegistryLive(bundledPluginModules()).pipe(\n    Layer.provide(Layer.merge(minimalRuntimeLive, contributionGraphLive)),",
+    expect(minimal).not.toContain("ConfigTranslatorRegistryLayer.layerWith");
+    expect(countOccurrences(plugins, "ConfigTranslatorRegistryLayer.layerWith(bundledPluginModules())")).toBe(
+      1,
     );
-    expect(plugins).toContain("configTranslatorRegistryLive,");
+    expect(plugins).toContain(
+      "const configTranslatorRegistryLayer = ConfigTranslatorRegistryLayer.layerWith(bundledPluginModules()).pipe(\n    Layer.provide(Layer.merge(minimalRuntimeLayer, contributionGraphLayer)),",
+    );
+    expect(plugins).toContain("configTranslatorRegistryLayer,");
   });
 
   test("provider bootstrap wires the default UrlScanner", async () => {
     const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
 
-    expect(provider).toContain("UrlScannerLive");
-    expect(provider).toContain("Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))");
-    expect(provider).toContain("urlScannerLive");
+    expect(provider).toContain("ProviderUrlScanner.layer");
+    expect(provider).toContain("Layer.provide(Layer.mergeAll(runtimeProviderLayer, pluginsRuntimeLayer))");
+    expect(provider).toContain("urlScannerLayer");
   });
 
   test("app bootstrap does not import a file-sync plugin package", async () => {

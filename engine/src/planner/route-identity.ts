@@ -49,48 +49,47 @@ export const makeRouteAccumulator = () => {
   >();
   return {
     routes,
-    add: (
+    add: Effect.fnUntraced(function* (
       route: RoutePlan,
       source: RouteSource,
-    ): Effect.Effect<readonly { readonly index: number }[], RouteInputError> =>
-      Effect.gen(function* () {
-        const execution = semantics(route);
-        const refs: { readonly index: number }[] = [];
-        const uncovered: ("http" | "https")[] = [];
-        for (const scheme of schemes(route.scheme)) {
-          // The router owns one listener per scheme. :port selects a backend, not a listener.
-          const key = JSON.stringify([scheme, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]);
-          const existing = matches.get(key);
-          if (existing === undefined) {
-            uncovered.push(scheme);
-          } else if (existing.semantics === execution) {
-            if (!refs.some((ref) => ref.index === existing.index)) refs.push({ index: existing.index });
-          } else {
-            return yield* Effect.fail(
-              new RouteInputError({
-                ...source,
-                message: `Route ${source.key} conflicts with ${existing.source.file === undefined ? "" : `${existing.source.file}:`}${existing.source.key} for ${scheme}://${route.hostname}${route.pathPrefix ?? "/"}: backend or ordered filters differ.`,
-                remediation:
-                  "Use distinct hosts, schemes or path prefixes, or make the backend and ordered filters equivalent. The shorthand port selects the backend endpoint, not a listener.",
-              }),
-            );
-          }
+    ): Effect.fn.Return<readonly { readonly index: number }[], RouteInputError> {
+      const execution = semantics(route);
+      const refs: { readonly index: number }[] = [];
+      const uncovered: ("http" | "https")[] = [];
+      for (const scheme of schemes(route.scheme)) {
+        // The router owns one listener per scheme. :port selects a backend, not a listener.
+        const key = JSON.stringify([scheme, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]);
+        const existing = matches.get(key);
+        if (existing === undefined) {
+          uncovered.push(scheme);
+        } else if (existing.semantics === execution) {
+          if (!refs.some((ref) => ref.index === existing.index)) refs.push({ index: existing.index });
+        } else {
+          return yield* Effect.fail(
+            new RouteInputError({
+              ...source,
+              message: `Route ${source.key} conflicts with ${existing.source.file === undefined ? "" : `${existing.source.file}:`}${existing.source.key} for ${scheme}://${route.hostname}${route.pathPrefix ?? "/"}: backend or ordered filters differ.`,
+              remediation:
+                "Use distinct hosts, schemes or path prefixes, or make the backend and ordered filters equivalent. The shorthand port selects the backend endpoint, not a listener.",
+            }),
+          );
         }
-        const scheme = uncovered.length === 2 ? "both" : uncovered[0];
-        if (scheme !== undefined) {
-          const index = routes.length;
-          routes.push({ ...route, hostname: route.hostname.toLowerCase(), scheme });
-          for (const protocol of uncovered) {
-            matches.set(JSON.stringify([protocol, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]), {
-              index,
-              semantics: execution,
-              source,
-            });
-          }
-          refs.push({ index });
+      }
+      const scheme = uncovered.length === 2 ? "both" : uncovered[0];
+      if (scheme !== undefined) {
+        const index = routes.length;
+        routes.push({ ...route, hostname: route.hostname.toLowerCase(), scheme });
+        for (const protocol of uncovered) {
+          matches.set(JSON.stringify([protocol, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]), {
+            index,
+            semantics: execution,
+            source,
+          });
         }
-        return refs;
-      }),
+        refs.push({ index });
+      }
+      return refs;
+    }),
   };
 };
 

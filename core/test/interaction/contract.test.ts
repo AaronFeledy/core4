@@ -82,7 +82,7 @@ describe("runInteractionContract", () => {
   test("the Live InteractionService satisfies the contract", async () => {
     const exit = await runContract(liveHarness);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       throw new Error(
         `Live contract failed: ${Option.isSome(failure) ? JSON.stringify(failure.value) : Cause.pretty(exit.cause)}`,
       );
@@ -93,7 +93,7 @@ describe("runInteractionContract", () => {
   test("the TestInteractionService satisfies the contract", async () => {
     const exit = await runContract(testDoubleHarness);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       throw new Error(
         `TestInteractionService contract failed: ${Option.isSome(failure) ? JSON.stringify(failure.value) : Cause.pretty(exit.cause)}`,
       );
@@ -104,13 +104,13 @@ describe("runInteractionContract", () => {
 
 const failureAssertion = (exit: Exit.Exit<void, unknown>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) ? (failure.value as { assertion?: string }).assertion : undefined;
 };
 
 const rejectedWithContractFailure = (exit: Exit.Exit<void, unknown>): boolean => {
   if (!Exit.isFailure(exit)) return false;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) && (failure.value as { _tag?: string })._tag === "ContractFailure";
 };
 

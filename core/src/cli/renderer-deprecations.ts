@@ -72,20 +72,18 @@ const infoSummaryText = (entries: ReadonlyArray<DeprecationUse & { readonly coun
   return `Deprecated surfaces used: ${surfaces.join(", ")}.`;
 };
 
-const jsonDeprecationEventLine = (
+const jsonDeprecationEventLine = Effect.fnUntraced(function* (
   entry: DeprecationUse & { readonly count: number },
-): Effect.Effect<string, never, RedactionService> => {
+): Effect.fn.Return<string, never, RedactionService> {
   const { count: _count, ...use } = entry;
-  return Effect.gen(function* () {
-    const redaction = yield* RedactionService;
-    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-    return yield* encodeStreamEventFrame({
-      event: "deprecation-used",
-      payload: { _tag: "deprecation-used", use },
-      redactor,
-    });
+  const redaction = yield* RedactionService;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  return yield* encodeStreamEventFrame({
+    event: "deprecation-used",
+    payload: { _tag: "deprecation-used", use },
+    redactor,
   });
-};
+});
 
 type DeprecationServiceShape = typeof DeprecationService.Service;
 
@@ -95,34 +93,33 @@ const optionalDeprecationService = Effect.serviceOption(DeprecationService) as E
   never
 >;
 
-export const renderDeprecationDiagnostics = (
+export const renderDeprecationDiagnostics = Effect.fnUntraced(function* (
   enabled: boolean,
-): Effect.Effect<void, never, Renderer | RedactionService> =>
-  Effect.gen(function* () {
-    const deprecations = yield* optionalDeprecationService;
-    if (Option.isNone(deprecations)) return;
-    const renderer = yield* Renderer;
-    const summary = yield* deprecations.value.summary();
-    if (summary.length === 0) return;
+): Effect.fn.Return<void, never, Renderer | RedactionService> {
+  const deprecations = yield* optionalDeprecationService;
+  if (Option.isNone(deprecations)) return;
+  const renderer = yield* Renderer;
+  const summary = yield* deprecations.value.summary();
+  if (summary.length === 0) return;
 
-    if (renderer.id === "json") {
-      for (const entry of summary) {
-        const line = yield* jsonDeprecationEventLine(entry);
-        yield* renderer.output.stderr(`${line}\n`);
-      }
-      return;
+  if (renderer.id === "json") {
+    for (const entry of summary) {
+      const line = yield* jsonDeprecationEventLine(entry);
+      yield* renderer.output.stderr(`${line}\n`);
     }
+    return;
+  }
 
-    if (enabled) {
-      for (const entry of summary) {
-        if (entry.notice.severity === "warn") {
-          yield* renderer.message.warn(warningText(entry)).pipe(Effect.catchAll(() => Effect.void));
-        }
+  if (enabled) {
+    for (const entry of summary) {
+      if (entry.notice.severity === "warn") {
+        yield* renderer.message.warn(warningText(entry)).pipe(Effect.catch(() => Effect.void));
       }
     }
+  }
 
-    const infoEntries = summary.filter((entry) => entry.notice.severity === "info");
-    if (infoEntries.length > 0) {
-      yield* renderer.message.info(infoSummaryText(infoEntries)).pipe(Effect.catchAll(() => Effect.void));
-    }
-  });
+  const infoEntries = summary.filter((entry) => entry.notice.severity === "info");
+  if (infoEntries.length > 0) {
+    yield* renderer.message.info(infoSummaryText(infoEntries)).pipe(Effect.catch(() => Effect.void));
+  }
+});

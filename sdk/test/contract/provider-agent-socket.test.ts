@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { TestRuntimeProvider, runProviderContract } from "@lando/sdk/test";
 
@@ -13,9 +13,9 @@ test("provider contract accepts a present agentSocket capability", async () => {
     },
   };
   // When
-  const result = await Effect.runPromise(Effect.either(runProviderContract(provider)));
+  const result = await Effect.runPromise(Effect.result(runProviderContract(provider)));
   // Then
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
 });
 
 test("provider contract rejects an invalid present agentSocket capability", async () => {
@@ -23,10 +23,10 @@ test("provider contract rejects an invalid present agentSocket capability", asyn
   const provider = { ...TestRuntimeProvider, capabilities: { ...TestRuntimeProvider.capabilities } };
   Reflect.set(provider.capabilities, "agentSocket", { delivery: "invalid" });
   // When
-  const result = await Effect.runPromise(Effect.either(runProviderContract(provider)));
+  const result = await Effect.runPromise(Effect.result(runProviderContract(provider)));
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left.assertion).toBe("capability matrix decodes");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure.assertion).toBe("capability matrix decodes");
   }
 });

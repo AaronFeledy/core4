@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema, absurd } from "effect";
 
 import {
@@ -19,6 +17,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
@@ -26,6 +25,7 @@ import {
   credentialsFor,
   resolveAuthoredHosts,
 } from "./_phpmyadmin-hosts.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 const DB_TYPES = ["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "mariadb"] as const;
@@ -37,11 +37,6 @@ const ARTIFACTS = {
 
 export const PHPMYADMIN_FEATURE_ID = "service-lando.phpmyadmin";
 export const PHPMYADMIN_WIRE_FEATURE_ID = "service-lando.phpmyadmin.wire";
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -63,10 +58,7 @@ const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 20,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const phpmyadminServiceFeature: ServiceFeatureDefinition = {
@@ -207,20 +199,19 @@ export const phpMyAdminWireFeature: AppFeatureDefinition = {
   priority: 100,
   activatedBy: { services: { type: "phpmyadmin" } },
   selectors: { types: ["phpmyadmin", ...DB_TYPES] },
-  apply: (ctx) =>
-    Effect.gen(function* () {
-      const needsDiscovery = ctx.selected.some(
-        (view) => view.serviceType === "phpmyadmin" && authoredHosts(view.normalizedConfig) === undefined,
+  apply: Effect.fn("PhpMyAdminWireFeature.apply")(function* (ctx) {
+    const needsDiscovery = ctx.selected.some(
+      (view) => view.serviceType === "phpmyadmin" && authoredHosts(view.normalizedConfig) === undefined,
+    );
+    if (needsDiscovery && discoveredSiblings(ctx.selected).length === 0) {
+      return yield* Effect.fail(
+        new AppFeatureSelectorMatchedNothingError({
+          message: `App feature ${ctx.featureId} found no mysql/mariadb siblings and no hosts: override`,
+          feature: ctx.featureId,
+          remediation: "Add a mysql or mariadb service, or author hosts: on the phpmyadmin service.",
+        }),
       );
-      if (needsDiscovery && discoveredSiblings(ctx.selected).length === 0) {
-        return yield* Effect.fail(
-          new AppFeatureSelectorMatchedNothingError({
-            message: `App feature ${ctx.featureId} found no mysql/mariadb siblings and no hosts: override`,
-            feature: ctx.featureId,
-            remediation: "Add a mysql or mariadb service, or author hosts: on the phpmyadmin service.",
-          }),
-        );
-      }
-      yield* applyPhpMyAdminWire(ctx);
-    }),
+    }
+    yield* applyPhpMyAdminWire(ctx);
+  }),
 };

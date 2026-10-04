@@ -13,7 +13,7 @@ cd lamp-demo
 lando start
 ```
 
-The named init creates `lamp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache serves PHP on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open a URL from `lando info`.
+The named init creates `lamp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Apache serves PHP on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open a URL from `lando info`.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it. Prefer those printed endpoints over `lando open --print` when a fallback port is in play.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: none`, port `80`, webroot `/app`, Composer 2, HTTP and HTTPS routes, depends on `database` |
+| `appserver` | `php:8.4`, `framework: none`, port `80`, webroot `/app`, Composer 2, HTTP and HTTPS routes, depends on `database` |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -110,7 +110,7 @@ Init answers set the first Landofile. After that, edit `.lando.yml` and rebuild.
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*80" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />

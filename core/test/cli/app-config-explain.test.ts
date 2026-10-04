@@ -49,7 +49,7 @@ const landofile = (parts: LandofileParts = {}): string => {
       '    composer: "2"',
       "    database: mariadb:11.4",
       "    name: explain-demo",
-      `    php: "${parts.php ?? "8.3"}"`,
+      `    php: "${parts.php ?? "8.4"}"`,
       "    webroot: /app",
       PRODUCER_YAML(),
       `  version: ${lampProducer.manifestVersion}`,
@@ -115,8 +115,8 @@ describe("appConfigExplain", () => {
       expect(result.recipe?.producer).toEqual(lampProducer);
 
       const php = optionNamed(result, "php");
-      expect(php.value).toBe("8.3");
-      expect(php.default).toBe("8.3");
+      expect(php.value).toBe("8.4");
+      expect(php.default).toBe("8.4");
       expect(php.status).toBe("accepted-by-value");
       expect(php.references.map((site) => site.path)).toEqual(["services.appserver.type"]);
       expect(php.takenOver).toEqual([]);
@@ -353,16 +353,16 @@ describe("appConfigExplain", () => {
       expect(result.form).toBe("declarative");
       expect(blockedReason(result)).toBe("programmatic-landofile");
       expect(result.recipe?.producer).toEqual(lampProducer);
-      expect(optionNamed(result, "php").value).toBe("8.3");
+      expect(optionNamed(result, "php").value).toBe("8.4");
       expect(optionNamed(result, "php").takenOver).toEqual([]);
     });
   });
 
   it("fails with LandofileNotFoundError when no Landofile is in scope", async () => {
     await withApp(undefined, async (cwd) => {
-      const exit = await Effect.runPromise(Effect.either(appConfigExplain({ cwd })));
-      expect(exit._tag).toBe("Left");
-      if (exit._tag === "Left") expect(exit.left._tag).toBe("LandofileNotFoundError");
+      const exit = await Effect.runPromise(Effect.result(appConfigExplain({ cwd })));
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") expect(exit.failure._tag).toBe("LandofileNotFoundError");
     });
   });
 

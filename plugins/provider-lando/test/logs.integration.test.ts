@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import * as LandoProvider from "@lando/provider-lando";
 import { bringDown, bringUp, logs, makePodmanApiClient } from "@lando/provider-lando";
+import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LogSource,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -20,7 +24,7 @@ const appId = AppId.make("logsapp");
 const appRoot = AbsolutePath.make("/tmp/lando-logs-app");
 const textEncoder = new TextEncoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "logs.integration.test",
   runtime: 4 as const,
 };
@@ -95,6 +99,59 @@ const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
 const collectLines = (chunks: Iterable<LogChunk>) => Array.from(chunks, (chunk) => chunk.line);
 
 describe("provider-lando logs", () => {
+  test("prefers injected file access over a different helper fallback", async () => {
+    // Given: an injected file and a fallback API without helper request transport.
+    const source = Schema.decodeUnknownSync(LogSource)({
+      id: "file",
+      path: "/app.log",
+      stream: "stdout",
+      strategy: "follow",
+    });
+    const memory = makeMemoryLogFileAccess();
+    memory.writeFile(source.path, "override\n");
+    const provider = await Effect.runPromise(
+      LandoProvider.makeRuntimeProvider({
+        platform: "linux",
+        sanitizeAppliedPlan: stripHostProxyRunLando,
+        podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.void },
+        logFileAccess: memory.access,
+        logFileHelperPayloads: { "linux-x64": new Uint8Array([1]) },
+      }),
+    );
+    // When: the selected file source is read through the provider.
+    const chunks = await Effect.runPromise(
+      Stream.runCollect(
+        provider.logs(
+          { app: appId, service: node.name, plan },
+          { follow: false, source: source.id, sources: [source] },
+        ),
+      ),
+    );
+    // Then: the override supplies the line.
+    expect(collectLines(chunks)).toEqual(["override"]);
+  });
+
+  test("retains the missing API failure when file access is injected", async () => {
+    // Given: injected file access without an engine API.
+    const provider = await Effect.runPromise(
+      LandoProvider.makeRuntimeProvider({
+        platform: "linux",
+        sanitizeAppliedPlan: stripHostProxyRunLando,
+        logFileAccess: makeMemoryLogFileAccess().access,
+      }),
+    );
+    // When: planful logs are requested.
+    const result = await Effect.runPromise(
+      Effect.result(
+        Stream.runCollect(provider.logs({ app: appId, service: node.name, plan }, { follow: false })),
+      ),
+    );
+    // Then: the provider still requires its runtime API.
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ProviderUnavailableError", providerId: "lando", operation: "logs" },
+    });
+  });
   test("returns historical logs as a finite stream", async () => {
     const fake = makeFakeApi(frame("stdout", "2026-05-14T00:00:00Z lando logs ready\n"));
 

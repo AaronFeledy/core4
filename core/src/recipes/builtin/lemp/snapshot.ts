@@ -1,9 +1,10 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { arr, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LEMP_RECIPE_VERSION = "0.1.0";
-export const LEMP_CONTENT_DIGEST = "sha256:c6839506f4d6f84a185dd4ad04c78a900774d1cb105489b58930f611b186080b";
+export const LEMP_CONTENT_DIGEST = "sha256:edb0a8929bf04db3311d952be330d1b9fce8dbca6fe2340c11661c14e613c0e9";
 export const lempProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lemp",
@@ -13,8 +14,8 @@ export const lempProducer: RecipeProducer = {
 };
 export const lempSnapshot: RecipeSnapshot = {
   identity: lempProducer,
-  optionTypes: { php: { kind: "enum", values: ["8.2", "8.3"] } },
-  defaults: { php: "8.3" },
+  optionTypes: { php: { kind: "enum", values: [...PHP_VERSIONS] } },
+  defaults: { php: PHP_DEFAULT },
   template: {
     expression: obj([
       ["runtime", lit(4)],

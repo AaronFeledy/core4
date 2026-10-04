@@ -3,9 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClientLive } from "@lando/http-client/live";
+import * as VerifiedDownloader from "@lando/http-client/downloader";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { NoProviderInstalledError } from "@lando/sdk/errors";
@@ -21,11 +22,11 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
-import { PluginRegistryLive } from "../../src/plugins/registry";
-import { RuntimeProviderRegistryLive } from "../../src/providers/registry";
+import * as StateStoreLayer from "@lando/state-store/service";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+import * as PluginRegistryLayer from "../../src/plugins/registry";
+import * as RuntimeProviderRegistryLayer from "../../src/providers/registry";
 
 const appPlan: AppPlan = {
   id: AppId.make("myapp"),
@@ -39,7 +40,7 @@ const appPlan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
     source: "runtime-provider-registry.test",
     runtime: 4,
   },
@@ -55,8 +56,8 @@ const registryLayer = (
   defaultProviderId: "lando" | "docker" | "missing",
   options: {
     userDataRoot?: string;
-    eventService?: Context.Tag.Service<typeof EventService>;
-    downloader?: Context.Tag.Service<typeof Downloader>;
+    eventService?: Context.Service.Shape<typeof EventService>;
+    downloader?: Context.Service.Shape<typeof Downloader>;
   } = {},
 ) => {
   const userDataRoot =
@@ -67,23 +68,35 @@ const registryLayer = (
     ...(userDataRoot === undefined ? {} : { userDataRoot }),
   });
   const load = Effect.succeed(config);
-  const configService: Context.Tag.Service<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
   const managedFiles = Effect.runSync(makeTestManagedFileStore());
 
-  return RuntimeProviderRegistryLive.pipe(
-    Layer.provideMerge(Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan })),
-    Layer.provideMerge(Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) })),
+  const httpClientLayer = Layer.succeed(
+    HttpClient.HttpClient,
+    HttpClient.make((request) =>
+      Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+    ),
+  );
+  return RuntimeProviderRegistryLayer.layer.pipe(
+    Layer.provideMerge(
+      Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
+    ),
+    Layer.provideMerge(
+      Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    ),
     Layer.provideMerge(Layer.succeed(ManagedFileService, managedFiles.service)),
-    Layer.provideMerge(PluginRegistryLive),
+    Layer.provideMerge(PluginRegistryLayer.layer),
     Layer.provideMerge(
       options.downloader === undefined
-        ? DownloaderLive.pipe(Layer.provide(HttpClientLive))
+        ? VerifiedDownloader.layer.pipe(Layer.provide(httpClientLayer))
         : Layer.succeed(Downloader, options.downloader),
     ),
-    Layer.provideMerge(StateStoreLive),
+    // Plugin context construction requires HttpClient on the outer layer too.
+    Layer.provideMerge(httpClientLayer),
+    Layer.provideMerge(stateStoreLayer),
     Layer.provideMerge(
       Layer.succeed(
         PathsService,
@@ -103,7 +116,7 @@ const runWithRegistry = <A, E>(
   options: { userDataRoot?: string } = {},
 ) => Effect.runPromise(effect.pipe(Effect.provide(registryLayer(defaultProviderId, options))));
 
-describe("RuntimeProviderRegistryLive", () => {
+describe("RuntimeProviderRegistryLayer.layer", () => {
   test("LANDO_PROVIDER overrides the configured default provider", async () => {
     const previous = process.env.LANDO_PROVIDER;
     process.env.LANDO_PROVIDER = "docker";
@@ -124,7 +137,7 @@ describe("RuntimeProviderRegistryLive", () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-registry-progress-"));
     try {
       const events: LandoEvent[] = [];
-      const eventService: Context.Tag.Service<typeof EventService> = {
+      const eventService: Context.Service.Shape<typeof EventService> = EventService.of({
         publish: (event) =>
           Effect.sync(() => {
             events.push(event);
@@ -134,8 +147,8 @@ describe("RuntimeProviderRegistryLive", () => {
         waitFor: () => Effect.die("not used"),
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
-      };
-      const downloader: Context.Tag.Service<typeof Downloader> = {
+      });
+      const downloader: Context.Service.Shape<typeof Downloader> = Downloader.of({
         id: "test-downloader",
         capabilities: {
           schemes: ["https"],
@@ -145,7 +158,7 @@ describe("RuntimeProviderRegistryLive", () => {
           mirror: false,
         },
         download: () => Effect.die("stop before bundle download"),
-      };
+      });
       const exit = await Effect.runPromiseExit(
         Effect.gen(function* () {
           const registry = yield* RuntimeProviderRegistry;
@@ -212,7 +225,7 @@ describe("RuntimeProviderRegistryLive", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(NoProviderInstalledError);

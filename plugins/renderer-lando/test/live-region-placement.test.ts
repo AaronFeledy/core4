@@ -5,7 +5,7 @@ import { Effect, Layer, Schema } from "effect";
 import { type LandoEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
@@ -34,14 +34,13 @@ const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent
     timestamp: ts,
   });
 
-const waitForPaint = (ready: () => boolean): Effect.Effect<void, Error> =>
-  Effect.gen(function* () {
-    for (let attempt = 0; attempt < 1_000; attempt += 1) {
-      if (ready()) return;
-      yield* Effect.sleep("5 millis");
-    }
-    return yield* Effect.fail(new Error("Renderer consumer did not paint the live region."));
-  });
+const waitForPaint = Effect.fnUntraced(function* (ready: () => boolean): Effect.fn.Return<void, Error> {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
+    if (ready()) return;
+    yield* Effect.sleep("5 millis");
+  }
+  return yield* Effect.fail(new Error("Renderer consumer did not paint the live region."));
+});
 
 describe("TTY task tree live-region placement", () => {
   test("paints the rail inline without jumping to the terminal footer", async () => {
@@ -56,7 +55,7 @@ describe("TTY task tree live-region placement", () => {
           yield* events.publish(treeStart("app", "Starting app", ["web", "db"]));
           yield* events.publish(taskStart("web", "web service", "app"));
           yield* waitForPaint(() => recording.captured().includes("╭─"));
-        }).pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), EventServiceLive))),
+        }).pipe(Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io), LandoEventService.layer))),
       ),
     );
     const output = recording.captured();

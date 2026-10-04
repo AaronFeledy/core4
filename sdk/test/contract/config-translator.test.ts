@@ -77,21 +77,19 @@ const makeComposeTranslator = ({
       ),
       Match.exhaustive,
     ),
-  encode: (sample) =>
-    Effect.gen(function* () {
-      const value = yield* Schema.decodeUnknown(LandofileAuthoringFragment)(
+  encode: Effect.fnUntraced(
+    function* (sample) {
+      const value = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(
         sample.fragment ?? sample.context,
       );
-      const wire = yield* Schema.encode(LandofileAuthoringFragment)(value);
-      const record = yield* Schema.decodeUnknown(
-        Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-      )(wire);
-      return { text: yield* emitLandofileYamlEither(record), diagnostics: [] };
-    }).pipe(
-      Effect.mapError(
-        (cause) => new ConfigTranslateError({ message: "Cannot encode authoring sample.", cause }),
-      ),
+      const wire = yield* Schema.encodeEffect(LandofileAuthoringFragment)(value);
+      const record = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(wire);
+      return { text: yield* Effect.fromResult(emitLandofileYamlEither(record)), diagnostics: [] };
+    },
+    Effect.mapError(
+      (cause) => new ConfigTranslateError({ message: "Cannot encode authoring sample.", cause }),
     ),
+  ),
 });
 const translator = makeComposeTranslator({
   decoder: (snapshot) => Effect.succeed(new TextDecoder().decode(snapshot).includes("nginx") ? fragment : {}),

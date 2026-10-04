@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
@@ -127,10 +127,11 @@ describe("Podman API client", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        if (!Exit.isFailure(exit) || exit.cause._tag !== "Fail") throw new Error("Expected typed failure");
-        expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
-        expect(exit.cause.error.providerId).toBe(ctx.providerId);
-        expect(exit.cause.error.remediation).toBe(ctx.remediation);
+        if (!Exit.isFailure(exit)) throw new Error("Expected typed failure");
+        const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+        expect(error).toBeInstanceOf(ProviderInternalError);
+        expect(error.providerId).toBe(ctx.providerId);
+        expect(error.remediation).toBe(ctx.remediation);
       },
     );
   });
@@ -148,16 +149,17 @@ describe("Podman API client", () => {
 
     // Then
     expect(Exit.isFailure(requestExit)).toBe(true);
-    if (!Exit.isFailure(requestExit) || requestExit.cause._tag !== "Fail")
-      throw new Error("Expected request failure");
-    expect(requestExit.cause.error).toBeInstanceOf(ProviderUnavailableError);
-    expect(requestExit.cause.error.providerId).toBe(ctx.providerId);
-    expect(requestExit.cause.error.remediation).toBe(ctx.remediation);
+    if (!Exit.isFailure(requestExit)) throw new Error("Expected request failure");
+    const requestError = Option.getOrThrow(Cause.findErrorOption(requestExit.cause));
+    expect(requestError).toBeInstanceOf(ProviderUnavailableError);
+    expect(requestError.providerId).toBe(ctx.providerId);
+    expect(requestError.remediation).toBe(ctx.remediation);
     expect(Exit.isFailure(infoExit)).toBe(true);
-    if (!Exit.isFailure(infoExit) || infoExit.cause._tag !== "Fail") throw new Error("Expected info failure");
-    expect(infoExit.cause.error).toBeInstanceOf(ProviderUnavailableError);
-    expect(infoExit.cause.error.providerId).toBe(ctx.providerId);
-    expect(infoExit.cause.error.remediation).toBe(ctx.remediation);
+    if (!Exit.isFailure(infoExit)) throw new Error("Expected info failure");
+    const infoError = Option.getOrThrow(Cause.findErrorOption(infoExit.cause));
+    expect(infoError).toBeInstanceOf(ProviderUnavailableError);
+    expect(infoError.providerId).toBe(ctx.providerId);
+    expect(infoError.remediation).toBe(ctx.remediation);
   });
 
   test("reports malformed info JSON as a capability error", async () => {
@@ -172,14 +174,13 @@ describe("Podman API client", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        if (!Exit.isFailure(exit) || exit.cause._tag !== "Fail")
-          throw new Error("Expected capability failure");
-        expect(exit.cause.error).toBeInstanceOf(ProviderCapabilityError);
-        if (!(exit.cause.error instanceof ProviderCapabilityError))
-          throw new Error("Expected ProviderCapabilityError");
-        expect(exit.cause.error.capability).toBe("podman-info");
-        expect(exit.cause.error.providerId).toBe(ctx.providerId);
-        expect(exit.cause.error.remediation).toBe(ctx.remediation);
+        if (!Exit.isFailure(exit)) throw new Error("Expected capability failure");
+        const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+        expect(error).toBeInstanceOf(ProviderCapabilityError);
+        if (!(error instanceof ProviderCapabilityError)) throw new Error("Expected ProviderCapabilityError");
+        expect(error.capability).toBe("podman-info");
+        expect(error.providerId).toBe(ctx.providerId);
+        expect(error.remediation).toBe(ctx.remediation);
       },
     );
   });

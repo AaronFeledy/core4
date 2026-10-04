@@ -23,7 +23,7 @@ export class SubscriberLevelMismatchError extends Schema.TaggedError<SubscriberL
     subscriberId: Schema.String,
     selectedEvent: Schema.String,
     declaredLevel: BootstrapLevel,
-    eventLevel: Schema.Literal("minimal", "plugins", "commands", "tooling", "provider", "app"),
+    eventLevel: Schema.Literals(["minimal", "plugins", "commands", "tooling", "provider", "app"]),
   },
 ) {}
 

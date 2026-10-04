@@ -35,7 +35,7 @@ import {
   writeCwdAppMapEntry,
 } from "@lando/engine/cache/cwd-app-map";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 
 const fixtureRoot = resolve(import.meta.dirname, "fixtures", "binary-cache");
 
@@ -71,7 +71,7 @@ const appPlanFixture: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-20T00:00:00Z"),
     source: "/workspace/fixture-app/.lando.yml",
     runtime: 4,
   },
@@ -87,7 +87,7 @@ const expectMagic = (bytes: Uint8Array, magic: Uint8Array): void => {
 };
 
 const writeWithCache = <A>(effect: Effect.Effect<A, unknown, CacheService>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
+  Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
 const makeAppPlanBytes = async (): Promise<Buffer> => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-fixture-"));
@@ -143,25 +143,28 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v3.bin",
-      previousFixture: "app-command-v2.bin",
+      fixture: "app-command-v4.bin",
+      previousFixtures: ["app-command-v3.bin", "app-command-v2.bin"],
       decode: decodeAppCommandIndex,
     },
     {
       name: "plugin-command",
       magic: PLUGIN_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "plugin-command-v3.bin",
-      previousFixture: "plugin-command-v2.bin",
+      fixture: "plugin-command-v4.bin",
+      previousFixtures: ["plugin-command-v3.bin", "plugin-command-v2.bin"],
       decode: decodePluginCommandIndex,
     },
   ] as const;
 
   for (const cache of commandCases) {
-    test(`${cache.name} rejects the previous schema fixture`, async () => {
-      const fixture = await readFile(join(fixtureRoot, cache.previousFixture));
-      expect(cache.decode(fixture)).toBeNull();
-    });
+    test.each([...cache.previousFixtures])(
+      `${cache.name} rejects schema fixture %s`,
+      async (previousFixture) => {
+        const fixture = await readFile(join(fixtureRoot, previousFixture));
+        expect(cache.decode(fixture)).toBeNull();
+      },
+    );
 
     test(`${cache.name} fixture matches the encoder output`, async () => {
       const encoded = await makeFixtureBytes(cache.name);
@@ -194,7 +197,7 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v17.bin")));
+    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v19.bin")));
   });
 
   test("app-plan writes magic, schema version, and payload checksum in the binary header", async () => {

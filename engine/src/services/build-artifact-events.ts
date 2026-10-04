@@ -1,4 +1,4 @@
-import { type Context, DateTime } from "effect";
+import { type Context, DateTime, Effect } from "effect";
 
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
@@ -20,8 +20,6 @@ export interface RedactedBuildContext {
   readonly providerId: string;
 }
 
-const timestamp = () => DateTime.unsafeNow();
-
 export const redactedBuildContext = (
   redactor: Pick<Redactor, "redactString">,
   plan: AppPlan,
@@ -38,13 +36,13 @@ export const redactedBuildContext = (
   };
 };
 
-export const publishArtifactBuildStepSkip = (
-  events: Context.Tag.Service<typeof EventService>,
+export const publishArtifactBuildStepSkip = Effect.fnUntraced(function* (
+  events: Context.Service.Shape<typeof EventService>,
   context: RedactedBuildContext,
   step: ArtifactBuildStep,
   reason: "up-to-date" | "phase-aborted" = "up-to-date",
-) =>
-  events.publish({
+) {
+  yield* events.publish({
     _tag: "build-step-skip",
     eventName: "build-step-skip",
     appRef: context.appRef,
@@ -54,5 +52,6 @@ export const publishArtifactBuildStepSkip = (
     buildKey: step.buildKey,
     cached: reason === "up-to-date",
     reason,
-    timestamp: timestamp(),
+    timestamp: yield* DateTime.now,
   });
+});

@@ -65,80 +65,78 @@ type RestartAppServices =
   | ShellRunner
   | StateStore;
 
-export const restartApp = (
+export const restartApp = Effect.fn("AppOperation.restart")(function* (
   options: RestartAppOptions = {},
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
-): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
-  Effect.gen(function* () {
-    const resolvedTarget =
-      target ??
-      (yield* Effect.gen(function* () {
-        const landofileService = yield* LandofileService;
-        const registry = yield* RuntimeProviderRegistry;
-        const planner = yield* AppPlanner;
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        const plan = yield* planner.plan(landofile, capabilities);
-        return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
-      }));
-    const registry = yield* RuntimeProviderRegistry;
-    const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
-    const plan = mysqlResolvedTarget.plan;
-    const context = yield* Effect.context<RestartAppServices>();
-    const stateStore = yield* StateStore;
-    const provider = yield* registry.select(plan);
-    return yield* withAppMutationLock(
-      appLockTarget(plan),
-      withPlanVolumeCoordination({
-        plan,
-        provider,
-        stateStore,
-        body: () =>
-          Effect.gen(function* () {
-            yield* requireNoPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
-            const stopPreflight = yield* preflightStopApp(mysqlResolvedTarget);
-            yield* preflightStartAppDrain(mysqlResolvedTarget, stopPreflight);
-            yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
-            yield* runAppInitEvents(plan);
-            const proxy = yield* RouterService;
-            const events = yield* EventService;
-            const preRestart = PreRestartEvent.make({
-              _tag: "pre-restart",
-              scope: "app",
-              app: mysqlResolvedTarget.app,
-              plan,
-              triggeredBy: "app:restart",
-              timestamp: DateTime.unsafeNow(),
-            });
-            yield* events.publish(preRestart);
-            yield* runAppEvent(plan, "pre-restart", preRestart);
-            yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
-            yield* managed?.onStopped ?? Effect.void;
-            const result = yield* compensateFailureUnless(
-              startApp(
-                {
-                  reconcile: options.reconcile ?? false,
-                  ...(options.signal === undefined ? {} : { signal: options.signal }),
-                },
-                mysqlResolvedTarget,
-                managed,
-                { skipInitEvents: true, transactionPreflightDone: true },
-              ),
-              proxy.removeRoutes(plan.id),
-              isPostStartStepError,
-            );
-            const postRestart = PostRestartEvent.make({
-              _tag: "post-restart",
-              scope: "app",
-              app: mysqlResolvedTarget.app,
-              plan,
-              timestamp: DateTime.unsafeNow(),
-            });
-            yield* events.publish(postRestart);
-            yield* runAppEvent(plan, "post-restart", postRestart);
-            return result;
-          }).pipe(Effect.provide(context)),
-      }),
-    );
-  });
+): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
+  const resolvedTarget =
+    target ??
+    (yield* Effect.gen(function* () {
+      const landofileService = yield* LandofileService;
+      const registry = yield* RuntimeProviderRegistry;
+      const planner = yield* AppPlanner;
+      const landofile = yield* loadUserLandofile(landofileService);
+      const capabilities = yield* registry.capabilities;
+      const plan = yield* planner.plan(landofile, capabilities);
+      return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
+    }));
+  const registry = yield* RuntimeProviderRegistry;
+  const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
+  const plan = mysqlResolvedTarget.plan;
+  const context = yield* Effect.context<RestartAppServices>();
+  const stateStore = yield* StateStore;
+  const provider = yield* registry.select(plan);
+  return yield* withAppMutationLock(
+    appLockTarget(plan),
+    withPlanVolumeCoordination({
+      plan,
+      provider,
+      stateStore,
+      body: Effect.fnUntraced(function* () {
+        yield* requireNoPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+        const stopPreflight = yield* preflightStopApp(mysqlResolvedTarget);
+        yield* preflightStartAppDrain(mysqlResolvedTarget, stopPreflight);
+        yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
+        yield* runAppInitEvents(plan);
+        const proxy = yield* RouterService;
+        const events = yield* EventService;
+        const preRestart = PreRestartEvent.make({
+          _tag: "pre-restart",
+          scope: "app",
+          app: mysqlResolvedTarget.app,
+          plan,
+          triggeredBy: "app:restart",
+          timestamp: DateTime.nowUnsafe(),
+        });
+        yield* events.publish(preRestart);
+        yield* runAppEvent(plan, "pre-restart", preRestart);
+        yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
+        yield* managed?.onStopped ?? Effect.void;
+        const result = yield* compensateFailureUnless(
+          startApp(
+            {
+              reconcile: options.reconcile ?? false,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+            },
+            mysqlResolvedTarget,
+            managed,
+            { skipInitEvents: true, transactionPreflightDone: true },
+          ),
+          proxy.removeRoutes(plan.id),
+          isPostStartStepError,
+        );
+        const postRestart = PostRestartEvent.make({
+          _tag: "post-restart",
+          scope: "app",
+          app: mysqlResolvedTarget.app,
+          plan,
+          timestamp: DateTime.nowUnsafe(),
+        });
+        yield* events.publish(postRestart);
+        yield* runAppEvent(plan, "post-restart", postRestart);
+        return result;
+      }, Effect.provide(context)),
+    }),
+  );
+});

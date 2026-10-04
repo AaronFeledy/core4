@@ -10,7 +10,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("user-build-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00Z"),
   source: "image-build-user-switching.test.ts",
   runtime: 4 as const,
 };

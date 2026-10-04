@@ -7,15 +7,15 @@ import { LandofileShape } from "@lando/sdk/schema";
 
 describe("Landofile version-constraint schema", () => {
   test("rejects malformed lando ranges at the boundary", () => {
-    const decoded = Schema.decodeUnknownEither(LandofileShape)({ name: "bad", lando: "not-semver" });
+    const decoded = Schema.decodeUnknownResult(LandofileShape)({ name: "bad", lando: "not-semver" });
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });
 
 describe("LandofileVersionConstraintError", () => {
   test("rejects provenance whose layer and order do not match", () => {
-    const decoded = Schema.decodeUnknownEither(LandofileVersionConstraintError)({
+    const decoded = Schema.decodeUnknownResult(LandofileVersionConstraintError)({
       _tag: "LandofileVersionConstraintError",
       message: "version mismatch",
       constraints: [{ range: ">=5", source: ".lando.base.yml", layer: "base", order: 1 }],
@@ -23,6 +23,6 @@ describe("LandofileVersionConstraintError", () => {
       remediation: "Update Lando.",
     });
 
-    expect(decoded._tag).toBe("Left");
+    expect(decoded._tag).toBe("Failure");
   });
 });

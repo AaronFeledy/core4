@@ -433,28 +433,27 @@ const findNestedBoundary = (selector: string): { end: number; suffix: string } |
   return undefined;
 };
 
-const isCurrent = (input: ProvisionToolInput, installPath: string) =>
-  Effect.gen(function* () {
-    const markerVersion = yield* Effect.promise(() =>
-      readInstalledToolVersionMarker(input.binDir, input.toolId),
-    );
-    if (markerVersion !== input.manifest.toolVersion) return undefined;
-    const fingerprint = yield* Effect.promise(async () => {
-      try {
-        const info = await stat(installPath);
-        if (!info.isFile() || info.size === 0) return undefined;
-        const [bytes, recorded] = await Promise.all([
-          readFile(installPath),
-          readFile(fingerprintPath(installPath), "utf-8"),
-        ]);
-        const actual = sha256Hex(bytes);
-        return actual === recorded.trim() ? actual : undefined;
-      } catch {
-        return undefined;
-      }
-    });
-    return fingerprint;
+const isCurrent = Effect.fnUntraced(function* (input: ProvisionToolInput, installPath: string) {
+  const markerVersion = yield* Effect.promise(() =>
+    readInstalledToolVersionMarker(input.binDir, input.toolId),
+  );
+  if (markerVersion !== input.manifest.toolVersion) return undefined;
+  const fingerprint = yield* Effect.promise(async () => {
+    try {
+      const info = await stat(installPath);
+      if (!info.isFile() || info.size === 0) return undefined;
+      const [bytes, recorded] = await Promise.all([
+        readFile(installPath),
+        readFile(fingerprintPath(installPath), "utf-8"),
+      ]);
+      const actual = sha256Hex(bytes);
+      return actual === recorded.trim() ? actual : undefined;
+    } catch {
+      return undefined;
+    }
   });
+  return fingerprint;
+});
 
 const installBytes = (
   input: ProvisionToolInput,
@@ -466,7 +465,7 @@ const installBytes = (
     try: async () => {
       const dir = dirname(installPath);
       await mkdir(dir, { recursive: true });
-      const tmpPath = join(dir, `.${basename(installPath)}.tmp-${process.pid}-${Date.now()}`);
+      const tmpPath = join(dir, `.${basename(installPath)}.tmp-${process.pid}-${crypto.randomUUID()}`);
       try {
         await writeFile(tmpPath, bytes, { flag: "wx" });
         if (input.platform !== "win32") await chmod(tmpPath, mode);
@@ -496,146 +495,145 @@ const installBytes = (
  * marker plus a per-binary `.sha256` fingerprint so a matching re-run is an
  * idempotent no-op with no network access.
  */
-export const provisionTool = (
+export const provisionTool = Effect.fn("ToolProvisioning.provision")(function* (
   input: ProvisionToolInput,
-): Effect.Effect<InstalledTool, ToolError, Downloader | Scope.Scope> =>
-  Effect.gen(function* () {
-    const entry = input.manifest.artifacts[input.key];
-    if (entry === undefined) {
+): Effect.fn.Return<InstalledTool, ToolError, Downloader | Scope.Scope> {
+  const entry = input.manifest.artifacts[input.key];
+  if (entry === undefined) {
+    return yield* Effect.fail(
+      new ToolManifestError({
+        message: `No artifact entry for key "${input.key}" in the ${input.toolId} manifest.`,
+        toolId: input.toolId,
+        key: input.key,
+        remediation: "Run `lando setup` on a supported host or update the bundled manifest.",
+      }),
+    );
+  }
+
+  const contained = resolveContainedInstallPath(input.binDir, input.toolId, entry.installName);
+  if (!contained.ok) return yield* Effect.fail(contained.error);
+  const installPath = contained.path;
+  yield* ensureRealpathContainedInstallParent(input, installPath);
+
+  const mode = entry.mode !== undefined ? Number.parseInt(entry.mode, 8) || DEFAULT_MODE : DEFAULT_MODE;
+
+  if (input.force !== true) {
+    const currentSha = yield* isCurrent(input, installPath);
+    if (currentSha !== undefined) {
+      return {
+        key: input.key,
+        installPath,
+        toolVersion: input.manifest.toolVersion,
+        sha256: currentSha,
+        fromCache: false,
+        skipped: true,
+      } satisfies InstalledTool;
+    }
+  }
+
+  const downloader = yield* Downloader;
+  const filename =
+    basename(new URL(entry.url).pathname) || `${input.toolId}-${input.key.replace(/\W+/gu, "-")}`;
+  const result = yield* downloader.download({
+    url: entry.url,
+    destination: { kind: "file", directory: input.toolDownloadsDir, filename },
+    expectedSha256: entry.sha256,
+    ...(entry.sizeBytes === undefined ? {} : { expectedSizeBytes: entry.sizeBytes }),
+    callerId: input.toolId,
+    ...(input.offline === undefined ? {} : { offline: input.offline }),
+  });
+
+  const archiveBytes = yield* Effect.tryPromise({
+    try: () => readFile(result.path ?? join(input.toolDownloadsDir, filename)),
+    catch: (cause) =>
+      new ToolExtractError({
+        message: `Failed to read the verified archive for "${input.key}".`,
+        toolId: input.toolId,
+        remediation: "Retry `lando setup`.",
+        cause,
+      }),
+  }).pipe(Effect.map((buf) => new Uint8Array(buf)));
+
+  let binaryBytes: Uint8Array;
+  if (entry.archive === undefined) {
+    binaryBytes = archiveBytes;
+  } else {
+    const member = entry.member;
+    if (member === undefined) {
       return yield* Effect.fail(
-        new ToolManifestError({
-          message: `No artifact entry for key "${input.key}" in the ${input.toolId} manifest.`,
+        new ToolExtractError({
+          message: `Entry "${input.key}" sets archive "${entry.archive}" but no member.`,
           toolId: input.toolId,
-          key: input.key,
-          remediation: "Run `lando setup` on a supported host or update the bundled manifest.",
+          remediation: "Set the archive member in the manifest.",
         }),
       );
     }
-
-    const contained = resolveContainedInstallPath(input.binDir, input.toolId, entry.installName);
-    if (!contained.ok) return yield* Effect.fail(contained.error);
-    const installPath = contained.path;
-    yield* ensureRealpathContainedInstallParent(input, installPath);
-
-    const mode = entry.mode !== undefined ? Number.parseInt(entry.mode, 8) || DEFAULT_MODE : DEFAULT_MODE;
-
-    if (input.force !== true) {
-      const currentSha = yield* isCurrent(input, installPath);
-      if (currentSha !== undefined) {
-        return {
-          key: input.key,
-          installPath,
-          toolVersion: input.manifest.toolVersion,
-          sha256: currentSha,
-          fromCache: false,
-          skipped: true,
-        } satisfies InstalledTool;
-      }
-    }
-
-    const downloader = yield* Downloader;
-    const filename =
-      basename(new URL(entry.url).pathname) || `${input.toolId}-${input.key.replace(/\W+/gu, "-")}`;
-    const result = yield* downloader.download({
-      url: entry.url,
-      destination: { kind: "file", directory: input.toolDownloadsDir, filename },
-      expectedSha256: entry.sha256,
-      ...(entry.sizeBytes === undefined ? {} : { expectedSizeBytes: entry.sizeBytes }),
-      callerId: input.toolId,
-      ...(input.offline === undefined ? {} : { offline: input.offline }),
-    });
-
-    const archiveBytes = yield* Effect.tryPromise({
-      try: () => readFile(result.path ?? join(input.toolDownloadsDir, filename)),
-      catch: (cause) =>
-        new ToolExtractError({
-          message: `Failed to read the verified archive for "${input.key}".`,
-          toolId: input.toolId,
-          remediation: "Retry `lando setup`.",
-          cause,
-        }),
-    }).pipe(Effect.map((buf) => new Uint8Array(buf)));
-
-    let binaryBytes: Uint8Array;
-    if (entry.archive === undefined) {
-      binaryBytes = archiveBytes;
-    } else {
-      const member = entry.member;
-      if (member === undefined) {
+    const maxDecompressedBytes = input.maxDecompressedBytes ?? MAX_DECOMPRESSED_BYTES;
+    let extracted: { ok: true; bytes: Uint8Array } | { ok: false; reason: string };
+    try {
+      extracted = extractSelector(archiveBytes, entry.archive, member, maxDecompressedBytes);
+    } catch (cause) {
+      if (cause instanceof DecompressedSizeCapExceeded || isBufferTooLargeError(cause)) {
         return yield* Effect.fail(
           new ToolExtractError({
-            message: `Entry "${input.key}" sets archive "${entry.archive}" but no member.`,
-            toolId: input.toolId,
-            remediation: "Set the archive member in the manifest.",
-          }),
-        );
-      }
-      const maxDecompressedBytes = input.maxDecompressedBytes ?? MAX_DECOMPRESSED_BYTES;
-      let extracted: { ok: true; bytes: Uint8Array } | { ok: false; reason: string };
-      try {
-        extracted = extractSelector(archiveBytes, entry.archive, member, maxDecompressedBytes);
-      } catch (cause) {
-        if (cause instanceof DecompressedSizeCapExceeded || isBufferTooLargeError(cause)) {
-          return yield* Effect.fail(
-            new ToolExtractError({
-              message: decompressedSizeCapMessage(),
-              toolId: input.toolId,
-              member,
-              remediation: "Use a tool archive whose decompressed contents fit within the cap.",
-              cause,
-            }),
-          );
-        }
-        throw cause;
-      }
-      if (!extracted.ok) {
-        return yield* Effect.fail(
-          new ToolExtractError({
-            message: extracted.reason,
+            message: decompressedSizeCapMessage(),
             toolId: input.toolId,
             member,
-            remediation: "Verify the pinned manifest member path against the upstream archive layout.",
+            remediation: "Use a tool archive whose decompressed contents fit within the cap.",
+            cause,
           }),
         );
       }
-      binaryBytes = extracted.bytes;
-      if (binaryBytes.byteLength === 0) {
-        return yield* Effect.fail(
-          new ToolExtractError({
-            message: `Member "${member}" is empty.`,
-            toolId: input.toolId,
-            member,
-            remediation: "Verify the pinned manifest member path against the upstream archive layout.",
-          }),
-        );
-      }
+      throw cause;
     }
-
-    yield* installBytes(input, installPath, binaryBytes, mode);
-    yield* Effect.tryPromise({
-      try: async () => {
-        await mkdir(input.binDir, { recursive: true });
-        await writeFile(
-          versionMarkerPath(input.binDir, input.toolId),
-          `${input.manifest.toolVersion}\n`,
-          "utf-8",
-        );
-      },
-      catch: (cause) =>
+    if (!extracted.ok) {
+      return yield* Effect.fail(
         new ToolExtractError({
-          message: `Failed to record the installed ${input.toolId} version.`,
+          message: extracted.reason,
           toolId: input.toolId,
-          remediation: "Retry `lando setup`.",
-          cause,
+          member,
+          remediation: "Verify the pinned manifest member path against the upstream archive layout.",
         }),
-    });
+      );
+    }
+    binaryBytes = extracted.bytes;
+    if (binaryBytes.byteLength === 0) {
+      return yield* Effect.fail(
+        new ToolExtractError({
+          message: `Member "${member}" is empty.`,
+          toolId: input.toolId,
+          member,
+          remediation: "Verify the pinned manifest member path against the upstream archive layout.",
+        }),
+      );
+    }
+  }
 
-    return {
-      key: input.key,
-      installPath,
-      toolVersion: input.manifest.toolVersion,
-      sha256: sha256Hex(binaryBytes),
-      fromCache: result.fromCache,
-      skipped: false,
-    } satisfies InstalledTool;
+  yield* installBytes(input, installPath, binaryBytes, mode);
+  yield* Effect.tryPromise({
+    try: async () => {
+      await mkdir(input.binDir, { recursive: true });
+      await writeFile(
+        versionMarkerPath(input.binDir, input.toolId),
+        `${input.manifest.toolVersion}\n`,
+        "utf-8",
+      );
+    },
+    catch: (cause) =>
+      new ToolExtractError({
+        message: `Failed to record the installed ${input.toolId} version.`,
+        toolId: input.toolId,
+        remediation: "Retry `lando setup`.",
+        cause,
+      }),
   });
+
+  return {
+    key: input.key,
+    installPath,
+    toolVersion: input.manifest.toolVersion,
+    sha256: sha256Hex(binaryBytes),
+    fromCache: result.fromCache,
+    skipped: false,
+  } satisfies InstalledTool;
+});

@@ -17,15 +17,11 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import {
-  makeJsonRendererLive,
-  makePlainRendererLive,
-  renderJson,
-  renderPlain,
-} from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
+import { renderJson, renderPlain } from "@lando/renderer/runtime";
 
 const fixturePath = resolve(import.meta.dirname, "fixtures/renderer.task-tree.concurrent.ndjson");
 const fixtureContent = readFileSync(fixturePath, "utf8");
@@ -256,11 +252,11 @@ describe("cold-start regression: no events dropped before first task.tree.start"
       yield* events.publish(childStart);
       yield* events.publish(childComplete);
       yield* events.publish(treeComplete);
-      yield* Effect.yieldNow();
+      yield* Effect.yieldNow;
       yield* Effect.sleep("20 millis");
     });
 
-    const layer = Layer.provideMerge(makePlainRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const lines = io.stdoutLines();
@@ -292,7 +288,7 @@ describe("cold-start regression: no events dropped before first task.tree.start"
       yield* Effect.sleep("20 millis");
     });
 
-    const layer = Layer.provideMerge(makeJsonRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(RendererRuntime.layerJson(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const lines = io.stderrLines();

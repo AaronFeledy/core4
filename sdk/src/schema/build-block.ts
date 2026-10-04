@@ -1,4 +1,6 @@
-import { ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Effect, SchemaTransformation } from "effect";
+import { Schema } from "effect";
 
 import { BuildScript } from "./artifacts.ts";
 import { buildBlockJsonSchema } from "./build-block-json-schema.ts";
@@ -36,11 +38,11 @@ const COMPOSE_BUILD_REJECTED_LITERAL_KEYS = [
 
 const COMPOSE_BUILD_EXTENSION_KEY_PREFIX = "x-";
 
-const anti = () => Schema.optional(Schema.Never);
+const anti = () => Schema.optionalKey(Schema.Never);
 
 const LandoBuildBlock = Schema.Struct({
-  artifact: Schema.optional(BuildScript),
-  app: Schema.optional(BuildScript),
+  artifact: Schema.optionalKey(BuildScript),
+  app: Schema.optionalKey(BuildScript),
   context: anti(),
   dockerfile: anti(),
   dockerfileInline: anti(),
@@ -50,67 +52,67 @@ const LandoBuildBlock = Schema.Struct({
 
 const ComposeBuildBlock = Schema.Struct({
   context: Schema.String,
-  dockerfile: Schema.optional(Schema.String),
-  dockerfileInline: Schema.optional(Schema.String),
-  args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  target: Schema.optional(Schema.String),
+  dockerfile: Schema.optionalKey(Schema.String),
+  dockerfileInline: Schema.optionalKey(Schema.String),
+  args: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  target: Schema.optionalKey(Schema.String),
   artifact: anti(),
   app: anti(),
 });
 
-const BuildBlockCanonical = Schema.Union(LandoBuildBlock, ComposeBuildBlock);
+const BuildBlockCanonical = Schema.Union([LandoBuildBlock, ComposeBuildBlock]);
 
 const BuildBlockObjectFields = {
-  artifact: Schema.optional(BuildScript),
-  app: Schema.optional(BuildScript),
-  additional_contexts: Schema.optional(Schema.Unknown),
-  context: Schema.optional(Schema.String),
-  dockerfile: Schema.optional(Schema.String),
-  dockerfile_inline: Schema.optional(Schema.String),
-  dockerfileInline: Schema.optional(Schema.String),
-  args: Schema.optional(
-    Schema.Union(
-      Schema.Record({ key: Schema.String, value: Schema.Union(Schema.String, Schema.Null) }),
+  artifact: Schema.optionalKey(BuildScript),
+  app: Schema.optionalKey(BuildScript),
+  additional_contexts: Schema.optionalKey(Schema.Unknown),
+  context: Schema.optionalKey(Schema.String),
+  dockerfile: Schema.optionalKey(Schema.String),
+  dockerfile_inline: Schema.optionalKey(Schema.String),
+  dockerfileInline: Schema.optionalKey(Schema.String),
+  args: Schema.optionalKey(
+    Schema.Union([
+      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Null])),
       Schema.Array(Schema.String),
-    ),
+    ]),
   ),
-  cache_from: Schema.optional(Schema.Unknown),
-  cache_to: Schema.optional(Schema.Unknown),
-  entitlements: Schema.optional(Schema.Unknown),
-  extra_hosts: Schema.optional(Schema.Unknown),
-  isolation: Schema.optional(Schema.Unknown),
-  labels: Schema.optional(Schema.Unknown),
-  network: Schema.optional(Schema.Unknown),
-  no_cache: Schema.optional(Schema.Unknown),
-  no_cache_filter: Schema.optional(Schema.Unknown),
-  platforms: Schema.optional(Schema.Unknown),
-  privileged: Schema.optional(Schema.Unknown),
-  provenance: Schema.optional(Schema.Unknown),
-  pull: Schema.optional(Schema.Unknown),
-  sbom: Schema.optional(Schema.Unknown),
-  secrets: Schema.optional(Schema.Unknown),
-  shm_size: Schema.optional(Schema.Unknown),
-  ssh: Schema.optional(Schema.Unknown),
-  tags: Schema.optional(Schema.Unknown),
-  target: Schema.optional(Schema.String),
-  ulimits: Schema.optional(Schema.Unknown),
+  cache_from: Schema.optionalKey(Schema.Unknown),
+  cache_to: Schema.optionalKey(Schema.Unknown),
+  entitlements: Schema.optionalKey(Schema.Unknown),
+  extra_hosts: Schema.optionalKey(Schema.Unknown),
+  isolation: Schema.optionalKey(Schema.Unknown),
+  labels: Schema.optionalKey(Schema.Unknown),
+  network: Schema.optionalKey(Schema.Unknown),
+  no_cache: Schema.optionalKey(Schema.Unknown),
+  no_cache_filter: Schema.optionalKey(Schema.Unknown),
+  platforms: Schema.optionalKey(Schema.Unknown),
+  privileged: Schema.optionalKey(Schema.Unknown),
+  provenance: Schema.optionalKey(Schema.Unknown),
+  pull: Schema.optionalKey(Schema.Unknown),
+  sbom: Schema.optionalKey(Schema.Unknown),
+  secrets: Schema.optionalKey(Schema.Unknown),
+  shm_size: Schema.optionalKey(Schema.Unknown),
+  ssh: Schema.optionalKey(Schema.Unknown),
+  tags: Schema.optionalKey(Schema.Unknown),
+  target: Schema.optionalKey(Schema.String),
+  ulimits: Schema.optionalKey(Schema.Unknown),
 } as const;
 
-const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields).pipe(
-  Schema.extend(
-    Schema.Record({
-      key: Schema.TemplateLiteral(COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String),
-      value: Schema.Unknown,
-    }),
-  ),
+const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields).pipe((self) =>
+  Schema.StructWithRest(self, [
+    Schema.Record(
+      Schema.TemplateLiteral([COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String]),
+      Schema.Unknown,
+    ),
+  ]),
 );
 
 const BUILD_BLOCK_DESCRIPTION =
   'Build configuration using either Lando build-script keys (artifact, app) or Compose image-build keys (context, dockerfile, dockerfile_inline, args, target); mixing the families is rejected. Compose accepts a bare context string and defaults an omitted object context to ".". The canonical decoded form keeps dockerfileInline and encodes it back to dockerfile_inline.';
 
-const BuildBlockFrom = Schema.Union(Schema.String, BuildBlockObjectFrom).annotations({
+const BuildBlockFrom = Schema.Union([Schema.String, BuildBlockObjectFrom]).annotate({
   description: BUILD_BLOCK_DESCRIPTION,
-  jsonSchema: buildBlockJsonSchema,
+  jsonSchemaProjection: buildBlockJsonSchema,
 });
 
 type BuildBlockShape = typeof BuildBlockCanonical.Type;
@@ -120,7 +122,7 @@ type BuildBlockInput = typeof BuildBlockFrom.Type;
 const landoKeys = ["artifact", "app"] as const;
 
 const fail = (input: BuildBlockInput, message: string): never => {
-  throw new ParseResult.Type(BuildBlockFrom.ast, input, message);
+  throw new SchemaIssue.InvalidValue({ message: message }, input);
 };
 
 const decodeBuildBlock = (input: BuildBlockInput): BuildBlockShape => {
@@ -226,17 +228,21 @@ const encodeBuildBlock = (input: BuildBlockShape): BuildBlockInput => {
   };
 };
 
-export const BuildBlock = Schema.transformOrFail(BuildBlockFrom, BuildBlockCanonical, {
-  strict: true,
-  decode: (input) => {
-    try {
-      return ParseResult.succeed(decodeBuildBlock(input));
-    } catch (error) {
-      if (error instanceof ParseResult.Type) return ParseResult.fail(error);
-      throw error;
-    }
-  },
-  encode: (input) => ParseResult.succeed(encodeBuildBlock(input)),
-}).annotations({
+export const BuildBlock = BuildBlockFrom.pipe(
+  Schema.decodeTo(
+    BuildBlockCanonical,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        try {
+          return Effect.succeed(decodeBuildBlock(input));
+        } catch (error) {
+          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+          throw error;
+        }
+      },
+      encode: (input) => Effect.succeed(encodeBuildBlock(input)),
+    }),
+  ),
+).annotate({
   description: BUILD_BLOCK_DESCRIPTION,
 });

@@ -29,7 +29,7 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("livefilelogsapp");
 const serviceName = ServiceName.make("node");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "logs-live-container-files.integration.test",
   runtime: 4 as const,
 };
@@ -96,7 +96,7 @@ const makePlan = (appRoot: string): AppPlan => {
   const node = service(appRoot);
   return {
     id: appId,
-    name: "Live File Logs App",
+    name: "File Logs App",
     slug: "livefilelogsapp",
     root: AbsolutePath.make(appRoot),
     provider: providerId,

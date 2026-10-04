@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { DateTime, Effect, Option } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
@@ -123,79 +123,78 @@ const lastStartedAt = (inspect: ContainerInspect): Date | undefined => {
   if (startedAt === undefined || startedAt.length === 0 || startedAt.startsWith("0001-")) {
     return undefined;
   }
-  const parsed = new Date(startedAt);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  const parsed = DateTime.make(startedAt);
+  return Option.isNone(parsed) ? undefined : DateTime.toDate(parsed.value);
 };
 
-export const inspect = (
+export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   plan: AppPlan,
   target: ServiceSelector,
   options: InspectOptions,
-): Effect.Effect<ServiceRuntimeInfo, ProviderError> => {
+): Effect.fn.Return<ServiceRuntimeInfo, ProviderError> {
   const ctx = options.ctx;
   const service = plan.services[target.service];
   if (service === undefined) {
-    return Effect.fail(missingService(ctx, target, "inspect"));
+    return yield* Effect.fail(missingService(ctx, target, "inspect"));
   }
   if (options.api === undefined) {
-    return Effect.fail(apiRequired(ctx, "inspect"));
+    return yield* Effect.fail(apiRequired(ctx, "inspect"));
   }
 
   const deps = { api: options.api, ctx };
-  return Effect.gen(function* () {
-    const response = yield* request(
-      deps,
-      {
-        method: "GET",
-        path: `/containers/${encodeURIComponent(containerName(plan, service))}/json`,
-      },
-      "inspect",
-    );
 
-    if (response.status === 404) {
-      return {
-        app: plan.id,
-        appRoot: plan.root,
-        service: service.name,
-        providerId: plan.provider,
-        status: "stopped",
-        state: "stopped",
-        endpoints: service.endpoints,
-      };
-    }
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: ctx.providerId,
-          operation: "inspect",
-          message: withApiReason(`provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`, {
-            body: response.body,
-          }),
-          details: { service: service.name, body: response.body },
-          remediation: ctx.remediation,
-        }),
-      );
-    }
+  const response = yield* request(
+    deps,
+    {
+      method: "GET",
+      path: `/containers/${encodeURIComponent(containerName(plan, service))}/json`,
+    },
+    "inspect",
+  );
 
-    const decoded = (yield* parseEngineJson(response, ctx, "inspect")) as ContainerInspect;
-    const status = statusFromInspect(decoded);
-    const health = healthFromInspect(decoded);
-    const startedAt = lastStartedAt(decoded);
-    const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
+  if (response.status === 404) {
     return {
       app: plan.id,
       appRoot: plan.root,
       service: service.name,
       providerId: plan.provider,
-      status,
-      state: status,
-      ...(health === undefined ? {} : { health }),
-      ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
-      ...(typeof decoded.Image === "string" && decoded.Image.length > 0
-        ? { imageIdentity: decoded.Image }
-        : {}),
-      endpoints: materialized.length > 0 ? materialized : service.endpoints,
-      ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
+      status: "stopped",
+      state: "stopped",
+      endpoints: service.endpoints,
     };
-  });
-};
+  }
+  if (response.status < 200 || response.status >= 300) {
+    yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: ctx.providerId,
+        operation: "inspect",
+        message: withApiReason(`provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`, {
+          body: response.body,
+        }),
+        details: { service: service.name, body: response.body },
+        remediation: ctx.remediation,
+      }),
+    );
+  }
+
+  const decoded = (yield* parseEngineJson(response, ctx, "inspect")) as ContainerInspect;
+  const status = statusFromInspect(decoded);
+  const health = healthFromInspect(decoded);
+  const startedAt = lastStartedAt(decoded);
+  const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
+  return {
+    app: plan.id,
+    appRoot: plan.root,
+    service: service.name,
+    providerId: plan.provider,
+    status,
+    state: status,
+    ...(health === undefined ? {} : { health }),
+    ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
+    ...(typeof decoded.Image === "string" && decoded.Image.length > 0
+      ? { imageIdentity: decoded.Image }
+      : {}),
+    endpoints: materialized.length > 0 ? materialized : service.endpoints,
+    ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
+  };
+});

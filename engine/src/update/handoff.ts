@@ -7,13 +7,13 @@ import { CoreUpdateFailureSchema, UpdateNetworkError } from "./errors.ts";
 import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
 
 const StoredUpdateResultSchema = Schema.Struct({
-  coreFailure: Schema.optional(CoreUpdateFailureSchema),
+  coreFailure: Schema.optionalKey(CoreUpdateFailureSchema),
   updatedCore: Schema.Boolean,
   updatedPlugins: Schema.Array(Schema.String),
-  pluginResults: Schema.optional(Schema.Array(PluginUpdatePlanRowSchema)),
-  hasFailures: Schema.optional(Schema.Boolean),
-  coreBlocked: Schema.optional(Schema.Boolean),
-  coreUpdateAvailable: Schema.optional(Schema.Boolean),
+  pluginResults: Schema.optionalKey(Schema.Array(PluginUpdatePlanRowSchema)),
+  hasFailures: Schema.optionalKey(Schema.Boolean),
+  coreBlocked: Schema.optionalKey(Schema.Boolean),
+  coreUpdateAvailable: Schema.optionalKey(Schema.Boolean),
 });
 
 export type StoredUpdateResult = typeof StoredUpdateResultSchema.Type;
@@ -23,7 +23,7 @@ const UpdateHandoffReceiptSchema = Schema.Struct({
   planHash: Schema.String,
   completedRows: Schema.Array(PluginUpdatePlanRowSchema),
   result: StoredUpdateResultSchema,
-  deferred: Schema.optional(Schema.Literal("pending", "complete")),
+  deferred: Schema.optionalKey(Schema.Literals(["pending", "complete"])),
 });
 
 export interface UpdateHandoff {
@@ -117,7 +117,7 @@ export const makeUpdateHandoff = (store: StateStoreShape, token?: string) => {
         Effect.flatMap((bucket) =>
           bucket
             .modify((receipt) => (receipt === null ? [undefined, null] : [receipt.result, null]))
-            .pipe(Effect.tap(() => bucket.remove.pipe(Effect.catchAll(() => Effect.void)))),
+            .pipe(Effect.tap(() => bucket.remove.pipe(Effect.catch(() => Effect.void)))),
         ),
         Effect.mapError((cause) => handoffError("consume", cause)),
       ),

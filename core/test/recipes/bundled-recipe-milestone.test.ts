@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { buildConfig } from "../../build.config.ts";
 import { BUILTIN_RECIPE_DECOMPOSERS, lookupRecipeDecomposer } from "../../src/recipes/builtin/decomposers.ts";
@@ -106,7 +106,7 @@ describe("bundled recipe conversion milestone", () => {
       const decomposer = decomposerFor(recipeId);
       const snapshot = snapshotFor(recipeId);
       const result = Effect.runSync(
-        Effect.either(
+        Effect.result(
           decomposer.decompose({
             producer: decomposer.producer,
             options: { ...snapshot.defaults },
@@ -114,10 +114,10 @@ describe("bundled recipe conversion milestone", () => {
           }),
         ),
       );
-      expect({ recipeId, ok: Either.isRight(result) }).toEqual({ recipeId, ok: true });
-      if (!Either.isRight(result)) continue;
-      expect<unknown>(result.right.provenance.producer).toEqual(decomposer.producer);
-      expect(result.right.fragment).toBeDefined();
+      expect({ recipeId, ok: Result.isSuccess(result) }).toEqual({ recipeId, ok: true });
+      if (!Result.isSuccess(result)) continue;
+      expect<unknown>(result.success.provenance.producer).toEqual(decomposer.producer);
+      expect(result.success.fragment).toBeDefined();
     }
   });
 
@@ -132,7 +132,7 @@ describe("bundled recipe conversion milestone", () => {
         // A zero-option recipe states that explicitly by rejecting any option
         // key it never declared, rather than silently ignoring it.
         const rejected = Effect.runSync(
-          Effect.either(
+          Effect.result(
             decomposer.decompose({
               producer: decomposer.producer,
               options: { "not-a-declared-option": "x" },
@@ -140,12 +140,12 @@ describe("bundled recipe conversion milestone", () => {
             }),
           ),
         );
-        expect({ recipeId, rejected: Either.isLeft(rejected) }).toEqual({
+        expect({ recipeId, rejected: Result.isFailure(rejected) }).toEqual({
           recipeId,
           rejected: true,
         });
-        if (!Either.isLeft(rejected)) continue;
-        expect<unknown>((rejected.left as { reason: string }).reason).toEqual("option-type");
+        if (!Result.isFailure(rejected)) continue;
+        expect<unknown>((rejected.failure as { reason: string }).reason).toEqual("option-type");
         continue;
       }
 
@@ -163,7 +163,7 @@ describe("bundled recipe conversion milestone", () => {
 
       const [name, value] = nondefault;
       const result = Effect.runSync(
-        Effect.either(
+        Effect.result(
           decomposer.decompose({
             producer: decomposer.producer,
             options: { ...defaults, [name]: value },
@@ -171,9 +171,9 @@ describe("bundled recipe conversion milestone", () => {
           }),
         ),
       );
-      expect({ recipeId, ok: Either.isRight(result) }).toEqual({ recipeId, ok: true });
-      if (!Either.isRight(result)) continue;
-      expect<unknown>(result.right.provenance.options[name]).toEqual(value);
+      expect({ recipeId, ok: Result.isSuccess(result) }).toEqual({ recipeId, ok: true });
+      if (!Result.isSuccess(result)) continue;
+      expect<unknown>(result.success.provenance.options[name]).toEqual(value);
     }
   });
 });

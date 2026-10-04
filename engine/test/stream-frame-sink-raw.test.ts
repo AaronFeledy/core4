@@ -7,22 +7,25 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeStreamFrameSinkLive } from "@lando/renderer/output";
-import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
+import * as RendererOutput from "@lando/renderer/output";
+import * as RendererRuntime from "@lando/renderer/runtime";
 
 import { StreamFrameSink } from "../src/operations/stream-frame-sink";
 
-const identityRedaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
-});
+const identityRedaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
+  }),
+);
 
-describe("makeStreamFrameSinkLive raw frames", () => {
+describe("RendererOutput.layerStreamFrameSink raw frames", () => {
   test("writes a raw stdout chunk without adding a newline or service prefix", async () => {
     // Given: a plain stream sink and a progress-style chunk that already includes a carriage return.
     const io = createBufferedRendererIO();
-    const layer = makeStreamFrameSinkLive("text").pipe(
-      Layer.provide(Layer.merge(makePlainRendererServiceLive(io), identityRedaction)),
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), identityRedaction)),
     );
 
     // When: tooling emits a raw stdout frame.
@@ -39,8 +42,8 @@ describe("makeStreamFrameSinkLive raw frames", () => {
 
   test("writes a raw stderr chunk to stderr without adding a newline", async () => {
     const io = createBufferedRendererIO();
-    const layer = makeStreamFrameSinkLive("text").pipe(
-      Layer.provide(Layer.merge(makePlainRendererServiceLive(io), identityRedaction)),
+    const layer = RendererOutput.layerStreamFrameSink("text").pipe(
+      Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), identityRedaction)),
     );
 
     await Effect.runPromise(

@@ -29,7 +29,7 @@ const appliedPlanAt = (root: string): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00.000Z"),
     source: "app-handle-applied-teardown.test",
     runtime: 4,
   },
@@ -51,7 +51,7 @@ const withEmptyAppRoot = async <A>(use: (root: string) => Promise<A>): Promise<A
 const makeHarness = (root: string) => {
   let appliedPlan: AppPlan | undefined = appliedPlanAt(root);
   const destroyCalls: Array<{ readonly removeState?: boolean; readonly volumes: boolean }> = [];
-  const provider = {
+  const provider = RuntimeProvider.of({
     ...TestRuntimeProvider,
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     destroy: (_target: unknown, options: { readonly removeState?: boolean; readonly volumes: boolean }) =>
@@ -60,16 +60,19 @@ const makeHarness = (root: string) => {
         if (options.removeState !== false) appliedPlan = undefined;
         return { kind: "destroyed" as const };
       }),
-  };
+  });
   const layers = [
     Layer.succeed(RuntimeProvider, provider),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-      resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
-    }),
-    Layer.succeed(RouterService, TestRouterService),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+        resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
+      }),
+    ),
+    Layer.succeed(RouterService, RouterService.of(TestRouterService)),
   ];
   return { appliedPlan: () => appliedPlan, destroyCalls, layers };
 };

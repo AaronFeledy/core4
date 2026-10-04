@@ -1,11 +1,13 @@
 import {
   type EvaluationBudget,
-  type ExpressionTemplate,
+  type ExpressionContext,
   evaluateTemplateEither,
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
-import { Either } from "effect";
+import { Predicate, Result } from "effect";
+
+import type { ValidationIssuePath } from "@lando/sdk/schema";
 
 /**
  * Expression scopes a loaded Landofile may still carry after the load walk.
@@ -52,23 +54,10 @@ export const sourceHasUnescapedBracedForm = (source: string): boolean => {
   return false;
 };
 
-/**
- * True when a value site's expressions may resolve from loader-owned data.
- *
- * The raw source decides the braced question, not the AST: a parsed segment
- * cannot tell `${VAR}` from `$VAR`, and only the bare spelling is inert here.
- * Unescaped `${...}` parameter and `${secret:...}` references stay unsupported
- * on the load path - including on the files whose raw pre-parse scan is skipped
- * - so a site carrying one is left for the strict path to reject.
- */
-const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean =>
-  !sourceHasUnescapedBracedForm(source) &&
-  expressionInterpolationsTouchOnlyScopes(template, LOAD_RESOLVABLE_EXPRESSION_SCOPES);
-
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
-  /** Dotted path of the value site holding the expression. */
-  readonly path: string;
+  /** Location of the value site holding the expression. */
+  readonly path: ValidationIssuePath;
   readonly reason: string;
 }
 
@@ -100,13 +89,13 @@ export const hostExpressionEnvironment = (): Record<string, string> => {
  * an id and nothing else, so it yields no scope and every `recipe.<option>`
  * reference stays unresolved.
  */
-const recipeOptionScope = (
+export const recipeOptionScope = (
   merged: Record<string, unknown>,
 ): Readonly<Record<string, unknown>> | undefined => {
   const recipe = merged.recipe;
-  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) return undefined;
+  if (!Predicate.isObject(recipe)) return undefined;
   const options = (recipe as { readonly options?: unknown }).options;
-  if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
+  if (!Predicate.isObject(options)) return undefined;
   return options as Readonly<Record<string, unknown>>;
 };
 
@@ -126,55 +115,91 @@ export const materializeLoadScopeExpressions = (
   env: Readonly<Record<string, string>>,
 ): MaterializedLoadScopeExpressions => {
   const options = recipeOptionScope(merged);
-  const unresolved: UnresolvedLoadScopeExpression[] = [];
+  const materialized = materializeExpressionScopes(merged, filePath, {
+    context: { env, recipe: options },
+    scopes: LOAD_RESOLVABLE_EXPRESSION_SCOPES,
+    unavailableScopes: options === undefined ? ["recipe"] : [],
+  });
+  return {
+    value: materialized.value,
+    unresolved: materialized.unresolved.map(({ path, expression, reason }) => {
+      const parsed = parseExpressionEither(expression, { filePath, bareShellParameters: "preserve" });
+      const needsOptions =
+        Result.isSuccess(parsed) && !expressionInterpolationsTouchOnlyScopes(parsed.success, ["env"]);
+      return {
+        path,
+        reason: reason.startsWith("Expression budget exceeded")
+          ? "it exceeds the load-time expression budget"
+          : needsOptions
+            ? options === undefined
+              ? "the Landofile records no recipe options"
+              : "it references a recipe option the Landofile does not set"
+            : "it references an environment variable that is not set and declares no default",
+      };
+    }),
+  };
+};
+
+export const materializeExpressionScopes = <T extends object>(
+  merged: T,
+  filePath: string,
+  input: {
+    readonly context: ExpressionContext;
+    readonly scopes: ReadonlyArray<string>;
+    readonly budget?: EvaluationBudget;
+    readonly unavailableScopes?: ReadonlyArray<string>;
+  },
+): {
+  readonly value: T;
+  readonly unresolved: ReadonlyArray<UnresolvedLoadScopeExpression & { readonly expression: string }>;
+} => {
+  const unresolved: Array<UnresolvedLoadScopeExpression & { readonly expression: string }> = [];
 
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
     if (typeof value === "string") {
       if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
-      if (Either.isLeft(parsed)) return value;
-      if (!resolvableAtLoad(value, parsed.right)) return value;
-      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.right, ["env"]);
-      if (needsOptions && options === undefined) {
-        unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
+      if (Result.isFailure(parsed)) return value;
+      if (
+        sourceHasUnescapedBracedForm(value) ||
+        !expressionInterpolationsTouchOnlyScopes(parsed.success, input.scopes)
+      ) {
         return value;
       }
-      const evaluated = evaluateTemplateEither(
-        parsed.right,
-        options === undefined ? { env } : { env, recipe: options },
-        { filePath, budget: LOAD_EXPRESSION_BUDGET },
-      );
-      if (Either.isLeft(evaluated)) {
-        let reason: string;
-        if (evaluated.left.message.startsWith("Expression budget exceeded")) {
-          reason = "it exceeds the load-time expression budget";
-        } else if (needsOptions) {
-          reason = "it references a recipe option the Landofile does not set";
-        } else {
-          reason = "it references an environment variable that is not set and declares no default";
-        }
-        unresolved.push({ path: path.join("."), reason });
+      const availableScopes = input.scopes.filter((scope) => !input.unavailableScopes?.includes(scope));
+      if (!expressionInterpolationsTouchOnlyScopes(parsed.success, availableScopes)) {
+        unresolved.push({ path, expression: value, reason: "The expression scope is unavailable." });
         return value;
       }
-      return evaluated.right;
+      const evaluated = evaluateTemplateEither(parsed.success, input.context, {
+        filePath,
+        budget: input.budget ?? LOAD_EXPRESSION_BUDGET,
+      });
+      if (Result.isFailure(evaluated)) {
+        unresolved.push({ path, expression: value, reason: evaluated.failure.message });
+        return value;
+      }
+      return evaluated.success;
     }
-    if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
-    if (typeof value === "object" && value !== null) {
-      return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-          key,
-          visit(entry, [...path, key]),
-        ]),
-      );
+    if (Array.isArray(value)) {
+      const visited = value.map((entry, index) => visit(entry, [...path, index]));
+      return visited.every((entry, index) => entry === value[index]) ? value : visited;
+    }
+    if (Predicate.isObjectOrArray(value)) {
+      let changed = false;
+      const entries = Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+        const visited = path.length === 0 && key === "recipe" ? entry : visit(entry, [...path, key]);
+        if (visited !== entry) changed = true;
+        return [key, visited];
+      });
+      return changed ? Object.fromEntries(entries) : value;
     }
     return value;
   };
 
   // Provenance is inert data the user reads; never rewrite it.
-  const { recipe, ...rest } = merged;
-  const visited = visit(rest, []) as Record<string, unknown>;
   return {
-    value: recipe === undefined ? visited : { ...visited, recipe },
+    value: visit(merged, []) as T,
     unresolved,
   };
 };

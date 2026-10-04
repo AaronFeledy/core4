@@ -9,7 +9,7 @@ import {
   renderSubsystemDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor-subsystems.ts";
 
-const DoctorContext = Schema.Record({ key: Schema.String, value: Schema.String });
+const DoctorContext = Schema.Record(Schema.String, Schema.String);
 const DoctorEventContext = Schema.Struct({ context: DoctorContext });
 
 test("orders certificate and network-trust context keys deterministically", () => {

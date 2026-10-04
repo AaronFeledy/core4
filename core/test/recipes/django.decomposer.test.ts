@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { djangoDecomposer } from "../../src/recipes/builtin/django/decomposer.ts";
 import { djangoRecipeSource, djangoRecipeYaml } from "../../src/recipes/builtin/django/manifest.ts";
 import {
@@ -29,7 +29,7 @@ const decompose = (options: Readonly<Record<string, RecipeOptionValue>>) =>
 
 const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -91,7 +91,7 @@ describe("django decomposition", () => {
 
   test("adds the Celery worker service at decomposition time when the option is enabled", () => {
     const authoring = Schema.decodeUnknownSync(
-      Schema.Struct({ services: Schema.Record({ key: Schema.String, value: Schema.Unknown }) }),
+      Schema.Struct({ services: Schema.Record(Schema.String, Schema.Unknown) }),
     )(authoringOf(withWorker));
     expect(Object.keys(authoring.services)).toEqual(["web", "database", "cache", "worker"]);
     expect<unknown>(authoring.services.worker).toEqual({
@@ -114,13 +114,13 @@ describe("django decomposition", () => {
     { options: {}, path: "options.celery" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(decomposer.decompose({ producer: djangoProducer, options, secrets: {} })),
+      Effect.result(decomposer.decompose({ producer: djangoProducer, options, secrets: {} })),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBe("Supply true or false.");
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBe("Supply true or false.");
     }
   });
 
@@ -141,7 +141,7 @@ describe("django decomposition", () => {
   test.each([defaults, withWorker])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(djangoSnapshot, options))).toEqual(authoringOf(options));
+      expect(Result.getOrThrow(renderRecipeSnapshot(djangoSnapshot, options))).toEqual(authoringOf(options));
     },
   );
 });

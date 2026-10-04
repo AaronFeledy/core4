@@ -3,7 +3,7 @@ import { chmod, lstat, readFile, readdir, symlink, writeFile } from "node:fs/pro
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, type Scope } from "effect";
+import { Cause, Effect, Exit, Option, type Scope } from "effect";
 
 import { ManagedFileTransactionError } from "../src/transaction.ts";
 import { fixture as makeFixture } from "./transaction-fixture.ts";
@@ -19,12 +19,9 @@ const failure = async <A>(
   effect: Effect.Effect<A, ManagedFileTransactionError, Scope.Scope>,
 ): Promise<ManagedFileTransactionError> => {
   const exit = await Effect.runPromiseExit(Effect.scoped(effect));
-  if (
-    Exit.isFailure(exit) &&
-    exit.cause._tag === "Fail" &&
-    exit.cause.error instanceof ManagedFileTransactionError
-  ) {
-    return exit.cause.error;
+  if (Exit.isFailure(exit)) {
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    if (error instanceof ManagedFileTransactionError) return error;
   }
   throw new Error(`expected a ManagedFileTransactionError failure, got ${JSON.stringify(exit)}`);
 };
@@ -135,8 +132,8 @@ describe("managed-file transaction coordinator", () => {
 
     // Then commit fails as a conflict and the concurrent edit survives
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error.reason).toBe("conflict");
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause)).reason).toBe("conflict");
     }
     expect(await readFile(target, "utf8")).toBe("name: concurrent\n");
   });

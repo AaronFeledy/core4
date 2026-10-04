@@ -4,7 +4,7 @@ import { DateTime, Schema } from "effect";
 
 import { LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from "@lando/sdk/events";
 
-const FIXED_TIMESTAMP = DateTime.unsafeMake("2026-05-11T07:30:00Z");
+const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-05-11T07:30:00Z");
 const timestamp = DateTime.formatIso(FIXED_TIMESTAMP);
 
 describe("task.detail.expand / task.detail.collapse events", () => {

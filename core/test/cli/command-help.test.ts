@@ -134,7 +134,7 @@ describe("renderCommandHelp", () => {
     expect(help).toContain("--json [fields]");
     expect(help).toContain("--jq");
     expect(help).toContain(
-      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.",
+      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work on every command.",
     );
   });
 

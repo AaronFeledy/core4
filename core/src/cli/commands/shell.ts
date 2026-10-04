@@ -4,7 +4,7 @@
  * Service mode runs `sh -l` in the requested service via provider execStream.
  * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
  */
-import { Chunk, DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect, Queue, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
@@ -141,7 +141,7 @@ const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, Deprec
                 kind: "flag",
                 id: HOST_FLAG_DEPRECATION_ID,
                 notice: notice.value,
-                timestamp: DateTime.unsafeNow(),
+                timestamp: DateTime.nowUnsafe(),
               }),
         ),
       );
@@ -215,12 +215,15 @@ const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize>
   if (io?.onResize === undefined || io.terminalSize === undefined) return Stream.empty;
   const onResize = io.onResize;
   const terminalSize = io.terminalSize;
-  return Stream.async<ShellTerminalSize>((emit) => {
+  return Stream.callback<ShellTerminalSize>((emit) => {
     const listener = () => {
       const size = terminalSize();
-      if (size !== undefined) emit(Effect.succeed(Chunk.of(size)));
+      if (size !== undefined) Queue.offerUnsafe(emit, size);
     };
-    return Effect.sync(onResize(listener));
+    return Effect.gen(function* () {
+      const removeListener = onResize(listener);
+      yield* Effect.addFinalizer(() => Effect.sync(removeListener));
+    });
   });
 };
 
@@ -248,131 +251,130 @@ const withInteractiveStdinRawMode = <A, E, R>(
     (restore) => Effect.sync(restore),
   );
 
-export const shellApp = (
+export const shellApp = Effect.fn("ShellApp.shell")(function* (
   options: ShellAppOptions = {},
-): Effect.Effect<ShellAppResult, ShellAppError, ShellAppServices> =>
-  Effect.gen(function* () {
-    yield* recordHostFlagDeprecation(options.host === true);
+): Effect.fn.Return<ShellAppResult, ShellAppError, ShellAppServices> {
+  yield* recordHostFlagDeprecation(options.host === true);
 
-    if (options.noInteractive === true) {
-      return yield* Effect.fail(shellRequiresTtyError());
-    }
+  if (options.noInteractive === true) {
+    return yield* Effect.fail(shellRequiresTtyError());
+  }
 
-    const landofileService = yield* LandofileService;
-    const planner = yield* AppPlanner;
-    const registry = yield* RuntimeProviderRegistry;
+  const landofileService = yield* LandofileService;
+  const planner = yield* AppPlanner;
+  const registry = yield* RuntimeProviderRegistry;
 
-    const landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+  const landofile = yield* loadUserLandofile(landofileService);
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* planner.plan(landofile, capabilities);
 
-    if (options.service !== undefined && options.service.length > 0) {
-      const io = options.io ?? processShellIO;
-      const service = yield* resolveService(options.service, plan);
-      const provider = yield* registry.select(plan);
-      const target: ExecTarget = {
-        app: plan.id,
-        service: service.name,
-        plan,
-        ...(options.user === undefined ? {} : { user: options.user }),
-      };
-      const terminalSize = currentTerminalSize(io);
-      const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-      const serviceEnv = withAgentContextEnv(options.env, process.env, {
-        allowlist,
-        lowerThanEnv: service.environment,
-      });
-      const spec: CommandSpec = {
-        command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
-        stdin: "inherit",
-        ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
-        tty: true,
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        ...(serviceEnv === undefined ? {} : { env: serviceEnv }),
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        ...(terminalSize === undefined ? {} : { terminalSize }),
-        terminalResize: resizeStream(io),
-      };
-      let exitCode = 0;
-      const stdoutDecoder = new TextDecoder();
-      const stderrDecoder = new TextDecoder();
-      yield* withInteractiveStdinRawMode(
-        io,
-        Effect.scoped(
-          provider.execStream(target, spec).pipe(
-            Stream.runForEach((chunk) => {
-              if ("exitCode" in chunk) {
-                exitCode = chunk.exitCode;
-                return Effect.void;
-              }
-              const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
-              const text = decoder.decode(chunk.chunk, { stream: true });
-              return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
-            }),
-          ),
-        ),
-      );
-      yield* Effect.all([
-        writeStdout(options.io, stdoutDecoder.decode()),
-        writeStderr(options.io, stderrDecoder.decode()),
-      ]);
-      return {
-        mode: "service" as const,
-        app: plan.name,
-        service: String(service.name),
-        shell: "sh",
-        cwd: options.cwd ?? "/app",
-        exitCode,
-      };
-    }
-
-    const shellRunner = yield* ShellRunner;
-    const secretStore = yield* SecretStore;
-    const interactive =
-      options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
-    if (!interactive) return yield* Effect.fail(shellRequiresTtyError());
-
-    const cwd = options.cwd ?? String(plan.root);
-    const hostUser = process.env.USER ?? process.env.USERNAME;
-    const hostHome = process.env.HOME ?? process.env.USERPROFILE;
-    const env: Record<string, string> = {
-      ...filterStringEnv(process.env),
-      ...(options.env ?? {}),
-      LANDO: "ON",
-      LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",
-      LANDO_HOST_IP: "127.0.0.1",
-      LANDO_HOST_OS: process.platform,
-      LANDO_APP_NAME: plan.name,
-      LANDO_APP_KIND: "user",
-      LANDO_APP_ROOT: String(plan.root),
-      LANDO_PROJECT: String(plan.slug),
-      LANDO_PROJECT_MOUNT: String(plan.root),
-      ...(hostUser === undefined ? {} : { LANDO_HOST_USER: hostUser }),
-      ...(process.getuid === undefined ? {} : { LANDO_HOST_UID: String(process.getuid()) }),
-      ...(process.getgid === undefined ? {} : { LANDO_HOST_GID: String(process.getgid()) }),
-      ...(hostHome === undefined ? {} : { LANDO_HOST_HOME: hostHome }),
+  if (options.service !== undefined && options.service.length > 0) {
+    const io = options.io ?? processShellIO;
+    const service = yield* resolveService(options.service, plan);
+    const provider = yield* registry.select(plan);
+    const target: ExecTarget = {
+      app: plan.id,
+      service: service.name,
+      plan,
+      ...(options.user === undefined ? {} : { user: options.user }),
     };
-
-    const historyFile =
-      options.noHistory === true
-        ? undefined
-        : (options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root)));
-
-    const launched = yield* shellRunner.interactive({
-      cwd,
-      env,
-      resolveSecret: (id) => secretStore.get(id),
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      ...(historyFile === undefined ? {} : { historyFile }),
+    const terminalSize = currentTerminalSize(io);
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
+    const serviceEnv = withAgentContextEnv(options.env, process.env, {
+      allowlist,
+      lowerThanEnv: service.environment,
     });
-
-    return {
-      mode: "host" as const,
-      app: plan.name,
-      shell: "Bun.$",
-      cwd,
-      exitCode: launched.exitCode,
+    const spec: CommandSpec = {
+      command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
+      stdin: "inherit",
+      ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
+      tty: true,
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(serviceEnv === undefined ? {} : { env: serviceEnv }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(terminalSize === undefined ? {} : { terminalSize }),
+      terminalResize: resizeStream(io),
     };
+    let exitCode = 0;
+    const stdoutDecoder = new TextDecoder();
+    const stderrDecoder = new TextDecoder();
+    yield* withInteractiveStdinRawMode(
+      io,
+      Effect.scoped(
+        provider.execStream(target, spec).pipe(
+          Stream.runForEach((chunk) => {
+            if ("exitCode" in chunk) {
+              exitCode = chunk.exitCode;
+              return Effect.void;
+            }
+            const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
+            const text = decoder.decode(chunk.chunk, { stream: true });
+            return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
+          }),
+        ),
+      ),
+    );
+    yield* Effect.all([
+      writeStdout(options.io, stdoutDecoder.decode()),
+      writeStderr(options.io, stderrDecoder.decode()),
+    ]);
+    return {
+      mode: "service" as const,
+      app: plan.name,
+      service: String(service.name),
+      shell: "sh",
+      cwd: options.cwd ?? "/app",
+      exitCode,
+    };
+  }
+
+  const shellRunner = yield* ShellRunner;
+  const secretStore = yield* SecretStore;
+  const interactive =
+    options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
+  if (!interactive) return yield* Effect.fail(shellRequiresTtyError());
+
+  const cwd = options.cwd ?? String(plan.root);
+  const hostUser = process.env.USER ?? process.env.USERNAME;
+  const hostHome = process.env.HOME ?? process.env.USERPROFILE;
+  const env: Record<string, string> = {
+    ...filterStringEnv(process.env),
+    ...(options.env ?? {}),
+    LANDO: "ON",
+    LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",
+    LANDO_HOST_IP: "127.0.0.1",
+    LANDO_HOST_OS: process.platform,
+    LANDO_APP_NAME: plan.name,
+    LANDO_APP_KIND: "user",
+    LANDO_APP_ROOT: String(plan.root),
+    LANDO_PROJECT: String(plan.slug),
+    LANDO_PROJECT_MOUNT: String(plan.root),
+    ...(hostUser === undefined ? {} : { LANDO_HOST_USER: hostUser }),
+    ...(process.getuid === undefined ? {} : { LANDO_HOST_UID: String(process.getuid()) }),
+    ...(process.getgid === undefined ? {} : { LANDO_HOST_GID: String(process.getgid()) }),
+    ...(hostHome === undefined ? {} : { LANDO_HOST_HOME: hostHome }),
+  };
+
+  const historyFile =
+    options.noHistory === true
+      ? undefined
+      : (options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root)));
+
+  const launched = yield* shellRunner.interactive({
+    cwd,
+    env,
+    resolveSecret: (id) => secretStore.get(id),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(historyFile === undefined ? {} : { historyFile }),
   });
+
+  return {
+    mode: "host" as const,
+    app: plan.name,
+    shell: "Bun.$",
+    cwd,
+    exitCode: launched.exitCode,
+  };
+});
 
 export const renderShellAppResult = (_result: ShellAppResult): string | undefined => undefined;

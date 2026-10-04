@@ -1,21 +1,24 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 import { ShellRunner } from "@lando/sdk/services";
 
 import { canOpenHost, openUrl, openerCommandFor } from "../../src/services/host-opener";
 
 const fakeShell = (record: { commands: string[] }) =>
-  Layer.succeed(ShellRunner, {
-    exec: (command: string) => {
-      record.commands.push(command);
-      return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
-    },
-    run: () => Effect.die("not used"),
-    runScript: () => Effect.die("not used"),
-    interactive: () => Effect.die("not used"),
-  });
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec: (command: string) => {
+        record.commands.push(command);
+        return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+      },
+      run: () => Effect.die("not used"),
+      runScript: () => Effect.die("not used"),
+      interactive: () => Effect.die("not used"),
+    }),
+  );
 
 describe("openerCommandFor", () => {
   test("selects the platform opener", () => {
@@ -60,7 +63,7 @@ describe("openUrl", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect((error as { _tag?: string } | undefined)?._tag).toBe("HostProxyOpenUrlSchemeError");
     }
     expect(record.commands).toEqual([]);

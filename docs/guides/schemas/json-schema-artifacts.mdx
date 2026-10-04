@@ -9,15 +9,62 @@ tags: [beta, docs, schemas]
 # JSON Schema artifacts
 
 Regenerate the published schema artifact set: public SDK schemas, command
-result schemas, metadata indexes, bundled manifests, and reference docs:
+result schemas, metadata indexes, bundled manifests, editor schemas, and
+reference docs:
 
 ```sh
 bun run scripts/build-schema-snapshot.ts
 ```
 
-Every generated schema document uses draft-07 by default
-(`http://json-schema.org/draft-07/schema#`). The indexes
-(`dist/schemas/index.json` and `dist/command-schemas/index.json`) cover
-every public SDK registry entry and every exact canonical command id, while
-each schema file remains standalone.
+## Public artifacts: draft 2020-12
 
+Every document under `dist/schemas/**` and `dist/command-schemas/**` is a
+draft 2020-12 schema (`https://json-schema.org/draft/2020-12/schema`) with
+shared definitions under `$defs`. The indexes (`dist/schemas/index.json` and
+`dist/command-schemas/index.json`) cover every public SDK registry entry and
+every exact canonical command id, while each schema file remains standalone.
+
+Reach for these when you generate types, build a validator, or diff the
+contract between releases.
+
+## Editor artifacts: draft-07
+
+Two extra documents exist for editors, because the YAML language server and
+most IDE schema stores still speak draft-07:
+
+| File | Validates |
+| --- | --- |
+| `landofile.schema.json` | `.lando.yml` and its layer files |
+| `global-config.schema.json` | the global Lando config file |
+
+Schema snapshot codegen writes these files to `docs/public/schemas/` as
+gitignored, derived outputs. `bun run docs:build` regenerates them before
+Astro copies them to `/core4/schemas/` on the docs site.
+
+Both are closed objects (an unknown key is an error, matching
+`lando app:config:lint`) and carry generated descriptions, so hover text in
+your editor reads the same as the schema reference.
+
+The docs build publishes the Landofile editor schema at
+`https://aaronfeledy.github.io/core4/schemas/landofile.schema.json`. The
+SDK exports that URL as `LANDOFILE_EDITOR_SCHEMA_URL` from
+`@lando/sdk/schema`, and a test holds the two in agreement, so tooling
+imports the constant instead of hard-coding the string:
+
+```ts
+import { LANDOFILE_EDITOR_SCHEMA_URL } from "@lando/sdk/schema";
+```
+
+New Landofiles written by `lando init` and `lando app:config:translate`
+start with a `# yaml-language-server: $schema=<that url>` modeline. Existing
+files are never rewritten to add it. To wire the schema into your editor,
+see [Validate a Landofile in your editor](../landofile/editor-validation.mdx).
+
+## One decoder, three surfaces
+
+The published documents, the editor documents, and the
+[Standard Schema views](./standard-schema.mdx) are all projections of the
+same Effect Schema that `lando` itself decodes with. A parity test loads
+every valid guide and recipe fixture plus a curated invalid set through all
+three and requires the same accept-or-reject answer, so your editor, your
+CI validator, and `lando start` cannot disagree about what a Landofile is.

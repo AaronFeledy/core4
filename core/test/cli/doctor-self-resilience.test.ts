@@ -2,25 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TestClock } from "effect/testing";
 
-import {
-  Cause,
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Schema,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Schema } from "effect";
 
 import { makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError } from "@lando/sdk/errors";
 
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import {
@@ -33,7 +23,10 @@ import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
-const runtimeLayerFactoryLive = Layer.succeed(RuntimeLayerFactory, { make: makeLandoRuntime });
+const runtimeLayerFactoryLive = Layer.succeed(
+  RuntimeLayerFactory,
+  RuntimeLayerFactory.of({ make: makeLandoRuntime }),
+);
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);
@@ -53,7 +46,7 @@ describe("doctor safe mode", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
   test("reports a bootstrap failure as a self check and still returns a report", async () => {
@@ -217,7 +210,7 @@ describe("isolateDoctorSection", () => {
   test("still cancels the whole run when the caller is interrupted", async () => {
     // Given an isolated section that never settles, forked so we can interrupt its caller
     const program = Effect.gen(function* () {
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         isolateDoctorSection({
           section: "unit",
           effect: Effect.never,
@@ -236,7 +229,7 @@ describe("isolateDoctorSection", () => {
     // Then cancellation propagates rather than becoming a self check
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(Cause.isInterrupted(exit.cause)).toBe(true);
+      expect(Cause.hasInterrupts(exit.cause)).toBe(true);
     }
   });
 
@@ -260,7 +253,7 @@ describe("isolateDoctorSection", () => {
     const secret = "registered-secret-ABCDEF-987654321";
     const failureMessage = `${"x".repeat(1_990)}${secret}${"y".repeat(2_000)}`;
     const secretStore = makeTestSecretStore({ secrets: { DOCTOR_TOKEN: secret } });
-    const redactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+    const redactionLayer = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
 
     // When
     const outcome = await Effect.runPromise(
@@ -385,8 +378,8 @@ describe("isolateDoctorSection", () => {
         Effect.sync(() => {
           finalized = true;
         }),
-      ).pipe(Effect.zipRight(Effect.never), Effect.scoped);
-      const fiber = yield* Effect.fork(
+      ).pipe(Effect.andThen(Effect.never), Effect.scoped);
+      const fiber = yield* Effect.forkChild(
         isolateDoctorSection({ section: "unit", effect: section, fallback: "fallback", budgetMs: 1_000 }),
       );
       yield* Deferred.await(started);
@@ -395,7 +388,7 @@ describe("isolateDoctorSection", () => {
       yield* TestClock.adjust("1 second");
       return yield* Fiber.join(fiber);
     });
-    const outcome = await Effect.runPromise(program.pipe(Effect.provide(TestContext.TestContext)));
+    const outcome = await Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 
     // Then
     expect(outcome.self?.reason).toBe("timeout");

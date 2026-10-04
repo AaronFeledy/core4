@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Either, Exit } from "effect";
+import { Effect, Exit, Result } from "effect";
 
 import { LandofileParseError } from "@lando/core/errors";
 import type { TemplateRenderContext } from "@lando/core/schema";
@@ -14,7 +14,7 @@ import {
   renderLandofileTemplate,
 } from "@lando/engine/services/landofile-live";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({
   bootstrapLevel: "minimal",
@@ -24,7 +24,7 @@ const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({
 
 const render = (filePath: string, content: string, context?: TemplateRenderContext) =>
   Effect.runPromise(
-    renderLandofileTemplate({ filePath, content, context: context ?? ctx() }).pipe(Effect.either),
+    renderLandofileTemplate({ filePath, content, context: context ?? ctx() }).pipe(Effect.result),
   );
 
 describe("detectTemplateDirective", () => {
@@ -90,8 +90,8 @@ describe("renderLandofileTemplate (bundled engines)", () => {
       "template: handlebars\nname: {{env.APP}}",
       ctx({ APP: "demo" }),
     );
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe("\nname: demo");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe("\nname: demo");
   });
 
   test("renders a mustache Landofile and strips the directive line", async () => {
@@ -100,8 +100,8 @@ describe("renderLandofileTemplate (bundled engines)", () => {
       "template: mustache\nname: {{env.APP}}",
       ctx({ APP: "demo" }),
     );
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe("\nname: demo");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe("\nname: demo");
   });
 
   test("renders a CRLF (Windows) handlebars Landofile end to end", async () => {
@@ -110,48 +110,48 @@ describe("renderLandofileTemplate (bundled engines)", () => {
       "template: handlebars\r\nname: {{env.APP}}\r\n",
       ctx({ APP: "demo" }),
     );
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe("\nname: demo\r\n");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe("\nname: demo\r\n");
   });
 
   test("default none: content without a directive is returned unchanged", async () => {
     const raw = "name: myapp\nservices:\n  web:\n    image: node:lts";
     const result = await render("/app/.lando.yml", raw);
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe(raw);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe(raw);
   });
 
   test("explicit `template: none` strips the directive and skips rendering", async () => {
     const result = await render("/app/.lando.yml", "template: none\nname: a && b {{x}}");
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
     // The raw body is preserved verbatim (no rendering); only the directive is blanked.
-    if (Either.isRight(result)) expect(result.right).toBe("\nname: a && b {{x}}");
+    if (Result.isSuccess(result)) expect(result.success).toBe("\nname: a && b {{x}}");
   });
 
   test("an unknown engine fails with a LandofileParseError on the directive line", async () => {
     const result = await render("/app/.lando.yml", "template: nope\nname: x");
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LandofileParseError);
-      expect(result.left.line).toBe(1);
-      expect(result.left.message).toContain("nope");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LandofileParseError);
+      expect(result.failure.line).toBe(1);
+      expect(result.failure.message).toContain("nope");
     }
   });
 
   test("the reserved `lando` engine is unresolved here (only handlebars+mustache bundled)", async () => {
     const result = await render("/app/.lando.yml", "template: lando\nname: x");
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(LandofileParseError);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(LandofileParseError);
   });
 
   test("a template syntax error surfaces the template-source line number", async () => {
     // Unclosed block — the directive is on line 1, the bad tag on line 3.
     const result = await render("/app/.lando.yml", "template: handlebars\nname: app\n{{#each items}}\n");
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LandofileParseError);
-      expect(typeof result.left.line).toBe("number");
-      expect(result.left.line).toBeGreaterThanOrEqual(3);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LandofileParseError);
+      expect(typeof result.failure.line).toBe("number");
+      expect(result.failure.line).toBeGreaterThanOrEqual(3);
     }
   });
 });
@@ -170,7 +170,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 

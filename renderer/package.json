@@ -23,6 +23,7 @@
     "./io": "./src/io.ts",
     "./output": "./src/output.ts",
     "./runtime": "./src/runtime.ts",
+    "./stdio": "./src/stdio.ts",
     "./summary": "./src/summary.ts",
     "./package.json": "./package.json"
   },
@@ -32,7 +33,7 @@
     "@lando/engine": "workspace:*",
     "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
-    "effect": "^3.21.2"
+    "effect": "catalog:"
   },
   "scripts": {
     "build": "tsc -b",

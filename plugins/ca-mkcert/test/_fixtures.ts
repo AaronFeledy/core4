@@ -29,7 +29,7 @@ export const okResult = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, 
 
 export const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const option = Cause.failureOption(exit.cause);
+  const option = Cause.findErrorOption(exit.cause);
   if (option._tag !== "Some") throw new Error("expected a tagged failure");
   return option.value;
 };
@@ -98,7 +98,7 @@ export interface RunCall {
 }
 
 export interface FakeProcessRunner {
-  readonly service: Context.Tag.Service<typeof ProcessRunner>;
+  readonly service: Context.Service.Shape<typeof ProcessRunner>;
   readonly calls: () => ReadonlyArray<RunCall>;
 }
 
@@ -143,7 +143,7 @@ export const makeFakeMkcertRunner = (options: {
 };
 
 export interface FakePrivilege {
-  readonly service: Context.Tag.Service<typeof PrivilegeService>;
+  readonly service: Context.Service.Shape<typeof PrivilegeService>;
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
 }
 

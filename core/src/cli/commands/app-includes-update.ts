@@ -40,7 +40,7 @@ const IncludeUpdateEntrySchema = Schema.Struct({
   source: Schema.String,
   resolved: Schema.String,
   checksum: Schema.String,
-  status: Schema.Union(Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")),
+  status: Schema.Union([Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")]),
 });
 
 export const AppIncludesUpdateResultSchema = Schema.Struct({
@@ -85,63 +85,61 @@ export type AppIncludesUpdateError =
  * command runs at the `minimal` bootstrap level and never pins against the
  * existing lock (that is exactly what `update` must override).
  */
-export const appIncludesUpdate = (
+export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function* (
   options: AppIncludesUpdateOptions = {},
-): Effect.Effect<IncludeUpdateReport, AppIncludesUpdateError, StateStore> =>
-  Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
-    const filePath = yield* Effect.tryPromise({
-      try: () => findLandofilePath(cwd),
-      catch: (cause) =>
-        cause instanceof LandofileFormConflictError
-          ? cause
-          : new LandofileParseError({
-              message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-              filePath: cwd,
-              line: undefined,
-              column: undefined,
-              cause,
-            }),
-    });
-    if (filePath === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message:
-            "No .lando.yml or .lando.ts found. Run `lando init` to create one before updating includes.",
-          cwd,
-        }),
-      );
-    }
-    const appRoot = dirname(filePath);
-    const layers = yield* Effect.tryPromise({
-      try: () => presentLandofileLayers(appRoot),
-      catch: (cause) =>
-        cause instanceof LandofileFormConflictError
-          ? cause
-          : new LandofileParseError({
-              message: cause instanceof Error ? cause.message : "Failed to discover Landofile layers.",
-              filePath,
-              line: undefined,
-              column: undefined,
-              cause,
-            }),
-    });
-    const includes = [];
-    const composeIncludes: string[] = [];
-    for (const layer of layers) {
-      const landofile = yield* loadLandofileFile(layer.filePath);
-      includes.push(...(landofile.includes ?? []));
-      composeIncludes.push(...(landofile.include ?? []));
-    }
-    return yield* updateLandofileIncludes({
-      landofile: { includes, include: composeIncludes },
-      appRoot,
-      ...(options.check === true ? { check: true } : {}),
-      ...(options.deps === undefined ? {} : { deps: options.deps }),
-      ...(options.sources === undefined ? {} : { sources: options.sources }),
-      ...(options.noNetwork === true ? { noNetwork: true } : {}),
-    });
+): Effect.fn.Return<IncludeUpdateReport, AppIncludesUpdateError, StateStore> {
+  const cwd = options.cwd ?? process.cwd();
+  const filePath = yield* Effect.tryPromise({
+    try: () => findLandofilePath(cwd),
+    catch: (cause) =>
+      cause instanceof LandofileFormConflictError
+        ? cause
+        : new LandofileParseError({
+            message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
+            filePath: cwd,
+            line: undefined,
+            column: undefined,
+            cause,
+          }),
   });
+  if (filePath === undefined) {
+    return yield* Effect.fail(
+      new LandofileNotFoundError({
+        message: "No .lando.yml or .lando.ts found. Run `lando init` to create one before updating includes.",
+        cwd,
+      }),
+    );
+  }
+  const appRoot = dirname(filePath);
+  const layers = yield* Effect.tryPromise({
+    try: () => presentLandofileLayers(appRoot),
+    catch: (cause) =>
+      cause instanceof LandofileFormConflictError
+        ? cause
+        : new LandofileParseError({
+            message: cause instanceof Error ? cause.message : "Failed to discover Landofile layers.",
+            filePath,
+            line: undefined,
+            column: undefined,
+            cause,
+          }),
+  });
+  const includes = [];
+  const composeIncludes: string[] = [];
+  for (const layer of layers) {
+    const landofile = yield* loadLandofileFile(layer.filePath);
+    includes.push(...(landofile.includes ?? []));
+    composeIncludes.push(...(landofile.include ?? []));
+  }
+  return yield* updateLandofileIncludes({
+    landofile: { includes, include: composeIncludes },
+    appRoot,
+    ...(options.check === true ? { check: true } : {}),
+    ...(options.deps === undefined ? {} : { deps: options.deps }),
+    ...(options.sources === undefined ? {} : { sources: options.sources }),
+    ...(options.noNetwork === true ? { noNetwork: true } : {}),
+  });
+});
 
 const summaryLine = (report: IncludeUpdateReport): string => {
   const counts = { added: 0, updated: 0, unchanged: 0 };

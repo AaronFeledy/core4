@@ -18,6 +18,8 @@ import {
   encodeStreamStdoutFrame,
 } from "@lando/sdk/command-result";
 import { JqExpressionError } from "@lando/sdk/errors";
+import type { CommandTrace } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
@@ -44,6 +46,10 @@ export interface MachineResultEmitterDeps<A> {
   readonly jqExpression?: string;
   /** Envelope serialization for this run. Frames are always JSON. */
   readonly resultFormat?: CommandResultEnvelopeFormat;
+  readonly trace?: Effect.Effect<CommandTrace | undefined>;
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+  readonly extraRedactionTokens?: ReadonlyArray<string>;
+  readonly onRedactor?: (redactor: Redactor) => void;
 }
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
@@ -59,101 +65,107 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     !(outcome._tag === "failure" && outcome.error instanceof JqExpressionError);
   const envelopeFormat = (outcome: CommandResultOutcome): CommandResultEnvelopeFormat =>
     willRunJq(outcome) ? "json" : (deps.resultFormat ?? "json");
-  const writeEncodedLine = (line: string, outcome: CommandResultOutcome) =>
-    Effect.gen(function* () {
-      const expr = deps.jqExpression;
-      if (expr === undefined || (outcome._tag === "failure" && outcome.error instanceof JqExpressionError)) {
-        yield* writeResultLine(line);
-        return;
-      }
-      const text = yield* Effect.tryPromise({
-        try: () => applyJqToRedactedJsonLine(line, expr),
-        catch: (error) => {
-          if (error instanceof JqExpressionError) return error;
-          return new JqExpressionError({
-            message: "jq expression failed.",
-            expression: expr,
-            reason: "eval",
-            remediation: "Fix the jq expression.",
-          });
-        },
-      });
-      yield* writeResultLine(text);
+  const writeEncodedLine = Effect.fnUntraced(function* (line: string, outcome: CommandResultOutcome) {
+    const expr = deps.jqExpression;
+    if (expr === undefined || (outcome._tag === "failure" && outcome.error instanceof JqExpressionError)) {
+      yield* writeResultLine(line);
+      return;
+    }
+    const text = yield* Effect.tryPromise({
+      try: () => applyJqToRedactedJsonLine(line, expr),
+      catch: (error) => {
+        if (error instanceof JqExpressionError) return error;
+        return new JqExpressionError({
+          message: "jq expression failed.",
+          expression: expr,
+          reason: "eval",
+          remediation: "Fix the jq expression.",
+        });
+      },
     });
-  const jsonRedactor = (redactionTokens: ReadonlyArray<string> = []) =>
-    Effect.gen(function* () {
-      const redaction = yield* RedactionService;
-      return yield* redaction.forProfile("secrets", {
-        sourceEnv: process.env,
-        redactionTokens,
-      });
+    yield* writeResultLine(text);
+  });
+  const jsonRedactor = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string> = []) {
+    const redaction = yield* RedactionService;
+    const redactor = yield* redaction.forProfile("secrets", {
+      sourceEnv: deps.sourceEnv ?? process.env,
+      redactionTokens: [...(deps.extraRedactionTokens ?? []), ...redactionTokens],
     });
-  const emitJsonResult = (outcome: CommandResultOutcome, redactionTokens: ReadonlyArray<string> = []) =>
-    Effect.gen(function* () {
-      const redactor = yield* jsonRedactor(redactionTokens);
-      const warnings = yield* commandWarnings.list;
-      const line = yield* encodeCommandResult({
-        command,
-        resultSchema,
-        outcome,
+    deps.onRedactor?.(redactor);
+    return redactor;
+  });
+  const emitJsonResult = Effect.fnUntraced(function* (
+    outcome: CommandResultOutcome,
+    redactionTokens: ReadonlyArray<string> = [],
+  ) {
+    const redactor = yield* jsonRedactor(redactionTokens);
+    const warnings = yield* commandWarnings.list;
+    const trace = deps.trace === undefined ? undefined : yield* deps.trace;
+    const line = yield* encodeCommandResult({
+      command,
+      resultSchema,
+      outcome,
+      redactor,
+      warnings,
+      ...(trace === undefined ? {} : { trace }),
+      format: envelopeFormat(outcome),
+      ...projection,
+    });
+    yield* writeEncodedLine(line, outcome);
+  });
+  const emitStreamResult = Effect.fnUntraced(function* (
+    outcome: CommandResultOutcome,
+    redactionTokens: ReadonlyArray<string> = [],
+  ) {
+    const redactor = yield* jsonRedactor(redactionTokens);
+    const warnings = yield* commandWarnings.list;
+    const trace = deps.trace === undefined ? undefined : yield* deps.trace;
+    const args = {
+      command,
+      resultSchema,
+      outcome,
+      redactor,
+      warnings,
+      ...(trace === undefined ? {} : { trace }),
+      format: envelopeFormat(outcome),
+      ...projection,
+    };
+    // --jq runs on the redacted envelope, not the StreamFrame wrapper. A YAML
+    // run emits that envelope directly too, because frame transport is JSON.
+    const line =
+      deps.jqExpression === undefined && args.format === "json"
+        ? yield* encodeStreamResultFrame(args)
+        : yield* encodeCommandResult(args);
+    yield* writeEncodedLine(line, outcome);
+  });
+  const replayBufferedEvents = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string> = []) {
+    const redactor = yield* jsonRedactor(redactionTokens);
+    const events = yield* Effect.serviceOption(EventService).pipe(
+      Effect.flatMap((service) => (Option.isSome(service) ? service.value.query("*") : Effect.succeed([]))),
+    );
+    for (const event of events) {
+      const line = yield* encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
+      yield* writeResultLine(line);
+    }
+  });
+  const emitStreamingSuccess = Effect.fnUntraced(function* (value: A) {
+    const tokens = deps.redactionTokens?.(value) ?? [];
+    const redactor = yield* jsonRedactor(tokens);
+    for (const frame of deps.streamFrames?.(value) ?? []) {
+      const streamFrameOptions = {
+        chunk: frame.chunk,
+        ...(frame.service === undefined ? {} : { service: frame.service }),
+        ...(frame.source === undefined ? {} : { source: frame.source }),
         redactor,
-        warnings,
-        format: envelopeFormat(outcome),
-        ...projection,
-      });
-      yield* writeEncodedLine(line, outcome);
-    });
-  const emitStreamResult = (outcome: CommandResultOutcome, redactionTokens: ReadonlyArray<string> = []) =>
-    Effect.gen(function* () {
-      const redactor = yield* jsonRedactor(redactionTokens);
-      const warnings = yield* commandWarnings.list;
-      const args = {
-        command,
-        resultSchema,
-        outcome,
-        redactor,
-        warnings,
-        format: envelopeFormat(outcome),
-        ...projection,
       };
-      // --jq runs on the redacted envelope, not the StreamFrame wrapper. A YAML
-      // run emits that envelope directly too, because frame transport is JSON.
       const line =
-        deps.jqExpression === undefined && args.format === "json"
-          ? yield* encodeStreamResultFrame(args)
-          : yield* encodeCommandResult(args);
-      yield* writeEncodedLine(line, outcome);
-    });
-  const replayBufferedEvents = (redactionTokens: ReadonlyArray<string> = []) =>
-    Effect.gen(function* () {
-      const redactor = yield* jsonRedactor(redactionTokens);
-      const events = yield* Effect.serviceOption(EventService).pipe(
-        Effect.flatMap((service) => (Option.isSome(service) ? service.value.query("*") : Effect.succeed([]))),
-      );
-      for (const event of events) {
-        const line = yield* encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
-        yield* writeResultLine(line);
-      }
-    });
-  const emitStreamingSuccess = (value: A) =>
-    Effect.gen(function* () {
-      const tokens = deps.redactionTokens?.(value) ?? [];
-      const redactor = yield* jsonRedactor(tokens);
-      for (const frame of deps.streamFrames?.(value) ?? []) {
-        const streamFrameOptions = {
-          chunk: frame.chunk,
-          ...(frame.service === undefined ? {} : { service: frame.service }),
-          ...(frame.source === undefined ? {} : { source: frame.source }),
-          redactor,
-        };
-        const line =
-          frame._tag === "stdout"
-            ? yield* encodeStreamStdoutFrame(streamFrameOptions)
-            : yield* encodeStreamStderrFrame(streamFrameOptions);
-        yield* writeResultLine(line);
-      }
-      yield* replayBufferedEvents(tokens);
-      yield* emitStreamResult({ _tag: "success", value }, tokens);
-    });
+        frame._tag === "stdout"
+          ? yield* encodeStreamStdoutFrame(streamFrameOptions)
+          : yield* encodeStreamStderrFrame(streamFrameOptions);
+      yield* writeResultLine(line);
+    }
+    yield* replayBufferedEvents(tokens);
+    yield* emitStreamResult({ _tag: "success", value }, tokens);
+  });
   return { jsonRedactor, emitJsonResult, emitStreamResult, replayBufferedEvents, emitStreamingSuccess };
 };

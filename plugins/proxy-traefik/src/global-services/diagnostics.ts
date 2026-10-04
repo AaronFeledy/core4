@@ -16,18 +16,17 @@ import {
 import { diagnosticConfigFile, diagnosticDir, diagnosticHtmlFile } from "../proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../proxy-types.ts";
 
-export const prepareTraefikDiagnostics = ({
+export const prepareTraefikDiagnostics = Effect.fnUntraced(function* ({
   fileSystem,
   paths,
 }: {
   readonly fileSystem: Pick<TraefikProxyDependencies["fileSystem"], "mkdir" | "writeAtomic">;
   readonly paths: TraefikProxyDependencies["paths"];
-}) =>
-  Effect.gen(function* () {
-    yield* fileSystem.mkdir(diagnosticDir(paths));
-    yield* fileSystem.writeAtomic(diagnosticHtmlFile(paths), renderTraefikDiagnosticHtml());
-    yield* fileSystem.writeAtomic(diagnosticConfigFile(paths), renderTraefikDiagnosticNginxConfig());
-  });
+}) {
+  yield* fileSystem.mkdir(diagnosticDir(paths));
+  yield* fileSystem.writeAtomic(diagnosticHtmlFile(paths), renderTraefikDiagnosticHtml());
+  yield* fileSystem.writeAtomic(diagnosticConfigFile(paths), renderTraefikDiagnosticNginxConfig());
+});
 
 export const TRAEFIK_DIAGNOSTICS_IMAGE = "nginx:1.26-alpine" as const;
 export const TRAEFIK_DIAGNOSTICS_COMMAND: ReadonlyArray<string> = [

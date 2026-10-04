@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import {
   buildCommandResultEnvelope,
@@ -10,26 +10,39 @@ import {
   encodeStreamStdoutFrame,
 } from "@lando/sdk/command-result";
 import { ComposeKeyRejectedError, LandofileVersionConstraintError } from "@lando/sdk/errors";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { CommandResultEnvelope, type CommandTrace, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
 class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("ExampleTaggedError", {
   message: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.optionalKey(Schema.String),
 }) {}
 
 const plainRedactor = createRedactor("secrets", { values: [] });
+const sampleTrace: CommandTrace = {
+  totalDurationMs: 10,
+  spans: [
+    {
+      id: "root",
+      name: "lando app:info",
+      startOffsetMs: 0,
+      durationMs: 10,
+      status: "ok",
+      attributes: { "lando.command.id": "app:info" },
+    },
+  ],
+  droppedSpans: 0,
+};
 const EmptyResultSchema = Schema.Struct({});
 const PersonResultSchema = Schema.Struct({
   name: Schema.String,
-  age: Schema.optional(Schema.Number),
+  age: Schema.optionalKey(Schema.Number),
 });
 
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object";
+const isRecord = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const findProjectionError = (
   value: unknown,
@@ -641,5 +654,84 @@ describe("encodeCommandResult yaml serialization", () => {
     );
 
     expect(decodeFrame(line)._tag).toBe("result");
+  });
+});
+
+describe("encodeCommandResult trace", () => {
+  test("carries optional trace on success, failure, and stream result frames", () => {
+    const success = decodeEnvelope(
+      Effect.runSync(
+        encodeCommandResult({
+          command: "app:info",
+          resultSchema: Schema.Struct({ name: Schema.String }),
+          outcome: { _tag: "success", value: { name: "demo" } },
+          redactor: plainRedactor,
+          trace: sampleTrace,
+        }),
+      ),
+    );
+    expect(success.trace).toEqual(sampleTrace);
+
+    const failure = decodeEnvelope(
+      Effect.runSync(
+        encodeCommandResult({
+          command: "app:start",
+          resultSchema: EmptyResultSchema,
+          outcome: {
+            _tag: "failure",
+            error: new ExampleTaggedError({ message: "boom" }),
+          },
+          redactor: plainRedactor,
+          trace: sampleTrace,
+        }),
+      ),
+    );
+    expect(failure.ok).toBe(false);
+    expect(failure.trace).toEqual(sampleTrace);
+
+    const frame = decodeFrame(
+      Effect.runSync(
+        encodeStreamResultFrame({
+          command: "app:info",
+          resultSchema: Schema.Struct({ name: Schema.String }),
+          outcome: { _tag: "success", value: { name: "demo" } },
+          redactor: plainRedactor,
+          trace: sampleTrace,
+        }),
+      ),
+    );
+    expect(frame._tag).toBe("result");
+    if (frame._tag === "result") expect(frame.envelope.trace).toEqual(sampleTrace);
+  });
+
+  test("omits trace when not supplied", () => {
+    const envelope = decodeEnvelope(
+      Effect.runSync(
+        encodeCommandResult({
+          command: "app:info",
+          resultSchema: Schema.Struct({ name: Schema.String }),
+          outcome: { _tag: "success", value: { name: "demo" } },
+          redactor: plainRedactor,
+        }),
+      ),
+    );
+    expect(envelope.trace).toBeUndefined();
+  });
+
+  test("preserves trace on encode fallback failures", () => {
+    const line = Effect.runSync(
+      encodeCommandResult({
+        command: "app:info",
+        // Number cannot encode an object payload, forcing the encode fallback path.
+        resultSchema: Schema.Number as Schema.Codec<unknown, unknown>,
+        outcome: { _tag: "success", value: { name: "demo" } },
+        redactor: plainRedactor,
+        trace: sampleTrace,
+      }),
+    );
+    const envelope = decodeEnvelope(line);
+    expect(envelope.ok).toBe(false);
+    expect(envelope.error?._tag).toBe("CommandResultEncodeError");
+    expect(envelope.trace).toEqual(sampleTrace);
   });
 });

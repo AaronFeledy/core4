@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 
-import { Either, ParseResult, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { IsolateMode, ProviderCapabilities } from "@lando/sdk/schema";
 
@@ -150,13 +151,13 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
 describe("IsolateMode", () => {
   test("accepts the canonical scratch isolation modes", () => {
     for (const mode of ["full", "baked", "cwd"] as const) {
-      expect(Either.isRight(Schema.decodeUnknownEither(IsolateMode)(mode))).toBe(true);
+      expect(Result.isSuccess(Schema.decodeUnknownResult(IsolateMode)(mode))).toBe(true);
     }
   });
 
   test("rejects any other isolation value", () => {
     for (const invalid of ["", "none", "partial", "cow", "FULL"]) {
-      expect(Either.isLeft(Schema.decodeUnknownEither(IsolateMode)(invalid))).toBe(true);
+      expect(Result.isFailure(Schema.decodeUnknownResult(IsolateMode)(invalid))).toBe(true);
     }
   });
 });
@@ -189,77 +190,74 @@ describe("ProviderCapabilities — field set lock", () => {
   test("every boolean capability accepts only booleans", () => {
     for (const field of BOOLEAN_FIELDS) {
       for (const value of [true, false]) {
-        const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+        const accepted = Schema.decodeUnknownResult(ProviderCapabilities)({
           ...providerLandoFixture,
           [field]: value,
         });
-        expect(Either.isRight(accepted)).toBe(true);
+        expect(Result.isSuccess(accepted)).toBe(true);
       }
 
-      const rejected = Schema.decodeUnknownEither(ProviderCapabilities)({
+      const rejected = Schema.decodeUnknownResult(ProviderCapabilities)({
         ...providerLandoFixture,
         [field]: "true",
       });
-      expect(Either.isLeft(rejected)).toBe(true);
+      expect(Result.isFailure(rejected)).toBe(true);
     }
   });
 
   test("every literal capability accepts exactly the documented literal options", () => {
-    const literalEntries = Object.entries(LITERAL_FIELDS) as Array<
-      [keyof typeof LITERAL_FIELDS, readonly [string, ...string[]]]
-    >;
+    const fields = Object.keys(LITERAL_FIELDS) as Array<keyof typeof LITERAL_FIELDS>;
 
-    for (const [field, expected] of literalEntries) {
-      const literalSchema = ProviderCapabilities.fields[field] as Schema.Literal<
-        readonly [string, ...string[]]
-      >;
+    for (const field of fields) {
+      const expected = LITERAL_FIELDS[field];
+      const literalSchema = ProviderCapabilities.fields[field];
       expect([...literalSchema.literals].sort()).toEqual([...expected].sort());
 
       for (const value of expected) {
-        const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+        const accepted = Schema.decodeUnknownResult(ProviderCapabilities)({
           ...providerLandoFixture,
           [field]: value,
         });
-        expect(Either.isRight(accepted)).toBe(true);
+        expect(Result.isSuccess(accepted)).toBe(true);
       }
 
-      const rejected = Schema.decodeUnknownEither(ProviderCapabilities)({
+      const rejected = Schema.decodeUnknownResult(ProviderCapabilities)({
         ...providerLandoFixture,
         [field]: "__not_a_spec_literal__",
       });
-      expect(Either.isLeft(rejected)).toBe(true);
+      expect(Result.isFailure(rejected)).toBe(true);
     }
   });
 
   test("providerExtensions accepts only arrays of strings", () => {
-    const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const accepted = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       providerExtensions: ["compose", "labels"],
     });
-    expect(Either.isRight(accepted)).toBe(true);
+    expect(Result.isSuccess(accepted)).toBe(true);
 
-    const rejected = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const rejected = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       providerExtensions: ["compose", 1],
     });
-    expect(Either.isLeft(rejected)).toBe(true);
+    expect(Result.isFailure(rejected)).toBe(true);
   });
 
   test("hostProxy accepts structured container targets and a hostname-only TCP gateway", () => {
-    const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const accepted = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       hostProxy: {
         containerTargets: [{ os: "linux", arch: "x64" }],
         tcpHostGateway: "host.containers.internal",
       },
     });
-    expect(Either.isRight(accepted)).toBe(true);
+    expect(Result.isSuccess(accepted)).toBe(true);
 
-    const rejectedTarget = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const rejectedTarget = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       hostProxy: { containerTargets: [{ os: "darwin", arch: "arm64" }] },
     });
-    expect(Either.isLeft(rejectedTarget)).toBe(true);
+    expect(Result.isFailure(rejectedTarget)).toBe(true);
 
     for (const tcpHostGateway of [
       "",
@@ -267,11 +265,11 @@ describe("ProviderCapabilities — field set lock", () => {
       "host.containers.internal:80",
       "host/path",
     ]) {
-      const rejectedGateway = Schema.decodeUnknownEither(ProviderCapabilities)({
+      const rejectedGateway = Schema.decodeUnknownResult(ProviderCapabilities)({
         ...providerLandoFixture,
         hostProxy: { containerTargets: [], tcpHostGateway },
       });
-      expect(Either.isLeft(rejectedGateway)).toBe(true);
+      expect(Result.isFailure(rejectedGateway)).toBe(true);
     }
   });
 
@@ -320,11 +318,11 @@ describe("ProviderCapabilities — field set lock", () => {
   });
 
   test("rejects x-* as a composeServiceFields capability key", () => {
-    const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const decoded = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       composeServiceFields: { supported: ["x-*"] },
     });
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("composePreservedPaths may be absent", () => {
@@ -361,19 +359,19 @@ describe("ProviderCapabilities — field set lock", () => {
   });
 
   test("rejects an unpublished compose preserved path", () => {
-    const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const decoded = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       composePreservedPaths: { supported: ["depends_on.*.condition"] },
     });
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("rejects x-* as a composePreservedPaths capability key", () => {
-    const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const decoded = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       composePreservedPaths: { supported: ["x-*"] },
     });
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });
 
@@ -419,92 +417,92 @@ describe("ProviderCapabilities — provider-docker fixture (bindMountPerformance
 
 describe("ProviderCapabilities — rejection paths", () => {
   test("rejects an unknown bindMountPerformance literal with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const result = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       bindMountPerformance: "fast",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("bindMountPerformance"))).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("bindMountPerformance"))).toBe(true);
     }
   });
 
   test("rejects an unknown composeSpec literal with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const result = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       composeSpec: "extended",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("composeSpec"))).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("composeSpec"))).toBe(true);
     }
   });
 
   test("rejects an unknown compose knob key with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const result = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       composeKnobs: { supported: ["deploy"] },
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("composeKnobs"))).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("composeKnobs"))).toBe(true);
     }
   });
 
   test("rejects an unknown hostPortPublish literal with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const result = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       hostPortPublish: "auto",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("hostPortPublish"))).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("hostPortPublish"))).toBe(true);
     }
   });
 
   test("rejects a non-boolean artifactBuild with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const result = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       artifactBuild: "yes",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("artifactBuild"))).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("artifactBuild"))).toBe(true);
     }
   });
 
   test("rejects a providerExtensions that is not an array of strings", () => {
-    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+    const result = Schema.decodeUnknownResult(ProviderCapabilities)({
       ...providerLandoFixture,
       providerExtensions: "compose",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("providerExtensions"))).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("providerExtensions"))).toBe(true);
     }
   });
 
   test("treats every field as required — omitting any one fails decoding (defaults are not from caller code)", () => {
     for (const field of REQUIRED_FIELD_SET) {
       const { [field]: _omitted, ...partial } = providerLandoFixture as Record<string, unknown>;
-      const result = Schema.decodeUnknownEither(ProviderCapabilities)(partial);
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(ParseResult.isParseError(result.left)).toBe(true);
-        const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-        expect(issues.some((issue) => issue.path.includes(field))).toBe(true);
+      const result = Schema.decodeUnknownResult(ProviderCapabilities)(partial);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(Schema.isSchemaError(result.failure)).toBe(true);
+        const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+        expect(issues.some((issue) => (issue.path ?? []).includes(field))).toBe(true);
       }
     }
   });

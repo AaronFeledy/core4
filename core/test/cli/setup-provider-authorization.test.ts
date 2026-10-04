@@ -66,7 +66,7 @@ describe("provider setup authorization", () => {
 
     // Then
     expect(calls).toEqual([]);
-    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    const failure = exit._tag === "Failure" ? Cause.findErrorOption(exit.cause) : undefined;
     expect(failure?._tag === "Some" ? failure.value._tag : undefined).toBe("ProviderSetupConsentDeniedError");
   });
 

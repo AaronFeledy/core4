@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Result, Schema } from "effect";
 
 import { BuildBlock } from "@lando/sdk/schema";
 
@@ -57,11 +58,11 @@ describe("Compose build-key totality", () => {
       const authoredKey = matrixKey === "x-*" ? "x-totality" : matrixKey;
       const input = { artifact: "x", [authoredKey]: buildValue(matrixKey) };
       for (const options of decodeOptions) {
-        const result = Schema.decodeUnknownEither(BuildBlock)(input, options);
-        expect(Either.isLeft(result)).toBe(true);
-        if (!Either.isLeft(result)) continue;
-        const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
-          .map(({ message }) => message)
+        const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
+        expect(Result.isFailure(result)).toBe(true);
+        if (!Result.isFailure(result)) continue;
+        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+          .issues.map(({ message }) => message)
           .join("\n");
         expect(message).toContain(authoredKey);
         expect(message).toContain("mixes two key families");
@@ -69,14 +70,14 @@ describe("Compose build-key totality", () => {
         expect(message).toContain("Lando build-script keys");
         expect(message).toContain("image:");
 
-        const composeOnlyResult = Schema.decodeUnknownEither(BuildBlock)(
+        const composeOnlyResult = Schema.decodeUnknownResult(BuildBlock)(
           { [authoredKey]: buildValue(matrixKey) },
           options,
         );
-        expect(Either.isRight(composeOnlyResult)).toBe(disposition === "normalized");
-        if (disposition === "rejected" && Either.isLeft(composeOnlyResult)) {
-          const rejectedMessage = ParseResult.ArrayFormatter.formatErrorSync(composeOnlyResult.left)
-            .map(({ message: issue }) => issue)
+        expect(Result.isSuccess(composeOnlyResult)).toBe(disposition === "normalized");
+        if (disposition === "rejected" && Result.isFailure(composeOnlyResult)) {
+          const rejectedMessage = SchemaIssue.makeFormatterStandardSchemaV1()(composeOnlyResult.failure.issue)
+            .issues.map(({ message: issue }) => issue)
             .join("\n");
           expect(rejectedMessage).toContain(authoredKey);
         }

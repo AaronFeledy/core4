@@ -13,39 +13,37 @@ export const emitRaw = (
   return sink.value.emit({ _tag: kind, chunk: text, raw: true });
 };
 
-export const collectExecStream = (
+export const collectExecStream = Effect.fnUntraced(function* (
   stream: Stream.Stream<ExecChunk, ProviderError, Scope.Scope>,
   sink: Option.Option<StreamFrameSinkShape>,
-): Effect.Effect<
+): Effect.fn.Return<
   { readonly exitCode: number; readonly stdout: string; readonly stderr: string },
-  ProviderError
-> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const stdoutDecoder = new TextDecoder();
-      const stderrDecoder = new TextDecoder();
-      let exitCode = 0;
-      let stdout = "";
-      let stderr = "";
-      yield* stream.pipe(
-        Stream.runForEach((chunk) => {
-          if ("exitCode" in chunk) {
-            exitCode = chunk.exitCode;
-            return Effect.void;
-          }
-          const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
-          const text = decoder.decode(chunk.chunk, { stream: true });
-          if (chunk.kind === "stdout") stdout += text;
-          else stderr += text;
-          return emitRaw(sink, chunk.kind, text);
-        }),
-      );
-      const stdoutTail = stdoutDecoder.decode();
-      const stderrTail = stderrDecoder.decode();
-      stdout += stdoutTail;
-      stderr += stderrTail;
-      yield* emitRaw(sink, "stdout", stdoutTail);
-      yield* emitRaw(sink, "stderr", stderrTail);
-      return { exitCode, stdout, stderr };
+  ProviderError,
+  Scope.Scope
+> {
+  const stdoutDecoder = new TextDecoder();
+  const stderrDecoder = new TextDecoder();
+  let exitCode = 0;
+  let stdout = "";
+  let stderr = "";
+  yield* stream.pipe(
+    Stream.runForEach((chunk) => {
+      if ("exitCode" in chunk) {
+        exitCode = chunk.exitCode;
+        return Effect.void;
+      }
+      const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
+      const text = decoder.decode(chunk.chunk, { stream: true });
+      if (chunk.kind === "stdout") stdout += text;
+      else stderr += text;
+      return emitRaw(sink, chunk.kind, text);
     }),
   );
+  const stdoutTail = stdoutDecoder.decode();
+  const stderrTail = stderrDecoder.decode();
+  stdout += stdoutTail;
+  stderr += stderrTail;
+  yield* emitRaw(sink, "stdout", stdoutTail);
+  yield* emitRaw(sink, "stderr", stderrTail);
+  return { exitCode, stdout, stderr };
+}, Effect.scoped);

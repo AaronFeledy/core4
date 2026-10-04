@@ -29,7 +29,7 @@ export const runtimeSshAgentReady = Effect.gen(function* () {
 }).pipe(
   // Covers provider select, inspect, and an exec round-trip; a Podman machine exec can exceed 2s.
   Effect.timeout("5 seconds"),
-  Effect.catchAll(() => Effect.succeed(false)),
+  Effect.catch(() => Effect.succeed(false)),
 );
 
 export const sshAgentSessionPaths = (

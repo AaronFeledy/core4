@@ -57,7 +57,7 @@ const encodeEnv = (
   value: unknown,
   operation: ManagedFileOperation,
 ): Effect.Effect<string, ManagedFileError> => {
-  if (!Predicate.isRecord(value)) {
+  if (!Predicate.isObject(value)) {
     return fail("format", operation, { remediation: "`env` content must be a key/value object." });
   }
   const lines: Array<string> = [];
@@ -129,7 +129,7 @@ export const encode = (
       return encodeEnv(value, operation);
     case "yaml":
     case "landofile":
-      if (!Predicate.isRecord(value)) {
+      if (!Predicate.isObject(value)) {
         return fail("format", operation, {
           remediation: `\`${format}\` content must be an object.`,
         });

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { type DockerApiClient, type DockerHttpRequest, makeProviderLayer } from "@lando/provider-docker";
+import * as DockerProvider from "@lando/provider-docker";
+import type { DockerApiClient, DockerHttpRequest } from "@lando/provider-docker";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,
@@ -21,7 +22,7 @@ const appId = AppId.make("dockerlogfollowapp");
 const appRoot = AbsolutePath.make("/tmp/lando-docker-log-follow-app");
 const textEncoder = new TextEncoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "logs-follow.test",
   runtime: 4 as const,
 };
@@ -116,7 +117,13 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({
+            platform: "linux",
+            env: {},
+            dockerApi: { ...fake.api, info: Effect.succeed({ Architecture: "amd64", OSType: "linux" }) },
+            logFileAccess: fs.access,
+            logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+          }),
         ),
       ),
     );
@@ -132,6 +139,33 @@ describe("provider-docker log followers", () => {
     expect(fileChunk?.stream).toBe("stderr");
   });
 
+  test("returns a service error when the target is absent and helper access is available", async () => {
+    // Given: a plan that does not contain the requested service.
+    const plan = makePlan();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          DockerProvider.layer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ Architecture: "amd64", OSType: "linux" }) },
+            logFileHelperPayloads: { "linux-x64": new Uint8Array([1]) },
+          }),
+        ),
+      ),
+    );
+    // When: logs are requested for the missing service.
+    const result = await Effect.runPromise(
+      Effect.result(
+        Stream.runCollect(
+          provider.logs({ app: appId, service: ServiceName.make("missing"), plan }, { follow: false }),
+        ),
+      ),
+    );
+    // Then: missing service is a typed failure rather than a container binding defect.
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ServiceNotFoundError" } });
+  });
+
   test("uses caller-provided log sources before plan-cached service sources", async () => {
     const staleSource = source({ id: "stale", path: "/var/log/stale.log" });
     const freshSource = source({ id: "fresh", path: "/var/log/fresh.log" });
@@ -143,7 +177,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
         ),
       ),
     );
@@ -169,7 +203,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
         ),
       ),
     );
@@ -191,7 +225,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
         ),
       ),
     );

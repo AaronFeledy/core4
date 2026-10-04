@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 /**
  * Pure Landofile version-constraint primitive for the top-level
  * `lando: <semver-range>` key.
@@ -59,7 +60,7 @@ export const isVersionConstraintEntryArray = (
 ): value is ReadonlyArray<VersionConstraintEntry> =>
   Array.isArray(value) &&
   value.every((entry) => {
-    if (typeof entry !== "object" || entry === null) return false;
+    if (!Predicate.isObjectOrArray(entry)) return false;
     if (!("range" in entry) || typeof entry.range !== "string") return false;
     if (!("source" in entry) || typeof entry.source !== "string") return false;
     if (!("layer" in entry) || !("order" in entry)) return false;
@@ -75,6 +76,10 @@ export const hasSkippedUnsatisfiedVersionConstraint = (
   evaluateVersionConstraints(entries, runningVersion).unsatisfied.length > 0;
 
 const landofileVersionConstraintEntries = new WeakMap<object, ReadonlyArray<VersionConstraintEntry>>();
+
+export const hasVersionConstraintEntries = (landofile: object): boolean =>
+  landofileVersionConstraintEntries.has(landofile) ||
+  (landofile as VersionConstraintCarrier)[VERSION_CONSTRAINT_ENTRIES_SYMBOL] !== undefined;
 
 export const rememberVersionConstraintEntries = <T extends object>(
   landofile: T,

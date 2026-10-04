@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import { drupalCmsDecomposer } from "../../src/recipes/builtin/drupal-cms/decomposer.ts";
 import { drupalCmsRecipeYaml } from "../../src/recipes/builtin/drupal-cms/manifest.ts";
@@ -45,7 +45,7 @@ const decompose = (options: Readonly<Record<string, unknown>>) =>
 
 const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -185,7 +185,7 @@ describe("drupal-cms decomposition", () => {
     );
   });
   test("keeps the multiline scaffold command intact through snapshot encoding", () => {
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, defaults)) as {
       tooling: { "drupal-cms-scaffold": { cmd: string } };
     };
     expect(rendered.tooling["drupal-cms-scaffold"].cmd).toBe(DRUPAL_CMS_SCAFFOLD_COMMAND);
@@ -201,15 +201,15 @@ describe("drupal-cms decomposition", () => {
     { options: { ...defaults, webroot: "web" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(
+      Effect.result(
         decomposer.decompose({ producer: drupalCmsProducer, options, secrets: {} } as RecipeDecomposeInput),
       ),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -234,7 +234,7 @@ describe("drupal-cms decomposition", () => {
   test.each([defaults, alternatives])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, options))).toEqual(
+      expect(Result.getOrThrow(renderRecipeSnapshot(drupalCmsSnapshot, options))).toEqual(
         authoringOf(options),
       );
     },

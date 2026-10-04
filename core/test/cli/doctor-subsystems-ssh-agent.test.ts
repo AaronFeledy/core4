@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { AbsolutePath, GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, SshService } from "@lando/sdk/services";
 import { makeTestSshService } from "@lando/sdk/test";
@@ -47,16 +47,22 @@ test.each([true, false])(
             env: {},
           },
         }).pipe(
-          Effect.provideService(ConfigService, {
-            load: Effect.succeed(config),
-            get: (name) => Effect.succeed(config[name]),
-          }),
-          Effect.provideService(SshService, {
-            ...makeTestSshService(),
-            id: "sidecar",
-            getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(path) }),
-          }),
-          Effect.provide(FileSystemLive),
+          Effect.provideService(
+            ConfigService,
+            ConfigService.of({
+              load: Effect.succeed(config),
+              get: (name) => Effect.succeed(config[name]),
+            }),
+          ),
+          Effect.provideService(
+            SshService,
+            SshService.of({
+              ...makeTestSshService(),
+              id: "sidecar",
+              getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(path) }),
+            }),
+          ),
+          Effect.provide(BunFileSystem.layer),
           Effect.provide(DefaultSubsystemDoctorLayer),
         ),
       );

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Either } from "effect";
+import { DateTime, Effect, Result } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -19,7 +19,7 @@ const root = AbsolutePath.make("C:\\Users\\me\\demo");
 const appId = AppId.make("demo-id");
 const provider = ProviderId.make("lando");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "windows-sync-targets.test.ts",
   runtime: 4 as const,
 };
@@ -104,28 +104,26 @@ const helpers = (
   const resources = options.resources ?? new Map<string, string>();
   let failEnsure = options.failEnsureOnce;
   return {
-    prepareImage: () =>
-      Effect.gen(function* () {
-        events.push("image");
-        if (options.failImage) return yield* Effect.fail(failure("image pull failed"));
-      }),
-    ensure: (spec) =>
-      Effect.gen(function* () {
-        events.push(`ensure:${spec.service}`);
-        const id = resources.get(spec.service) ?? `container-${spec.service}`;
-        resources.set(spec.service, id);
-        if (spec.service === failEnsure) {
-          failEnsure = undefined;
-          return yield* Effect.fail(failure("ensure failed after durable create"));
-        }
-        return {
-          containerId: id,
-          containerName: `helper-${spec.service}`,
-          volumeName:
-            spec.service === options.wrongEndpoint ? "foreign-volume" : `demo-${spec.service}-app-mount`,
-          path: "/sync" as const,
-        };
-      }),
+    prepareImage: Effect.fnUntraced(function* () {
+      events.push("image");
+      if (options.failImage) return yield* Effect.fail(failure("image pull failed"));
+    }),
+    ensure: Effect.fnUntraced(function* (spec) {
+      events.push(`ensure:${spec.service}`);
+      const id = resources.get(spec.service) ?? `container-${spec.service}`;
+      resources.set(spec.service, id);
+      if (spec.service === failEnsure) {
+        failEnsure = undefined;
+        return yield* Effect.fail(failure("ensure failed after durable create"));
+      }
+      return {
+        containerId: id,
+        containerName: `helper-${spec.service}`,
+        volumeName:
+          spec.service === options.wrongEndpoint ? "foreign-volume" : `demo-${spec.service}-app-mount`,
+        path: "/sync" as const,
+      };
+    }),
   };
 };
 
@@ -135,13 +133,13 @@ describe("Windows sync target set preparation", () => {
     const complete = plan();
     const invalid = { ...complete, fileSync: complete.fileSync.slice(0, 1) };
     const incomplete = await Effect.runPromise(
-      Effect.either(prepareWindowsSyncTargets(invalid, image, helpers(events))),
+      Effect.result(prepareWindowsSyncTargets(invalid, image, helpers(events))),
     );
     const mutable = await Effect.runPromise(
-      Effect.either(prepareWindowsSyncTargets(plan(), "alpine:latest", helpers(events))),
+      Effect.result(prepareWindowsSyncTargets(plan(), "alpine:latest", helpers(events))),
     );
-    expect(Either.isLeft(incomplete)).toBe(true);
-    expect(Either.isLeft(mutable)).toBe(true);
+    expect(Result.isFailure(incomplete)).toBe(true);
+    expect(Result.isFailure(mutable)).toBe(true);
     expect(events).toEqual([]);
   });
 
@@ -149,11 +147,11 @@ describe("Windows sync target set preparation", () => {
     const events: string[] = [];
     const resources = new Map<string, string>();
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         prepareWindowsSyncTargets(plan(), image, helpers(events, { resources, failImage: true })),
       ),
     );
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
     expect(events).toEqual(["image"]);
     expect(resources.size).toBe(0);
   });
@@ -180,11 +178,11 @@ describe("Windows sync target set preparation", () => {
     const events: string[] = [];
     const resources = new Map<string, string>();
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         prepareWindowsSyncTargets(plan(), image, helpers(events, { resources, wrongEndpoint: "web" })),
       ),
     );
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
     expect(events).toEqual(["image", "ensure:web"]);
     expect(resources.get("web")).toBe("container-web");
   });
@@ -194,9 +192,9 @@ describe("Windows sync target set preparation", () => {
     const resources = new Map<string, string>();
     const operations = helpers(events, { resources, failEnsureOnce: "worker" });
     const failed = await Effect.runPromise(
-      Effect.either(prepareWindowsSyncTargets(plan(), image, operations)),
+      Effect.result(prepareWindowsSyncTargets(plan(), image, operations)),
     );
-    expect(Either.isLeft(failed)).toBe(true);
+    expect(Result.isFailure(failed)).toBe(true);
     expect([...resources.keys()]).toEqual(["web", "worker"]);
     expect(events).toEqual(["image", "ensure:web", "ensure:worker"]);
 

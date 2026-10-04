@@ -1,4 +1,4 @@
-import { Either, Match, Schema } from "effect";
+import { Match, Result, Schema } from "effect";
 import { ConfigTranslateError } from "../errors/config.ts";
 import type {
   ConfigTranslateDiagnostic,
@@ -9,7 +9,7 @@ import { LandofileAuthoringFragment } from "../schema/landofile-authoring.ts";
 
 // ==== Input membership and selection invariants
 const invalid = (message: string, remediation: string) =>
-  Either.left(new ConfigTranslateError({ message, remediation }));
+  Result.fail(new ConfigTranslateError({ message, remediation }));
 
 export const declaredConfigTranslateSourceIds = (input: ConfigTranslateInput): ReadonlySet<string> =>
   Match.value(input).pipe(
@@ -23,9 +23,9 @@ export const declaredConfigTranslateSourceIds = (input: ConfigTranslateInput): R
 
 export const validateConfigTranslateInput = (
   input: ConfigTranslateInput,
-): Either.Either<ConfigTranslateInput, ConfigTranslateError> =>
+): Result.Result<ConfigTranslateInput, ConfigTranslateError> =>
   Match.value(input).pipe(
-    Match.tag("recipe-request", () => Either.right(input)),
+    Match.tag("recipe-request", () => Result.succeed(input)),
     Match.tag("landofile-document-set", (request) => {
       const declared = declaredConfigTranslateSourceIds(request);
       if (declared.size !== request.documents.length)
@@ -48,7 +48,7 @@ export const validateConfigTranslateInput = (
           "No writable target layers were declared.",
           "Declare at least one writable Landofile layer.",
         );
-      return Either.right(input);
+      return Result.succeed(input);
     }),
     Match.exhaustive,
   );
@@ -79,7 +79,7 @@ const ordered = <A>(values: readonly A[], compare: (left: A, right: A) => number
 export const validateConfigTranslateResult = (
   input: ConfigTranslateInput,
   result: ConfigTranslateResult,
-): Either.Either<ConfigTranslateResult, ConfigTranslateError> => {
+): Result.Result<ConfigTranslateResult, ConfigTranslateError> => {
   const declared = declaredConfigTranslateSourceIds(input);
   const sourceIds = [...declared];
   const mentioned = [
@@ -101,7 +101,7 @@ export const validateConfigTranslateResult = (
   const ownership = Match.value(input).pipe(
     Match.tag("landofile-document-set", ({ writableLayerIds }) =>
       targets.every((target) => writableLayerIds.includes(target))
-        ? Either.right(result)
+        ? Result.succeed(result)
         : invalid(
             "Translation targets a layer outside the writable allowlist.",
             "Emit only layers declared in writableLayerIds.",
@@ -118,11 +118,11 @@ export const validateConfigTranslateResult = (
           "Recipe requests may emit only one target layer.",
           "Fold the recipe output into a single Landofile layer.",
         );
-      return Either.right(result);
+      return Result.succeed(result);
     }),
     Match.exhaustive,
   );
-  if (Either.isLeft(ownership)) return ownership;
+  if (Result.isFailure(ownership)) return ownership;
   const compareSource = (left: string, right: string) => sourceIds.indexOf(left) - sourceIds.indexOf(right);
   if (
     !ordered(
@@ -149,14 +149,14 @@ export const validateConfigTranslateResult = (
         "Translation output is missing source identities.",
         "Attribute every output to at least one input sourceId.",
       );
-    const fragment = Schema.decodeUnknownEither(LandofileAuthoringFragment)(output.fragment, {
+    const fragment = Schema.decodeUnknownResult(LandofileAuthoringFragment)(output.fragment, {
       onExcessProperty: "error",
     });
-    if (Either.isLeft(fragment))
+    if (Result.isFailure(fragment))
       return invalid(
         "Translation emitted an invalid authoring fragment.",
         "Emit only supported Landofile authoring fields and expressions with the expected field type.",
       );
   }
-  return Either.right(result);
+  return Result.succeed(result);
 };

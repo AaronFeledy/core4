@@ -1,11 +1,10 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { isCoreServiceEnvKey } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
 
 const GLOBAL_APP_NAME = "global" as const;
@@ -14,13 +13,13 @@ export const LANDO_ENV_FEATURE_ID = "lando.env" as const;
 export const LANDO_ENV_FEATURE_PRIORITY = 700;
 
 const LandoEnvFeatureConfigSchema = Schema.Struct({
-  appPaths: Schema.optional(
+  appPaths: Schema.optionalKey(
     Schema.Struct({
       appRoot: Schema.String,
       projectMount: Schema.String,
     }),
   ),
-  webroot: Schema.optional(Schema.String),
+  webroot: Schema.optionalKey(Schema.String),
 });
 type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
 
@@ -29,11 +28,6 @@ const slug = (input: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyEnv = (ctx: ServiceFeatureContext): void => {
   const appName = appNameFor(ctx);
@@ -81,7 +75,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
 
 export const landoEnvFeature: ServiceFeatureDefinition = {
   id: LANDO_ENV_FEATURE_ID,
-  schema: LandoEnvFeatureConfigSchema as unknown as Schema.Schema<unknown>,
+  schema: LandoEnvFeatureConfigSchema as unknown as Schema.Codec<unknown>,
   priority: LANDO_ENV_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

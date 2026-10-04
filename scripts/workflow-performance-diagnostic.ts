@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 
@@ -21,8 +21,9 @@ export const imagePullDiagnosticFromStderr = (stderr: string): ImagePullFailureD
       if (!(cause instanceof SyntaxError)) throw cause;
       continue;
     }
-    const decoded = Schema.decodeUnknownEither(FailureEvidenceSchema)(parsed);
-    if (Either.isRight(decoded) && decoded.right.imagePull !== undefined) return decoded.right.imagePull;
+    const decoded = Schema.decodeUnknownResult(FailureEvidenceSchema)(parsed);
+    if (Result.isSuccess(decoded) && decoded.success.imagePull !== undefined)
+      return decoded.success.imagePull;
   }
   return undefined;
 };
@@ -36,10 +37,11 @@ export const setupFileSyncStatusFromStdout = (stdout: string): FileSyncStatus | 
       if (!(cause instanceof SyntaxError)) throw cause;
       continue;
     }
-    const envelope = Schema.decodeUnknownEither(CommandResultEnvelope)(parsed);
-    if (Either.isLeft(envelope) || envelope.right.command !== "meta:setup" || !envelope.right.ok) continue;
-    const result = Schema.decodeUnknownEither(SetupResultSchema)(envelope.right.result);
-    if (Either.isRight(result)) return result.right.fileSyncStatus;
+    const envelope = Schema.decodeUnknownResult(CommandResultEnvelope)(parsed);
+    if (Result.isFailure(envelope) || envelope.success.command !== "meta:setup" || !envelope.success.ok)
+      continue;
+    const result = Schema.decodeUnknownResult(SetupResultSchema)(envelope.success.result);
+    if (Result.isSuccess(result)) return result.success.fileSyncStatus;
   }
   return undefined;
 };

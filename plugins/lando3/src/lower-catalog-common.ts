@@ -10,7 +10,7 @@ import {
   type V4Wire,
   asStringArray,
   containerWebroot,
-  isPlainObject,
+  hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import { serviceConfigMount } from "./service-config-mount.ts";
 import {
@@ -133,9 +133,9 @@ export const lowerCatalogCommon = (
     );
   }
 
-  if (isPlainObject(service.environment) || Array.isArray(service.environment)) {
+  if (hasPlainObjectPrototype(service.environment) || Array.isArray(service.environment)) {
     const environment = new Map<string, string>();
-    if (isPlainObject(service.environment)) {
+    if (hasPlainObjectPrototype(service.environment)) {
       for (const [key, value] of Object.entries(service.environment)) {
         if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
           environment.set(key, String(value));
@@ -185,7 +185,7 @@ export const lowerCatalogCommon = (
     drop(["app_mount"], "Mount consistency hints have no Lando 4 appMount setting.");
   }
 
-  if (isPlainObject(service.config)) {
+  if (hasPlainObjectPrototype(service.config)) {
     const config: { server?: string; dir?: string } = {};
     const mounts: V4Wire[] = [];
     const companionMounts: V4Wire[] = [];

@@ -27,11 +27,11 @@ import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-run
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
-import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { makeProviderLogSourceBinding } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
@@ -636,21 +636,21 @@ const assembleRuntimeProvider = (
             platform,
             hostProxyContainerTargets(containerArch),
           );
+          const logSourceBinding = makeProviderLogSourceBinding({
+            providerId: PROVIDER_ID,
+            logFileAccess: options.logFileAccess,
+            helperPayload: logFileHelperPayloadForTargets(
+              options.logFileHelperPayloads,
+              capabilities.hostProxy?.containerTargets,
+            ),
+          });
           return {
             serverVersion,
             capabilities: {
               ...capabilities,
-              serviceLogSources:
-                options.logFileAccess !== undefined ||
-                logFileHelperPayloadForTargets(
-                  options.logFileHelperPayloads,
-                  capabilities.hostProxy?.containerTargets,
-                ) !== undefined,
+              serviceLogSources: logSourceBinding.supported,
             },
-            logFileHelperPayload: logFileHelperPayloadForTargets(
-              options.logFileHelperPayloads,
-              capabilities.hostProxy?.containerTargets,
-            ),
+            logSourceBinding,
           };
         }),
       ),
@@ -741,10 +741,12 @@ const assembleRuntimeProvider = (
         serverVersion,
         agentBridge,
         capabilities: resolvedCapabilities,
-        logFileHelperPayload,
+        logSourceBinding,
       }): RuntimeProviderWithContainerEvents => ({
         id: PROVIDER_ID,
-        inspectResourceNames: (query) => inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
+        inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
+          inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
+        ),
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
         platform,
@@ -755,24 +757,28 @@ const assembleRuntimeProvider = (
         ...agentBridge,
         isAvailable: podmanApi.info.pipe(
           Effect.as(true),
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.catch(() => Effect.succeed(false)),
         ),
         appliedPlans:
           options.appliedPlanState === undefined
             ? Effect.succeed([])
             : listAppliedPlans(options.appliedPlanState),
-        planSetup: () => Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
-        setup: () => Effect.void,
+        planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
+          Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
+        ),
+        setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
         getContainerDiedEvents: getContainerDiedEvents(podmanApi),
-        buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
-        pullArtifact: (spec) =>
+        buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
+          buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
+        ),
+        pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
           pullImage(podmanApi, spec.ref, {
             ctx: PODMAN_CTX,
             dialect: libpodPullDialect,
             publish: (event) =>
-              options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ?? Effect.void,
+              options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
           }).pipe(
             Effect.map((result) => ({
               providerId: providerIdBranded,
@@ -780,40 +786,42 @@ const assembleRuntimeProvider = (
               ...(result.digest === undefined ? {} : { digest: result.digest }),
             })),
           ),
-        removeArtifact: () => Effect.void,
-        apply: (plan, applyOptions) =>
-          bringUp(plan, {
+        ),
+        removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
+        apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+          return yield* bringUp(plan, {
             api: podmanApi,
             ctx: PODMAN_CTX,
             ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
+            platform,
+            daemonUrl: socketPath,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(applyOptions.serviceEnvironment === undefined
               ? {}
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
-        destroy: (target, destroyOptions) =>
-          Effect.gen(function* () {
-            const plan = target.plan ?? (yield* resolvePlan(target.app));
-            if (plan === undefined) return DESTROY_NO_OP;
-            yield* bringDown(plan, {
-              api: podmanApi,
-              ctx: PODMAN_CTX,
-              volumes: destroyOptions.volumes,
-              ...(destroyOptions.purgeCaches === undefined
-                ? {}
-                : { purgeCaches: destroyOptions.purgeCaches }),
-            });
-            if (destroyOptions.removeState !== false) {
-              yield* forgetPlan(target.app);
-            }
-            return DESTROYED;
-          }),
-        removeObservedService: (observed) =>
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile)));
+        }),
+        destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+          const plan = target.plan ?? (yield* resolvePlan(target.app));
+          if (plan === undefined) return DESTROY_NO_OP;
+          yield* bringDown(plan, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            volumes: destroyOptions.volumes,
+            ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
+          });
+          if (destroyOptions.removeState !== false) {
+            yield* forgetPlan(target.app);
+          }
+          return DESTROYED;
+        }),
+        removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
           removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
             Effect.map(observedRemoval),
           ),
+        ),
         logs: (target, logOptions) =>
           Stream.unwrap(
             (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
@@ -823,55 +831,42 @@ const assembleRuntimeProvider = (
                   : logs(plan, target, logOptions, {
                       api: podmanApi,
                       ctx: PODMAN_CTX,
-                      ...(() => {
-                        const logFileAccess =
-                          options.logFileAccess ??
-                          (logFileHelperPayload === undefined
-                            ? undefined
-                            : makeDockerLogFileAccess({
-                                providerId: PROVIDER_ID,
-                                api: podmanApi,
-                                container: serviceContainerName(plan, target.service),
-                                helperPayload: logFileHelperPayload,
-                              }));
-                        return logFileAccess === undefined ? {} : { logFileAccess };
-                      })(),
+                      ...logSourceBinding.bind(podmanApi, serviceContainerName(plan, target.service)),
                     }),
               ),
             ),
           ),
-        list: (filter) =>
-          Effect.gen(function* () {
-            const persistedPlans =
-              options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
-            const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
+        list: Effect.fn("RuntimeProvider.list")(function* (filter) {
+          const persistedPlans =
+            options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
+          const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
 
-            const snapshots = yield* Effect.forEach(allPlans, (plan) =>
-              Effect.forEach(Object.values(plan.services), (service) =>
-                inspect(
-                  plan,
-                  { app: plan.id, service: service.name },
-                  { api: podmanApi, ctx: PODMAN_CTX },
-                ).pipe(
-                  Effect.map((snapshot) => ({
-                    ...snapshot,
-                    appRoot: plan.root,
-                    providerId: providerIdBranded,
-                    labels: scratchLabelsForPlan(plan),
-                  })),
-                ),
+          const snapshots = yield* Effect.forEach(allPlans, (plan) =>
+            Effect.forEach(Object.values(plan.services), (service) =>
+              inspect(
+                plan,
+                { app: plan.id, service: service.name },
+                { api: podmanApi, ctx: PODMAN_CTX },
+              ).pipe(
+                Effect.map((snapshot) => ({
+                  ...snapshot,
+                  appRoot: plan.root,
+                  providerId: providerIdBranded,
+                  labels: scratchLabelsForPlan(plan),
+                })),
               ),
-            );
+            ),
+          );
 
-            const discovered =
-              filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
-            const flat = mergeDiscoveredContainers(
-              snapshots.flat(),
-              discovered,
-              filter.includeScratch === true,
-            );
-            return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
-          }),
+          const discovered =
+            filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
+          const flat = mergeDiscoveredContainers(
+            snapshots.flat(),
+            discovered,
+            filter.includeScratch === true,
+          );
+          return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
+        }),
         ...resolvedOps,
       }),
     ),
@@ -889,10 +884,10 @@ export const makeRuntimeProvider = (
     ),
   );
 
-export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
+export const layer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
 
-export const provider = makeProviderLayer();
+export const layerDefault = layer();
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -915,7 +910,7 @@ const conflictCheck: PluginDoctorCheckContribution = {
     const socketPath = resolvePodmanSocket({ platform: input.platform, env: input.env });
     return detectProviderLandoConflict(stateDir, socketPath).pipe(
       Effect.as([]),
-      Effect.catchAll((error) => {
+      Effect.catch((error) => {
         if (!(error instanceof ProviderLandoConflictError)) return Effect.die(error);
         const report = {
           name: "provider-conflict",
@@ -959,20 +954,19 @@ export const plugin = definePlugin({
       {
         id: runtimeProviderId,
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
-        make: (ctx) =>
-          Effect.gen(function* () {
-            const paths = yield* PathsService;
-            const assets = yield* LogFileHelperAssets;
-            const appPlanSanitizer = yield* AppPlanSanitizer;
-            const logFileHelperPayloads = yield* assets.payloads;
-            return yield* makeRuntimeProvider({
-              platform: paths.platform,
-              stateDir: `${paths.roots.userDataRoot}/providers`,
-              appliedPlanState: ctx.stateStore,
-              logFileHelperPayloads,
-              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
-            });
-          }),
+        make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
+          const paths = yield* PathsService;
+          const assets = yield* LogFileHelperAssets;
+          const appPlanSanitizer = yield* AppPlanSanitizer;
+          const logFileHelperPayloads = yield* assets.payloads;
+          return yield* makeRuntimeProvider({
+            platform: paths.platform,
+            stateDir: `${paths.roots.userDataRoot}/providers`,
+            appliedPlanState: ctx.stateStore,
+            logFileHelperPayloads,
+            sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+          });
+        }),
       },
     ],
   ]),

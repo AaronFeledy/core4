@@ -7,14 +7,14 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { parse } from "yaml";
 import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
 import { lampRecipeYaml } from "../../src/recipes/builtin/lamp/manifest.ts";
 import { lampProducer, lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
 
-const defaults = { php: "8.3", database: "mariadb:11.4", composer: "2", webroot: "/app" };
-const alternatives = { php: "8.4", database: "mysql:8.0", composer: "false", webroot: "/app/web" };
+const defaults = { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "/app" };
+const alternatives = { php: "8.1", database: "mysql:8.0", composer: "false", webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: lampProducer, options: defaults, secrets: {} };
 const decomposer = lampDecomposer({
   redactor: { redactString: (text) => text, redactValue: (value) => value },
@@ -145,7 +145,7 @@ describe("lamp decomposition", () => {
     const { fragment } = Effect.runSync(decomposer.decompose({ ...validInput, options }));
     const { recipe: _recipe, ...authoring } = fragment;
     // When
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(lampSnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(lampSnapshot, options));
     // Then
     expect(rendered).toEqual(authoring);
   });

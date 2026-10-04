@@ -73,7 +73,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "info.scenario.test",
   runtime: 4 as const,
 };
@@ -298,29 +298,38 @@ const makeInfoLayer = (
   };
 
   return Layer.mergeAll(
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "test-info", services: {}, ...options?.landofile }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(providerCapabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(RouterService, {
-      id: "recording",
-      capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-      setup: () => Effect.void,
-      revalidateStartup: Effect.void,
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: () => Effect.void,
-      status: Effect.succeed({
-        state,
-        authorities: options?.proxyAuthorities ?? [],
-        configuredApps: [plannedApp.id],
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "test-info", services: {}, ...options?.landofile }),
       }),
-      stop: Effect.void,
-    }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(providerCapabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      RouterService,
+      RouterService.of({
+        id: "recording",
+        capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+        setup: () => Effect.void,
+        revalidateStartup: Effect.void,
+        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        removeRoutes: () => Effect.void,
+        status: Effect.succeed({
+          state,
+          authorities: options?.proxyAuthorities ?? [],
+          configuredApps: [plannedApp.id],
+        }),
+        stop: Effect.void,
+      }),
+    ),
     options?.config ?? emptyConfigServiceLayer,
   );
 };
@@ -644,14 +653,20 @@ describe("lando info — resolved log sources", () => {
       importArtifact: () => Effect.die("not used"),
     };
     return Layer.mergeAll(
-      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-info", services: {} }) }),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(logPlan) }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(caps),
-        select: () => Effect.succeed(provider),
-      }),
-      Layer.succeed(RouterService, TestRouterService),
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({ discover: Effect.succeed({ name: "test-info", services: {} }) }),
+      ),
+      Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(logPlan) })),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.succeed(caps),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
+      Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       emptyConfigServiceLayer,
     );
   };

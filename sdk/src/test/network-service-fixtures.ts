@@ -20,40 +20,37 @@ const requireCaContract = (
 ): Effect.Effect<void, ContractFailure> =>
   condition ? Effect.void : Effect.fail(caContractFailure(assertion, details));
 
-export const runCaContract = (ca: CertificateAuthorityShape): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    yield* requireCaContract(
-      typeof ca.id === "string" && ca.id.length > 0,
-      "id is a non-empty string",
-      ca.id,
-    );
+export const runCaContract = Effect.fnUntraced(function* (
+  ca: CertificateAuthorityShape,
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireCaContract(typeof ca.id === "string" && ca.id.length > 0, "id is a non-empty string", ca.id);
 
-    yield* ca.setup({ force: false }).pipe(Effect.mapError((d) => caContractFailure("setup resolves", d)));
+  yield* ca.setup({ force: false }).pipe(Effect.mapError((d) => caContractFailure("setup resolves", d)));
 
-    const certResult = yield* ca
-      .issueCert({ cn: "test.lndo.site", sans: ["*.test.lndo.site"] })
-      .pipe(Effect.mapError((d) => caContractFailure("issueCert resolves", d)));
+  const certResult = yield* ca
+    .issueCert({ cn: "test.lndo.site", sans: ["*.test.lndo.site"] })
+    .pipe(Effect.mapError((d) => caContractFailure("issueCert resolves", d)));
 
-    yield* requireCaContract(
-      typeof certResult.certPath === "string" && certResult.certPath.length > 0,
-      "issueCert result has non-empty certPath",
-      certResult,
-    );
-    yield* requireCaContract(
-      typeof certResult.keyPath === "string" && certResult.keyPath.length > 0,
-      "issueCert result has non-empty keyPath",
-      certResult,
-    );
-    yield* requireCaContract(
-      typeof certResult.caPath === "string" && certResult.caPath.length > 0,
-      "issueCert result has non-empty caPath",
-      certResult,
-    );
+  yield* requireCaContract(
+    typeof certResult.certPath === "string" && certResult.certPath.length > 0,
+    "issueCert result has non-empty certPath",
+    certResult,
+  );
+  yield* requireCaContract(
+    typeof certResult.keyPath === "string" && certResult.keyPath.length > 0,
+    "issueCert result has non-empty keyPath",
+    certResult,
+  );
+  yield* requireCaContract(
+    typeof certResult.caPath === "string" && certResult.caPath.length > 0,
+    "issueCert result has non-empty caPath",
+    certResult,
+  );
 
-    yield* ca
-      .setup({ force: false, skipTrustInstall: true })
-      .pipe(Effect.mapError((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
-  });
+  yield* ca
+    .setup({ force: false, skipTrustInstall: true })
+    .pipe(Effect.mapError((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
+});
 
 export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
   readonly calls: ReadonlyArray<
@@ -98,30 +95,31 @@ const requireSshContract = (
 ): Effect.Effect<void, ContractFailure> =>
   condition ? Effect.void : Effect.fail(sshContractFailure(assertion, details));
 
-export const runSshServiceContract = (ssh: SshServiceShape): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    yield* requireSshContract(
-      typeof ssh.id === "string" && ssh.id.length > 0,
-      "id is a non-empty string",
-      ssh.id,
-    );
+export const runSshServiceContract = Effect.fnUntraced(function* (
+  ssh: SshServiceShape,
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireSshContract(
+    typeof ssh.id === "string" && ssh.id.length > 0,
+    "id is a non-empty string",
+    ssh.id,
+  );
 
-    yield* ssh.setup({ force: false }).pipe(Effect.mapError((d) => sshContractFailure("setup resolves", d)));
+  yield* ssh.setup({ force: false }).pipe(Effect.mapError((d) => sshContractFailure("setup resolves", d)));
 
-    const socketResult = yield* ssh
-      .getAgentSocket(AppId.make("contract-test-app"))
-      .pipe(Effect.mapError((d) => sshContractFailure("getAgentSocket resolves", d)));
+  const socketResult = yield* ssh
+    .getAgentSocket(AppId.make("contract-test-app"))
+    .pipe(Effect.mapError((d) => sshContractFailure("getAgentSocket resolves", d)));
 
-    yield* requireSshContract(
-      typeof socketResult.socketPath === "string" && socketResult.socketPath.length > 0,
-      "getAgentSocket result has non-empty socketPath",
-      socketResult,
-    );
+  yield* requireSshContract(
+    typeof socketResult.socketPath === "string" && socketResult.socketPath.length > 0,
+    "getAgentSocket result has non-empty socketPath",
+    socketResult,
+  );
 
-    yield* ssh
-      .setup({ force: true })
-      .pipe(Effect.mapError((d) => sshContractFailure("setup with force:true resolves", d)));
-  });
+  yield* ssh
+    .setup({ force: true })
+    .pipe(Effect.mapError((d) => sshContractFailure("setup with force:true resolves", d)));
+});
 
 export const makeTestSshService = (): SshServiceShape & {
   readonly calls: ReadonlyArray<
@@ -166,39 +164,38 @@ const requireHealthcheckContract = (
 ): Effect.Effect<void, ContractFailure> =>
   condition ? Effect.void : Effect.fail(healthcheckContractFailure(assertion, details));
 
-export const runHealthcheckContract = (
+export const runHealthcheckContract = Effect.fnUntraced(function* (
   runner: HealthcheckRunnerShape,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    yield* requireHealthcheckContract(
-      typeof runner.id === "string" && runner.id.length > 0,
-      "id is a non-empty string",
-      runner.id,
-    );
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireHealthcheckContract(
+    typeof runner.id === "string" && runner.id.length > 0,
+    "id is a non-empty string",
+    runner.id,
+  );
 
-    const testPlan: HealthcheckPlan = {
-      kind: "command",
-      command: ["sh", "-c", "exit 0"],
-      intervalSeconds: 5,
-      timeoutSeconds: 30,
-      retries: 3,
-    };
+  const testPlan: HealthcheckPlan = {
+    kind: "command",
+    command: ["sh", "-c", "exit 0"],
+    intervalSeconds: 5,
+    timeoutSeconds: 30,
+    retries: 3,
+  };
 
-    const result = yield* runner
-      .run(testPlan, AppId.make("contract-test-app"), ServiceName.make("web"))
-      .pipe(Effect.mapError((d: HealthcheckRunError) => healthcheckContractFailure("run resolves", d)));
+  const result = yield* runner
+    .run(testPlan, AppId.make("contract-test-app"), ServiceName.make("web"))
+    .pipe(Effect.mapError((d: HealthcheckRunError) => healthcheckContractFailure("run resolves", d)));
 
-    yield* requireHealthcheckContract(
-      typeof result.healthy === "boolean",
-      "run result has boolean healthy",
-      result,
-    );
-    yield* requireHealthcheckContract(
-      typeof result.attempts === "number" && result.attempts > 0,
-      "run result has positive attempts",
-      result,
-    );
-  });
+  yield* requireHealthcheckContract(
+    typeof result.healthy === "boolean",
+    "run result has boolean healthy",
+    result,
+  );
+  yield* requireHealthcheckContract(
+    typeof result.attempts === "number" && result.attempts > 0,
+    "run result has positive attempts",
+    result,
+  );
+});
 
 export const makeTestHealthcheckRunner = (): HealthcheckRunnerShape & {
   readonly calls: ReadonlyArray<{
@@ -241,41 +238,38 @@ const requireScannerContract = (
 ): Effect.Effect<void, ContractFailure> =>
   condition ? Effect.void : Effect.fail(scannerContractFailure(assertion, details));
 
-export const runScannerContract = (scanner: UrlScannerShape): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    yield* requireScannerContract(
-      typeof scanner.id === "string" && scanner.id.length > 0,
-      "id is a non-empty string",
-      scanner.id,
-    );
+export const runScannerContract = Effect.fnUntraced(function* (
+  scanner: UrlScannerShape,
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireScannerContract(
+    typeof scanner.id === "string" && scanner.id.length > 0,
+    "id is a non-empty string",
+    scanner.id,
+  );
 
-    const testAppId = AppId.make("contract-test-app");
+  const testAppId = AppId.make("contract-test-app");
 
-    const scanResult = yield* scanner
-      .scan(testAppId)
-      .pipe(Effect.mapError((d) => scannerContractFailure("scan resolves", d)));
+  const scanResult = yield* scanner
+    .scan(testAppId)
+    .pipe(Effect.mapError((d) => scannerContractFailure("scan resolves", d)));
 
-    yield* requireScannerContract(
-      scanResult.appId === testAppId,
-      "scan result appId matches input",
-      scanResult,
-    );
-    yield* requireScannerContract(
-      Array.isArray(scanResult.endpoints),
-      "scan result has endpoints array",
-      scanResult,
-    );
+  yield* requireScannerContract(
+    scanResult.appId === testAppId,
+    "scan result appId matches input",
+    scanResult,
+  );
+  yield* requireScannerContract(
+    Array.isArray(scanResult.endpoints),
+    "scan result has endpoints array",
+    scanResult,
+  );
 
-    const collisions = yield* scanner
-      .detectCollisions([testAppId])
-      .pipe(Effect.mapError((d) => scannerContractFailure("detectCollisions resolves", d)));
+  const collisions = yield* scanner
+    .detectCollisions([testAppId])
+    .pipe(Effect.mapError((d) => scannerContractFailure("detectCollisions resolves", d)));
 
-    yield* requireScannerContract(
-      Array.isArray(collisions),
-      "detectCollisions result is an array",
-      collisions,
-    );
-  });
+  yield* requireScannerContract(Array.isArray(collisions), "detectCollisions result is an array", collisions);
+});
 
 export const makeTestUrlScanner = (): UrlScannerShape & {
   readonly calls: ReadonlyArray<
@@ -337,61 +331,60 @@ const requireHostProxyContract = (
 ): Effect.Effect<void, ContractFailure> =>
   condition ? Effect.void : Effect.fail(hostProxyContractFailure(assertion, details));
 
-export const runHostProxyContract = (service: HostProxyServiceShape): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    yield* requireHostProxyContract(
-      typeof service.id === "string" && service.id.length > 0,
-      "id is a non-empty string",
-      service.id,
-    );
+export const runHostProxyContract = Effect.fnUntraced(function* (
+  service: HostProxyServiceShape,
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireHostProxyContract(
+    typeof service.id === "string" && service.id.length > 0,
+    "id is a non-empty string",
+    service.id,
+  );
 
-    yield* service
-      .setup({ mode: "auto" })
-      .pipe(Effect.mapError((d) => hostProxyContractFailure("setup({ mode: 'auto' }) resolves", d)));
+  yield* service
+    .setup({ mode: "auto" })
+    .pipe(Effect.mapError((d) => hostProxyContractFailure("setup({ mode: 'auto' }) resolves", d)));
 
-    const activeStatus = yield* service
-      .status()
-      .pipe(Effect.mapError((d) => hostProxyContractFailure("status() resolves after setup", d)));
+  const activeStatus = yield* service
+    .status()
+    .pipe(Effect.mapError((d) => hostProxyContractFailure("status() resolves after setup", d)));
 
-    yield* requireHostProxyContract(
-      typeof activeStatus.active === "boolean",
-      "status.active is a boolean",
-      activeStatus,
-    );
-    yield* requireHostProxyContract(
-      activeStatus.mode === "auto" || activeStatus.mode === "none",
-      "status.mode is auto or none",
-      activeStatus,
-    );
-    yield* requireHostProxyContract(
-      typeof activeStatus.baseDomain === "string" && activeStatus.baseDomain.length > 0,
-      "status.baseDomain is a non-empty string",
-      activeStatus,
-    );
-    yield* requireHostProxyContract(
-      typeof activeStatus.loopback === "string" && activeStatus.loopback.length > 0,
-      "status.loopback is a non-empty string",
-      activeStatus,
-    );
+  yield* requireHostProxyContract(
+    typeof activeStatus.active === "boolean",
+    "status.active is a boolean",
+    activeStatus,
+  );
+  yield* requireHostProxyContract(
+    activeStatus.mode === "auto" || activeStatus.mode === "none",
+    "status.mode is auto or none",
+    activeStatus,
+  );
+  yield* requireHostProxyContract(
+    typeof activeStatus.baseDomain === "string" && activeStatus.baseDomain.length > 0,
+    "status.baseDomain is a non-empty string",
+    activeStatus,
+  );
+  yield* requireHostProxyContract(
+    typeof activeStatus.loopback === "string" && activeStatus.loopback.length > 0,
+    "status.loopback is a non-empty string",
+    activeStatus,
+  );
 
-    yield* service
-      .setup({ mode: "none" })
-      .pipe(Effect.mapError((d) => hostProxyContractFailure("setup({ mode: 'none' }) resolves", d)));
+  yield* service
+    .setup({ mode: "none" })
+    .pipe(Effect.mapError((d) => hostProxyContractFailure("setup({ mode: 'none' }) resolves", d)));
 
-    const noneStatus = yield* service
-      .status()
-      .pipe(Effect.mapError((d) => hostProxyContractFailure("status() resolves after opt-out", d)));
+  const noneStatus = yield* service
+    .status()
+    .pipe(Effect.mapError((d) => hostProxyContractFailure("status() resolves after opt-out", d)));
 
-    yield* requireHostProxyContract(
-      noneStatus.mode === "none" && noneStatus.active === false,
-      "status reports mode='none' and inactive after opt-out",
-      noneStatus,
-    );
+  yield* requireHostProxyContract(
+    noneStatus.mode === "none" && noneStatus.active === false,
+    "status reports mode='none' and inactive after opt-out",
+    noneStatus,
+  );
 
-    yield* service
-      .teardown()
-      .pipe(Effect.mapError((d) => hostProxyContractFailure("teardown() resolves", d)));
-  });
+  yield* service.teardown().pipe(Effect.mapError((d) => hostProxyContractFailure("teardown() resolves", d)));
+});
 
 export const makeTestHostProxyService = (): HostProxyServiceShape & {
   readonly calls: ReadonlyArray<

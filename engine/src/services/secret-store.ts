@@ -1,4 +1,4 @@
-import { type Context, Effect, Either, Layer } from "effect";
+import { type Context, Effect, Layer, Result } from "effect";
 
 import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { parseSecretReference } from "@lando/sdk/secrets";
@@ -14,11 +14,11 @@ export interface EnvSecretStoreOptions {
   readonly env?: Record<string, string | undefined>;
 }
 
-const bareEnvReference = (secret: string): Either.Either<string, SecretReferenceInvalidError> => {
+const bareEnvReference = (secret: string): Result.Result<string, SecretReferenceInvalidError> => {
   const reference = parseSecretReference(secret);
-  if (Either.isLeft(reference)) return Either.left(reference.left);
-  if (reference.right.scheme !== undefined) {
-    return Either.left(
+  if (Result.isFailure(reference)) return Result.fail(reference.failure);
+  if (reference.success.scheme !== undefined) {
+    return Result.fail(
       new SecretReferenceInvalidError({
         message: "The environment secret store only accepts bare secret ids.",
         reference: secret,
@@ -26,7 +26,7 @@ const bareEnvReference = (secret: string): Either.Either<string, SecretReference
       }),
     );
   }
-  return Either.right(secret);
+  return Result.succeed(secret);
 };
 
 /**
@@ -39,19 +39,19 @@ const bareEnvReference = (secret: string): Either.Either<string, SecretReference
  */
 export const makeEnvSecretStore = (
   options: EnvSecretStoreOptions = {},
-): Context.Tag.Service<typeof SecretStore> => {
+): Context.Service.Shape<typeof SecretStore> => {
   const prefix =
     options.prefix === "" || options.prefix === undefined ? DEFAULT_SECRET_ENV_PREFIX : options.prefix;
   const env = options.env ?? process.env;
 
   const readValue = (secret: string): string | undefined => env[`${prefix}${secret}`];
 
-  return {
+  return SecretStore.of({
     id: "env",
     schemes: [],
     get: (secret) => {
       const reference = bareEnvReference(secret);
-      if (Either.isLeft(reference)) return Effect.fail(reference.left);
+      if (Result.isFailure(reference)) return Effect.fail(reference.failure);
       const value = readValue(secret);
       return value === undefined
         ? Effect.fail(
@@ -64,19 +64,19 @@ export const makeEnvSecretStore = (
         : Effect.succeed(value);
     },
     has: (secret) =>
-      Effect.sync(() => Either.isRight(bareEnvReference(secret)) && readValue(secret) !== undefined),
+      Effect.sync(() => Result.isSuccess(bareEnvReference(secret)) && readValue(secret) !== undefined),
     list: Effect.sync(() =>
       Object.keys(env)
         .filter((key) => key.startsWith(prefix) && env[key] !== undefined)
         .map((key) => key.slice(prefix.length))
         .sort(),
     ),
-  };
+  });
 };
 
 /** Build the env-backed `SecretStore` Live Layer. */
-export const makeEnvSecretStoreLive = (options: EnvSecretStoreOptions = {}): Layer.Layer<SecretStore> =>
+export const layerWith = (options: EnvSecretStoreOptions = {}): Layer.Layer<SecretStore> =>
   Layer.succeed(SecretStore, makeEnvSecretStore(options));
 
 /** Default `SecretStore` Live Layer: env-backed, `LANDO_SECRET_` prefix, live `process.env`. */
-export const SecretStoreLive: Layer.Layer<SecretStore> = makeEnvSecretStoreLive();
+export const layer: Layer.Layer<SecretStore> = layerWith();

@@ -1,12 +1,12 @@
-import { ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
 
-const byteSizeFailure = (literal: string): ParseResult.Type => {
+const byteSizeFailure = (literal: string): SchemaIssue.InvalidValue => {
   // The "Landofile service" prefix is load-bearing: core's Landofile validation
   // formatter only surfaces a nested issue's message when it starts with that
   // prefix, otherwise the user sees the bare key path instead of the remediation.
   const message =
     'Landofile service Compose byte size is invalid; expected a non-negative number with an optional binary unit such as "64m", "1.5g", "1gb", "1GiB", "1P", or "134217728" (units: b, k, m, g, t, p; optional i/b suffixes).';
-  return new ParseResult.Type(Schema.String.ast, literal, message);
+  return new SchemaIssue.InvalidValue({ message: message }, literal);
 };
 
 const unitMultiplier = (unitLetter: string): number | undefined => {

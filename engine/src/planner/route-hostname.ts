@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { evaluateTemplateEither, parseExpressionEither } from "@lando/sdk/expressions";
@@ -36,25 +36,25 @@ export const evaluateRouteHostname = (
 
   const filePath = `${input.appRoot}/.lando.yml`;
   const parsed = parseExpressionEither(hostname, { filePath });
-  if (Either.isLeft(parsed)) {
-    return Effect.fail(expressionError(hostname, input, parsed.left.message));
+  if (Result.isFailure(parsed)) {
+    return Effect.fail(expressionError(hostname, input, parsed.failure.message));
   }
 
   const evaluated = evaluateTemplateEither(
-    parsed.right,
+    parsed.success,
     {
       app: { name: input.appName, slug: input.appSlug },
       proxy: { defaultDomain: input.defaultDomain },
     },
     { filePath },
   );
-  if (Either.isLeft(evaluated)) {
-    return Effect.fail(expressionError(hostname, input, evaluated.left.message));
+  if (Result.isFailure(evaluated)) {
+    return Effect.fail(expressionError(hostname, input, evaluated.failure.message));
   }
-  if (typeof evaluated.right !== "string" || evaluated.right.length === 0) {
+  if (typeof evaluated.success !== "string" || evaluated.success.length === 0) {
     return Effect.fail(
       expressionError(hostname, input, "Hostname expression did not evaluate to a hostname string."),
     );
   }
-  return Effect.succeed(evaluated.right);
+  return Effect.succeed(evaluated.success);
 };

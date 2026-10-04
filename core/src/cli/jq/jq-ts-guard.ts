@@ -1,4 +1,5 @@
 import type { parse } from "@gabrielbryk/jq-ts";
+import * as Predicate from "effect/Predicate";
 
 // 1e6 is a false-positive posture: legitimate huge-literal assignment/multiply is
 // refused because maxSteps does not tick during array hole-fill or string-repeat allocation.
@@ -23,14 +24,11 @@ const BINARY_ARITH = {
 
 type BinaryArithOp = keyof typeof BINARY_ARITH;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 const isBinaryArithOp = (op: unknown): op is BinaryArithOp =>
   typeof op === "string" && Object.hasOwn(BINARY_ARITH, op);
 
 const foldNumeric = (node: unknown): number | undefined => {
-  if (!isRecord(node) || typeof node.kind !== "string") {
+  if (!Predicate.isObjectOrArray(node) || Array.isArray(node) || typeof node.kind !== "string") {
     return undefined;
   }
   if (node.kind === "Literal") {
@@ -60,7 +58,7 @@ const isHugeFoldedNumber = (value: unknown): boolean => {
 };
 
 const collectNumericMultiplyFactors = (node: unknown): readonly number[] => {
-  if (isRecord(node) && node.kind === "Binary" && node.op === "*") {
+  if (Predicate.isObjectOrArray(node) && !Array.isArray(node) && node.kind === "Binary" && node.op === "*") {
     return [...collectNumericMultiplyFactors(node.left), ...collectNumericMultiplyFactors(node.right)];
   }
   const folded = foldNumeric(node);
@@ -98,14 +96,24 @@ const markSetpathPathIndexes = (node: Record<string, unknown>, findings: Finding
     return;
   }
   const pathArg = args[0];
-  if (!isRecord(pathArg) || pathArg.kind !== "Array" || !Array.isArray(pathArg.items)) {
+  if (
+    !Predicate.isObjectOrArray(pathArg) ||
+    Array.isArray(pathArg) ||
+    pathArg.kind !== "Array" ||
+    !Array.isArray(pathArg.items)
+  ) {
     return;
   }
   for (const item of pathArg.items) {
     // setpath path segment: [999999999]
     markHugeIfIndex(item, findings);
     // delpaths nested path: [[999999999]]
-    if (isRecord(item) && item.kind === "Array" && Array.isArray(item.items)) {
+    if (
+      Predicate.isObjectOrArray(item) &&
+      !Array.isArray(item) &&
+      item.kind === "Array" &&
+      Array.isArray(item.items)
+    ) {
       for (const nested of item.items) {
         markHugeIfIndex(nested, findings);
       }
@@ -120,7 +128,7 @@ const walk = (node: unknown, findings: Findings, inAssignmentLeft: boolean): voi
     }
     return;
   }
-  if (!isRecord(node) || typeof node.kind !== "string") {
+  if (!Predicate.isObjectOrArray(node) || Array.isArray(node) || typeof node.kind !== "string") {
     return;
   }
 
@@ -149,7 +157,10 @@ const walk = (node: unknown, findings: Findings, inAssignmentLeft: boolean): voi
 
   for (const [key, value] of Object.entries(node)) {
     const nextInLeft = node.kind === "Assignment" ? key === "left" : inAssignmentLeft;
-    if (Array.isArray(value) || (isRecord(value) && typeof value.kind === "string")) {
+    if (
+      Array.isArray(value) ||
+      (Predicate.isObjectOrArray(value) && !Array.isArray(value) && typeof value.kind === "string")
+    ) {
       walk(value, findings, nextInLeft);
     }
   }

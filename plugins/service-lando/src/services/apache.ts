@@ -10,6 +10,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
@@ -147,7 +148,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["user"]);
   const appMount = {
     source: AbsolutePath.make(ctx.appRoot),
     target: APP_MOUNT_TARGET,
@@ -181,8 +182,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand(apacheStartCommand(documentRoot, ownedListen));
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
   }
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
 };
 
 export const apacheServiceFeature: ServiceFeatureDefinition = {

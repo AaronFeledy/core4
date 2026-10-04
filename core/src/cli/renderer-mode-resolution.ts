@@ -9,15 +9,17 @@
  */
 import { Effect } from "effect";
 
+import type { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as LandoConfigService from "@lando/engine/services/config";
 import type { RendererMode, ResolveRendererModeResult } from "./renderer-selection";
 import { resolveRendererMode } from "./renderer-selection";
 
 export type ConfigCliGlobals = {
   readonly renderer?: string;
   readonly logLevel?: string;
+  readonly tracing?: GlobalConfig["tracing"];
 };
 
 export type ApplyDebugRendererFlipInput = {
@@ -31,14 +33,15 @@ export const applyDebugRendererFlip = (input: ApplyDebugRendererFlipInput): Rend
 export const readConfigCliGlobals = async (): Promise<ConfigCliGlobals> => {
   const config = await Effect.runPromise(
     Effect.flatMap(ConfigService, (service) => service.load).pipe(
-      Effect.provide(ConfigServiceLive),
-      Effect.catchAll(() => Effect.succeed(undefined)),
+      Effect.provide(LandoConfigService.layer),
+      Effect.catch(() => Effect.succeed(undefined)),
     ),
   );
   if (config === undefined) return {};
   return {
     ...(typeof config.renderer === "string" ? { renderer: config.renderer } : {}),
     ...(typeof config.logLevel === "string" ? { logLevel: config.logLevel } : {}),
+    ...(config.tracing === undefined ? {} : { tracing: config.tracing }),
   };
 };
 

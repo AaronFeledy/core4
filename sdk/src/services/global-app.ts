@@ -19,7 +19,7 @@ export interface GlobalDistResult {
   readonly serviceIds: ReadonlyArray<string>;
 }
 
-export class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService")<
+export class GlobalAppService extends Context.Service<
   GlobalAppService,
   {
     readonly id: "global";
@@ -56,4 +56,4 @@ export class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService"
       GlobalAppError | GlobalDistConflictError
     >;
   }
->() {}
+>()("@lando/core/GlobalAppService") {}

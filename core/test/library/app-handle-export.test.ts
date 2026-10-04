@@ -186,9 +186,16 @@ describe("@lando/core App-handle entry export", () => {
       (node): node is ts.VariableDeclaration =>
         ts.isVariableDeclaration(node) && node.name.getText(share) === "appShareStop",
     );
+    const shareStopBody =
+      shareStop?.initializer !== undefined &&
+      ts.isCallExpression(shareStop.initializer) &&
+      ts.isCallExpression(shareStop.initializer.expression) &&
+      shareStop.initializer.expression.expression.getText(share) === "Effect.fn"
+        ? shareStop.initializer.arguments[0]
+        : undefined;
     const shareStopType =
-      shareStop?.initializer !== undefined && ts.isArrowFunction(shareStop.initializer)
-        ? shareStop.initializer.type?.getText(share)
+      shareStopBody !== undefined && ts.isFunctionExpression(shareStopBody) && shareStopBody.asteriskToken
+        ? shareStopBody.type?.getText(share)
         : undefined;
 
     // Then: the bound path excludes dead planning services and the general export stays precise.

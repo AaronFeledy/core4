@@ -51,13 +51,13 @@ describe("file-sync setup step", () => {
   test("returns installed and calls setup when an engine service is present", async () => {
     const calls: string[] = [];
     const { recorder, steps } = makeRecorder();
-    const fileSync = {
+    const fileSync = FileSyncEngine.of({
       ...TestFileSyncEngine,
       setup: () =>
         Effect.sync(() => {
           calls.push("setup");
         }),
-    };
+    });
 
     const status = await Effect.runPromise(
       runFileSyncSetupStep({

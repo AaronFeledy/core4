@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { nodePostgresDecomposer } from "../../src/recipes/builtin/node-postgres/decomposer.ts";
 import { nodePostgresRecipeYaml } from "../../src/recipes/builtin/node-postgres/manifest.ts";
 import {
@@ -35,7 +35,7 @@ const decompose = (options: RecipeDecomposeInput["options"]) =>
 
 const authoringOf = (options: RecipeDecomposeInput["options"]) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -98,13 +98,13 @@ describe("node-postgres decomposition", () => {
     { options: { extra: true }, path: "options.extra" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(decomposer.decompose({ producer: nodePostgresProducer, options, secrets: {} })),
+      Effect.result(decomposer.decompose({ producer: nodePostgresProducer, options, secrets: {} })),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -144,7 +144,7 @@ describe("node-postgres decomposition", () => {
   });
 
   test("renders the same authoring data from the snapshot when options are empty", () => {
-    expect(Either.getOrThrow(renderRecipeSnapshot(nodePostgresSnapshot, {}))).toEqual(authoringOf({}));
+    expect(Result.getOrThrow(renderRecipeSnapshot(nodePostgresSnapshot, {}))).toEqual(authoringOf({}));
   });
 
   test("preserves auxiliary scaffold bytes when the app name is probe", async () => {

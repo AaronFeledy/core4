@@ -105,6 +105,7 @@ const expectedCatalogRows = [
     "core",
     ["setup-plugin-flags", "mcp-allowlist"],
   ],
+  ["compiled-decoders", "derived", "build-compiled-decoders.ts", "repo", ["core-service-env-catalog"]],
   [
     "schema-snapshot",
     "derived",
@@ -297,13 +298,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(31);
+    expect(catalog).toHaveLength(32);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(2);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(18);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(19);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);

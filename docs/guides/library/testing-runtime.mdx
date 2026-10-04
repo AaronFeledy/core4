@@ -8,9 +8,110 @@ tags: [beta, docs, library, testing]
 
 # Testing runtime
 
-## Deterministic runtime
+`makeTestRuntime()` creates an isolated test runtime for library hosts. Every service double records what your code asked for and touches nothing on the host.
 
-`makeTestRuntime()` creates an isolated test runtime for library hosts.
+```ts
+import { Effect } from "effect";
+import { Logger, ProcessRunner } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime();
+await Effect.runPromise(
+  Effect.gen(function* () {
+    const log = yield* Logger;
+    const processes = yield* ProcessRunner;
+    yield* log.info("hello from a host test");
+    yield* processes.run({ cmd: "podman", args: ["info"] });
+  }).pipe(Effect.provide(runtime.layer)),
+);
+console.log(runtime.calls.logger, runtime.calls.processRunner);
+```
+
+The scenarios below run the same calls through the guide harness.
+
+<Guide>
+  <Scenario id="deterministic-doubles">
+    <Step name="record-calls-without-touching-the-host">
+      <Run
+        runtime="library"
+        code={`const runtime = LandoTesting.makeTestRuntime({ files: { "/app/.lando.yml": "name: demo" } });
+yield* Effect.gen(function* () {
+  const log = yield* LandoCore.Logger;
+  const processes = yield* LandoCore.ProcessRunner;
+  const files = yield* LandoCore.FileSystem;
+  yield* log.info("hello from a host test");
+  const result = yield* processes.run({ cmd: "podman", args: ["info"] });
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toBe("");
+  yield* files.writeFile("/app/notes.txt", "written in memory");
+}).pipe(Effect.provide(runtime.layer));
+expect(runtime.calls.logger).toEqual([{ level: "info", message: "hello from a host test" }]);
+expect(runtime.calls.processRunner).toEqual([{ cmd: "podman", args: ["info"] }]);
+expect(runtime.files.get("/app/notes.txt")).toBe("written in memory");
+expect(runtime.files.get("/app/.lando.yml")).toBe("name: demo");`}
+        displayCode={`import { Effect } from "effect";
+import { FileSystem, Logger, ProcessRunner } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime({ files: { "/app/.lando.yml": "name: demo" } });
+await Effect.runPromise(
+  Effect.gen(function* () {
+    const log = yield* Logger;
+    const processes = yield* ProcessRunner;
+    const files = yield* FileSystem;
+    yield* log.info("hello from a host test");
+    yield* processes.run({ cmd: "podman", args: ["info"] });
+    yield* files.writeFile("/app/notes.txt", "written in memory");
+  }).pipe(Effect.provide(runtime.layer)),
+);
+console.log(runtime.calls.logger);        // [{ level: "info", message: "hello from a host test" }]
+console.log(runtime.calls.processRunner); // [{ cmd: "podman", args: ["info"] }]
+console.log(runtime.files.get("/app/notes.txt")); // "written in memory"`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="provider-bootstrap">
+    <Step name="resolve-the-fake-provider">
+      <Run
+        runtime="library"
+        code={`const runtime = LandoTesting.makeTestRuntime({ bootstrap: "provider" });
+const provider = yield* LandoCore.RuntimeProvider.pipe(Effect.provide(runtime.layer));
+expect(provider.id).toBe("test");
+expect(provider.id).toBe(LandoTesting.TestRuntimeProvider.id);`}
+        displayCode={`import { Effect } from "effect";
+import { RuntimeProvider } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime({ bootstrap: "provider" });
+const provider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(runtime.layer)));
+console.log(provider.id); // "test"`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="swap-the-provider">
+    <Step name="override-runtime-provider">
+      <Run
+        runtime="library"
+        code={`const fake = { ...LandoTesting.TestRuntimeProvider, id: "host-fake" };
+const runtime = LandoTesting.makeTestRuntime({ bootstrap: "provider", with: { RuntimeProvider: fake } });
+const provider = yield* LandoCore.RuntimeProvider.pipe(Effect.provide(runtime.layer));
+expect(provider.id).toBe("host-fake");`}
+        displayCode={`import { Effect } from "effect";
+import { RuntimeProvider } from "@lando/core";
+import { makeTestRuntime, TestRuntimeProvider } from "@lando/core/testing";
+
+const fake = { ...TestRuntimeProvider, id: "host-fake" };
+const runtime = makeTestRuntime({ bootstrap: "provider", with: { RuntimeProvider: fake } });
+const provider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(runtime.layer)));
+console.log(provider.id); // "host-fake"`}
+      />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Deterministic runtime
 
 The FileSystem double records calls and never writes to the real disk (`in-memory`).
 
@@ -112,7 +213,7 @@ GlobalConfig sets the positive per-subscriber delivery queue capacity; a full su
 
 makeTestStateStore returns a Layer hosts can merge into provideTestRuntime or custom test stacks (`Layer.succeed(StateStore)`).
 
-The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as StateStoreLive.
+The double applies the same schema codecs, version framing, advisory lock modes, and path containment rules as the disk-backed StateStore layer.
 
 list(dir) reports stored file basenames under the resolved directory so Windows and POSIX paths stay portable in contract tests.
 

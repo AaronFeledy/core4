@@ -140,13 +140,12 @@ const makeHarness = (
     },
     paths: { platform, globalAppRoot: "/lando/global" },
     globalApp: {
-      restartRunningService: (service) =>
-        Effect.gen(function* () {
-          if (!running) return false;
-          if (failRestart) return yield* Effect.fail(new Error("injected Traefik restart failure"));
-          restarted.push(String(service));
-          return true;
-        }),
+      restartRunningService: Effect.fnUntraced(function* (service) {
+        if (!running) return false;
+        if (failRestart) return yield* Effect.fail(new Error("injected Traefik restart failure"));
+        restarted.push(String(service));
+        return true;
+      }),
       ensureRunning: (services) =>
         Effect.sync(() => {
           running = true;
@@ -512,7 +511,7 @@ describe("watcher diagnostics", () => {
   const watcherFailure = (exit: Exit.Exit<unknown, unknown>) => {
     expect(exit._tag).toBe("Failure");
     const failure = Exit.match(exit, {
-      onFailure: (cause) => Option.getOrUndefined(Cause.failureOption(cause)),
+      onFailure: (cause) => Option.getOrUndefined(Cause.findErrorOption(cause)),
       onSuccess: () => undefined,
     });
     expect(failure).toMatchObject({ _tag: "RouterWatcherError" });
@@ -521,9 +520,9 @@ describe("watcher diagnostics", () => {
         _tag: Schema.Literal("RouterWatcherError"),
         failureClass: Schema.Literal("inotify-limit"),
         proxyId: Schema.Literal("traefik"),
-        watcherHost: Schema.NonEmptyTrimmedString,
-        detail: Schema.NonEmptyTrimmedString,
-        remediation: Schema.NonEmptyTrimmedString,
+        watcherHost: Schema.Trimmed.check(Schema.isNonEmpty()),
+        detail: Schema.Trimmed.check(Schema.isNonEmpty()),
+        remediation: Schema.Trimmed.check(Schema.isNonEmpty()),
       }),
     )(failure);
   };

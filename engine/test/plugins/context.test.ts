@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
 import type { Scope } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
@@ -9,6 +12,7 @@ import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { stubHttpClient } from "./stub-http-client.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
@@ -34,6 +38,7 @@ const pluginContext = (
     privateFileAccess: ownerOnlyFileAccess,
     stateStore: makeTestStateStore().service,
     pluginStateRoot: AbsolutePath.make(`/tmp/lando-plugin-context/${id}`),
+    httpClient: stubHttpClient(),
   });
 
 describe("LandoPluginContext managed files ownership scoping", () => {
@@ -201,5 +206,63 @@ describe("LandoPluginContext managed files ownership scoping", () => {
 
     expect(result._tag).toBe("Failure");
     expect(store.ledger()).toHaveLength(0);
+  });
+
+  test("an unsupported apply option cannot redirect a plugin to another app ledger", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const plugin = pluginContext("plugin-a", store.service);
+    const foreignLedger = "/other/app";
+
+    await runScoped(
+      plugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")], {
+        ledgerBase: foreignLedger,
+      } as unknown as Parameters<typeof plugin.managedFiles.apply>[1]),
+    );
+
+    expect(store.ledger()).toHaveLength(1);
+    expect(store.ledger(foreignLedger)).toHaveLength(0);
+  });
+
+  test("plugin context supplies a host HttpClient that completes requests", async () => {
+    // Given: a host-owned client double registered for one URL and a plugin context.
+    const sources = new Map<string, Uint8Array>([
+      ["https://plugin-context.test/ping", new TextEncoder().encode("pong")],
+    ]);
+    const httpClient = HttpClient.make((request, url) =>
+      Effect.gen(function* () {
+        const body = sources.get(url.href) ?? sources.get(request.url);
+        if (body === undefined) {
+          return yield* Effect.fail(
+            new HttpClientError.HttpClientError({
+              reason: new HttpClientError.TransportError({ request, cause: "unserved" }),
+            }),
+          );
+        }
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(new TextDecoder().decode(body), { status: 200 }),
+        );
+      }),
+    );
+    const store = await run(makeTestManagedFileStore());
+    const ctx = makeLandoPluginContext({
+      id: "plugin-http",
+      managedFileService: store.service,
+      privateFileAccess: ownerOnlyFileAccess,
+      stateStore: makeTestStateStore().service,
+      pluginStateRoot: AbsolutePath.make("/tmp/lando-plugin-context/plugin-http"),
+      httpClient,
+    });
+
+    // When: the plugin issues a GET through ctx.httpClient.
+    const body = await run(
+      Effect.gen(function* () {
+        const response = yield* ctx.httpClient.get("https://plugin-context.test/ping");
+        return yield* response.text;
+      }),
+    );
+
+    // Then: the request completes through the host-supplied client, not a silent stub.
+    expect(body).toBe("pong");
   });
 });

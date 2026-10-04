@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { ManagedFileError } from "@lando/sdk/errors";
 
@@ -9,8 +9,9 @@ const run = <A>(effect: Effect.Effect<A, ManagedFileError>): Promise<A> => Effec
 
 const failure = async <A>(effect: Effect.Effect<A, ManagedFileError>): Promise<ManagedFileError> => {
   const exit = await Effect.runPromiseExit(effect);
-  if (Exit.isFailure(exit) && exit.cause._tag === "Fail" && exit.cause.error instanceof ManagedFileError) {
-    return exit.cause.error;
+  if (Exit.isFailure(exit)) {
+    const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+    if (error instanceof ManagedFileError) return error;
   }
   throw new Error("expected a ManagedFileError failure");
 };

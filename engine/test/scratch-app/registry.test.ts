@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 
 import { LOCK_STALE_THRESHOLD_MS } from "@lando/state-store/lock";
 import {
@@ -12,6 +13,7 @@ import {
   makeScratchRegistry,
   scratchRegistryPaths,
 } from "../../src/scratch-app/registry.ts";
+import { detachScratchApp } from "../../src/scratch-app/service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
@@ -43,6 +45,31 @@ const entry = (id: string): ScratchRegistryEntry => ({
 });
 
 describe("scratch registry", () => {
+  test("detach stamps the advanced execution clock while preserving creation time", async () => {
+    await withTempCache(async () => {
+      // Given an attached entry and an execution clock independent of host time.
+      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+      const original = { ...entry("scratch-clock-000001"), detached: false, ownerPid: process.pid };
+      await Effect.runPromise(registry.upsert(original));
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* TestClock.setTime(0);
+          yield* TestClock.adjust("1234 millis");
+
+          // When lifecycle ownership is detached after virtual time advances.
+          yield* detachScratchApp(original.id, ownerOnlyFileAccess);
+
+          // Then only the update timestamp follows the execution clock.
+          const detached = yield* registry.get(original.id);
+          expect(detached?.updatedAt).toBe("1970-01-01T00:00:01.234Z");
+          expect(detached?.createdAt).toBe(original.createdAt);
+          expect(detached?.detached).toBe(true);
+          expect(detached?.ownerPid).toBeUndefined();
+        }).pipe(Effect.provide(TestClock.layer())),
+      );
+    });
+  });
+
   test("upsert, list, and get roundtrip through registry.bin", async () => {
     await withTempCache(async () => {
       const registry = makeScratchRegistry(ownerOnlyFileAccess);

@@ -1,11 +1,12 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, PortNumber, PortablePath } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+
+import { appNameFor } from "../app-name.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
 const DEFAULT_WEBROOT = PortablePath.make("/usr/local/tomcat/webapps/ROOT");
@@ -17,11 +18,6 @@ const ARTIFACTS = {
 } as const;
 
 export const TOMCAT_FEATURE_ID = "service-lando.tomcat";
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -60,10 +56,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 20,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const tomcatServiceFeature: ServiceFeatureDefinition = {
