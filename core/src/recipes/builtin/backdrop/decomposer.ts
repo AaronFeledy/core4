@@ -1,4 +1,5 @@
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
+import { composerAndPhpTooling } from "../php-stack.ts";
 import { BACKDROP_SETTINGS_VALUE, backdropProducer, backdropSnapshot } from "./snapshot.ts";
 
 export const backdropDecomposer = makeOptionBearingDecomposer({
@@ -29,20 +30,7 @@ export const backdropDecomposer = makeOptionBearingDecomposer({
           description: "Run Bee inside the appserver service.",
           cmds: ["bee"],
         },
-        ...(composerEnabled
-          ? {
-              composer: {
-                service: "appserver",
-                description: "Run Composer inside the appserver service.",
-                cmds: ["composer"],
-              },
-            }
-          : {}),
-        php: {
-          service: "appserver",
-          description: "Run the PHP CLI inside the appserver service.",
-          cmds: ["php"],
-        },
+        ...composerAndPhpTooling(composerEnabled, { service: "appserver" }),
       },
     };
   },

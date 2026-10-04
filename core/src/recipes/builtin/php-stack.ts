@@ -147,3 +147,23 @@ export const composerToolingLines = (): ReadonlyArray<string> => [
   "    cmds:",
   "      - composer",
 ];
+
+export const composerAndPhpTooling = (
+  composerEnabled: boolean,
+  { service }: { readonly service: string } = { service: "appserver" },
+) => ({
+  ...(composerEnabled
+    ? {
+        composer: {
+          service,
+          description: `Run Composer inside the ${service} service.`,
+          cmds: ["composer"],
+        },
+      }
+    : {}),
+  php: {
+    service,
+    description: `Run the PHP CLI inside the ${service} service.`,
+    cmds: ["php"],
+  },
+});
