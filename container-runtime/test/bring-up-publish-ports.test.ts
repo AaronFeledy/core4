@@ -11,6 +11,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { dockerLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { SERVICE_PUBLISH_PORT_MIN, type ServicePublishProbe } from "../src/service-publish-ports.ts";
@@ -79,8 +80,11 @@ const makeFakeApi = (input: {
   readonly exists?: boolean;
   readonly running?: boolean;
   readonly inspectHostPort?: string;
+  readonly inspectBindingHostPort?: string;
   readonly createStatuses?: ReadonlyArray<number>;
   readonly createBodies?: ReadonlyArray<string>;
+  readonly startStatuses?: ReadonlyArray<number>;
+  readonly startBodies?: ReadonlyArray<string>;
   readonly existingBindSource?: string;
 }) => {
   const calls: EngineHttpRequest[] = [];
@@ -88,6 +92,7 @@ const makeFakeApi = (input: {
   let running = input.running ?? exists;
   let hostPort = input.inspectHostPort ?? "31234";
   let createIndex = 0;
+  let startIndex = 0;
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
@@ -103,9 +108,18 @@ const makeFakeApi = (input: {
         if (request.method === "POST" && request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
+        if (request.method === "POST" && request.path.endsWith("/connect")) {
+          return { status: 200, body: "{}" };
+        }
         if (request.method === "GET" && action === "json") {
           if (!exists) return { status: 404, body: "{}" };
           const body = JSON.parse(inspectBody(hostPort, running)) as Record<string, unknown>;
+          if (input.inspectBindingHostPort !== undefined && createIndex === 0) {
+            body.HostConfig = {
+              PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: input.inspectBindingHostPort }] },
+            };
+            body.NetworkSettings = { Ports: {} };
+          }
           if (input.existingBindSource !== undefined) {
             body.Mounts = [
               { Type: "bind", Source: input.existingBindSource, Destination: "/run/lando/host-proxy.sock" },
@@ -136,8 +150,11 @@ const makeFakeApi = (input: {
           return { status, body };
         }
         if (request.method === "POST" && action === "start") {
-          running = true;
-          return { status: 204, body: "" };
+          const status = input.startStatuses?.[startIndex] ?? 204;
+          const body = input.startBodies?.[startIndex] ?? "";
+          startIndex += 1;
+          running = status === 204 || status === 304;
+          return { status, body };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           return { status: 204, body: "" };
@@ -377,5 +394,155 @@ describe("create-body service publish ports", () => {
     expect(createHostPort(fake.calls, 1)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(ports[0]).toBe(SERVICE_PUBLISH_PORT_MIN);
     expect(ports).toContain(SERVICE_PUBLISH_PORT_MIN + 1);
+  });
+
+  test("a start bind rejection recreates once and excludes the failed port", async () => {
+    const ports: number[] = [];
+    const probeBind: ServicePublishProbe = (_host, port) => {
+      ports.push(port);
+      return Effect.succeed({ kind: "success" });
+    };
+    const fake = makeFakeApi({ startStatuses: [500, 204], startBodies: ["address already in use", ""] });
+    await Effect.runPromise(
+      bringUp(planWithPublication({}), { api: fake.api, ctx, platform: "linux", probeBind }),
+    );
+    expect(createCalls(fake.calls)).toHaveLength(2);
+    expect(createHostPort(fake.calls, 1)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
+    expect(ports).toEqual([SERVICE_PUBLISH_PORT_MIN, SERVICE_PUBLISH_PORT_MIN + 1]);
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+  });
+
+  test("a stopped existing container recovers with a fresh port", async () => {
+    const fake = makeFakeApi({
+      exists: true,
+      running: false,
+      inspectHostPort: "30000",
+      inspectBindingHostPort: "30000",
+      startStatuses: [500, 204],
+      startBodies: ["port is already allocated", ""],
+    });
+    await Effect.runPromise(
+      bringUp(planWithPublication({}), {
+        api: fake.api,
+        ctx,
+        platform: "linux",
+        probeBind: () => Effect.succeed({ kind: "success" }),
+      }),
+    );
+    expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(createHostPort(fake.calls)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+  });
+
+  test("a pinned start bind rejection does not retry", async () => {
+    const fake = makeFakeApi({ startStatuses: [500], startBodies: ["address already in use"] });
+    const result = await Effect.runPromise(
+      bringUp(planWithPublication({ hostPort: 31500 }), { api: fake.api, ctx, platform: "linux" }).pipe(
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ServiceStartError", operation: "bringUp.start" },
+    });
+    expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(1);
+  });
+
+  test("a second start failure retains both responses and rolls back the recreation", async () => {
+    const fake = makeFakeApi({
+      exists: true,
+      running: false,
+      inspectHostPort: "30000",
+      startStatuses: [500, 500],
+      startBodies: ["address already in use", "port is already allocated"],
+    });
+    const result = await Effect.runPromise(
+      bringUp(planWithPublication({}), {
+        api: fake.api,
+        ctx,
+        platform: "linux",
+        probeBind: () => Effect.succeed({ kind: "success" }),
+      }).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ServiceStartError",
+        operation: "bringUp.start",
+        details: {
+          status: 500,
+          body: "address already in use",
+          retryStatus: 500,
+          retryBody: "port is already allocated",
+        },
+      },
+    });
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
+    expect(
+      fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),
+    ).toHaveLength(2);
+  });
+
+  test("daemon-assigned ports do not trigger start recovery", async () => {
+    const fake = makeFakeApi({ startStatuses: [500], startBodies: ["address already in use"] });
+    const result = await Effect.runPromise(
+      bringUp(planWithPublication({}), {
+        api: fake.api,
+        ctx,
+        platform: "linux",
+        daemonUrl: "tcp://127.0.0.1:2375",
+      }).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringUp.start" } });
+    expect(createHostPort(fake.calls)).toBe("");
+    expect(createCalls(fake.calls)).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(1);
+  });
+
+  test("existing daemon-empty bindings do not trigger start recovery", async () => {
+    const fake = makeFakeApi({
+      exists: true,
+      running: false,
+      inspectBindingHostPort: "",
+      startStatuses: [500],
+      startBodies: ["address already in use"],
+    });
+    const result = await Effect.runPromise(
+      bringUp(planWithPublication({}), { api: fake.api, ctx, platform: "linux" }).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringUp.start" } });
+    expect(createCalls(fake.calls)).toHaveLength(0);
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(1);
+    expect(
+      fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),
+    ).toHaveLength(0);
+  });
+
+  test("start recovery excludes the successful create retry port and reconnects Docker networks", async () => {
+    const fake = makeFakeApi({
+      createStatuses: [500, 201, 201],
+      createBodies: ["address already in use", "{}", "{}"],
+      startStatuses: [500, 204],
+      startBodies: ["port is already allocated", ""],
+    });
+    const base = planWithPublication({});
+    const { networking: _networking, ...plan } = base;
+    await Effect.runPromise(
+      bringUp(plan, {
+        api: fake.api,
+        ctx,
+        platform: "linux",
+        dialect: dockerLifecycleDialect,
+        probeBind: () => Effect.succeed({ kind: "success" }),
+      }),
+    );
+    expect(createCalls(fake.calls)).toHaveLength(3);
+    expect(createHostPort(fake.calls, 1)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
+    expect(createHostPort(fake.calls, 2)).toBe(String(SERVICE_PUBLISH_PORT_MIN));
+    expect(fake.calls.filter((call) => call.path.endsWith("/connect"))).toHaveLength(2);
+    expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
   });
 });

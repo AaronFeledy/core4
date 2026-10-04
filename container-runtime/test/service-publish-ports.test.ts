@@ -222,12 +222,18 @@ describe("prepareCreatePublishEndpoints", () => {
 });
 
 describe("isHostPortBindRejection", () => {
-  test("recognizes a daemon address-in-use create rejection", () => {
+  test("recognizes daemon address-in-use create and start rejections", () => {
     expect(isHostPortBindRejection({ status: 500, body: "address already in use" })).toBe(true);
     expect(
       isHostPortBindRejection({
         status: 500,
         body: "Bind for 127.0.0.1:30000 failed: port is already allocated",
+      }),
+    ).toBe(true);
+    expect(
+      isHostPortBindRejection({
+        status: 500,
+        body: "rootlessport listen tcp 127.0.0.1:30000: bind: address already in use",
       }),
     ).toBe(true);
     expect(isHostPortBindRejection({ status: 500, body: "no such image" })).toBe(false);

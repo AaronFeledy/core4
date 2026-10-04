@@ -39,9 +39,11 @@ import { redactDetails, withApiReason } from "../redact.ts";
 import {
   type ServicePublishProbe,
   classifyServicePublishHost,
+  copyInspectHostPorts,
   createAssignedHostPorts,
   isHostPortBindRejection,
   prepareCreatePublishEndpoints,
+  shouldProbeServicePublishPort,
 } from "../service-publish-ports.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
@@ -521,13 +523,13 @@ const createContainer = Effect.fnUntraced(function* (
   name: string,
   endpoints: ReadonlyArray<EndpointPlan>,
   reassign: (exclude: ReadonlySet<number>) => Effect.Effect<ReadonlyArray<EndpointPlan>, BringUpError>,
-): Effect.fn.Return<void, BringUpError> {
+): Effect.fn.Return<ReadonlyArray<EndpointPlan>, BringUpError> {
   if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
   }
   let createRequest = yield* buildCreateRequest(deps, plan, service, name, endpoints);
   const response = yield* request(deps, { method: "POST", ...createRequest });
-  if (response.status === 201 || response.status === 409) return;
+  if (response.status === 201 || response.status === 409) return endpoints;
   if (
     deps.options.retryCreateOnMissingImage === true &&
     deps.options.ensureImage !== undefined &&
@@ -536,7 +538,7 @@ const createContainer = Effect.fnUntraced(function* (
   ) {
     yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
     const retry = yield* request(deps, { method: "POST", ...createRequest });
-    if (retry.status === 201 || retry.status === 409) return;
+    if (retry.status === 201 || retry.status === 409) return endpoints;
     if (!isHostPortBindRejection(retry)) {
       return yield* Effect.fail(
         podmanFailure(deps, {
@@ -565,7 +567,7 @@ const createContainer = Effect.fnUntraced(function* (
   const rebound = yield* reassign(createAssignedHostPorts(endpoints));
   createRequest = yield* buildCreateRequest(deps, plan, service, name, rebound);
   const bindRetry = yield* request(deps, { method: "POST", ...createRequest });
-  if (bindRetry.status === 201 || bindRetry.status === 409) return;
+  if (bindRetry.status === 201 || bindRetry.status === 409) return rebound;
   return yield* Effect.fail(
     podmanFailure(deps, {
       service,
@@ -617,25 +619,8 @@ const connectSharedNetwork = (
     ),
   );
 
-const startContainer = (
-  deps: BringUpDeps,
-  service: ServicePlan,
-  name: string,
-): Effect.Effect<void, BringUpError> =>
-  request(deps, { method: "POST", path: `/containers/${encodeURIComponent(name)}/start` }).pipe(
-    Effect.flatMap((response) =>
-      response.status === 204 || response.status === 304
-        ? Effect.void
-        : Effect.fail(
-            podmanFailure(deps, {
-              service,
-              operation: "bringUp.start",
-              message: `provider-${deps.options.ctx.providerId} container start failed with HTTP ${response.status}.`,
-              details: { status: response.status, body: response.body },
-            }),
-          ),
-    ),
-  );
+const startContainer = (deps: BringUpDeps, name: string): Effect.Effect<EngineHttpResponse, BringUpError> =>
+  request(deps, { method: "POST", path: `/containers/${encodeURIComponent(name)}/start` });
 
 const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
   request(deps, { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
@@ -776,23 +761,23 @@ const startService = Effect.fnUntraced(function* (
     prepareCreatePublishEndpoints({
       endpoints: service.endpoints,
       ...(inspected.body === undefined ? {} : { inspect: inspected.body }),
-      copyInspectHostPort: inspected.exists && !before.exists && !portMismatch,
+      copyInspectHostPort: exclude === undefined && inspected.exists && !before.exists && !portMismatch,
       host: publishHost,
       ...(deps.options.probeBind === undefined ? {} : { probeBind: deps.options.probeBind }),
       ...(exclude === undefined ? {} : { exclude }),
     });
   let changed = false;
+  const inspectedBindings =
+    typeof inspected.body === "object" && inspected.body !== null && "HostConfig" in inspected.body
+      ? { HostConfig: inspected.body.HostConfig }
+      : undefined;
+  let createEndpoints =
+    before.exists && shouldProbeServicePublishPort(publishHost)
+      ? copyInspectHostPorts(service.endpoints, inspectedBindings)
+      : service.endpoints;
   if (!before.exists) {
-    const createEndpoints = yield* prepareEndpoints();
-    yield* createContainer(deps, plan, service, name, createEndpoints, (exclude) =>
-      prepareCreatePublishEndpoints({
-        endpoints: service.endpoints,
-        copyInspectHostPort: false,
-        host: publishHost,
-        ...(deps.options.probeBind === undefined ? {} : { probeBind: deps.options.probeBind }),
-        exclude,
-      }),
-    );
+    createEndpoints = yield* prepareEndpoints();
+    createEndpoints = yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
     changed = true;
   }
   const sharedNetwork = sharedNetworkName(plan);
@@ -803,7 +788,45 @@ const startService = Effect.fnUntraced(function* (
     yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
   }
   if (!before.running) {
-    yield* startContainer(deps, service, name);
+    const response = yield* startContainer(deps, name);
+    if (response.status !== 204 && response.status !== 304) {
+      const assigned = createAssignedHostPorts(
+        createEndpoints.filter((_endpoint, index) => {
+          const desired = service.endpoints[index];
+          return desired?._tag === "published" && desired.publication.hostPort === undefined;
+        }),
+      );
+      let retry: EngineHttpResponse | undefined;
+      if (isHostPortBindRejection(response) && assigned.size > 0) {
+        yield* stopContainerSilent(deps, name);
+        yield* removeContainer(deps, service, name);
+        recordTouched({ name, created: true, startedExisting: false });
+        createEndpoints = yield* prepareEndpoints(assigned);
+        yield* createContainer(deps, plan, service, name, createEndpoints, prepareEndpoints);
+        if (
+          (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment ===
+            "connect-after-create" &&
+          sharedNetwork !== undefined
+        ) {
+          yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+        }
+        retry = yield* startContainer(deps, name);
+      }
+      if (retry === undefined || (retry.status !== 204 && retry.status !== 304)) {
+        return yield* Effect.fail(
+          podmanFailure(deps, {
+            service,
+            operation: "bringUp.start",
+            message: `provider-${deps.options.ctx.providerId} container start failed with HTTP ${retry?.status ?? response.status}.`,
+            details: {
+              status: response.status,
+              body: response.body,
+              ...(retry === undefined ? {} : { retryStatus: retry.status, retryBody: retry.body }),
+            },
+          }),
+        );
+      }
+    }
     changed = true;
   }
 
@@ -893,7 +916,10 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         return yield* Effect.interrupt;
       }
       const started = yield* startService(deps, plan, service, (container) => {
-        touched.push(container);
+        // Recovery replaces the touched record so rollback removes the recreation exactly once.
+        const index = touched.findIndex((entry) => entry.name === container.name);
+        if (index === -1) touched.push(container);
+        else touched[index] = container;
       }).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );

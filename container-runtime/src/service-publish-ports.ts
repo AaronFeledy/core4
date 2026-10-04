@@ -263,6 +263,7 @@ export const prepareCreatePublishEndpoints = Effect.fnUntraced(function* (input:
   });
 });
 
+/** Classifies daemon host-port bind rejections during container create or start. */
 export const isHostPortBindRejection = (response: EngineHttpResponse): boolean =>
   response.status >= 400 &&
   (/address already in use/iu.test(response.body) ||
