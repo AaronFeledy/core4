@@ -21,8 +21,9 @@ test("removes owned skills from the canonical cwd after init through a symlinked
       env: {
         ...process.env,
         LANDO_USER_DATA_ROOT: join(root, "data"),
-        LANDO_USER_CONFIG_ROOT: join(root, "config"),
+        LANDO_USER_CONF_ROOT: join(root, "config"),
         LANDO_USER_CACHE_ROOT: join(root, "cache"),
+        LANDO_SYSTEM_PLUGIN_ROOT: join(root, "plugins"),
       },
       stdout: "pipe",
       stderr: "pipe",
