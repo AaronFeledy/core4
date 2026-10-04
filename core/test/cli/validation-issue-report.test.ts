@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { encodeCommandResult } from "@lando/sdk/command-result";
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -27,6 +27,17 @@ describe("validation issue rendering", () => {
     );
     expect(text).toContain("The document root is not an object.");
     expect(text).not.toContain(": The document root");
+  });
+
+  test("prints write-validation issues hidden behind a summary message", () => {
+    const error = new LandofileWriteValidationError({
+      message: "The resulting config failed validation for /tmp/app/.lando.yml.",
+      file: "/tmp/app/.lando.yml",
+      issues: [issue],
+      remediation: "Fix the reported issue(s), then retry the write. The file was left unchanged.",
+    });
+    const text = renderPlainBugReport(buildBugReport({ error, context: { commandId: "app:config:set" } }));
+    expect(text).toContain("services.web.ports[0]: Expected a port number from 1 through 65535.");
   });
 
   test("json command envelope carries structured issues", () => {

@@ -161,7 +161,11 @@ const extractExtraTagFields = (
     const exitCode = record.exitCode;
     if (typeof exitCode === "number") out.push(["exitCode", String(exitCode)]);
   }
-  if (tag === "RecipeManifestValidationError" || tag === "LandofileValidationError") {
+  if (
+    tag === "RecipeManifestValidationError" ||
+    tag === "LandofileValidationError" ||
+    tag === "LandofileWriteValidationError"
+  ) {
     const issues = record.issues;
     if (Array.isArray(issues) && issues.length > 0) {
       const flat = issues
