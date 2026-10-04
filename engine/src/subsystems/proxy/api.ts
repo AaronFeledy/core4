@@ -8,40 +8,41 @@ import { Effect, Layer } from "effect";
 
 import { ProxyApplyError, ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import { RouterService } from "@lando/sdk/services";
+import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { RouterService };
 
-const ROUTER_UNAVAILABLE_ID = "unavailable" as const;
 const ROUTER_UNAVAILABLE_MESSAGE =
   "RouterService is not selected. Install and select the bundled Traefik router plugin, then run `lando setup` to provision the global app.";
 
 export const layerUnavailable = Layer.succeed(
   RouterService,
   RouterService.of({
-    id: ROUTER_UNAVAILABLE_ID,
+    id: UNAVAILABLE_ID,
     capabilities: { wildcardHostnames: false, tls: false, pathPrefixes: false },
-    setup: () =>
-      Effect.fail(
+    setup: unavailableOperation(
+      () =>
         new ProxySetupError({
           message: ROUTER_UNAVAILABLE_MESSAGE,
-          proxyId: ROUTER_UNAVAILABLE_ID,
+          proxyId: UNAVAILABLE_ID,
           remediation: "Install and select a RouterService plugin, then rerun setup.",
         }),
-      ),
+    ),
     // No router ran, so there is no startup to re-observe. A record an earlier
     // router left behind stays reported until a selected router revalidates it.
     revalidateStartup: Effect.void,
-    applyRoutes: (_routes, _appId) =>
-      Effect.fail(
+    applyRoutes: unavailableOperation(
+      (_routes, _appId) =>
         new ProxyApplyError({
           message: ROUTER_UNAVAILABLE_MESSAGE,
-          proxyId: ROUTER_UNAVAILABLE_ID,
+          proxyId: UNAVAILABLE_ID,
           app: String(_appId),
           remediation: "Install and select a RouterService plugin, then retry route application.",
         }),
-      ),
-    removeRoutes: (_appId) =>
-      Effect.fail(new ProxyError({ message: ROUTER_UNAVAILABLE_MESSAGE, proxyId: ROUTER_UNAVAILABLE_ID })),
+    ),
+    removeRoutes: unavailableOperation(
+      () => new ProxyError({ message: ROUTER_UNAVAILABLE_MESSAGE, proxyId: UNAVAILABLE_ID }),
+    ),
     status: Effect.succeed({ state: "stopped" as const, authorities: [], configuredApps: [] }),
     stop: Effect.void,
   }),

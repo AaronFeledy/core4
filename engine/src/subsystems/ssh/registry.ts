@@ -1,11 +1,11 @@
-import { Context, Effect, Layer, Result } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { FileSystem, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 
 import { bundledPluginModules } from "../../composition.ts";
-import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
+import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";
 import * as UnavailableSshService from "./api.ts";
 
 export type SshServiceLayer = Layer.Layer<SshService, SshError, FileSystem | GlobalAppService | PathsService>;
@@ -41,12 +41,12 @@ export class SshServiceRegistry extends Context.Service<SshServiceRegistry, SshS
           list: Effect.succeed([...byId.keys()]),
           select: Effect.fn("SshServiceRegistry.select")(function* (selection = {}) {
             if (selection.explicit !== undefined) {
-              const registration = byId.get(selection.explicit);
-              return registration === undefined
-                ? yield* Effect.fail(
-                    selectionError(`SSH service ${selection.explicit} is not installed.`, selection.explicit),
-                  )
-                : registration;
+              const selected = yield* selectRegistration({
+                registrations: byId,
+                id: selection.explicit,
+                onMissing: (id) => selectionError(`SSH service ${id} is not installed.`, id),
+              });
+              return selected.registration;
             }
 
             // Return the first (and likely only) SSH service
@@ -73,13 +73,12 @@ const selectionError = (message: string, sshId: string): SshError =>
 const registrationsFromModules = Effect.fnUntraced(function* (
   modules: ReadonlyArray<LandoPluginModule>,
 ): Effect.fn.Return<ReadonlyArray<SshServiceRegistration>, SshError> {
-  const indexResult = makePluginCapabilityIndex(modules);
-  if (Result.isFailure(indexResult))
-    return yield* Effect.fail(selectionError("Unable to discover SshService contributions.", "unknown"));
-  const index = indexResult.success;
-  const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.sshServices ?? []);
+  const indexed = yield* indexContributions(modules, "sshServices", () =>
+    selectionError("Unable to discover SshService contributions.", "unknown"),
+  );
+  const contributions = modules.flatMap(({ manifest }) => manifest.contributes?.sshServices ?? []);
   return yield* Effect.forEach(contributions, (contribution) => {
-    const layer = index.sshServices?.get(contribution.id);
+    const layer = indexed.get(contribution.id);
     return layer === undefined
       ? Effect.fail(
           new SshError({

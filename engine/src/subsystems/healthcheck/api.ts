@@ -15,22 +15,24 @@
  * - This module keeps the explicit degraded-mode layer for contexts where no
  *   runtime provider is available.
  */
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 
 import { HealthcheckError } from "@lando/sdk/errors";
 import { HealthcheckRunner } from "@lando/sdk/services";
+import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { HealthcheckRunner };
 
-const HC_UNAVAILABLE_ID = "unavailable" as const;
 const HC_UNAVAILABLE_MESSAGE =
   "HealthcheckRunner requires provider-exec. Run `lando setup` to install the provider (full implementation is not available yet).";
 
 export const layerUnavailable = Layer.succeed(
   HealthcheckRunner,
   HealthcheckRunner.of({
-    id: HC_UNAVAILABLE_ID,
-    run: (_plan, _appId, service) =>
-      Effect.fail(new HealthcheckError({ message: HC_UNAVAILABLE_MESSAGE, service: String(service) })),
+    id: UNAVAILABLE_ID,
+    run: unavailableOperation(
+      (_plan, _appId, service) =>
+        new HealthcheckError({ message: HC_UNAVAILABLE_MESSAGE, service: String(service) }),
+    ),
   }),
 );

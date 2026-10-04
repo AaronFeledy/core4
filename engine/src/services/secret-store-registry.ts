@@ -13,8 +13,8 @@ import {
   SecretStore,
   type SecretStoreShape,
 } from "@lando/sdk/services";
-import { Context, Effect, Layer, Result, Scope } from "effect";
-import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { Context, Effect, Layer, Scope } from "effect";
+import { indexContributions } from "../plugins/capability-registry.ts";
 import * as EnvSecretStore from "./secret-store.ts";
 
 export interface SecretStoreRegistration {
@@ -34,20 +34,16 @@ export class SecretStoreRegistry extends Context.Service<
     Layer.effect(
       this,
       Effect.gen(function* () {
-        const index = yield* Effect.fromResult(
-          makePluginCapabilityIndex(modules).pipe(
-            Result.mapError((cause) =>
-              bootstrapError("Invalid secret store plugin descriptor. Repair the plugin descriptor.", cause),
-            ),
-          ),
+        const indexed = yield* indexContributions(modules, "secretStores", (cause) =>
+          bootstrapError("Invalid secret store plugin descriptor. Repair the plugin descriptor.", cause),
         );
         const registrations = new Map<string, SecretStoreRegistration>([
           ["env", { id: "env", schemes: [], layer: EnvSecretStore.layer }],
         ]);
         const schemes = new Set<string>();
-        for (const manifest of index.manifests) {
+        for (const { manifest } of modules) {
           for (const contribution of manifest.contributes?.secretStores ?? []) {
-            const layer = index.secretStores.get(contribution.id);
+            const layer = indexed.get(contribution.id);
             if (layer === undefined || registrations.has(contribution.id)) {
               return yield* Effect.fail(
                 bootstrapError(
