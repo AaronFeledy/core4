@@ -561,6 +561,14 @@ describe("resolveTarballRecipeSource", () => {
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(RecipeSourceError);
       if (failure instanceof RecipeSourceError) expect(failure.kind).toBe("subpath-invalid");
+      expect(failure).toMatchObject({
+        source: path,
+        message:
+          path === "/absolute"
+            ? `Tarball recipe --path must be relative and stay inside the extracted archive: ${path}`
+            : `Tarball recipe --path escapes the extracted archive: ${path}`,
+        remediation: "Pass a relative path inside the archive, such as --path=packages/foo.",
+      });
     });
   });
 
@@ -579,6 +587,12 @@ describe("resolveTarballRecipeSource", () => {
         }),
       );
       expect(expectFailure(exit)).toBeInstanceOf(RecipeManifestNotFoundError);
+      const manifestPath = join(dir, "data", "recipe-cache", "tarball", sha256(bytes), "recipe.yml");
+      expect(expectFailure(exit)).toMatchObject({
+        message: `recipe.yml not found at ${manifestPath}.`,
+        source: manifestPath,
+      });
+      expect(expectFailure(exit)).not.toHaveProperty("remediation");
     });
   });
 
@@ -600,6 +614,11 @@ describe("resolveTarballRecipeSource", () => {
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(RecipeSourceError);
       if (failure instanceof RecipeSourceError) expect(failure.kind).toBe("subpath-missing");
+      expect(failure).toMatchObject({
+        source: "https://example.test/recipe.tar.gz",
+        message: "recipe.yml not found at tarball recipe subpath packages/missing.",
+        remediation: "Choose a --path that contains recipe.yml at its top level.",
+      });
     });
   });
 
