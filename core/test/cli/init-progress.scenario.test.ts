@@ -68,7 +68,11 @@ describe("lando init: task tree progress", () => {
           agentSkills: true,
           events: { publish: sink.publish },
         }),
-      ).rejects.toThrow("ENOTDIR");
+      ).rejects.toMatchObject({
+        _tag: "ManagedFileError",
+        reason: "io",
+        cause: { code: "ENOTDIR" },
+      });
 
       // Then the final tree reports failure, never premature initialization success.
       expect(sink.events.filter((event) => event._tag === "task.tree.complete")).toMatchObject([
