@@ -5,7 +5,7 @@ import { Socket } from "node:net";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
-import type { HostPlatform } from "@lando/sdk/schema";
+import type { HostPlatform, RouterPortPair } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
 
 import { type TraefikPublishState, resolveTraefikPublishPorts } from "./global-services/traefik.ts";
@@ -33,10 +33,7 @@ export interface LoopbackPortReaders {
   ) => Promise<LoopbackPortSnapshot>;
 }
 
-export interface LeftoverProxyPortPair {
-  readonly httpPort: number;
-  readonly httpsPort: number;
-}
+export type LeftoverProxyPortPair = RouterPortPair;
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
 const TCP_PROBE_MS = 200;
