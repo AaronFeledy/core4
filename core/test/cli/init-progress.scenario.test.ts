@@ -49,6 +49,68 @@ const bufferedPostInitIO = () => {
 };
 
 describe("lando init: task tree progress", () => {
+  test("closes the tree as failed when opt-in agent skill installation fails", async () => {
+    await withTempCwd(async (dir) => {
+      // Given a real managed-file parent collision in an otherwise valid destination.
+      await mkdir(join(dir, "skills-fail"));
+      await Bun.write(join(dir, "skills-fail", ".agents"), "user-owned file\n");
+      const sink = collector();
+
+      // When recipe rendering succeeds but opt-in installation cannot write its files.
+      await expect(
+        initApp({
+          cwd: dir,
+          recipe: "toolbox",
+          name: "skills-fail",
+          full: false,
+          nonInteractive: true,
+          runPostInit: false,
+          agentSkills: true,
+          events: { publish: sink.publish },
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ManagedFileError",
+        reason: "io",
+        cause: { code: "ENOTDIR" },
+      });
+
+      // Then the final tree reports failure, never premature initialization success.
+      expect(sink.events.filter((event) => event._tag === "task.tree.complete")).toMatchObject([
+        { failed: 1, succeeded: 1 },
+      ]);
+      expect(sink.events.at(-1)).toMatchObject({ _tag: "task.tree.complete", failed: 1 });
+      expect(sink.events).toContainEqual(
+        expect.objectContaining({ _tag: "task.fail", taskId: "agentskills" }),
+      );
+    });
+  });
+
+  test("completes opt-in agent skills before closing the successful tree", async () => {
+    await withTempCwd(async (dir) => {
+      // Given an empty destination and opt-in installation.
+      const sink = collector();
+      // When initialization runs to completion.
+      const result = await initApp({
+        cwd: dir,
+        recipe: "toolbox",
+        name: "skills-on",
+        full: false,
+        nonInteractive: true,
+        runPostInit: false,
+        agentSkills: true,
+        events: { publish: sink.publish },
+      });
+      // Then installation completes inside the successful tree.
+      expect(result.agentSkills?.entries).toMatchObject([{ action: "create" }]);
+      expect(sink.events.at(-2)).toMatchObject({ _tag: "task.complete", taskId: "agentskills" });
+      expect(sink.events.at(-1)).toMatchObject({
+        _tag: "task.tree.complete",
+        failed: 0,
+        succeeded: 2,
+      });
+    });
+  });
+
   test("publishes tree.start → render → postinit → tree.complete around the recipe", async () => {
     await withTempCwd(async (dir) => {
       const sink = collector();

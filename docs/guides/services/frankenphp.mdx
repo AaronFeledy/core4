@@ -1,0 +1,162 @@
+---
+id: frankenphp
+provider: test
+timeout: 90000
+tags: [beta, docs, frankenphp, compose, php, service]
+---
+
+# Add FrankenPHP with Compose
+
+Run FrankenPHP next to your app with `type: compose` on the official image. Put your PHP under `public/` so it lands at `/app/public` inside the container (FrankenPHP's default document root). Listen on a high port so you stay clear of the Lando proxy's host ports:
+
+```yaml
+name: frankenphp-demo
+services:
+  appserver:
+    type: compose
+    image: dunglas/frankenphp:1.12.7-php8.4
+    home: false
+    ports:
+      - 9080:9080
+    environment:
+      SERVER_NAME: ":9080"
+tooling:
+  php:
+    service: appserver
+    cmd: php
+  frankenphp:
+    service: appserver
+    cmd: frankenphp
+```
+
+Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/).
+
+`SERVER_NAME: ":9080"` tells FrankenPHP (Caddy) to listen for HTTP on container port `9080`. The short port form publishes that port on the host. Drop a page at `public/index.php`, then start:
+
+```sh
+mkdir -p public
+printf '%s\n' '<?php echo "hello from frankenphp on lando\n";' > public/index.php
+lando start
+lando info
+```
+
+`lando info` lists `tcp://localhost:9080` for `appserver`.
+
+## Probe the HTTP surface
+
+Curl the published port from the host:
+
+```sh
+curl -sf http://localhost:9080/
+```
+
+That prints `hello from frankenphp on lando`. On the 2026-10-01 live check, response headers included `Server: FrankenPHP Caddy` and `X-Powered-By: PHP/8.4.26`.
+
+## Run PHP and FrankenPHP tooling
+
+The Landofile above wires `lando php` and `lando frankenphp` to `appserver`:
+
+```sh
+lando php -v
+lando frankenphp version
+```
+
+On the 2026-10-01 live check, `lando php -v` printed `PHP 8.4.26 (cli)` and `lando frankenphp version` printed FrankenPHP, PHP, and Caddy versions (`FrankenPHP v1.12.7 PHP 8.4.26 Caddy v2.11.4`).
+
+## Add Composer with a Dockerfile
+
+The stock `dunglas/frankenphp` image does not ship Composer. Bake it in with a tiny Dockerfile, then point the service at `build:` instead of `image:`:
+
+```dockerfile
+FROM dunglas/frankenphp:1.12.7-php8.4
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+```
+
+```yaml
+services:
+  appserver:
+    type: compose
+    build: .
+    home: false
+    ports:
+      - 9080:9080
+    environment:
+      SERVER_NAME: ":9080"
+tooling:
+  php:
+    service: appserver
+    cmd: php
+  frankenphp:
+    service: appserver
+    cmd: frankenphp
+  composer:
+    service: appserver
+    cmd: composer
+```
+
+```sh
+lando start
+lando composer --version
+```
+
+On the 2026-10-01 live check, `lando composer --version` printed `Composer version 2.10.3` (the `composer:2` tag can float the patch). Rebuild after Dockerfile changes so the new layer lands.
+
+## Pin a FrankenPHP and PHP version
+
+Change the image tag (or the `FROM` line) when you want a different FrankenPHP or PHP release. This guide checked the Debian tag. The Alpine tag is upstream-only and was not checked here.
+
+```yaml
+image: dunglas/frankenphp:1.12.7-php8.4
+```
+
+```yaml
+image: dunglas/frankenphp:1.12.7-php8.4-alpine
+```
+
+Keep `SERVER_NAME` matched to the published container port when you move off `9080`.
+
+## Reach FrankenPHP from another service
+
+Other services on the app join the same network. The hostname is the service key `appserver`, and the port is `9080`:
+
+```
+http://appserver:9080
+```
+
+From another service, call that URL. Do not use `localhost` inside another container. That is the container itself, not FrankenPHP.
+
+## Start, inspect, destroy
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="frankenphp-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"compose\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "dunglas/frankenphp:1\\.12\\.7-php8\\.4" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SERVER_NAME" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"php\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"frankenphp\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+`lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Add a Compose service](../compose-passthrough/)
+- [Add PHP](../php/)
+- [Keep a service home across rebuilds and reach your host](../home-and-host/)
+- [How services find each other](../../subsystems/service-dns/)
+- [Run the Laravel recipe](../../recipes/laravel-workflow/)

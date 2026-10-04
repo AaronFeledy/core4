@@ -208,6 +208,21 @@ describe("LandoPluginContext managed files ownership scoping", () => {
     expect(store.ledger()).toHaveLength(0);
   });
 
+  test("an unsupported apply option cannot redirect a plugin to another app ledger", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const plugin = pluginContext("plugin-a", store.service);
+    const foreignLedger = "/other/app";
+
+    await runScoped(
+      plugin.managedFiles.apply([pluginFile("a:cfg", "cfg.txt")], {
+        ledgerBase: foreignLedger,
+      } as unknown as Parameters<typeof plugin.managedFiles.apply>[1]),
+    );
+
+    expect(store.ledger()).toHaveLength(1);
+    expect(store.ledger(foreignLedger)).toHaveLength(0);
+  });
+
   test("plugin context supplies a host HttpClient that completes requests", async () => {
     // Given: a host-owned client double registered for one URL and a plugin context.
     const sources = new Map<string, Uint8Array>([
@@ -223,7 +238,10 @@ describe("LandoPluginContext managed files ownership scoping", () => {
             }),
           );
         }
-        return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+        return HttpClientResponse.fromWeb(
+          request,
+          new Response(new TextDecoder().decode(body), { status: 200 }),
+        );
       }),
     );
     const store = await run(makeTestManagedFileStore());

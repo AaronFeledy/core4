@@ -53,6 +53,7 @@ export const sidebar = [
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
           { label: "Run the LAMP recipe", slug: "guides/recipes/lamp-workflow" },
+          { label: "Run the LEMP recipe", slug: "guides/recipes/lemp-workflow" },
           { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
@@ -157,6 +158,7 @@ export const sidebar = [
         items: [
           { label: "Drive Lando through MCP", slug: "guides/agent-native/mcp" },
           { label: "Inspect a running app", slug: "guides/agent-native/in-container-context" },
+          { label: "Install project-local agent skills", slug: "guides/agent-native/project-skills" },
         ],
       },
     ],

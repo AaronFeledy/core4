@@ -1,12 +1,12 @@
-import { basename } from "node:path";
-
 import { Effect, Predicate, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
   classifyComposeVolume,
@@ -18,11 +18,6 @@ const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
 export const COMPOSE_FEATURE_PRIORITY = 600;
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -115,10 +110,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.user !== undefined) ctx.setUser(service.user);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
+  applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user", "workingDirectory"]);
   for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
   if (tmpfsEntries.length > 0) {
     const existing = service.providers?.compose;

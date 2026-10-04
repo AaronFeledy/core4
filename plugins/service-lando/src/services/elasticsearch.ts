@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
@@ -11,7 +9,9 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
 const VERSIONS = ["8"] as const;
@@ -19,11 +19,6 @@ const ARTIFACTS = { "8": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/elasticsearch/data");
 export const ELASTICSEARCH_FEATURE_ID = "service-lando.elasticsearch";
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -50,10 +45,7 @@ const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 90,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const elasticsearchServiceFeature: ServiceFeatureDefinition = {

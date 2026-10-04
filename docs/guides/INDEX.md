@@ -236,6 +236,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Traefik host-port fallback when 80/443 are taken | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | - | - | how services find each other (service keys, .internal, *.lndo.site) | `docs/guides/subsystems/service-dns.mdx` | Shipped |
 | — | — | in-container agent context markers | `docs/guides/agent-native/in-container-context.mdx` | Shipped |
+| — | — | opt-in project-local agent skill pack | `docs/guides/agent-native/project-skills.mdx` | Shipped |
 | — | — | app name edge cases and validation | `docs/guides/landofile/app-name-edge-cases.mdx` | Shipped |
 | — | — | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
 | — | — | Drupal stack service and tooling overrides | `docs/guides/recipes/drupal-stack-overrides.mdx` | Shipped |
@@ -250,6 +251,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
 | — | — | LAMP recipe day-to-day workflow | `docs/guides/recipes/lamp-workflow.mdx` | Shipped |
+| — | — | LEMP recipe day-to-day workflow | `docs/guides/recipes/lemp-workflow.mdx` | Shipped |
 | — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
 | — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
@@ -293,3 +295,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
 | — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
+| — | — | FrankenPHP via Compose passthrough | `docs/guides/services/frankenphp.mdx` | Shipped |

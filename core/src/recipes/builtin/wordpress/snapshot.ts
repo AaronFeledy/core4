@@ -1,10 +1,11 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const WORDPRESS_RECIPE_VERSION = "0.1.0";
 export const WORDPRESS_CONTENT_DIGEST =
-  "sha256:97fa603f460a19a7e207f6269f64c4fddd9cffd64bee21647d080aa2ccef24bf";
+  "sha256:95475ec1a00e294fc87cdcb0877d535073c69dc66b840f36e93074227756eefd";
 export const wordpressProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-wordpress",
@@ -14,8 +15,11 @@ export const wordpressProducer: RecipeProducer = {
 };
 export const wordpressSnapshot: RecipeSnapshot = {
   identity: wordpressProducer,
-  optionTypes: { php: { kind: "enum", values: ["8.2", "8.3"] }, redis: { kind: "boolean" } },
-  defaults: { php: "8.3", redis: false },
+  optionTypes: {
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
+    redis: { kind: "boolean" },
+  },
+  defaults: { php: PHP_DEFAULT, redis: false },
   template: {
     expression: obj([
       ["runtime", lit(4)],

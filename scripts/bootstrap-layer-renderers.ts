@@ -67,7 +67,7 @@ export const renderMinimal = (): string =>
     "    StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
     "    ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccessLayer)),",
     "    redactionLayer,",
-    "    Layer.suspend(() => ManagedFileLayer.layerWithPrivateFileAccess).pipe(",
+    "    Layer.suspend(() => ManagedFileLayer.layerServicesWithPrivateFileAccess).pipe(",
     "      Layer.provide(Layer.mergeAll(eventServiceLayer, redactionLayer, privateFileAccessLayer)),",
     "    ),",
     "    Layer.suspend(() => InteractionServiceLayer.layer),",

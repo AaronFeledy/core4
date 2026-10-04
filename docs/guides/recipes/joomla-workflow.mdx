@@ -13,7 +13,7 @@ cd joomla-demo
 lando start
 ```
 
-The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
+The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
 
 If something else owns 80 or 443, `lando info` shows the fallback port it picked, usually `:8080` / `:8443`.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, `lando info` shows the fallback port it picked
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: joomla`, Apache on port `80`, depends on `database` |
+| `appserver` | `php:8.4`, `framework: joomla`, Apache on port `80`, depends on `database` |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando joomla`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -182,7 +182,7 @@ Lando points PHP's `mail()` on `appserver` at Mailpit, so Joomla's default PHP M
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"joomla\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"joomla\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />

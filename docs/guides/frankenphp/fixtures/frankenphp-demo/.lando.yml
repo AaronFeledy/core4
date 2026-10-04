@@ -1,0 +1,17 @@
+name: frankenphp-demo
+services:
+  appserver:
+    type: compose
+    image: dunglas/frankenphp:1.12.7-php8.4
+    home: false
+    ports:
+      - 9080:9080
+    environment:
+      SERVER_NAME: ":9080"
+tooling:
+  php:
+    service: appserver
+    cmd: php
+  frankenphp:
+    service: appserver
+    cmd: frankenphp

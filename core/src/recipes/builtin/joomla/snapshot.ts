@@ -1,12 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JOOMLA_RECIPE_VERSION = "0.1.0";
 export const JOOMLA_CONTENT_DIGEST =
-  "sha256:5b7857528fdadc538a3f5fa03dfef698f04ed391f53cc7b40017f1cd7b340eda";
+  "sha256:7995fa25a45ce49c4e23cc2a5ad42464973db11e9beca32dcc13eb77bcac205e";
 export const joomlaProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-joomla",
@@ -15,7 +15,7 @@ export const joomlaProducer: RecipeProducer = {
   contentDigest: JOOMLA_CONTENT_DIGEST,
 };
 export const joomlaDefaults = {
-  php: "8.3",
+  php: PHP_DEFAULT,
   database: "mariadb:11.4",
   composer: "2",
   webroot: "/app",

@@ -13,7 +13,7 @@ cd wp-demo
 lando start
 ```
 
-The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3 and skips Redis. Apache and MariaDB are up after start, but the stock PHP image can't run WordPress yet: it has no `mysqli` extension and no `wp` binary. Add both, then install WordPress.
+The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4 and skips Redis. Apache and MariaDB are up after start, but the stock PHP image can't run WordPress yet: it has no `mysqli` extension and no `wp` binary. Add both, then install WordPress.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: wordpress`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
+| `appserver` | `php:8.4`, `framework: wordpress`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | `cache` (optional) | `type: redis` with `--answer=redis=true` |
 | Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
@@ -205,7 +205,7 @@ Have your IDE listen on port `9003` and map `/app` to the project root. `lando x
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"wordpress\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />

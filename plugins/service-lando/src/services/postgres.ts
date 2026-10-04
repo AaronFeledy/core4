@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -7,8 +6,10 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "postgres:16";
@@ -21,11 +22,6 @@ export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.c
 
 const defaultPassword = (appId: string): string =>
   `lando-${createHash("sha256").update(appId).digest("hex").slice(0, 16)}`;
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const credsFor = (input: {
   readonly appName?: string | undefined;
@@ -96,10 +92,7 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const postgresServiceFeature: ServiceFeatureDefinition = {

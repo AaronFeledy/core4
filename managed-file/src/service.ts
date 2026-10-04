@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { ByteSize, Clock, type Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
 import { ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import {
@@ -123,6 +123,7 @@ export interface ManagedFileBackend {
   /** Side-effect-free ledger read (plan paths; never quarantines). */
   readonly peekLedger: (
     operation: ManagedFileOperation,
+    base?: string,
   ) => Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError>;
   /** Locked read-modify-write of the ledger. */
   readonly mutateLedger: <A>(
@@ -130,6 +131,7 @@ export interface ManagedFileBackend {
     f: (
       entries: ReadonlyArray<LedgerEntry>,
     ) => Effect.Effect<readonly [A, ReadonlyArray<LedgerEntry>], ManagedFileError>,
+    base?: string,
   ) => Effect.Effect<A, ManagedFileError>;
 }
 
@@ -256,7 +258,8 @@ const resolveConflict = (mf: ManagedFile, force: boolean): "overwrite" | "skip" 
 const sameLedgerTarget = (
   entry: Pick<LedgerEntry, "path" | "base">,
   target: Pick<LedgerEntry, "path" | "base">,
-): boolean => entry.path === target.path && entry.base === target.base;
+  defaultBase?: string,
+): boolean => entry.path === target.path && (entry.base ?? defaultBase) === (target.base ?? defaultBase);
 
 const decideFile = (
   mf: ManagedFile,
@@ -534,6 +537,7 @@ const decideOne = Effect.fnUntraced(function* (
   operation: ManagedFileOperation,
   force: boolean,
   pendingDisk?: ReadonlyMap<string, string | null>,
+  defaultBase?: string,
 ): Effect.fn.Return<Decision, ManagedFileError> {
   if (mf.mode === "keys") {
     return yield* fail("format", operation, {
@@ -542,12 +546,12 @@ const decideOne = Effect.fnUntraced(function* (
     });
   }
   const marker = mf.marker ?? mf.id;
-  const base = yield* backend.resolveBase(mf.base, operation);
+  const base = yield* backend.resolveBase(mf.base ?? defaultBase, operation);
   const abs = yield* backend.resolveTarget(base, mf.path, operation);
   const disk = pendingDisk?.has(abs)
     ? (pendingDisk.get(abs) ?? null)
     : yield* backend.readMaybe(abs, operation);
-  const entry = entries.find((candidate) => sameLedgerTarget(candidate, mf));
+  const entry = entries.find((candidate) => sameLedgerTarget(candidate, mf, defaultBase));
   const decision =
     mf.mode === "file"
       ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
@@ -557,19 +561,27 @@ const decideOne = Effect.fnUntraced(function* (
 
 // ----- Service factory ----------------------------------------------------
 
-const upsertEntry = (entries: ReadonlyArray<LedgerEntry>, next: LedgerEntry): ReadonlyArray<LedgerEntry> => [
-  ...entries.filter((entry) => !sameLedgerTarget(entry, next)),
+const upsertEntry = (
+  entries: ReadonlyArray<LedgerEntry>,
+  next: LedgerEntry,
+  defaultBase?: string,
+): ReadonlyArray<LedgerEntry> => [
+  ...entries.filter((entry) => !sameLedgerTarget(entry, next, defaultBase)),
   next,
 ];
 
-const matchesRemoveSelector = (entry: LedgerEntry, selector: ManagedFileSelector): boolean =>
+const matchesRemoveSelector = (
+  entry: LedgerEntry,
+  selector: ManagedFileSelector,
+  defaultBase?: string,
+): boolean =>
   entry.state === "managed" &&
   (selector.owner === undefined || entry.owner === selector.owner) &&
   (selector.id === undefined || entry.id === selector.id) &&
   (selector.path === undefined || entry.path === selector.path) &&
   (selector.base === undefined
-    ? selector.path === undefined || entry.base === undefined
-    : entry.base === selector.base);
+    ? selector.path === undefined || (entry.base ?? defaultBase) === defaultBase
+    : (entry.base ?? defaultBase) === selector.base);
 
 const eventSummary = (mf: ManagedFile, decision: Decision, kind: ManagedFileEventKind): string => {
   const bytes =
@@ -610,9 +622,19 @@ const makeLifecycleEvent = (
   }
 };
 
+export class ManagedFileServiceFactory extends Context.Service<
+  ManagedFileServiceFactory,
+  {
+    readonly forBase: (
+      base: string,
+    ) => Effect.Effect<Context.Service.Shape<typeof ManagedFileService>, ManagedFileError>;
+  }
+>()("@lando/managed-file/ManagedFileServiceFactory") {}
+
 export const makeManagedFileService = (
   backend: ManagedFileBackend,
   events: ManagedFileEvents = noopManagedFileEvents,
+  scope: { readonly defaultBase?: string; readonly ledgerBase?: string } = {},
 ): Effect.Effect<Context.Service.Shape<typeof ManagedFileService>> =>
   Effect.sync(() => {
     const publishLifecycle = (
@@ -638,15 +660,24 @@ export const makeManagedFileService = (
       );
     const plan = Effect.fn("ManagedFileService.plan")(
       (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>
-        backend.peekLedger("plan").pipe(
+        backend.peekLedger("plan", scope.ledgerBase).pipe(
           Effect.flatMap((initial) =>
             Effect.gen(function* () {
               let entries = initial;
               const pendingDisk = new Map<string, string | null>();
               const results: Array<ManagedFilePlan["entries"][number]> = [];
               for (const mf of files) {
-                const decision = yield* decideOne(backend, mf, entries, "plan", false, pendingDisk);
-                if (decision.ledgerNext) entries = upsertEntry(entries, decision.ledgerNext);
+                const decision = yield* decideOne(
+                  backend,
+                  mf,
+                  entries,
+                  "plan",
+                  false,
+                  pendingDisk,
+                  scope.defaultBase,
+                );
+                if (decision.ledgerNext)
+                  entries = upsertEntry(entries, decision.ledgerNext, scope.defaultBase);
                 if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
                 results.push({
                   id: mf.id,
@@ -665,113 +696,136 @@ export const makeManagedFileService = (
         files: ReadonlyArray<ManagedFile>,
         opts?: ManagedFileApplyOptions,
       ): Effect.Effect<ManagedFileResult, ManagedFileError> =>
-        backend.mutateLedger("apply", (initial) =>
-          Effect.gen(function* () {
-            let entries = initial;
-            const pendingDisk = new Map<string, string | null>();
-            const prepared: Array<PreparedDecision> = [];
-            const results: Array<ManagedFileResult["entries"][number]> = [];
-            for (const mf of files) {
-              const decision = yield* decideOne(
-                backend,
-                mf,
-                entries,
-                "apply",
-                opts?.force ?? false,
-                pendingDisk,
-              );
-              if (decision.failConflict) {
-                yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
-                return yield* fail("conflict", "apply", {
-                  path: decision.relPath,
-                  remediation:
-                    "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
+        backend.mutateLedger(
+          "apply",
+          (initial) =>
+            Effect.gen(function* () {
+              let entries = initial;
+              const pendingDisk = new Map<string, string | null>();
+              const prepared: Array<PreparedDecision> = [];
+              const results: Array<ManagedFileResult["entries"][number]> = [];
+              for (const mf of files) {
+                const decision = yield* decideOne(
+                  backend,
+                  mf,
+                  entries,
+                  "apply",
+                  opts?.force ?? false,
+                  pendingDisk,
+                  scope.defaultBase,
+                );
+                if (decision.failConflict) {
+                  yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+                  return yield* fail("conflict", "apply", {
+                    path: decision.relPath,
+                    remediation:
+                      "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
+                  });
+                }
+                const backup = decision.backup?.path as PortablePath | undefined;
+                if (decision.ledgerNext) {
+                  entries = upsertEntry(
+                    entries,
+                    decision.backup
+                      ? { ...decision.ledgerNext, backup: decision.backup.path }
+                      : decision.ledgerNext,
+                    scope.defaultBase,
+                  );
+                }
+                if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
+                prepared.push({ mf, decision });
+                results.push({
+                  id: mf.id,
+                  path: decision.relPath as PortablePath,
+                  action: decision.action,
+                  ...(backup === undefined ? {} : { backup }),
                 });
               }
-              const backup = decision.backup?.path as PortablePath | undefined;
-              if (decision.ledgerNext) {
-                entries = upsertEntry(
-                  entries,
-                  decision.backup
-                    ? { ...decision.ledgerNext, backup: decision.backup.path }
-                    : decision.ledgerNext,
-                );
-              }
-              if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
-              prepared.push({ mf, decision });
-              results.push({
-                id: mf.id,
-                path: decision.relPath as PortablePath,
-                action: decision.action,
-                ...(backup === undefined ? {} : { backup }),
-              });
-            }
-            for (const { mf, decision } of prepared) {
-              if (decision.backup) {
-                yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
-              }
-              if (decision.write === undefined) {
-                if (
-                  decision.action === "skip-unchanged" ||
-                  decision.action === "skip-adopted" ||
-                  decision.action === "adopt-detected"
-                ) {
-                  yield* publishLifecycle("managed-file-skipped", mf, decision);
-                } else if (decision.action === "conflict") {
+              for (const { mf, decision } of prepared) {
+                if (decision.backup) {
                   yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
                 }
-                continue;
+                if (decision.write === undefined) {
+                  if (
+                    decision.action === "skip-unchanged" ||
+                    decision.action === "skip-adopted" ||
+                    decision.action === "adopt-detected"
+                  ) {
+                    yield* publishLifecycle("managed-file-skipped", mf, decision);
+                  } else if (decision.action === "conflict") {
+                    yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+                  }
+                  continue;
+                }
+                yield* publishLifecycle("pre-managed-file-write", mf, decision);
+                if (decision.backup) {
+                  const backupAbs = yield* backend.resolveTarget(
+                    yield* backend.resolveBase(mf.base ?? scope.defaultBase, "apply"),
+                    decision.backup.path,
+                    "apply",
+                  );
+                  yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply", 0o600);
+                }
+                yield* backend.writeAtomic(decision.abs, decision.write, "apply");
+                yield* publishLifecycle("post-managed-file-write", mf, decision);
               }
-              yield* publishLifecycle("pre-managed-file-write", mf, decision);
-              if (decision.backup) {
-                const backupAbs = yield* backend.resolveTarget(
-                  yield* backend.resolveBase(mf.base, "apply"),
-                  decision.backup.path,
-                  "apply",
-                );
-                yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply", 0o600);
-              }
-              yield* backend.writeAtomic(decision.abs, decision.write, "apply");
-              yield* publishLifecycle("post-managed-file-write", mf, decision);
-            }
-            return [{ entries: results }, entries] as const;
-          }),
+              return [{ entries: results }, entries] as const;
+            }),
+          scope.ledgerBase,
         ),
     );
 
     const remove = Effect.fn("ManagedFileService.remove")(
       (selector: ManagedFileSelector): Effect.Effect<ManagedFileResult, ManagedFileError> =>
-        backend.mutateLedger("remove", (entries) =>
-          Effect.gen(function* () {
-            const matches = entries.filter((entry) => matchesRemoveSelector(entry, selector));
-            const results: Array<ManagedFileResult["entries"][number]> = [];
-            let next = entries;
-            for (const entry of matches) {
-              const base = yield* backend.resolveBase(entry.base, "remove");
-              const abs = yield* backend.resolveTarget(base, entry.path, "remove");
-              if (entry.mode === "block") {
+        backend.mutateLedger(
+          "remove",
+          (entries) =>
+            Effect.gen(function* () {
+              const matches = entries.filter((entry) =>
+                matchesRemoveSelector(entry, selector, scope.defaultBase),
+              );
+              const results: Array<ManagedFileResult["entries"][number]> = [];
+              let next = entries;
+              for (const entry of matches) {
+                const base = yield* backend.resolveBase(entry.base ?? scope.defaultBase, "remove");
+                const abs = yield* backend.resolveTarget(base, entry.path, "remove");
                 const disk = yield* backend.readMaybe(abs, "remove");
-                if (disk !== null) {
-                  const prefix = commentPrefix(entry.format) ?? "#";
-                  const location = findBlock(prefix, entry.marker, disk);
-                  if (location.found) yield* backend.writeAtomic(abs, removeBlock(location), "remove");
+                let action: ManagedFileAction = "update";
+                if (entry.mode === "block") {
+                  if (disk !== null) {
+                    const prefix = commentPrefix(entry.format) ?? "#";
+                    const location = findBlock(prefix, entry.marker, disk);
+                    if (!location.found) action = "adopt-detected";
+                    else if (sha256(location.slice) !== entry.lastWrittenChecksum) action = "conflict";
+                    else yield* backend.writeAtomic(abs, removeBlock(location), "remove");
+                  }
+                } else if (disk === null) {
+                  action = "update";
+                } else if (
+                  canCarryFileMarker(entry.format, disk) &&
+                  !hasFileMarker(entry.format, disk, entry.marker)
+                ) {
+                  action = "adopt-detected";
+                } else if (sha256(disk) !== entry.lastWrittenChecksum) {
+                  action = "conflict";
+                } else {
+                  yield* backend.removeFile(abs, "remove");
                 }
-              } else {
-                yield* backend.removeFile(abs, "remove");
+                if (action !== "conflict")
+                  next = next.filter((candidate) => !sameLedgerTarget(candidate, entry, scope.defaultBase));
+                results.push({ id: entry.id, path: entry.path as PortablePath, action });
               }
-              next = next.filter((candidate) => !sameLedgerTarget(candidate, entry));
-              results.push({ id: entry.id, path: entry.path as PortablePath, action: "update" });
-            }
-            return [{ entries: results }, next] as const;
-          }),
+              return [{ entries: results }, next] as const;
+            }),
+          scope.ledgerBase,
         ),
     );
 
     const status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError> = Effect.suspend(() =>
-      backend.peekLedger("status").pipe(
+      backend.peekLedger("status", scope.ledgerBase).pipe(
         Effect.flatMap((entries) =>
           Effect.forEach(entries, (entry) =>
-            backend.resolveBase(entry.base, "status").pipe(
+            backend.resolveBase(entry.base ?? scope.defaultBase, "status").pipe(
               Effect.flatMap((base) => backend.resolveTarget(base, entry.path, "status")),
               Effect.flatMap((abs) => backend.readMaybe(abs, "status")),
               Effect.map(
@@ -790,24 +844,33 @@ export const makeManagedFileService = (
 
     const adopt = Effect.fn("ManagedFileService.adopt")(
       (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
-        backend.mutateLedger("adopt", (entries) =>
-          Effect.gen(function* () {
-            const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path }));
-            const base = yield* backend.resolveBase(entry?.base, "adopt");
-            const abs = yield* backend.resolveTarget(base, path, "adopt");
-            const disk = yield* backend.readMaybe(abs, "adopt");
-            if (disk !== null && entry) {
-              const stripped =
-                entry.mode === "block"
-                  ? stripBlockFences(entry.format, entry.marker, disk)
-                  : stripFileMarker(entry.format, disk, entry.marker);
-              if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
-            }
-            const next = entry
-              ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: yield* nowIso })
-              : entries;
-            return [undefined, next] as const;
-          }),
+        backend.mutateLedger(
+          "adopt",
+          (entries) =>
+            Effect.gen(function* () {
+              const entry = entries.find((candidate) =>
+                sameLedgerTarget(candidate, { path }, scope.defaultBase),
+              );
+              const base = yield* backend.resolveBase(entry?.base ?? scope.defaultBase, "adopt");
+              const abs = yield* backend.resolveTarget(base, path, "adopt");
+              const disk = yield* backend.readMaybe(abs, "adopt");
+              if (disk !== null && entry) {
+                const stripped =
+                  entry.mode === "block"
+                    ? stripBlockFences(entry.format, entry.marker, disk)
+                    : stripFileMarker(entry.format, disk, entry.marker);
+                if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
+              }
+              const next = entry
+                ? upsertEntry(
+                    entries,
+                    { ...entry, state: "adopted", updatedAt: yield* nowIso },
+                    scope.defaultBase,
+                  )
+                : entries;
+              return [undefined, next] as const;
+            }),
+          scope.ledgerBase,
         ),
     );
 
@@ -816,14 +879,21 @@ export const makeManagedFileService = (
         backend.mutateLedger(
           "release",
           Effect.fnUntraced(function* (entries: ReadonlyArray<LedgerEntry>) {
-            const entry = entries.find((candidate) => sameLedgerTarget(candidate, { path }));
+            const entry = entries.find((candidate) =>
+              sameLedgerTarget(candidate, { path }, scope.defaultBase),
+            );
             return [
               undefined,
               entry
-                ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: yield* nowIso })
+                ? upsertEntry(
+                    entries,
+                    { ...entry, state: "adopted", updatedAt: yield* nowIso },
+                    scope.defaultBase,
+                  )
                 : entries,
             ] as const;
           }),
+          scope.ledgerBase,
         ),
     );
 
@@ -835,6 +905,14 @@ export const makeManagedFileService = (
       adopt,
       release,
     });
+  });
+
+export const makeManagedFileServiceFactory = (
+  backend: ManagedFileBackend,
+  events: ManagedFileEvents = noopManagedFileEvents,
+): Effect.Effect<Context.Service.Shape<typeof ManagedFileServiceFactory>> =>
+  Effect.succeed({
+    forBase: (base) => makeManagedFileService(backend, events, { defaultBase: base, ledgerBase: base }),
   });
 
 const stripBlockFences = (format: FileFormat, marker: string, content: string): string => {
@@ -878,6 +956,7 @@ const resolveContained = async (base: string, relPath: string): Promise<string |
   const real = (await realpathIfExists(target)) ?? (await resolveMissingTargetRealPath(target));
   const rel = relative(realBase, real);
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  if (relative(resolve(realBase, relPath), real) !== "") return null;
   return target;
 };
 
@@ -947,8 +1026,9 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
 
   const readonlyLedgerEntries = (
     operation: ManagedFileOperation,
+    base = options.defaultBase(),
   ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> => {
-    const { dir } = ledgerLocation(options.defaultBase());
+    const { dir } = ledgerLocation(base);
     return Effect.tryPromise({
       try: async () => {
         try {
@@ -960,9 +1040,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
       },
       catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
     }).pipe(
-      Effect.flatMap((exists) =>
-        exists ? ledgerBucketFor(options.defaultBase(), "discard") : Effect.succeed(null),
-      ),
+      Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
       Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
       Effect.map((state) => state?.entries ?? []),
       Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
@@ -1013,9 +1091,9 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
         },
         catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
       }),
-    peekLedger: (operation) => readonlyLedgerEntries(operation),
-    mutateLedger: (operation, f) =>
-      ledgerBucketFor(options.defaultBase(), "quarantine").pipe(
+    peekLedger: (operation, base) => readonlyLedgerEntries(operation, base),
+    mutateLedger: (operation, f, base) =>
+      ledgerBucketFor(base ?? options.defaultBase(), "quarantine").pipe(
         Effect.flatMap((bucket) =>
           withAdvisoryLockUsing(options.privateFileAccess)(
             bucket.path,
@@ -1060,32 +1138,57 @@ const makeManagedFileEvents = (
  * still work; an absent `RedactionService` falls back to the standalone secrets
  * redactor so event payloads are never retained raw.
  */
+const dependenciesForPrivateFileAccess = Effect.fnUntraced(function* (privateFileAccess: PrivateFileAccess) {
+  const backend = yield* makeDiskBackend({
+    defaultBase: () => process.cwd(),
+    ledgerRoot: () => resolveLandoRoots().userDataRoot,
+    privateFileAccess,
+  });
+  const eventService = yield* Effect.serviceOption(EventService);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactorOptions = { sourceEnv: { ...process.env } };
+  const redactor =
+    redaction._tag === "None"
+      ? createStandaloneRedactor("secrets", redactorOptions)
+      : yield* redaction.value.forProfile("secrets", redactorOptions);
+  return { backend, events: makeManagedFileEvents(eventService, redactor.redactString) };
+});
+
 const layerForPrivateFileAccess = (privateFileAccess: PrivateFileAccess): Layer.Layer<ManagedFileService> =>
   Layer.effect(
     ManagedFileService,
-    Effect.gen(function* () {
-      const backend = yield* makeDiskBackend({
-        defaultBase: () => process.cwd(),
-        ledgerRoot: () => resolveLandoRoots().userDataRoot,
-        privateFileAccess,
-      });
-      const eventService = yield* Effect.serviceOption(EventService);
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      const redactorOptions = { sourceEnv: { ...process.env } };
-      const redactor =
-        redaction._tag === "None"
-          ? createStandaloneRedactor("secrets", redactorOptions)
-          : yield* redaction.value.forProfile("secrets", redactorOptions);
-      return yield* makeManagedFileService(
-        backend,
-        makeManagedFileEvents(eventService, redactor.redactString),
-      );
-    }),
+    dependenciesForPrivateFileAccess(privateFileAccess).pipe(
+      Effect.flatMap(({ backend, events }) => makeManagedFileService(backend, events)),
+    ),
   );
 
 export const layerWithPrivateFileAccess: Layer.Layer<ManagedFileService, never, PrivateFileAccessService> =
   Layer.unwrap(Effect.map(PrivateFileAccessService, layerForPrivateFileAccess));
 
 export const layer: Layer.Layer<ManagedFileService> = layerWithPrivateFileAccess.pipe(
+  Layer.provide(PrivateFileAccessService.layer),
+);
+
+export const layerFactoryWithPrivateFileAccess: Layer.Layer<
+  ManagedFileServiceFactory,
+  never,
+  PrivateFileAccessService
+> = Layer.unwrap(
+  Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+    Layer.effect(
+      ManagedFileServiceFactory,
+      dependenciesForPrivateFileAccess(privateFileAccess).pipe(
+        Effect.flatMap(({ backend, events }) => makeManagedFileServiceFactory(backend, events)),
+      ),
+    ),
+  ),
+);
+
+export const layerServicesWithPrivateFileAccess = Layer.merge(
+  layerWithPrivateFileAccess,
+  layerFactoryWithPrivateFileAccess,
+);
+
+export const layerFactory = layerFactoryWithPrivateFileAccess.pipe(
   Layer.provide(PrivateFileAccessService.layer),
 );
