@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   LandofileFormConflictError,
@@ -6,7 +6,7 @@ import {
   LandofileParseError,
   ManagedFileError,
 } from "@lando/sdk/errors";
-import type { ManagedFileAction, ManagedFileResult } from "@lando/sdk/schema";
+import { ManagedFileAction, type ManagedFileResult } from "@lando/sdk/schema";
 import { ManagedFileService } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
@@ -21,19 +21,22 @@ export {
   agentSkillManagedFiles,
 } from "./agent-skills-pack.ts";
 
-export type AgentSkillsVerb = "install" | "update" | "remove";
+export const AgentSkillsVerbSchema = Schema.Literals(["install", "update", "remove"]);
+export type AgentSkillsVerb = typeof AgentSkillsVerbSchema.Type;
 
-export interface AgentSkillsFileResult {
-  readonly id: string;
-  readonly path: string;
-  readonly action: ManagedFileAction;
-}
+export const AgentSkillsFileResultSchema = Schema.Struct({
+  id: Schema.String,
+  path: Schema.String,
+  action: ManagedFileAction,
+});
+export type AgentSkillsFileResult = typeof AgentSkillsFileResultSchema.Type;
 
-export interface AgentSkillsResult {
-  readonly verb: AgentSkillsVerb;
-  readonly appRoot: string;
-  readonly entries: ReadonlyArray<AgentSkillsFileResult>;
-}
+export const AgentSkillsResultSchema = Schema.Struct({
+  verb: AgentSkillsVerbSchema,
+  appRoot: Schema.String,
+  entries: Schema.Array(AgentSkillsFileResultSchema),
+});
+export type AgentSkillsResult = typeof AgentSkillsResultSchema.Type;
 
 export interface AgentSkillsOptions {
   readonly cwd?: string;

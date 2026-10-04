@@ -1,6 +1,6 @@
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
-import { ManagedFileAction } from "@lando/sdk/schema";
+import type { ManagedFileAction } from "@lando/sdk/schema";
 import { ManagedFileService } from "@lando/sdk/services";
 
 import {
@@ -24,17 +24,11 @@ export type {
   AgentSkillsVerb,
 };
 
-export const AgentSkillsFileResultSchema = Schema.Struct({
-  id: Schema.String,
-  path: Schema.String,
-  action: ManagedFileAction,
-});
-
-export const AgentSkillsResultSchema = Schema.Struct({
-  verb: Schema.Literals(["install", "update", "remove"]),
-  appRoot: Schema.String,
-  entries: Schema.Array(AgentSkillsFileResultSchema),
-});
+export {
+  AgentSkillsFileResultSchema,
+  AgentSkillsResultSchema,
+  AgentSkillsVerbSchema,
+} from "@lando/engine/operations/agent-skills";
 
 const withAppManagedFiles = Effect.fn("withAppManagedFiles")(
   (
