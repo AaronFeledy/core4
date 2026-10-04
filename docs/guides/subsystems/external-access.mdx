@@ -51,7 +51,7 @@ Reverting a wide bind needs a rebuild, not just a restart. Remove `host_ip` or s
 
 | Form | Meaning |
 | --- | --- |
-| `80` | Container port only. The provider assigns the host port, bound to loopback. |
+| `80` | Container port only. Lando picks a free host port in 30000-32767, bound to loopback, and keeps it across restarts. When the daemon isn't on this host (remote URL, Docker Desktop VM, Windows), the provider picks instead. |
 | `8080:80` | Explicit host port mapped to a container port, still bound to loopback. |
 | `0.0.0.0:8080:80` | `host_ip:host_port:container_port`. The explicit `host_ip` is what opts the binding beyond loopback. |
 | `8080:80/udp` | Append `/protocol` to select `udp`. `tcp` is the default when omitted. |

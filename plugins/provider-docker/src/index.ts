@@ -642,6 +642,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ensureImage: dockerEnsureImage(dockerApi),
             retryCreateOnMissingImage: true,
             startFailureRemediation: dockerStartFailureRemediation,
+            platform,
+            daemonUrl: resolvedDockerHost,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(applyOptions.serviceEnvironment === undefined
               ? {}

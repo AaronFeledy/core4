@@ -793,6 +793,8 @@ const assembleRuntimeProvider = (
             api: podmanApi,
             ctx: PODMAN_CTX,
             ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
+            platform,
+            daemonUrl: socketPath,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(applyOptions.serviceEnvironment === undefined
               ? {}

@@ -1312,6 +1312,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 }),
             ctx: LANDO_CTX,
             startFailureRemediation: makeLandoStartFailureRemediation(platform),
+            platform,
+            ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(applyOptions.serviceEnvironment === undefined
