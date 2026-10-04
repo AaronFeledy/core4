@@ -1,8 +1,8 @@
 import { Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
-import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { ToolingExecError } from "@lando/sdk/errors";
+import type { ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type FileSystem,
@@ -10,6 +10,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { selectGlobalServices } from "./global-common";
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
@@ -73,43 +74,6 @@ const statusText = (status: string | undefined): GlobalServiceStatus => {
     default:
       return "unknown";
   }
-};
-
-const availableServiceList = (services: AppPlan["services"]): string =>
-  Object.values(services)
-    .map((service) => String(service.name))
-    .sort()
-    .join(", ");
-
-const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
-  const list = availableServiceList(services);
-  const first = list.split(", ")[0];
-  return new ToolingExecError({
-    message:
-      list.length === 0
-        ? `meta:global:status: service ${requested} is not in the global app plan.`
-        : `meta:global:status: service ${requested} is not in the global app plan (available: ${list}).`,
-    tool: "meta:global:status",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando global:status --service ${first}` }),
-  });
-};
-
-const selectedServices = (
-  plan: AppPlan,
-  requested: ReadonlyArray<string> | undefined,
-): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
-  const services = Object.values(plan.services);
-  if (requested === undefined || requested.length === 0) return Effect.succeed(services);
-
-  const ids = new Set(requested);
-  const matched = services.filter((service) => ids.has(String(service.name)));
-  const matchedIds = new Set(matched.map((service) => String(service.name)));
-  const missing = [...ids].find((service) => !matchedIds.has(service));
-
-  if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
-  return Effect.succeed(matched);
 };
 
 const globalStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
@@ -209,7 +173,12 @@ export const globalStatus = Effect.fn("GlobalStatus.status")(function* (
       Effect.catch(() => Effect.succeed(degraded(service))),
     );
 
-  const selected = yield* selectedServices(loaded.plan, options.services);
+  const selected = yield* selectGlobalServices({
+    commandId: "meta:global:status",
+    services: loaded.plan.services,
+    requested: options.services,
+    expandDependencies: false,
+  });
   const services = yield* Effect.forEach(selected, inspectService);
 
   return { app: loaded.plan.name, materialized: true, services };
