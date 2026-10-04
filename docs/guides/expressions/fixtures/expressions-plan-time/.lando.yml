@@ -1,0 +1,16 @@
+name: Expressions Demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      APP_HOST: "{{ app.name }}.{{ proxy.defaultDomain }}"
+      APP_LABEL: "{{ default(env.LANDO_EXPRESSIONS_UNSET, 'dflt') }}-{{ app.name }}"
+  database:
+    type: "mariadb:11.4"
+    database: "{{ app.slug }}"
+tooling:
+  whoami:
+    service: app
+    cmds:
+      - "echo {{ app.name }}"
