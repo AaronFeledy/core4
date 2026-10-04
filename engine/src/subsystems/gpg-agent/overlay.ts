@@ -7,7 +7,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import type { AgentRelaySession } from "../ssh-agent/session.ts";
+import { type AgentRelaySession, agentSocketMountPlan } from "../ssh-agent/session.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "./intent.ts";
 
 const Intent = Schema.Struct({ forward: Schema.Literal(true) });
@@ -44,31 +44,7 @@ export const agentSocketOverlayFeature = (session: OverlaySession) => ({
     service.addEnv("GNUPGHOME", homeTarget);
     service.addEnv("LANDO_GPG_AGENT_SOCKET", agentSocketName);
     service.addEnv("LANDO_GPG_KEYRING", keyringTarget);
-    const mount = session.mount;
-    switch (mount._tag) {
-      case "bind-directory":
-        service.addMount({
-          type: "bind",
-          source: mount.directory,
-          target,
-          readOnly: true,
-          createHostPath: false,
-          realization: "passthrough",
-        });
-        return;
-      case "volume":
-        service.addMount({
-          type: "volume",
-          source: mount.volume,
-          target,
-          readOnly: true,
-          realization: "passthrough",
-        });
-        return;
-      default:
-        mount satisfies never;
-        return;
-    }
+    service.addMount(agentSocketMountPlan(session.mount, target));
   },
 });
 

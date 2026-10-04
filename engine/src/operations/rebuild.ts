@@ -15,10 +15,10 @@ import type {
   ShellRunner,
 } from "@lando/sdk/services";
 import {
-  AppPlanner,
+  type AppPlanner,
   BuildOrchestrator,
   EventService,
-  LandofileService,
+  type LandofileService,
   RouterService,
   RuntimeProviderRegistry,
   StateStore,
@@ -28,7 +28,7 @@ import type { RedactionService } from "@lando/redaction/service";
 import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { compensateFailure, compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
@@ -163,17 +163,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
 ): Effect.fn.Return<RebuildAppResult, RebuildAppError, RebuildAppServices> {
-  const plannedTarget =
-    target ??
-    (yield* Effect.gen(function* () {
-      const landofileService = yield* LandofileService;
-      const registry = yield* RuntimeProviderRegistry;
-      const planner = yield* AppPlanner;
-      const landofile = yield* loadUserLandofile(landofileService);
-      const capabilities = yield* registry.capabilities;
-      const plan = yield* planner.plan(landofile, capabilities);
-      return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
-    }));
+  const plannedTarget = target ?? (yield* resolveDesiredAppTarget);
   const registry = yield* RuntimeProviderRegistry;
   const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
   const plan = resolvedTarget.plan;
