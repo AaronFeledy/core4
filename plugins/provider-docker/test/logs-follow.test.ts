@@ -1,11 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import {
-  type DockerApiClient,
-  type DockerHttpRequest,
-  layer as makeProviderLayer,
-} from "@lando/provider-docker";
+import * as DockerProvider from "@lando/provider-docker";
+import type { DockerApiClient, DockerHttpRequest } from "@lando/provider-docker";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
   AbsolutePath,
@@ -120,7 +117,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({
+          DockerProvider.layer({
             platform: "linux",
             env: {},
             dockerApi: { ...fake.api, info: Effect.succeed({ Architecture: "amd64", OSType: "linux" }) },
@@ -148,7 +145,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({
+          DockerProvider.layer({
             platform: "linux",
             env: {},
             dockerApi: { info: Effect.succeed({ Architecture: "amd64", OSType: "linux" }) },
@@ -180,7 +177,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
         ),
       ),
     );
@@ -206,7 +203,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
         ),
       ),
     );
@@ -228,7 +225,7 @@ describe("provider-docker log followers", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
-          makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
+          DockerProvider.layer({ platform: "linux", env: {}, dockerApi: fake.api, logFileAccess: fs.access }),
         ),
       ),
     );
