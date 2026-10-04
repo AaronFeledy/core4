@@ -1,4 +1,4 @@
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { KeymapConflictError } from "../errors/keymap.ts";
 
@@ -28,7 +28,7 @@ const resolvedBinding = (config: KeymapConfig, action: RendererActionId): Render
  */
 export const validateKeymapConfigConflicts = (
   config: KeymapConfig,
-): Either.Either<KeymapConfig, KeymapConflictError> => {
+): Result.Result<KeymapConfig, KeymapConflictError> => {
   const bySurface = new Map<KeymapSurface, Map<string, RendererActionId>>();
 
   for (const action of Object.keys(RENDERER_ACTION_SURFACE) as Array<RendererActionId>) {
@@ -43,7 +43,7 @@ export const validateKeymapConfigConflicts = (
       const existing = chordMap.get(chord);
       if (existing !== undefined && existing !== action) {
         const actions = [existing, action].sort() as [RendererActionId, RendererActionId];
-        return Either.left(
+        return Result.fail(
           new KeymapConflictError({
             surface,
             chord,
@@ -57,5 +57,5 @@ export const validateKeymapConfigConflicts = (
     }
   }
 
-  return Either.right(config);
+  return Result.succeed(config);
 };

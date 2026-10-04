@@ -33,12 +33,12 @@ for (const variant of ["root", "corrupt", "version"] as const) {
     await writeFile(prepared.journalPath, bytes);
     // When a new transaction attempts preparation
     const result = await scoped(
-      Effect.either(
+      Effect.result(
         transactions.prepare({ appRoot, operations: [{ kind: "write", path: "a", content: "output" }] }),
       ),
     );
     // Then no target artifacts exist and the error contains no journal data
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(JSON.stringify(result)).not.toContain(marker);
     expect(await readdir(appRoot)).toEqual([]);
     expect(await readFile(prepared.journalPath, "utf8")).toBe(bytes);
@@ -52,9 +52,9 @@ test("rejects commit after the preparing scope has released its lock", async () 
     transactions.prepare({ appRoot, operations: [{ kind: "write", path: "a", content: "new" }] }),
   );
   // When that abandoned handle is committed without a lease
-  const result = await scoped(Effect.either(transactions.commit(prepared)));
+  const result = await scoped(Effect.result(transactions.commit(prepared)));
   // Then no target is published and recovery artifacts remain
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   await expect(lstat(join(appRoot, "a"))).rejects.toMatchObject({ code: "ENOENT" });
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("prepared");
 });
@@ -65,7 +65,7 @@ test("globally revalidates later modes before mutating the first target", async 
   await writeFile(join(appRoot, "b"), "old", { mode: 0o600 });
   // When its mode changes before commit
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       Effect.gen(function* () {
         const prepared = yield* transactions.prepare({
           appRoot,
@@ -80,7 +80,7 @@ test("globally revalidates later modes before mutating the first target", async 
     ),
   );
   // Then the first target is untouched and the journal never advances
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   await expect(lstat(join(appRoot, "a"))).rejects.toMatchObject({ code: "ENOENT" });
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("prepared");
 });
@@ -89,9 +89,9 @@ test("rejects journal fields outside the metadata contract", () => {
   // Given raw content smuggled into otherwise valid journal metadata
   const input = { id: "id", root: "/app", state: "prepared", entries: [], content: "secret" };
   // When the persistence boundary parses the journal
-  const decoded = Schema.decodeUnknownEither(Journal, { onExcessProperty: "error" })(input);
+  const decoded = Schema.decodeUnknownResult(Journal, { onExcessProperty: "error" })(input);
   // Then raw content is outside the journal contract
-  expect(decoded._tag).toBe("Left");
+  expect(decoded._tag).toBe("Failure");
 });
 
 test("retains durable stages even if the prepared journal disappears externally", async () => {
@@ -121,9 +121,9 @@ test("refuses to skip the committing journal transition", async () => {
   const journal = await scoped(store.read);
   if (journal === null) throw new Error("missing journal");
   // When the persistence layer is asked to jump directly to committed
-  const result = await scoped(Effect.either(store.write({ ...journal, state: "committed" })));
+  const result = await scoped(Effect.result(store.write({ ...journal, state: "committed" })));
   // Then it refuses the invalid transition and preserves the prepared plan
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect((await scoped(store.read))?.state).toBe("prepared");
 });
 
@@ -135,8 +135,8 @@ test("refuses journal removal before committed", async () => {
     openJournal(appRoot, journalDirectory(appRoot, dataRoot), { privateFileAccess: ownerOnlyFileAccess }),
   );
   // When cleanup is attempted prematurely
-  const result = await scoped(Effect.either(store.removeCommitted));
+  const result = await scoped(Effect.result(store.removeCommitted));
   // Then the recovery plan is preserved
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect((await scoped(store.read))?.state).toBe("prepared");
 });

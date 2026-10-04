@@ -8,10 +8,10 @@ import { Schema } from "effect";
  * invocation has no `parentInvocationId`.
  */
 export const CommandInvocationCorrelation = Schema.Struct({
-  invocationId: Schema.String.annotations({
+  invocationId: Schema.String.annotate({
     description: "ULID unique to this command invocation (outer or nested).",
   }),
-  parentInvocationId: Schema.optional(Schema.String).annotations({
+  parentInvocationId: Schema.optional(Schema.String).annotate({
     description: "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
   }),
 });
@@ -22,13 +22,16 @@ export type CommandInvocationCorrelation = typeof CommandInvocationCorrelation.T
  * publish; the renderer sanitizes again before `triggerNotification`.
  */
 export const NotifyDesktopEvent = Schema.TaggedStruct("notify.desktop", {
-  title: Schema.String.pipe(Schema.minLength(1), Schema.maxLength(256)).annotations({
+  title: Schema.String.pipe(
+    Schema.check(Schema.isMinLength(1)),
+    Schema.check(Schema.isMaxLength(256)),
+  ).annotate({
     description: "Notification title (1..256 chars after schema decode).",
   }),
-  body: Schema.optional(Schema.String.pipe(Schema.maxLength(4096))).annotations({
+  body: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(4096)))).annotate({
     description: "Optional notification body (up to 4096 chars).",
   }),
-  urgency: Schema.optional(Schema.Literal("info", "success", "failure")).annotations({
+  urgency: Schema.optional(Schema.Literals(["info", "success", "failure"])).annotate({
     description: "Optional urgency hint for presentation consumers.",
   }),
 });

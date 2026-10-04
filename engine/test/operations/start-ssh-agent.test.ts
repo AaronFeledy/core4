@@ -8,15 +8,15 @@ import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { EventService, PathsService, SshService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect } from "effect";
 import * as operation from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/app/demo") };
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
   source: "test",
   runtime: 4 as const,
 };
@@ -63,8 +63,8 @@ const run = <A, E>(
 ) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provide(EventServiceLive),
-      Effect.provide(PrivateFileAccessLive),
+      Effect.provide(LandoEventService.layer),
+      Effect.provide(PrivateFileAccessService.layer),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
     ),
   );
@@ -99,7 +99,7 @@ test("fails SshAgentUnavailableError capability-missing before provider apply", 
   let applied = false;
   // When
   const result = await run(
-    Effect.either(
+    Effect.result(
       operation.withStartedSshAgent(
         plan,
         app,
@@ -116,8 +116,8 @@ test("fails SshAgentUnavailableError capability-missing before provider apply", 
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
+    _tag: "Failure",
+    failure: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
   });
   expect(applied).toBe(false);
 });
@@ -154,7 +154,7 @@ for (const [label, caps, reason] of [
 test("host mode with no agent fails host-agent-not-found and never spawns a worker", async () => {
   // Given / When
   const result = await run(
-    Effect.either(
+    Effect.result(
       operation.startSshAgentSession(
         plan,
         app,
@@ -170,7 +170,7 @@ test("host mode with no agent fails host-agent-not-found and never spawns a work
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "host-agent-not-found" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "host-agent-not-found" } });
 });
 
 test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
@@ -224,7 +224,7 @@ for (const failure of [false, true]) {
     };
     // When
     await run(
-      Effect.either(
+      Effect.result(
         operation.withStartedSshAgent(
           plan,
           app,
@@ -254,7 +254,7 @@ test.each(["sidecar", "host"] as const)(
     });
     // When
     const result = await run(
-      Effect.either(
+      Effect.result(
         operation.withStartedSshAgent(
           plan,
           app,
@@ -272,6 +272,6 @@ test.each(["sidecar", "host"] as const)(
     );
     // Then
     expect(applied).toBe(mode === "sidecar");
-    expect(result._tag).toBe(mode === "sidecar" ? "Right" : "Left");
+    expect(result._tag).toBe(mode === "sidecar" ? "Success" : "Failure");
   },
 );

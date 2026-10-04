@@ -4,7 +4,7 @@ import { Schema } from "effect";
 
 test("manifest and descriptor expose the op secret store without an eager layer", async () => {
   // Given
-  const { plugin, manifest, onePasswordSecretStore } = await import("../src/index.ts");
+  const { plugin, manifest, layer } = await import("../src/index.ts");
   // When
   const store = plugin.secretStores?.get("1password");
   // Then
@@ -13,7 +13,7 @@ test("manifest and descriptor expose the op secret store without an eager layer"
   expect(manifest.contributes?.secretStores).toEqual([
     { id: "1password", module: "./src/store.ts", schemes: ["op"] },
   ]);
-  expect(store).toBe(onePasswordSecretStore);
+  expect(store).toBe(layer);
   expect(plugin.layer).toBeUndefined();
 });
 

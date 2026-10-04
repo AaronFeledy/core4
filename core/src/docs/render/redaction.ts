@@ -22,13 +22,15 @@ export const redactPublicTranscriptText = (text: string, env: RedactionEnvironme
 const redactFrame = (frame: PublicTranscriptFrame, env: RedactionEnvironment): PublicTranscriptFrame => ({
   ...frame,
   sourceFile: redactPublicTranscriptText(frame.sourceFile, env),
-  displayText: frame.displayText ? redactPublicTranscriptText(frame.displayText, env) : frame.displayText,
-  commandDisplay: frame.commandDisplay
-    ? redactPublicTranscriptText(frame.commandDisplay, env)
-    : frame.commandDisplay,
-  resultSummary: frame.resultSummary
-    ? redactPublicTranscriptText(frame.resultSummary, env)
-    : frame.resultSummary,
+  ...(frame.displayText === undefined
+    ? {}
+    : { displayText: redactPublicTranscriptText(frame.displayText, env) }),
+  ...(frame.commandDisplay === undefined
+    ? {}
+    : { commandDisplay: redactPublicTranscriptText(frame.commandDisplay, env) }),
+  ...(frame.resultSummary === undefined
+    ? {}
+    : { resultSummary: redactPublicTranscriptText(frame.resultSummary, env) }),
 });
 
 export const redactPublicTranscript = (

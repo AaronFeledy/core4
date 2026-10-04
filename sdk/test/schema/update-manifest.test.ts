@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { UpdateManifestSchema } from "../../src/schema/index.ts";
 
 const hex = "a".repeat(64);
 
 const decodeManifest = (manifest: unknown) =>
-  Schema.decodeUnknownEither(UpdateManifestSchema)(manifest, { onExcessProperty: "error" });
+  Schema.decodeUnknownResult(UpdateManifestSchema)(manifest, { onExcessProperty: "error" });
 
 const validManifest = {
   channel: "next",
@@ -52,18 +52,18 @@ describe("UpdateManifestSchema", () => {
   test("validates channel, latest version, minimum, artifact URLs, checksums, signatures, and platform entries", () => {
     const decoded = decodeManifest(validManifest);
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.channel).toBe("next");
-      expect(decoded.right.binaries["linux-x64"].sha256).toBe(hex);
-      expect(decoded.right.checksums.signature.endsWith("SHA256SUMS.sig")).toBe(true);
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.channel).toBe("next");
+      expect(decoded.success.binaries["linux-x64"].sha256).toBe(hex);
+      expect(decoded.success.checksums.signature.endsWith("SHA256SUMS.sig")).toBe(true);
     }
   });
 
   test("rejects an unsupported channel", () => {
     const decoded = decodeManifest({ ...validManifest, channel: "beta" });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 
   test("rejects insecure artifact URLs and missing platform entries", () => {
@@ -72,7 +72,7 @@ describe("UpdateManifestSchema", () => {
     const withoutWindows = structuredClone(validManifest);
     Reflect.deleteProperty(withoutWindows.binaries, "windows-x64");
 
-    expect(Either.isLeft(decodeManifest(insecure))).toBe(true);
-    expect(Either.isLeft(decodeManifest(withoutWindows))).toBe(true);
+    expect(Result.isFailure(decodeManifest(insecure))).toBe(true);
+    expect(Result.isFailure(decodeManifest(withoutWindows))).toBe(true);
   });
 });

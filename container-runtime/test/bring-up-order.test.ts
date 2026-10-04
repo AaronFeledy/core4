@@ -21,7 +21,7 @@ const dependentNames = {
   cache: ServiceName.make("cache"),
 };
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
   source: "container-runtime/bring-up-order.test.ts",
   runtime: 4 as const,
 };
@@ -228,7 +228,7 @@ test("interrupts an aborted optional dependency instead of starting its dependen
 
   // Then
   expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isFailure(exit)) expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+  if (Exit.isFailure(exit)) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   else throw new TypeError("aborted Podman bringUp unexpectedly succeeded");
   expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
 });

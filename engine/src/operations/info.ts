@@ -41,7 +41,7 @@ export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/a
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
-const InfoServiceStatusSchema = Schema.Literal(
+const InfoServiceStatusSchema = Schema.Literals([
   "unknown",
   "stopped",
   "starting",
@@ -49,14 +49,14 @@ const InfoServiceStatusSchema = Schema.Literal(
   "healthy",
   "unhealthy",
   "error",
-);
+]);
 
 const AppInfoLogSourceSchema = Schema.Struct({
   id: Schema.String,
   path: Schema.String,
-  strategy: Schema.Literal("redirect", "follow"),
-  availability: Schema.Literal("available", "redirected-to-console", "unavailable"),
-  reason: Schema.optional(Schema.String),
+  strategy: Schema.Literals(["redirect", "follow"]),
+  availability: Schema.Literals(["available", "redirected-to-console", "unavailable"]),
+  reason: Schema.optionalKey(Schema.String),
 });
 
 export const AppInfoServiceSchema = Schema.Struct({
@@ -68,8 +68,8 @@ export const AppInfoServiceSchema = Schema.Struct({
   primary: Schema.Boolean,
   status: InfoServiceStatusSchema,
   endpoints: Schema.Array(Schema.String),
-  logSources: Schema.optional(Schema.Array(AppInfoLogSourceSchema)),
-  creds: Schema.optional(ServiceCreds),
+  logSources: Schema.optionalKey(Schema.Array(AppInfoLogSourceSchema)),
+  creds: Schema.optionalKey(ServiceCreds),
 });
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
@@ -79,16 +79,16 @@ export const AppInfoAgentEnvSchema = Schema.Struct({
 
 const AppInfoHostProxySchema = Schema.Struct({
   runLando: Schema.Struct({
-    availability: Schema.Literal("available", "unavailable"),
-    reason: Schema.optional(Schema.String),
+    availability: Schema.Literals(["available", "unavailable"]),
+    reason: Schema.optionalKey(Schema.String),
   }),
 });
 
 export const AppInfoResultSchema = Schema.Struct({
   app: Schema.String,
   services: Schema.Array(AppInfoServiceSchema),
-  agentEnv: Schema.optional(AppInfoAgentEnvSchema),
-  hostProxy: Schema.optional(AppInfoHostProxySchema),
+  agentEnv: Schema.optionalKey(AppInfoAgentEnvSchema),
+  hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
 });
 
 const statusText = (status: string | undefined): InfoServiceStatus => {
@@ -182,70 +182,68 @@ const toServiceInfo = (
 // Requires only RuntimeProviderRegistry (no LandofileService/AppPlanner) so
 // out-of-band plan resolvers (global-app commands) reuse this without pulling
 // user-Landofile resolution into their bootstrap layer.
-export const infoForPlan = (
+export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
-): Effect.Effect<InfoAppResult, InfoAppError, RuntimeProviderRegistry> =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const proxy = yield* Effect.serviceOption(RouterService);
-    const provider = yield* registry.select(plan);
-    const routedUrls =
-      proxy._tag === "Some"
-        ? yield* routeUrlsForPlan(proxy.value, plan)
-        : new Map<ServiceName, ReadonlyArray<string>>();
+): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
+  const registry = yield* RuntimeProviderRegistry;
+  const proxy = yield* Effect.serviceOption(RouterService);
+  const provider = yield* registry.select(plan);
+  const routedUrls =
+    proxy._tag === "Some"
+      ? yield* routeUrlsForPlan(proxy.value, plan)
+      : new Map<ServiceName, ReadonlyArray<string>>();
 
-    const serviceLogSources = provider.capabilities.serviceLogSources === true;
-    const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
-      provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
-        Effect.map((runtime) => {
-          const status = statusText(runtime.state ?? runtime.status);
-          return toServiceInfo(
-            plan,
-            service,
-            status,
-            status === "stopped"
-              ? []
-              : [
-                  ...(routedUrls.get(service.name) ?? []),
-                  ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
-                    endpoint._tag === "published" ? endpointText(service, endpoint) : [],
-                  ),
-                ],
-            serviceLogSources,
-          );
-        }),
-      ),
-    );
+  const serviceLogSources = provider.capabilities.serviceLogSources === true;
+  const services = yield* Effect.forEach(Object.values(plan.services), (service) =>
+    provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
+      Effect.map((runtime) => {
+        const status = statusText(runtime.state ?? runtime.status);
+        return toServiceInfo(
+          plan,
+          service,
+          status,
+          status === "stopped"
+            ? []
+            : [
+                ...(routedUrls.get(service.name) ?? []),
+                ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
+                  endpoint._tag === "published" ? endpointText(service, endpoint) : [],
+                ),
+              ],
+          serviceLogSources,
+        );
+      }),
+    ),
+  );
 
-    const hostProxy = hostProxyPlanExtension(plan);
-    return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
-  });
+  const hostProxy = hostProxyPlanExtension(plan);
+  return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
+});
 
-export const infoApp = (
+export const infoApp = Effect.fn("AppOperation.info")(function* (
   options?: InfoAppOptions,
   target?: ResolvedAppTarget,
-): Effect.Effect<InfoAppResult, InfoAppError, InfoAppServices> =>
-  Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+): Effect.fn.Return<InfoAppResult, InfoAppError, InfoAppServices> {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
 
-    let plan: AppPlan;
-    let landofile: LandofileShape | undefined;
-    if (target?.plan !== undefined) {
-      plan = target.plan;
-      if (options?.deep === true) {
-        landofile = yield* loadUserLandofileAt(landofileService, target.root);
-      }
-    } else {
-      landofile = yield* loadUserLandofile(landofileService);
-      const capabilities = yield* registry.capabilities;
-      plan = yield* planner.plan(landofile, capabilities);
+  let plan: AppPlan;
+  let landofile: LandofileShape | undefined;
+  if (target?.plan !== undefined) {
+    plan = target.plan;
+    if (options?.deep === true) {
+      landofile = yield* loadUserLandofileAt(landofileService, target.root);
     }
+  } else {
+    landofile = yield* loadUserLandofile(landofileService);
+    const capabilities = yield* registry.capabilities;
+    plan = yield* planner.plan(landofile, capabilities);
+  }
 
-    const selectedPlan = yield* selectInfoPlan(plan, options?.services);
-    const result = yield* infoForPlan(selectedPlan);
-    if (options?.deep !== true) return result;
-    const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
-    return { ...result, agentEnv };
-  });
+  const selectedPlan = yield* selectInfoPlan(plan, options?.services);
+  const result = yield* infoForPlan(selectedPlan);
+  if (options?.deep !== true) return result;
+  const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
+  return { ...result, agentEnv };
+});

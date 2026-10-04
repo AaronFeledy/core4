@@ -10,7 +10,7 @@ import {
   type ServiceLoweringContext,
   type V4Wire,
   asStringArray,
-  isPlainObject,
+  hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import {
   droppedMoreHttpPorts,
@@ -24,7 +24,7 @@ import {
 const entries = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
 const stringMap = (value: unknown): Readonly<Record<string, string>> =>
   Object.fromEntries(
-    isPlainObject(value)
+    hasPlainObjectPrototype(value)
       ? Object.entries(value).map(([key, item]) => [key, String(item)])
       : (asStringArray(value) ?? []).map((item) => {
           const separator = item.indexOf("=");
@@ -38,7 +38,7 @@ const bind = (value: unknown): V4Wire | undefined => {
       ? undefined
       : { source: match[1], target: match[2], ...(match[3] === "ro" ? { readOnly: true } : {}) };
   }
-  if (!isPlainObject(value)) return undefined;
+  if (!hasPlainObjectPrototype(value)) return undefined;
   const target = value.target ?? value.destination;
   if (typeof target !== "string") return undefined;
   return {
@@ -107,7 +107,7 @@ export const lowerApi4Service = (
   };
   const image = service.image;
   if (typeof image === "string") patch.image = image;
-  else if (isPlainObject(image) && !isLegacyTagged(image)) {
+  else if (hasPlainObjectPrototype(image) && !isLegacyTagged(image)) {
     const build: Record<string, unknown> = { context: "." };
     for (const [key, target] of [
       ["imagefile", "dockerfileInline"],
@@ -122,8 +122,8 @@ export const lowerApi4Service = (
     if (Object.keys(build).length > 1) patch.build = build;
     if (image.ssh) unsafe(["image", "ssh"]);
     entries(image.context).forEach((item, index) => {
-      if (isPlainObject(item)) dropOwned(item, ["image", "context", index]);
-      const source = isPlainObject(item) ? (item.source ?? item.src) : item;
+      if (hasPlainObjectPrototype(item)) dropOwned(item, ["image", "context", index]);
+      const source = hasPlainObjectPrototype(item) ? (item.source ?? item.src) : item;
       if (typeof source === "string" && (source.includes("://") || source.startsWith("git@")))
         unsafe(["image", "context", index]);
       else drop(["image", "context", index]);
@@ -174,7 +174,7 @@ export const lowerApi4Service = (
   const app = service[appKey];
   if (app === false || app === "disabled" || app === "off") patch.appMount = false;
   else if (typeof app === "string") patch.appMount = { target: app };
-  else if (isPlainObject(app)) {
+  else if (hasPlainObjectPrototype(app)) {
     const excludes = [...ctx.topLevel.excludes, ...(asStringArray(app.excludes) ?? [])];
     const includes = [
       ...ctx.topLevel.includes,
@@ -190,7 +190,7 @@ export const lowerApi4Service = (
   }
   const mounts: V4Wire[] = [];
   entries(service.mounts).forEach((item, index) => {
-    if (isPlainObject(item)) {
+    if (hasPlainObjectPrototype(item)) {
       dropOwned(item, ["mounts", index]);
       if (item.source === undefined && (item.contents !== undefined || item.content !== undefined)) {
         drop(["mounts", index]);
@@ -205,35 +205,42 @@ export const lowerApi4Service = (
   for (const key of ["storage", "persistent-storage"]) {
     if (key === "persistent-storage" && service[key] !== undefined) rewrite([key]);
     entries(service[key]).forEach((item, index) => {
-      if (isPlainObject(item)) dropOwned(item, [key, index]);
-      if (isPlainObject(item) && item.type === "image") {
+      if (hasPlainObjectPrototype(item)) dropOwned(item, [key, index]);
+      if (hasPlainObjectPrototype(item) && item.type === "image") {
         drop([key, index]);
         return;
       }
       const mount = bind(item);
-      if ((typeof item === "string" && item.includes(":")) || (isPlainObject(item) && item.type === "bind")) {
+      if (
+        (typeof item === "string" && item.includes(":")) ||
+        (hasPlainObjectPrototype(item) && item.type === "bind")
+      ) {
         if (mount !== undefined) mounts.push(mount);
         return;
       }
       const target =
-        typeof item === "string" ? item : isPlainObject(item) ? (item.target ?? item.destination) : undefined;
+        typeof item === "string"
+          ? item
+          : hasPlainObjectPrototype(item)
+            ? (item.target ?? item.destination)
+            : undefined;
       if (typeof target !== "string") return;
       storage.push({
         store:
-          isPlainObject(item) && typeof item.source === "string"
+          hasPlainObjectPrototype(item) && typeof item.source === "string"
             ? item.source
             : target
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, "-")
                 .replace(/^-|-$/g, ""),
         target,
-        ...(isPlainObject(item) && item.scope !== undefined ? { scope: item.scope } : {}),
+        ...(hasPlainObjectPrototype(item) && item.scope !== undefined ? { scope: item.scope } : {}),
       });
     });
   }
   if (mounts.length > 0) patch.mounts = mounts;
   if (storage.length > 0) patch.storage = storage;
-  if (isPlainObject(service.security)) {
+  if (hasPlainObjectPrototype(service.security)) {
     const ca: unknown[] = [];
     for (const key of ["ca", "cas", "certificate-authority", "certificate-authorities"]) {
       const value = service.security[key];
@@ -246,12 +253,12 @@ export const lowerApi4Service = (
     }
     patch.security = { ca };
   }
-  if (isPlainObject(service.packages))
+  if (hasPlainObjectPrototype(service.packages))
     for (const key of Object.keys(service.packages)) drop(["packages", key]);
   const health = service.healthcheck;
   if (health === false) patch.healthcheck = { kind: "none" };
   else if (typeof health === "string") patch.healthcheck = { command: health };
-  else if (isPlainObject(health)) {
+  else if (hasPlainObjectPrototype(health)) {
     patch.healthcheck = {
       ...(health.command === undefined ? {} : { command: health.command }),
       ...(health.retry === undefined ? {} : { retries: health.retry }),

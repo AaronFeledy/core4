@@ -19,11 +19,10 @@ export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
   topLevelAlias: true,
   bootstrap: "minimal",
   strict: false,
-  run: (input) =>
-    Effect.gen(function* () {
-      const argv = extractArgv(input);
-      return yield* metaBun({ argv });
-    }),
+  run: Effect.fn("BunCommand.run")(function* (input: unknown) {
+    const argv = extractArgv(input);
+    return yield* metaBun({ argv });
+  }),
   successExitCode: (result) => result.exitCode,
   render: (result) => renderMetaBunResult(result as MetaBunResult),
 };

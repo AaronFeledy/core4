@@ -17,57 +17,56 @@ export interface NetworkTrustDoctorStatus {
   readonly solutions: ReadonlyArray<DoctorSolution>;
 }
 
-export const networkTrustDoctorStatus = (
+export const networkTrustDoctorStatus = Effect.fnUntraced(function* (
   env: NodeJS.ProcessEnv,
-): Effect.Effect<NetworkTrustDoctorStatus, ConfigError, ConfigService> =>
-  Effect.gen(function* () {
-    const configService = yield* ConfigService;
-    const config = yield* configService.load;
-    const proxyUrls: ReadonlyArray<string | undefined> = [
-      config.network?.proxy?.http ?? undefined,
-      config.network?.proxy?.https ?? undefined,
-    ];
-    const redactionOptions = {
-      sourceEnv: env,
-      proxyUrls,
-    };
-    const { redactor } = yield* resolveSecretsRedactor(redactionOptions);
+): Effect.fn.Return<NetworkTrustDoctorStatus, ConfigError, ConfigService> {
+  const configService = yield* ConfigService;
+  const config = yield* configService.load;
+  const proxyUrls: ReadonlyArray<string | undefined> = [
+    config.network?.proxy?.http ?? undefined,
+    config.network?.proxy?.https ?? undefined,
+  ];
+  const redactionOptions = {
+    sourceEnv: env,
+    proxyUrls,
+  };
+  const { redactor } = yield* resolveSecretsRedactor(redactionOptions);
 
-    return yield* resolveSetupNetworkTrust(config, env).pipe(
-      Effect.match({
-        onFailure: (error): NetworkTrustDoctorStatus => {
-          const message = redactor.redactString(error.message);
-          const remediation = redactor.redactString(error.remediation);
-          return {
-            name: "network-trust",
-            status: "warn",
-            severity: "warn",
-            recovery: "manual",
-            context: {
-              failure: error.kind,
-              message,
-              remediation,
-            },
-            solutions: [{ kind: "manual", description: remediation, command: "lando setup" }],
-          };
-        },
-        onSuccess: (network): NetworkTrustDoctorStatus => ({
+  return yield* resolveSetupNetworkTrust(config, env).pipe(
+    Effect.match({
+      onFailure: (error): NetworkTrustDoctorStatus => {
+        const message = redactor.redactString(error.message);
+        const remediation = redactor.redactString(error.remediation);
+        return {
           name: "network-trust",
-          status: "pass",
-          severity: "info",
+          status: "warn",
+          severity: "warn",
           recovery: "manual",
           context: {
-            caConfigured: String(network.ca.certs.length > 0),
-            caCount: String(network.ca.certs.length),
-            caLoaded: String(network.ca.loadedCerts.length),
-            caTrustHost: String(network.ca.trustHost),
-            caInjectIntoServices: String(network.ca.injectIntoServices),
-            proxyConfigured: String(network.proxy.http !== undefined || network.proxy.https !== undefined),
-            proxyInjectIntoServices: String(network.proxy.injectIntoServices),
-            noProxyCount: String(network.proxy.noProxy.length),
+            failure: error.kind,
+            message,
+            remediation,
           },
-          solutions: [],
-        }),
+          solutions: [{ kind: "manual", description: remediation, command: "lando setup" }],
+        };
+      },
+      onSuccess: (network): NetworkTrustDoctorStatus => ({
+        name: "network-trust",
+        status: "pass",
+        severity: "info",
+        recovery: "manual",
+        context: {
+          caConfigured: String(network.ca.certs.length > 0),
+          caCount: String(network.ca.certs.length),
+          caLoaded: String(network.ca.loadedCerts.length),
+          caTrustHost: String(network.ca.trustHost),
+          caInjectIntoServices: String(network.ca.injectIntoServices),
+          proxyConfigured: String(network.proxy.http !== undefined || network.proxy.https !== undefined),
+          proxyInjectIntoServices: String(network.proxy.injectIntoServices),
+          noProxyCount: String(network.proxy.noProxy.length),
+        },
+        solutions: [],
       }),
-    );
-  });
+    }),
+  );
+});

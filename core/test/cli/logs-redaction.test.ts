@@ -61,7 +61,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "logs-redaction.test",
   runtime: 4 as const,
 };
@@ -165,15 +165,21 @@ const makeLayer = (rawLine: string) => {
   };
 
   return Layer.mergeAll(
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
 };
 

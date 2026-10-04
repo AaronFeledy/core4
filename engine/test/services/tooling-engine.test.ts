@@ -21,12 +21,13 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "../../src/config/agent-env.ts";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
+import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "tooling-engine.test",
   runtime: 4 as const,
 };
@@ -177,19 +178,8 @@ const makeFakeProvider = (
 
 const runEngine = (invocation: ToolingInvocation, plan: AppPlan, provider: RuntimeProviderShape) =>
   Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider)).pipe(
-    Effect.provide(ProviderExecToolingEngineLive),
+    Effect.provide(ProviderExecToolingEngine.layer),
   );
-
-const AGENT_ENV_NAMES = [
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CURSOR_AGENT",
-  "OPENCODE",
-  "COPILOT_CLI",
-  "GEMINI_CLI",
-  "AGENT",
-  "CI",
-] as const;
 
 const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
   const saved = new Map<string, string | undefined>();
@@ -209,9 +199,11 @@ const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () =
   }
 };
 
-describe("ProviderExecToolingEngineLive", () => {
+describe("ProviderExecToolingEngine.layer", () => {
   test("Layer registers engine id 'providerExec'", async () => {
-    const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(ProviderExecToolingEngineLive)));
+    const engine = await Effect.runPromise(
+      ToolingEngine.pipe(Effect.provide(ProviderExecToolingEngine.layer)),
+    );
     expect(engine.id).toBe("providerExec");
   });
 
@@ -415,7 +407,7 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(provider.calls.length).toBe(0);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");
@@ -453,7 +445,7 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(provider.calls.length).toBe(0);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingExecError");

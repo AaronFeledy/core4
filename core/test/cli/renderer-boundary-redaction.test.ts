@@ -8,10 +8,13 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
+  }),
+);
 
 describe("runWithRendererHandling redaction", () => {
   test("redacts formatted failure diagnostics", async () => {
@@ -122,14 +125,17 @@ describe("runWithRendererHandling redaction", () => {
     const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80 });
     // Probe the old post-paint path: a redactor that would turn ESC[32m into
     // ESC[[redacted]m if decorated TTY still called redactString after paint.
-    const csiParamProbeLayer = Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () =>
-        Effect.succeed({
-          redactString: (text: string) => text.split("32").join("[redacted]"),
-          redactValue: (value: unknown) => value,
-        }),
-    });
+    const csiParamProbeLayer = Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () =>
+          Effect.succeed({
+            redactString: (text: string) => text.split("32").join("[redacted]"),
+            redactValue: (value: unknown) => value,
+          }),
+      }),
+    );
     await runWithRendererHandling(
       Effect.succeed({
         title: "SETUP",

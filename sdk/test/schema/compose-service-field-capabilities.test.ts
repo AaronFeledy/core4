@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { ComposeServiceFieldCapabilities, ComposeServiceFieldKey } from "@lando/sdk/schema";
 
@@ -19,10 +19,10 @@ describe("ComposeServiceFieldCapabilities", () => {
   });
 
   test("rejects fields outside the published literal union", () => {
-    const result = Schema.decodeUnknownEither(ComposeServiceFieldCapabilities)({
+    const result = Schema.decodeUnknownResult(ComposeServiceFieldCapabilities)({
       supported: ["volumes"],
     });
 
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 });

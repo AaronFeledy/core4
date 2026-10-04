@@ -1,7 +1,7 @@
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
-import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { CommandResultEnvelope, StreamFrame, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
@@ -19,7 +19,7 @@ export type CommandResultEnvelopeFormat = "json" | "yaml";
 
 export interface EncodeCommandResultOptions {
   readonly command: string;
-  readonly resultSchema: Schema.Schema.AnyNoContext;
+  readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly outcome: CommandResultOutcome;
   readonly redactor: Redactor;
   readonly warnings?: ReadonlyArray<CommandWarning>;
@@ -62,17 +62,21 @@ const taggedErrorJson = (
     readonly destructive: boolean;
   }>;
   readonly reason?: string;
+  readonly issues?: ReadonlyArray<ValidationIssue>;
 } => {
   const record = asRecord(error);
   const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
   const message = nonEmptyString(record?.message) ?? String(error);
   const remediation = nonEmptyString(record?.remediation);
   const reason = typeof record?.reason === "string" ? record.reason : undefined;
+  const decodedIssues = Schema.decodeUnknownResult(Schema.Array(ValidationIssue))(record?.issues);
+  const issues = Result.isSuccess(decodedIssues) ? decodedIssues.success : undefined;
   const base = {
     _tag: tag,
     message,
     ...(remediation === undefined ? {} : { remediation }),
     ...(reason === undefined ? {} : { reason }),
+    ...(issues === undefined ? {} : { issues }),
   };
   if (error instanceof SqlConfirmRequiredError) {
     return { ...base, service: error.service, steps: error.steps };
@@ -80,7 +84,7 @@ const taggedErrorJson = (
   return base;
 };
 
-const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
+const encodeResult = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
   Effect.try({
     try: () => {
       const encoded = Schema.encodeSync(schema)(value as never);
@@ -101,32 +105,33 @@ const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
 
 const isJsonProjectionError = (error: unknown): boolean => asRecord(error)?._tag === "JsonProjectionError";
 
-const encodeCommandEnvelope = (options: EncodeCommandResultOptions): Effect.Effect<unknown, unknown> =>
-  Effect.gen(function* () {
-    const base = {
-      apiVersion: "v4" as const,
-      command: options.command,
-      warnings: [...(options.warnings ?? [])],
-      deprecations: [...(options.deprecations ?? [])],
-    };
-    const envelope =
-      options.outcome._tag === "success"
-        ? {
-            ...base,
-            ok: true,
-            result: applyProjectResultKeys(
-              options.resultSchema,
-              yield* encodeResult(options.resultSchema, options.outcome.value),
-              options.projectResultKeys,
-            ),
-          }
-        : {
-            ...base,
-            ok: false,
-            error: taggedErrorJson(options.outcome.error),
-          };
-    return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
-  });
+const encodeCommandEnvelope = Effect.fnUntraced(function* (
+  options: EncodeCommandResultOptions,
+): Effect.fn.Return<unknown, unknown> {
+  const base = {
+    apiVersion: "v4" as const,
+    command: options.command,
+    warnings: [...(options.warnings ?? [])],
+    deprecations: [...(options.deprecations ?? [])],
+  };
+  const envelope =
+    options.outcome._tag === "success"
+      ? {
+          ...base,
+          ok: true,
+          result: applyProjectResultKeys(
+            options.resultSchema,
+            yield* encodeResult(options.resultSchema, options.outcome.value),
+            options.projectResultKeys,
+          ),
+        }
+      : {
+          ...base,
+          ok: false,
+          error: taggedErrorJson(options.outcome.error),
+        };
+  return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
+});
 
 const fallbackEnvelope = (command: string): unknown => ({
   apiVersion: "v4",
@@ -169,7 +174,7 @@ export const identityRedactor: Redactor = {
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => encodeEnvelopeLine(envelope, options.redactor, options.format)),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
         : Effect.succeed(
@@ -183,7 +188,7 @@ export const buildCommandResultEnvelope = (
 ): Effect.Effect<CommandResultEnvelope, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.map((envelope) => Schema.decodeSync(CommandResultEnvelope)(envelope as never)),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
         : Effect.succeed(
@@ -198,7 +203,7 @@ const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<st
     catch: (error) => error,
   }).pipe(
     Effect.map((encoded) => encodeJsonLine(encoded, redactor)),
-    Effect.catchAll(() =>
+    Effect.catch(() =>
       Effect.succeed(
         encodeJsonLine(
           {
@@ -215,7 +220,7 @@ const encodeStreamFrame = (frame: unknown, redactor: Redactor): Effect.Effect<st
 export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
     Effect.flatMap((envelope) => encodeStreamFrame({ _tag: "result", envelope }, options.redactor)),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
         : encodeStreamFrame(

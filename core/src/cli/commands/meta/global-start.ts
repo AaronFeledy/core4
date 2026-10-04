@@ -43,7 +43,7 @@ import { globalAppRef, renderGlobalServiceRow } from "./global-common";
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
@@ -150,81 +150,80 @@ export const renderGlobalStartResult = (result: GlobalStartResult): string => {
   return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };
 
-export const globalStart = (
+export const globalStart = Effect.fn("GlobalStart.start")(function* (
   options: GlobalStartOptions = {},
-): Effect.Effect<GlobalStartResult, GlobalStartError, GlobalStartServices> =>
-  Effect.gen(function* () {
-    yield* globalInstall({});
-    const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", servicesStarted: [] };
+): Effect.fn.Return<GlobalStartResult, GlobalStartError, GlobalStartServices> {
+  yield* globalInstall({});
+  const loaded = yield* loadGlobalPlan();
+  if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
-    const services = yield* selectedServices(loaded.plan, options.services);
-    const events = yield* EventService;
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
+  const services = yield* selectedServices(loaded.plan, options.services);
+  const events = yield* EventService;
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
 
-    // With `--service`, start only the selected subset rather than the whole plan.
-    const selectedNames = new Set(services.map((service) => String(service.name)));
-    const planToApply =
-      services.length === Object.keys(loaded.plan.services).length
-        ? loaded.plan
-        : {
-            ...loaded.plan,
-            services: Object.fromEntries(
-              Object.entries(loaded.plan.services).filter(([, service]) =>
-                selectedNames.has(String(service.name)),
-              ),
+  // With `--service`, start only the selected subset rather than the whole plan.
+  const selectedNames = new Set(services.map((service) => String(service.name)));
+  const planToApply =
+    services.length === Object.keys(loaded.plan.services).length
+      ? loaded.plan
+      : {
+          ...loaded.plan,
+          services: Object.fromEntries(
+            Object.entries(loaded.plan.services).filter(([, service]) =>
+              selectedNames.has(String(service.name)),
             ),
-          };
+          ),
+        };
 
-    yield* events.publish(
-      PreGlobalStartEvent.make({
-        scope: "global",
-        app: globalAppRef(loaded.plan),
-        plan: loaded.plan,
-        triggeredBy: "meta:global:start",
-        ensuringServices: [],
-        cached: false,
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PreGlobalStartEvent.make({
+      scope: "global",
+      app: globalAppRef(loaded.plan),
+      plan: loaded.plan,
+      triggeredBy: "meta:global:start",
+      ensuringServices: [],
+      cached: false,
+      timestamp: now(),
+    }),
+  );
 
-    const builds = yield* BuildOrchestrator;
-    const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
-    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+  const builds = yield* BuildOrchestrator;
+  const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
-    yield* Effect.scoped(
-      provider.apply(builtPlan, {
-        reconcile: false,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        serviceEnvironment,
-      }),
-    );
+  yield* Effect.scoped(
+    provider.apply(builtPlan, {
+      reconcile: false,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      serviceEnvironment,
+    }),
+  );
 
-    const router = yield* RouterService;
-    const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
-    const servicesStarted = yield* Effect.forEach(services, (service) =>
-      provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
-        Effect.map((runtime) => ({
-          name: String(service.name),
-          state: runtime.state ?? runtime.status,
-          endpoints: [
-            ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-            ...(routeUrls.get(service.name) ?? []),
-          ],
-        })),
-      ),
-    );
+  const router = yield* RouterService;
+  const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
+  const servicesStarted = yield* Effect.forEach(services, (service) =>
+    provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
+      Effect.map((runtime) => ({
+        name: String(service.name),
+        state: runtime.state ?? runtime.status,
+        endpoints: [
+          ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+          ...(routeUrls.get(service.name) ?? []),
+        ],
+      })),
+    ),
+  );
 
-    yield* events.publish(
-      PostGlobalStartEvent.make({
-        scope: "global",
-        app: globalAppRef(loaded.plan),
-        plan: loaded.plan,
-        cached: false,
-        timestamp: now(),
-      }),
-    );
+  yield* events.publish(
+    PostGlobalStartEvent.make({
+      scope: "global",
+      app: globalAppRef(loaded.plan),
+      plan: loaded.plan,
+      cached: false,
+      timestamp: now(),
+    }),
+  );
 
-    return { app: loaded.plan.name, servicesStarted };
-  });
+  return { app: loaded.plan.name, servicesStarted };
+});

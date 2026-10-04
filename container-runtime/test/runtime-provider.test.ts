@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -22,7 +22,7 @@ const plan = {
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 } satisfies AppPlan;
 const ctx = { providerId: "test", remediation: "Run doctor." } as const;
@@ -146,9 +146,9 @@ describe("resolved provider operations", () => {
     const ops = makeResolvedProviderOps(makeInput(calls));
     if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
     const result = await Effect.runPromise(
-      Effect.either(ops.adoptVolume(target, PortablePath.make("/data"))),
+      Effect.result(ops.adoptVolume(target, PortablePath.make("/data"))),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(calls.some((call) => call.name === "adoptVolume")).toBe(false);
   });
 
@@ -212,9 +212,9 @@ describe("resolved provider operations", () => {
     const ops = makeResolvedProviderOps(makeInput(calls));
     if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
     const result = await Effect.runPromise(
-      Effect.either(ops.observeVolume(target, PortablePath.make("/data"))),
+      Effect.result(ops.observeVolume(target, PortablePath.make("/data"))),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(calls.some((call) => call.name === "observeVolume")).toBe(false);
   });
 
@@ -304,8 +304,8 @@ describe("resolved provider operations", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);
-    if (!Exit.isFailure(exit) || exit.cause._tag !== "Fail") throw new Error("Expected no-plan failure");
-    expect(exit.cause.error).toEqual(noPlanError(app, "start"));
+    if (!Exit.isFailure(exit)) throw new Error("Expected no-plan failure");
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toEqual(noPlanError(app, "start"));
   });
 
   test("uses a plan supplied on the selector without consulting the plan resolver", async () => {
@@ -487,10 +487,10 @@ describe("resolved provider operations", () => {
     expect(exits).toHaveLength(11);
     for (const exit of exits) {
       expect(Exit.isFailure(exit)).toBe(true);
-      if (!Exit.isFailure(exit) || exit.cause._tag !== "Fail")
-        throw new Error("Expected unavailable failure");
-      expect(exit.cause.error).toBeInstanceOf(ProviderUnavailableError);
-      expect(exit.cause.error.providerId).toBe(ctx.providerId);
+      if (!Exit.isFailure(exit)) throw new Error("Expected unavailable failure");
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ProviderUnavailableError);
+      expect(error.providerId).toBe(ctx.providerId);
     }
   });
 });

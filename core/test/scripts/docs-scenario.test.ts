@@ -101,7 +101,7 @@ describe("docs:scenario author command", () => {
       const result = await runDocsScenario([guideId, "--scenario", "runs"]);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("toBe(1)");
+      expect(result.stderr).toContain("Expected: 1\nReceived: 0");
       expect(result.stderr).toContain("[docs-scenario-red:runs]");
       expect(result.stderr).toContain("at docs/guides/docs-scenario-red.mdx:10");
       expect(result.stderr).toContain(

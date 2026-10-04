@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { InitTargetExistsError } from "@lando/core/errors";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -57,7 +57,7 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-        Effect.provide(LandofileServiceLive),
+        Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );
   } finally {
@@ -176,7 +176,7 @@ describe("lando init --full", () => {
       );
       expect(Exit.isFailure(directExit)).toBe(true);
       if (Exit.isFailure(directExit)) {
-        const failure = Cause.failureOption(directExit.cause);
+        const failure = Cause.findErrorOption(directExit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const value = failure.value;

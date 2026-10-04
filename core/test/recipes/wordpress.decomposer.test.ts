@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
 import { wordpressRecipeYaml } from "../../src/recipes/builtin/wordpress/manifest.ts";
 import {
@@ -137,9 +137,9 @@ describe("wordpress decomposition", () => {
       recipe: _recipe,
       name: _name,
       ...authoring
-    } = Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(fragment);
+    } = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(fragment);
     // When
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(wordpressSnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(wordpressSnapshot, options));
     // Then
     expect<unknown>(rendered).toEqual(authoring);
   });

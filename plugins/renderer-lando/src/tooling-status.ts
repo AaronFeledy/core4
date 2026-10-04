@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type { LandoEvent } from "@lando/sdk/services";
 
@@ -44,7 +44,9 @@ export type ToolingStatusPainter = {
   readonly stop: () => void;
 };
 
-export const createToolingStatusPainter = (now: () => number = Date.now): ToolingStatusPainter => {
+export const createToolingStatusPainter = (
+  now: () => number = () => DateTime.toEpochMillis(DateTime.nowUnsafe()),
+): ToolingStatusPainter => {
   let timer: ReturnType<typeof setInterval> | undefined;
   let startedAt = 0;
   let tool = "";
@@ -65,32 +67,31 @@ export const createToolingStatusPainter = (now: () => number = Date.now): Toolin
     tool = "";
   };
 
-  const consume = (
+  const consume = Effect.fnUntraced(function* (
     event: LandoEvent,
     acquire: Effect.Effect<{ readonly controller: ToolingStatusHandle } | undefined>,
-  ): Effect.Effect<boolean> =>
-    Effect.gen(function* () {
-      const parentId = parentIdOf(event);
-      if (event._tag === "task.tree.start" && parentId !== undefined && isToolingTreeParentId(parentId)) {
-        const substrate = yield* acquire;
-        if (substrate === undefined) return true;
-        stop();
-        tool = toolingNameFromParentId(parentId);
-        handle = substrate.controller;
-        startedAt = now();
-        paint();
-        timer = setInterval(paint, STATUS_INTERVAL_MS);
-        return true;
-      }
-      if (event._tag === "task.tree.complete" && parentId !== undefined && isToolingTreeParentId(parentId)) {
-        stop();
-        return true;
-      }
-      if (parentId !== undefined && isToolingTreeParentId(parentId)) return true;
-      const taskId = taskIdOf(event);
-      if (taskId !== undefined && isToolingTreeParentId(taskId)) return true;
-      return false;
-    });
+  ): Effect.fn.Return<boolean> {
+    const parentId = parentIdOf(event);
+    if (event._tag === "task.tree.start" && parentId !== undefined && isToolingTreeParentId(parentId)) {
+      const substrate = yield* acquire;
+      if (substrate === undefined) return true;
+      stop();
+      tool = toolingNameFromParentId(parentId);
+      handle = substrate.controller;
+      startedAt = now();
+      paint();
+      timer = setInterval(paint, STATUS_INTERVAL_MS);
+      return true;
+    }
+    if (event._tag === "task.tree.complete" && parentId !== undefined && isToolingTreeParentId(parentId)) {
+      stop();
+      return true;
+    }
+    if (parentId !== undefined && isToolingTreeParentId(parentId)) return true;
+    const taskId = taskIdOf(event);
+    if (taskId !== undefined && isToolingTreeParentId(taskId)) return true;
+    return false;
+  });
 
   return { consume, stop };
 };

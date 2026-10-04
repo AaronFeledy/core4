@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,8 +7,8 @@ import { ServiceConfig } from "../landofile.ts";
 // MySQL catalog service authoring contract
 // ============================================================================
 
-export const MysqlServiceConfig = Schema.extend(
-  ServiceConfig.pick(
+export const MysqlServiceConfig = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
     "image",
     "port",
     "user",
@@ -30,15 +31,18 @@ export const MysqlServiceConfig = Schema.extend(
     "networks",
     "security",
     "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(Schema.Literal("mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7")).annotations({
-      description: "MySQL catalog service type and supported release-series aliases.",
+  ]),
+)
+  .pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Literals(["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7"])).annotate({
+        description: "MySQL catalog service type and supported release-series aliases.",
+      }),
     }),
-  }),
-).annotations({
-  identifier: "MysqlServiceConfig",
-  title: "MySQL Service Config",
-  description: "Landofile configuration accepted by the MySQL catalog service.",
-});
+  )
+  .annotate({
+    identifier: "MysqlServiceConfig",
+    title: "MySQL Service Config",
+    description: "Landofile configuration accepted by the MySQL catalog service.",
+  });
 export type MysqlServiceConfig = typeof MysqlServiceConfig.Type;

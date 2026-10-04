@@ -12,11 +12,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
-import { CertificateAuthorityUnavailableLive } from "@lando/engine/subsystems/certs/api";
-import { HealthcheckRunnerUnavailableLive } from "@lando/engine/subsystems/healthcheck/api";
-import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
-import { UrlScannerUnavailableLive } from "@lando/engine/subsystems/scanner/api";
-import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
+import * as CertificateAuthorityLayer from "@lando/engine/subsystems/certs/api";
+import * as HealthcheckRunnerLayer from "@lando/engine/subsystems/healthcheck/api";
+import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
+import * as UrlScannerLayer from "@lando/engine/subsystems/scanner/api";
+import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import {
@@ -37,7 +37,9 @@ const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(
     subsystemDoctor({ fix }).pipe(
-      Effect.provide(Layer.succeed(HostDnsResolver, { lookup: () => Effect.succeed([]) })),
+      Effect.provide(
+        Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.succeed([]) })),
+      ),
       Effect.provide(DefaultSubsystemDoctorLayer),
     ),
   );
@@ -123,7 +125,7 @@ describe("each subsystem failure path produces a tagged error with severity + so
     const proxy = await Effect.runPromiseExit(
       Effect.scoped(
         Effect.flatMap(RouterService, (s) => s.setup({ defaultDomain: "lndo.site" })).pipe(
-          Effect.provide(RouterServiceUnavailableLive),
+          Effect.provide(RouterServiceLayer.layerUnavailable),
         ),
       ),
     );
@@ -131,14 +133,14 @@ describe("each subsystem failure path produces a tagged error with severity + so
 
     const ca = await Effect.runPromiseExit(
       Effect.flatMap(CertificateAuthority, (s) => s.setup({ force: false })).pipe(
-        Effect.provide(CertificateAuthorityUnavailableLive),
+        Effect.provide(CertificateAuthorityLayer.layerUnavailable),
       ),
     );
     expectTaggedDiagnosticForFailure("certs", ca);
 
     const ssh = await Effect.runPromiseExit(
       Effect.flatMap(SshService, (s) => s.setup({ force: false })).pipe(
-        Effect.provide(SshServiceUnavailableLive),
+        Effect.provide(SshServiceLayer.layerUnavailable),
       ),
     );
     expectTaggedDiagnosticForFailure("ssh", ssh);
@@ -146,13 +148,13 @@ describe("each subsystem failure path produces a tagged error with severity + so
     const hc = await Effect.runPromiseExit(
       Effect.flatMap(HealthcheckRunner, (s) =>
         s.run({ probes: [] } as never, "app" as never, "web" as never),
-      ).pipe(Effect.provide(HealthcheckRunnerUnavailableLive)),
+      ).pipe(Effect.provide(HealthcheckRunnerLayer.layerUnavailable)),
     );
     expectTaggedDiagnosticForFailure("healthcheck", hc);
 
     const scanner = await Effect.runPromiseExit(
       Effect.flatMap(UrlScanner, (s) => s.scan("app" as never)).pipe(
-        Effect.provide(UrlScannerUnavailableLive),
+        Effect.provide(UrlScannerLayer.layerUnavailable),
       ),
     );
     expectTaggedDiagnosticForFailure("scanner", scanner);
@@ -203,16 +205,19 @@ describe("doctor --fix recovery", () => {
   test("--fix recovers a selected-but-stopped RouterService without using the unavailable stub", async () => {
     let setupCalls = 0;
     const proxyService = makeTestRouterService();
-    const stoppedTraefik = Layer.succeed(RouterService, {
-      ...proxyService,
-      id: "traefik",
-      setup: (config) =>
-        Effect.tap(proxyService.setup(config), () =>
-          Effect.sync(() => {
-            setupCalls += 1;
-          }),
-        ),
-    });
+    const stoppedTraefik = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...proxyService,
+        id: "traefik",
+        setup: (config) =>
+          Effect.tap(proxyService.setup(config), () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+          ),
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedTraefik);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");
@@ -233,14 +238,17 @@ describe("doctor --fix recovery", () => {
 
   test("--fix recovers a SshService when setup restores agent reachability", async () => {
     let setupCalls = 0;
-    const recoverableSsh = Layer.succeed(SshService, {
-      ...makeTestSshService(),
-      id: "unavailable",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
-    });
+    const recoverableSsh = Layer.succeed(
+      SshService,
+      SshService.of({
+        ...makeTestSshService(),
+        id: "unavailable",
+        setup: () =>
+          Effect.sync(() => {
+            setupCalls += 1;
+          }),
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableSsh);
     const result = await Effect.runPromise(
       subsystemDoctor({
@@ -270,13 +278,16 @@ describe("doctor --fix recovery", () => {
 
   test("--fix recovers a degraded automatic subsystem when its setup() succeeds", async () => {
     const proxyService = makeTestRouterService();
-    const recoverableProxy = Layer.succeed(RouterService, {
-      ...proxyService,
-      id: "unavailable",
-      setup: (config) => proxyService.setup(config),
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: () => Effect.void,
-    });
+    const recoverableProxy = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...proxyService,
+        id: "unavailable",
+        setup: (config) => proxyService.setup(config),
+        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        removeRoutes: () => Effect.void,
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");
@@ -292,20 +303,23 @@ describe("doctor --fix recovery", () => {
   });
 
   test("--fix redacts secret-like environment values from failed setup errors", async () => {
-    const secretErrorProxy = Layer.succeed(RouterService, {
-      ...TestRouterService,
-      id: "unavailable",
-      setup: () =>
-        Effect.fail(
-          new ProxySetupError({
-            proxyId: "unavailable",
-            message: "setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2",
-            remediation: "Retry setup.",
-          }),
-        ),
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: () => Effect.void,
-    });
+    const secretErrorProxy = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...TestRouterService,
+        id: "unavailable",
+        setup: () =>
+          Effect.fail(
+            new ProxySetupError({
+              proxyId: "unavailable",
+              message: "setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2",
+              remediation: "Retry setup.",
+            }),
+          ),
+        applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+        removeRoutes: () => Effect.void,
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);
     const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
     const proxy = result.checks.find((c) => c.name === "router");

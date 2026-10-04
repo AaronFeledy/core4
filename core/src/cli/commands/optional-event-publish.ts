@@ -2,7 +2,7 @@ import { EventService } from "@lando/sdk/services";
 import { type Context, Effect, Option } from "effect";
 
 export const publishOptionalEvent = (
-  event: Parameters<Context.Tag.Service<typeof EventService>["publish"]>[0],
+  event: Parameters<Context.Service.Shape<typeof EventService>["publish"]>[0],
 ) =>
   Effect.serviceOption(EventService).pipe(
     Effect.flatMap((events) =>

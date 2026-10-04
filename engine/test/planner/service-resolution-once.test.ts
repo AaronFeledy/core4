@@ -8,7 +8,7 @@ import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { planApp } from "../../src/planner/assemble.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 
 test("planApp resolves each service exactly once", async () => {
   // Given
@@ -56,7 +56,7 @@ test("planApp resolves each service exactly once", async () => {
           landofile,
           TestRuntimeProvider.capabilities,
         );
-      }).pipe(Effect.provide(PluginRegistryLive)),
+      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
     );
     // Then
     expect([...calls]).toEqual([

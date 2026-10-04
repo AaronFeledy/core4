@@ -1,5 +1,6 @@
 import { ComposeServiceFieldKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 
 export type ComposeServiceFieldUse = {
   readonly service: string;
@@ -8,9 +9,6 @@ export type ComposeServiceFieldUse = {
 };
 
 type ComposeServiceFieldCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeServiceFields">;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const compareServiceFieldUses = (left: ComposeServiceFieldUse, right: ComposeServiceFieldUse): number => {
   if (left.service < right.service) return -1;
@@ -28,7 +26,7 @@ export const collectComposeServiceFields = (
 
   for (const servicePlan of Object.values(services)) {
     const compose = servicePlan.extensions.compose;
-    if (!isRecord(compose)) continue;
+    if (!Predicate.isObject(compose)) continue;
 
     for (const family of ComposeServiceFieldKey.literals) {
       if (compose[family] !== undefined) {

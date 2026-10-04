@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as LandoConfigService from "@lando/engine/services/config";
 import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
@@ -36,15 +36,16 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
     operation: "destroy",
     remediation: "Start the test provider.",
   });
-  const providerLayer = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: (plan) =>
-      Effect.succeed({
-        ...TestRuntimeProvider,
-        id: plan?.provider ?? ProviderId.make("docker"),
-        destroy: (target, options) =>
-          Effect.gen(function* () {
+  const providerLayer = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: (plan) =>
+        Effect.succeed({
+          ...TestRuntimeProvider,
+          id: plan?.provider ?? ProviderId.make("docker"),
+          destroy: Effect.fnUntraced(function* (target, options) {
             calls.push(`${plan?.provider}:${target.app}`);
             if (failure === "provider") return yield* Effect.fail(unavailable);
             if (failure === "no-plan") return { kind: "no-op" as const, reason: "no-applied-plan" as const };
@@ -52,22 +53,24 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
             expect(target.plan).toBeUndefined();
             return { kind: "destroyed" as const };
           }),
-      }),
-  });
-  const scratchLayer = Layer.succeed(ScratchAppService, {
-    kind: "scratch",
-    root: Effect.succeed(AbsolutePath.make(root)),
-    ensureRoot: Effect.die("unexpected ensureRoot"),
-    synthesizeId: () => Effect.die("unexpected synthesizeId"),
-    paths: () => Effect.die("unexpected paths"),
-    acquire: () => Effect.die("unexpected acquire"),
-    resolveById: () => Effect.die("unexpected resolve"),
-    list: () => Effect.succeed([]),
-    info: () => Effect.die("unexpected info"),
-    start: () => Effect.die("unexpected start"),
-    stop: () => Effect.die("unexpected stop"),
-    destroy: (id, options) =>
-      Effect.gen(function* () {
+        }),
+    }),
+  );
+  const scratchLayer = Layer.succeed(
+    ScratchAppService,
+    ScratchAppService.of({
+      kind: "scratch",
+      root: Effect.succeed(AbsolutePath.make(root)),
+      ensureRoot: Effect.die("unexpected ensureRoot"),
+      synthesizeId: () => Effect.die("unexpected synthesizeId"),
+      paths: () => Effect.die("unexpected paths"),
+      acquire: () => Effect.die("unexpected acquire"),
+      resolveById: () => Effect.die("unexpected resolve"),
+      list: () => Effect.succeed([]),
+      info: () => Effect.die("unexpected info"),
+      start: () => Effect.die("unexpected start"),
+      stop: () => Effect.die("unexpected stop"),
+      destroy: Effect.fnUntraced(function* (id, options) {
         expect(options?.keepVolumes).not.toBe(true);
         calls.push(`scratch:${id}`);
         if (failure === "scratch")
@@ -83,8 +86,9 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
           app: { kind: "scratch" as const, id: AppId.make(id), root: AbsolutePath.make(root) },
         };
       }),
-    gc: () => Effect.die("unexpected gc"),
-  });
+      gc: () => Effect.die("unexpected gc"),
+    }),
+  );
   const options: PoweroffOptions = {
     userDataRoot: root,
     userCacheRoot: root,
@@ -105,26 +109,32 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
       return { terminated: true };
     },
   };
-  const eventLayer = Layer.succeed(EventService, {
-    publish: (event) =>
-      Effect.sync(() => {
-        events.push(event._tag);
-      }),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: () => Effect.succeed([]),
-  });
+  const eventLayer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event._tag);
+        }),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
+      query: () => Effect.succeed([]),
+    }),
+  );
   const layer = Layer.mergeAll(
-    ConfigServiceLive,
+    LandoConfigService.layer,
     providerLayer,
     scratchLayer,
     eventLayer,
-    Layer.succeed(ScratchResourceScanner, {
-      listScratchIds: Effect.die("unexpected scratch scan"),
-      pruneScratch: () => Effect.die("registered scratch must use destroy"),
-    }),
+    Layer.succeed(
+      ScratchResourceScanner,
+      ScratchResourceScanner.of({
+        listScratchIds: Effect.die("unexpected scratch scan"),
+        pruneScratch: () => Effect.die("registered scratch must use destroy"),
+      }),
+    ),
   );
   return { root, calls, options, layer, events };
 };
@@ -167,11 +177,11 @@ test.each(["provider", "no-plan", "scratch"] as const)(
     // Given: an app that cannot be stopped by its owning provider.
     await withPoweroff(async ({ calls, options, layer }) => {
       // When: poweroff uses its production stop.
-      const result = await Effect.runPromise(poweroff(options).pipe(Effect.either, Effect.provide(layer)));
+      const result = await Effect.runPromise(poweroff(options).pipe(Effect.result, Effect.provide(layer)));
       // Then: no successful result or runtime teardown hides the failed stop.
-      expect(result._tag).toBe("Left");
-      if (result._tag !== "Left") throw new Error("Expected a typed stop failure");
-      expect(result.left).toMatchObject({
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("Expected a typed stop failure");
+      expect(result.failure).toMatchObject({
         _tag: "PoweroffStopError",
         appId: failure === "scratch" ? "scratch-one" : "user",
         providerId: failure === "scratch" ? "lando" : "docker",
@@ -191,10 +201,10 @@ test("turns injected stop rejection into a tagged failure", async () => {
         stopApp: async () => {
           throw new Error("stop failed");
         },
-      }).pipe(Effect.either, Effect.provide(layer)),
+      }).pipe(Effect.result, Effect.provide(layer)),
     );
     // Then: poweroff fails without claiming success or shutting down the runtime.
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(calls).toEqual([]);
   });
 });
@@ -253,10 +263,10 @@ test("omits the global post event when its provider fails", async () => {
         discoverContainers: async () => [
           { appId: "global", appName: "global", providerId: "lando", appRoot: root, services: [] },
         ],
-      }).pipe(Effect.either, Effect.provide(layer)),
+      }).pipe(Effect.result, Effect.provide(layer)),
     );
     // Then: the failed stop never emits a success event.
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(events).toEqual(["pre-global-stop"]);
   }, "provider");
 });

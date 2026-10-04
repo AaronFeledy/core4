@@ -4,7 +4,7 @@ import { Schema } from "effect";
 // Compose runtime knob capabilities — provider-declared preserved knob support.
 // =============================================================================
 
-export const ComposeServiceKnobKey = Schema.Literal(
+export const ComposeServiceKnobKey = Schema.Literals([
   "restart",
   "cap_add",
   "cap_drop",
@@ -29,7 +29,7 @@ export const ComposeServiceKnobKey = Schema.Literal(
   "logging",
   "gpus",
   "deploy.resources",
-).annotations({
+]).annotate({
   identifier: "ComposeServiceKnobKey",
   title: "Compose Service Knob Key",
   description: "Preserved Compose service runtime knob path eligible for provider capability declaration.",
@@ -37,11 +37,11 @@ export const ComposeServiceKnobKey = Schema.Literal(
 export type ComposeServiceKnobKey = typeof ComposeServiceKnobKey.Type;
 
 export const ComposeKnobCapabilities = Schema.Struct({
-  supported: Schema.Array(ComposeServiceKnobKey).annotations({
+  supported: Schema.Array(ComposeServiceKnobKey).annotate({
     title: "Supported Compose Knobs",
     description: "Exact preserved Compose runtime knob paths supported by the provider.",
   }),
-}).annotations({
+}).annotate({
   identifier: "ComposeKnobCapabilities",
   title: "Compose Knob Capabilities",
   description: "Fail-closed provider declaration of supported preserved Compose runtime knobs.",

@@ -90,60 +90,57 @@ const topLevelAliasEntries = (
   return [top];
 };
 
-export const registerBuiltInCommandDeprecations = (
+export const registerBuiltInCommandDeprecations = Effect.fnUntraced(function* (
   deprecations: typeof DeprecationService.Service,
   commands: ReadonlyArray<DeprecationContractCommand> = BUILT_IN_COMMAND_DEPRECATIONS,
-): Effect.Effect<void, DeprecationContradictionError> =>
-  Effect.gen(function* () {
-    for (const command of commands) {
-      if (command.deprecated !== undefined) {
-        yield* deprecations.register("core", "command", command.id, command.deprecated);
-      }
-      for (const entry of [...topLevelAliasEntries(command), ...(command.aliases ?? [])]) {
-        yield* deprecations.registerAlias(
-          "core",
-          "command",
-          command.id,
-          aliasName(entry),
-          aliasNotice(entry, command.deprecated),
-        );
-      }
-      for (const [name, spec] of Object.entries(command.flags ?? {})) {
-        if (isDeprecatedField(spec) && spec.deprecated !== undefined) {
-          yield* deprecations.register("core", "flag", `${command.id} --${name}`, spec.deprecated);
-        }
-      }
-      for (const [name, spec] of Object.entries(command.args ?? {})) {
-        if (isDeprecatedField(spec) && spec.deprecated !== undefined) {
-          yield* deprecations.register("core", "arg", `${command.id} ${name}`, spec.deprecated);
-        }
+): Effect.fn.Return<void, DeprecationContradictionError> {
+  for (const command of commands) {
+    if (command.deprecated !== undefined) {
+      yield* deprecations.register("core", "command", command.id, command.deprecated);
+    }
+    for (const entry of [...topLevelAliasEntries(command), ...(command.aliases ?? [])]) {
+      yield* deprecations.registerAlias(
+        "core",
+        "command",
+        command.id,
+        aliasName(entry),
+        aliasNotice(entry, command.deprecated),
+      );
+    }
+    for (const [name, spec] of Object.entries(command.flags ?? {})) {
+      if (isDeprecatedField(spec) && spec.deprecated !== undefined) {
+        yield* deprecations.register("core", "flag", `${command.id} --${name}`, spec.deprecated);
       }
     }
-  });
+    for (const [name, spec] of Object.entries(command.args ?? {})) {
+      if (isDeprecatedField(spec) && spec.deprecated !== undefined) {
+        yield* deprecations.register("core", "arg", `${command.id} ${name}`, spec.deprecated);
+      }
+    }
+  }
+});
 
-const registerContractSurfaces = (
+const registerContractSurfaces = Effect.fnUntraced(function* (
   deprecations: typeof DeprecationService.Service,
   kind: "event" | "event-field" | "render-event" | "service-type" | "service-feature" | "route-filter",
   surfaces: ReadonlyArray<DeprecationContractSurface> = [],
-): Effect.Effect<void, DeprecationContradictionError> =>
-  Effect.gen(function* () {
-    for (const surface of surfaces) {
-      if (surface.deprecated !== undefined) {
-        yield* deprecations.register("core", kind, surface.id, surface.deprecated);
-      }
+): Effect.fn.Return<void, DeprecationContradictionError> {
+  for (const surface of surfaces) {
+    if (surface.deprecated !== undefined) {
+      yield* deprecations.register("core", kind, surface.id, surface.deprecated);
     }
-  });
+  }
+});
 
-export const registerBuiltInContractDeprecations = (
+export const registerBuiltInContractDeprecations = Effect.fnUntraced(function* (
   deprecations: typeof DeprecationService.Service,
   contracts: DeprecationBuiltInContracts = BUILT_IN_CONTRACT_DEPRECATIONS,
-): Effect.Effect<void, DeprecationContradictionError> =>
-  Effect.gen(function* () {
-    yield* registerBuiltInCommandDeprecations(deprecations, contracts.commands ?? []);
-    yield* registerContractSurfaces(deprecations, "event", contracts.lifecycleEvents);
-    yield* registerContractSurfaces(deprecations, "event-field", contracts.eventFields);
-    yield* registerContractSurfaces(deprecations, "render-event", contracts.renderEvents);
-    yield* registerContractSurfaces(deprecations, "service-type", contracts.serviceTypes);
-    yield* registerContractSurfaces(deprecations, "service-feature", contracts.serviceFeatures);
-    yield* registerContractSurfaces(deprecations, "route-filter", contracts.routeFilters);
-  });
+): Effect.fn.Return<void, DeprecationContradictionError> {
+  yield* registerBuiltInCommandDeprecations(deprecations, contracts.commands ?? []);
+  yield* registerContractSurfaces(deprecations, "event", contracts.lifecycleEvents);
+  yield* registerContractSurfaces(deprecations, "event-field", contracts.eventFields);
+  yield* registerContractSurfaces(deprecations, "render-event", contracts.renderEvents);
+  yield* registerContractSurfaces(deprecations, "service-type", contracts.serviceTypes);
+  yield* registerContractSurfaces(deprecations, "service-feature", contracts.serviceFeatures);
+  yield* registerContractSurfaces(deprecations, "route-filter", contracts.routeFilters);
+});

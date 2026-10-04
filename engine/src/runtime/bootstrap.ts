@@ -2,7 +2,7 @@
  * Bootstrap level orchestration.
  *
  * Each command declares the `BootstrapLevel` it needs. The native dispatcher
- * reads that level from the resolved command, builds the `LandoRuntimeLive`
+ * reads that level from the resolved command, builds the `LandoRuntimeLayer`
  * Layer at exactly that depth, and then runs the command's Effect program
  * against it.
  *

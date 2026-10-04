@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Duration, Effect, Exit, Fiber, Ref, Stream, TestClock, TestContext } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Ref, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   type LogFollowEvent,
@@ -42,7 +43,7 @@ const diagnostics = (events: ReadonlyArray<LogFollowEvent>): ReadonlyArray<strin
 const expectProviderUnavailable = <A>(exit: Exit.Exit<A, ProviderError>): void => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isFailure(exit)) {
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag === "Some") expect(failure.value._tag).toBe("ProviderUnavailableError");
   }
@@ -55,7 +56,7 @@ const runFinite = (
     Stream.runCollect(stream).pipe(
       Effect.map((chunk) => [...chunk]),
       Effect.scoped,
-      Effect.provide(TestContext.TestContext),
+      Effect.provide(TestClock.layer()),
     ) as Effect.Effect<ReadonlyArray<LogFollowEvent>, ProviderError, never>,
   );
 
@@ -138,7 +139,7 @@ describe("followLogSource finite", () => {
           follow: false,
           access: fs.access,
         }),
-      ).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
+      ).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
     );
 
     expectProviderUnavailable(exit);
@@ -187,7 +188,7 @@ const collectFollow = (
     Effect.gen(function* () {
       const fs = makeMemoryLogFileAccess();
       const ref = yield* Ref.make<ReadonlyArray<LogFollowEvent>>([]);
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         Effect.scoped(Stream.runForEach(build(fs), (event) => Ref.update(ref, (prev) => [...prev, event]))),
       );
       const adjust = (millis: number) => TestClock.adjust(Duration.millis(millis));
@@ -196,7 +197,7 @@ const collectFollow = (
       yield* Fiber.interrupt(fiber);
       const handles = fs.openHandleCount();
       return { events, handles };
-    }).pipe(Effect.provide(TestContext.TestContext)),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
 describe("followLogSource follow", () => {
@@ -293,7 +294,7 @@ describe("followLogSource follow", () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const fs = makeMemoryLogFileAccess();
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           Effect.scoped(
             Stream.runDrain(
               followLogSource({
@@ -309,7 +310,7 @@ describe("followLogSource follow", () => {
         );
         for (let i = 0; i < 8; i += 1) yield* TestClock.adjust(Duration.millis(100));
         return yield* Fiber.await(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
 
     expectProviderUnavailable(exit);

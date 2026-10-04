@@ -4,8 +4,9 @@
  * Unknown keys remain structured lint violations rather than runtime errors.
  */
 import { dirname } from "node:path";
+import { SchemaIssue } from "effect";
 
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import { composeTopLevelDispositions, mergeValues } from "@lando/sdk/landofile";
@@ -15,6 +16,11 @@ import {
   type ConfigLintResult,
   type ConfigLintViolation,
   LandofileShape,
+  ServiceConfig,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
+  parseValidationIssuePath,
+  validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 import {
   type ComposeRejectionMatch,
@@ -35,12 +41,46 @@ export interface LintLandofileOptions {
   readonly templates?: TemplateEngineInputs;
 }
 
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
+const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
 
 type LintIssue = {
   readonly _tag: string;
   readonly path: ReadonlyArray<PropertyKey>;
   readonly message: string;
+};
+
+const lintIssues = (
+  issue: SchemaIssue.Issue,
+  path: ReadonlyArray<PropertyKey> = [],
+): ReadonlyArray<LintIssue> => {
+  switch (issue._tag) {
+    case "Pointer":
+      return lintIssues(issue.issue, [...path, ...issue.path]);
+    case "Encoding":
+      return lintIssues(issue.issue, path);
+    case "Composite":
+      return issue.issues.flatMap((child) => lintIssues(child, path));
+    case "AnyOf":
+      if (issue.issues.length > 0) return issue.issues.flatMap((child) => lintIssues(child, path));
+      break;
+    case "Filter":
+      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
+        return lintIssues(issue.issue, path);
+      }
+      break;
+    case "UnexpectedKey":
+    case "MissingKey":
+    case "InvalidType":
+    case "InvalidValue":
+    case "Forbidden":
+    case "OneOf":
+      break;
+  }
+  return SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map((formatted) => ({
+    _tag: issue._tag === "UnexpectedKey" ? "Unexpected" : issue._tag === "MissingKey" ? "Missing" : "Type",
+    path,
+    message: formatted.message,
+  }));
 };
 
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
@@ -83,28 +123,51 @@ const composeSuggestedFix = (issue: LintIssue): string | undefined => {
   return undefined;
 };
 
-const violationFromIssue = (issue: LintIssue): ConfigLintViolation => {
-  const path = issue.path.map(String).join(".");
+const toIssuePath = (path: ReadonlyArray<PropertyKey>): ValidationIssuePath =>
+  path.map((segment) => (typeof segment === "number" ? segment : String(segment)));
+
+const pathFromText = (text: string): ValidationIssuePath => parseValidationIssuePath(text) ?? [];
+
+const SERVICE_CONFIG_KEYS = [...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"];
+
+const closestKeySuggestions = (issue: SchemaIssue.Issue): ReadonlyMap<string, string> =>
+  new Map(
+    validationIssuesFromSchemaIssue(issue, {
+      extraAllowedKeys: (path) => (path[0] === "services" && path.length >= 3 ? SERVICE_CONFIG_KEYS : []),
+    }).flatMap((entry) =>
+      entry.suggestion === undefined
+        ? []
+        : [[formatValidationIssuePath(entry.path), entry.suggestion] as const],
+    ),
+  );
+
+const violationFromIssue = (
+  issue: LintIssue,
+  suggestions: ReadonlyMap<string, string>,
+): ConfigLintViolation => {
+  const path = toIssuePath(issue.path);
+  const formatted = formatValidationIssuePath(path);
   const key = lastKey(issue.path);
-  const suggestedFix =
-    (issue._tag === "Type" && path === "sshAgent.socket"
+  const suggestion =
+    (issue._tag === "Type" && formatted === "sshAgent.socket"
       ? "Set sshAgent.socket to a string containing the host SSH-agent socket path, or omit it for automatic discovery."
       : undefined) ??
     composeSuggestedFix(issue) ??
     (issue._tag === "Unexpected"
-      ? `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`
+      ? (suggestions.get(formatted) ??
+        `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`)
       : issue._tag === "Missing"
-        ? `Add the required "${key ?? path}" field.`
+        ? `Add the required "${key ?? formatted}" field.`
         : undefined);
-  return suggestedFix === undefined
+  return suggestion === undefined
     ? { path, message: issue.message }
-    : { path, message: issue.message, suggestedFix };
+    : { path, message: issue.message, suggestion };
 };
 
 const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
-  path: match.documentPath,
+  path: pathFromText(match.documentPath),
   message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
-  suggestedFix: match.remediation,
+  suggestion: match.remediation,
 });
 
 const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
@@ -115,30 +178,34 @@ const violationsFor = (
   rejections: ReadonlyArray<ComposeRejectionMatch> = [],
 ): ReadonlyArray<ConfigLintViolation> => {
   const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
-  return Either.isRight(decoded)
+  return Result.isSuccess(decoded)
     ? [
-        ...Object.entries(decoded.right.services ?? {}).map(([name, service]) =>
+        ...Object.entries(decoded.success.services ?? {}).map(([name, service]) =>
           normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
         ),
-        ...Object.entries(decoded.right.proxy ?? {}).map(([name, routes]) =>
+        ...Object.entries(decoded.success.proxy ?? {}).map(([name, routes]) =>
           normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
         ),
       ].flatMap((result) =>
-        Either.match(result, {
-          onLeft: (error) => [{ path: error.key, message: error.message, suggestedFix: error.remediation }],
-          onRight: () => [],
+        Result.match(result, {
+          onFailure: (error) => [
+            { path: pathFromText(error.key), message: error.message, suggestion: error.remediation },
+          ],
+          onSuccess: () => [],
         }),
       )
-    : ParseResult.ArrayFormatter.formatErrorSync(decoded.left)
-        .map(violationFromIssue)
+    : lintIssues(decoded.failure.issue)
+        .map((issue) => violationFromIssue(issue, closestKeySuggestions(decoded.failure.issue)))
         .filter(
           (violation) =>
-            !rejections.some((rejection) => fallsWithinRejectedPath(violation.path, rejection.documentPath)),
+            !rejections.some((rejection) =>
+              fallsWithinRejectedPath(formatValidationIssuePath(violation.path), rejection.documentPath),
+            ),
         );
 };
 
 const appNameOf = (parsed: unknown): string => {
-  if (parsed === null || typeof parsed !== "object") return "";
+  if (!Predicate.isObjectOrArray(parsed)) return "";
   const name = (parsed as { readonly name?: unknown }).name;
   return typeof name === "string" ? name : "";
 };
@@ -149,7 +216,7 @@ const singleViolationResult = (
   details: {
     readonly line: number | undefined;
     readonly column: number | undefined;
-    readonly suggestedFix?: string | undefined;
+    readonly suggestion?: string | undefined;
   } = {
     line: undefined,
     column: undefined,
@@ -160,11 +227,11 @@ const singleViolationResult = (
   valid: false,
   violations: [
     {
-      path: "",
+      path: [],
       message,
       ...(details.line === undefined ? {} : { line: details.line }),
       ...(details.column === undefined ? {} : { column: details.column }),
-      ...(details.suggestedFix === undefined ? {} : { suggestedFix: details.suggestedFix }),
+      ...(details.suggestion === undefined ? {} : { suggestion: details.suggestion }),
     },
   ],
 });
@@ -174,127 +241,130 @@ const singleViolationResult = (
  * schema. Resolves with a structured `ConfigLintResult` for any reachable,
  * parseable-or-not file. Fails only when no Landofile exists at all.
  */
-export const lintLandofile = (
+export const lintLandofile = Effect.fn("Landofile.lint")(function* (
   options: LintLandofileOptions = {},
-): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
-  Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
-    const discovery = yield* Effect.tryPromise({
-      try: () => findLandofilePath(cwd),
-      catch: (cause) => cause,
-    }).pipe(Effect.either);
-    if (Either.isLeft(discovery)) {
-      if (discovery.left instanceof LandofileFormConflictError) return yield* Effect.fail(discovery.left);
-      const message =
-        discovery.left instanceof Error ? discovery.left.message : "Failed to discover Landofile.";
-      return singleViolationResult(cwd, message);
+): Effect.fn.Return<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError> {
+  const cwd = options.cwd ?? process.cwd();
+  const discovery = yield* Effect.tryPromise({
+    try: () => findLandofilePath(cwd),
+    catch: (cause) => cause,
+  }).pipe(Effect.result);
+  if (Result.isFailure(discovery)) {
+    if (discovery.failure instanceof LandofileFormConflictError) return yield* Effect.fail(discovery.failure);
+    const message =
+      discovery.failure instanceof Error ? discovery.failure.message : "Failed to discover Landofile.";
+    return singleViolationResult(cwd, message);
+  }
+  const filePath = discovery.success;
+  if (filePath === undefined) {
+    return yield* Effect.fail(
+      new LandofileNotFoundError({
+        message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched from ${cwd} upward.`,
+        cwd,
+      }),
+    );
+  }
+
+  const layersDiscovery = yield* Effect.tryPromise({
+    try: () => presentLandofileLayers(dirname(filePath)),
+    catch: (cause) => cause,
+  }).pipe(Effect.result);
+  if (Result.isFailure(layersDiscovery)) {
+    if (layersDiscovery.failure instanceof LandofileFormConflictError) {
+      return yield* Effect.fail(layersDiscovery.failure);
     }
-    const filePath = discovery.right;
-    if (filePath === undefined) {
-      return yield* Effect.fail(
-        new LandofileNotFoundError({
-          message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched from ${cwd} upward.`,
-          cwd,
-        }),
-      );
+    const message =
+      layersDiscovery.failure instanceof Error
+        ? layersDiscovery.failure.message
+        : "Failed to discover Landofile layers.";
+    return singleViolationResult(filePath, message);
+  }
+
+  const parsedLayers: unknown[] = [];
+  const layerRejections: Array<ReadonlyArray<ComposeRejectionMatch>> = [];
+  for (const layer of layersDiscovery.success) {
+    const contentEither = yield* Effect.tryPromise(() => Bun.file(layer.filePath).text()).pipe(Effect.result);
+    if (Result.isFailure(contentEither)) {
+      const cause = contentEither.failure;
+      const message = cause instanceof Error ? cause.message : `Failed to read ${layer.filePath}.`;
+      return singleViolationResult(layer.filePath, message);
     }
 
-    const layersDiscovery = yield* Effect.tryPromise({
-      try: () => presentLandofileLayers(dirname(filePath)),
-      catch: (cause) => cause,
-    }).pipe(Effect.either);
-    if (Either.isLeft(layersDiscovery)) {
-      if (layersDiscovery.left instanceof LandofileFormConflictError) {
-        return yield* Effect.fail(layersDiscovery.left);
-      }
-      const message =
-        layersDiscovery.left instanceof Error
-          ? layersDiscovery.left.message
-          : "Failed to discover Landofile layers.";
-      return singleViolationResult(filePath, message);
-    }
-
-    const parsedLayers: unknown[] = [];
-    const layerRejections: Array<ReadonlyArray<ComposeRejectionMatch>> = [];
-    for (const layer of layersDiscovery.right) {
-      const contentEither = yield* Effect.tryPromise(() => Bun.file(layer.filePath).text()).pipe(
-        Effect.either,
-      );
-      if (Either.isLeft(contentEither)) {
-        const cause = contentEither.left;
-        const message = cause instanceof Error ? cause.message : `Failed to read ${layer.filePath}.`;
-        return singleViolationResult(layer.filePath, message);
-      }
-
-      if (layer.filePath.endsWith(".ts")) {
-        const loadedEither = yield* loadLandofileTs({
-          filePath: layer.filePath,
-          appRoot: dirname(filePath),
-          content: contentEither.right,
-        }).pipe(Effect.either);
-        if (Either.isLeft(loadedEither)) {
-          return singleViolationResult(layer.filePath, loadedEither.left.message);
-        }
-        parsedLayers.push(loadedEither.right);
-        layerRejections.push(analyzeComposeRejections(loadedEither.right));
-        continue;
-      }
-
-      const renderedEither = yield* renderLandofileTemplate({
+    if (layer.filePath.endsWith(".ts")) {
+      const loadedEither = yield* loadLandofileTs({
         filePath: layer.filePath,
-        content: contentEither.right,
-        registry: buildTemplateEngineRegistry(options.templates?.modules ?? []),
-        ...(options.templates?.context === undefined ? {} : { context: options.templates.context }),
-      }).pipe(Effect.either);
-      if (Either.isLeft(renderedEither)) {
-        const error = renderedEither.left;
-        return singleViolationResult(layer.filePath, error.message, {
-          line: error.line,
-          column: error.column,
-        });
+        appRoot: dirname(filePath),
+        content: contentEither.success,
+      }).pipe(Effect.result);
+      if (Result.isFailure(loadedEither)) {
+        return singleViolationResult(layer.filePath, loadedEither.failure.message);
       }
-
-      const parsedEither = yield* parseLandofile({
-        file: layer.filePath,
-        content: renderedEither.right,
-        cwd: dirname(filePath),
-      }).pipe(Effect.either);
-      if (Either.isLeft(parsedEither)) {
-        const error = parsedEither.left;
-        return singleViolationResult(layer.filePath, error.message, {
-          line: error.line,
-          column: error.column,
-          suggestedFix: error.remediation,
-        });
-      }
-      parsedLayers.push(parsedEither.right);
-      layerRejections.push([
-        ...analyzeComposeRejections(parsedEither.right),
-        ...detectLandofileTags({ content: renderedEither.right, file: layer.filePath }).map(
-          composeTagRejection,
-        ),
-      ]);
+      parsedLayers.push(loadedEither.success);
+      layerRejections.push(analyzeComposeRejections(loadedEither.success));
+      continue;
     }
 
-    const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
-    const rejections = layerRejections.flat();
-    const rejectionViolations = rejections.map(rejectionViolation);
-    const mergedViolations = violationsFor(parsed, rejections);
-    const violations = [...rejectionViolations, ...mergedViolations];
-    const violationKeys = new Set(violations.map((violation) => JSON.stringify(violation)));
-    for (const [index, layer] of parsedLayers.entries()) {
-      for (const violation of violationsFor(layer, layerRejections[index] ?? [])) {
-        const key = JSON.stringify(violation);
-        if (violationKeys.has(key)) continue;
-        violationKeys.add(key);
-        violations.push(violation);
-      }
+    const renderedEither = yield* renderLandofileTemplate({
+      filePath: layer.filePath,
+      content: contentEither.success,
+      registry: buildTemplateEngineRegistry(options.templates?.modules ?? []),
+      ...(options.templates?.context === undefined ? {} : { context: options.templates.context }),
+    }).pipe(Effect.result);
+    if (Result.isFailure(renderedEither)) {
+      const error = renderedEither.failure;
+      return singleViolationResult(layer.filePath, error.message, {
+        line: error.line,
+        column: error.column,
+      });
     }
 
-    return {
-      app: appNameOf(parsed),
-      file: filePath,
-      valid: violations.length === 0,
-      violations,
-    };
-  });
+    const parsedEither = yield* parseLandofile({
+      file: layer.filePath,
+      content: renderedEither.success,
+      cwd: dirname(filePath),
+    }).pipe(Effect.result);
+    if (Result.isFailure(parsedEither)) {
+      const error = parsedEither.failure;
+      return singleViolationResult(layer.filePath, error.message, {
+        line: error.line,
+        column: error.column,
+        suggestion: error.remediation,
+      });
+    }
+    parsedLayers.push(parsedEither.success);
+    layerRejections.push([
+      ...analyzeComposeRejections(parsedEither.success),
+      ...detectLandofileTags({ content: renderedEither.success, file: layer.filePath }).map(
+        composeTagRejection,
+      ),
+    ]);
+  }
+
+  const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
+  const rejections = layerRejections.flat();
+  const rejectionViolations = rejections.map(rejectionViolation);
+  const mergedViolations = violationsFor(parsed, rejections);
+  const violations: Array<ConfigLintViolation> = [];
+  const violationKeys = new Set<string>();
+  for (const violation of [...rejectionViolations, ...mergedViolations]) {
+    const key = JSON.stringify(violation);
+    if (violationKeys.has(key)) continue;
+    violationKeys.add(key);
+    violations.push(violation);
+  }
+  for (const [index, layer] of parsedLayers.entries()) {
+    for (const violation of violationsFor(layer, layerRejections[index] ?? [])) {
+      const key = JSON.stringify(violation);
+      if (violationKeys.has(key)) continue;
+      violationKeys.add(key);
+      violations.push(violation);
+    }
+  }
+
+  return {
+    app: appNameOf(parsed),
+    file: filePath,
+    valid: violations.length === 0,
+    violations,
+  };
+});

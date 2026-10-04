@@ -60,76 +60,77 @@ export const waitForFile = (root: string, name: string) =>
     ({ watcher }) => Effect.sync(() => watcher.close()),
   ).pipe(Effect.map(({ arrived }) => Effect.promise(() => arrived.promise)));
 
-export const scannerFixture = (path: "/scan" | "/fail" | "/hang") =>
-  Effect.gen(function* () {
-    if (!isScannerLiveEligible()) {
-      return yield* Effect.dieMessage(
+export const scannerFixture = Effect.fnUntraced(function* (path: "/scan" | "/fail" | "/hang") {
+  if (!isScannerLiveEligible()) {
+    return yield* Effect.die(
+      new Error(
         `LANDO_TEST_PODMAN_SOCKET must be explicitly set to the live managed runtime socket at ${managedProviderSocketPath}; this fixture requires openLandoRuntime's default provider socket, and socket existence alone is not a sufficient opt-in.`,
-      );
-    }
-    const root = yield* Effect.acquireRelease(
-      Effect.promise(() => mkdtemp(join(tmpdir(), "lando-scanner-live-"))),
-      (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
-    );
-    const name = `scanner-${crypto.randomUUID().slice(0, 12)}`;
-    const port = yield* Effect.acquireUseRelease(
-      Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })),
-      (reservation) => Effect.succeed(reservation.port),
-      (reservation) => Effect.promise(() => reservation.stop(true)),
-    );
-    yield* Effect.promise(() =>
-      Bun.write(
-        join(root, ".lando.yml"),
-        [
-          `name: ${name}`,
-          "runtime: 4",
-          "provider: lando",
-          "router:",
-          "  enabled: false",
-          "services:",
-          "  web:",
-          "    type: compose",
-          "    image: docker.io/library/node:22-alpine",
-          "    home: false",
-          "    appMount: false",
-          "    user: root",
-          "    command:",
-          "      - node",
-          "      - -e",
-          `      - ${JSON.stringify(responder)}`,
-          "    volumes:",
-          `      - ${root}:/proof`,
-          "    endpoints:",
-          "      - _tag: published",
-          "        protocol: http",
-          "        port: 8080",
-          "        publication:",
-          "          bindAddress: 127.0.0.1",
-          `          hostPort: ${port}`,
-          "    scanner:",
-          `      path: ${path}`,
-          "      retries: 2",
-          "      timeout: 20000",
-          "",
-        ].join("\n"),
       ),
     );
-    const runtime = yield* openLandoRuntime({ cwd: root, plugins: { policy: "bundled-only" } });
-    const app = yield* runtime.app();
-    yield* Effect.addFinalizer(() =>
-      app.destroy({ volumes: true }).pipe(
-        Effect.tap((receipt) =>
-          Effect.sync(() => console.log("SCANNER_CLEANUP", JSON.stringify({ name, receipt }))),
-        ),
-        Effect.orDie,
+  }
+  const root = yield* Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), "lando-scanner-live-"))),
+    (directory) => Effect.promise(() => rm(directory, { recursive: true, force: true })),
+  );
+  const name = `scanner-${crypto.randomUUID().slice(0, 12)}`;
+  const port = yield* Effect.acquireUseRelease(
+    Effect.sync(() => Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })),
+    (reservation) => Effect.succeed(reservation.port),
+    (reservation) => Effect.promise(() => reservation.stop(true)),
+  );
+  yield* Effect.promise(() =>
+    Bun.write(
+      join(root, ".lando.yml"),
+      [
+        `name: ${name}`,
+        "runtime: 4",
+        "provider: lando",
+        "router:",
+        "  enabled: false",
+        "services:",
+        "  web:",
+        "    type: compose",
+        "    image: docker.io/library/node:22-alpine",
+        "    home: false",
+        "    appMount: false",
+        "    user: root",
+        "    command:",
+        "      - node",
+        "      - -e",
+        `      - ${JSON.stringify(responder)}`,
+        "    volumes:",
+        `      - ${root}:/proof`,
+        "    endpoints:",
+        "      - _tag: published",
+        "        protocol: http",
+        "        port: 8080",
+        "        publication:",
+        "          bindAddress: 127.0.0.1",
+        `          hostPort: ${port}`,
+        "    scanner:",
+        `      path: ${path}`,
+        "      retries: 2",
+        "      timeout: 20000",
+        "",
+      ].join("\n"),
+    ),
+  );
+  const runtime = yield* openLandoRuntime({ cwd: root, plugins: { policy: "bundled-only" } });
+  const app = yield* runtime.app();
+  yield* Effect.addFinalizer(() =>
+    app.destroy({ volumes: true }).pipe(
+      Effect.tap((receipt) =>
+        Effect.sync(() => console.log("SCANNER_CLEANUP", JSON.stringify({ name, receipt }))),
       ),
-    );
-    return { root, name, app, runtime };
-  });
+      Effect.orDie,
+    ),
+  );
+  return { root, name, app, runtime };
+});
 
 export const recordedRequest = (root: string) =>
   Effect.promise(async () =>
-    Schema.decodeUnknownSync(Schema.parseJson(requestSchema))(
+    Schema.decodeUnknownSync(Schema.fromJsonString(requestSchema))(
       await readFile(join(root, "active.json"), "utf8"),
     ),
   );

@@ -7,7 +7,7 @@ import { Schema } from "effect";
  * Each reason keeps the report honest about what could not be proven; the
  * bounded current facts the file itself carries are reported either way.
  */
-export const ExplainBlockedReason = Schema.Literal(
+export const ExplainBlockedReason = Schema.Literals([
   "no-recipe",
   "bare-provenance",
   "invalid-provenance",
@@ -17,7 +17,7 @@ export const ExplainBlockedReason = Schema.Literal(
   "identity-mismatch",
   "render-failed",
   "invalid-service-map",
-);
+]);
 export type ExplainBlockedReason = typeof ExplainBlockedReason.Type;
 
 /** A current Landofile value site that references a recipe option. */
@@ -39,14 +39,14 @@ export const ExplainTakenOverSite = Schema.Struct({
 
 export const ExplainOption = Schema.Struct({
   name: Schema.String,
-  value: Schema.optional(RecipeOptionValue),
-  default: Schema.optional(RecipeOptionValue),
-  status: Schema.optional(Schema.Literal("accepted-by-value", "chosen-by-value")),
+  value: Schema.optionalKey(RecipeOptionValue),
+  default: Schema.optionalKey(RecipeOptionValue),
+  status: Schema.optionalKey(Schema.Literals(["accepted-by-value", "chosen-by-value"])),
   references: Schema.Array(ExplainReference),
   takenOver: Schema.Array(ExplainTakenOverSite),
 });
 
-export const ExplainComparison = Schema.Union(
+export const ExplainComparison = Schema.Union([
   Schema.Struct({ status: Schema.Literal("matched"), snapshotVersion: Schema.String }),
   Schema.Struct({
     status: Schema.Literal("blocked"),
@@ -54,34 +54,46 @@ export const ExplainComparison = Schema.Union(
     detail: Schema.String,
     remediation: Schema.String,
   }),
-);
+]);
 
 export const ExplainServiceMapping = Schema.Struct({
   generated: Schema.String,
   current: Schema.String,
 });
 
-export const ExplainBounds = Schema.Union(
+export const ExplainBounds = Schema.Union([
   Schema.Struct({ _tag: Schema.Literal("complete") }),
   Schema.Struct({
     _tag: Schema.Literal("truncated"),
     omitted: Schema.Struct({
-      services: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-      options: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-      references: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
-      takenOver: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+      services: Schema.Number.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+      ),
+      options: Schema.Number.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+      ),
+      references: Schema.Number.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+      ),
+      takenOver: Schema.Number.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+      ),
     }),
   }),
-);
+]);
 
 export const AppConfigExplainResultSchema = Schema.Struct({
   landofilePath: Schema.String,
-  form: Schema.Literal("declarative", "programmatic", "bare", "absent"),
-  recipe: Schema.optional(
+  form: Schema.Literals(["declarative", "programmatic", "bare", "absent"]),
+  recipe: Schema.optionalKey(
     Schema.Struct({
       id: Schema.String,
-      version: Schema.optional(Schema.String),
-      producer: Schema.optional(RecipeProducer),
+      version: Schema.optionalKey(Schema.String),
+      producer: Schema.optionalKey(RecipeProducer),
     }),
   ),
   comparison: ExplainComparison,

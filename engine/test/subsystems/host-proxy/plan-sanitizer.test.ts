@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 
-import { AppPlanSanitizerLive } from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
+import * as AppPlanSanitizerLayer from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
 import {
   HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
@@ -22,7 +22,7 @@ import {
 test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () => {
   // Given
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
     source: "plan-sanitizer.test",
     runtime: 4,
   } satisfies AppPlan["metadata"];
@@ -85,7 +85,7 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
     Effect.gen(function* () {
       const sanitizer = yield* AppPlanSanitizer;
       return sanitizer.sanitizeForPersistence(fixturePlan);
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
 
   // Then
@@ -96,7 +96,7 @@ test("sanitizer strips ssh-agent overlay", async () => {
   const { withSshAgentOverlay } = await import("../../../src/subsystems/ssh-agent/overlay.ts");
   // Given
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
     source: "sanitizer-test",
     runtime: 4,
   } satisfies AppPlan["metadata"];
@@ -138,7 +138,7 @@ test("sanitizer strips ssh-agent overlay", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
   // Then
   expect(result).toEqual(plan);
@@ -148,7 +148,7 @@ test("sanitizer strips gpg-agent overlay", async () => {
   const { withGpgAgentOverlay } = await import("../../../src/subsystems/gpg-agent/overlay.ts");
   // Given
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
     source: "sanitizer-test",
     runtime: 4,
   } satisfies AppPlan["metadata"];
@@ -196,7 +196,7 @@ test("sanitizer strips gpg-agent overlay", async () => {
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
-    }).pipe(Effect.provide(AppPlanSanitizerLive)),
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
   );
   // Then
   expect(result).toEqual(plan);

@@ -1,0 +1,106 @@
+---
+id: http-requests
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, authoring, http]
+---
+
+# Make HTTP requests from a plugin
+
+Use `ctx.httpClient`. It is Effect's standard `HttpClient` from `effect/http`, and Lando has already wired your user's proxy and CA settings into it.
+
+```ts
+import { Effect } from "effect";
+import { HttpClientResponse } from "effect/http";
+import type { SubscriberFactory } from "@lando/sdk/plugins";
+
+const notifyDeploy: SubscriberFactory = (ctx) => (event) =>
+  ctx.httpClient.get("https://status.example.com/api/ping").pipe(
+    Effect.flatMap(HttpClientResponse.filterStatusOk),
+    Effect.flatMap((response) => response.json),
+    Effect.tap((body) => Effect.log("status service answered", body)),
+    Effect.asVoid,
+    Effect.orDie,
+  );
+
+export default notifyDeploy;
+```
+
+Do not call `fetch` yourself. A bare `fetch` skips the user's proxy, ignores their private CA, and hides the request from Lando's `pre-http-call` and `post-http-call` events.
+
+## What Lando adds to every request
+
+- **Proxy and `NO_PROXY`.** Lando reads `network.proxy` from global config plus the usual `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` variables.
+- **Private CAs.** Certificates from `network.ca.certs` or `LANDO_NETWORK_CA_CERTS` are trusted for that request. `network.ca.trustHost: false` drops the system roots and trusts only those certificates.
+- **Fresh trust per request.** Lando resolves trust when the request runs, so a config change applies to the next request without a restart.
+- **Redacted telemetry.** Each request is a span named `HttpClient.request`, with the method and a URL that has credentials and query values stripped. Lifecycle events record the origin and method, not the raw URL.
+- **Interrupts abort.** Interrupting the fiber aborts the connection. Stream the body with `response.stream` when the payload is large; nothing is buffered until you ask for it.
+
+## Send JSON
+
+`HttpClientRequest` builds anything beyond a plain `GET`:
+
+```ts
+import { Effect } from "effect";
+import { HttpClientRequest, HttpClientResponse } from "effect/http";
+import type { LandoPluginContext } from "@lando/sdk/plugins";
+
+const report = (ctx: LandoPluginContext, payload: unknown) =>
+  HttpClientRequest.post("https://hooks.example.com/lando").pipe(
+    HttpClientRequest.bodyJsonUnsafe(payload),
+    ctx.httpClient.execute,
+    Effect.flatMap(HttpClientResponse.filterStatusOk),
+  );
+```
+
+Failures arrive as `HttpClientError`. When trust is the problem (a missing CA file or a blocked endpoint), the error's `cause` is a Lando `HttpTrustError` with a `remediation` line you can show the user.
+
+## Download files
+
+Fetching a binary or archive you will keep on disk? Use the `Downloader` service instead. It streams through the same client and checks the SHA-256 before it hands you the file.
+
+## Try it from a library host
+
+The same client ships in every Lando runtime. This scenario starts a tiny local server and calls it through the runtime's `HttpClient`:
+
+<Guide>
+  <Scenario id="get-through-the-lando-client">
+    <Step name="request-a-local-server">
+      <Run
+        runtime="library"
+        code={`const [{ HttpClient, HttpClientResponse }] = yield* Effect.promise(() => Promise.all([import("effect/http")]));
+const server = Bun.serve({ port: 0, fetch: () => Response.json({ hello: "plugin" }) });
+yield* Effect.addFinalizer(() => Effect.sync(() => server.stop(true)));
+const runtime = LandoCore.makeLandoRuntime({ bootstrap: "minimal" });
+const body = yield* Effect.gen(function* () {
+  const client = yield* HttpClient.HttpClient;
+  const response = yield* client.get("http://127.0.0.1:" + server.port + "/").pipe(Effect.flatMap(HttpClientResponse.filterStatusOk));
+  return yield* response.json;
+}).pipe(Effect.scoped, Effect.provide(runtime));
+expect(body).toEqual({ hello: "plugin" });`}
+        displayCode={`import { Effect } from "effect";
+import { HttpClient, HttpClientResponse } from "effect/http";
+import { makeLandoRuntime } from "@lando/core";
+
+const server = Bun.serve({ port: 0, fetch: () => Response.json({ hello: "plugin" }) });
+const body = await Effect.runPromise(
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    const response = yield* client
+      .get("http://127.0.0.1:" + server.port + "/")
+      .pipe(Effect.flatMap(HttpClientResponse.filterStatusOk));
+    return yield* response.json;
+  }).pipe(Effect.scoped, Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+);
+console.log(body); // { hello: "plugin" }
+server.stop(true);`}
+      />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Test and build a plugin](./test-and-build-plugin.mdx)
+- [SDK compatibility](./sdk-compatibility.mdx)

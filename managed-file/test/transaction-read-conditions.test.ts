@@ -15,11 +15,11 @@ test("rejects stale readonly sources before producing artifacts", async () => {
     operations: [{ kind: "write" as const, path: "target", content: "translated" }],
   };
   // When
-  const result = await scoped(Effect.either(transactions.run(request)));
+  const result = await scoped(Effect.result(transactions.run(request)));
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { reason: "conflict", phase: "prepare", path: "source" },
+    _tag: "Failure",
+    failure: { reason: "conflict", phase: "prepare", path: "source" },
   });
   expect(await readdir(appRoot)).toEqual(["source"]);
 });
@@ -51,7 +51,7 @@ test("rejects a present source when absence was required", async () => {
   await Bun.write(join(appRoot, "source"), "new");
   // When
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       transactions.run({
         appRoot,
         readConditions: [{ path: "source", expectedBefore: { present: false } }],
@@ -60,7 +60,7 @@ test("rejects a present source when absence was required", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "conflict" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "conflict" } });
 });
 
 test("rejects symlinked readonly sources", async () => {
@@ -70,7 +70,7 @@ test("rejects symlinked readonly sources", async () => {
   await symlink("real", join(appRoot, "source"));
   // When
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       transactions.run({
         appRoot,
         readConditions: [{ path: "source", expectedBefore: { present: true, digest: digestOf("original") } }],
@@ -79,6 +79,6 @@ test("rejects symlinked readonly sources", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "path" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "path" } });
   expect(await Bun.file(join(appRoot, "target")).exists()).toBe(false);
 });

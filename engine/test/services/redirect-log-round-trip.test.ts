@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Chunk, Effect, Stream } from "effect";
+import { Effect, Stream } from "effect";
 
 import { AbsolutePath, AppId, type LogSource, LogSourceId, ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -36,7 +36,7 @@ describe("redirect log source round-trip", () => {
       ),
     );
 
-    const first = Chunk.toReadonlyArray(chunks)[0];
+    const first = chunks[0];
     expect(first?.source).toBeUndefined();
     expect(first?.stream).toBe("stdout");
     expect(first?.line).toBe("ready");

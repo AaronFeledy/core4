@@ -23,7 +23,7 @@ const serviceWithCompose = (compose?: Record<string, unknown>): ServicePlan => (
   routes: [],
   dependsOn: [],
   hostAliases: [],
-  metadata: { resolvedAt: DateTime.unsafeMake(0), source: "/app/.lando.yml", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "/app/.lando.yml", runtime: 4 },
   extensions: compose === undefined ? {} : { compose },
 });
 

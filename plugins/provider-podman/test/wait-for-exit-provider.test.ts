@@ -22,7 +22,7 @@ const providerId = ProviderId.make("podman");
 const appId = AppId.make("podman-wait-app");
 const serviceName = ServiceName.make("job");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
   source: "provider-podman/wait-for-exit.test.ts",
   runtime: 4 as const,
 };

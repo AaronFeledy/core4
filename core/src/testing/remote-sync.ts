@@ -38,24 +38,14 @@ import type {
   RemoteSourceShape,
 } from "@lando/sdk/services";
 
-import { HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
-
-import type { HttpClientShape } from "@lando/http-client/service";
-
-const REMOTE_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 const TEST_REMOTE_SECRET = "REMOTE-CONTRACT-SECRET-493f61";
 const TEST_DATASET_SECRET = "DATASET-CONTRACT-SECRET-8d31f2";
 const testSecretRedactor = createSecretRedactor([TEST_REMOTE_SECRET, TEST_DATASET_SECRET]);
 const INTERRUPT_DIGEST = "interrupt-contract";
-const TIMESTAMP = DateTime.unsafeMake("2026-06-01T00:00:00.000Z");
+const TIMESTAMP = DateTime.makeUnsafe("2026-06-01T00:00:00.000Z");
 
 const app = AppId.make("remote-contract-app");
 const provider = ProviderId.make("test");
@@ -87,7 +77,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-type RemoteEgressRecord = { readonly request: HttpRequest };
+type RemoteEgressRecord = { readonly request: { readonly url: string } };
 type ToolProvisionRecord = { readonly request: DownloadRequest };
 type DatasetDelegationRecord = {
   readonly operation: "fetch" | "send";
@@ -170,26 +160,12 @@ const makeRemoteSource = (input: {
     { id: supportedEnv, label: "Development", default: true, datasets: [supportedDataset] },
     { id: protectedEnv, label: "Production", protected: true, datasets: [supportedDataset] },
   ];
-  const http: HttpClientShape = {
-    id: `${input.id}-remote-http`,
-    capabilities: REMOTE_HTTP_CAPABILITIES,
-    request: (request) =>
-      Effect.sync(() => {
-        input.records.egress.push({ request });
-        return { status: 200, headers: [], contentLength: 0 };
-      }),
-    stream: (request) =>
-      Effect.sync(() => {
-        input.records.egress.push({ request });
-        return {
-          status: 200,
-          headers: [],
-          body: Stream.fromIterable([new Uint8Array()]),
-        };
-      }),
-    upload: (request) =>
-      Effect.fail(new HttpUploadError({ message: "upload not supported", urlOrigin: request.url })),
-  };
+  const http = HttpClient.make((request, url) =>
+    Effect.sync(() => {
+      input.records.egress.push({ request: { url: url.href } });
+      return HttpClientResponse.fromWeb(request, new Response(new Uint8Array(), { status: 200 }));
+    }),
+  );
   const downloader: DownloaderShape = {
     id: `${input.id}-tool-downloader`,
     capabilities: {
@@ -245,70 +221,69 @@ const makeRemoteSource = (input: {
       }
       return Effect.succeed(locatorFor(env, dataset));
     },
-    fetch: (locator, opts) =>
-      Effect.gen(function* () {
-        input.captured.push(
-          event({
-            _tag: "pre-dataset-fetch",
-            eventName: "pre-dataset-fetch",
-            remote: input.id,
-            env: locator.env,
-            dataset: locator.dataset,
-            timestamp: TIMESTAMP,
-          } satisfies LandoEvent),
-        );
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => void input.records.finalizers.push({ operation: "fetch", remote: input.id })),
-        );
-        if (capabilities.tool !== undefined) {
-          yield* downloader
-            .download({
-              url: `https://tools.example.test/${capabilities.tool}.tgz`,
-              destination: { kind: "memory" },
-              expectedSha256: emptySha256,
-              callerId: `${input.id}:tool-provision`,
-              redactionTokens: [TEST_REMOTE_SECRET],
-            })
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new RemoteToolMissingError({
-                    message: "Tool provisioning failed",
-                    remote: input.id,
-                    tool: capabilities.tool,
-                    cause,
-                  }),
-              ),
-            );
-        }
-        yield* http.stream({ url: locator.endpoint ?? `https://remote.example.test/${input.id}/fetch` }).pipe(
-          Effect.mapError(
-            (cause) =>
-              new RemoteUnreachableError({
-                message: "Remote fetch egress failed",
-                remote: input.id,
-                cause,
-              }),
-          ),
-        );
-        const endpoint = artifact;
-        yield* datasetBridge.fetch(endpoint);
-        if (opts?.expectedDigest === INTERRUPT_DIGEST) yield* Effect.never;
-        input.captured.push(
-          event({
-            _tag: "post-dataset-fetch",
-            eventName: "post-dataset-fetch",
-            remote: input.id,
-            env: locator.env,
-            dataset: locator.dataset,
-            timestamp: TIMESTAMP,
-            outcome: "success",
-            failureDetail: TEST_REMOTE_SECRET,
-            durationMs: 1,
-          } satisfies LandoEvent),
-        );
-        return endpoint;
-      }),
+    fetch: Effect.fnUntraced(function* (locator, opts) {
+      input.captured.push(
+        event({
+          _tag: "pre-dataset-fetch",
+          eventName: "pre-dataset-fetch",
+          remote: input.id,
+          env: locator.env,
+          dataset: locator.dataset,
+          timestamp: TIMESTAMP,
+        } satisfies LandoEvent),
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => void input.records.finalizers.push({ operation: "fetch", remote: input.id })),
+      );
+      if (capabilities.tool !== undefined) {
+        yield* downloader
+          .download({
+            url: `https://tools.example.test/${capabilities.tool}.tgz`,
+            destination: { kind: "memory" },
+            expectedSha256: emptySha256,
+            callerId: `${input.id}:tool-provision`,
+            redactionTokens: [TEST_REMOTE_SECRET],
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new RemoteToolMissingError({
+                  message: "Tool provisioning failed",
+                  remote: input.id,
+                  tool: capabilities.tool,
+                  cause,
+                }),
+            ),
+          );
+      }
+      yield* http.get(locator.endpoint ?? `https://remote.example.test/${input.id}/fetch`).pipe(
+        Effect.mapError(
+          (cause) =>
+            new RemoteUnreachableError({
+              message: "Remote fetch egress failed",
+              remote: input.id,
+              cause,
+            }),
+        ),
+      );
+      const endpoint = artifact;
+      yield* datasetBridge.fetch(endpoint);
+      if (opts?.expectedDigest === INTERRUPT_DIGEST) yield* Effect.never;
+      input.captured.push(
+        event({
+          _tag: "post-dataset-fetch",
+          eventName: "post-dataset-fetch",
+          remote: input.id,
+          env: locator.env,
+          dataset: locator.dataset,
+          timestamp: TIMESTAMP,
+          outcome: "success",
+          failureDetail: TEST_REMOTE_SECRET,
+          durationMs: 1,
+        } satisfies LandoEvent),
+      );
+      return endpoint;
+    }),
     send: (locator, endpoint, opts) => {
       if (!input.push) {
         return Effect.fail(
@@ -330,7 +305,7 @@ const makeRemoteSource = (input: {
           }),
         );
       }
-      return Effect.gen(function* () {
+      return Effect.fnUntraced(function* () {
         input.captured.push(
           event({
             _tag: "pre-dataset-send",
@@ -366,7 +341,7 @@ const makeRemoteSource = (input: {
             );
         }
         yield* http
-          .stream({ url: locator.endpoint ?? `https://remote.example.test/${input.id}/send` })
+          .get(locator.endpoint ?? `https://remote.example.test/${input.id}/send`)
           .pipe(
             Effect.mapError(
               (cause) =>
@@ -387,12 +362,12 @@ const makeRemoteSource = (input: {
             durationMs: 1,
           } satisfies LandoEvent),
         );
-      });
+      })();
     },
     test: (_cfg, env) =>
       Effect.sync(() => {
         input.records.probes.push(env === undefined ? { remote: input.id } : { remote: input.id, env });
-        return { ok: true, env, message: "ready" };
+        return { ok: true, ...(env === undefined ? {} : { env }), message: "ready" };
       }),
   };
 };
@@ -517,7 +492,7 @@ export const makeTestDataset = () =>
       capture: (ctx) => {
         const bindingError = rejectCodeTree(ctx);
         if (bindingError !== undefined) return Effect.fail(bindingError);
-        return Effect.gen(function* () {
+        return Effect.fnUntraced(function* () {
           appliedBytes = null;
           captured.push(
             event({
@@ -564,7 +539,7 @@ export const makeTestDataset = () =>
             } satisfies LandoEvent),
           );
           return artifact;
-        });
+        })();
       },
       apply: (ctx, endpoint) => {
         const bindingError = rejectCodeTree(ctx);
@@ -572,7 +547,7 @@ export const makeTestDataset = () =>
         if (endpoint._tag !== artifact._tag) {
           return Effect.fail(new DatasetApplyError({ message: "Unsupported artifact", dataset: "test" }));
         }
-        return Effect.gen(function* () {
+        return Effect.fnUntraced(function* () {
           captured.push(
             event({
               _tag: "pre-dataset-apply",
@@ -608,7 +583,7 @@ export const makeTestDataset = () =>
             } satisfies LandoEvent),
           );
           return { changed, localStore, summary: "applied test dataset" };
-        });
+        })();
       },
       localStore: () => Effect.succeed(localStore),
     };

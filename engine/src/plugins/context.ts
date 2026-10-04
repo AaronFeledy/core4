@@ -3,12 +3,15 @@
 // Plugin writes always record `owner: <plugin-id>`; a plugin cannot see, remove,
 // or adopt files owned by another plugin or by core. `stateStore` is likewise
 // pre-rooted to `<userDataRoot>/plugins/<plugin-id>/` by the host; plugin code
-// cannot select another durable-state root.
+// cannot select another durable-state root. `httpClient` is the host-owned
+// Effect HttpClient for outbound HTTP; construction sites must supply the
+// real runtime client with no silent fake fallback.
 
 import { posix as pathPosix } from "node:path";
 
 import { Effect } from "effect";
 import type { Context, Scope } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
 
 import { EventError, ManagedFileError } from "@lando/sdk/errors";
 import type { RenderEvent } from "@lando/sdk/events";
@@ -29,7 +32,7 @@ import type {
 
 import { type PluginStateStore, makePluginStateStore } from "./context-state.ts";
 
-type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
+type ManagedFileServiceImpl = Context.Service.Shape<typeof ManagedFileService>;
 
 /** A `ManagedFile` a plugin declares; the `owner` and base are supplied by the surface. */
 export type PluginManagedFile = Omit<ManagedFile, "owner" | "base"> & {
@@ -138,24 +141,24 @@ export const makePluginManagedFiles = (
 
   const plan: PluginManagedFiles["plan"] = (files) =>
     rejectDeclaredForeignOwner(files, "plan").pipe(
-      Effect.zipRight(
+      Effect.andThen(
         assertNoForeignPath(
           files.map((file) => file.path),
           "plan",
         ),
       ),
-      Effect.zipRight(service.plan(files.map(withOwner))),
+      Effect.andThen(service.plan(files.map(withOwner))),
     );
 
   const apply: PluginManagedFiles["apply"] = (files, opts) =>
     rejectDeclaredForeignOwner(files, "apply").pipe(
-      Effect.zipRight(
+      Effect.andThen(
         assertNoForeignPath(
           files.map((file) => file.path),
           "apply",
         ),
       ),
-      Effect.zipRight(service.apply(files.map(withOwner), opts)),
+      Effect.andThen(service.apply(files.map(withOwner), opts)),
     );
 
   const remove: PluginManagedFiles["remove"] = (selector = {}) => {
@@ -187,7 +190,7 @@ export const makePluginManagedFiles = (
     };
     const pathCheck =
       normalizedPath === undefined ? Effect.void : assertNoForeignPath([normalizedPath], "remove");
-    return pathCheck.pipe(Effect.zipRight(service.remove(scoped)));
+    return pathCheck.pipe(Effect.andThen(service.remove(scoped)));
   };
 
   const status: PluginManagedFiles["status"] = service.status.pipe(
@@ -196,15 +199,13 @@ export const makePluginManagedFiles = (
 
   const adopt: PluginManagedFiles["adopt"] = (path) => {
     const normalizedPath = normalizeManagedPath(path) as PortablePath;
-    return assertNoForeignPath([normalizedPath], "adopt").pipe(
-      Effect.zipRight(service.adopt(normalizedPath)),
-    );
+    return assertNoForeignPath([normalizedPath], "adopt").pipe(Effect.andThen(service.adopt(normalizedPath)));
   };
 
   const release: PluginManagedFiles["release"] = (path) => {
     const normalizedPath = normalizeManagedPath(path) as PortablePath;
     return assertNoForeignPath([normalizedPath], "release").pipe(
-      Effect.zipRight(service.release(normalizedPath)),
+      Effect.andThen(service.release(normalizedPath)),
     );
   };
 
@@ -216,6 +217,11 @@ export interface LandoPluginContext {
   readonly id: string;
   readonly managedFiles: PluginManagedFiles;
   readonly stateStore: PluginStateStore;
+  /**
+   * Host-owned Effect `HttpClient` for outbound HTTP. Supplied by the host
+   * context builder from the real runtime client — never an inert stub.
+   */
+  readonly httpClient: HttpClient.HttpClient;
   readonly events: {
     /**
      * Closed publish-only seam for `RenderEvent` values. Core implementations
@@ -243,11 +249,13 @@ export const makeLandoPluginContext = (input: {
   readonly stateStore: StateStoreShape;
   readonly pluginStateRoot: AbsolutePath;
   readonly privateFileAccess: import("@lando/state-store/private-file-access").PrivateFileAccess;
+  readonly httpClient: HttpClient.HttpClient;
   readonly publishRender?: LandoPluginContext["events"]["publishRender"];
 }): LandoPluginContext => ({
   id: input.id,
   managedFiles: makePluginManagedFiles(input.id, input.managedFileService),
   stateStore: makePluginStateStore(input.stateStore, input.pluginStateRoot, input.privateFileAccess),
+  httpClient: input.httpClient,
   events: {
     publishRender: input.publishRender ?? publishRenderNotWired,
   },

@@ -8,8 +8,8 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { services } from "@lando/service-lando";
 
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const legacy = "mysql-adoption-mysql-data";
 const scoped = "mysql-adoption-db-mysql-data";
@@ -57,11 +57,14 @@ const plan = async (
       },
     },
   );
-  const registry = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(provider.id)]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  const registry = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(provider.id)]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
   calls.length = 0;
   const appPlan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
@@ -76,8 +79,8 @@ const plan = async (
         TestRuntimeProvider.capabilities,
       ),
     ).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(Layer.mergeAll(services, PluginRegistryLive, registry)),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(Layer.mergeAll(services, PluginRegistryLayer.layer, registry)),
     ),
   );
   return { appPlan, calls };

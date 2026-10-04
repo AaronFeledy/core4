@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { withPluginMutationLock } from "../../src/plugins/mutation-lock";
 import { guardCoreReplacement } from "../../src/update/compatibility";
 import { type UpdateOptions, update } from "../../src/update/operation";
@@ -200,7 +200,7 @@ test("failed re-exec cannot restore old core beneath a plugin activated after re
               }),
             );
           }),
-        ).pipe(Effect.zipRight(Effect.fail(new Error("execve failed")))),
+        ).pipe(Effect.andThen(Effect.fail(new Error("execve failed")))),
     },
   });
   // Then the active plugin still has the compatible core, with a retained backup and tagged failure.
@@ -268,13 +268,13 @@ test.each(["post-swap-probe", "record-refresh"] as const)(
               throw new Error("unused streamWithExit");
             },
           }),
-          Effect.either,
+          Effect.result,
         ),
       );
       // Then replacement rolls back before execve and leaves the old ownership proof intact.
-      expect(Either.isLeft(outcome)).toBe(true);
-      if (!Either.isLeft(outcome)) throw new Error("expected replacement failure");
-      expect(outcome.left._tag).toBe(
+      expect(Result.isFailure(outcome)).toBe(true);
+      if (!Result.isFailure(outcome)) throw new Error("expected replacement failure");
+      expect(outcome.failure._tag).toBe(
         failure === "record-refresh" ? "InstallOwnershipError" : "UpdateLaunchProbeError",
       );
       expect(await readFile(executablePath, "utf8")).toBe("old");

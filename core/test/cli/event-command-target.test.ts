@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, DateTime, Effect, Either, Exit, Schema } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Result, Schema } from "effect";
 
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
@@ -27,7 +27,7 @@ const makePlan = (): AppPlan =>
       stores: [],
       fileSync: [],
       metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00.000Z"),
+        resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00.000Z"),
         source: "/tmp/.lando.yml",
         runtime: 4 as const,
       },
@@ -67,10 +67,10 @@ describe("resolveEventCommandTarget", () => {
     const plan = attachEffectiveTooling(makePlan(), { invalid: task });
     // When
     const result = await Effect.runPromise(
-      Effect.either(resolveEventCommandTarget("app:invalid", Context.empty(), [], plan)),
+      Effect.result(resolveEventCommandTarget("app:invalid", Context.empty(), [], plan)),
     );
     // Then
-    expect(Either.isLeft(result) ? result.left : undefined).toMatchObject({
+    expect(Result.isFailure(result) ? result.failure : undefined).toMatchObject({
       _tag: "ToolingCompileError",
       tool: "invalid",
       source: { path: plan.metadata.source, task: "invalid" },

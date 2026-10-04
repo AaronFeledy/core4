@@ -10,18 +10,18 @@ import {
   appPlanCachePath,
   appToolingCompilationCachePath,
 } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 import { landofileRuntimeInputs } from "@lando/engine/composition";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { startApp } from "@lando/engine/operations/start";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { appSteps } from "@lando/engine/services/build-app-plan";
-import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrator";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -40,7 +40,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { appConfig } from "../../src/cli/commands/app-config.ts";
 
@@ -72,7 +72,7 @@ test.each([
     const store = makeStateStore({
       privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
     });
-    const secretStore = {
+    const secretStore = SecretStore.of({
       id: "canary",
       get: (id: string) => {
         expect(id).toBe("OPAQUE");
@@ -80,7 +80,7 @@ test.each([
       },
       has: () => Effect.succeed(true),
       list: Effect.succeed(["OPAQUE"]),
-    };
+    });
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -123,43 +123,54 @@ test.each([
       },
     };
     const dependencies = Layer.mergeAll(
-      CacheServiceLive,
-      FileSystemLive,
-      PluginRegistryLive,
-      EventServiceLive,
-      PrivateFileAccessLive,
+      AppCacheService.layer,
+      BunFileSystem.layer,
+      PluginRegistryLayer.layer,
+      LandoEventService.layer,
+      PrivateFileAccessService.layer,
       Layer.succeed(PathsService, paths),
       Layer.succeed(StateStore, store),
-      Layer.succeed(ManagedFileTransactionGuard, {
-        ensureConsistent: () => Effect.void,
-        pending: () => Effect.succeed(null),
-      }),
+      Layer.succeed(
+        ManagedFileTransactionGuard,
+        ManagedFileTransactionGuard.of({
+          ensureConsistent: () => Effect.void,
+          pending: () => Effect.succeed(null),
+        }),
+      ),
       Layer.succeed(SecretStore, secretStore),
-      Layer.succeed(RedactionService, makeRedactionService(secretStore)),
-      Layer.succeed(RuntimeProviderRegistry, {
-        list: Effect.succeed([ProviderId.make("lando")]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      }),
-      Layer.succeed(RouterService, TestRouterService),
-      makeShellRunnerLive(() => {
+      Layer.succeed(RedactionService, RedactionService.of(makeRedactionService(secretStore))),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          list: Effect.succeed([ProviderId.make("lando")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
+      Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+      BunShellRunner.layer(() => {
         throw new TypeError("No host shell is expected");
       }),
-      GlobalAppServiceLive.pipe(Layer.provide(Layer.merge(ConfigServiceLive, FileSystemLive))),
-      Layer.succeed(LandofileService, {
-        discover: resolveLandofileIncludes({
-          landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
-          appRoot,
-          cacheRoot: paths.roots.userCacheRoot,
-          ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
-          stateStore: store,
+      GlobalAppServiceLayer.layer.pipe(
+        Layer.provide(Layer.merge(LandoConfigService.layer, BunFileSystem.layer)),
+      ),
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({
+          discover: resolveLandofileIncludes({
+            landofile: { name: "profile-canary", includes: ["user:profile.yml"] },
+            appRoot,
+            cacheRoot: paths.roots.userCacheRoot,
+            ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => paths.userIncludesDir },
+            stateStore: store,
+          }),
         }),
-      }),
+      ),
     );
     const layer = Layer.mergeAll(
       dependencies,
-      AppPlannerLive.pipe(Layer.provide(dependencies)),
-      BuildOrchestratorLive.pipe(Layer.provide(dependencies)),
+      AppPlannerLayer.layer.pipe(Layer.provide(dependencies)),
+      BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)),
     );
     try {
       await mkdir(appRoot, { recursive: true });
@@ -191,7 +202,7 @@ test.each([
             const outcome = yield* startApp(
               {},
               { plan, landofile, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } },
-            ).pipe(Effect.either);
+            ).pipe(Effect.result);
             const cachedPlan = yield* planner.plan(landofile, provider.capabilities);
             return {
               view,
@@ -200,7 +211,7 @@ test.each([
               cachedPlan,
               buildIdentity,
               outcome,
-              events: [...(yield* Queue.takeAll(queue))],
+              events: [...(yield* Queue.clear(queue))],
             };
           }),
         ).pipe(Effect.provide(layer)),
@@ -208,7 +219,7 @@ test.each([
 
       // Then: provider action sees the value; durable identities and every observed surface do not.
       expect(providerValue).toBe(sentinel);
-      expect(result.outcome._tag).toBe(fails ? "Left" : "Right");
+      expect(result.outcome._tag).toBe(fails ? "Failure" : "Success");
       expect(appliedPlan?.services[web]?.environment.VALUE).toBe(reference);
       expect(result.plan.services[web]?.environment.VALUE).toBe(reference);
       expect(result.cachedPlan).toEqual(result.plan);

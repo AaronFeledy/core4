@@ -51,8 +51,25 @@ const matchGlobalFetchCall = (call: ts.CallExpression): string | undefined => {
 };
 
 const onNode = (node: ts.Node, context: FileContext): void => {
-  if (!ts.isCallExpression(node)) return;
-  const match = matchGlobalFetchCall(node);
+  const match = ts.isCallExpression(node)
+    ? node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] !== undefined &&
+      ts.isStringLiteralLike(node.arguments[0]) &&
+      node.arguments[0].text === "effect/http/FetchHttpClient"
+      ? "effect/http/FetchHttpClient"
+      : matchGlobalFetchCall(node)
+    : ts.isImportDeclaration(node) && ts.isStringLiteralLike(node.moduleSpecifier)
+      ? node.moduleSpecifier.text === "effect/http/FetchHttpClient"
+        ? "effect/http/FetchHttpClient"
+        : node.moduleSpecifier.text === "effect/http" &&
+            node.importClause?.namedBindings !== undefined &&
+            ts.isNamedImports(node.importClause.namedBindings) &&
+            node.importClause.namedBindings.elements.some(
+              (entry) => (entry.propertyName ?? entry.name).text === "FetchHttpClient",
+            )
+          ? "effect/http FetchHttpClient"
+          : undefined
+      : undefined;
   if (match === undefined) return;
   const sourceFile = node.getSourceFile();
   const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
@@ -69,6 +86,6 @@ export const networkRule = {
   carveOuts: { files: [], prefixes: [] },
   passMessage: "Network boundary check passed.",
   failureHeadline:
-    "Network boundary check failed. Lando-owned outbound HTTP must route through the HttpClient adapter (@lando/http-client), not direct global fetch. The owning @lando/http-client package is the only direct-fetch site.",
+    "Network boundary check failed. Lando-owned outbound HTTP must route through @lando/http-client, not direct global fetch or Effect FetchHttpClient. Only http-client/src may own those transports.",
   onNode,
 } satisfies BoundaryRule;

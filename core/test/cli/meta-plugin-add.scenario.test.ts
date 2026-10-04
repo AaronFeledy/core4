@@ -20,11 +20,14 @@ let userDataRoot: string;
 let pluginsRoot: string;
 
 const fakeConfigService = (dataRoot: string) =>
-  Layer.succeed(ConfigService, {
-    get: <K extends string>(key: K) =>
-      Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
-    getEffective: () => Effect.succeed({} as never),
-  } as never);
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      get: <K extends string>(key: K) =>
+        Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+      getEffective: () => Effect.succeed({} as never),
+    } as never),
+  );
 
 const pluginAddLayer = (
   dataRoot: string,
@@ -32,14 +35,17 @@ const pluginAddLayer = (
 ) => Layer.merge(fakeConfigService(dataRoot), Layer.succeed(PluginTrustStore, trustStore));
 
 const recordingEventLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: () => Effect.fail(new Error("not implemented")),
-    waitForAny: () => Effect.fail(new Error("not implemented")),
-    query: () => Effect.succeed([]),
-  } as never);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.fail(new Error("not implemented")),
+      waitForAny: () => Effect.fail(new Error("not implemented")),
+      query: () => Effect.succeed([]),
+    } as never),
+  );
 
 const writePluginManifest = async (
   packageDir: string,

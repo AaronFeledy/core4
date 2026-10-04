@@ -4,7 +4,7 @@ import { Effect, Queue } from "effect";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { publishTaskStart } from "@lando/sdk/task-progress";
 
 test("publishTaskStart threads the optional transcript path", async () => {
@@ -21,7 +21,7 @@ test("publishTaskStart threads the optional transcript path", async () => {
           transcriptPath,
         });
         return yield* Queue.take(queue);
-      }).pipe(Effect.provide(EventServiceLive)),
+      }).pipe(Effect.provide(LandoEventService.layer)),
     ),
   );
 

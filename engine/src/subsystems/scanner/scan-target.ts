@@ -1,4 +1,6 @@
 import { Duration, Effect, Ref } from "effect";
+import type * as HttpClient from "effect/http/HttpClient";
+import type * as HttpClientError from "effect/http/HttpClientError";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { type ProbeOutcome, ProbeTimeoutError, runProbe } from "@lando/sdk/probe";
@@ -13,7 +15,7 @@ import type {
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanEndpoint } from "@lando/sdk/services";
 
-import type { HttpClientShape } from "@lando/http-client/service";
+import { RequestPolicy } from "@lando/http-client/live";
 
 export const SCANNER_ID = "http-probe";
 
@@ -21,9 +23,8 @@ export const SCANNER_ID = "http-probe";
  * Scanner tuning knobs. `retry` is the TOTAL attempt count including the
  * first attempt. A response is accepted (`green`) when its status is 2xx or
  * listed in `okCodes`; any other response is `yellow`; no response is `red`.
- * `HttpRequest` has no redirect-count cap, so `maxRedirects` is binary: `0`
- * sends `redirect: "manual"` (a redirect surfaces as its 3xx status), any
- * positive value sends `redirect: "follow"`.
+ * Redirect policy is binary: `0` sends `redirect: "manual"` (a redirect
+ * surfaces as its 3xx status), any positive value sends `redirect: "follow"`.
  */
 export interface UrlScanConfig {
   readonly enabled: boolean;
@@ -67,7 +68,7 @@ export type ScanSourceEndpoint = PublishedEndpoint & {
 };
 
 export interface UrlScannerDeps {
-  readonly stream: HttpClientShape["stream"];
+  readonly http: HttpClient.HttpClient;
   readonly listEndpoints: (appId: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
 }
 
@@ -110,48 +111,64 @@ export const scanTargets = (
       : [],
   );
 
-const makeAttempt = (
+const transportMessage = (error: HttpClientError.HttpClientError): string => {
+  const reason = error.reason;
+  if (reason._tag === "TransportError") {
+    const cause = reason.cause;
+    if (cause instanceof Error) return cause.message;
+    if (typeof cause === "string") return cause;
+  }
+  return error.message;
+};
+
+const makeAttempt = Effect.fnUntraced(function* (
   deps: UrlScannerDeps,
   config: UrlScanConfig,
   url: string,
   status: Ref.Ref<AttemptStatus>,
-): Effect.Effect<ProbeOutcome> =>
-  Effect.gen(function* () {
-    const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
-    const completed = yield* Effect.timeoutTo(
-      Effect.either(
+): Effect.fn.Return<ProbeOutcome> {
+  const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
+  const completed = yield* Effect.timeoutOrElse(
+    Effect.map(
+      Effect.result(
         Effect.scoped(
-          deps
-            .stream({
-              url,
-              method: "GET",
-              timeoutMs,
+          deps.http.get(url).pipe(
+            Effect.provideService(RequestPolicy, {
               redirect: config.maxRedirects > 0 ? "follow" : "manual",
               callerId: "url-scanner",
-            })
-            .pipe(Effect.map((response) => response.status)),
+            }),
+            Effect.map((response) => response.status),
+          ),
         ),
       ),
-      {
-        duration: Duration.millis(timeoutMs),
-        onSuccess: (result) => result,
-        onTimeout: () => "timeout" as const,
-      },
-    );
+      (result) => result,
+    ),
+    { duration: Duration.millis(timeoutMs), orElse: () => Effect.succeed((() => "timeout" as const)()) },
+  );
 
-    if (completed === "timeout") {
-      yield* Ref.set(status, { _tag: "timeout" });
-      return "red";
-    }
+  if (completed === "timeout") {
+    yield* Ref.set(status, { _tag: "timeout" });
+    return "red";
+  }
 
-    if (completed._tag === "Left") {
-      yield* Ref.set(status, { _tag: "transport", message: completed.left.message });
-      return "red";
-    }
+  if (completed._tag === "Failure") {
+    const failure = completed.failure;
+    const message =
+      typeof failure === "object" &&
+      failure !== null &&
+      "_tag" in failure &&
+      (failure as { _tag: string })._tag === "HttpClientError"
+        ? transportMessage(failure as HttpClientError.HttpClientError)
+        : failure instanceof Error
+          ? failure.message
+          : String(failure);
+    yield* Ref.set(status, { _tag: "transport", message });
+    return "red";
+  }
 
-    yield* Ref.set(status, { _tag: "response", status: completed.right });
-    return isAccepted(completed.right, config.okCodes) ? "green" : "yellow";
-  });
+  yield* Ref.set(status, { _tag: "response", status: completed.success });
+  return isAccepted(completed.success, config.okCodes) ? "green" : "yellow";
+});
 
 const probeRunError = (url: string, cause: unknown, redactor: Redactor): ScannerError =>
   new ScannerError({
@@ -173,68 +190,67 @@ const redDetail = (finalStatus: AttemptStatus, elapsedMs: number): string => {
   }
 };
 
-export const scanTarget = (
+export const scanTarget = Effect.fnUntraced(function* (
   deps: UrlScannerDeps,
   config: UrlScanConfig,
   redactor: Redactor,
   target: ScanTarget,
-): Effect.Effect<ScanEndpoint, ScannerError> =>
-  Effect.gen(function* () {
-    const status = yield* Ref.make<AttemptStatus>({
-      _tag: "transport",
-      message: "URL probe did not run",
-    });
+): Effect.fn.Return<ScanEndpoint, ScannerError> {
+  const status = yield* Ref.make<AttemptStatus>({
+    _tag: "transport",
+    message: "URL probe did not run",
+  });
 
-    const result = yield* runProbe(
-      {
-        id: `scanner:${target.url}`,
-        policy: {
-          maxAttempts: Math.max(1, config.retry),
-          delay: Duration.seconds(config.delaySeconds),
-          backoff: "fixed",
-          ...(config.deadlineMs === undefined ? {} : { timeout: Duration.millis(config.deadlineMs) }),
-        },
-        classify: {
-          success: (value) => (value === "green" ? "green" : value === "yellow" ? "yellow" : "red"),
-          failure: () => "red",
-        },
+  const result = yield* runProbe(
+    {
+      id: `scanner:${target.url}`,
+      policy: {
+        maxAttempts: Math.max(1, config.retry),
+        delay: Duration.seconds(config.delaySeconds),
+        backoff: "fixed",
+        ...(config.deadlineMs === undefined ? {} : { timeout: Duration.millis(config.deadlineMs) }),
       },
-      makeAttempt(deps, config, target.url, status),
-    ).pipe(Effect.mapError((cause) => probeRunError(target.url, cause, redactor)));
-    const finalStatus = yield* Ref.get(status);
-    const statusCode = finalStatus._tag === "response" ? finalStatus.status : undefined;
+      classify: {
+        success: (value) => (value === "green" ? "green" : value === "yellow" ? "yellow" : "red"),
+        failure: () => "red",
+      },
+    },
+    makeAttempt(deps, config, target.url, status),
+  ).pipe(Effect.mapError((cause) => probeRunError(target.url, cause, redactor)));
+  const finalStatus = yield* Ref.get(status);
+  const statusCode = finalStatus._tag === "response" ? finalStatus.status : undefined;
 
-    if (result.outcome === "green") {
-      return {
-        service: target.service,
-        url: target.url,
-        reachable: true,
-        ...(statusCode === undefined ? {} : { statusCode }),
-        outcome: "green" as const,
-      };
-    }
-
-    if (result.outcome === "yellow") {
-      return {
-        service: target.service,
-        url: target.url,
-        reachable: true,
-        ...(statusCode === undefined ? {} : { statusCode }),
-        outcome: "yellow" as const,
-        detail: redactor.redactString(`HTTP ${statusCode}`),
-      };
-    }
-
+  if (result.outcome === "green") {
     return {
       service: target.service,
       url: target.url,
-      reachable: false,
-      outcome: "red" as const,
-      detail: redactor.redactString(
-        result.lastError instanceof ProbeTimeoutError ||
-          (config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs)
-          ? `deadline exceeded after ${result.elapsedMs}ms`
-          : redDetail(finalStatus, result.elapsedMs),
-      ),
+      reachable: true,
+      ...(statusCode === undefined ? {} : { statusCode }),
+      outcome: "green" as const,
     };
-  });
+  }
+
+  if (result.outcome === "yellow") {
+    return {
+      service: target.service,
+      url: target.url,
+      reachable: true,
+      ...(statusCode === undefined ? {} : { statusCode }),
+      outcome: "yellow" as const,
+      detail: redactor.redactString(`HTTP ${statusCode}`),
+    };
+  }
+
+  return {
+    service: target.service,
+    url: target.url,
+    reachable: false,
+    outcome: "red" as const,
+    detail: redactor.redactString(
+      result.lastError instanceof ProbeTimeoutError ||
+        (config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs)
+        ? `deadline exceeded after ${result.elapsedMs}ms`
+        : redDetail(finalStatus, result.elapsedMs),
+    ),
+  };
+});

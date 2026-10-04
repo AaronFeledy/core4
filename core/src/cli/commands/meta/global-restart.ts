@@ -32,16 +32,15 @@ export const renderGlobalRestartResult = (result: GlobalRestartResult): string =
   return `restarted: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };
 
-export const globalRestart = (
+export const globalRestart = Effect.fn("GlobalRestart.restart")(function* (
   options: GlobalRestartOptions = {},
-): Effect.Effect<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> =>
-  Effect.gen(function* () {
-    yield* globalStop();
-    const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal });
-    // The router is the reason this command is prescribed as a recovery step,
-    // so re-observe its startup here: without it a restart cannot affect the
-    // persisted observation doctor keeps reporting.
-    const router = yield* RouterService;
-    yield* router.revalidateStartup;
-    return result;
-  });
+): Effect.fn.Return<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> {
+  yield* globalStop();
+  const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal });
+  // The router is the reason this command is prescribed as a recovery step,
+  // so re-observe its startup here: without it a restart cannot affect the
+  // persisted observation doctor keeps reporting.
+  const router = yield* RouterService;
+  yield* router.revalidateStartup;
+  return result;
+});

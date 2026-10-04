@@ -70,12 +70,11 @@ const selectPlanForServices = (
   });
 };
 
-export const globalInfo = (
+export const globalInfo = Effect.fn("GlobalInfo.info")(function* (
   options: GlobalInfoOptions = {},
-): Effect.Effect<GlobalInfoResult, GlobalInfoError, GlobalInfoServices> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", services: [] };
-    const plan = yield* selectPlanForServices(loaded.plan, options.services);
-    return yield* infoForPlan(plan);
-  });
+): Effect.fn.Return<GlobalInfoResult, GlobalInfoError, GlobalInfoServices> {
+  const loaded = yield* loadGlobalPlan();
+  if (!loaded.materialized) return { app: "global", services: [] };
+  const plan = yield* selectPlanForServices(loaded.plan, options.services);
+  return yield* infoForPlan(plan);
+});

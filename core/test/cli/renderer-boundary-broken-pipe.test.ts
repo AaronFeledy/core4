@@ -53,7 +53,7 @@ test("a command that writes forever is interrupted when stdout breaks, resolves,
         finalized = true;
       }),
     );
-    yield* writeResultLine("line").pipe(Effect.zipRight(Effect.sleep("5 millis")), Effect.forever);
+    yield* writeResultLine("line").pipe(Effect.andThen(Effect.sleep("5 millis")), Effect.forever);
   }).pipe(Effect.scoped, Effect.raceFirst(Deferred.await(stop)));
   // When
   const running = runWithRendererHandling(command, {

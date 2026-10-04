@@ -1,7 +1,8 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Inspectable, Layer, Redactable } from "effect";
 
 import {
   type CreateRedactorOptions,
+  REDACTED,
   type RedactionProfile,
   type Redactor,
   type TranscriptRedactionEnv,
@@ -25,10 +26,54 @@ export interface RedactionServiceShape {
   ) => Effect.Effect<Redactor, never>;
 }
 
-export class RedactionService extends Context.Tag("@lando/core/RedactionService")<
-  RedactionService,
-  RedactionServiceShape
->() {}
+export class RedactionService extends Context.Service<RedactionService, RedactionServiceShape>()(
+  "@lando/redaction/RedactionService",
+) {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      return RedactionService.of(makeRedactionService(yield* SecretStore));
+    }),
+  );
+}
+
+/** Exact-match secrets deliberately expose bytes only through iteration. */
+export class RedactionValues extends Inspectable.Class implements Redactable.Redactable, Iterable<string> {
+  readonly #values: Set<string>;
+
+  constructor(values: Iterable<string> = []) {
+    super();
+    this.#values = new Set(values);
+  }
+
+  [Symbol.iterator](): Iterator<string> {
+    return this.#values.values();
+  }
+
+  [Redactable.symbolRedactable](): string {
+    return REDACTED;
+  }
+
+  toJSON(): string {
+    return REDACTED;
+  }
+
+  add(value: string): void {
+    this.#values.add(value);
+  }
+
+  has(value: string): boolean {
+    return this.#values.has(value);
+  }
+
+  get size(): number {
+    return this.#values.size;
+  }
+
+  clear(): void {
+    this.#values.clear();
+  }
+}
 
 const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;
@@ -55,14 +100,17 @@ const SECRET_ENV_KEY_PARTS = new Set([
   "tokens",
 ]);
 
-const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof SecretStore>) =>
-  Effect.gen(function* () {
-    const ids = yield* secretStore.list;
-    const values = yield* Effect.all(
-      ids.map((id) => secretStore.get(id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))),
-    );
-    return values.filter((value): value is string => value !== undefined && value.length > 0);
-  });
+const collectSecretStoreValues = Effect.fnUntraced(function* (
+  secretStore: Context.Service.Shape<typeof SecretStore>,
+) {
+  const ids = yield* secretStore.list;
+  const values = yield* Effect.all(
+    ids.map((id) => secretStore.get(id).pipe(Effect.catch(() => Effect.succeed(undefined)))),
+  );
+  return new RedactionValues(
+    values.filter((value): value is string => value !== undefined && value.length > 0),
+  );
+});
 
 export const collectSecretEnvValues = (
   sourceEnv: Record<string, string | undefined> | undefined,
@@ -123,7 +171,7 @@ const makeRedactorOptions = (
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 
-const registeredValues = new Set<string>();
+const registeredValues = new RedactionValues();
 let registeredGeneration = 0;
 
 export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
@@ -144,9 +192,9 @@ export const resetRegisteredRedactionValuesForTesting = (): void => {
 
 const makeRegisteredRedactor = (
   profile: RedactionProfile,
-  secretValues: ReadonlyArray<string>,
+  secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
-): Redactor => {
+): Redactor & Redactable.Redactable & Inspectable.Inspectable => {
   let generation = registeredGeneration;
   let redactor = createRedactor(
     profile,
@@ -163,6 +211,10 @@ const makeRegisteredRedactor = (
     return redactor;
   };
   return {
+    [Redactable.symbolRedactable]: () => REDACTED,
+    [Inspectable.NodeInspectSymbol]: () => REDACTED,
+    toJSON: () => REDACTED,
+    toString: () => REDACTED,
     redactString: (value) => current().redactString(value),
     redactStringBounded: (value, maxBytes) => current().redactStringBounded?.(value, maxBytes),
     redactValue: (value) => current().redactValue(value),
@@ -178,20 +230,14 @@ const makeRegisteredRedactor = (
 export const createStandaloneRedactor = (
   profile: RedactionProfile,
   options?: RedactionForProfileOptions,
-): Redactor => makeRegisteredRedactor(profile, [], options);
+): Redactor & Redactable.Redactable & Inspectable.Inspectable => makeRegisteredRedactor(profile, [], options);
 
 export const makeRedactionService = (
-  secretStore: Context.Tag.Service<typeof SecretStore>,
+  secretStore: Context.Service.Shape<typeof SecretStore>,
 ): RedactionServiceShape => ({
   registerValues: registerRedactionValues,
-  forProfile: (profile, options) =>
-    Effect.gen(function* () {
-      const secretValues = yield* collectSecretStoreValues(secretStore);
-      return makeRegisteredRedactor(profile, secretValues, options);
-    }),
+  forProfile: Effect.fnUntraced(function* (profile: RedactionProfile, options?: RedactionForProfileOptions) {
+    const secretValues = yield* collectSecretStoreValues(secretStore);
+    return makeRegisteredRedactor(profile, secretValues, options);
+  }),
 });
-
-export const RedactionServiceLive = Layer.effect(
-  RedactionService,
-  Effect.map(SecretStore, makeRedactionService),
-);

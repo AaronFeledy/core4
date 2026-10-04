@@ -48,7 +48,7 @@ const redactSecrets = (value: string, secretValues: ReadonlyArray<string>): stri
 const sanitizeBuildErrorValue = (value: unknown, secretValues: ReadonlyArray<string>): unknown => {
   if (typeof value === "string") return redactSecrets(value, secretValues);
   if (Array.isArray(value)) return value.map((entry) => sanitizeBuildErrorValue(entry, secretValues));
-  if (!Predicate.isRecord(value)) return value;
+  if (!Predicate.isObject(value)) return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry, secretValues)]),
   );
@@ -88,10 +88,10 @@ const buildStreamError = (body: string): string | undefined => {
     if (line.trim().length === 0) continue;
     try {
       const parsed: unknown = JSON.parse(line);
-      if (!Predicate.isRecord(parsed)) continue;
+      if (!Predicate.isObject(parsed)) continue;
       if (typeof parsed.error === "string" && parsed.error.trim().length > 0) return parsed.error;
       if (
-        Predicate.isRecord(parsed.errorDetail) &&
+        Predicate.isObject(parsed.errorDetail) &&
         typeof parsed.errorDetail.message === "string" &&
         parsed.errorDetail.message.trim().length > 0
       ) {
@@ -110,8 +110,8 @@ const parseDigest = (body: string): string | undefined => {
     try {
       const parsed: unknown = JSON.parse(line);
       if (
-        Predicate.isRecord(parsed) &&
-        Predicate.isRecord(parsed.aux) &&
+        Predicate.isObject(parsed) &&
+        Predicate.isObject(parsed.aux) &&
         typeof parsed.aux.Digest === "string"
       ) {
         return parsed.aux.Digest;

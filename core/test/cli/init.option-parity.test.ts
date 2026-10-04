@@ -8,7 +8,7 @@ import { LandofileService } from "@lando/core/services";
 import { PromptValidationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
@@ -36,7 +36,7 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-        Effect.provide(LandofileServiceLive),
+        Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );
   } finally {

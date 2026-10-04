@@ -6,7 +6,7 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
 import { makePublishRender } from "../../src/lifecycle/publish-render.ts";
-import { EventRuntimeLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 describe("plugin render publication", () => {
   test("redacts and schema-decodes before publishing to EventService", async () => {
@@ -14,7 +14,7 @@ describe("plugin render publication", () => {
     const retained = await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const context = yield* Layer.build(EventRuntimeLive);
+          const context = yield* Layer.build(LandoEventService.layerRuntime);
           const events = Context.get(context, EventService);
           const publish = makePublishRender(events, {
             registerValues: registerRedactionValues,

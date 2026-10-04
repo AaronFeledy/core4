@@ -16,17 +16,17 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
-import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 export const providerId = ProviderId.make("test");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
   source: "build-app-runner-regression.test",
   runtime: 4 as const,
 };
@@ -75,17 +75,23 @@ export const planWith = (
 
 export const makeLayer = (provider: RuntimeProviderShape) => {
   const paths = Layer.succeed(PathsService, makeLandoPaths());
-  const registry = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
-  const redaction = Layer.succeed(RedactionService, {
-    registerValues: registerRedactionValues,
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
-  });
-  const dependencies = Layer.mergeAll(EventServiceLive, paths, registry, StateStoreLive, redaction);
-  return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
+  const registry = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
+  const redaction = Layer.succeed(
+    RedactionService,
+    RedactionService.of({
+      registerValues: registerRedactionValues,
+      forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
+    }),
+  );
+  const dependencies = Layer.mergeAll(LandoEventService.layer, paths, registry, stateStoreLayer, redaction);
+  return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
 };
 
 export const withTempRoots = async <T>(run: () => Promise<T>): Promise<T> => {

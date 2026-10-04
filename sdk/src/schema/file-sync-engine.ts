@@ -22,14 +22,14 @@ export type FileSyncSessionRef = typeof FileSyncSessionRef.Type;
  */
 export const FileSyncEngineCapabilities = Schema.Struct({
   /** Supported sync modes; at least one MUST be declared. */
-  modes: Schema.Array(FileSyncModeSchema).pipe(Schema.minItems(1)),
+  modes: Schema.Array(FileSyncModeSchema).pipe(Schema.check(Schema.isMinLength(1))),
   /**
    * `auto`: engine deploys its in-container agent on first session start
    * via `RuntimeProvider.run`. `preinstalled`: engine assumes the agent
    * binary is already present in the target image. `none`: engine does
    * not require a per-target agent (passthrough / no-op engines).
    */
-  remoteAgentDeployment: Schema.Literal("auto", "preinstalled", "none"),
+  remoteAgentDeployment: Schema.Literals(["auto", "preinstalled", "none"]),
   /** True iff the engine honors `FileSyncSessionSpec.excludes`. */
   exclusionPatterns: Schema.Boolean,
   /** True iff the engine emits drift / conflict events. */
@@ -47,7 +47,7 @@ export type FileSyncEngineCapabilities = Schema.Schema.Type<typeof FileSyncEngin
 export const FileSyncSetupOptions = Schema.Struct({
   /** Re-run setup even if the engine reports `isAvailable: true`. */
   force: Schema.Boolean,
-  network: Schema.optional(NetworkConfig),
+  network: Schema.optionalKey(NetworkConfig),
 });
 export type FileSyncSetupOptions = Schema.Schema.Type<typeof FileSyncSetupOptions>;
 
@@ -55,7 +55,7 @@ export type FileSyncSetupOptions = Schema.Schema.Type<typeof FileSyncSetupOption
  * Target the engine should sync into. `volume` is a provider-owned named
  * volume; `service` is a path inside another service container.
  */
-export const FileSyncSessionTarget = Schema.Union(
+export const FileSyncSessionTarget = Schema.Union([
   Schema.TaggedStruct("volume", {
     /** Provider-owned volume name. */
     name: Schema.String,
@@ -68,7 +68,7 @@ export const FileSyncSessionTarget = Schema.Union(
     /** Container-side path inside the target service. */
     path: PortablePath,
   }),
-);
+]);
 export type FileSyncSessionTarget = Schema.Schema.Type<typeof FileSyncSessionTarget>;
 
 /**
@@ -91,10 +91,10 @@ export const FileSyncSessionSpec = Schema.Struct({
   /** Engine-honored exclude patterns from the service config. */
   excludes: Schema.Array(Schema.String),
   /** Optional ownership / mode overrides applied on the target side. */
-  permissions: Schema.optional(
+  permissions: Schema.optionalKey(
     Schema.Struct({
-      owner: Schema.optional(Schema.String),
-      mode: Schema.optional(Schema.String),
+      owner: Schema.optionalKey(Schema.String),
+      mode: Schema.optionalKey(Schema.String),
     }),
   ),
 });
@@ -105,27 +105,27 @@ export type FileSyncSessionSpec = Schema.Schema.Type<typeof FileSyncSessionSpec>
  * The endpoint is data only; its cleanup action stays with the provider.
  */
 export const PreparedFileSyncTarget = Schema.Struct({
-  session: FileSyncSessionSpec.annotations({
+  session: FileSyncSessionSpec.annotate({
     description: "Exact planned file-sync session backed by this prepared target.",
   }),
   endpoint: Schema.TaggedStruct("container", {
-    containerId: Schema.String.pipe(Schema.minLength(1)).annotations({
+    containerId: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
       description: "Verified running helper container ID, never a mutable name.",
     }),
-    path: AbsoluteContainerPath.annotations({
+    path: AbsoluteContainerPath.annotate({
       description: "Absolute path mounted inside the verified helper container.",
     }),
-    volumeName: Schema.String.pipe(Schema.minLength(1)).annotations({
+    volumeName: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
       description: "Owned named volume backing the planned session target.",
     }),
-  }).annotations({
+  }).annotate({
     description: "Provider-verified container endpoint for the session.",
   }),
 });
 export type PreparedFileSyncTarget = Schema.Schema.Type<typeof PreparedFileSyncTarget>;
 
 /** Lifecycle status surfaced by `FileSyncEngine.listSessions`. */
-export const FileSyncSessionStatus = Schema.Literal("running", "paused", "draining", "errored");
+export const FileSyncSessionStatus = Schema.Literals(["running", "paused", "draining", "errored"]);
 export type FileSyncSessionStatus = typeof FileSyncSessionStatus.Type;
 
 /**
@@ -139,17 +139,17 @@ export const FileSyncSessionInfo = Schema.Struct({
   /** Full applied spec, used to verify session reuse before mounting synced bytes. */
   spec: FileSyncSessionSpec,
   status: FileSyncSessionStatus,
-  lastUpdatedAt: Schema.DateTimeUtc,
+  lastUpdatedAt: Schema.DateTimeUtcFromString,
   /** Optional structured detail (drift count, last error message, etc.). */
-  detail: Schema.optional(Schema.String),
+  detail: Schema.optionalKey(Schema.String),
 });
 export type FileSyncSessionInfo = Schema.Schema.Type<typeof FileSyncSessionInfo>;
 
 /** Filter for `FileSyncEngine.listSessions`; absent fields match everything. */
 export const FileSyncSessionFilter = Schema.Struct({
-  app: Schema.optional(AppRef),
-  service: Schema.optional(ServiceName),
-  mountKey: Schema.optional(Schema.String),
+  app: Schema.optionalKey(AppRef),
+  service: Schema.optionalKey(ServiceName),
+  mountKey: Schema.optionalKey(Schema.String),
 });
 export type FileSyncSessionFilter = Schema.Schema.Type<typeof FileSyncSessionFilter>;
 
@@ -160,13 +160,15 @@ export type FileSyncSessionFilter = Schema.Schema.Type<typeof FileSyncSessionFil
  * `conflictReporting: true`. `info` is a free-form diagnostic chunk for
  * the active `Logger`.
  */
-export const FileSyncEventChunk = Schema.Union(
+export const FileSyncEventChunk = Schema.Union([
   Schema.TaggedStruct("progress", {
     sessionRef: FileSyncSessionRef,
-    phase: Schema.Literal("initial-scan", "staging", "transitioning", "watching"),
+    phase: Schema.Literals(["initial-scan", "staging", "transitioning", "watching"]),
     /** 0..1 inclusive when known; otherwise omit. */
-    completed: Schema.optional(Schema.Number.pipe(Schema.between(0, 1))),
-    message: Schema.optional(Schema.String),
+    completed: Schema.optionalKey(
+      Schema.Number.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+    ),
+    message: Schema.optionalKey(Schema.String),
   }),
   Schema.TaggedStruct("conflict", {
     sessionRef: FileSyncSessionRef,
@@ -176,5 +178,5 @@ export const FileSyncEventChunk = Schema.Union(
     sessionRef: FileSyncSessionRef,
     message: Schema.String,
   }),
-);
+]);
 export type FileSyncEventChunk = Schema.Schema.Type<typeof FileSyncEventChunk>;

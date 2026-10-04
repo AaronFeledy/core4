@@ -121,7 +121,7 @@ const orphanConfigDiagnostic = (
       kind: "unsupported",
       sourceId: occurrence?.sourceId ?? fallback,
       keyPath: ["config"],
-      span: spanOf(occurrence),
+      ...spanOf(occurrence),
       message: "config has no Lando 3 recipe to apply to.",
       remediation: "Add a recipe, or remove config and author the Lando 4 services directly.",
     },
@@ -197,104 +197,103 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
 
     detect: (input: ConfigTranslateDetectInput) => detectLando3(input),
 
-    translate: (input: ConfigTranslateInput): Effect.Effect<ConfigTranslateResult, ConfigTranslateError> =>
-      Effect.gen(function* () {
-        if (input._tag === "recipe-request") {
-          return yield* Effect.fail(
-            translateError(
-              "The Lando 3 frontend converts Landofile sets, not recipe requests.",
-              "Select the recipe translator for a recipe request.",
-            ),
-          );
-        }
-
-        const layers = input.documents.filter(isAppRootLando3Layer);
-        const established = establishedLayers(input.currentLowerV4Fragments, layers);
-        const establishedTargets = new Set(established.map((layer) => layer.layer));
-        const legacyLayers = layers.filter(
-          (document) => !establishedTargets.has(lando3TargetLayer(sourceLayerForDocument(document))),
-        );
-        const sources = yield* Effect.forEach(legacyLayers, parseSource(ports));
-        const merged = mergeLegacySources(sources);
-        const folded = foldToTargetLayers(legacyPrefixViews(sources));
-        const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
-        const recipeFragments = [
-          ...lowered.prefixes.map(({ fragment }) => fragment),
-          ...established.map(({ fragment }) => fragment),
-        ];
-        const recipeServiceWires = new Map<string, V4Wire>();
-        const serviceHolders = [
-          ...[...established].sort(
-            (left, right) => landofileLayerRank(left.layer) - landofileLayerRank(right.layer),
+    translate: Effect.fn("Lando3ConfigTranslator.translate")(function* (
+      input: ConfigTranslateInput,
+    ): Effect.fn.Return<ConfigTranslateResult, ConfigTranslateError> {
+      if (input._tag === "recipe-request") {
+        return yield* Effect.fail(
+          translateError(
+            "The Lando 3 frontend converts Landofile sets, not recipe requests.",
+            "Select the recipe translator for a recipe request.",
           ),
-          ...lowered.prefixes,
-        ];
-        for (const { fragment } of serviceHolders) {
-          if (!isPlainRecord(fragment.services)) continue;
-          for (const [name, service] of Object.entries(fragment.services)) {
-            if (!isPlainRecord(service)) continue;
-            const current = recipeServiceWires.get(name);
-            if (
-              current === undefined ||
-              !Array.isArray(current.endpoints) ||
-              Array.isArray(service.endpoints)
-            ) {
-              recipeServiceWires.set(name, service);
-            }
+        );
+      }
+
+      const layers = input.documents.filter(isAppRootLando3Layer);
+      const established = establishedLayers(input.currentLowerV4Fragments, layers);
+      const establishedTargets = new Set(established.map((layer) => layer.layer));
+      const legacyLayers = layers.filter(
+        (document) => !establishedTargets.has(lando3TargetLayer(sourceLayerForDocument(document))),
+      );
+      const sources = yield* Effect.forEach(legacyLayers, parseSource(ports));
+      const merged = mergeLegacySources(sources);
+      const folded = foldToTargetLayers(legacyPrefixViews(sources));
+      const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
+      const recipeFragments = [
+        ...lowered.prefixes.map(({ fragment }) => fragment),
+        ...established.map(({ fragment }) => fragment),
+      ];
+      const recipeServiceWires = new Map<string, V4Wire>();
+      const serviceHolders = [
+        ...[...established].sort(
+          (left, right) => landofileLayerRank(left.layer) - landofileLayerRank(right.layer),
+        ),
+        ...lowered.prefixes,
+      ];
+      for (const { fragment } of serviceHolders) {
+        if (!isPlainRecord(fragment.services)) continue;
+        for (const [name, service] of Object.entries(fragment.services)) {
+          if (!isPlainRecord(service)) continue;
+          const current = recipeServiceWires.get(name);
+          if (
+            current === undefined ||
+            !Array.isArray(current.endpoints) ||
+            Array.isArray(service.endpoints)
+          ) {
+            recipeServiceWires.set(name, service);
           }
         }
-        const authored = lowerServiceViews(folded, {
-          tools: new Set(
-            recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
+      }
+      const authored = lowerServiceViews(folded, {
+        tools: new Set(
+          recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
+        ),
+        recipeServices: [...recipeServiceWires.keys()],
+        recipeServiceWires,
+      });
+      const decoded = decodeLando3Landofile(mergedToPlain(merged));
+
+      const writable = new Set<LandofileLayer>(input.writableLayerIds);
+      const planned = recipeLayerOutputs(
+        folded,
+        lowered,
+        lowerAppNames(sources, writable),
+        established,
+        authored.prefixes,
+      );
+      const missing = planned.required.filter((layer) => !writable.has(layer));
+      if (input.mode === "single-layer" && missing.length > 0) {
+        return yield* Effect.fail(
+          translateError(
+            "The conversion needs edits outside the writable layers.",
+            `This layer's conversion also needs edits to ${missing.join(", ")}; run the full conversion instead of --file.`,
           ),
-          recipeServices: [...recipeServiceWires.keys()],
-          recipeServiceWires,
-        });
-        const decoded = decodeLando3Landofile(mergedToPlain(merged));
-
-        const writable = new Set<LandofileLayer>(input.writableLayerIds);
-        const planned = recipeLayerOutputs(
-          folded,
-          lowered,
-          lowerAppNames(sources, writable),
-          established,
-          authored.prefixes,
         );
-        const missing = planned.required.filter((layer) => !writable.has(layer));
-        if (input.mode === "single-layer" && missing.length > 0) {
-          return yield* Effect.fail(
-            translateError(
-              "The conversion needs edits outside the writable layers.",
-              `This layer's conversion also needs edits to ${missing.join(", ")}; run the full conversion instead of --file.`,
-            ),
-          );
-        }
-        const { outputs, deletions } = completeLando3CommitSet(input, planned.outputs);
+      }
+      const { outputs, deletions } = completeLando3CommitSet(input, planned.outputs);
 
-        const fallback = layers[0]?.sourceId;
-        if (fallback === undefined) {
-          return { outputs: [], diagnostics: [], deletions: [] };
-        }
+      const fallback = layers[0]?.sourceId;
+      if (fallback === undefined) {
+        return { outputs: [], diagnostics: [], deletions: [] };
+      }
 
-        const ranks = new Map(
-          sources.map((source) => [source.sourceId, lando3SourceLayerOrder(source.layer)]),
-        );
-        const recipePresent =
-          establishedRecipe(established) !== undefined || folded.some((view) => view.recipe !== undefined);
-        const diagnostics = orderDiagnostics(
-          dedupeDiagnostics([
-            ...topLevelDispositions(merged, fallback),
-            ...legacyReferenceDiagnostics(merged, fallback),
-            ...(recipePresent ? [] : orphanConfigDiagnostic(merged, fallback)),
-            ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
-            ...planned.diagnostics,
-            ...authored.diagnostics,
-          ]),
-          (sourceId) => ranks.get(sourceId) ?? 0,
-        );
+      const ranks = new Map(sources.map((source) => [source.sourceId, lando3SourceLayerOrder(source.layer)]));
+      const recipePresent =
+        establishedRecipe(established) !== undefined || folded.some((view) => view.recipe !== undefined);
+      const diagnostics = orderDiagnostics(
+        dedupeDiagnostics([
+          ...topLevelDispositions(merged, fallback),
+          ...legacyReferenceDiagnostics(merged, fallback),
+          ...(recipePresent ? [] : orphanConfigDiagnostic(merged, fallback)),
+          ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
+          ...planned.diagnostics,
+          ...authored.diagnostics,
+        ]),
+        (sourceId) => ranks.get(sourceId) ?? 0,
+      );
 
-        return { outputs, diagnostics, deletions };
-      }),
+      return { outputs, diagnostics, deletions };
+    }),
   };
 };
 

@@ -13,16 +13,16 @@ import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 
-const buildConfigService = (): Context.Tag.Service<typeof ConfigService> => {
+const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const buildRegistry = () => ({
@@ -43,8 +43,8 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
 
 const doctorLayer = (registry = buildRegistry()) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, registry),
-    Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 
@@ -59,29 +59,28 @@ describe("doctor() contributed checks", () => {
       );
       const module = doctorModule({
         id: "context",
-        run: (input) =>
-          Effect.gen(function* () {
-            const resources = yield* input.resources?.inspect({ kind: "volume", limit: 1 }) ??
-              Effect.die("Missing resources port");
-            const executable = yield* input.executables?.locate("lando") ??
-              Effect.die("Missing executables port");
-            return [
-              {
-                name: "context",
-                status: "pass",
-                severity: "info",
-                context: {
-                  name: input.app?.name ?? "",
-                  root: input.app?.root ?? "",
-                  resources: resources.status,
-                  executable: executable.candidate.kind,
-                  running: executable.runningBasename,
-                },
-                solutions: [],
-                preempts: true,
+        run: Effect.fnUntraced(function* (input) {
+          const resources = yield* input.resources?.inspect({ kind: "volume", limit: 1 }) ??
+            Effect.die("Missing resources port");
+          const executable = yield* input.executables?.locate("lando") ??
+            Effect.die("Missing executables port");
+          return [
+            {
+              name: "context",
+              status: "pass",
+              severity: "info",
+              context: {
+                name: input.app?.name ?? "",
+                root: input.app?.root ?? "",
+                resources: resources.status,
+                executable: executable.candidate.kind,
+                running: executable.runningBasename,
               },
-            ];
-          }),
+              solutions: [],
+              preempts: true,
+            },
+          ];
+        }),
       });
       // When
       const result = await withCwd(root, () =>

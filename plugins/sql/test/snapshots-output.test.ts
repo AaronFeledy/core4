@@ -13,7 +13,7 @@ describe("db:snapshots output", () => {
       store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
       digest: "sha256:test",
       sizeBytes: 1_572_864,
-      createdAt: DateTime.unsafeMake("2026-09-11T10:00:00Z"),
+      createdAt: DateTime.makeUnsafe("2026-09-11T10:00:00Z"),
       label: "before-upgrade",
       metadata: {
         sourceRoot: AbsolutePath.make("/workspace/sql-app"),

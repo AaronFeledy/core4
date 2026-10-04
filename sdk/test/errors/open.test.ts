@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 
@@ -21,7 +21,7 @@ describe("OpenTargetUnresolvedError", () => {
   });
 
   test("decodes through schema preserving fields", () => {
-    const decoded = Schema.decodeUnknownEither(OpenTargetUnresolvedError)({
+    const decoded = Schema.decodeUnknownResult(OpenTargetUnresolvedError)({
       _tag: "OpenTargetUnresolvedError",
       message: "no routes",
       app: "myapp",
@@ -29,9 +29,9 @@ describe("OpenTargetUnresolvedError", () => {
       remediation: "Add a route.",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.services).toEqual(["web"]);
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.services).toEqual(["web"]);
     }
   });
 });
@@ -52,16 +52,16 @@ describe("HostProxyOpenUrlSchemeError", () => {
   });
 
   test("decodes through schema", () => {
-    const decoded = Schema.decodeUnknownEither(HostProxyOpenUrlSchemeError)({
+    const decoded = Schema.decodeUnknownResult(HostProxyOpenUrlSchemeError)({
       _tag: "HostProxyOpenUrlSchemeError",
       message: "bad scheme",
       scheme: "file",
       url: "file:///etc/passwd",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.scheme).toBe("file");
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.scheme).toBe("file");
     }
   });
 });

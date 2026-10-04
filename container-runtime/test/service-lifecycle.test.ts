@@ -19,7 +19,7 @@ const appId = AppId.make("lifecycle-app");
 const serviceName = ServiceName.make("web");
 const lifecycleActions = ["start", "stop", "restart"] as const;
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
   source: "container-runtime/service-lifecycle.test.ts",
   runtime: 4 as const,
 };

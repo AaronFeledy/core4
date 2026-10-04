@@ -13,7 +13,7 @@ tags: [beta, docs, plugins, authoring]
 ```sh
 lando meta:plugin:new @acme/lando-plugin-demo ./demo \
   --template bare --cspace acme \
-  --description "Demo plugin" --no-interactive
+  --description Demo-plugin --no-interactive
 ```
 
 No TTY? Pass every value. `--no-interactive` will not invent a name for you.
@@ -33,11 +33,34 @@ A non-empty destination is rejected. Overwrite is not supported in this Beta.
 | `package.json` | `landoPlugin.api: 4`, `requires["@lando/core"]: "^4.0.0"`, scripts for `meta:plugin:test` / `build` / `link` |
 | `plugin.yaml` | Same manifest, YAML form |
 | `src/config.ts` | Effect Schema options (`enabled` defaults true) |
-| `src/index.ts` | Decoded `PluginManifest` export |
-| `test/plugin.test.ts` | Name, `api: 4`, and the core range |
+| `src/service.ts` | `Greeter` service with a static Effect layer and a traced method |
+| `src/index.ts` | Decoded `PluginManifest`, config, and `definePlugin` wired to the service layer |
+| `test/plugin.test.ts` | Manifest assertions and a greeting executed through Effect |
 | `tsconfig.json`, `README.md` | Strict TypeScript and a one-page README |
 
 The default destination, if you omit it, is the package basename with a leading `lando-plugin-` stripped to `plugin-`.
+
+## Adapt the service
+
+You get the same small service in every template. Replace its greeting with your plugin's behavior. Keep the `Context.Service` class, static `layer`, and `Greeter.of` construction. Use `Effect.fn` for traced service methods.
+
+```ts
+import { Context, Effect, Layer } from "effect";
+
+export class Greeter extends Context.Service<Greeter, {
+  readonly greet: (name: string) => Effect.Effect<string>;
+}>()("@acme/lando-plugin-demo/Greeter") {
+  static readonly layer = Layer.effect(this, Effect.gen(function* () {
+    return Greeter.of({
+      greet: Effect.fn("Greeter.greet")(function* (name: string) {
+        return `Hello, ${name}!`;
+      }),
+    });
+  }));
+}
+```
+
+Your package name prefixes the service id. `src/index.ts` exports `plugin = definePlugin({ name: PLUGIN_NAME, manifest, layer: services })`, where `services` is `Greeter.layer`. The generated test provides that layer before calling `greet`. Your package pins Effect 4 and uses TypeScript 5.9 or newer.
 
 ## Renderer plugins
 
@@ -53,13 +76,17 @@ That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fa
 
 ## Verify
 
-```sh
-lando meta:plugin:new @acme/lando-plugin-demo ./demo \
-  --template bare --cspace acme \
-  --description "Demo plugin" --no-interactive
-```
+Check your generated service and package before you start replacing the example.
 
-Look for `package.json`, `plugin.yaml`, `src/config.ts`, and `test/plugin.test.ts` under `./demo`.
+<Guide>
+  <Scenario id="scaffold-bare" render>
+    <Step name="scaffold">
+      <Run command="lando meta:plugin:new @acme/lando-plugin-demo ./demo --template bare --cspace acme --description Demo-plugin --no-interactive --format=json" />
+      <Verify file="demo/src/service.ts" expect={{ regex: "extends Context\\.Service<[\\s\\S]*@acme/lando-plugin-demo/Greeter[\\s\\S]*static readonly layer = Layer\\.effect\\([\\s\\S]*Greeter\\.of\\([\\s\\S]*Effect\\.fn\\(\"Greeter\\.greet\"\\)" }} />
+      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.0\\.0\"[\\s\\S]*\"typescript\":\\s*\"\\^5\\.9\\.0\"" }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Next
 

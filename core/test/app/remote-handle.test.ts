@@ -17,12 +17,15 @@ import {
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
 
 const testProviderLayers = [
-  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
-  }),
+  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    }),
+  ),
 ];
 
 const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -80,7 +83,7 @@ describe("App remote-sync handle surface", () => {
         `name: remote-handle\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    type: node:lts\nremotes:\n  test:\n    source: test\n`,
       );
       let confirms = 0;
-      const interaction = {
+      const interaction = InteractionService.of({
         id: "remote-handle-interaction",
         isInteractive: Effect.succeed(true),
         prompt: () => Effect.die("prompt must not run"),
@@ -92,7 +95,7 @@ describe("App remote-sync handle surface", () => {
           }),
         select: () => Effect.die("select must not run"),
         secret: () => Effect.succeed(Redacted.make("secret")),
-      };
+      });
 
       const runtime = Layer.merge(
         makeLandoRuntime({
@@ -101,8 +104,8 @@ describe("App remote-sync handle surface", () => {
             policy: "bundled-only",
             layers: [
               ...testProviderLayers,
-              Layer.succeed(RemoteSource, TestRemoteSource.source),
-              Layer.succeed(Dataset, TestDataset.dataset),
+              Layer.succeed(RemoteSource, RemoteSource.of(TestRemoteSource.source)),
+              Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
             ],
           },
         }),

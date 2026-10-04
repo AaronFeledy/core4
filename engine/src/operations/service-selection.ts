@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Graph } from "effect";
 
 import { ServiceNotFoundError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
@@ -65,35 +65,46 @@ export const selectRebuildPlan = (
   validateRequested(plan, requested).pipe(
     Effect.map((unique) => {
       if (unique.length === 0) return plan;
-      const closure = new Set(unique.map((name) => String(name)));
-      const pending = [...unique];
-      while (pending.length > 0) {
-        const name = pending.shift();
-        if (name === undefined) continue;
-        const service = Object.hasOwn(plan.services, String(name)) ? plan.services[name] : undefined;
-        if (service === undefined) continue;
-        for (const dependency of service.dependsOn) {
-          const dependencyName = String(dependency.service);
-          if (!Object.hasOwn(plan.services, dependencyName) || closure.has(dependencyName)) continue;
-          closure.add(dependencyName);
-          pending.push(dependency.service);
-        }
-      }
-
-      const ordered = new Set<string>();
-      while (ordered.size < closure.size) {
-        const before = ordered.size;
+      const indices = new Map<string, Graph.NodeIndex>();
+      const graph = Graph.directed<string, void>((mutable) => {
         for (const service of Object.values(plan.services)) {
-          const name = String(service.name);
-          if (!closure.has(name) || ordered.has(name)) continue;
-          const waiting = service.dependsOn.some(
-            (dependency) =>
-              closure.has(String(dependency.service)) && !ordered.has(String(dependency.service)),
-          );
-          if (!waiting) ordered.add(name);
+          indices.set(String(service.name), Graph.addNode(mutable, String(service.name)));
         }
-        if (ordered.size === before) break;
+        for (const service of Object.values(plan.services)) {
+          const dependent = indices.get(String(service.name));
+          if (dependent === undefined) continue;
+          for (const dependency of service.dependsOn) {
+            const predecessor = indices.get(String(dependency.service));
+            if (predecessor !== undefined) Graph.addEdge(mutable, predecessor, dependent, undefined);
+          }
+        }
+      });
+      const closure = new Set(
+        Graph.indices(
+          Graph.dfs(graph, {
+            start: unique.flatMap((name) => {
+              const index = indices.get(String(name));
+              return index === undefined ? [] : [index];
+            }),
+            direction: "incoming",
+          }),
+        ),
+      );
+      const pending = Graph.beginMutation(graph);
+      for (const index of indices.values()) {
+        if (!closure.has(index)) Graph.removeNode(pending, index);
       }
-      return filteredPlan(plan, [...ordered]);
+      const ordered: string[] = [];
+      while (Graph.nodeCount(pending) > 0) {
+        const before = ordered.length;
+        for (const [index, name] of Graph.entries(Graph.nodes(pending))) {
+          if (Graph.inDegree(pending, index) === 0) {
+            ordered.push(name);
+            Graph.removeNode(pending, index);
+          }
+        }
+        if (ordered.length === before && !Graph.isAcyclic(pending)) break;
+      }
+      return filteredPlan(plan, ordered);
     }),
   );

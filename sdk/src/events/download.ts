@@ -32,7 +32,7 @@ export const PostDownloadEvent = Schema.TaggedStruct("post-download", {
   fromCache: Schema.Boolean,
   sha256: Schema.optional(Schema.String),
   durationMs: Schema.optional(Schema.Number),
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   failureDetail: Schema.optional(Schema.String),
   timestamp: Timestamp,
 });

@@ -26,10 +26,11 @@ import {
   type ShellInteractiveSpec,
   ShellRunner,
 } from "@lando/core/services";
+import { AGENT_CONTEXT_ENV_ALLOWLIST as AGENT_ENV_NAMES } from "@lando/engine/config/agent-env";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
-import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
@@ -72,7 +73,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
   source: "shell.scenario.test",
   runtime: 4 as const,
 };
@@ -154,14 +155,17 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
 const shellRunnerLayer = (
   interactive: (spec: ShellInteractiveSpec) => Effect.Effect<{ readonly exitCode: number }, never> = () =>
     Effect.die("interactive not expected"),
-  exec: Context.Tag.Service<typeof ShellRunner>["exec"] = () => Effect.die("exec not expected"),
+  exec: Context.Service.Shape<typeof ShellRunner>["exec"] = () => Effect.die("exec not expected"),
 ) =>
-  Layer.succeed(ShellRunner, {
-    exec,
-    run: () => Effect.die("not used"),
-    runScript: () => Effect.die("not used"),
-    interactive,
-  });
+  Layer.succeed(
+    ShellRunner,
+    ShellRunner.of({
+      exec,
+      run: () => Effect.die("not used"),
+      runScript: () => Effect.die("not used"),
+      interactive,
+    }),
+  );
 
 const layer = (
   landofile: LandofileShape = { name: "shell-scenario" },
@@ -169,52 +173,56 @@ const layer = (
   shellRunner = shellRunnerLayer(),
 ) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
     shellRunner,
-    Layer.succeed(SecretStore, {
-      id: "test",
-      get: () => Effect.die("secret not expected"),
-      has: () => Effect.succeed(false),
-      list: Effect.succeed([]),
-    }),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "test",
+        get: () => Effect.die("secret not expected"),
+        has: () => Effect.succeed(false),
+        list: Effect.succeed([]),
+      }),
+    ),
     emptyConfigServiceLayer,
   );
 
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "shell-scenario" }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(appPlan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "shell-scenario" }) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(appPlan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
     shellRunnerLayer(),
-    Layer.succeed(SecretStore, {
-      id: "test",
-      get: () => Effect.die("secret not expected"),
-      has: () => Effect.succeed(false),
-      list: Effect.succeed([]),
-    }),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "test",
+        get: () => Effect.die("secret not expected"),
+        has: () => Effect.succeed(false),
+        list: Effect.succeed([]),
+      }),
+    ),
     emptyConfigServiceLayer,
   );
-
-const AGENT_ENV_NAMES = [
-  "CLAUDECODE",
-  "CLAUDE_CODE",
-  "CURSOR_AGENT",
-  "OPENCODE",
-  "COPILOT_CLI",
-  "GEMINI_CLI",
-  "AGENT",
-  "CI",
-] as const;
 
 const withHostEnv = async <A>(env: Record<string, string | undefined>, run: () => Promise<A>): Promise<A> => {
   const saved = new Map<string, string | undefined>();
@@ -503,7 +511,7 @@ describe("shellApp — shell modes", () => {
               undefined,
               shellRunnerLayer(() => Effect.succeed({ exitCode: 0 })),
             ),
-            DeprecationServiceLive,
+            DeprecationServiceLayer.layer,
           ),
         ),
       ),

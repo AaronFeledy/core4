@@ -74,13 +74,13 @@ export interface ScratchLogsResult {
   readonly lines: ReadonlyArray<string>;
 }
 
-export const ScratchSourceResultSchema = Schema.Union(
+export const ScratchSourceResultSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("fork") }),
   Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String }),
-);
+]);
 
 export const ScratchAppRefResultSchema = Schema.Struct({
-  kind: Schema.Literal("user", "global", "scratch"),
+  kind: Schema.Literals(["user", "global", "scratch"]),
   id: Schema.String,
   root: Schema.String,
 });
@@ -94,9 +94,9 @@ export const ScratchSummaryResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
   source: ScratchSourceResultSchema,
-  mode: Schema.Literal("full", "baked", "cwd"),
+  mode: Schema.Literals(["full", "baked", "cwd"]),
   created: Schema.String,
-  status: Schema.Literal("attached", "detached", "orphan"),
+  status: Schema.Literals(["attached", "detached", "orphan"]),
 });
 
 export const ScratchListResultSchema = Schema.Array(ScratchSummaryResultSchema);
@@ -104,20 +104,20 @@ export const ScratchListResultSchema = Schema.Array(ScratchSummaryResultSchema);
 const ScratchMountPointResultSchema = Schema.Struct({
   service: Schema.String,
   target: Schema.String,
-  source: Schema.optional(Schema.String),
-  kind: Schema.Literal("app", "bind", "tmpfs", "volume"),
+  source: Schema.optionalKey(Schema.String),
+  kind: Schema.Literals(["app", "bind", "tmpfs", "volume"]),
   readOnly: Schema.Boolean,
 });
 
 const ScratchNetworkMembershipResultSchema = Schema.Struct({
-  perAppBridge: Schema.optional(Schema.String),
-  sharedNetwork: Schema.optional(Schema.String),
+  perAppBridge: Schema.optionalKey(Schema.String),
+  sharedNetwork: Schema.optionalKey(Schema.String),
 });
 
 const ScratchEndpointResultSchema = Schema.Struct({
   protocol: Schema.String,
-  port: Schema.optional(Schema.Number),
-  name: Schema.optional(Schema.String),
+  port: Schema.optionalKey(Schema.Number),
+  name: Schema.optionalKey(Schema.String),
 });
 
 const ScratchServiceEndpointsResultSchema = Schema.Struct({
@@ -129,9 +129,9 @@ export const ScratchInfoResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
   source: ScratchSourceResultSchema,
-  mode: Schema.Literal("full", "baked", "cwd"),
+  mode: Schema.Literals(["full", "baked", "cwd"]),
   created: Schema.String,
-  status: Schema.Literal("attached", "detached", "orphan"),
+  status: Schema.Literals(["attached", "detached", "orphan"]),
   mounts: Schema.Array(ScratchMountPointResultSchema),
   network: ScratchNetworkMembershipResultSchema,
   endpoints: Schema.Array(ScratchServiceEndpointsResultSchema),
@@ -140,7 +140,7 @@ export const ScratchInfoResultSchema = Schema.Struct({
 export const ScratchStartResultSchema = Schema.Struct({
   handle: ScratchHandleResultSchema,
   detached: Schema.Boolean,
-  rendered: Schema.optional(Schema.Boolean),
+  rendered: Schema.optionalKey(Schema.Boolean),
 });
 
 export const ScratchGcReportResultSchema = Schema.Struct({
@@ -165,7 +165,7 @@ type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError 
 
 export const waitForAbortSignal = (signal: AbortSignal | undefined): Effect.Effect<void> => {
   if (signal === undefined) return Effect.never;
-  return Effect.async<void>((resume) => {
+  return Effect.callback<void>((resume) => {
     if (signal.aborted) {
       resume(Effect.void);
       return;
@@ -240,70 +240,69 @@ const validateScratchId = (id: string): Effect.Effect<string, ScratchAppIdInvali
   );
 };
 
-export const scratchStart = (
+export const scratchStart = Effect.fn("Scratch.start")(function* (
   options: ScratchStartOptions = {},
-): Effect.Effect<ScratchStartResult, ScratchStartError, ScratchAppService> =>
-  Effect.gen(function* () {
-    const hasFork = options.fork === true;
-    const from = options.from?.trim();
-    const hasRecipe = from !== undefined && from.length > 0;
+): Effect.fn.Return<ScratchStartResult, ScratchStartError, ScratchAppService> {
+  const hasFork = options.fork === true;
+  const from = options.from?.trim();
+  const hasRecipe = from !== undefined && from.length > 0;
 
-    if (hasFork === hasRecipe) {
-      const source = hasFork && hasRecipe ? `fork+recipe:${from}` : "none";
-      return yield* Effect.fail(
-        unresolvedSource("apps:scratch:start requires exactly one of --fork or --from <recipe-ref>.", source),
-      );
-    }
-
-    const service = yield* ScratchAppService;
-    const fileAnswers =
-      options.answersFile === undefined
-        ? {}
-        : yield* Effect.tryPromise({
-            try: () => readAnswersFile(options.answersFile as string),
-            catch: (cause) =>
-              new ScratchAppError({
-                message: "Could not read scratch answers file.",
-                operation: "acquire",
-                cause,
-                remediation: "Pass a readable JSON object of string answers via --answers <file>.",
-              }),
-          });
-    const answers = { ...fileAnswers, ...(options.answers ?? {}) };
-    const acquireBase = {
-      source: hasFork ? ({ kind: "fork" } as const) : ({ kind: "recipe", ref: from ?? "" } as const),
-      ...(options.name === undefined ? {} : { name: options.name }),
-      ...(Object.keys(answers).length === 0 ? {} : { answers }),
-      ...(options.yes === undefined ? {} : { yes: options.yes }),
-      ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
-      ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
-      ...(options.mountCwd === undefined ? {} : { mountCwd: options.mountCwd }),
-      ...(options.shareGlobalStorage === undefined ? {} : { shareGlobalStorage: options.shareGlobalStorage }),
-      ...(options.excludes === undefined ? {} : { excludes: options.excludes }),
-      ...(options.keepOnFailure === undefined ? {} : { keepOnFailure: options.keepOnFailure }),
-      ...(options.runPostInit === undefined ? {} : { runPostInit: options.runPostInit }),
-      ...(options.noLocalOverrides === undefined ? {} : { noLocalOverrides: options.noLocalOverrides }),
-      ...(options.noHostnameSuffix === undefined ? {} : { noHostnameSuffix: options.noHostnameSuffix }),
-      ...(options.hostnames === undefined ? {} : { hostnames: options.hostnames }),
-    };
-
-    if (options.detach === true) {
-      const handle = yield* Effect.scoped(service.acquire({ ...acquireBase, detached: true }));
-      return { handle, detached: true };
-    }
-
-    // Foreground: hold the acquire scope open until the user signals exit; the scope's
-    // destroy finalizer then tears the scratch down. Print "started" before blocking, so the
-    // post-run renderer is suppressed (`rendered: true`) to avoid a duplicate line.
-    return yield* Effect.scoped(
-      Effect.gen(function* () {
-        const handle = yield* service.acquire({ ...acquireBase, detached: false });
-        yield* emitOptionalStdout(`started: ${handle.id} (press Ctrl-C to stop and destroy)\n`);
-        yield* waitForAbortSignal(options.signal);
-        return { handle, detached: false, rendered: true } satisfies ScratchStartResult;
-      }),
+  if (hasFork === hasRecipe) {
+    const source = hasFork && hasRecipe ? `fork+recipe:${from}` : "none";
+    return yield* Effect.fail(
+      unresolvedSource("apps:scratch:start requires exactly one of --fork or --from <recipe-ref>.", source),
     );
-  });
+  }
+
+  const service = yield* ScratchAppService;
+  const fileAnswers =
+    options.answersFile === undefined
+      ? {}
+      : yield* Effect.tryPromise({
+          try: () => readAnswersFile(options.answersFile as string),
+          catch: (cause) =>
+            new ScratchAppError({
+              message: "Could not read scratch answers file.",
+              operation: "acquire",
+              cause,
+              remediation: "Pass a readable JSON object of string answers via --answers <file>.",
+            }),
+        });
+  const answers = { ...fileAnswers, ...(options.answers ?? {}) };
+  const acquireBase = {
+    source: hasFork ? ({ kind: "fork" } as const) : ({ kind: "recipe", ref: from ?? "" } as const),
+    ...(options.name === undefined ? {} : { name: options.name }),
+    ...(Object.keys(answers).length === 0 ? {} : { answers }),
+    ...(options.yes === undefined ? {} : { yes: options.yes }),
+    ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
+    ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
+    ...(options.mountCwd === undefined ? {} : { mountCwd: options.mountCwd }),
+    ...(options.shareGlobalStorage === undefined ? {} : { shareGlobalStorage: options.shareGlobalStorage }),
+    ...(options.excludes === undefined ? {} : { excludes: options.excludes }),
+    ...(options.keepOnFailure === undefined ? {} : { keepOnFailure: options.keepOnFailure }),
+    ...(options.runPostInit === undefined ? {} : { runPostInit: options.runPostInit }),
+    ...(options.noLocalOverrides === undefined ? {} : { noLocalOverrides: options.noLocalOverrides }),
+    ...(options.noHostnameSuffix === undefined ? {} : { noHostnameSuffix: options.noHostnameSuffix }),
+    ...(options.hostnames === undefined ? {} : { hostnames: options.hostnames }),
+  };
+
+  if (options.detach === true) {
+    const handle = yield* Effect.scoped(service.acquire({ ...acquireBase, detached: true }));
+    return { handle, detached: true };
+  }
+
+  // Foreground: hold the acquire scope open until the user signals exit; the scope's
+  // destroy finalizer then tears the scratch down. Print "started" before blocking, so the
+  // post-run renderer is suppressed (`rendered: true`) to avoid a duplicate line.
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const handle = yield* service.acquire({ ...acquireBase, detached: false });
+      yield* emitOptionalStdout(`started: ${handle.id} (press Ctrl-C to stop and destroy)\n`);
+      yield* waitForAbortSignal(options.signal);
+      return { handle, detached: false, rendered: true } satisfies ScratchStartResult;
+    }),
+  );
+});
 
 export const renderScratchStartResult = (result: ScratchStartResult): string | undefined => {
   if (result.rendered === true) return undefined;

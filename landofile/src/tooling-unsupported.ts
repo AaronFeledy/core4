@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -63,12 +63,12 @@ const scanEventsForUnsupported = (
   parsed: Readonly<Record<string, unknown>>,
 ): ToolingUnsupportedFinding | undefined => {
   const events = parsed.events;
-  if (events === null || typeof events !== "object" || Array.isArray(events)) return undefined;
+  if (!Predicate.isObject(events)) return undefined;
 
   for (const [event, steps] of Object.entries(events as Record<string, unknown>)) {
     if (!Array.isArray(steps)) continue;
     for (const step of steps) {
-      if (step === null || typeof step !== "object" || Array.isArray(step)) continue;
+      if (!Predicate.isObject(step)) continue;
       const structuredStep = step as Record<string, unknown>;
       if (Object.hasOwn(structuredStep, "platforms")) {
         return {
@@ -89,19 +89,14 @@ const scanToolingInputMetadataForUnsupported = (
   section: "flags" | "args",
 ): ToolingUnsupportedFinding | undefined => {
   const metadata = task[section];
-  if (
-    metadata === undefined ||
-    metadata === null ||
-    typeof metadata !== "object" ||
-    Array.isArray(metadata)
-  ) {
+  if (metadata === undefined || !Predicate.isObject(metadata)) {
     return undefined;
   }
 
   const allowedKeys = section === "flags" ? SUPPORTED_FLAG_KEYS : SUPPORTED_ARG_KEYS;
 
   for (const [name, value] of Object.entries(metadata as Record<string, unknown>)) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    if (!Predicate.isObject(value)) {
       return {
         task: taskName,
         key: `${section}.${name}`,
@@ -150,16 +145,16 @@ const scanCmdsStepForUnsupported = (
 };
 
 export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFinding | undefined => {
-  if (parsed === null || typeof parsed !== "object") return undefined;
+  if (!Predicate.isObjectOrArray(parsed)) return undefined;
   const parsedRecord = parsed as Record<string, unknown>;
   const eventFinding = scanEventsForUnsupported(parsedRecord);
   if (eventFinding !== undefined) return eventFinding;
   const tooling = parsedRecord.tooling;
-  if (tooling === null || typeof tooling !== "object" || Array.isArray(tooling)) return undefined;
+  if (!Predicate.isObject(tooling)) return undefined;
   const toolingMap = tooling as Record<string, unknown>;
 
   for (const [taskName, taskValue] of Object.entries(toolingMap)) {
-    if (taskValue === null || typeof taskValue !== "object" || Array.isArray(taskValue)) continue;
+    if (!Predicate.isObject(taskValue)) continue;
     const task = taskValue as Record<string, unknown>;
 
     for (const key of UNSUPPORTED_TOOLING_TASK_KEYS) {
@@ -181,7 +176,7 @@ export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFi
     if (Array.isArray(cmds)) {
       for (let stepIndex = 0; stepIndex < cmds.length; stepIndex++) {
         const step = cmds[stepIndex];
-        if (step !== null && typeof step === "object" && !Array.isArray(step)) {
+        if (Predicate.isObject(step)) {
           const stepFinding = scanCmdsStepForUnsupported(
             taskName,
             stepIndex,
@@ -193,9 +188,9 @@ export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFi
     }
 
     const vars = task.vars;
-    if (vars !== null && typeof vars === "object" && !Array.isArray(vars)) {
+    if (Predicate.isObject(vars)) {
       for (const [varName, varValue] of Object.entries(vars as Record<string, unknown>)) {
-        if (varValue !== null && typeof varValue === "object" && !Array.isArray(varValue)) {
+        if (Predicate.isObject(varValue)) {
           if (Object.hasOwn(varValue, "raw")) {
             return {
               task: taskName,

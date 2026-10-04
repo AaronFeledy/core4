@@ -22,7 +22,7 @@ import {
 
 export interface TestManagedFileStore {
   /** The `ManagedFileService` implementation backed by memory. */
-  readonly service: Context.Tag.Service<typeof ManagedFileService>;
+  readonly service: Context.Service.Shape<typeof ManagedFileService>;
   /** A `Layer` providing the in-memory service for runtime composition. */
   readonly layer: Layer.Layer<ManagedFileService>;
   /** The resolved base (app root) the store operates against. */
@@ -38,70 +38,69 @@ export interface TestManagedFileStore {
 }
 
 /** Build an in-memory `ManagedFileService` for tests. */
-export const makeTestManagedFileStore = (
+export const makeTestManagedFileStore = Effect.fnUntraced(function* (
   options: { readonly base?: string; readonly redactText?: (text: string) => string } = {},
-): Effect.Effect<TestManagedFileStore> =>
-  Effect.gen(function* () {
-    const base = options.base ?? "/lando-memfs/app";
-    const files = new Map<string, string>();
-    let entries: ReadonlyArray<LedgerEntry> = [];
-    const published: Array<LandoEvent> = [];
-    const eventSink: ManagedFileEvents = {
-      redactText: options.redactText ?? ((text) => text),
-      publish: (event) => Effect.sync(() => void published.push(event)),
-    };
+): Effect.fn.Return<TestManagedFileStore> {
+  const base = options.base ?? "/lando-memfs/app";
+  const files = new Map<string, string>();
+  let entries: ReadonlyArray<LedgerEntry> = [];
+  const published: Array<LandoEvent> = [];
+  const eventSink: ManagedFileEvents = {
+    redactText: options.redactText ?? ((text) => text),
+    publish: (event) => Effect.sync(() => void published.push(event)),
+  };
 
-    const contain = (root: string, relPath: string): string | null => {
-      if (isAbsolute(relPath)) return null;
-      const target = resolve(root, relPath);
-      const rel = relative(root, target);
-      if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
-      return target;
-    };
+  const contain = (root: string, relPath: string): string | null => {
+    if (isAbsolute(relPath)) return null;
+    const target = resolve(root, relPath);
+    const rel = relative(root, target);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+    return target;
+  };
 
-    const backend: ManagedFileBackend = {
-      resolveBase: (override) => Effect.succeed(override ?? base),
-      resolveTarget: (root, relPath, operation) => {
-        const abs = contain(root, relPath);
-        return abs === null
-          ? Effect.fail(
-              new ManagedFileError({
-                reason: "path",
-                operation,
-                path: relPath,
-                remediation: "Managed-file paths must stay inside the resolved base (app root).",
-              }),
-            )
-          : Effect.succeed(abs);
-      },
-      readMaybe: (abs) => Effect.succeed(files.get(abs) ?? null),
-      writeAtomic: (abs, content) => Effect.sync(() => void files.set(abs, content)),
-      removeFile: (abs) => Effect.sync(() => void files.delete(abs)),
-      peekLedger: () => Effect.succeed(entries),
-      mutateLedger: (_operation, f) =>
-        f(entries).pipe(
-          Effect.map(([result, next]) => {
-            entries = next;
-            return result;
-          }),
-        ),
-    };
+  const backend: ManagedFileBackend = {
+    resolveBase: (override) => Effect.succeed(override ?? base),
+    resolveTarget: (root, relPath, operation) => {
+      const abs = contain(root, relPath);
+      return abs === null
+        ? Effect.fail(
+            new ManagedFileError({
+              reason: "path",
+              operation,
+              path: relPath,
+              remediation: "Managed-file paths must stay inside the resolved base (app root).",
+            }),
+          )
+        : Effect.succeed(abs);
+    },
+    readMaybe: (abs) => Effect.succeed(files.get(abs) ?? null),
+    writeAtomic: (abs, content) => Effect.sync(() => void files.set(abs, content)),
+    removeFile: (abs) => Effect.sync(() => void files.delete(abs)),
+    peekLedger: () => Effect.succeed(entries),
+    mutateLedger: (_operation, f) =>
+      f(entries).pipe(
+        Effect.map(([result, next]) => {
+          entries = next;
+          return result;
+        }),
+      ),
+  };
 
-    const service = yield* makeManagedFileService(backend, eventSink);
+  const service = yield* makeManagedFileService(backend, eventSink);
 
-    return {
-      service,
-      layer: Layer.succeed(ManagedFileService, service),
-      base,
-      read: (relPath) => {
-        const abs = contain(base, relPath);
-        return abs === null ? null : (files.get(abs) ?? null);
-      },
-      seed: (relPath, content) => {
-        const abs = contain(base, relPath);
-        if (abs !== null) files.set(abs, content);
-      },
-      ledger: () => entries,
-      events: () => published,
-    } satisfies TestManagedFileStore;
-  });
+  return {
+    service,
+    layer: Layer.succeed(ManagedFileService, service),
+    base,
+    read: (relPath) => {
+      const abs = contain(base, relPath);
+      return abs === null ? null : (files.get(abs) ?? null);
+    },
+    seed: (relPath, content) => {
+      const abs = contain(base, relPath);
+      if (abs !== null) files.set(abs, content);
+    },
+    ledger: () => entries,
+    events: () => published,
+  } satisfies TestManagedFileStore;
+});

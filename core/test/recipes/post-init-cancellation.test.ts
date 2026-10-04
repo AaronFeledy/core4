@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { plugin } from "@lando/lando4";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Exit, Stream } from "effect";
@@ -140,7 +140,7 @@ test("cancellation through post-init kills and reaps the live runner child", asy
         failedAction,
         rolledBack: false,
       }),
-  }).pipe(Effect.provide(ProcessRunnerLive));
+  }).pipe(Effect.provide(BunProcessRunner.layer));
   const completion = Effect.runPromiseExit(program, { signal: controller.signal });
   let pid: number | undefined;
   try {
@@ -194,16 +194,19 @@ test("interrupts the nested runner when post-init is cancelled", async () => {
         rolledBack: false,
       }),
   }).pipe(
-    Effect.provideService(ProcessRunner, {
-      run: () =>
-        Effect.acquireUseRelease(
-          Effect.sync(() => started.resolve()),
-          () => Effect.never.pipe(Effect.timeout("2 seconds"), Effect.orDie),
-          () => Effect.sync(() => released.resolve()),
-        ),
-      stream: () => Stream.empty,
-      streamWithExit: () => Stream.empty,
-    }),
+    Effect.provideService(
+      ProcessRunner,
+      ProcessRunner.of({
+        run: () =>
+          Effect.acquireUseRelease(
+            Effect.sync(() => started.resolve()),
+            () => Effect.never.pipe(Effect.timeout("2 seconds"), Effect.orDie),
+            () => Effect.sync(() => released.resolve()),
+          ),
+        stream: () => Stream.empty,
+        streamWithExit: () => Stream.empty,
+      }),
+    ),
   );
   const result = Effect.runPromiseExit(program, { signal: controller.signal });
   try {

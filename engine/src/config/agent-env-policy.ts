@@ -10,19 +10,18 @@ import {
   resolveAgentEnvAllowlist,
 } from "./agent-env.ts";
 
-const readPolicy = (
+const readPolicy = Effect.fnUntraced(function* (
   landofileAgentEnv: boolean | undefined,
-): Effect.Effect<AgentEnvPolicy, ConfigError, ConfigService> =>
-  Effect.gen(function* () {
-    const configService = yield* ConfigService;
-    const agentEnv = yield* configService.get("agentEnv");
-    return {
-      ...(agentEnv?.enabled === undefined ? {} : { enabled: agentEnv.enabled }),
-      ...(agentEnv?.allow === undefined ? {} : { allow: agentEnv.allow }),
-      ...(agentEnv?.deny === undefined ? {} : { deny: agentEnv.deny }),
-      appOptOut: landofileAgentEnv === false,
-    };
-  });
+): Effect.fn.Return<AgentEnvPolicy, ConfigError, ConfigService> {
+  const configService = yield* ConfigService;
+  const agentEnv = yield* configService.get("agentEnv");
+  return {
+    ...(agentEnv?.enabled === undefined ? {} : { enabled: agentEnv.enabled }),
+    ...(agentEnv?.allow === undefined ? {} : { allow: agentEnv.allow }),
+    ...(agentEnv?.deny === undefined ? {} : { deny: agentEnv.deny }),
+    appOptOut: landofileAgentEnv === false,
+  };
+});
 
 export const resolveAgentEnvForwardAllowlist = (
   landofileAgentEnv: boolean | undefined,

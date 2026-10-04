@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect } from "effect";
 
 import type {
   EngineHttpRequest,
@@ -30,11 +30,11 @@ const appRoot = AbsolutePath.make("/tmp/lando-bringdown-app");
 const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
   volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "bring-down.integration.test",
   runtime: 4 as const,
 };
-const volumePruneLive = liveIntegrationEligibility([
+const volumePruneEligibility = liveIntegrationEligibility([
   {
     available: process.env.LANDO_TEST_VOLUME_PRUNE === "1",
     reason: "LANDO_TEST_VOLUME_PRUNE=1 is required",
@@ -50,17 +50,18 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  appMount:
-    name === "node"
-      ? {
+  ...(name === "node"
+    ? {
+        appMount: {
           source: appRoot,
           target: PortablePath.make("/app"),
           readOnly: false,
           excludes: [],
           includes: [],
           realization: "passthrough",
-        }
-      : undefined,
+        },
+      }
+    : {}),
   mounts: [],
   storage:
     name === "database"
@@ -402,7 +403,7 @@ describe("provider-lando bringDown", () => {
       }
 
       await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           liveRequest({
             method: "POST",
             path: "/volumes/create",
@@ -433,12 +434,12 @@ describe("provider-lando bringDown", () => {
       } finally {
         for (const service of Object.values(plan.services)) {
           await Effect.runPromise(
-            Effect.either(
+            Effect.result(
               liveRequest({ method: "POST", path: `/containers/lando-${plan.slug}-${service.name}/stop` }),
             ),
           );
           await Effect.runPromise(
-            Effect.either(
+            Effect.result(
               liveRequest({
                 method: "DELETE",
                 path: `/containers/lando-${plan.slug}-${service.name}?force=true`,
@@ -447,17 +448,17 @@ describe("provider-lando bringDown", () => {
           );
         }
         await Effect.runPromise(
-          Effect.either(liveRequest({ method: "DELETE", path: `/networks/lando-${plan.slug}` })),
+          Effect.result(liveRequest({ method: "DELETE", path: `/networks/lando-${plan.slug}` })),
         );
       }
     },
     60_000,
   );
 
-  test.skipIf(!volumePruneLive.available)(
+  test.skipIf(!volumePruneEligibility.available)(
     liveIntegrationTestName(
       "prunes only explicitly created current-app/provider volumes when enabled",
-      volumePruneLive,
+      volumePruneEligibility,
     ),
     async () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath;
@@ -465,7 +466,7 @@ describe("provider-lando bringDown", () => {
       const api = makePodmanApiClient(socketPath ?? "");
       const liveRequest = api.request;
       if (liveRequest === undefined) throw new Error("missing request client");
-      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const suffix = `${Effect.runSync(Clock.currentTimeMillis)}-${Math.random().toString(36).slice(2)}`;
       const owned = `us436-prune-owned-${suffix}`;
       const other = `us436-prune-other-${suffix}`;
 
@@ -507,7 +508,7 @@ describe("provider-lando bringDown", () => {
         expect(otherAfter.status).toBe(200);
       } finally {
         for (const name of [owned, other]) {
-          await Effect.runPromise(Effect.either(liveRequest({ method: "DELETE", path: `/volumes/${name}` })));
+          await Effect.runPromise(Effect.result(liveRequest({ method: "DELETE", path: `/volumes/${name}` })));
         }
       }
     },

@@ -7,27 +7,20 @@ import { Effect, Stream } from "effect";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
-import {
-  DataMover,
-  EventService,
-  PathsService,
-  RuntimeProvider,
-  StateStore,
-  type StateStoreShape,
-} from "@lando/sdk/services";
+import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
-import { DataMoverLive } from "../src/service.ts";
+import * as BunDataMover from "../src/service.ts";
 
 test("the live shared port reads engine creation state and does not expose a creation writer", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-mover-initialization-"));
   try {
-    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
-    const store: StateStoreShape = {
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
+    const store = StateStore.of({
       ...live,
       open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),
-    };
+    });
     const identity: VolumeIdentity = {
       coordinationKey: "daemon/data",
       nativeName: "data",
@@ -39,23 +32,32 @@ test("the live shared port reads engine creation state and does not expose a cre
     await Effect.runPromise(engine.recordCreation);
     const mover = await Effect.runPromise(
       DataMover.pipe(
-        Effect.provide(DataMoverLive),
+        Effect.provide(BunDataMover.layer),
         Effect.provideService(StateStore, store),
         Effect.provideService(PathsService, makeLandoPaths()),
         Effect.provideService(RuntimeProvider, TestRuntimeProvider),
-        Effect.provideService(EventService, {
-          publish: () => Effect.void,
-          subscribe: () => Stream.empty,
-          subscribeQueue: Effect.never,
-          waitFor: () => Effect.never,
-          waitForAny: () => Effect.never,
-          query: () => Effect.succeed([]),
-        }),
-        Effect.provideService(RedactionService, {
-          registerValues: registerRedactionValues,
-          forProfile: () =>
-            Effect.succeed({ redactString: (text: string) => text, redactValue: (value: unknown) => value }),
-        }),
+        Effect.provideService(
+          EventService,
+          EventService.of({
+            publish: () => Effect.void,
+            subscribe: () => Stream.empty,
+            subscribeQueue: Effect.never,
+            waitFor: () => Effect.never,
+            waitForAny: () => Effect.never,
+            query: () => Effect.succeed([]),
+          }),
+        ),
+        Effect.provideService(
+          RedactionService,
+          RedactionService.of({
+            registerValues: registerRedactionValues,
+            forProfile: () =>
+              Effect.succeed({
+                redactString: (text: string) => text,
+                redactValue: (value: unknown) => value,
+              }),
+          }),
+        ),
       ),
     );
     expect(mover.volumeInitialization).toBeDefined();

@@ -5,7 +5,7 @@ import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
@@ -93,7 +93,7 @@ describe("lando renderer (TTY keybindings)", () => {
       base.injectKey("\x1b");
       yield* Effect.sleep("40 millis");
 
-      const drained = yield* Queue.takeAll(collector);
+      const drained = yield* Queue.clear(collector);
       return [...drained];
     });
 
@@ -102,7 +102,7 @@ describe("lando renderer (TTY keybindings)", () => {
         createLiveRegion: () => Promise.resolve(new FakeLiveRegion()),
         transcriptReader,
       }),
-      EventServiceLive,
+      LandoEventService.layer,
     );
     const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
@@ -139,9 +139,9 @@ describe("lando renderer (TTY keybindings)", () => {
       base.injectKey("\x03");
       yield* Effect.sleep("20 millis");
 
-      return [...(yield* Queue.takeAll(collector))];
+      return [...(yield* Queue.clear(collector))];
     });
-    const layer = Layer.provideMerge(makeLandoEventConsumer(io, deps), EventServiceLive);
+    const layer = Layer.provideMerge(makeLandoEventConsumer(io, deps), LandoEventService.layer);
     const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(interrupts).toBe(1);
@@ -165,7 +165,7 @@ describe("lando renderer (TTY keybindings)", () => {
         base.injectKey(raw);
         yield* Effect.sleep("20 millis");
 
-        return [...(yield* Queue.takeAll(collector))];
+        return [...(yield* Queue.clear(collector))];
       });
       const layer = Layer.provideMerge(
         makeLandoEventConsumer(io, {
@@ -174,7 +174,7 @@ describe("lando renderer (TTY keybindings)", () => {
             interrupts += 1;
           },
         }),
-        EventServiceLive,
+        LandoEventService.layer,
       );
 
       const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));

@@ -12,7 +12,7 @@ import {
   linuxDockerCapabilities,
   macosDockerCapabilities,
   makeDockerApiClient,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   npipeSocketPath,
   resolveDockerHost,
   windowsDockerCapabilities,

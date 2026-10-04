@@ -4,7 +4,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import {
   ScratchListResultSchema,
@@ -100,15 +100,14 @@ const runScratch = <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<A> =>
 
 const failureTag = async <A, E, R>(effect: Effect.Effect<A, E, R>): Promise<string> => {
   const result = await Effect.runPromise(
-    effect.pipe(Effect.provide(scratchRuntime()), Effect.either) as unknown as Effect.Effect<
-      { readonly _tag: "Left"; readonly left: E } | { readonly _tag: "Right"; readonly right: A },
+    effect.pipe(Effect.provide(scratchRuntime()), Effect.result) as Effect.Effect<
+      Result.Result<A, E>,
       never,
       never
     >,
   );
-  expect(result._tag).toBe("Left");
-  if (result._tag === "Right") throw new Error("expected scratch operation to fail");
-  return (result.left as { readonly _tag?: string })._tag ?? "";
+  if (Result.isSuccess(result)) throw new Error("expected scratch operation to fail");
+  return (result.failure as { readonly _tag?: string })._tag ?? "";
 };
 
 describe("apps:scratch:* command operations", () => {

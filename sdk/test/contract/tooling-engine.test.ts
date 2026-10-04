@@ -26,7 +26,7 @@ import {
 
 const providerId = ProviderId.make("contract");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "tooling-engine.contract",
   runtime: 4 as const,
 };
@@ -161,33 +161,32 @@ const makeRecordingProvider = (
 // tagged ToolingExecError when no commands are present.
 const syntheticEngine: ToolingEngineUnderTest = {
   id: "synthetic",
-  run: (invocation, plan, provider) =>
-    Effect.gen(function* () {
-      if (invocation.commands.length === 0) {
-        return yield* Effect.fail(
-          new ToolingExecError({
-            message: `Tooling task ${invocation.tool} has no commands.`,
-            tool: invocation.tool,
-          }),
-        );
-      }
-      const service = invocation.service ?? Object.values(plan.services)[0]?.name ?? ":primary";
-      let exitCode = 0;
-      let stdout = "";
-      let stderr = "";
-      for (const command of invocation.commands) {
-        const result = yield* provider.exec(
-          { app: plan.id, service: ServiceName.make(service), plan },
-          { command },
-        );
-        stdout += result.stdout;
-        stderr += result.stderr;
-        exitCode = result.exitCode;
-        if (exitCode !== 0) break;
-      }
-      const out: ToolingEngineResult = { tool: invocation.tool, service, exitCode, stdout, stderr };
-      return out;
-    }),
+  run: Effect.fnUntraced(function* (invocation, plan, provider) {
+    if (invocation.commands.length === 0) {
+      return yield* Effect.fail(
+        new ToolingExecError({
+          message: `Tooling task ${invocation.tool} has no commands.`,
+          tool: invocation.tool,
+        }),
+      );
+    }
+    const service = invocation.service ?? Object.values(plan.services)[0]?.name ?? ":primary";
+    let exitCode = 0;
+    let stdout = "";
+    let stderr = "";
+    for (const command of invocation.commands) {
+      const result = yield* provider.exec(
+        { app: plan.id, service: ServiceName.make(service), plan },
+        { command },
+      );
+      stdout += result.stdout;
+      stderr += result.stderr;
+      exitCode = result.exitCode;
+      if (exitCode !== 0) break;
+    }
+    const out: ToolingEngineResult = { tool: invocation.tool, service, exitCode, stdout, stderr };
+    return out;
+  }),
 };
 
 const okInvocation: ToolingInvocation = {
@@ -293,22 +292,21 @@ describe("ToolingEngine contract", () => {
   test("an engine that ignores command order fails the contract", async () => {
     const reordering: ToolingEngineUnderTest = {
       id: "reordering",
-      run: (invocation, plan, provider) =>
-        Effect.gen(function* () {
-          const service = invocation.service ?? "web";
-          // Runs the commands in REVERSE order, violating the ordering guarantee.
-          for (const command of [...invocation.commands].reverse()) {
-            yield* provider.exec({ app: plan.id, service: ServiceName.make(service), plan }, { command });
-          }
-          const out: ToolingEngineResult = {
-            tool: invocation.tool,
-            service,
-            exitCode: 0,
-            stdout: "one\ntwo\n",
-            stderr: "",
-          };
-          return out;
-        }),
+      run: Effect.fnUntraced(function* (invocation, plan, provider) {
+        const service = invocation.service ?? "web";
+        // Runs the commands in REVERSE order, violating the ordering guarantee.
+        for (const command of [...invocation.commands].reverse()) {
+          yield* provider.exec({ app: plan.id, service: ServiceName.make(service), plan }, { command });
+        }
+        const out: ToolingEngineResult = {
+          tool: invocation.tool,
+          service,
+          exitCode: 0,
+          stdout: "one\ntwo\n",
+          stderr: "",
+        };
+        return out;
+      }),
     };
     const exit = await Effect.runPromiseExit(runToolingEngineContractSuite(makeHarness(reordering)));
     expect(exit._tag).toBe("Failure");
@@ -317,25 +315,24 @@ describe("ToolingEngine contract", () => {
   test("an engine that does not short-circuit on non-zero exit fails the contract", async () => {
     const noShortCircuit: ToolingEngineUnderTest = {
       id: "noShortCircuit",
-      run: (invocation, plan, provider) =>
-        Effect.gen(function* () {
-          const service = invocation.service ?? "web";
-          let exitCode = 0;
-          let stdout = "";
-          let stderr = "";
-          for (const command of invocation.commands) {
-            const result = yield* provider.exec(
-              { app: plan.id, service: ServiceName.make(service), plan },
-              { command },
-            );
-            stdout += result.stdout;
-            stderr += result.stderr;
-            exitCode = result.exitCode;
-            // Intentionally never breaks on a non-zero exit.
-          }
-          const out: ToolingEngineResult = { tool: invocation.tool, service, exitCode, stdout, stderr };
-          return out;
-        }),
+      run: Effect.fnUntraced(function* (invocation, plan, provider) {
+        const service = invocation.service ?? "web";
+        let exitCode = 0;
+        let stdout = "";
+        let stderr = "";
+        for (const command of invocation.commands) {
+          const result = yield* provider.exec(
+            { app: plan.id, service: ServiceName.make(service), plan },
+            { command },
+          );
+          stdout += result.stdout;
+          stderr += result.stderr;
+          exitCode = result.exitCode;
+          // Intentionally never breaks on a non-zero exit.
+        }
+        const out: ToolingEngineResult = { tool: invocation.tool, service, exitCode, stdout, stderr };
+        return out;
+      }),
     };
     const exit = await Effect.runPromiseExit(runToolingEngineContractSuite(makeHarness(noShortCircuit)));
     expect(exit._tag).toBe("Failure");

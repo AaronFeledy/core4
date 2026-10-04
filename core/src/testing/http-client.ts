@@ -1,32 +1,15 @@
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
-import type { HttpClientCapabilities, HttpRequest } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { LandoEvent } from "@lando/sdk/services";
 
+import { RequestPolicy, type RequestPolicyShape } from "@lando/http-client/live";
 import type { ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { fetchInitForNetwork } from "@lando/http-client/network-trust";
-import type { HttpClientShape } from "@lando/http-client/service";
-import { applyHttpStreamTimeout, applyHttpTimeout } from "@lando/http-client/timeout";
-
-const TEST_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
-
-const urlOrigin = (url: string): string => {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.length > 0 ? `${parsed.protocol}//${parsed.host}` : parsed.protocol;
-  } catch {
-    return "unknown";
-  }
-};
 
 /** A fetch init the double recorded for the most recent request under trust. */
 export interface TestHttpCapturedInit {
@@ -36,9 +19,9 @@ export interface TestHttpCapturedInit {
 }
 
 export interface TestHttpClientHandle {
-  readonly service: HttpClientShape;
+  readonly service: HttpClient.HttpClient;
   readonly serve: (url: string, bytes: Uint8Array) => void;
-  /** Register a URL whose connection never completes, so only `timeoutMs` settles it. */
+  /** Register a URL whose connection never completes, so only `Effect.timeout` settles it. */
   readonly serveHang: (url: string) => void;
   /** Register a URL whose response opens but whose body never drains. */
   readonly serveBodyHang: (url: string) => void;
@@ -50,6 +33,11 @@ export interface TestHttpClientHandle {
     trust: ResolvedNetworkTrust,
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>;
+  /** Run an effect under a fiber-local request policy. */
+  readonly withPolicy: <A, E, R>(
+    policy: RequestPolicyShape,
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>;
   /** The fetch init computed for the most recent request, or undefined. */
   readonly lastInit: () => TestHttpCapturedInit | undefined;
   /** Run an effect under offline-only conditions (every request fails pre-connect). */
@@ -58,10 +46,17 @@ export interface TestHttpClientHandle {
   readonly connectCount: () => number;
 }
 
+const urlOrigin = (url: URL): string => (url.host.length > 0 ? `${url.protocol}//${url.host}` : url.protocol);
+
+const transportError = (request: Parameters<Parameters<typeof HttpClient.make>[0]>[0], cause: unknown) =>
+  new HttpClientError.HttpClientError({
+    reason: new HttpClientError.TransportError({ request, cause }),
+  });
+
 /**
- * In-memory `HttpClient` double for the `runHttpClientContract` suite and for
- * tests that need a deterministic egress chokepoint. It mirrors the real
- * `HttpClientLive` event/redaction behavior (redacted `pre/post-http-call`,
+ * In-memory Effect `HttpClient` double for the `runHttpClientContract` suite and
+ * for tests that need a deterministic egress chokepoint. It mirrors the real
+ * Lando layer event/redaction behavior (redacted `pre/post-http-call`,
  * scheme+host `urlOrigin`, `onBehalfOf` passthrough) without touching the
  * network: bodies are registered with `serve(url, bytes)`. Trust is observed,
  * not applied to a socket — `withTrust` records the `fetchInitForNetwork` result
@@ -94,73 +89,51 @@ export const makeTestHttpClient = (
     };
   };
 
-  const scheme = (url: string): string | undefined => {
-    try {
-      return new URL(url).protocol;
-    } catch {
-      return undefined;
-    }
-  };
-
-  const emit = <A>(request: HttpRequest, body: A): Effect.Effect<A, HttpRequestError> =>
+  const service = HttpClient.make((request, url, _signal, fiber) =>
     Effect.gen(function* () {
-      const protocol = scheme(request.url);
+      const policy = fiber.getRef(RequestPolicy);
+      const protocol = url.protocol;
       if (protocol !== "http:" && protocol !== "https:" && protocol !== "file:") {
-        return yield* Effect.fail(
-          new HttpRequestError({ message: "unsupported scheme", urlOrigin: urlOrigin(request.url) }),
-        );
+        return yield* Effect.fail(transportError(request, "unsupported scheme"));
       }
-      const redact = createRedactor("secrets", { values: request.redactionTokens ?? [] }).redactString;
-      const origin = urlOrigin(request.url);
+      const redact = createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString;
+      const origin = urlOrigin(url);
       captured.push(
         PreHttpCallEvent.make({
           eventName: "pre-http-call",
           urlOrigin: origin,
-          ...(request.method === undefined ? {} : { method: request.method }),
-          ...(request.callerId === undefined ? {} : { callerId: redact(request.callerId) }),
-          ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-          timestamp: DateTime.unsafeNow(),
+          method: request.method,
+          ...(policy.callerId === undefined ? {} : { callerId: redact(policy.callerId) }),
+          ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: policy.onBehalfOf }),
+          timestamp: yield* DateTime.now,
         }),
       );
 
-      if (offline) {
+      if (offline || policy.offline === true) {
         captured.push(
           PostHttpCallEvent.make({
             eventName: "post-http-call",
             urlOrigin: origin,
+            method: request.method,
             outcome: "failure",
             durationMs: 0,
             failureDetail: "offline",
-            ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-            timestamp: DateTime.unsafeNow(),
+            ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: policy.onBehalfOf }),
+            timestamp: yield* DateTime.now,
           }),
         );
-        return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
+        return yield* Effect.fail(transportError(request, "offline"));
       }
 
-      if (request.offline === true) {
-        captured.push(
-          PostHttpCallEvent.make({
-            eventName: "post-http-call",
-            urlOrigin: origin,
-            outcome: "failure",
-            durationMs: 0,
-            failureDetail: "offline",
-            ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-            timestamp: DateTime.unsafeNow(),
-          }),
-        );
-        return yield* Effect.fail(new HttpRequestError({ message: "offline", urlOrigin: origin }));
-      }
-
-      if (hangs.has(request.url)) {
-        recordInit(request.url);
+      const href = url.href;
+      if (hangs.has(href) || hangs.has(request.url)) {
+        recordInit(href);
         connectCount += 1;
         return yield* Effect.acquireUseRelease(
           Effect.sync(() => {
             pendingHangs += 1;
           }),
-          () => Effect.never as Effect.Effect<A>,
+          () => Effect.never,
           () =>
             Effect.sync(() => {
               pendingHangs -= 1;
@@ -168,67 +141,37 @@ export const makeTestHttpClient = (
         );
       }
 
-      recordInit(request.url);
-      const bytes = sources.get(request.url);
+      recordInit(href);
+      const bytes = sources.get(href) ?? sources.get(request.url);
       const status = bytes === undefined ? 404 : 200;
       if (bytes !== undefined) connectCount += 1;
       captured.push(
         PostHttpCallEvent.make({
           eventName: "post-http-call",
           urlOrigin: origin,
+          method: request.method,
           status,
           outcome: "success",
           durationMs: 0,
-          ...(request.onBehalfOf === undefined ? {} : { onBehalfOf: request.onBehalfOf }),
-          timestamp: DateTime.unsafeNow(),
+          ...(policy.onBehalfOf === undefined ? {} : { onBehalfOf: policy.onBehalfOf }),
+          timestamp: yield* DateTime.now,
         }),
       );
-      return body;
-    });
 
-  const service: HttpClientShape = {
-    id: "test-http-client",
-    capabilities: TEST_CAPABILITIES,
-    request: (request) =>
-      applyHttpTimeout(
-        request,
-        emit(request, request).pipe(
-          Effect.map((req) => {
-            const bytes = sources.get(req.url);
-            return {
-              status: bytes === undefined ? 404 : 200,
-              headers: [],
-              contentLength: bytes?.length ?? 0,
-            };
-          }),
-        ),
-      ),
-    stream: (request) => {
-      const startedAt = Date.now();
-      return applyHttpTimeout(
-        request,
-        emit(request, request).pipe(
-          Effect.map((req) => {
-            const bytes = sources.get(req.url) ?? new Uint8Array();
-            const body = bodyHangs.has(req.url) ? Stream.never : Stream.fromIterable([bytes]);
-            return {
-              status: sources.has(req.url) ? 200 : 404,
-              headers: [],
-              body: applyHttpStreamTimeout(
-                request,
-                body,
-                request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt),
-              ),
-            };
-          }),
-        ),
-      );
-    },
-    upload: (request) =>
-      Effect.fail(
-        new HttpUploadError({ message: "upload not supported", urlOrigin: urlOrigin(request.url) }),
-      ),
-  };
+      if (bytes === undefined) {
+        return HttpClientResponse.fromWeb(request, new Response(null, { status: 404 }));
+      }
+      if (bodyHangs.has(href) || bodyHangs.has(request.url)) {
+        const body = new ReadableStream<Uint8Array>({
+          start() {
+            /* never enqueues or closes */
+          },
+        });
+        return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+      }
+      return HttpClientResponse.fromWeb(request, new Response(bytes, { status: 200 }));
+    }),
+  );
 
   return {
     service,
@@ -250,6 +193,7 @@ export const makeTestHttpClient = (
             activeTrust = prior;
           }),
       ),
+    withPolicy: (policy, effect) => effect.pipe(Effect.provideService(RequestPolicy, policy)),
     lastInit: () => lastInit,
     withOffline: (effect) =>
       Effect.acquireUseRelease(

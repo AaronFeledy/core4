@@ -27,19 +27,18 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
   args: {
     name: Args.string({ description: "Plugin name.", required: false }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const { name } = extractInput(input);
-      if (name === "") {
-        return yield* Effect.fail(
-          new NotImplementedError({
-            message: "meta:plugin:remove requires a plugin name argument.",
-            commandId: "meta:plugin:remove",
-            remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
-          }),
-        );
-      }
-      return yield* pluginRemove({ name });
-    }),
+  run: Effect.fn("PluginRemoveCommand.run")(function* (input: unknown) {
+    const { name } = extractInput(input);
+    if (name === "") {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: "meta:plugin:remove requires a plugin name argument.",
+          commandId: "meta:plugin:remove",
+          remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+        }),
+      );
+    }
+    return yield* pluginRemove({ name });
+  }),
   render: (result) => renderPluginRemoveResult(result as PluginRemoveResult),
 };

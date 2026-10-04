@@ -1,0 +1,9 @@
+name: config-lint-invalid
+services:
+  web:
+    type: compose
+    imgae: nginx:1.27-alpine
+    home: "nope"
+    ports:
+      - target: 99999
+        protocol: tcp

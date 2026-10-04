@@ -1,9 +1,9 @@
-// In-memory `SecretStore` test double. Mirrors the env-backed `SecretStoreLive`
+// In-memory `SecretStore` test double. Mirrors the env-backed `EnvSecretStore.layer`
 // contract (`get`/`has`/`list`, `SecretNotFoundError` on a missing id) against a
 // `Map` of secret ids to values so `runSecretStoreContractSuite` can run without
 // reading `process.env` or any external backend.
 
-import { Effect, Either, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 
 import {
   SecretNotFoundError,
@@ -59,10 +59,10 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
 
   const ownedReference = (secret: string) => {
     const reference = parseSecretReference(secret);
-    if (Either.isLeft(reference)) return reference;
-    const scheme = reference.right.scheme;
+    if (Result.isFailure(reference)) return reference;
+    const scheme = reference.success.scheme;
     if (scheme !== undefined && !schemes.includes(scheme)) {
-      return Either.left(
+      return Result.fail(
         new SecretReferenceInvalidError({
           message: "The test secret store does not own this scheme.",
           reference: secret,
@@ -73,12 +73,12 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
     return reference;
   };
 
-  const service: SecretStoreShape = {
+  const service = SecretStore.of({
     id,
     schemes,
     get: (secret) => {
       const reference = ownedReference(secret);
-      if (Either.isLeft(reference)) return Effect.fail(reference.left);
+      if (Result.isFailure(reference)) return Effect.fail(reference.failure);
       if (unavailable !== undefined) return Effect.fail(unavailable);
       const value = secrets.get(secret);
       return value === undefined
@@ -92,12 +92,12 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
         : Effect.succeed(value);
     },
     has: (secret) => {
-      if (Either.isLeft(ownedReference(secret))) return Effect.succeed(false);
+      if (Result.isFailure(ownedReference(secret))) return Effect.succeed(false);
       if (unavailable !== undefined) return Effect.fail(unavailable);
       return Effect.sync(() => secrets.has(secret));
     },
     list: Effect.sync(() => [...secrets.keys()].sort()),
-  };
+  });
 
   return {
     service,

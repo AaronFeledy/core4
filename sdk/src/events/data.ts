@@ -5,7 +5,7 @@ import { AppId, ServiceName } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
 const TransferPostFields = {
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   accelerated: Schema.Boolean,
   sizeBytes: Schema.optional(Schema.Number),
   digest: Schema.optional(Schema.String),
@@ -56,7 +56,7 @@ export const PostVolumeSnapshotEvent = Schema.TaggedStruct("post-volume-snapshot
   eventName: Schema.Literal("post-volume-snapshot"),
   volume: VolumeRef,
   snapshotId: Schema.String,
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   digest: Schema.optional(Schema.String),
   sizeBytes: Schema.optional(Schema.Number),
   failureDetail: Schema.optional(Schema.String),

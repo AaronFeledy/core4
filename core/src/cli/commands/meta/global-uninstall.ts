@@ -27,7 +27,7 @@ export interface GlobalUninstallResult {
 
 const GlobalDistResultSchema = Schema.Struct({
   path: Schema.String,
-  status: Schema.Literal("created", "updated", "unchanged"),
+  status: Schema.Literals(["created", "updated", "unchanged"]),
   serviceIds: Schema.Array(Schema.String),
 });
 
@@ -62,31 +62,27 @@ export const renderGlobalUninstallResult = (result: GlobalUninstallResult): stri
   ].join("\n");
 };
 
-export const globalUninstall = (
+export const globalUninstall = Effect.fn("GlobalUninstall.uninstall")(function* (
   options: GlobalUninstallOptions = {},
-): Effect.Effect<GlobalUninstallResult, GlobalUninstallError, GlobalUninstallServices> =>
-  Effect.gen(function* () {
-    if (options.plugin !== undefined && options.plugin !== "") {
-      return yield* Effect.fail(pluginUninstallError(options.plugin));
-    }
+): Effect.fn.Return<GlobalUninstallResult, GlobalUninstallError, GlobalUninstallServices> {
+  if (options.plugin !== undefined && options.plugin !== "") {
+    return yield* Effect.fail(pluginUninstallError(options.plugin));
+  }
 
-    const loaded = yield* loadGlobalPlan();
-    const globalApp = yield* GlobalAppService;
-    const purged = options.purge ?? false;
-    const servicesRemoved = loaded.materialized
-      ? Object.values(loaded.plan.services).map((service) => String(service.name))
-      : [];
+  const loaded = yield* loadGlobalPlan();
+  const globalApp = yield* GlobalAppService;
+  const purged = options.purge ?? false;
+  const servicesRemoved = loaded.materialized
+    ? Object.values(loaded.plan.services).map((service) => String(service.name))
+    : [];
 
-    if (purged && loaded.materialized) {
-      const registry = yield* RuntimeProviderRegistry;
-      const provider = yield* registry.select(loaded.plan);
-      yield* provider.destroy(
-        { app: loaded.plan.id, plan: loaded.plan },
-        { volumes: true, removeState: true },
-      );
-    }
+  if (purged && loaded.materialized) {
+    const registry = yield* RuntimeProviderRegistry;
+    const provider = yield* registry.select(loaded.plan);
+    yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes: true, removeState: true });
+  }
 
-    const dist = yield* globalApp.regenerateDist({ services: {} });
+  const dist = yield* globalApp.regenerateDist({ services: {} });
 
-    return { app: "global", materialized: loaded.materialized, purged, dist, servicesRemoved };
-  });
+  return { app: "global", materialized: loaded.materialized, purged, dist, servicesRemoved };
+});

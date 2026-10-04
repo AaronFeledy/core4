@@ -5,7 +5,9 @@ import {
   expressionInterpolationsTouchOnlyScopes,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
-import { Either } from "effect";
+import { Predicate, Result } from "effect";
+
+import type { ValidationIssuePath } from "@lando/sdk/schema";
 
 /**
  * Expression scopes a loaded Landofile may still carry after the load walk.
@@ -67,8 +69,8 @@ const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean
 
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
-  /** Dotted path of the value site holding the expression. */
-  readonly path: string;
+  /** Location of the value site holding the expression. */
+  readonly path: ValidationIssuePath;
   readonly reason: string;
 }
 
@@ -104,9 +106,9 @@ const recipeOptionScope = (
   merged: Record<string, unknown>,
 ): Readonly<Record<string, unknown>> | undefined => {
   const recipe = merged.recipe;
-  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) return undefined;
+  if (!Predicate.isObject(recipe)) return undefined;
   const options = (recipe as { readonly options?: unknown }).options;
-  if (typeof options !== "object" || options === null || Array.isArray(options)) return undefined;
+  if (!Predicate.isObject(options)) return undefined;
   return options as Readonly<Record<string, unknown>>;
 };
 
@@ -132,34 +134,34 @@ export const materializeLoadScopeExpressions = (
     if (typeof value === "string") {
       if (!value.includes("{{")) return value;
       const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
-      if (Either.isLeft(parsed)) return value;
-      if (!resolvableAtLoad(value, parsed.right)) return value;
-      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.right, ["env"]);
+      if (Result.isFailure(parsed)) return value;
+      if (!resolvableAtLoad(value, parsed.success)) return value;
+      const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.success, ["env"]);
       if (needsOptions && options === undefined) {
-        unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
+        unresolved.push({ path, reason: "the Landofile records no recipe options" });
         return value;
       }
       const evaluated = evaluateTemplateEither(
-        parsed.right,
+        parsed.success,
         options === undefined ? { env } : { env, recipe: options },
         { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );
-      if (Either.isLeft(evaluated)) {
+      if (Result.isFailure(evaluated)) {
         let reason: string;
-        if (evaluated.left.message.startsWith("Expression budget exceeded")) {
+        if (evaluated.failure.message.startsWith("Expression budget exceeded")) {
           reason = "it exceeds the load-time expression budget";
         } else if (needsOptions) {
           reason = "it references a recipe option the Landofile does not set";
         } else {
           reason = "it references an environment variable that is not set and declares no default";
         }
-        unresolved.push({ path: path.join("."), reason });
+        unresolved.push({ path, reason });
         return value;
       }
-      return evaluated.right;
+      return evaluated.success;
     }
     if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
-    if (typeof value === "object" && value !== null) {
+    if (Predicate.isObjectOrArray(value)) {
       return Object.fromEntries(
         Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
           key,

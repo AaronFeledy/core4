@@ -34,7 +34,7 @@
   "dependencies": {
     "@lando/sdk": "workspace:*",
     "@opentui/core": "^0.4.3",
-    "effect": "^3.21.2"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@lando/engine": "workspace:*",

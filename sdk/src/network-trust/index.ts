@@ -3,7 +3,7 @@
  *
  * This is the single source of truth for proxy precedence, `NO_PROXY` matching,
  * and Bun `fetch` proxy/CA application used by every Lando-owned egress path
- * (`HttpClientLive`, and therefore `Downloader`, plus `lando setup` preflight).
+ * (the Effect HTTP client, Downloader, and setup preflight).
  *
  * The module is intentionally PURE: string/URL/config logic only, no `node:fs`,
  * no `Effect`. CA certificates are referenced by PATH in the resolved PLAN

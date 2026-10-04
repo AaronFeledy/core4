@@ -28,7 +28,6 @@ import {
 } from "@lando/core/services";
 import {
   TestClock,
-  TestContext,
   TestRuntimeProvider,
   makeTestRuntime,
   provideTestRuntime,
@@ -155,7 +154,7 @@ describe("@lando/core/testing", () => {
           const queue = yield* events.subscribeQueue;
           const waiter = yield* events
             .waitFor("test-runtime:event", { filter: (event) => event.value === 2 })
-            .pipe(Effect.fork);
+            .pipe(Effect.forkChild);
 
           yield* Effect.sleep("10 millis");
           yield* events.publish(firstEvent);
@@ -230,7 +229,7 @@ describe("@lando/core/testing", () => {
         const afterClockAdvance = yield* cache.read("cache:short-lived", CacheValue);
 
         return { expired, persistent, beforeClockAdvance, afterClockAdvance };
-      }).pipe(Effect.provide(runtime.layer), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(runtime.layer), Effect.provide(TestClock.layer())),
     );
 
     expect(result).toEqual({

@@ -5,25 +5,18 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { Downloader } from "@lando/sdk/services";
 
 import { MUTAGEN_TOOL_MANIFEST, mutagenAgentInstallPath, provisionMutagen } from "@lando/file-sync-mutagen";
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities, ToolArtifactEntry } from "@lando/sdk/schema";
+import type { ToolArtifactEntry } from "@lando/sdk/schema";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClient, type HttpClientShape } from "@lando/http-client/service";
+import { layer as DownloaderLayer } from "@lando/http-client/downloader";
 import { makeArtifactDownload } from "../testing/artifact-download.ts";
-
-const ACCEPTANCE_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
@@ -84,6 +77,34 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
   }
 };
 
+const makeInstrumentedHttp = (url: string, payload: Uint8Array) => {
+  let streamCalls = 0;
+  let bytesStreamed = 0;
+  const http = HttpClient.make((request, requestUrl) =>
+    Effect.gen(function* () {
+      streamCalls += 1;
+      if (requestUrl.href !== url && request.url !== url) {
+        return yield* Effect.fail(
+          new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({
+              request,
+              cause: "miss",
+              description: "miss",
+            }),
+          }),
+        );
+      }
+      bytesStreamed += payload.length;
+      return HttpClientResponse.fromWeb(request, new Response(payload, { status: 200 }));
+    }),
+  );
+  return {
+    layer: Layer.succeed(HttpClient.HttpClient, http),
+    streamCalls: () => streamCalls,
+    bytesStreamed: () => bytesStreamed,
+  };
+};
+
 describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downloader", () => {
   test.skipIf(!isLinuxX64)(
     "the provider runtime-bundle download flows every byte through the resolved HttpClient",
@@ -91,33 +112,7 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
       await withTempDir(async (dir) => {
         const bundle = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80]);
         const url = "https://runtime-bundle.test/lando-runtime.zip";
-        let streamCalls = 0;
-        let bytesStreamed = 0;
-        const http: HttpClientShape = {
-          id: "acceptance-http",
-          capabilities: ACCEPTANCE_HTTP_CAPABILITIES,
-          request: (request) =>
-            Effect.fail(
-              new HttpRequestError({ message: "request unsupported in fake", urlOrigin: request.url }),
-            ),
-          stream: (request) =>
-            Effect.suspend(() => {
-              streamCalls += 1;
-              if (request.url !== url) {
-                return Effect.fail(
-                  new HttpRequestError({ message: "miss", urlOrigin: request.url, status: 404 }),
-                );
-              }
-              bytesStreamed += bundle.length;
-              return Effect.succeed({
-                status: 200,
-                headers: [],
-                body: Stream.fromIterable([bundle]),
-              });
-            }),
-          upload: (request) =>
-            Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
-        };
+        const http = makeInstrumentedHttp(url, bundle);
 
         const result = await Effect.runPromise(
           Effect.gen(function* () {
@@ -130,13 +125,13 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
               filename: "lando-runtime.zip",
               allowFileSource: false,
             });
-          }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(Layer.succeed(HttpClient, http))))),
+          }).pipe(Effect.provide(DownloaderLayer.pipe(Layer.provide(http.layer)))),
         );
 
         expect(result.sha256).toBe(sha256Hex(bundle));
         expect(result.bytes).toEqual(bundle);
-        expect(streamCalls).toBe(1);
-        expect(bytesStreamed).toBe(bundle.length);
+        expect(http.streamCalls()).toBe(1);
+        expect(http.bytesStreamed()).toBe(bundle.length);
 
         const onDisk = new Uint8Array(await readFile(join(dir, "lando-runtime.zip")));
         expect(onDisk).toEqual(bundle);
@@ -221,25 +216,7 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
           installName: "mutagen-agents/mutagen-agent-linux-armv7",
         };
 
-        let streamCalls = 0;
-        const http: HttpClientShape = {
-          id: "mutagen-acceptance-http",
-          capabilities: ACCEPTANCE_HTTP_CAPABILITIES,
-          request: (request) =>
-            Effect.fail(new HttpRequestError({ message: "request unsupported", urlOrigin: request.url })),
-          stream: (request) =>
-            Effect.suspend(() => {
-              streamCalls += 1;
-              if (request.url !== url) {
-                return Effect.fail(
-                  new HttpRequestError({ message: "miss", urlOrigin: request.url, status: 404 }),
-                );
-              }
-              return Effect.succeed({ status: 200, headers: [], body: Stream.fromIterable([archive]) });
-            }),
-          upload: (request) =>
-            Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
-        };
+        const http = makeInstrumentedHttp(url, archive);
 
         try {
           await Effect.runPromise(
@@ -250,10 +227,10 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
                 platform: "linux",
                 arch: "x64",
               }),
-            ).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(Layer.succeed(HttpClient, http))))),
+            ).pipe(Effect.provide(DownloaderLayer.pipe(Layer.provide(http.layer)))),
           );
 
-          expect(streamCalls).toBe(1);
+          expect(http.streamCalls()).toBe(1);
           expectBytes(await readFile(join(dir, "bin", "mutagen")), hostBin);
           expectBytes(await readFile(join(dir, "bin", "mutagen-agents.tar.gz")), nestedAgents);
           expectBytes(await readFile(mutagenAgentInstallPath(join(dir, "bin"), "linux-amd64")), agentAmd64);

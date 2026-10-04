@@ -53,6 +53,17 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
   remediation: Schema.String,
 }) {}
 
+export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressionError>()(
+  "SqlDumpCompressionError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    compression: Schema.Literals(["gzip", "zstd"]),
+    operation: Schema.Literals(["compress", "decompress"]),
+    remediation: Schema.String,
+  },
+) {}
+
 export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryUnavailableError>()(
   "SqlRecoveryUnavailableError",
   {
@@ -68,7 +79,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
   {
     message: Schema.String,
     service: Schema.String,
-    operation: Schema.Literal("reset", "restore", "import"),
+    operation: Schema.Literals(["reset", "restore", "import"]),
     recoverySnapshotId: Schema.String,
     cause: Schema.Unknown,
     remediation: Schema.String,
@@ -78,7 +89,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
 export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("SqlSeedStateError", {
   message: Schema.String,
   service: Schema.String,
-  status: Schema.Literal("unknown", "fresh", "in-progress", "seeded", "failed"),
+  status: Schema.Literals(["unknown", "fresh", "in-progress", "seeded", "failed"]),
   remediation: Schema.String,
 }) {}
 

@@ -114,10 +114,10 @@ describe("@lando/core bundled plugin loading", () => {
       "const { makeLandoRuntime } = await import('@lando/core');",
       "const { Effect, Layer } = await import('effect');",
       "const runtime = makeLandoRuntime({ bootstrap: 'plugins', plugins: { policy: 'bundled-only' } });",
-      "const result = await Effect.runPromise(Effect.scoped(Effect.either(Layer.build(runtime))));",
-      "if (result._tag === 'Right') process.exit(1);",
-      "console.log(result.left._tag);",
-      "console.log(result.left.message);",
+      "const result = await Effect.runPromise(Effect.scoped(Effect.result(Layer.build(runtime))));",
+      "if (result._tag === 'Success') process.exit(1);",
+      "console.log(result.failure._tag);",
+      "console.log(result.failure.message);",
     ].join("");
 
     // When: the host requests bundled discovery without opting into bundled plugins.

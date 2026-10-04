@@ -13,7 +13,7 @@ import {
 
 const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
   name: "myapp",
-  tooling,
+  ...(tooling === undefined ? {} : { tooling }),
 });
 
 describe("compileToolingCommands", () => {
@@ -215,7 +215,7 @@ const manifest = (name: string, commands?: ReadonlyArray<string>): PluginManifes
   version: "0.0.0",
   api: 4,
   bootstrap: "app",
-  contributes: commands === undefined ? undefined : { commands },
+  ...(commands === undefined ? {} : { contributes: { commands } }),
 });
 
 describe("compilePluginCommands", () => {

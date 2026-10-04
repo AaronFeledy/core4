@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceMountIntent } from "@lando/sdk/services";
@@ -10,11 +10,14 @@ const expectFeatureFailure = async (feature: ServiceFeatureDefinition, assertion
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  expect(result.cause.error).toBeInstanceOf(ContractFailure);
-  expect(result.cause.error._tag).toBe("ContractFailure");
-  expect(result.cause.error.assertion).toBe(assertion);
+  expect(result.cause.reasons).toHaveLength(1);
+  const reason = result.cause.reasons[0];
+  if (reason === undefined) throw new Error("expected a failure reason");
+  expect(Cause.isFailReason(reason)).toBe(true);
+  if (!Cause.isFailReason(reason)) return;
+  expect(reason.error).toBeInstanceOf(ContractFailure);
+  expect(reason.error._tag).toBe("ContractFailure");
+  expect(reason.error.assertion).toBe(assertion);
 };
 
 describe("runServiceFeatureContract", () => {

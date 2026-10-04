@@ -2,7 +2,7 @@
  * Source roots of every first-party workspace package, grouped by the coverage
  * tier a boundary rule needs. Adding a workspace package MUST extend these
  * lists; `core/test/scripts/boundary/workspace-roots.test.ts` fails when a
- * package in the root `workspaces` array has a `src/` tree that no tier
+ * package in the root `workspaces.packages` list has a `src/` tree that no tier
  * covers.
  */
 

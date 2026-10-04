@@ -1,4 +1,4 @@
-import { Data, Effect, Either } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import { parseExpressionEither } from "@lando/sdk/expressions";
@@ -16,12 +16,15 @@ import type {
   ToolingTaskStepLeaf,
 } from "./step-program.ts";
 
-export class EventStepCompileError extends Data.TaggedError("EventStepCompileError")<{
-  readonly message: string;
-  readonly authoredIndex: number;
-  readonly kind: ToolingStepLeaf["kind"];
-  readonly cause: ToolingStepSelectorUnavailableError | ToolingCompileError;
-}> {}
+export class EventStepCompileError extends Schema.TaggedError<EventStepCompileError>()(
+  "EventStepCompileError",
+  {
+    message: Schema.String,
+    authoredIndex: Schema.Number,
+    kind: Schema.Literals(["cmd", "task", "command"]),
+    cause: Schema.Union([ToolingStepSelectorUnavailableError, ToolingCompileError]),
+  },
+) {}
 
 const leafNode = (leaf: ToolingStepLeaf): ToolingStepLeafNode => ({
   kind: "leaf",
@@ -135,23 +138,26 @@ const commandInputHasDynamicExpression = (
   tool: string,
 ): Effect.Effect<boolean, ToolingCompileError> => {
   if (Array.isArray(value)) {
-    return Effect.reduce(value, false, (found, entry) =>
-      commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
+    return Effect.reduce(
+      value,
+      () => false,
+      (found, entry) =>
+        commandInputHasDynamicExpression(entry, tool).pipe(Effect.map((dynamic) => found || dynamic)),
     );
   }
   if (typeof value !== "string") return Effect.succeed(false);
   const parsed = parseExpressionEither(value, { filePath: "<event-step-command>" });
-  if (Either.isLeft(parsed)) {
+  if (Result.isFailure(parsed)) {
     return Effect.fail(
       new ToolingCompileError({
-        message: parsed.left.message,
+        message: parsed.failure.message,
         tool,
-        remediation: parsed.left.remediation,
-        cause: parsed.left,
+        remediation: parsed.failure.remediation,
+        cause: parsed.failure,
       }),
     );
   }
-  return Effect.succeed(parsed.right.segments.some((segment) => segment.kind !== "LiteralSegment"));
+  return Effect.succeed(parsed.success.segments.some((segment) => segment.kind !== "LiteralSegment"));
 };
 
 const commandLeafHasDynamicInput = (
@@ -163,8 +169,11 @@ const commandLeafHasDynamicInput = (
     ...Object.values(leaf.args),
     ...leaf.raw,
   ];
-  return Effect.reduce(values, false, (found, value) =>
-    commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
+  return Effect.reduce(
+    values,
+    () => false,
+    (found, value) =>
+      commandInputHasDynamicExpression(value, leaf.command).pipe(Effect.map((dynamic) => found || dynamic)),
   );
 };
 

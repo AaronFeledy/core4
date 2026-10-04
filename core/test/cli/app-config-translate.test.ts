@@ -105,9 +105,7 @@ const makeLando4Encoder = (
   encode: ({ context, fragment }) =>
     Effect.succeed({
       text: emitLandofileYaml(
-        Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
-          fragment ?? context,
-        ),
+        Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(fragment ?? context),
         { sortKeys: true },
       ),
       diagnostics,
@@ -119,7 +117,7 @@ const runExit = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromiseE
 
 const failureTag = (exit: Exit.Exit<unknown, unknown>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some" ? (failure.value as { _tag: string })._tag : undefined;
 };
 
@@ -127,7 +125,7 @@ const failureValue = (
   exit: Exit.Exit<unknown, unknown>,
 ): { _tag: string; message?: string; remediation?: string } | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some"
     ? (failure.value as { _tag: string; message?: string; remediation?: string })
     : undefined;
@@ -780,7 +778,10 @@ describe("appConfigTranslate", () => {
       makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } }),
       makeTranslator("compose", {}),
     ];
-    const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.succeed(translators) });
+    const registry = Layer.succeed(
+      ConfigTranslatorRegistry,
+      ConfigTranslatorRegistry.of({ list: Effect.succeed(translators) }),
+    );
 
     // When: the operation lists without an explicit translators option.
     const result = await Effect.runPromise(appConfigTranslate({ list: true }).pipe(Effect.provide(registry)));
@@ -798,7 +799,10 @@ describe("appConfigTranslate", () => {
       id: "lando3",
       translators: ["@lando/lando3", "@acme/lando3-fork"],
     });
-    const registry = Layer.succeed(ConfigTranslatorRegistry, { list: Effect.fail(conflict) });
+    const registry = Layer.succeed(
+      ConfigTranslatorRegistry,
+      ConfigTranslatorRegistry.of({ list: Effect.fail(conflict) }),
+    );
 
     // When: the operation lists.
     const exit = await Effect.runPromiseExit(
@@ -808,7 +812,7 @@ describe("appConfigTranslate", () => {
     // Then: the collision propagates untouched.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       expect(error._tag).toBe("Some");
       if (error._tag === "Some") expect(error.value).toBe(conflict);
     }

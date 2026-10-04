@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "@lando/sdk": "workspace:*",
-    "effect": "^3.21.2"
+    "effect": "catalog:"
   }
 }

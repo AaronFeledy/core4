@@ -27,7 +27,7 @@ const expectFailureTag = async <T, E>(
 ): Promise<{ _tag: string; [k: string]: unknown }> => {
   const exit = await Effect.runPromiseExit(effect);
   if (!Exit.isFailure(exit)) throw new Error("expected effect to fail");
-  const option = Cause.failureOption(exit.cause);
+  const option = Cause.findErrorOption(exit.cause);
   if (option._tag !== "Some") throw new Error("expected tagged failure");
   return option.value as { _tag: string; [k: string]: unknown };
 };

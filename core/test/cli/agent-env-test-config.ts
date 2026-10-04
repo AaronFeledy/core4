@@ -5,10 +5,14 @@ import { ConfigService } from "@lando/core/services";
 
 export const configServiceLayer = (config: GlobalConfig): Layer.Layer<ConfigService> => {
   const load = Effect.succeed(config);
-  return Layer.succeed(ConfigService, {
-    load,
-    get: <K extends keyof GlobalConfig>(key: K) => Effect.map(load, (loaded): GlobalConfig[K] => loaded[key]),
-  });
+  return Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load,
+      get: <K extends keyof GlobalConfig>(key: K) =>
+        Effect.map(load, (loaded): GlobalConfig[K] => loaded[key]),
+    }),
+  );
 };
 
 export const emptyConfigServiceLayer: Layer.Layer<ConfigService> = configServiceLayer({} as GlobalConfig);

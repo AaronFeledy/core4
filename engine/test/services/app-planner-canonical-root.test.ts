@@ -9,8 +9,8 @@ import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 test("uses the canonical Windows root when planning a teardown target", async () => {
   // Given: discovery retained a Windows short path, while realpath returns its long form.
@@ -25,7 +25,7 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     // When: the real planner produces the root-bound plan consumed by teardown.
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-        Effect.provide(AppPlannerLive.pipe(Layer.provide(PluginRegistryLive))),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
       ),
     );
 

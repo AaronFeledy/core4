@@ -16,11 +16,11 @@ export const WorkerReady = Schema.TaggedStruct("ready", {
   sessionId: Schema.String,
   token: Schema.String,
   controlToken: Schema.String,
-  socketPath: Schema.optional(Schema.String),
-  url: Schema.optional(Schema.String),
-  containerUrl: Schema.optional(Schema.String),
+  socketPath: Schema.optionalKey(Schema.String),
+  url: Schema.optionalKey(Schema.String),
+  containerUrl: Schema.optionalKey(Schema.String),
   shimPath: Schema.String,
-  transport: Schema.optional(Schema.Literal("unix-socket", "tcp-host-gateway")),
+  transport: Schema.optionalKey(Schema.Literals(["unix-socket", "tcp-host-gateway"])),
 });
 export type WorkerReady = typeof WorkerReady.Type;
 export type HostProxyWorkerProcess = DetachedWorkerProcess<WorkerReady>;

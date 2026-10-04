@@ -7,7 +7,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { parse } from "yaml";
 import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
 import { lampRecipeYaml } from "../../src/recipes/builtin/lamp/manifest.ts";
@@ -145,7 +145,7 @@ describe("lamp decomposition", () => {
     const { fragment } = Effect.runSync(decomposer.decompose({ ...validInput, options }));
     const { recipe: _recipe, ...authoring } = fragment;
     // When
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(lampSnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(lampSnapshot, options));
     // Then
     expect(rendered).toEqual(authoring);
   });

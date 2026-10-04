@@ -102,6 +102,9 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-11 | US-272 | Testing API and deterministic TestRuntime | `docs/guides/library/testing-runtime.mdx` | Shipped |
 | PRD-11 | US-273, US-274, US-289, US-290, US-291, US-292 | Library entry points, `makeLandoRuntime`, `openLandoRuntime`, and App handles | `docs/guides/library/embedding-runtime.mdx` | Shipped |
 | PRD-11 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Shipped |
+| EFFECT-V4 | US-663 | Plugin HTTP requests through Effect's `HttpClient` with Lando network trust | `docs/guides/plugins/http-requests.mdx` | Shipped |
+| EFFECT-V4 | US-668 | Validate a Landofile in your editor through the published schema | `docs/guides/landofile/editor-validation.mdx` | Shipped |
+| EFFECT-V4 | US-668 | Standard Schema views of the Landofile and config contracts | `docs/guides/schemas/standard-schema.mdx` | Shipped |
 | PRD-11 | US-276, US-277, US-278, US-279 | Linux-x64 binary-shipping acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Shipped |
 | PRD-12 | US-280, US-281, US-283 | Bundled default terminal renderer visual language | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
 | PRD-12 | US-282 | OpenTUI-backed interactive prompts | `docs/guides/cli/interactive-prompts.mdx` | Shipped |
@@ -243,6 +246,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
+| — | — | LAMP recipe day-to-day workflow | `docs/guides/recipes/lamp-workflow.mdx` | Shipped |
 | — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
 | — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
@@ -258,6 +262,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Jekyll recipe day-to-day workflow | `docs/guides/recipes/jekyll-workflow.mdx` | Shipped |
 | — | — | Backdrop recipe day-to-day workflow | `docs/guides/recipes/backdrop-workflow.mdx` | Shipped |
 | — | — | WordPress recipe day-to-day workflow | `docs/guides/recipes/wordpress-workflow.mdx` | Shipped |
+| — | — | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | — | — | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | — | — | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
@@ -284,3 +289,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
 | — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
+| — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |

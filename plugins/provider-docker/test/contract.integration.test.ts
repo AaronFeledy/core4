@@ -6,10 +6,10 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
-import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
@@ -18,7 +18,7 @@ import {
   emitCompose,
   linuxDockerCapabilities,
   makeDockerApiClient,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   makeRuntimeProvider,
   persistAppliedPlan,
   renderCompose,
@@ -46,7 +46,7 @@ const providerId = ProviderId.make("docker");
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-10T18:51:00Z"),
   source: "provider-docker.test",
   runtime: 4 as const,
 };
@@ -1102,10 +1102,13 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
-      expect(exit.cause.error._tag).toBe("ServiceCopyError");
-      expect(exit.cause.error.providerId).toBe("docker");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ServiceCopyError);
+      if (error instanceof ServiceCopyError) {
+        expect(error._tag).toBe("ServiceCopyError");
+        expect(error.providerId).toBe("docker");
+      }
     }
   });
 
@@ -1146,7 +1149,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
     expect(
@@ -1299,7 +1302,7 @@ describe("provider-docker RuntimeProvider contract", () => {
               { app: appId, service: serviceName },
               { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
             )
-            .pipe(Stream.runCollect, Effect.fork);
+            .pipe(Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           controller.abort();
           return yield* Fiber.join(fiber);
@@ -1361,7 +1364,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "raw ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
   });
@@ -1398,7 +1401,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "split ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
   });
@@ -1460,7 +1463,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const plan = makePlan(service);
     // When
     const result = Effect.runSync(
-      Effect.either(
+      Effect.result(
         Effect.try({
           try: () => renderCompose(plan),
           catch: (error) => error,
@@ -1469,8 +1472,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "ProviderInternalError", providerId: "docker" },
+      _tag: "Failure",
+      failure: { _tag: "ProviderInternalError", providerId: "docker" },
     });
   });
 
@@ -1478,7 +1481,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     // Given: ID deliberately differs from slug.
     const userDataRoot = await mkdtemp(path.join(tmpdir(), "lando-docker-compose-"));
     const plan = { ...makePlan(), id: AppId.make("compose-id"), slug: "compose-slug" };
-    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(FileSystemLive)));
+    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
     const calls: string[] = [];
     try {
       // When
@@ -1691,7 +1694,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         service: serviceName,
         stream: "stdout",
         line: "ready",
-        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+        timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
@@ -1784,7 +1787,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
         expect(server.authorization()).toBe(`Bearer ${token}`);
       } finally {
-        await Effect.runPromise(Effect.either(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await Effect.runPromise(Effect.result(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
         await server.close();
       }
     },
@@ -1912,7 +1915,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const failures = Array.from(Cause.failures(exit.cause));
+    const failures = Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error));
     const startError = failures.find(
       (error) =>
         typeof error === "object" &&
@@ -1947,7 +1950,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -1974,7 +1979,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&
@@ -2006,7 +2013,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
-    const startError = Array.from(Cause.failures(exit.cause)).find(
+    const startError = Array.from(
+      exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
+    ).find(
       (error) =>
         typeof error === "object" &&
         error !== null &&

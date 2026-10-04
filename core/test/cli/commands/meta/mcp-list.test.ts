@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Arbitrary, FastCheck, Schema } from "effect";
+import { Arbitrary, Effect, Schema } from "effect";
 
 import {
   McpListResultSchema,
@@ -94,8 +94,8 @@ describe("buildMcpListResult", () => {
 
   test("emits schema-valid results and supports arbitrary generation", () => {
     // Given: a generated result and a built result.
-    const arbitrary = Arbitrary.make(McpListResultSchema);
-    const sample = FastCheck.sample(arbitrary, { numRuns: 1, seed: 398 })[0];
+    const arbitrary = Arbitrary.schema(McpListResultSchema);
+    const sample = Effect.runSync(Arbitrary.sampleEffect(arbitrary, { count: 1, seed: 398 }))[0];
     if (sample === undefined) throw new Error("expected sample");
     const result = buildMcpListResult({
       defaultAllowlist: ["app:info"],

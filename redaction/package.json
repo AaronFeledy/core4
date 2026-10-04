@@ -25,7 +25,7 @@
   "keywords": ["lando", "redaction"],
   "dependencies": {
     "@lando/sdk": "workspace:*",
-    "effect": "^3.21.2"
+    "effect": "catalog:"
   },
   "scripts": {
     "build": "tsc -b",

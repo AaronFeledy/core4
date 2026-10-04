@@ -11,9 +11,9 @@ import { VOLUME_WITNESS_MOUNT, volumeWitnessCommand } from "./volume-witness-hel
 
 export const NativeVolumeSchema = Schema.Struct({
   Name: Schema.NonEmptyString,
-  Driver: Schema.optional(Schema.String),
-  Options: Schema.optional(Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }))),
-  Labels: Schema.optional(Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }))),
+  Driver: Schema.optionalKey(Schema.String),
+  Options: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
+  Labels: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String))),
 });
 
 export type NativeVolume = typeof NativeVolumeSchema.Type;
@@ -54,7 +54,7 @@ type WitnessTarget =
 
 const Witness = Schema.Struct({
   version: Schema.Literal(1),
-  generation: Schema.UUID,
+  generation: Schema.String.check(Schema.isUUID()),
   ownerRoot: AbsolutePath,
 });
 
@@ -67,29 +67,31 @@ export const volumeObservationFailure = (providerId: string, operation = "observ
       "Inspect the existing container and its mounts; do not mutate a volume inferred from the app name.",
   });
 
-export const volumeCoordinationKey = (provider: VolumeObservationProvider, name: string) =>
-  Effect.gen(function* () {
+export const volumeCoordinationKey = Effect.fnUntraced(
+  function* (provider: VolumeObservationProvider, name: string) {
     if (provider.endpointNamespace) return JSON.stringify([`endpoint:${provider.endpointNamespace}`, name]);
     const request = provider.api.request;
     if (request) {
       const info = yield* request({ method: "GET", path: "/info" });
       if (info.status === 200) {
-        const daemon = yield* Schema.decodeUnknown(
-          Schema.parseJson(Schema.Struct({ ID: Schema.optional(Schema.NonEmptyString) })),
+        const daemon = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(Schema.Struct({ ID: Schema.optionalKey(Schema.NonEmptyString) })),
         )(info.body);
         if (daemon.ID) return JSON.stringify([daemon.ID, name]);
       }
     }
     return undefined;
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
-const runWitness = (
-  provider: VolumeObservationProvider,
-  volume: NativeVolume,
-  witnessTarget: WitnessTarget,
-  ownerRoot?: AbsolutePath,
-) =>
-  Effect.gen(function* () {
+const runWitness = Effect.fnUntraced(
+  function* (
+    provider: VolumeObservationProvider,
+    volume: NativeVolume,
+    witnessTarget: WitnessTarget,
+    ownerRoot?: AbsolutePath,
+  ) {
     const command = volumeWitnessCommand({
       root: witnessTarget._tag === "mounted" ? witnessTarget.target.destination : VOLUME_WITNESS_MOUNT,
       ...(ownerRoot === undefined
@@ -105,18 +107,16 @@ const runWitness = (
     if (result.exitCode !== 0 || result.stdout.length > 8192) {
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     }
-    return yield* Schema.decodeUnknown(Schema.parseJson(Schema.NullOr(Witness)))(result.stdout);
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.NullOr(Witness)))(result.stdout);
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
 const supportsWitness = (volume: NativeVolume) =>
   volume.Driver === "local" && Object.keys(volume.Options ?? {}).length === 0;
 
-export const resolveNativeVolumeIdentity = (
-  provider: VolumeObservationProvider,
-  volume: NativeVolume,
-  witnessTarget?: WitnessTarget,
-): Effect.Effect<NativeVolumeIdentityResolution, VolumeOperationError> =>
-  Effect.gen(function* () {
+export const resolveNativeVolumeIdentity = Effect.fn("RuntimeProvider.resolveNativeVolumeIdentity")(
+  function* (provider: VolumeObservationProvider, volume: NativeVolume, witnessTarget?: WitnessTarget) {
     const generation = volume.Labels?.[VOLUME_INSTANCE_LABEL];
     const ownerRoot = volume.Labels?.[VOLUME_OWNER_LABEL];
     if (generation !== undefined && ownerRoot !== undefined) {
@@ -126,7 +126,7 @@ export const resolveNativeVolumeIdentity = (
         ...(key === undefined
           ? {}
           : {
-              identity: yield* Schema.decodeUnknown(VolumeIdentity)({
+              identity: yield* Schema.decodeUnknownEffect(VolumeIdentity)({
                 coordinationKey: key,
                 nativeName: volume.Name,
                 generation,
@@ -153,7 +153,7 @@ export const resolveNativeVolumeIdentity = (
       ...(key === undefined
         ? {}
         : {
-            identity: yield* Schema.decodeUnknown(VolumeIdentity)({
+            identity: yield* Schema.decodeUnknownEffect(VolumeIdentity)({
               coordinationKey: key,
               nativeName: volume.Name,
               generation: witness.generation,
@@ -162,7 +162,9 @@ export const resolveNativeVolumeIdentity = (
             }),
           }),
     };
-  }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
+  },
+  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+);
 
 export const adoptNativeVolumeWitness = (
   provider: VolumeObservationProvider,

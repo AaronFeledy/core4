@@ -4,9 +4,9 @@ import { ConfigError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PathsService, SecretStore } from "@lando/sdk/services";
-import { Effect, Either, Layer, Schema } from "effect";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+import { Effect, Layer, Result, Schema } from "effect";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
 const moduleFor = (id: string, schemes: readonly string[]): LandoPluginModule => ({
   name: `@test/${id}`,
@@ -19,13 +19,16 @@ const moduleFor = (id: string, schemes: readonly string[]): LandoPluginModule =>
   secretStores: new Map([
     [
       id,
-      Layer.succeed(SecretStore, {
-        id,
-        schemes,
-        get: (ref) => Effect.succeed(`${id}:${ref}`),
-        has: () => Effect.succeed(true),
-        list: Effect.succeed([`${schemes[0]}://Vault/Item/field`]),
-      }),
+      Layer.succeed(
+        SecretStore,
+        SecretStore.of({
+          id,
+          schemes,
+          get: (ref) => Effect.succeed(`${id}:${ref}`),
+          has: () => Effect.succeed(true),
+          list: Effect.succeed([`${schemes[0]}://Vault/Item/field`]),
+        }),
+      ),
     ],
   ]),
 });
@@ -38,31 +41,32 @@ const run = async <A, E>(
     readonly configError?: boolean;
   } = {},
 ) => {
-  const { makeSecretStoreRegistryLive, RoutedSecretStoreLive } = await import(
-    "../../src/services/secret-store-registry.ts"
-  );
+  const RoutedSecretStore = await import("../../src/services/secret-store-registry.ts");
   const config = Schema.decodeUnknownSync(GlobalConfig)(
     options.defaultSecretStore === undefined ? {} : { defaultSecretStore: options.defaultSecretStore },
   );
-  const layer = RoutedSecretStoreLive.pipe(
+  const layer = RoutedSecretStore.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        makeSecretStoreRegistryLive(options.modules ?? [moduleFor("vault", ["op"])]),
-        Layer.succeed(ConfigService, {
-          load: Effect.succeed(config),
-          get: (key) =>
-            options.configError === true && key === "defaultSecretStore"
-              ? Effect.fail(
-                  new ConfigError({
-                    message: "Lando config could not be read.",
-                    path: "defaultSecretStore",
-                  }),
-                )
-              : Effect.succeed(config[key]),
-        }),
+        RoutedSecretStore.SecretStoreRegistry.layer(options.modules ?? [moduleFor("vault", ["op"])]),
+        Layer.succeed(
+          ConfigService,
+          ConfigService.of({
+            load: Effect.succeed(config),
+            get: (key) =>
+              options.configError === true && key === "defaultSecretStore"
+                ? Effect.fail(
+                    new ConfigError({
+                      message: "Lando config could not be read.",
+                      path: "defaultSecretStore",
+                    }),
+                  )
+                : Effect.succeed(config[key]),
+          }),
+        ),
         Layer.succeed(PathsService, makeLandoPaths()),
-        FileSystemLive,
-        ProcessRunnerLive,
+        BunFileSystem.layer,
+        BunProcessRunner.layer,
       ),
     ),
   );
@@ -83,50 +87,51 @@ test("bare ids go to defaultSecretStore and fall back to env", async () => {
     { modules: [moduleFor("vault", [])], defaultSecretStore: "vault" },
   );
   const fallback = await run(
-    Effect.flatMap(SecretStore, (store) => Effect.either(store.get("W1_A_ABSENT_TOKEN"))),
+    Effect.flatMap(SecretStore, (store) => Effect.result(store.get("W1_A_ABSENT_TOKEN"))),
   );
   // Then
   expect(value).toBe("vault:TOKEN");
-  expect(Either.isLeft(fallback) && fallback.left._tag).toBe("SecretNotFoundError");
+  expect(Result.isFailure(fallback) && fallback.failure._tag).toBe("SecretNotFoundError");
 });
 
 test.each(["unknown://Vault/Item/field", "op://Vault//field"])(
   "unknown scheme or malformed ref fails SecretReferenceInvalidError: %s",
   async (ref) => {
     // Given / When
-    const result = await run(Effect.flatMap(SecretStore, (store) => Effect.either(store.get(ref))));
+    const result = await run(Effect.flatMap(SecretStore, (store) => Effect.result(store.get(ref))));
     // Then
-    expect(Either.isLeft(result) && result.left._tag).toBe("SecretReferenceInvalidError");
+    expect(Result.isFailure(result) && result.failure._tag).toBe("SecretReferenceInvalidError");
   },
 );
 
 test("unknown default store fails SecretReferenceInvalidError", async () => {
   // Given / When
   const result = await run(
-    Effect.flatMap(SecretStore, (store) => Effect.either(store.get("TOKEN"))),
+    Effect.flatMap(SecretStore, (store) => Effect.result(store.get("TOKEN"))),
     { defaultSecretStore: "missing" },
   );
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("SecretReferenceInvalidError");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("SecretReferenceInvalidError");
 });
 
 test("duplicate schemes fail registry construction", async () => {
   // Given
-  const { SecretStoreRegistry, makeSecretStoreRegistryLive } = await import(
-    "../../src/services/secret-store-registry.ts"
-  );
+  const RoutedSecretStore = await import("../../src/services/secret-store-registry.ts");
   // When
   const result = await Effect.runPromise(
-    Effect.either(
-      SecretStoreRegistry.pipe(
+    Effect.result(
+      RoutedSecretStore.SecretStoreRegistry.pipe(
         Effect.provide(
-          makeSecretStoreRegistryLive([moduleFor("first", ["op"]), moduleFor("second", ["op"])]),
+          RoutedSecretStore.SecretStoreRegistry.layer([
+            moduleFor("first", ["op"]),
+            moduleFor("second", ["op"]),
+          ]),
         ),
       ),
     ),
   );
   // Then
-  expect(Either.isLeft(result) && result.left._tag).toBe("LandoRuntimeBootstrapError");
+  expect(Result.isFailure(result) && result.failure._tag).toBe("LandoRuntimeBootstrapError");
 });
 
 test("list returns the union of member lists", async () => {
@@ -147,17 +152,17 @@ test("ConfigService failure reading defaultSecretStore is SecretReferenceInvalid
   // SecretReferenceInvalidError to false.
   // Given / When
   const result = await run(
-    Effect.flatMap(SecretStore, (store) => Effect.either(store.get("TOKEN"))),
+    Effect.flatMap(SecretStore, (store) => Effect.result(store.get("TOKEN"))),
     { configError: true },
   );
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result) && result.left._tag === "SecretReferenceInvalidError") {
-    expect(result.left).toBeInstanceOf(SecretReferenceInvalidError);
-    expect(result.left.message).toContain("defaultSecretStore");
-    expect(result.left.message).toContain("Lando config");
-    expect(result.left.remediation).toContain("defaultSecretStore");
-    expect(result.left.remediation).not.toContain("owning this scheme");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result) && result.failure._tag === "SecretReferenceInvalidError") {
+    expect(result.failure).toBeInstanceOf(SecretReferenceInvalidError);
+    expect(result.failure.message).toContain("defaultSecretStore");
+    expect(result.failure.message).toContain("Lando config");
+    expect(result.failure.remediation).toContain("defaultSecretStore");
+    expect(result.failure.remediation).not.toContain("owning this scheme");
     return;
   }
   expect.unreachable("expected a SecretReferenceInvalidError failure");
@@ -167,17 +172,17 @@ test("bare ids fail when defaultSecretStore only accepts scheme references", asy
   // Given: 1password declares the op scheme and is selected for bare ids.
   // When
   const result = await run(
-    Effect.flatMap(SecretStore, (store) => Effect.either(store.get("TOKEN"))),
+    Effect.flatMap(SecretStore, (store) => Effect.result(store.get("TOKEN"))),
     { modules: [moduleFor("1password", ["op"])], defaultSecretStore: "1password" },
   );
   // Then
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result) && result.left._tag === "SecretReferenceInvalidError") {
-    expect(result.left.message).toContain("1password");
-    expect(result.left.message).toContain("bare");
-    expect(result.left.remediation).toContain("defaultSecretStore");
-    expect(result.left.remediation).toContain("env");
-    expect(result.left.remediation).toContain("scheme");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result) && result.failure._tag === "SecretReferenceInvalidError") {
+    expect(result.failure.message).toContain("1password");
+    expect(result.failure.message).toContain("bare");
+    expect(result.failure.remediation).toContain("defaultSecretStore");
+    expect(result.failure.remediation).toContain("env");
+    expect(result.failure.remediation).toContain("scheme");
     return;
   }
   expect.unreachable("expected a SecretReferenceInvalidError failure");

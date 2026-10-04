@@ -7,7 +7,7 @@
  * whole-file rendering of users' existing `.hbs` / `.mustache` templates.
  *
  * This subpath is type/contract only (like `@lando/sdk/expressions`). It is NOT
- * a `Context.Tag` service and its errors deliberately live here rather than on
+ * a `Context.Service` and its errors deliberately live here rather than on
  * the frozen `@lando/sdk/errors` barrel — pre-parse Landofile rendering maps
  * them into `LandofileParseError` at the parse seam, so the frozen
  * `LandofileService.discover` error union is never widened.
@@ -84,7 +84,7 @@ export class TemplateCompileError extends Schema.TaggedError<TemplateCompileErro
   sourceId: Schema.String,
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 /** Template failed to render (e.g. strict missing field). Carries source line/column. */
@@ -94,7 +94,7 @@ export class TemplateRenderError extends Schema.TaggedError<TemplateRenderError>
   sourceId: Schema.String,
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 /** A requested template engine id is not installed / resolvable. */

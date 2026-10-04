@@ -9,10 +9,10 @@ import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 
 import { uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
-  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-runtime-service-test-"));
@@ -61,7 +61,11 @@ describe("runtime-service uninstall execution", () => {
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
-        }).pipe(Effect.provide(Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }))),
+        }).pipe(
+          Effect.provide(
+            Layer.succeed(HostMaintenanceRegistry, HostMaintenanceRegistry.of({ maintainers: [maintainer] })),
+          ),
+        ),
       );
 
       // Then: canonical paths reach the maintainer and teardown completes.

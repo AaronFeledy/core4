@@ -1,5 +1,9 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
+import {
+  type LoweringPatch,
+  type ServiceLoweringContext,
+  hasPlainObjectPrototype,
+} from "./lowering-contract.ts";
 import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 import { hasAuthoredEnvironment } from "./service-option-environment.ts";
 
@@ -57,7 +61,7 @@ export const lowerServiceMemory = (
       }
     } else if (key === "mem" && search) {
       const variable = id === "elasticsearch" ? "ES_JAVA_OPTS" : "OPENSEARCH_JAVA_OPTS";
-      const environment = isPlainObject(lowered.patch.environment) ? lowered.patch.environment : {};
+      const environment = hasPlainObjectPrototype(lowered.patch.environment) ? lowered.patch.environment : {};
       const mem = service.mem;
       const valid = typeof mem === "string" && /^\d+[kmg]$/iu.test(mem);
       if (valid && !hasAuthoredEnvironment(service.environment, variable)) {

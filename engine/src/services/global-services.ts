@@ -165,61 +165,60 @@ const loaderError = (message: string, remediation: string, cause?: unknown): Glo
   });
 
 export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
-  load: (entry) =>
-    Effect.gen(function* () {
-      const moduleSpecifier = entry.contribution.module?.trim();
-      if (moduleSpecifier === undefined || moduleSpecifier === "") {
-        return yield* Effect.fail(
-          loaderError(
-            `Global service ${entry.contribution.id} from plugin ${entry.plugin} does not declare a module.`,
-            `Update plugin ${entry.plugin} to declare a module for global service ${entry.contribution.id}, or uninstall the plugin.`,
-          ),
-        );
-      }
-
-      const loadedModule: unknown = yield* Effect.tryPromise({
-        try: () => import(moduleSpecifier),
-        catch: (cause) =>
-          loaderError(
-            `Unable to load global service ${entry.contribution.id} module ${moduleSpecifier}.`,
-            `Verify plugin ${entry.plugin} declares a resolvable module for global service ${entry.contribution.id}.`,
-            cause,
-          ),
-      });
-
-      const exported = (loadedModule as { readonly default?: unknown }).default;
-      if (!Effect.isEffect(exported)) {
-        return yield* Effect.fail(
-          loaderError(
-            `Global service ${entry.contribution.id} module ${moduleSpecifier} must default-export an Effect.`,
-            `Update plugin ${entry.plugin} so the global service module default export yields a ServiceConfig.`,
-          ),
-        );
-      }
-
-      const decoded = yield* (exported as Effect.Effect<unknown, unknown>).pipe(
-        Effect.mapError((cause) =>
-          loaderError(
-            `Global service ${entry.contribution.id} module ${moduleSpecifier} failed.`,
-            `Fix plugin ${entry.plugin}'s global service module or uninstall the plugin.`,
-            cause,
-          ),
+  load: Effect.fn("GlobalServiceLoader.load")(function* (entry) {
+    const moduleSpecifier = entry.contribution.module?.trim();
+    if (moduleSpecifier === undefined || moduleSpecifier === "") {
+      return yield* Effect.fail(
+        loaderError(
+          `Global service ${entry.contribution.id} from plugin ${entry.plugin} does not declare a module.`,
+          `Update plugin ${entry.plugin} to declare a module for global service ${entry.contribution.id}, or uninstall the plugin.`,
         ),
-        Effect.flatMap((value) =>
-          Schema.decodeUnknown(ServiceConfig)(value).pipe(
-            Effect.mapError((cause) =>
-              loaderError(
-                `Global service ${entry.contribution.id} module ${moduleSpecifier} did not return a valid ServiceConfig.`,
-                `Update plugin ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,
-                cause,
-              ),
+      );
+    }
+
+    const loadedModule: unknown = yield* Effect.tryPromise({
+      try: () => import(moduleSpecifier),
+      catch: (cause) =>
+        loaderError(
+          `Unable to load global service ${entry.contribution.id} module ${moduleSpecifier}.`,
+          `Verify plugin ${entry.plugin} declares a resolvable module for global service ${entry.contribution.id}.`,
+          cause,
+        ),
+    });
+
+    const exported = (loadedModule as { readonly default?: unknown }).default;
+    if (!Effect.isEffect(exported)) {
+      return yield* Effect.fail(
+        loaderError(
+          `Global service ${entry.contribution.id} module ${moduleSpecifier} must default-export an Effect.`,
+          `Update plugin ${entry.plugin} so the global service module default export yields a ServiceConfig.`,
+        ),
+      );
+    }
+
+    const decoded = yield* (exported as Effect.Effect<unknown, unknown>).pipe(
+      Effect.mapError((cause) =>
+        loaderError(
+          `Global service ${entry.contribution.id} module ${moduleSpecifier} failed.`,
+          `Fix plugin ${entry.plugin}'s global service module or uninstall the plugin.`,
+          cause,
+        ),
+      ),
+      Effect.flatMap((value) =>
+        Schema.decodeUnknownEffect(ServiceConfig)(value).pipe(
+          Effect.mapError((cause) =>
+            loaderError(
+              `Global service ${entry.contribution.id} module ${moduleSpecifier} did not return a valid ServiceConfig.`,
+              `Update plugin ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,
+              cause,
             ),
           ),
         ),
-      );
+      ),
+    );
 
-      return decoded;
-    }),
+    return decoded;
+  }),
 };
 
 export interface GlobalServiceMaterializationInput {
@@ -229,31 +228,30 @@ export interface GlobalServiceMaterializationInput {
   readonly loadServiceConfig: GlobalServiceModuleLoader["load"];
 }
 
-export const materializeGlobalServices = (
+export const materializeGlobalServices = Effect.fnUntraced(function* (
   input: GlobalServiceMaterializationInput,
-): Effect.Effect<Record<string, ServiceConfig>, GlobalServiceCollisionError | GlobalAppError> =>
-  Effect.gen(function* () {
-    const resolved = yield* resolveGlobalServiceContributions(input.manifests);
-    const enabled = resolved.filter((entry) => entry.contribution.enabledByDefault !== false);
-    const validation = validateGlobalServiceContributions({
-      contributions: enabled,
-      providerCapabilities: input.providerCapabilities,
-      providerId: input.providerId,
-    });
-    const accepted = [...validation.accepted].sort((left, right) =>
-      left.contribution.id.localeCompare(right.contribution.id),
-    );
-    const entries = yield* Effect.forEach(
-      accepted,
-      (entry) =>
-        input
-          .loadServiceConfig(entry)
-          .pipe(Effect.map((serviceConfig) => [entry.contribution.id, serviceConfig] as const)),
-      { concurrency: 1 },
-    );
-    const services: Record<string, ServiceConfig> = {};
-    for (const [id, serviceConfig] of entries) {
-      services[id] = serviceConfig;
-    }
-    return services;
+): Effect.fn.Return<Record<string, ServiceConfig>, GlobalServiceCollisionError | GlobalAppError> {
+  const resolved = yield* resolveGlobalServiceContributions(input.manifests);
+  const enabled = resolved.filter((entry) => entry.contribution.enabledByDefault !== false);
+  const validation = validateGlobalServiceContributions({
+    contributions: enabled,
+    providerCapabilities: input.providerCapabilities,
+    providerId: input.providerId,
   });
+  const accepted = [...validation.accepted].sort((left, right) =>
+    left.contribution.id.localeCompare(right.contribution.id),
+  );
+  const entries = yield* Effect.forEach(
+    accepted,
+    (entry) =>
+      input
+        .loadServiceConfig(entry)
+        .pipe(Effect.map((serviceConfig) => [entry.contribution.id, serviceConfig] as const)),
+    { concurrency: 1 },
+  );
+  const services: Record<string, ServiceConfig> = {};
+  for (const [id, serviceConfig] of entries) {
+    services[id] = serviceConfig;
+  }
+  return services;
+});

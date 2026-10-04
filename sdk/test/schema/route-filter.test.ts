@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as Errors from "@lando/sdk/errors";
 import * as Contracts from "@lando/sdk/schema";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 describe("route filters", () => {
   for (const filter of [
@@ -34,9 +34,9 @@ describe("route filters", () => {
     it(`rejects invalid filter ${JSON.stringify(filter)}`, () => {
       // Given invalid authored options.
       // When decoding the filter.
-      const result = Schema.decodeUnknownEither(Contracts.RouteFilter)(filter);
+      const result = Schema.decodeUnknownResult(Contracts.RouteFilter)(filter);
       // Then validation fails.
-      expect(Either.isLeft(result)).toBe(true);
+      expect(Result.isFailure(result)).toBe(true);
     });
   }
 
@@ -66,9 +66,9 @@ describe("route input and plans", () => {
   it("rejects empty route shorthand", () => {
     // Given an empty shorthand.
     // When decoding the public route input.
-    const result = Schema.decodeUnknownEither(Contracts.RouteInput)("");
+    const result = Schema.decodeUnknownResult(Contracts.RouteInput)("");
     // Then the shorthand is rejected.
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   for (const options of [{}, { filters: [{ type: "stripPrefix", prefix: "/api" }] }] as const) {

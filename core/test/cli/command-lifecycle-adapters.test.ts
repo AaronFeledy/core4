@@ -190,7 +190,7 @@ describe("CLI lifecycle adapters", () => {
       // Given
       const events: LandoEvent[] = [];
       const exitCodes: number[] = [];
-      const eventService: EventServiceShape = {
+      const eventService: EventServiceShape = EventService.of({
         publish: (event) => Effect.sync(() => events.push(event)),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.gen(function* () {
@@ -199,7 +199,7 @@ describe("CLI lifecycle adapters", () => {
         waitFor: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
-      };
+      });
       const spec = landoSpecForId(id);
       if (spec?.successExitCode === undefined) throw new Error(`${id} lacks successExitCode`);
 

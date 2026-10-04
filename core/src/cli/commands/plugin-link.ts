@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { Data, Effect, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   type ConfigError,
@@ -20,13 +20,16 @@ import {
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makeLandoPaths } from "@lando/paths";
 
-export class PluginLinkConflictError extends Data.TaggedError("PluginLinkConflictError")<{
-  readonly message: string;
-  readonly commandId: "meta:plugin:link";
-  readonly pluginName: string;
-  readonly existingPath: string;
-  readonly remediation: string;
-}> {}
+export class PluginLinkConflictError extends Schema.TaggedError<PluginLinkConflictError>()(
+  "PluginLinkConflictError",
+  {
+    message: Schema.String,
+    commandId: Schema.Literal("meta:plugin:link"),
+    pluginName: Schema.String,
+    existingPath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
 
 export interface PluginLinkOptions {
   readonly path?: string;
@@ -51,97 +54,95 @@ export const PluginLinkResultSchema = Schema.Struct({
 const conflictRemediation =
   "Remove or unlink the existing plugin entry before linking this local authoring checkout. Automatic replacement is deferred to unlink/restore support.";
 
-export const pluginLink = (
+export const pluginLink = Effect.fn("PluginLink.link")(function* (
   options: PluginLinkOptions = {},
-): Effect.Effect<
+): Effect.fn.Return<
   PluginLinkResult,
   ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | PluginLinkConflictError,
   ConfigService
-> =>
-  Effect.gen(function* () {
-    let userDataRoot = options.userDataRoot;
+> {
+  let userDataRoot = options.userDataRoot;
+  if (userDataRoot === undefined) {
+    const configService = yield* ConfigService;
+    userDataRoot = yield* configService.get("userDataRoot");
     if (userDataRoot === undefined) {
-      const configService = yield* ConfigService;
-      userDataRoot = yield* configService.get("userDataRoot");
-      if (userDataRoot === undefined) {
-        return yield* Effect.fail(
-          new NotImplementedError({
-            message: "userDataRoot is not configured.",
-            commandId: "meta:plugin:link",
-            remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
-          }),
-        );
-      }
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: "userDataRoot is not configured.",
+          commandId: "meta:plugin:link",
+          remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
+        }),
+      );
     }
-    const cwd = options.cwd ?? process.cwd();
-    const linkedPath = resolve(cwd, options.path ?? ".");
-    const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
-    const { manifest } = yield* Effect.tryPromise({
-      try: () => validatePluginManifest(linkedPath),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Plugin manifest validation failed in ${linkedPath}.`,
-              issues: [String(cause)],
-            }),
-    });
-    const registryEntry = resolve(pluginsRoot, manifest.name);
-    // Refuse before any filesystem mutation if the manifest name resolves
-    // outside the plugins root (PluginName is an unvalidated branded string,
-    // so a hostile package.json could otherwise cause `mkdir` to create
-    // parent directories outside <userDataRoot>/plugins/ before the
-    // collision/containment check inside `prepareRegistryEntry` fires).
-    yield* Effect.try({
-      try: () => assertInsidePluginsRoot(pluginsRoot, registryEntry, manifest.name),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Plugin ${manifest.name} link target resolves outside ${pluginsRoot}.`,
-              pluginName: manifest.name,
-              issues: [String(cause)],
-            }),
-    });
-
-    yield* withPluginMutationLock(
-      pluginsRoot,
-      "meta:plugin:link",
-      Effect.gen(function* () {
-        yield* Effect.tryPromise({
-          try: () =>
-            applyPluginLink({
-              pluginsRoot,
-              linkedPath,
-              pluginName: manifest.name,
-              version: manifest.version,
-            }),
-          catch: (cause) => {
-            if (cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError)
-              return cause;
-            if (isPluginLinkConflictCause(cause)) {
-              return new PluginLinkConflictError({
-                message: cause.message,
-                commandId: "meta:plugin:link",
-                pluginName: cause.pluginName,
-                existingPath: cause.existingPath,
-                remediation: conflictRemediation,
-              });
-            }
-            return new NotImplementedError({
-              message: `Plugin link failed for ${manifest.name}: ${String(cause)}`,
-              commandId: "meta:plugin:link",
-              remediation: "Check the plugin authoring path and retry.",
-            });
-          },
-        });
-        yield* invalidatePluginCommandCache({
-          ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-        });
-      }),
-    );
-    return { pluginName: manifest.name, linkedPath, registryEntry };
+  }
+  const cwd = options.cwd ?? process.cwd();
+  const linkedPath = resolve(cwd, options.path ?? ".");
+  const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
+  const { manifest } = yield* Effect.tryPromise({
+    try: () => validatePluginManifest(linkedPath),
+    catch: (cause) =>
+      cause instanceof PluginManifestError
+        ? cause
+        : new PluginManifestError({
+            message: `Plugin manifest validation failed in ${linkedPath}.`,
+            issues: [String(cause)],
+          }),
   });
+  const registryEntry = resolve(pluginsRoot, manifest.name);
+  // Refuse before any filesystem mutation if the manifest name resolves
+  // outside the plugins root (PluginName is an unvalidated branded string,
+  // so a hostile package.json could otherwise cause `mkdir` to create
+  // parent directories outside <userDataRoot>/plugins/ before the
+  // collision/containment check inside `prepareRegistryEntry` fires).
+  yield* Effect.try({
+    try: () => assertInsidePluginsRoot(pluginsRoot, registryEntry, manifest.name),
+    catch: (cause) =>
+      cause instanceof PluginManifestError
+        ? cause
+        : new PluginManifestError({
+            message: `Plugin ${manifest.name} link target resolves outside ${pluginsRoot}.`,
+            pluginName: manifest.name,
+            issues: [String(cause)],
+          }),
+  });
+
+  yield* withPluginMutationLock(
+    pluginsRoot,
+    "meta:plugin:link",
+    Effect.gen(function* () {
+      yield* Effect.tryPromise({
+        try: () =>
+          applyPluginLink({
+            pluginsRoot,
+            linkedPath,
+            pluginName: manifest.name,
+            version: manifest.version,
+          }),
+        catch: (cause) => {
+          if (cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError) return cause;
+          if (isPluginLinkConflictCause(cause)) {
+            return new PluginLinkConflictError({
+              message: cause.message,
+              commandId: "meta:plugin:link",
+              pluginName: cause.pluginName,
+              existingPath: cause.existingPath,
+              remediation: conflictRemediation,
+            });
+          }
+          return new NotImplementedError({
+            message: `Plugin link failed for ${manifest.name}: ${String(cause)}`,
+            commandId: "meta:plugin:link",
+            remediation: "Check the plugin authoring path and retry.",
+          });
+        },
+      });
+      yield* invalidatePluginCommandCache({
+        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+      });
+    }),
+  );
+  return { pluginName: manifest.name, linkedPath, registryEntry };
+});
 
 export const renderPluginLinkResult = (result: PluginLinkResult): string =>
   [

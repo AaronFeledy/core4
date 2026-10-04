@@ -5,16 +5,16 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { initApp } from "../cli/commands/init";
 
-export const ScratchInitAppPortLive = Layer.effect(
+export const layer = Layer.effect(
   ScratchInitAppPort,
   Effect.gen(function* () {
     const privateFileAccess = yield* PrivateFileAccessService;
-    return {
+    return ScratchInitAppPort.of({
       initApp: (options) =>
         initApp({
           ...options,
           privateFileAccess,
         }),
-    };
+    });
   }),
 );

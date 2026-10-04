@@ -15,16 +15,19 @@ import {
 import { CapabilityError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { loadLandofileFile } from "@lando/engine/services/landofile-live";
-import { AppPlanner, AppPlannerLive } from "@lando/engine/services/planner";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { AppPlanner } from "@lando/engine/services/planner";
 import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const fixturesRoot = resolve(import.meta.dir, "../../../core/test/fixtures/compose");
-const plannerLayer = AppPlannerLive.pipe(
-  Layer.provide(Layer.mergeAll(FileSystemLive, makePluginRegistryLive({ app: false, user: false }))),
+const plannerLayer = AppPlannerLayer.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layerWith({ app: false, user: false })),
+  ),
 );
 
 const field = (value: unknown, key: string): unknown =>
@@ -287,7 +290,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     try {
       for (const initializerName of initializerContainers) {
         await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             liveRequest({
               method: "DELETE",
               path: `/containers/${encodeURIComponent(initializerName)}?force=true`,
@@ -298,7 +301,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     } finally {
       try {
         if (plan !== undefined) {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api, volumes: true })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api, volumes: true })));
         }
       } finally {
         await rm(appRoot, { recursive: true, force: true });
@@ -338,7 +341,7 @@ const rejectFixtureBeforeProviderCall = async (fixture: RejectedFixtureCase): Pr
         Effect.provide(plannerLayer),
       ),
     );
-    const failure = Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : undefined;
+    const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
     const error = failure?._tag === "Some" ? failure.value : undefined;
 
     expect(providerCallCount).toBe(0);

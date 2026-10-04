@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 const EXPECTED_RUNTIME_EXPORTS = [
   "AppPlanner",
-  "AppPlannerLive",
+  "layer",
   "DEFAULT_PROXY_DOMAIN",
   "FILE_SYNC_DEFAULT_EXCLUDES",
   "applyAuthoredAppMount",

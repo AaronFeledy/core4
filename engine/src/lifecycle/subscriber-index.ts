@@ -61,7 +61,7 @@ const builtInEventNames = (): Set<string> => {
   const names = new Set<string>();
   if (!AST.isUnion(LandoEvent.ast)) return names;
   for (const member of LandoEvent.ast.types) {
-    if (!AST.isTypeLiteral(member)) continue;
+    if (!AST.isObjects(member)) continue;
     const tag = member.propertySignatures.find((property) => property.name === "_tag")?.type;
     if (tag !== undefined && AST.isLiteral(tag) && typeof tag.literal === "string") {
       names.add(tag.literal);
@@ -105,48 +105,46 @@ export const makeSubscriberRegistrationClosure = (
 
   return {
     current: () => index,
-    close: (commandIds) => {
-      if (index !== undefined) return Effect.succeed(index);
-      return Effect.gen(function* () {
-        const known = builtInEventNames();
-        for (const commandId of commandIds) {
-          known.add(`cli-${commandId}-init`);
-          known.add(`cli-${commandId}-run`);
-          known.add(`cli-${commandId}-error`);
-        }
+    close: Effect.fn("Lifecycle.closeSubscriberRegistration")(function* (commandIds) {
+      if (index !== undefined) return index;
+      const known = builtInEventNames();
+      for (const commandId of commandIds) {
+        known.add(`cli-${commandId}-init`);
+        known.add(`cli-${commandId}-run`);
+        known.add(`cli-${commandId}-error`);
+      }
 
-        const mutable = new Map<string, Array<IndexedSubscriber>>();
-        for (const subscriber of subscribers) {
-          for (const selector of subscriber.entry.selectors) {
-            const isExact = "event" in selector;
-            const events = isExact
-              ? [selector.event]
-              : commandIds.flatMap((commandId) => [`cli-${commandId}-run`, `cli-${commandId}-error`]);
-            for (const event of events) {
-              if (!known.has(event)) {
-                return yield* Effect.fail(manifestError(subscriber, event));
-              }
-              const eventLevel = isExact ? BOOTSTRAP_EVENT_LEVELS[event] : undefined;
-              if (
-                eventLevel !== undefined &&
-                !BOOTSTRAP_EVENT_COVERAGE[subscriber.declaredLevel].some(
-                  (coveredLevel) => coveredLevel === eventLevel,
-                )
-              ) {
-                return yield* Effect.fail(levelMismatchError(subscriber, event, eventLevel));
-              }
-              const entries = mutable.get(event) ?? [];
-              if (!entries.includes(subscriber)) entries.push(subscriber);
-              mutable.set(event, entries);
+      const mutable = new Map<string, Array<IndexedSubscriber>>();
+      for (const subscriber of subscribers) {
+        for (const selector of subscriber.entry.selectors) {
+          const isExact = "event" in selector;
+          const events = isExact
+            ? [selector.event]
+            : commandIds.flatMap((commandId) => [`cli-${commandId}-run`, `cli-${commandId}-error`]);
+          for (const event of events) {
+            if (!known.has(event)) {
+              return yield* Effect.fail(manifestError(subscriber, event));
             }
+            const eventLevel = isExact ? BOOTSTRAP_EVENT_LEVELS[event] : undefined;
+            if (
+              eventLevel !== undefined &&
+              !BOOTSTRAP_EVENT_COVERAGE[subscriber.declaredLevel].some(
+                (coveredLevel) => coveredLevel === eventLevel,
+              )
+            ) {
+              return yield* Effect.fail(levelMismatchError(subscriber, event, eventLevel));
+            }
+            const entries = mutable.get(event) ?? [];
+            if (!entries.includes(subscriber)) entries.push(subscriber);
+            mutable.set(event, entries);
           }
         }
-        for (const entries of mutable.values()) {
-          entries.sort((left, right) => left.entry.priority - right.entry.priority);
-        }
-        index = mutable;
-        return index;
-      });
-    },
+      }
+      for (const entries of mutable.values()) {
+        entries.sort((left, right) => left.entry.priority - right.entry.priority);
+      }
+      index = mutable;
+      return index;
+    }),
   };
 };

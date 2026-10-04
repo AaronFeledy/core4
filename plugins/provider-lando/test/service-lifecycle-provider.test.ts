@@ -37,7 +37,7 @@ const serviceName = ServiceName.make("web");
 const containerName = "lando-lifecycle-app-web";
 const lifecycleActions = ["start", "stop", "restart"] as const;
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
   source: "provider-lando/service-lifecycle.test.ts",
   runtime: 4 as const,
 };
@@ -107,7 +107,7 @@ const typedFailure = (exit: Exit.Exit<unknown, unknown>): { readonly _tag: strin
   if (!Exit.isFailure(exit)) {
     throw new Error("expected a typed failure");
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") {
     throw new Error("expected a typed failure");

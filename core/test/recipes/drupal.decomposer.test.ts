@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { drupalDecomposer } from "../../src/recipes/builtin/drupal/decomposer.ts";
 import { drupalRecipeYaml } from "../../src/recipes/builtin/drupal/manifest.ts";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
@@ -39,7 +39,7 @@ const decompose = (options: Readonly<Record<string, unknown>>) =>
 
 const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -144,15 +144,15 @@ describe("drupal decomposition", () => {
     { options: { ...defaults, webroot: "web" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(
+      Effect.result(
         decomposer.decompose({ producer: drupalProducer, options, secrets: {} } as RecipeDecomposeInput),
       ),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -174,7 +174,7 @@ describe("drupal decomposition", () => {
   test.each([defaults, alternatives])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(drupalSnapshot, options))).toEqual(authoringOf(options));
+      expect(Result.getOrThrow(renderRecipeSnapshot(drupalSnapshot, options))).toEqual(authoringOf(options));
     },
   );
 });

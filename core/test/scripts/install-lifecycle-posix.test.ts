@@ -27,7 +27,7 @@ import {
   withoutHostRuntimes,
 } from "./install-lifecycle-support.ts";
 
-const DryRunEnvelope = Schema.parseJson(
+const DryRunEnvelope = Schema.fromJsonString(
   Schema.Struct({
     ok: Schema.Boolean,
     result: Schema.Struct({
@@ -209,8 +209,8 @@ describe("hostile Lando 3 lifecycle", () => {
               }),
           },
         }).pipe(
-          Effect.provideService(ProcessRunner, noopProcessRunner),
-          Effect.provideService(Telemetry, noopTelemetry),
+          Effect.provideService(ProcessRunner, ProcessRunner.of(noopProcessRunner)),
+          Effect.provideService(Telemetry, Telemetry.of(noopTelemetry)),
         ),
       );
       // Then the swap, backup, refreshed proof and re-exec all target Lando 4.

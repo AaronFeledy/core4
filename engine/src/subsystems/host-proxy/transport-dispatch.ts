@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { Cause, Effect, Exit, Fiber, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import {
   HostProxyAuthenticationError,
@@ -87,39 +87,38 @@ const rejectSaturatedRequest = (
   );
 };
 
-const dispatchProgram = (
+const dispatchProgram = Effect.fn("HostProxyService.dispatchProgram")(function* (
   request: IncomingMessage,
   options: HandlerOptions,
   headers: ReturnType<typeof messageHeaders>,
-) =>
-  Effect.gen(function* () {
-    const body = yield* Effect.tryPromise({
-      try: () => bodyText(request, options.bodyReadTimeoutMs),
-      catch: (cause) => cause,
-    }).pipe(Effect.catchAll(() => Effect.succeed<string | null>(null)));
-    if (body === null) return { _tag: "invalid" as const };
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      return { _tag: "invalid" as const };
-    }
-    const decodedRequest = Schema.decodeUnknownEither(HostProxyRunLandoRequest)(parsed);
-    if (decodedRequest._tag === "Left") return { _tag: "invalid" as const };
-    const wire = { ...headers, request: decodedRequest.right };
-    yield* validateWireRequest(wire, options.session, options.maxDepth, 0, options.concurrency);
-    const deps: DispatchRunLandoDeps = {
-      executor: options.executor,
-      allowlist: options.allowlist,
-      mountInfo: options.mountInfo,
-      callerService: wire.callerService,
-      depth: wire.depth,
-      app: options.app,
-    };
-    return yield* dispatchRunLando(wire.request, deps).pipe(
-      Effect.map((result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode })),
-    );
-  });
+) {
+  const body = yield* Effect.tryPromise({
+    try: () => bodyText(request, options.bodyReadTimeoutMs),
+    catch: (cause) => cause,
+  }).pipe(Effect.catch(() => Effect.succeed<string | null>(null)));
+  if (body === null) return { _tag: "invalid" as const };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return { _tag: "invalid" as const };
+  }
+  const decodedRequest = Schema.decodeUnknownResult(HostProxyRunLandoRequest)(parsed);
+  if (decodedRequest._tag === "Failure") return { _tag: "invalid" as const };
+  const wire = { ...headers, request: decodedRequest.success };
+  yield* validateWireRequest(wire, options.session, options.maxDepth, 0, options.concurrency);
+  const deps: DispatchRunLandoDeps = {
+    executor: options.executor,
+    allowlist: options.allowlist,
+    mountInfo: options.mountInfo,
+    callerService: wire.callerService,
+    depth: wire.depth,
+    app: options.app,
+  };
+  return yield* dispatchRunLando(wire.request, deps).pipe(
+    Effect.map((result): WireOk => ({ _tag: "ok", envelope: result.envelope, exitCode: result.exitCode })),
+  );
+});
 
 const isKnownFailure = (failure: unknown): failure is HostProxyTransportError =>
   failure instanceof HostProxyAuthenticationError ||
@@ -136,49 +135,48 @@ const publishesRejectedFailure = (failure: unknown): failure is RejectedFailure 
   failure instanceof HostProxyBackpressureError ||
   failure instanceof HostProxyRecursionError;
 
-const respondToRunLando = (
+const respondToRunLando = Effect.fn("HostProxyService.respondToRunLando")(function* (
   request: IncomingMessage,
   response: ServerResponse,
   options: HandlerOptions,
   headers: ReturnType<typeof messageHeaders>,
-) =>
-  Effect.gen(function* () {
-    const exit = yield* Effect.exit(
-      dispatchProgram(request, options, headers).pipe(Effect.provide(options.runtimeContext)),
+) {
+  const exit = yield* Effect.exit(
+    dispatchProgram(request, options, headers).pipe(Effect.provide(options.runtimeContext)),
+  );
+  if (Exit.isSuccess(exit)) {
+    if (exit.value._tag === "invalid") {
+      rejectInvalidAuthenticatedRequest(response, options, headers);
+      return;
+    }
+    writeTransportResponse(response, 200, exit.value);
+    return;
+  }
+  if (Cause.hasInterruptsOnly(exit.cause)) {
+    response.destroy();
+    return;
+  }
+  const failure = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+  const payload = isKnownFailure(failure)
+    ? errorResponse(failure)
+    : {
+        _tag: "error" as const,
+        tag: "HostProxyTransportUnavailableError",
+        message: "Host-proxy dispatch failed.",
+      };
+  if (publishesRejectedFailure(failure)) {
+    void Effect.runPromise(
+      publishRejected({
+        app: options.app,
+        callId: makeHostProxyCallId(),
+        callerService: headers.callerService,
+        depth: headers.depth,
+        failureDetail: failure._tag,
+      }).pipe(Effect.provide(options.runtimeContext)),
     );
-    if (Exit.isSuccess(exit)) {
-      if (exit.value._tag === "invalid") {
-        rejectInvalidAuthenticatedRequest(response, options, headers);
-        return;
-      }
-      writeTransportResponse(response, 200, exit.value);
-      return;
-    }
-    if (Cause.isInterruptedOnly(exit.cause)) {
-      response.destroy();
-      return;
-    }
-    const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
-    const payload = isKnownFailure(failure)
-      ? errorResponse(failure)
-      : {
-          _tag: "error" as const,
-          tag: "HostProxyTransportUnavailableError",
-          message: "Host-proxy dispatch failed.",
-        };
-    if (publishesRejectedFailure(failure)) {
-      void Effect.runPromise(
-        publishRejected({
-          app: options.app,
-          callId: makeHostProxyCallId(),
-          callerService: headers.callerService,
-          depth: headers.depth,
-          failureDetail: failure._tag,
-        }).pipe(Effect.provide(options.runtimeContext)),
-      );
-    }
-    writeTransportResponse(response, statusFor(failure), payload);
-  });
+  }
+  writeTransportResponse(response, statusFor(failure), payload);
+});
 
 export const makeHostProxyRunLandoHandler =
   (options: HandlerOptions) => (request: IncomingMessage, response: ServerResponse) => {

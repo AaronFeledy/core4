@@ -52,9 +52,7 @@ test.each([
             return Effect.map(base.decompose(input), (output) => ({
               ...output,
               fragment: {
-                ...Schema.decodeUnknownSync(Schema.Record({ key: Schema.String, value: Schema.Unknown }))(
-                  output.fragment,
-                ),
+                ...Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(output.fragment),
                 "x-decomposer-destinations": Object.fromEntries(
                   Object.entries(input.secrets).map(([prompt, secret]) => [
                     prompt === "databaseToken" ? "database" : "cache",

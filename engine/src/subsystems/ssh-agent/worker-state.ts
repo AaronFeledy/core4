@@ -61,7 +61,7 @@ export const writeAgentRelayWorkerRecord = (
     record,
   ).pipe(
     Effect.mapError(stateError),
-    Effect.zipRight(
+    Effect.andThen(
       Effect.tryPromise({
         try: () => ensureAgentRelayRunRoot(sshAgentSessionPaths(app, options.paths, options.kind).stateDir),
         catch: stateError,
@@ -92,60 +92,59 @@ const processAlive = (pid: number): boolean => {
   }
 };
 
-export const replaceExistingAgentRelayWorker = (
+export const replaceExistingAgentRelayWorker = Effect.fnUntraced(function* (
   app: Pick<AppRef, "id" | "root">,
   options: TerminateAgentRelayWorkerOptions,
-) =>
-  Effect.gen(function* () {
-    const record = yield* readAgentRelayWorkerRecord(app, options);
-    if (record !== undefined) {
-      if (record.appId !== app.id || record.appRoot !== app.root || record.kind !== options.kind)
-        return yield* Effect.fail(stateError("Worker record belongs to another app."));
-      yield* Effect.tryPromise({
-        try: () => options.privateFileAccess.verify(recordPath(app, options)),
-        catch: stateError,
-      });
-      const alive = options.isAlive ?? processAlive;
-      if (yield* Effect.try({ try: () => alive(record.pid), catch: stateError })) {
-        const identity = yield* Effect.tryPromise({
-          try: () => (options.identify ?? identifyAgentRelayWorker)(record),
-          catch: stateError,
-        });
-        if (
-          identity.pid !== record.pid ||
-          identity.sessionId !== record.sessionId ||
-          identity.appId !== app.id ||
-          identity.appRoot !== app.root ||
-          identity.kind !== options.kind ||
-          identity.protocolVersion !== 1
-        )
-          return yield* Effect.fail(stateError("Live worker identity differs from its record."));
-        const terminate =
-          options.terminateProcess ??
-          (async (pid: number, signal: NodeJS.Signals) => {
-            process.kill(pid, signal);
-          });
-        yield* Effect.tryPromise({ try: () => terminate(record.pid, "SIGTERM"), catch: stateError });
-        const exited = yield* runProbe(
-          {
-            id: "agent-relay-worker-exit",
-            policy: { maxAttempts: 25, delay: Duration.millis(200), timeout: Duration.millis(5_000) },
-            classify: { success: (value) => (value === false ? "green" : "red"), failure: () => "red" },
-          },
-          Effect.try({ try: () => alive(record.pid), catch: stateError }),
-        ).pipe(Effect.mapError(stateError));
-        if (exited.outcome !== "green")
-          return yield* Effect.fail(
-            stateError("Worker did not exit after termination; its state was retained."),
-          );
-      }
-    }
+) {
+  const record = yield* readAgentRelayWorkerRecord(app, options);
+  if (record !== undefined) {
+    if (record.appId !== app.id || record.appRoot !== app.root || record.kind !== options.kind)
+      return yield* Effect.fail(stateError("Worker record belongs to another app."));
     yield* Effect.tryPromise({
-      try: () =>
-        rm(sshAgentSessionPaths(app, options.paths, options.kind).stateDir, { recursive: true, force: true }),
+      try: () => options.privateFileAccess.verify(recordPath(app, options)),
       catch: stateError,
     });
+    const alive = options.isAlive ?? processAlive;
+    if (yield* Effect.try({ try: () => alive(record.pid), catch: stateError })) {
+      const identity = yield* Effect.tryPromise({
+        try: () => (options.identify ?? identifyAgentRelayWorker)(record),
+        catch: stateError,
+      });
+      if (
+        identity.pid !== record.pid ||
+        identity.sessionId !== record.sessionId ||
+        identity.appId !== app.id ||
+        identity.appRoot !== app.root ||
+        identity.kind !== options.kind ||
+        identity.protocolVersion !== 1
+      )
+        return yield* Effect.fail(stateError("Live worker identity differs from its record."));
+      const terminate =
+        options.terminateProcess ??
+        (async (pid: number, signal: NodeJS.Signals) => {
+          process.kill(pid, signal);
+        });
+      yield* Effect.tryPromise({ try: () => terminate(record.pid, "SIGTERM"), catch: stateError });
+      const exited = yield* runProbe(
+        {
+          id: "agent-relay-worker-exit",
+          policy: { maxAttempts: 25, delay: Duration.millis(200), timeout: Duration.millis(5_000) },
+          classify: { success: (value) => (value === false ? "green" : "red"), failure: () => "red" },
+        },
+        Effect.try({ try: () => alive(record.pid), catch: stateError }),
+      ).pipe(Effect.mapError(stateError));
+      if (exited.outcome !== "green")
+        return yield* Effect.fail(
+          stateError("Worker did not exit after termination; its state was retained."),
+        );
+    }
+  }
+  yield* Effect.tryPromise({
+    try: () =>
+      rm(sshAgentSessionPaths(app, options.paths, options.kind).stateDir, { recursive: true, force: true }),
+    catch: stateError,
   });
+});
 
 export const terminateOwnedAgentRelayWorker = (
   app: Pick<AppRef, "id" | "root">,

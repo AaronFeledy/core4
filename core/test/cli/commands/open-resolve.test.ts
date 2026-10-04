@@ -41,7 +41,7 @@ const svc = (name: string, endpoints: ReadonlyArray<EndpointPlan> = []): Service
   dependsOn: [],
   hostAliases: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-07-06T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-07-06T00:00:00Z"),
     source: "open-resolve.test",
     runtime: 4,
   },

@@ -73,7 +73,7 @@ test("reports remediation for invalid imported PEM through discovery and plannin
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected invalid imported PEM failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure).toBeInstanceOf(LandofileValidationError);
     expect(String(failure)).toContain("must resolve to a valid PEM certificate");
     expect(String(failure)).toContain("complete CERTIFICATE block");

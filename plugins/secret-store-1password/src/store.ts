@@ -31,55 +31,54 @@ export const makeOnePasswordSecretStore = (options: {
 }): SecretStoreShape => {
   // Values remain in this store instance only; no disk cache or vault enumeration.
   const cache = new Map<string, string>();
-  const get: SecretStoreShape["get"] = (reference) =>
-    Effect.gen(function* () {
-      const parsed = yield* parseSecretReference(reference);
-      if (parsed.scheme !== ONEPASSWORD_SCHEME)
-        return yield* Effect.fail(
-          new SecretReferenceInvalidError({
-            message: "The 1Password store requires an op secret reference.",
-            reference,
-            remediation: "Use op://Vault/Item/field for a 1Password secret.",
-          }),
-        );
-      const cached = cache.get(parsed.raw);
-      if (cached !== undefined) return cached;
-      const result = yield* options.run(["read", "--no-newline", parsed.raw], {
-        timeoutMs: options.timeoutMs ?? OP_READ_TIMEOUT_MS,
-      });
-      if (result.exitCode === 0 && result.timedOut === false && result.cliMissing !== true) {
-        cache.set(parsed.raw, result.stdout);
-        return result.stdout;
-      }
-      const failure = classifyOpFailure({ ...result, cliMissing: result.cliMissing ?? false });
-      return yield* Match.value(failure).pipe(
-        Match.when({ kind: "not-found" }, () =>
-          Effect.fail(
-            new SecretNotFoundError({
-              message: "The requested 1Password secret was not found.",
-              secret: reference,
-              remediation: "Check the vault, item, section, and field in the op reference.",
-            }),
-          ),
-        ),
-        Match.when({ kind: "unavailable" }, ({ reason }) =>
-          Effect.fail(
-            new SecretStoreUnavailableError({
-              message: `1Password secret store unavailable: ${reason}.`,
-              storeId: ONEPASSWORD_STORE_ID,
-              reason,
-              remediation: remediation[reason],
-            }),
-          ),
-        ),
-        Match.exhaustive,
+  const get: SecretStoreShape["get"] = Effect.fn("SecretStore.get")(function* (reference: string) {
+    const parsed = yield* Effect.fromResult(parseSecretReference(reference));
+    if (parsed.scheme !== ONEPASSWORD_SCHEME)
+      return yield* Effect.fail(
+        new SecretReferenceInvalidError({
+          message: "The 1Password store requires an op secret reference.",
+          reference,
+          remediation: "Use op://Vault/Item/field for a 1Password secret.",
+        }),
       );
+    const cached = cache.get(parsed.raw);
+    if (cached !== undefined) return cached;
+    const result = yield* options.run(["read", "--no-newline", parsed.raw], {
+      timeoutMs: options.timeoutMs ?? OP_READ_TIMEOUT_MS,
     });
+    if (result.exitCode === 0 && result.timedOut === false && result.cliMissing !== true) {
+      cache.set(parsed.raw, result.stdout);
+      return result.stdout;
+    }
+    const failure = classifyOpFailure({ ...result, cliMissing: result.cliMissing ?? false });
+    return yield* Match.value(failure).pipe(
+      Match.when({ kind: "not-found" }, () =>
+        Effect.fail(
+          new SecretNotFoundError({
+            message: "The requested 1Password secret was not found.",
+            secret: reference,
+            remediation: "Check the vault, item, section, and field in the op reference.",
+          }),
+        ),
+      ),
+      Match.when({ kind: "unavailable" }, ({ reason }) =>
+        Effect.fail(
+          new SecretStoreUnavailableError({
+            message: `1Password secret store unavailable: ${reason}.`,
+            storeId: ONEPASSWORD_STORE_ID,
+            reason,
+            remediation: remediation[reason],
+          }),
+        ),
+      ),
+      Match.exhaustive,
+    );
+  });
   return {
     id: ONEPASSWORD_STORE_ID,
     schemes: [ONEPASSWORD_SCHEME],
     get,
-    has: (reference) =>
+    has: Effect.fn("SecretStore.has")((reference: string) =>
       get(reference).pipe(
         Effect.as(true),
         Effect.catchTags({
@@ -87,14 +86,15 @@ export const makeOnePasswordSecretStore = (options: {
           SecretReferenceInvalidError: () => Effect.succeed(false),
         }),
       ),
+    ),
     list: Effect.sync(() => [...cache.keys()]),
   };
 };
 
-export const onePasswordSecretStore = Layer.effect(
+export const layer = Layer.effect(
   SecretStore,
   Effect.gen(function* () {
     const processRunner = yield* ProcessRunner;
-    return makeOnePasswordSecretStore({ run: makeOpRunner(processRunner) });
+    return SecretStore.of(makeOnePasswordSecretStore({ run: makeOpRunner(processRunner) }));
   }),
 );

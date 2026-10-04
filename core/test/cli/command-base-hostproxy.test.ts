@@ -22,7 +22,7 @@ describe("app:open command-base metadata", () => {
       bootstrap: "app",
       hostProxyAllowed: true,
       resultSchema: EmptyResultSchema,
-      run: () => Schema.decodeUnknown(EmptyResultSchema)({}) as never,
+      run: () => Schema.decodeUnknownEffect(EmptyResultSchema)({}) as never,
     };
     expect(() => validateCommandSpec(spec)).not.toThrow();
     expect(spec.hostProxyAllowed).toBe(true);

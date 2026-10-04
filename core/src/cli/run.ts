@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import {
   JsonJqConflictError,
@@ -135,8 +135,16 @@ const HELP_SPECIAL_FLAGS = {
 } as const;
 
 const readAppCommandCacheOrNull = async () => {
-  const cache = await Effect.runPromise(Effect.either(readFreshAppCommandCacheForCwd()));
-  return cache._tag === "Right" ? cache.right : null;
+  const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  const cache = exit.value;
+  return cache._tag === "Success" ? cache.success : null;
+};
+
+const resolveToolingRouteExit = async (token: string | undefined) => {
+  const exit = await Effect.runPromiseExit(Effect.result(resolveToolingRoute(token)));
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause));
+  return exit.value;
 };
 
 const printAllHelp = async (): Promise<void> => {
@@ -219,20 +227,20 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
-      ? await Effect.runPromise(Effect.either(resolveToolingRoute(rawHead)))
+      ? await resolveToolingRouteExit(rawHead)
       : undefined;
   const isBunOrXAlias =
-    passthroughAliasResolution?._tag === "Right" &&
-    passthroughAliasResolution.right._tag === "built-in" &&
-    (passthroughAliasResolution.right.commandId === "meta:bun" ||
-      passthroughAliasResolution.right.commandId === "meta:x");
+    passthroughAliasResolution?._tag === "Success" &&
+    passthroughAliasResolution.success._tag === "built-in" &&
+    (passthroughAliasResolution.success.commandId === "meta:bun" ||
+      passthroughAliasResolution.success.commandId === "meta:x");
   const isBunOrXPassthrough =
     rawHead === "meta:bun" ||
     rawHead === "meta:x" ||
     isBunOrXAlias ||
     ((rawHead === "bun" || rawHead === "x") &&
-      passthroughAliasResolution?._tag === "Right" &&
-      passthroughAliasResolution.right._tag === "not-tooling");
+      passthroughAliasResolution?._tag === "Success" &&
+      passthroughAliasResolution.success._tag === "not-tooling");
 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
@@ -240,9 +248,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     const isProtocolStdoutCommand =
       rawHead === "mcp" ||
       rawHead === "meta:mcp" ||
-      (passthroughAliasResolution?._tag === "Right" &&
-        passthroughAliasResolution.right._tag === "built-in" &&
-        passthroughAliasResolution.right.commandId === "meta:mcp");
+      (passthroughAliasResolution?._tag === "Success" &&
+        passthroughAliasResolution.success._tag === "built-in" &&
+        passthroughAliasResolution.success.commandId === "meta:mcp");
     try {
       const configGlobals = await readConfigCliGlobals();
       const logLevelResolution = resolveLogLevel({
@@ -349,13 +357,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     (passthroughAliasResolution !== undefined || !isReservedNamespaceHead(argv[0]))
   ) {
     const argvTail = argv.slice(1);
-    const aliasResolution =
-      passthroughAliasResolution ?? (await Effect.runPromise(Effect.either(resolveToolingRoute(argv[0]))));
-    if (aliasResolution._tag === "Left") {
-      await renderAliasResolutionFailure(aliasResolution.left);
+    const aliasResolution = passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0]));
+    if (aliasResolution._tag === "Failure") {
+      await renderAliasResolutionFailure(aliasResolution.failure);
       return;
     }
-    const route = aliasResolution.right;
+    const route = aliasResolution.success;
     if (route._tag === "built-in") {
       builtInCommand = route.entry;
       argv = [route.commandId, ...argvTail];

@@ -46,7 +46,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -76,7 +76,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
           expect((failure.value as ProviderUnavailableError).message).toContain("win32");
@@ -107,7 +107,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -267,7 +267,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
@@ -300,7 +300,7 @@ describe("provider-lando bundled machine tooling resolution", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ProviderUnavailableError);

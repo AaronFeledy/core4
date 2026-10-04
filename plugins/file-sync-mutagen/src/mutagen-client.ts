@@ -152,7 +152,7 @@ export interface FakeMutagenClient extends MutagenClient {
   readonly markErrored: (name: string, detail: string) => void;
 }
 
-const fakeNow = (): DateTime.Utc => DateTime.unsafeMake("2026-05-28T00:00:00Z");
+const fakeNow = (): DateTime.Utc => DateTime.makeUnsafe("2026-05-28T00:00:00Z");
 
 /**
  * In-memory `MutagenClient` used by unit tests and the SDK contract

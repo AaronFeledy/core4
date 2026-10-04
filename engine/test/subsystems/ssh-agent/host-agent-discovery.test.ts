@@ -80,7 +80,7 @@ test("win32 does not select a named pipe that refuses the identities probe", asy
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostSshAgent({
         platform: "win32",
         home: "C:\\Users\\test",
@@ -92,8 +92,8 @@ test("win32 does not select a named pipe that refuses the identities probe", asy
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { reason: "host-agent-not-found" },
+    _tag: "Failure",
+    failure: { reason: "host-agent-not-found" },
   });
 });
 
@@ -101,14 +101,14 @@ test("fails host-agent-not-found with remediation", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given / When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostSshAgent({ platform: "linux", home: "/home/test", env: {}, exists: async () => false }),
     ),
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: {
+    _tag: "Failure",
+    failure: {
       _tag: "SshAgentUnavailableError",
       reason: "host-agent-not-found",
       remediation: expect.stringContaining("SSH_AUTH_SOCK"),
@@ -120,7 +120,7 @@ test("missing explicit socket fails without falling back", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
   // Given / When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       discoverHostSshAgent({
         platform: "linux",
         home: "/home/test",
@@ -132,7 +132,10 @@ test("missing explicit socket fails without falling back", async () => {
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "socket-missing", socketPath: "/missing" } });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { reason: "socket-missing", socketPath: "/missing" },
+  });
 });
 
 test("gpg precedes yubikey-agent and absent gpg falls through", async () => {
@@ -210,7 +213,7 @@ test("explicit symlink is socket-missing and does not fall through", async () =>
   try {
     // When the explicit socket is that symlink.
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         discoverHostSshAgent({
           platform: "linux",
           home: root,
@@ -221,8 +224,8 @@ test("explicit symlink is socket-missing and does not fall through", async () =>
     );
     // Then host mode fails closed.
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { _tag: "SshAgentUnavailableError", reason: "socket-missing", socketPath: link },
+      _tag: "Failure",
+      failure: { _tag: "SshAgentUnavailableError", reason: "socket-missing", socketPath: link },
     });
   } finally {
     await agent.close();
@@ -248,7 +251,7 @@ test("explicit socket probe failure does not fall through", async () => {
   try {
     // When the explicit socket does not answer the identities probe.
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         discoverHostSshAgent({
           platform: "linux",
           home: root,
@@ -260,8 +263,8 @@ test("explicit socket probe failure does not fall through", async () => {
     );
     // Then discovery fails closed instead of using 1Password.
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { reason: "socket-missing", socketPath: explicit },
+      _tag: "Failure",
+      failure: { reason: "socket-missing", socketPath: explicit },
     });
   } finally {
     await new Promise<void>((resolve) => silent.close(() => resolve()));

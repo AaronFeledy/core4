@@ -7,7 +7,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { symfonyDecomposer } from "../../src/recipes/builtin/symfony/decomposer.ts";
 import { symfonyRecipeYaml } from "../../src/recipes/builtin/symfony/manifest.ts";
 import { symfonyProducer, symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
@@ -138,7 +138,7 @@ describe("symfony decomposition", () => {
     if (typeof result.fragment === "string") throw new TypeError("Expected an object fragment.");
     const { recipe: _recipe, ...fragment } = result.fragment;
     // When the declarative snapshot renders once.
-    const rendered = Either.getOrThrow(renderRecipeSnapshot(symfonySnapshot, options));
+    const rendered = Result.getOrThrow(renderRecipeSnapshot(symfonySnapshot, options));
     // Then expression-shaped strings remain inert authoring data.
     expect<unknown>(rendered).toEqual(fragment);
   });

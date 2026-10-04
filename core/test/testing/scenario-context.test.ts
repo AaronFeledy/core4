@@ -429,7 +429,7 @@ describe("withScenarioContext", () => {
     );
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new TypeError("shell runner unexpectedly succeeded");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     const error = failure._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(NotImplementedError);
@@ -490,7 +490,7 @@ describe("withScenarioContext", () => {
     );
 
     expect(exit.result._tag).toBe("Failure");
-    const failure = exit.result._tag === "Failure" ? Cause.failureOption(exit.result.cause) : undefined;
+    const failure = exit.result._tag === "Failure" ? Cause.findErrorOption(exit.result.cause) : undefined;
     expect(failure?._tag).toBe("Some");
     const error = failure?._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(GuideFixtureNotFoundError);
@@ -522,7 +522,7 @@ describe("withScenarioContext", () => {
     });
 
     expect(exit._tag).toBe("Failure");
-    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    const failure = exit._tag === "Failure" ? Cause.findErrorOption(exit.cause) : undefined;
     const error = failure?._tag === "Some" ? failure.value : undefined;
     expect((error as { _tag?: string } | undefined)?._tag).toBe("FileIoError");
     expect((error as { message?: string } | undefined)?.message ?? "").toContain("is not a directory");
@@ -543,7 +543,7 @@ describe("withScenarioContext", () => {
     });
 
     expect(exit._tag).toBe("Failure");
-    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    const failure = exit._tag === "Failure" ? Cause.findErrorOption(exit.cause) : undefined;
     expect(failure?._tag).toBe("Some");
     const error = failure?._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(GuideFixtureSymlinkError);
@@ -746,7 +746,7 @@ describe("ScenarioContextFactory", () => {
     const frames = await Effect.runPromise(
       withScenarioContext({ guideId: "node-postgres", scenarioId: "hidden-restore" }, (context) =>
         Effect.gen(function* () {
-          yield* Effect.either(
+          yield* Effect.result(
             context.hidden(
               Effect.gen(function* () {
                 yield* context.runCli(["version"]);

@@ -37,7 +37,7 @@ export interface BuildAppOptions {
   readonly signal?: AbortSignal;
 }
 
-export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
+export class AppPlanner extends Context.Service<
   AppPlanner,
   {
     readonly plan: (
@@ -45,12 +45,12 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       providerCapabilities: ProviderCapabilities,
     ) => Effect.Effect<AppPlan, AppPlannerError>;
   }
->() {}
+>()("@lando/core/AppPlanner") {}
 
-export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
+export class BuildOrchestrator extends Context.Service<
   BuildOrchestrator,
   {
     readonly build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>;
     readonly buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildAppError>;
   }
->() {}
+>()("@lando/core/BuildOrchestrator") {}

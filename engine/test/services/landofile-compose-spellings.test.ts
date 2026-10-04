@@ -6,8 +6,9 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-compose-spellings-"));
@@ -23,13 +24,13 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
 const write = (dir: string, body: string) => writeFile(join(dir, ".lando.yml"), body);
 
-describe("LandofileServiceLive — Compose service spellings", () => {
+describe("LandofileService layer — Compose service spellings", () => {
   test("canonicalizes working_dir, depends_on map, environment list, and labels list", async () => {
     await withTempCwd(async (dir) => {
       await write(
@@ -87,7 +88,7 @@ describe("LandofileServiceLive — Compose service spellings", () => {
       const exit = await discoverExit();
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) return;
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") return;
       expect(failure.value).toBeInstanceOf(LandofileValidationError);
@@ -180,13 +181,17 @@ describe("LandofileServiceLive — Compose service spellings", () => {
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) return;
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") return;
       expect(failure.value).toBeInstanceOf(LandofileValidationError);
       if (!(failure.value instanceof LandofileValidationError)) return;
-      expect(failure.value.issues).toContain("services.web.healthcheck");
-      const issues = failure.value.issues.join("\n");
+      expect(failure.value.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+        "services.web.healthcheck",
+      );
+      const issues = failure.value.issues
+        .map((issue) => `${issue.path.join(".")} ${issue.message}`)
+        .join("\n");
       expect(issues).toContain("Compose duration");
       expect(issues).toContain("30s");
       expect(issues).toContain("1m30s");

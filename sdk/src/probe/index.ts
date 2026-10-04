@@ -10,7 +10,7 @@
  * This subpath is the same contracts-only tier as `@lando/sdk/secrets` and
  * `@lando/sdk/expressions`: it constructs no `LandoRuntime`, pulls no service
  * `Layer`, and imports only effect's `Schema`/`Schedule`/`Effect`/`Clock`/
- * `Duration` plus type-only schema imports. It is **not** a `Context.Tag`
+ * `Duration` plus type-only schema imports. It is **not** a `Context.Service`
  * service and **not** a pluggable abstraction.
  *
  * Its errors ({@link ProbeError}, {@link ProbeTimeoutError}) deliberately live
@@ -31,26 +31,26 @@ import { Cause, Clock, Duration, Effect, Schedule, Schema } from "effect";
  */
 export const RetryPolicy = Schema.Struct({
   /** Total attempts including the first; default 1 (no retry). */
-  maxAttempts: Schema.optional(Schema.Int),
+  maxAttempts: Schema.optionalKey(Schema.Int),
   /** Base delay between attempts; default 0. */
-  delay: Schema.optional(Schema.DurationFromMillis),
+  delay: Schema.optionalKey(Schema.DurationFromMillis),
   /** Backoff curve applied to {@link delay}; default `"fixed"`. */
-  backoff: Schema.optional(Schema.Literal("fixed", "exponential")),
+  backoff: Schema.optionalKey(Schema.Literals(["fixed", "exponential"])),
   /** Exponential multiplier applied per attempt; default 2. */
-  factor: Schema.optional(Schema.Number),
+  factor: Schema.optionalKey(Schema.Number),
   /** Cap on a single inter-attempt delay; default unbounded. */
-  maxDelay: Schema.optional(Schema.DurationFromMillis),
+  maxDelay: Schema.optionalKey(Schema.DurationFromMillis),
   /** Full jitter applied to each delay; default false. */
-  jitter: Schema.optional(Schema.Boolean),
+  jitter: Schema.optionalKey(Schema.Boolean),
   /** Overall deadline across all attempts; default unbounded. */
-  timeout: Schema.optional(Schema.DurationFromMillis),
+  timeout: Schema.optionalKey(Schema.DurationFromMillis),
 });
 
 /** Decoded {@link RetryPolicy}. */
 export type RetryPolicy = Schema.Schema.Type<typeof RetryPolicy>;
 
 /** Green/yellow/red verdict for a single probe attempt or overall run. */
-export const ProbeOutcome = Schema.Literal("green", "yellow", "red");
+export const ProbeOutcome = Schema.Literals(["green", "yellow", "red"]);
 
 /** Decoded {@link ProbeOutcome}. */
 export type ProbeOutcome = Schema.Schema.Type<typeof ProbeOutcome>;
@@ -100,7 +100,7 @@ export const ProbeResult = Schema.Struct({
    * The last attempt error, returned verbatim for the consuming surface to
    * redact. Absent when the run ended green or no attempt failed.
    */
-  lastError: Schema.optional(Schema.Unknown),
+  lastError: Schema.optionalKey(Schema.Unknown),
 });
 
 /** Decoded {@link ProbeResult}. */
@@ -132,9 +132,9 @@ export class ProbeError extends Schema.TaggedError<ProbeError>()("ProbeError", {
   /** Human-readable message. */
   message: Schema.String,
   /** Optional deadline-expiry sub-shape. */
-  timeout: Schema.optional(ProbeTimeoutError),
+  timeout: Schema.optionalKey(ProbeTimeoutError),
   /** Underlying cause, if any. */
-  cause: Schema.optional(Schema.Unknown),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 const DEFAULT_FACTOR = 2;
@@ -187,8 +187,8 @@ export const toSchedule = (policy: RetryPolicy): Schedule.Schedule<number> => {
   // recurs(n) permits n recurrences after the first run; its output is the
   // 0-based recurrence count, which is exactly the retry index the curve wants.
   const maxRetries = policyMaxAttempts(policy) - 1;
-  return Schedule.addDelay(Schedule.recurs(maxRetries), (recurrenceCount) =>
-    Duration.millis(delayForRetryIndex(policy, recurrenceCount)),
+  return Schedule.addDelay(Schedule.recurs(maxRetries), ({ output }) =>
+    Effect.succeed(Duration.millis(delayForRetryIndex(policy, output))),
   );
 };
 
@@ -206,132 +206,119 @@ export const toSchedule = (policy: RetryPolicy): Schedule.Schedule<number> => {
  *   deadline are driven through `Clock`/`Schedule`, never `Date.now()` or
  *   `setTimeout`.
  */
-export const runProbe = <A, E, R>(
+export const runProbe = Effect.fn("Probe.run")(function* <A, E, R>(
   spec: ProbeSpec,
   attempt: Effect.Effect<A, E, R>,
-): Effect.Effect<ProbeResult, ProbeError, R> =>
-  Effect.gen(function* () {
-    const classify = spec.classify;
-    const maxAttempts = policyMaxAttempts(spec.policy);
-    const timeoutMs = spec.policy.timeout === undefined ? undefined : Duration.toMillis(spec.policy.timeout);
+): Effect.fn.Return<ProbeResult, ProbeError, R> {
+  const classify = spec.classify;
+  const maxAttempts = policyMaxAttempts(spec.policy);
+  const timeoutMs = spec.policy.timeout === undefined ? undefined : Duration.toMillis(spec.policy.timeout);
 
-    const start = yield* Clock.currentTimeMillis;
-    const deadline = timeoutMs === undefined ? undefined : start + timeoutMs;
+  const start = yield* Clock.currentTimeMillis;
+  const deadline = timeoutMs === undefined ? undefined : start + timeoutMs;
 
-    let attempts = 0;
-    let lastOutcome: ProbeOutcome = "red";
-    let lastError: unknown;
-    let lastAttemptHadError = false;
+  let attempts = 0;
+  let lastOutcome: ProbeOutcome = "red";
+  let lastError: unknown;
+  let lastAttemptHadError = false;
 
-    while (attempts < maxAttempts) {
-      if (deadline !== undefined && attempts > 0) {
-        const now = yield* Clock.currentTimeMillis;
-        if (now >= deadline) break;
-      }
+  while (attempts < maxAttempts) {
+    if (deadline !== undefined && attempts > 0) {
+      const now = yield* Clock.currentTimeMillis;
+      if (now >= deadline) break;
+    }
 
-      attempts += 1;
-      lastAttemptHadError = false;
-      const run = Effect.exit(attempt);
-      const completed =
-        deadline === undefined
-          ? yield* Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit }))
-          : yield* Effect.timeoutTo(run, {
+    attempts += 1;
+    lastAttemptHadError = false;
+    const run = Effect.exit(attempt);
+    const completed =
+      deadline === undefined
+        ? yield* Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit }))
+        : yield* Effect.timeoutOrElse(
+            Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit })),
+            {
               duration: Duration.millis(deadline - (yield* Clock.currentTimeMillis)),
-              onSuccess: (exit) => ({ _tag: "Completed" as const, exit }),
-              onTimeout: () => ({ _tag: "TimedOut" as const }),
-            });
+              orElse: () => Effect.succeed({ _tag: "TimedOut" as const }),
+            },
+          );
 
-      if (completed._tag === "TimedOut") {
-        lastOutcome = "red";
-        lastError = new ProbeTimeoutError({ probeId: spec.id, timeoutMs: timeoutMs ?? 0, attempts });
-        lastAttemptHadError = true;
+    if (completed._tag === "TimedOut") {
+      lastOutcome = "red";
+      lastError = new ProbeTimeoutError({ probeId: spec.id, timeoutMs: timeoutMs ?? 0, attempts });
+      lastAttemptHadError = true;
+      break;
+    }
+
+    const { exit } = completed;
+
+    if (exit._tag === "Success") {
+      lastOutcome = classify === undefined ? "green" : classify.success(exit.value);
+      if (lastOutcome === "green") {
         break;
       }
-
-      const { exit } = completed;
-
-      if (exit._tag === "Success") {
-        lastOutcome = classify === undefined ? "green" : classify.success(exit.value);
-        if (lastOutcome === "green") {
-          break;
-        }
-      } else {
-        if (Cause.isInterruptedOnly(exit.cause)) {
-          return yield* Effect.interrupt;
-        }
-        const error = yield* extractFailure(spec, exit.cause);
-        lastError = error;
-        lastAttemptHadError = true;
-        lastOutcome = classify === undefined ? "red" : classify.failure(error);
-        if (lastOutcome === "green") {
-          break;
-        }
+    } else {
+      if (Cause.hasInterruptsOnly(exit.cause)) {
+        return yield* Effect.interrupt;
       }
-
-      // No more attempts available: stop without an extra delay.
-      if (attempts >= maxAttempts) break;
-
-      const wait = delayForRetryIndex(spec.policy, attempts - 1);
-      if (deadline !== undefined) {
-        const now = yield* Clock.currentTimeMillis;
-        const remaining = deadline - now;
-        if (remaining <= 0) break;
-        if (wait > 0) yield* Effect.sleep(Duration.millis(Math.min(wait, remaining)));
-        // After sleeping toward the deadline, the next loop guard re-checks it.
-      } else if (wait > 0) {
-        yield* Effect.sleep(Duration.millis(wait));
+      const error = yield* extractFailure(spec, exit.cause);
+      lastError = error;
+      lastAttemptHadError = true;
+      lastOutcome = classify === undefined ? "red" : classify.failure(error);
+      if (lastOutcome === "green") {
+        break;
       }
     }
 
-    const end = yield* Clock.currentTimeMillis;
+    // No more attempts available: stop without an extra delay.
+    if (attempts >= maxAttempts) break;
 
-    const includeLastError = lastOutcome !== "green" && lastAttemptHadError;
+    const wait = delayForRetryIndex(spec.policy, attempts - 1);
+    if (deadline !== undefined) {
+      const now = yield* Clock.currentTimeMillis;
+      const remaining = deadline - now;
+      if (remaining <= 0) break;
+      if (wait > 0) yield* Effect.sleep(Duration.millis(Math.min(wait, remaining)));
+      // After sleeping toward the deadline, the next loop guard re-checks it.
+    } else if (wait > 0) {
+      yield* Effect.sleep(Duration.millis(wait));
+    }
+  }
 
-    return {
-      outcome: lastOutcome,
-      attempts,
-      elapsedMs: end - start,
-      ...(includeLastError ? { lastError } : {}),
-    } satisfies ProbeResult;
-  });
+  const end = yield* Clock.currentTimeMillis;
+
+  const includeLastError = lastOutcome !== "green" && lastAttemptHadError;
+
+  return {
+    outcome: lastOutcome,
+    attempts,
+    elapsedMs: end - start,
+    ...(includeLastError ? { lastError } : {}),
+  } satisfies ProbeResult;
+});
 
 /**
  * Extract the attempt's failure value verbatim from its cause. A typed failure
  * (`E`) is returned as-is; a defect is surfaced as a {@link ProbeError} so the
  * runner fails the Effect rather than silently masking a bug.
  */
-const extractFailure = (spec: ProbeSpec, cause: Cause.Cause<unknown>): Effect.Effect<unknown, ProbeError> =>
-  Effect.gen(function* () {
-    const failures = causeFailures(cause);
-    if (failures.length > 0) return failures[0];
+const extractFailure = Effect.fnUntraced(function* (
+  spec: ProbeSpec,
+  cause: Cause.Cause<unknown>,
+): Effect.fn.Return<unknown, ProbeError> {
+  const failures = causeFailures(cause);
+  if (failures.length > 0) return failures[0];
 
-    // No typed failure means an interruption or defect — fail loudly.
-    yield* Effect.fail(
-      new ProbeError({
-        probeId: spec.id,
-        message: `Probe "${spec.id}" attempt failed with a non-error cause`,
-        cause,
-      }),
-    );
-    return undefined;
-  });
+  // No typed failure means an interruption or defect — fail loudly.
+  yield* Effect.fail(
+    new ProbeError({
+      probeId: spec.id,
+      message: `Probe "${spec.id}" attempt failed with a non-error cause`,
+      cause,
+    }),
+  );
+  return undefined;
+});
 
 const causeFailures = (cause: Cause.Cause<unknown>): ReadonlyArray<unknown> => {
-  const out: unknown[] = [];
-  const visit = (node: Cause.Cause<unknown>): void => {
-    switch (node._tag) {
-      case "Fail":
-        out.push(node.error);
-        return;
-      case "Sequential":
-      case "Parallel":
-        visit(node.left);
-        visit(node.right);
-        return;
-      default:
-        return;
-    }
-  };
-  visit(cause);
-  return out;
+  return cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error);
 };

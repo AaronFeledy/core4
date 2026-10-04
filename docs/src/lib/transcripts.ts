@@ -11,7 +11,7 @@ import {
 import { variantFileSuffix } from "@lando/core/docs/variant";
 import type { PublicTranscript } from "@lando/core/schema";
 import { AxisToken, ComponentId, GuideId } from "@lando/sdk/docs/components";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 export type TranscriptRequest = {
   readonly guideId: string;
@@ -126,7 +126,7 @@ const loadTranscript = async (
 ): Promise<CachedTranscript> => {
   try {
     const decoded = decodePublicTranscriptEither(JSON.parse(await read(path)));
-    if (Either.isLeft(decoded)) {
+    if (Result.isFailure(decoded)) {
       return {
         kind: "invalid",
         warning: {
@@ -137,7 +137,7 @@ const loadTranscript = async (
       };
     }
 
-    return { kind: "ok", transcript: decoded.right };
+    return { kind: "ok", transcript: decoded.success };
   } catch (error) {
     if (isAbsent(error)) return { kind: "absent" };
     if (error instanceof SyntaxError) {

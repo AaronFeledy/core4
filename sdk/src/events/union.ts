@@ -116,7 +116,7 @@ import {
   TunnelStatusEvent,
 } from "./tunnel.ts";
 
-export const LandoEvent = Schema.Union(
+export const LandoEvent = Schema.Union([
   PreBootstrapMinimalEvent,
   PostBootstrapMinimalEvent,
   PreBootstrapPluginsEvent,
@@ -224,7 +224,7 @@ export const LandoEvent = Schema.Union(
   CodeSnippetEvent,
   DiffRenderEvent,
   MarkdownBlockEvent,
-);
+]);
 export type LandoEvent = typeof LandoEvent.Type;
 
 export const SubscriberPriority = {

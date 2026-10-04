@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect } from "effect";
 
 import { SqlConfirmRequiredError } from "@lando/sdk/errors";
 import {
@@ -24,7 +24,7 @@ export const confirmOrFail = (
 ) => {
   if (input.yes) return Effect.void;
   return confirm(message).pipe(
-    Effect.catchAll(() => Effect.succeed(false)),
+    Effect.catch(() => Effect.succeed(false)),
     Effect.flatMap((accepted) =>
       accepted
         ? Effect.void
@@ -44,50 +44,48 @@ export type SqlProgressHandle = {
   readonly complete: Effect.Effect<void, unknown>;
 };
 
-export const publishTree = (
+export const publishTree = Effect.fnUntraced(function* (
   publish: SqlPublisher,
   label: string,
   steps: ReadonlyArray<DbCommandStep>,
-): Effect.Effect<SqlProgressHandle, unknown> =>
-  Effect.gen(function* () {
-    const startedAt = Date.now();
-    const now = DateTime.unsafeNow();
+): Effect.fn.Return<SqlProgressHandle, unknown> {
+  const startedAt = yield* Clock.currentTimeMillis;
+  const now = yield* DateTime.now;
+  yield* publish(
+    TaskTreeStartEvent.make({
+      parentId: "db",
+      label,
+      children: steps.map((step) => step.id),
+      timestamp: now,
+    }),
+  );
+  for (const step of steps) {
     yield* publish(
-      TaskTreeStartEvent.make({
-        parentId: "db",
-        label,
-        children: steps.map((step) => step.id),
-        timestamp: now,
-      }),
+      TaskStartEvent.make({ taskId: step.id, parentId: "db", label: step.label, timestamp: now }),
     );
-    for (const step of steps) {
-      yield* publish(
-        TaskStartEvent.make({ taskId: step.id, parentId: "db", label: step.label, timestamp: now }),
-      );
-    }
-    return {
-      complete: completeTree(publish, steps, startedAt),
-    };
-  });
+  }
+  return {
+    complete: completeTree(publish, steps, startedAt),
+  };
+});
 
-export const completeTree = (
+export const completeTree = Effect.fnUntraced(function* (
   publish: SqlPublisher,
   steps: ReadonlyArray<DbCommandStep>,
   startedAt?: number,
-) =>
-  Effect.gen(function* () {
-    const now = DateTime.unsafeNow();
-    const durationMs = startedAt === undefined ? 0 : Math.max(0, Date.now() - startedAt);
-    for (const step of steps) {
-      yield* publish(TaskCompleteEvent.make({ taskId: step.id, durationMs, timestamp: now }));
-    }
-    yield* publish(
-      TaskTreeCompleteEvent.make({
-        parentId: "db",
-        succeeded: steps.length,
-        failed: 0,
-        durationMs,
-        timestamp: now,
-      }),
-    );
-  });
+) {
+  const now = yield* DateTime.now;
+  const durationMs = startedAt === undefined ? 0 : Math.max(0, (yield* Clock.currentTimeMillis) - startedAt);
+  for (const step of steps) {
+    yield* publish(TaskCompleteEvent.make({ taskId: step.id, durationMs, timestamp: now }));
+  }
+  yield* publish(
+    TaskTreeCompleteEvent.make({
+      parentId: "db",
+      succeeded: steps.length,
+      failed: 0,
+      durationMs,
+      timestamp: now,
+    }),
+  );
+});

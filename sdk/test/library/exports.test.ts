@@ -3,6 +3,12 @@ import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
+  test("standard schema subpath resolves independently", async () => {
+    const standard = await import("@lando/sdk/schema/standard");
+    expect(await standard.LandofileStandardSchema["~standard"].validate({ name: "demo" })).toEqual({
+      value: { name: "demo" },
+    });
+  });
   test("yaml entry point exports the shared scalar policy and document emitter", async () => {
     // Given / When: a consumer imports the public YAML entry point.
     const yaml = await import("@lando/sdk/yaml");
@@ -81,11 +87,6 @@ describe("@lando/sdk package exports", () => {
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
     expect(schema.DownloaderCapabilities).toBeDefined();
-    expect(schema.HttpRequest).toBeDefined();
-    expect(schema.HttpResponse).toBeDefined();
-    expect(schema.HttpStreamResponse).toBeDefined();
-    expect(schema.HttpUploadRequest).toBeDefined();
-    expect(schema.HttpClientCapabilities).toBeDefined();
     expect(schema.HttpClientContribution).toBeDefined();
     expect(schema.PreHttpCallEvent).toBeDefined();
     expect(schema.PostHttpCallEvent).toBeDefined();
@@ -292,7 +293,7 @@ describe("@lando/sdk package exports", () => {
       const jsonSchema = schema.getJsonSchema(schemaName) as { readonly $schema?: unknown };
 
       expect(jsonSchema).toBeDefined();
-      expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+      expect(jsonSchema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
     }
   });
 
@@ -341,10 +342,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DownloadOfflineError).toBeDefined();
     expect(errors.DownloadSourceForbiddenError).toBeDefined();
     expect(errors.DownloaderUnavailableError).toBeDefined();
-    expect(errors.HttpRequestError).toBeDefined();
-    expect(errors.HttpUploadError).toBeDefined();
     expect(errors.HttpTrustError).toBeDefined();
-    expect(errors.HttpClientUnavailableError).toBeDefined();
     expect(errors.DataTransferError).toBeDefined();
     expect(errors.DataEndpointUnsupportedError).toBeDefined();
     expect(errors.DataChecksumMismatchError).toBeDefined();
@@ -514,7 +512,6 @@ describe("@lando/sdk package exports", () => {
     expect(services.ConfigTranslator).toBeDefined();
     expect(services.ConfigTranslatorRegistry).toBeDefined();
     expect(services.Downloader).toBeDefined();
-    expect(services.HttpClient).toBeDefined();
     expect(services.DataMover).toBeDefined();
     expect(services.PathsService).toBeDefined();
     expect(services.RemoteSource).toBeDefined();
@@ -663,6 +660,13 @@ describe("@lando/sdk package exports", () => {
     const sdkTest = await import("@lando/sdk/test");
 
     expect(sdkTest.runDownloaderContract).toBeDefined();
+  });
+
+  test("test entry point exports the http client contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runHttpClientContract).toBeDefined();
+    expect(sdkTest.makeHttpClientContractSuite).toBeDefined();
   });
 
   test("test entry point exports the remote-sync contract suites", async () => {

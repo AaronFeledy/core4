@@ -11,7 +11,7 @@ import {
   BUILTIN_RECIPE_DECOMPOSERS,
   builtinRecipeDecomposerIds,
 } from "../../src/recipes/builtin/decomposers.ts";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { bundledManifest } from "../_support/recipe-output.ts";
 
@@ -36,7 +36,7 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(cwd);
     return await Effect.runPromise(
       Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-        Effect.provide(LandofileServiceLive),
+        Effect.provide(TestLandofileServiceLayer.layer),
       ),
     );
   } finally {

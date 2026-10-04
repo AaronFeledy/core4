@@ -1,5 +1,9 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
+import {
+  type LoweringPatch,
+  type ServiceLoweringContext,
+  hasPlainObjectPrototype,
+} from "./lowering-contract.ts";
 import { droppedServiceKey, rewrittenServiceKey } from "./service-diagnostics.ts";
 import { hasAuthoredEnvironment } from "./service-option-environment.ts";
 
@@ -67,7 +71,7 @@ export const lowerXdebugObject = (
       }
       continue;
     }
-    if (key === "config" && isPlainObject(value)) {
+    if (key === "config" && hasPlainObjectPrototype(value)) {
       for (const iniKey of Object.keys(value)) {
         diagnostics.push(
           droppedServiceKey({

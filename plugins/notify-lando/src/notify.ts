@@ -28,7 +28,7 @@ const terminalFrom = (event: LandoEvent): Terminal | undefined => {
 const notify: SubscriberFactory<NotifyConfig> = (ctx, config) => {
   if (!config.enabled) return () => Effect.void;
   const eligible = new Set([...DEFAULT_NOTIFY_COMMAND_IDS, ...config.commands]);
-  return (event) => {
+  return Effect.fn("Notifier.notify")((event) => {
     const terminal = terminalFrom(event);
     if (
       terminal === undefined ||
@@ -54,7 +54,7 @@ const notify: SubscriberFactory<NotifyConfig> = (ctx, config) => {
           urgency: "failure",
         });
     }
-  };
+  });
 };
 
 export default notify;

@@ -22,7 +22,7 @@ import { runOpenForHostProxy } from "./dispatch";
 
 const WorkerInput = Schema.Struct({
   app: Schema.Struct({
-    kind: Schema.Literal("user", "scratch"),
+    kind: Schema.Literals(["user", "scratch"]),
     id: Schema.String,
     root: Schema.String,
   }),
@@ -36,10 +36,10 @@ const WorkerInput = Schema.Struct({
   }),
   shimArtifactPath: Schema.String,
   shimTarget: Schema.optional(
-    Schema.Union(
+    Schema.Union([
       Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("x64") }),
       Schema.Struct({ os: Schema.Literal("linux"), arch: Schema.Literal("arm64") }),
-    ),
+    ]),
   ),
   hostGatewayName: Schema.optional(Schema.String),
 });
@@ -66,7 +66,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
   const input = Schema.decodeUnknownSync(WorkerInput)(JSON.parse(await stdinText()));
   const app = { kind: input.app.kind, id: input.app.id, root: input.app.root } as AppRef;
   const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
-  // Runtime Layer scope must outlive session create (EventService is Layer.scoped).
+  // Runtime Layer scope must outlive session create (EventService acquires scoped resources).
   await Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {

@@ -15,7 +15,7 @@ const TunnelBase = {
 };
 
 const OutcomeFields = {
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   failureDetail: Schema.optional(Schema.String),
   durationMs: Schema.optional(Schema.Number),
 };

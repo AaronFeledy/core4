@@ -15,6 +15,7 @@ describe("@lando/sdk/secrets import boundary", () => {
 
     expect(specifiers).toEqual([
       "./bounded-redaction.ts",
+      "./inspection.ts",
       "./redactor.ts",
       "./transcript-redaction.ts",
       "./value-redaction.ts",
@@ -24,6 +25,7 @@ describe("@lando/sdk/secrets import boundary", () => {
   test("stays free of Effect runtime, Node/Bun IO, and core internals", async () => {
     for (const file of [
       "../../src/secrets/index.ts",
+      "../../src/secrets/inspection.ts",
       "../../src/secrets/bounded-redaction.ts",
       "../../src/secrets/redactor-profiles.ts",
       "../../src/secrets/redactor.ts",

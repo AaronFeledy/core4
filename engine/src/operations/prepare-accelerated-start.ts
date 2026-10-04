@@ -52,7 +52,7 @@ export const prepareAcceleratedStart = (
           return yield* Effect.failCause(yield* pendingStart.retainTargets(coverage.cause));
         const rollback = yield* Effect.exit(prepared.rollback);
         if (Exit.isFailure(rollback))
-          return yield* Effect.failCause(Cause.sequential(coverage.cause, rollback.cause));
+          return yield* Effect.failCause(Cause.combine(coverage.cause, rollback.cause));
         yield* pendingStart.clear;
         return yield* Effect.failCause(coverage.cause);
       }
@@ -124,13 +124,13 @@ export const prepareAcceleratedStart = (
       // An interrupted parent cannot run this ownership probe; a bounded child can.
       const noOwnedSessions =
         safe && app !== undefined && engine !== undefined
-          ? yield* Effect.forkDaemon(
+          ? yield* Effect.forkDetach(
               restore(engine.listSessions({ app })).pipe(Effect.timeoutOption("3 seconds")),
             ).pipe(
               Effect.flatMap(Fiber.await),
               Effect.flatMap((inventoryExit) =>
                 Exit.isFailure(inventoryExit)
-                  ? Effect.failCause(Cause.sequential(syncExit.cause, inventoryExit.cause))
+                  ? Effect.failCause(Cause.combine(syncExit.cause, inventoryExit.cause))
                   : Effect.succeed(
                       Option.isSome(inventoryExit.value) && inventoryExit.value.value.length === 0,
                     ),
@@ -140,9 +140,9 @@ export const prepareAcceleratedStart = (
       if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
       if (prepared.rollback === undefined)
         return yield* Effect.failCause(yield* pendingStart.retainTargets(syncExit.cause));
-      const rollback = yield* Effect.exit(prepared.rollback.pipe(Effect.zipRight(pendingStart.clear)));
+      const rollback = yield* Effect.exit(prepared.rollback.pipe(Effect.andThen(pendingStart.clear)));
       if (Exit.isFailure(rollback))
-        return yield* Effect.failCause(Cause.sequential(syncExit.cause, rollback.cause));
+        return yield* Effect.failCause(Cause.combine(syncExit.cause, rollback.cause));
       return yield* Effect.failCause(syncExit.cause);
     }),
   );

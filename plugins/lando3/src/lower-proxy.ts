@@ -2,7 +2,7 @@ import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
 import { CATALOG, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
-import { type V4Wire, isPlainObject } from "./lowering-contract.ts";
+import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
 const HOSTNAME =
@@ -11,7 +11,7 @@ const expression = (text: string) => text.includes("{{") || text.includes("${");
 
 const parseRoute = (value: unknown): RouteObjectInput | undefined => {
   if (isLegacyTagged(value)) return undefined;
-  const object = isPlainObject(value) ? value : undefined;
+  const object = hasPlainObjectPrototype(value) ? value : undefined;
   const text = typeof value === "string" ? value : object?.hostname;
   if (typeof text !== "string" || /[\s?#]/.test(text) || text.includes("://") || expression(text))
     return undefined;
@@ -51,7 +51,7 @@ interface RouteGroup {
 }
 
 const lowerMiddleware = ({ value, path }: Middleware, report: Report): RouteFilter | undefined => {
-  const entry = isPlainObject(value) && !isLegacyTagged(value) ? value : {};
+  const entry = hasPlainObjectPrototype(value) && !isLegacyTagged(value) ? value : {};
   const { name, key, value: raw } = entry;
   const match =
     typeof key === "string" ? /^headers\.custom(request|response)headers\.([A-Za-z0-9-]+)$/i.exec(key) : null;
@@ -117,7 +117,7 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
     );
     return { fragment: {} };
   }
-  if (!isPlainObject(value) || isLegacyTagged(value)) {
+  if (!hasPlainObjectPrototype(value) || isLegacyTagged(value)) {
     report(
       "unsupported",
       ["proxy"],
@@ -158,7 +158,7 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
         "Review the route endpoint, path prefix and filters before starting the app.",
       );
       const identity = JSON.stringify([route.hostname, route.endpoint, route.pathPrefix]);
-      const object = isPlainObject(entry) ? entry : undefined;
+      const object = hasPlainObjectPrototype(entry) ? entry : undefined;
       const existing = objects.get(identity);
       const group = existing ?? { route, middlewares: new Map<string | symbol, Middleware>() };
       if (existing === undefined) {
@@ -177,7 +177,8 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
         return;
       }
       object.middlewares.forEach((middleware: unknown, middlewareIndex) => {
-        const name = isPlainObject(middleware) && !isLegacyTagged(middleware) ? middleware.name : undefined;
+        const name =
+          hasPlainObjectPrototype(middleware) && !isLegacyTagged(middleware) ? middleware.name : undefined;
         group.middlewares.set(typeof name === "string" ? name : Symbol(), {
           value: middleware,
           path: [...path, "middlewares", middlewareIndex],
@@ -196,7 +197,7 @@ const servedPorts = (service: V4Wire): ReadonlySet<number> => {
   const ports = new Set<number>();
   for (const endpoint of Array.isArray(service.endpoints) ? service.endpoints : []) {
     if (
-      isPlainObject(endpoint) &&
+      hasPlainObjectPrototype(endpoint) &&
       typeof endpoint.port === "number" &&
       /^https?$/.test(String(endpoint.protocol))
     )
@@ -224,7 +225,7 @@ export const declareRouteEndpoints = (
   report: Report,
   external: ReadonlyMap<string, V4Wire> = new Map(),
 ): void => {
-  const proxy = isPlainObject(fragment.proxy) ? fragment.proxy : {};
+  const proxy = hasPlainObjectPrototype(fragment.proxy) ? fragment.proxy : {};
   for (const [name, routes] of Object.entries(proxy)) {
     if (!Array.isArray(routes)) continue;
     const authored = services.get(name);
@@ -243,7 +244,8 @@ export const declareRouteEndpoints = (
     const catalogServed = served.size > 0;
     const added: number[] = [];
     for (const route of routes) {
-      const port = isPlainObject(route) && typeof route.endpoint === "number" ? route.endpoint : undefined;
+      const port =
+        hasPlainObjectPrototype(route) && typeof route.endpoint === "number" ? route.endpoint : undefined;
       if (port === undefined && catalogServed) continue;
       const wanted = port ?? LANDO3_DEFAULT_ROUTE_PORT;
       if (served.has(wanted) || added.includes(wanted)) continue;

@@ -64,7 +64,7 @@ const emitArray = (items: ReadonlyArray<unknown>, indent: number): ReadonlyArray
   if (items.length === 0) return [`${prefix}[]`];
 
   return items.flatMap((item) => {
-    if (Predicate.isRecord(item)) {
+    if (Predicate.isObject(item)) {
       const entries = sortedEntries(item);
       if (entries.length === 0) return [`${prefix}- {}`];
       const firstEntry = entries[0];
@@ -86,7 +86,7 @@ const emitValue = (key: string, value: unknown, indent: number, marker = ""): Re
     if (value.length === 0) return [`${prefix} []`];
     return [prefix, ...emitArray(value, indent + marker.length + 2)];
   }
-  if (Predicate.isRecord(value)) {
+  if (Predicate.isObject(value)) {
     const entries = sortedEntries(value);
     if (entries.length === 0) return [prefix];
     return [
@@ -158,9 +158,9 @@ const embeddedDistHash = (content: string): string | undefined =>
     .trim();
 
 const makeGlobalAppService = (
-  configService: Context.Tag.Service<typeof ConfigService>,
-  fileSystem: Context.Tag.Service<typeof FileSystem>,
-): Context.Tag.Service<typeof GlobalAppService> => {
+  configService: Context.Service.Shape<typeof ConfigService>,
+  fileSystem: Context.Service.Shape<typeof FileSystem>,
+): Context.Service.Shape<typeof GlobalAppService> => {
   const root = configService.get("userDataRoot").pipe(
     Effect.mapError(
       (cause) =>
@@ -248,95 +248,41 @@ const makeGlobalAppService = (
     return { path: resolved.userLandofile, created: false };
   });
 
-  const regenerateDist = (input?: { readonly services?: Record<string, ServiceConfig> }) =>
-    Effect.gen(function* () {
-      const resolved = yield* paths;
-      yield* ensureRoot;
-      const services = input?.services ?? {};
-      for (const source of bindMountSources(services)) {
-        const mountPath = isAbsolute(source) ? source : join(resolved.root, source);
-        yield* fileSystem
-          .mkdir(mountPath)
-          .pipe(
-            Effect.mapError((cause) =>
-              globalAppError(
-                "regenerateDist",
-                `Unable to create the global service bind-mount source at ${mountPath}.`,
-                cause,
-              ),
-            ),
-          );
-      }
-      const serviceIds = Object.keys(services).sort((left, right) => left.localeCompare(right));
-      const nextContent = buildDistContent(services);
-      const exists = yield* fileSystem
-        .exists(resolved.distLandofile)
+  const regenerateDist = Effect.fn("GlobalAppService.regenerateDist")(function* (input?: {
+    readonly services?: Record<string, ServiceConfig>;
+  }) {
+    const resolved = yield* paths;
+    yield* ensureRoot;
+    const services = input?.services ?? {};
+    for (const source of bindMountSources(services)) {
+      const mountPath = isAbsolute(source) ? source : join(resolved.root, source);
+      yield* fileSystem
+        .mkdir(mountPath)
         .pipe(
           Effect.mapError((cause) =>
             globalAppError(
               "regenerateDist",
-              `Unable to check the generated global app Landofile at ${resolved.distLandofile}.`,
+              `Unable to create the global service bind-mount source at ${mountPath}.`,
               cause,
             ),
           ),
         );
-
-      if (!exists) {
-        yield* fileSystem
-          .writeAtomic(resolved.distLandofile, nextContent)
-          .pipe(
-            Effect.mapError((cause) =>
-              globalAppError(
-                "regenerateDist",
-                `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
-                cause,
-              ),
-            ),
-          );
-        return { path: resolved.distLandofile, status: "created" as const, serviceIds };
-      }
-
-      const currentContent = yield* fileSystem
-        .readText(resolved.distLandofile)
-        .pipe(
-          Effect.mapError((cause) =>
-            globalAppError(
-              "regenerateDist",
-              `Unable to read the generated global app Landofile at ${resolved.distLandofile}.`,
-              cause,
-            ),
+    }
+    const serviceIds = Object.keys(services).sort((left, right) => left.localeCompare(right));
+    const nextContent = buildDistContent(services);
+    const exists = yield* fileSystem
+      .exists(resolved.distLandofile)
+      .pipe(
+        Effect.mapError((cause) =>
+          globalAppError(
+            "regenerateDist",
+            `Unable to check the generated global app Landofile at ${resolved.distLandofile}.`,
+            cause,
           ),
-        );
+        ),
+      );
 
-      if (splitYamlLines(currentContent)[0] !== distMarker) {
-        return yield* Effect.fail(
-          new GlobalDistConflictError({
-            message: `The generated global app Landofile path is not managed by Lando: ${resolved.distLandofile}.`,
-            path: resolved.distLandofile,
-            reason: "foreign-file",
-            remediation: "Move .lando.dist.yml aside or move overrides into .lando.yml, then rerun.",
-          }),
-        );
-      }
-
-      const currentHash = embeddedDistHash(currentContent);
-      const actualHash = sha256(currentDistBody(currentContent));
-      if (currentHash !== actualHash) {
-        return yield* Effect.fail(
-          new GlobalDistConflictError({
-            message: `The generated global app Landofile was manually edited: ${resolved.distLandofile}.`,
-            path: resolved.distLandofile,
-            reason: "manual-edit",
-            remediation:
-              "move changes from .lando.dist.yml into .lando.yml, then restore the generated file and rerun.",
-          }),
-        );
-      }
-
-      if (currentContent === nextContent) {
-        return { path: resolved.distLandofile, status: "unchanged" as const, serviceIds };
-      }
-
+    if (!exists) {
       yield* fileSystem
         .writeAtomic(resolved.distLandofile, nextContent)
         .pipe(
@@ -348,17 +294,80 @@ const makeGlobalAppService = (
             ),
           ),
         );
-      return { path: resolved.distLandofile, status: "updated" as const, serviceIds };
-    });
+      return { path: resolved.distLandofile, status: "created" as const, serviceIds };
+    }
+
+    const currentContent = yield* fileSystem
+      .readText(resolved.distLandofile)
+      .pipe(
+        Effect.mapError((cause) =>
+          globalAppError(
+            "regenerateDist",
+            `Unable to read the generated global app Landofile at ${resolved.distLandofile}.`,
+            cause,
+          ),
+        ),
+      );
+
+    if (splitYamlLines(currentContent)[0] !== distMarker) {
+      return yield* Effect.fail(
+        new GlobalDistConflictError({
+          message: `The generated global app Landofile path is not managed by Lando: ${resolved.distLandofile}.`,
+          path: resolved.distLandofile,
+          reason: "foreign-file",
+          remediation: "Move .lando.dist.yml aside or move overrides into .lando.yml, then rerun.",
+        }),
+      );
+    }
+
+    const currentHash = embeddedDistHash(currentContent);
+    const actualHash = sha256(currentDistBody(currentContent));
+    if (currentHash !== actualHash) {
+      return yield* Effect.fail(
+        new GlobalDistConflictError({
+          message: `The generated global app Landofile was manually edited: ${resolved.distLandofile}.`,
+          path: resolved.distLandofile,
+          reason: "manual-edit",
+          remediation:
+            "move changes from .lando.dist.yml into .lando.yml, then restore the generated file and rerun.",
+        }),
+      );
+    }
+
+    if (currentContent === nextContent) {
+      return { path: resolved.distLandofile, status: "unchanged" as const, serviceIds };
+    }
+
+    yield* fileSystem
+      .writeAtomic(resolved.distLandofile, nextContent)
+      .pipe(
+        Effect.mapError((cause) =>
+          globalAppError(
+            "regenerateDist",
+            `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
+            cause,
+          ),
+        ),
+      );
+    return { path: resolved.distLandofile, status: "updated" as const, serviceIds };
+  });
 
   const ensureRunning = () =>
     Effect.fail(
       globalAppError("ensureRunning", "Global service startup requires the app runtime.", undefined),
     );
-  return { id: GLOBAL_APP_ID, root, ensureRoot, paths, ensureUserLandofile, ensureRunning, regenerateDist };
+  return GlobalAppService.of({
+    id: GLOBAL_APP_ID,
+    root,
+    ensureRoot,
+    paths,
+    ensureUserLandofile,
+    ensureRunning,
+    regenerateDist,
+  });
 };
 
-export const GlobalAppServiceLive = Layer.effect(
+export const layer = Layer.effect(
   GlobalAppService,
   Effect.gen(function* () {
     const configService = yield* ConfigService;

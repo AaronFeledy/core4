@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 
@@ -14,7 +14,7 @@ import {
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 
 export interface AppVersionConstraintDoctorCheck {
   readonly name: "app-version-constraint";
@@ -32,18 +32,18 @@ export interface AppVersionConstraintDoctorResult {
   readonly checks: ReadonlyArray<AppVersionConstraintDoctorCheck>;
 }
 
-const DoctorStatusSchema = Schema.Literal("pass", "warn", "fail");
-const DoctorSeveritySchema = Schema.Literal("info", "warn", "error");
+const DoctorStatusSchema = Schema.Literals(["pass", "warn", "fail"]);
+const DoctorSeveritySchema = Schema.Literals(["info", "warn", "error"]);
 const DoctorSolutionSchema = Schema.Struct({
   kind: Schema.Literal("manual"),
   description: Schema.String,
-  command: Schema.optional(Schema.String),
+  command: Schema.optionalKey(Schema.String),
 });
 const AppVersionConstraintDoctorCheckSchema = Schema.Struct({
   name: Schema.Literal("app-version-constraint"),
   status: DoctorStatusSchema,
   severity: DoctorSeveritySchema,
-  context: Schema.Record({ key: Schema.String, value: Schema.String }),
+  context: Schema.Record(Schema.String, Schema.String),
   solutions: Schema.Array(DoctorSolutionSchema),
 });
 export const AppVersionConstraintDoctorResultSchema = Schema.Struct({
@@ -100,105 +100,104 @@ const formatConstraintEntry = (
 ): string =>
   `${redact(entry.range)} (${entry.layer}#${entry.order}: ${relativeSource(appRoot, entry.source)})`;
 
-export const appVersionConstraintsForReport = (): Effect.Effect<
+export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Effect.fn.Return<
   AppVersionConstraintDoctorResult | undefined,
   never,
   never
-> =>
-  Effect.gen(function* () {
-    const cwd = process.cwd();
-    const redactor = createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
-    const redact = redactor.redactString;
-    const discovery = yield* Effect.either(
-      Effect.tryPromise({
-        try: () => findDiscoveredLandofilePath(cwd),
-        catch: (cause) => cause,
-      }),
-    );
-    if (Either.isLeft(discovery)) {
-      if (Schema.is(LandofileNotFoundError)(discovery.left)) return undefined;
-      if (Schema.is(LandofileFormConflictError)(discovery.left)) {
-        return failedLoadResult(
-          {
-            declared: "(conflicting Landofile forms)",
-            layer: redact(discovery.left.layer),
-            loadFailure: redact(discovery.left.message),
-          },
-          [{ kind: "manual", description: redact(discovery.left.remediation) }],
-        );
-      }
-      return yield* Effect.die(discovery.left);
-    }
-    const discovered = discovery.right;
-    const { appRoot, filePath } = discovered;
-    const resolved = yield* Effect.either(
-      loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLive)),
-    );
-    if (Either.isLeft(resolved)) {
-      if (resolved.left._tag === "LandofileParseError") {
-        return failedLoadResult(
-          {
-            declared: "(malformed Landofile)",
-            loadFailure: redact(resolved.left.message),
-          },
-          [MALFORMED_LANDOFILE_SOLUTION],
-        );
-      }
-      if (resolved.left._tag === "LandofileFormConflictError") {
-        return failedLoadResult(
-          {
-            declared: "(conflicting Landofile forms)",
-            layer: redact(resolved.left.layer),
-            loadFailure: redact(resolved.left.message),
-          },
-          [{ kind: "manual", description: redact(resolved.left.remediation) }],
-        );
-      }
-      if (
-        resolved.left._tag === "LandofileIncludeError" ||
-        resolved.left._tag === "LandofileLockMismatchError"
-      ) {
-        return failedLoadResult(
-          {
-            declared: "(unresolved includes)",
-            includeResolution: redact(resolved.left.message),
-          },
-          [INCLUDE_RESOLUTION_SOLUTION],
-        );
-      }
-      return undefined;
-    }
-    const landofile = resolved.right;
-    const entries = getVersionConstraintEntries(landofile, filePath);
-    const skipped = isVersionConstraintSkipped(process.env);
-    if (entries.length === 0 && !skipped) return undefined;
-
-    const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
-    const invalid = evaluation.invalid.map((entry) => formatConstraintEntry(entry, appRoot, redact));
-    const unsatisfied = evaluation.unsatisfied.map((entry) => formatConstraintEntry(entry, appRoot, redact));
-    const status =
-      invalid.length > 0 || (unsatisfied.length > 0 && !skipped) ? "fail" : skipped ? "warn" : "pass";
-    const context: Record<string, string> = {
-      runningVersion: CORE_VERSION,
-      skipped: String(skipped),
-      declared: entries.map((entry) => formatConstraintEntry(entry, appRoot, redact)).join(", ") || "(none)",
-    };
-    if (invalid.length > 0) context.invalid = invalid.join(", ");
-    if (unsatisfied.length > 0) context.unsatisfied = unsatisfied.join(", ");
-    if (skipped) context.skipEnv = `${VERSION_CONSTRAINT_SKIP_ENV_VAR}=1 is active`;
-
-    return {
-      checks: [
+> {
+  const cwd = process.cwd();
+  const redactor = createStandaloneRedactor("secrets", { sourceEnv: { ...process.env } });
+  const redact = redactor.redactString;
+  const discovery = yield* Effect.result(
+    Effect.tryPromise({
+      try: () => findDiscoveredLandofilePath(cwd),
+      catch: (cause) => cause,
+    }),
+  );
+  if (Result.isFailure(discovery)) {
+    if (Schema.is(LandofileNotFoundError)(discovery.failure)) return undefined;
+    if (Schema.is(LandofileFormConflictError)(discovery.failure)) {
+      return failedLoadResult(
         {
-          name: "app-version-constraint",
-          status,
-          severity: status === "pass" ? "info" : status === "warn" ? "warn" : "error",
-          context,
-          solutions: status === "pass" ? [] : [VERSION_CONSTRAINT_SOLUTION],
+          declared: "(conflicting Landofile forms)",
+          layer: redact(discovery.failure.layer),
+          loadFailure: redact(discovery.failure.message),
         },
-      ],
-    } satisfies AppVersionConstraintDoctorResult;
-  });
+        [{ kind: "manual", description: redact(discovery.failure.remediation) }],
+      );
+    }
+    return yield* Effect.die(discovery.failure);
+  }
+  const discovered = discovery.success;
+  const { appRoot, filePath } = discovered;
+  const resolved = yield* Effect.result(
+    loadLandofileLayers(appRoot, filePath).pipe(Effect.provide(StateStoreLayer.layer)),
+  );
+  if (Result.isFailure(resolved)) {
+    if (resolved.failure._tag === "LandofileParseError") {
+      return failedLoadResult(
+        {
+          declared: "(malformed Landofile)",
+          loadFailure: redact(resolved.failure.message),
+        },
+        [MALFORMED_LANDOFILE_SOLUTION],
+      );
+    }
+    if (resolved.failure._tag === "LandofileFormConflictError") {
+      return failedLoadResult(
+        {
+          declared: "(conflicting Landofile forms)",
+          layer: redact(resolved.failure.layer),
+          loadFailure: redact(resolved.failure.message),
+        },
+        [{ kind: "manual", description: redact(resolved.failure.remediation) }],
+      );
+    }
+    if (
+      resolved.failure._tag === "LandofileIncludeError" ||
+      resolved.failure._tag === "LandofileLockMismatchError"
+    ) {
+      return failedLoadResult(
+        {
+          declared: "(unresolved includes)",
+          includeResolution: redact(resolved.failure.message),
+        },
+        [INCLUDE_RESOLUTION_SOLUTION],
+      );
+    }
+    return undefined;
+  }
+  const landofile = resolved.success;
+  const entries = getVersionConstraintEntries(landofile, filePath);
+  const skipped = isVersionConstraintSkipped(process.env);
+  if (entries.length === 0 && !skipped) return undefined;
+
+  const evaluation = evaluateVersionConstraints(entries, CORE_VERSION);
+  const invalid = evaluation.invalid.map((entry) => formatConstraintEntry(entry, appRoot, redact));
+  const unsatisfied = evaluation.unsatisfied.map((entry) => formatConstraintEntry(entry, appRoot, redact));
+  const status =
+    invalid.length > 0 || (unsatisfied.length > 0 && !skipped) ? "fail" : skipped ? "warn" : "pass";
+  const context: Record<string, string> = {
+    runningVersion: CORE_VERSION,
+    skipped: String(skipped),
+    declared: entries.map((entry) => formatConstraintEntry(entry, appRoot, redact)).join(", ") || "(none)",
+  };
+  if (invalid.length > 0) context.invalid = invalid.join(", ");
+  if (unsatisfied.length > 0) context.unsatisfied = unsatisfied.join(", ");
+  if (skipped) context.skipEnv = `${VERSION_CONSTRAINT_SKIP_ENV_VAR}=1 is active`;
+
+  return {
+    checks: [
+      {
+        name: "app-version-constraint",
+        status,
+        severity: status === "pass" ? "info" : status === "warn" ? "warn" : "error",
+        context,
+        solutions: status === "pass" ? [] : [VERSION_CONSTRAINT_SOLUTION],
+      },
+    ],
+  } satisfies AppVersionConstraintDoctorResult;
+});
 
 export const appVersionConstraintCheckPayload = (
   check: AppVersionConstraintDoctorCheck,

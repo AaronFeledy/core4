@@ -360,9 +360,9 @@ describe("appConfigExplain", () => {
 
   it("fails with LandofileNotFoundError when no Landofile is in scope", async () => {
     await withApp(undefined, async (cwd) => {
-      const exit = await Effect.runPromise(Effect.either(appConfigExplain({ cwd })));
-      expect(exit._tag).toBe("Left");
-      if (exit._tag === "Left") expect(exit.left._tag).toBe("LandofileNotFoundError");
+      const exit = await Effect.runPromise(Effect.result(appConfigExplain({ cwd })));
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") expect(exit.failure._tag).toBe("LandofileNotFoundError");
     });
   });
 

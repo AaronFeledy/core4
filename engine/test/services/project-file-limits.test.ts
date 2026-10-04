@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { Effect, Either, Stream } from "effect";
+import { Effect, Result, Stream } from "effect";
 
 import { FileSystem } from "@lando/sdk/services";
 import { loadServiceTypeProjectFiles } from "../../src/planner/project-files.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 
 test.each([undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1, 1.5])(
   "rejects maxBytes %s before filesystem access",
@@ -17,7 +17,7 @@ test.each([undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFI
       Effect.gen(function* () {
         const live = yield* FileSystem;
         // When loading the declaration through the public planner boundary.
-        return yield* Effect.either(
+        return yield* Effect.result(
           loadServiceTypeProjectFiles({
             appRoot: "/app",
             serviceName: "web",
@@ -36,13 +36,13 @@ test.each([undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFI
             },
           }),
         );
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then rejection is typed and happens before even inspecting a path.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left._tag).toBe("LandofileValidationError");
-      expect(result.left.message).toContain("maxBytes");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure._tag).toBe("LandofileValidationError");
+      expect(result.failure.message).toContain("maxBytes");
     }
     expect(accesses).toEqual([]);
   },
@@ -55,7 +55,7 @@ test.each(["stat", "stream"] as const)("clamps large valid limits at the %s size
     Effect.gen(function* () {
       const live = yield* FileSystem;
       // When metadata or streamed bytes exceed the cap.
-      return yield* Effect.either(
+      return yield* Effect.result(
         loadServiceTypeProjectFiles({
           appRoot: "/app",
           serviceName: "web",
@@ -78,13 +78,13 @@ test.each(["stat", "stream"] as const)("clamps large valid limits at the %s size
           },
         }),
       );
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   // Then neither size check accepts bytes beyond the planner-owned limit.
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left._tag).toBe("LandofileValidationError");
-    expect(result.left.message).toContain("1048576-byte read limit");
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure._tag).toBe("LandofileValidationError");
+    expect(result.failure.message).toContain("1048576-byte read limit");
   }
   expect(reads).toBe(check === "stat" ? 0 : 1);
 });

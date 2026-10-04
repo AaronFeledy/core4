@@ -1,6 +1,6 @@
 import type { Context, Effect, Option, Queue, Redacted, Schema, Scope, Stream } from "effect";
 
-export type _ServiceTagCompatContext = typeof Context.Tag;
+export type _ServiceTagCompatContext = typeof Context.Service;
 
 import type {
   AbsolutePath,
@@ -9,7 +9,16 @@ import type {
   AppId,
   AppPlan,
   AppRef,
+  ConfigTranslateDetectInput,
+  ConfigTranslateEncodeInput,
+  ConfigTranslateEncodeResult,
+  ConfigTranslateInput,
+  ConfigTranslateMatch,
+  ConfigTranslateResult,
   DataEndpoint,
+  DataTransferProgress,
+  DataTransferResult,
+  DataTransferSpec,
   DatasetApplyOptions,
   DatasetApplyResult,
   DatasetArtifactFormat,
@@ -21,6 +30,9 @@ import type {
   DeprecationSurfaceKind,
   DeprecationUse,
   DoctorResourceNameQuery,
+  DownloadRequest,
+  DownloadResult,
+  DownloaderCapabilities,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionFilter,
@@ -29,14 +41,10 @@ import type {
   FileSyncSessionSpec,
   FileSyncSetupOptions,
   GlobalConfig,
+  HealthcheckPlan,
   HostPlatform,
   HostProxyBridgeInput,
   HostProxyBridgeResult,
-  HttpClientCapabilities,
-  HttpRequest,
-  HttpResponse,
-  HttpStreamResponse,
-  HttpUploadRequest,
   LandofileShape,
   ManagedFile,
   ManagedFileInfo,
@@ -56,6 +64,9 @@ import type {
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  PrunePolicy,
+  RecipeDecomposeInput,
+  RecipeDecomposeResult,
   RecipeManifest,
   RemoteCapabilities,
   RemoteConfig,
@@ -70,6 +81,11 @@ import type {
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
+  SnapshotFilter,
+  SnapshotHandle,
+  SnapshotId,
+  SnapshotInfo,
+  SnapshotOptions,
   TunnelCapabilities,
   TunnelSession,
   TunnelSessionFilter,
@@ -89,8 +105,10 @@ import type {
 
 import type {
   AppResolveError,
+  CaError,
   CacheError,
   ConfigError,
+  ConfigTranslateError,
   ConfigTranslatorConflictError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
@@ -98,10 +116,7 @@ import type {
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
-  HttpClientUnavailableError,
-  HttpRequestError,
-  HttpTrustError,
-  HttpUploadError,
+  HostProxyError,
   LandofileVersionConstraintError,
   ManagedFileError,
   ManagedFileTransactionError,
@@ -110,12 +125,14 @@ import type {
   PluginDescriptorMismatchError,
   PluginLoadError,
   PluginManifestError,
+  PortCollisionError,
   ProcessExecError,
   ProcessTimeoutError,
   ProviderUnavailableError,
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
+  RecipeDecomposeError,
   RecipeExtendsError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
@@ -124,6 +141,7 @@ import type {
   RouterPortPinMismatch,
   RouterPortsExhausted,
   RouterWatcherError,
+  ScannerError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -132,6 +150,8 @@ import type {
   SecretStoreUnavailableError,
   ServiceTypeCollisionError,
   ShellExecError,
+  SshError,
+  StateStoreError,
   ToolingCompileError,
   ToolingExecError,
 } from "../errors/index.ts";
@@ -140,8 +160,8 @@ import type { FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
-import type { DataMoverShape } from "./data-transfer.ts";
-import type { DownloaderShape } from "./downloader.ts";
+import type { DataMoverError } from "./data-transfer.ts";
+import type { DownloadError } from "./downloader.ts";
 import type {
   EventFor,
   EventWaitAnyOptions,
@@ -160,14 +180,20 @@ import type {
   ManagedFileSelector,
   ManagedFileTransactionPendingReport,
 } from "./managed-file.ts";
-import type { LandoPaths } from "./paths.ts";
+import type { LandoRoots } from "./paths.ts";
 import type { AppPlannerError, BuildAppError, BuildError } from "./planner.ts";
 import type {
-  CertificateAuthorityShape,
-  HealthcheckRunnerShape,
-  HostProxyServiceShape,
-  SshServiceShape,
-  UrlScannerShape,
+  CaSetupOptions,
+  CertificateResult,
+  CertificateSpec,
+  HealthcheckResult,
+  HealthcheckRunError,
+  HostProxySetupOptions,
+  HostProxyStatus,
+  PortCollision,
+  ScanResult,
+  SshAgentSocket,
+  SshSetupOptions,
 } from "./platform.ts";
 import type { PluginTrustState } from "./plugin-trust.ts";
 import type { RegisteredCommand, ServiceType } from "./plugins.ts";
@@ -214,7 +240,6 @@ import type {
   ServiceSelector,
   WaitForExitOptions,
 } from "./provider.ts";
-import type { RecipeDecomposerShape } from "./recipe-decomposer.ts";
 import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
   ScratchAcquireInput,
@@ -227,8 +252,9 @@ import type {
   ScratchStartOptions,
   ScratchSummary,
 } from "./scratch.ts";
-import type { StateStoreShape } from "./state-store.ts";
+import type { StateBucket, StateBucketSpec } from "./state-store.ts";
 import type { TunnelError } from "./tunnel.ts";
+import type { VolumeInitialization } from "./volume-initialization.ts";
 
 export * from "./app-features.ts";
 export * from "./cache.ts";
@@ -244,7 +270,6 @@ export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
 export * from "./host-assets.ts";
-export * from "./http-client.ts";
 export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
@@ -264,163 +289,166 @@ export * from "./state-store.ts";
 export * from "./tunnel.ts";
 export type { AppId, ServiceInfo, ServiceName } from "../schema/index.ts";
 
-export interface RuntimeProviderShape {
-  readonly id: string;
-  readonly displayName: string;
-  readonly version: string;
-  readonly platform: HostPlatform;
-  readonly capabilities: ProviderCapabilities;
+export declare class RuntimeProvider extends Context.Service<
+  RuntimeProvider,
+  {
+    readonly id: string;
+    readonly displayName: string;
+    readonly version: string;
+    readonly platform: HostPlatform;
+    readonly capabilities: ProviderCapabilities;
 
-  readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
-  readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
-  readonly planSetup: (
-    options: ProviderSetupInspectOptions,
-  ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
-  readonly setup: (
-    plan: ProviderSetupPlan,
-    options: ProviderSetupOptions,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
-  readonly ensureReady?: Effect.Effect<void, ProviderError>;
-  readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
-  readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
-  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
-  readonly occupiedPublishPorts?: (
-    ports: ReadonlyArray<PortNumber>,
-  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+    readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
+    readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
+    readonly planSetup: (
+      options: ProviderSetupInspectOptions,
+    ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
+    readonly setup: (
+      plan: ProviderSetupPlan,
+      options: ProviderSetupOptions,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+    readonly ensureReady?: Effect.Effect<void, ProviderError>;
+    readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
+    readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+    /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+    readonly occupiedPublishPorts?: (
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
 
-  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
-  readonly matchingPublishPorts?: (
-    containerId: string,
-    ports: ReadonlyArray<PortNumber>,
-  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
-  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
-  readonly openHostProxyBridge?: (
-    input: HostProxyBridgeInput,
-  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
-  readonly openAgentSocketBridge?: (
-    input: AgentSocketBridgeInput,
-  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
+    /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+    readonly matchingPublishPorts?: (
+      containerId: string,
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+    /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+    readonly openHostProxyBridge?: (
+      input: HostProxyBridgeInput,
+    ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+    readonly openAgentSocketBridge?: (
+      input: AgentSocketBridgeInput,
+    ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
-  readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-  readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
-  readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+    readonly buildArtifact: (
+      spec: ArtifactBuildSpec,
+    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+    readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
+    readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
 
-  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
-  readonly inspectAppliedFileSync?: (
-    plan: AppPlan,
-  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
-  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
-  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
-    {
-      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-      readonly rollback?: Effect.Effect<void, ProviderError>;
-    },
-    ProviderError
-  >;
+    /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+    readonly inspectAppliedFileSync?: (
+      plan: AppPlan,
+    ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+    /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
+    readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+      {
+        readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+        readonly rollback?: Effect.Effect<void, ProviderError>;
+      },
+      ProviderError
+    >;
 
-  readonly apply: (
-    plan: AppPlan,
-    options: ApplyOptions,
-  ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
-  readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-  readonly resume?: (
-    target: ServiceSelector,
-    identity: ServiceRuntimeIdentity,
-  ) => Effect.Effect<void, ProviderError>;
-  readonly suspend?: (
-    target: ServiceSelector,
-    identity: ServiceRuntimeIdentity,
-  ) => Effect.Effect<void, ProviderError>;
-  readonly waitForExit: (
-    target: ServiceSelector,
-    options?: WaitForExitOptions,
-  ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (
-    target: AppSelector,
-    options: DestroyOptions,
-  ) => Effect.Effect<DestroyOutcome, ProviderError>;
-  /**
-   * Stops and removes the single container behind one observation this provider reported from
-   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
-   * the identity they were observed under. An observation carrying no container id is `absent`.
-   */
-  readonly removeObservedService: (
-    observed: ServiceRuntimeInfo,
-  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
-  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
-  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
+    readonly apply: (
+      plan: AppPlan,
+      options: ApplyOptions,
+    ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
+    readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+    readonly resume?: (
+      target: ServiceSelector,
+      identity: ServiceRuntimeIdentity,
+    ) => Effect.Effect<void, ProviderError>;
+    readonly suspend?: (
+      target: ServiceSelector,
+      identity: ServiceRuntimeIdentity,
+    ) => Effect.Effect<void, ProviderError>;
+    readonly waitForExit: (
+      target: ServiceSelector,
+      options?: WaitForExitOptions,
+    ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
+    readonly destroy: (
+      target: AppSelector,
+      options: DestroyOptions,
+    ) => Effect.Effect<DestroyOutcome, ProviderError>;
+    /**
+     * Stops and removes the single container behind one observation this provider reported from
+     * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+     * the identity they were observed under. An observation carrying no container id is `absent`.
+     */
+    readonly removeObservedService: (
+      observed: ServiceRuntimeInfo,
+    ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+    /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+    readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
-  readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
-  readonly execStream: (
-    target: ExecTarget,
-    command: CommandSpec,
-  ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
-  readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
-  readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
-  readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
-  readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
-  readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+    readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
+    readonly execStream: (
+      target: ExecTarget,
+      command: CommandSpec,
+    ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+    readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
+    readonly runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+    readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
+    readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
+    readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 
-  readonly snapshotVolume: (
-    spec: VolumeSnapshotSpec,
-  ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
-  readonly removeVolumeSnapshot?: (
-    snapshot: VolumeSnapshotRef,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
-  readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
-  readonly inspectResourceNames?: (
-    query: DoctorResourceNameQuery,
-  ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
-  readonly observeVolume?: (
-    target: ServiceSelector,
-    destination: PortablePath,
-  ) => Effect.Effect<VolumeInfo, ProviderError>;
-  readonly adoptVolume?: (
-    target: ServiceSelector,
-    destination: PortablePath,
-  ) => Effect.Effect<VolumeInfo, ProviderError>;
-  readonly removeVolume: (
-    ref: VolumeRef,
-    expectedGeneration: VolumeIdentity["generation"],
-  ) => Effect.Effect<void, ProviderError>;
-  readonly copyToService: (
-    target: ExecTarget,
-    spec: ServiceCopyInSpec,
-  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
-  readonly copyFromService: (
-    target: ExecTarget,
-    spec: ServiceCopyOutSpec,
-  ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-  readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
-  readonly importArtifact: (
-    data: Stream.Stream<Uint8Array, ProviderError>,
-  ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
-}
+    readonly snapshotVolume: (
+      spec: VolumeSnapshotSpec,
+    ) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>;
+    readonly removeVolumeSnapshot?: (
+      snapshot: VolumeSnapshotRef,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+    readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+    readonly inspectResourceNames?: (
+      query: DoctorResourceNameQuery,
+    ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
+    readonly observeVolume?: (
+      target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    readonly adoptVolume?: (
+      target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    readonly removeVolume: (
+      ref: VolumeRef,
+      expectedGeneration: VolumeIdentity["generation"],
+    ) => Effect.Effect<void, ProviderError>;
+    readonly copyToService: (
+      target: ExecTarget,
+      spec: ServiceCopyInSpec,
+    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    readonly copyFromService: (
+      target: ExecTarget,
+      spec: ServiceCopyOutSpec,
+    ) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly exportArtifact: (ref: ArtifactRef) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>;
+    readonly importArtifact: (
+      data: Stream.Stream<Uint8Array, ProviderError>,
+    ) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+  }
+>()("@lando/core/RuntimeProvider") {}
 
-export declare class ConfigService extends Context.Tag("@lando/core/ConfigService")<
+export declare class ConfigService extends Context.Service<
   ConfigService,
   {
     readonly load: Effect.Effect<GlobalConfig, ConfigError>;
     readonly get: <K extends keyof GlobalConfig>(key: K) => Effect.Effect<GlobalConfig[K], ConfigError>;
   }
->() {}
+>()("@lando/core/ConfigService") {}
 
-export declare class LandofileService extends Context.Tag("@lando/core/LandofileService")<
+export declare class LandofileService extends Context.Service<
   LandofileService,
   {
     /** Includes Lando3LandofileDetected and LandofileDialectMixError from native load failures. */
     readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
   }
->() {}
+>()("@lando/core/LandofileService") {}
 
-export declare class ManagedFileTransactionGuard extends Context.Tag(
-  "@lando/core/ManagedFileTransactionGuard",
-)<
+export declare class ManagedFileTransactionGuard extends Context.Service<
   ManagedFileTransactionGuard,
   {
     readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
@@ -428,9 +456,9 @@ export declare class ManagedFileTransactionGuard extends Context.Tag(
       appRoot: string,
     ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
   }
->() {}
+>()("@lando/core/ManagedFileTransactionGuard") {}
 
-export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService")<
+export declare class GlobalAppService extends Context.Service<
   GlobalAppService,
   {
     readonly id: "global";
@@ -467,9 +495,9 @@ export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalApp
       GlobalAppError | GlobalDistConflictError
     >;
   }
->() {}
+>()("@lando/core/GlobalAppService") {}
 
-export declare class ScratchAppService extends Context.Tag("@lando/core/ScratchAppService")<
+export declare class ScratchAppService extends Context.Service<
   ScratchAppService,
   {
     readonly kind: "scratch";
@@ -503,9 +531,9 @@ export declare class ScratchAppService extends Context.Tag("@lando/core/ScratchA
     ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
     readonly gc: (options?: ScratchGcOptions) => Effect.Effect<ScratchGcReport, ScratchAppError>;
   }
->() {}
+>()("@lando/core/ScratchAppService") {}
 
-export declare class ManagedFileService extends Context.Tag("@lando/core/ManagedFileService")<
+export declare class ManagedFileService extends Context.Service<
   ManagedFileService,
   {
     readonly plan: (files: ReadonlyArray<ManagedFile>) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
@@ -518,9 +546,9 @@ export declare class ManagedFileService extends Context.Tag("@lando/core/Managed
     readonly adopt: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
     readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
   }
->() {}
+>()("@lando/core/ManagedFileService") {}
 
-export declare class InteractionService extends Context.Tag("@lando/core/InteractionService")<
+export declare class InteractionService extends Context.Service<
   InteractionService,
   {
     readonly id: string;
@@ -538,9 +566,9 @@ export declare class InteractionService extends Context.Tag("@lando/core/Interac
       spec: SecretSpec,
     ) => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
   }
->() {}
+>()("@lando/core/InteractionService") {}
 
-export declare class RecipeManifestService extends Context.Tag("@lando/core/RecipeManifestService")<
+export declare class RecipeManifestService extends Context.Service<
   RecipeManifestService,
   {
     readonly parse: (
@@ -556,9 +584,9 @@ export declare class RecipeManifestService extends Context.Tag("@lando/core/Reci
       | NotImplementedError
     >;
   }
->() {}
+>()("@lando/core/RecipeManifestService") {}
 
-export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
+export declare class PluginRegistry extends Context.Service<
   PluginRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
@@ -573,16 +601,16 @@ export declare class PluginRegistry extends Context.Tag("@lando/core/PluginRegis
       id: string,
     ) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>;
   }
->() {}
+>()("@lando/core/PluginRegistry") {}
 
-export declare class CommandRegistry extends Context.Tag("@lando/core/CommandRegistry")<
+export declare class CommandRegistry extends Context.Service<
   CommandRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<RegisteredCommand>, never>;
   }
->() {}
+>()("@lando/core/CommandRegistry") {}
 
-export declare class PluginTrustStore extends Context.Tag("@lando/core/PluginTrustStore")<
+export declare class PluginTrustStore extends Context.Service<
   PluginTrustStore,
   {
     readonly read: Effect.Effect<PluginTrustState, ConfigError>;
@@ -592,13 +620,13 @@ export declare class PluginTrustStore extends Context.Tag("@lando/core/PluginTru
     readonly isAuthoringRootTrusted: (path: string) => Effect.Effect<boolean, ConfigError>;
     readonly trustAuthoringRoot: (path: string) => Effect.Effect<void, ConfigError>;
   }
->() {}
+>()("@lando/core/PluginTrustStore") {}
 
 export interface DeprecationSummaryEntry extends DeprecationUse {
   readonly count: number;
 }
 
-export declare class DeprecationService extends Context.Tag("@lando/core/DeprecationService")<
+export declare class DeprecationService extends Context.Service<
   DeprecationService,
   {
     readonly use: (use: DeprecationUse) => Effect.Effect<void, DeprecatedSurfaceError>;
@@ -621,9 +649,9 @@ export declare class DeprecationService extends Context.Tag("@lando/core/Depreca
       aliasNotice?: DeprecationNotice,
     ) => Effect.Effect<void, DeprecationContradictionError>;
   }
->() {}
+>()("@lando/core/DeprecationService") {}
 
-export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
+export declare class RuntimeProviderRegistry extends Context.Service<
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
@@ -640,14 +668,11 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
       AppResolveError | ProviderError | NoProviderInstalledError
     >;
   }
->() {}
+>()("@lando/core/RuntimeProviderRegistry") {}
 
-export declare class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
-  RuntimeProvider,
-  RuntimeProviderShape
->() {}
+export type RuntimeProviderShape = RuntimeProvider["Service"];
 
-export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
+export declare class AppPlanner extends Context.Service<
   AppPlanner,
   {
     readonly plan: (
@@ -655,22 +680,22 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       providerCapabilities: ProviderCapabilities,
     ) => Effect.Effect<AppPlan, AppPlannerError>;
   }
->() {}
+>()("@lando/core/AppPlanner") {}
 
 export interface BuildAppOptions {
   readonly force?: boolean;
   readonly signal?: AbortSignal;
 }
 
-export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
+export declare class BuildOrchestrator extends Context.Service<
   BuildOrchestrator,
   {
     readonly build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>;
     readonly buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildAppError>;
   }
->() {}
+>()("@lando/core/BuildOrchestrator") {}
 
-export declare class EventService extends Context.Tag("@lando/core/EventService")<
+export declare class EventService extends Context.Service<
   EventService,
   {
     readonly publish: (event: LandoEvent) => Effect.Effect<void, EventError>;
@@ -689,19 +714,19 @@ export declare class EventService extends Context.Tag("@lando/core/EventService"
       filter?: (event: EventFor<Name>) => boolean,
     ) => Effect.Effect<ReadonlyArray<EventFor<Name>>, never>;
   }
->() {}
+>()("@lando/core/EventService") {}
 
-export declare class CacheService extends Context.Tag("@lando/core/CacheService")<
+export declare class CacheService extends Context.Service<
   CacheService,
   {
-    readonly read: <A, I>(key: string, schema?: Schema.Schema<A, I>) => Effect.Effect<A | null, CacheError>;
+    readonly read: <A, I>(key: string, schema?: Schema.Codec<A, I>) => Effect.Effect<A | null, CacheError>;
     readonly write: <A>(key: string, value: A, ttlMs?: number) => Effect.Effect<void, CacheError>;
     readonly writeAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, CacheError>;
     readonly invalidate: (key: string) => Effect.Effect<void, CacheError>;
   }
->() {}
+>()("@lando/core/CacheService") {}
 
-export declare class FileSystem extends Context.Tag("@lando/core/FileSystem")<
+export declare class FileSystem extends Context.Service<
   FileSystem,
   {
     readonly read: (path: string) => Stream.Stream<Uint8Array, FileSystemError>;
@@ -720,9 +745,9 @@ export declare class FileSystem extends Context.Tag("@lando/core/FileSystem")<
     readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
     readonly writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>;
   }
->() {}
+>()("@lando/core/FileSystem") {}
 
-export declare class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
+export declare class ProcessRunner extends Context.Service<
   ProcessRunner,
   {
     readonly run: (
@@ -735,9 +760,9 @@ export declare class ProcessRunner extends Context.Tag("@lando/core/ProcessRunne
       options: ProcessSpawnOptions,
     ) => Stream.Stream<ProcessStreamEvent, ProcessExecError | ProcessTimeoutError>;
   }
->() {}
+>()("@lando/core/ProcessRunner") {}
 
-export declare class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
+export declare class ShellRunner extends Context.Service<
   ShellRunner,
   {
     readonly exec: (
@@ -756,16 +781,16 @@ export declare class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
       spec: ShellInteractiveSpec,
     ) => Effect.Effect<ShellInteractiveResult, ShellExecError>;
   }
->() {}
+>()("@lando/core/ShellRunner") {}
 
-export declare class PrivilegeService extends Context.Tag("@lando/core/PrivilegeService")<
+export declare class PrivilegeService extends Context.Service<
   PrivilegeService,
   {
     readonly elevate: (command: ReadonlyArray<string>) => Effect.Effect<ProcessResult, never>;
   }
->() {}
+>()("@lando/core/PrivilegeService") {}
 
-export declare class Logger extends Context.Tag("@lando/core/Logger")<
+export declare class Logger extends Context.Service<
   Logger,
   {
     readonly debug: (
@@ -785,9 +810,9 @@ export declare class Logger extends Context.Tag("@lando/core/Logger")<
       data?: Readonly<Record<string, unknown>>,
     ) => Effect.Effect<void, EventError>;
   }
->() {}
+>()("@lando/core/Logger") {}
 
-export declare class Renderer extends Context.Tag("@lando/core/Renderer")<
+export declare class Renderer extends Context.Service<
   Renderer,
   {
     readonly id: string;
@@ -802,17 +827,17 @@ export declare class Renderer extends Context.Tag("@lando/core/Renderer")<
       readonly stderr: (chunk: string) => Effect.Effect<void>;
     };
   }
->() {}
+>()("@lando/core/Renderer") {}
 
-export declare class Telemetry extends Context.Tag("@lando/core/Telemetry")<
+export declare class Telemetry extends Context.Service<
   Telemetry,
   {
     readonly enabled: boolean;
     readonly record: (event: string, data: Readonly<Record<string, unknown>>) => Effect.Effect<void, never>;
   }
->() {}
+>()("@lando/core/Telemetry") {}
 
-export declare class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
+export declare class ToolingEngine extends Context.Service<
   ToolingEngine,
   {
     readonly id: string;
@@ -822,28 +847,32 @@ export declare class ToolingEngine extends Context.Tag("@lando/core/ToolingEngin
       provider: RuntimeProviderShape,
     ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingCompileError | ToolingExecError>;
   }
->() {}
+>()("@lando/core/ToolingEngine") {}
 
-export declare class SchemaValidator extends Context.Tag("@lando/core/SchemaValidator")<
+export declare class SchemaValidator extends Context.Service<
   SchemaValidator,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/SchemaValidator") {}
 
-export declare class CommandFramework extends Context.Tag("@lando/core/CommandFramework")<
+export declare class CommandFramework extends Context.Service<
   CommandFramework,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/CommandFramework") {}
 
-export declare class CertificateAuthority extends Context.Tag("@lando/core/CertificateAuthority")<
+export declare class CertificateAuthority extends Context.Service<
   CertificateAuthority,
-  CertificateAuthorityShape
->() {}
+  {
+    readonly id: string;
+    readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
+    readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
+  }
+>()("@lando/core/CertificateAuthority") {}
 
-export declare class RouterService extends Context.Tag("@lando/core/RouterService")<
+export declare class RouterService extends Context.Service<
   RouterService,
   {
     readonly id: string;
@@ -869,43 +898,71 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;
     readonly stop: Effect.Effect<void, ProxyError>;
   }
->() {}
+>()("@lando/core/RouterService") {}
 
-export declare class SshService extends Context.Tag("@lando/core/SshService")<
+export declare class SshService extends Context.Service<
   SshService,
-  SshServiceShape
->() {}
+  {
+    readonly id: string;
+    readonly setup: (options: SshSetupOptions) => Effect.Effect<void, SshError>;
+    readonly getAgentSocket: (appId: AppId) => Effect.Effect<SshAgentSocket, SshError>;
+  }
+>()("@lando/core/SshService") {}
 
-export declare class HealthcheckRunner extends Context.Tag("@lando/core/HealthcheckRunner")<
+export declare class HealthcheckRunner extends Context.Service<
   HealthcheckRunner,
-  HealthcheckRunnerShape
->() {}
+  {
+    readonly id: string;
+    readonly run: (
+      plan: HealthcheckPlan,
+      appId: AppId,
+      service: ServiceName,
+    ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
+  }
+>()("@lando/core/HealthcheckRunner") {}
 
-export declare class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<
+export declare class UrlScanner extends Context.Service<
   UrlScanner,
-  UrlScannerShape
->() {}
+  {
+    readonly id: string;
+    readonly scan: (
+      appId: AppId,
+      options?: {
+        readonly plan?: AppPlan;
+        readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+      },
+    ) => Effect.Effect<ScanResult, ScannerError>;
+    readonly detectCollisions: (
+      appIds: ReadonlyArray<AppId>,
+    ) => Effect.Effect<ReadonlyArray<PortCollision>, ScannerError | PortCollisionError>;
+  }
+>()("@lando/core/UrlScanner") {}
 
-export declare class HostProxyService extends Context.Tag("@lando/core/HostProxyService")<
+export declare class HostProxyService extends Context.Service<
   HostProxyService,
-  HostProxyServiceShape
->() {}
+  {
+    readonly id: string;
+    readonly setup: (options: HostProxySetupOptions) => Effect.Effect<void, HostProxyError>;
+    readonly status: () => Effect.Effect<HostProxyStatus, HostProxyError>;
+    readonly teardown: () => Effect.Effect<void, HostProxyError>;
+  }
+>()("@lando/core/HostProxyService") {}
 
-export declare class PluginSource extends Context.Tag("@lando/core/PluginSource")<
+export declare class PluginSource extends Context.Service<
   PluginSource,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/PluginSource") {}
 
-export declare class UpdateService extends Context.Tag("@lando/core/UpdateService")<
+export declare class UpdateService extends Context.Service<
   UpdateService,
   {
     readonly id: string;
   }
->() {}
+>()("@lando/core/UpdateService") {}
 
-export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
+export declare class SecretStore extends Context.Service<
   SecretStore,
   {
     readonly id: string;
@@ -914,9 +971,9 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
     readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
     readonly list: Effect.Effect<ReadonlyArray<string>>;
   }
->() {}
+>()("@lando/core/SecretStore") {}
 
-export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
+export declare class FileSyncEngine extends Context.Service<
   FileSyncEngine,
   {
     readonly id: string;
@@ -947,74 +1004,127 @@ export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEng
     ) => Effect.Effect<ReadonlyArray<FileSyncSessionInfo>, FileSyncError>;
     readonly streamEvents: (ref: FileSyncSessionRef) => Stream.Stream<FileSyncEventChunk, FileSyncError>;
   }
->() {}
+>()("@lando/core/FileSyncEngine") {}
 
-export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
+export declare class Downloader extends Context.Service<
   Downloader,
-  DownloaderShape
->() {}
-
-export declare class HttpClient extends Context.Tag("@lando/core/HttpClient")<
-  HttpClient,
   {
     readonly id: string;
-    readonly capabilities: HttpClientCapabilities;
-    readonly request: (
-      req: HttpRequest,
-    ) => Effect.Effect<
-      HttpResponse,
-      HttpRequestError | HttpTrustError | HttpClientUnavailableError,
-      Scope.Scope
-    >;
-    readonly stream: (req: HttpRequest) => Effect.Effect<
-      HttpStreamResponse & {
-        readonly body: Stream.Stream<Uint8Array, HttpRequestError | HttpTrustError>;
-      },
-      HttpRequestError | HttpTrustError | HttpClientUnavailableError,
-      Scope.Scope
-    >;
-    readonly upload: (
-      req: HttpUploadRequest,
-    ) => Effect.Effect<
-      HttpResponse,
-      HttpUploadError | HttpTrustError | HttpClientUnavailableError,
-      Scope.Scope
-    >;
+    readonly capabilities: DownloaderCapabilities;
+    readonly download: (
+      request: DownloadRequest,
+    ) => Effect.Effect<DownloadResult, DownloadError, Scope.Scope>;
   }
->() {}
+>()("@lando/core/Downloader") {}
 
-export declare class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}
+export declare class DataMover extends Context.Service<
+  DataMover,
+  {
+    readonly volumeInitialization?: (
+      identity: VolumeIdentity,
+    ) => Effect.Effect<VolumeInitialization, StateStoreError>;
+    readonly transfer: (
+      spec: DataTransferSpec,
+    ) => Effect.Effect<DataTransferResult, DataMoverError, Scope.Scope>;
+    readonly transferStream: (
+      spec: DataTransferSpec,
+    ) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
+    readonly snapshot: (
+      store: VolumeRef,
+      opts?: SnapshotOptions,
+    ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
+    readonly restore: (
+      handle: SnapshotHandle | SnapshotId,
+      store: VolumeRef,
+    ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
+    readonly listSnapshots: (
+      filter: SnapshotFilter,
+    ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+    readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
+    readonly pruneSnapshots: (
+      policy: PrunePolicy,
+    ) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
+  }
+>()("@lando/core/DataMover") {}
 
-export declare class PathsService extends Context.Tag("@lando/core/PathsService")<
+export declare class PathsService extends Context.Service<
   PathsService,
-  LandoPaths
->() {}
+  {
+    readonly roots: LandoRoots;
+    readonly platform: HostPlatform;
+    readonly pluginsDir: string;
+    readonly systemPluginsDir: string;
+    readonly pluginStateDir: (pluginId: string) => string;
+    readonly appPluginsDir: (appId: string) => string;
+    readonly pluginAuthFile: string;
+    readonly binDir: string;
+    readonly installRecordFile: string;
+    readonly keysDir: string;
+    readonly certsDir: string;
+    readonly runtimeDir: string;
+    readonly runtimeBinDir: string;
+    readonly runtimeRunDir: string;
+    readonly runtimeStorageDir: string;
+    readonly runtimeConfigDir: string;
+    readonly hostProxyRunRoot: string;
+    readonly hostProxyRunDir: (appId: string, appRoot: string) => string;
+    readonly agentRelayRunDir: (kind: "ssh" | "gpg", appId: string, appRoot: string) => string;
+    readonly providerSocketPath: string;
+    readonly providerPidPath: string;
+    readonly globalAppRoot: string;
+    readonly snapshotsDir: string;
+    readonly appSnapshotsDir: (appId: string) => string;
+    readonly managedFileLedger: (appId: string) => string;
+    readonly toolDownloadsDir: (toolId: string) => string;
+    readonly logsDir: string;
+    readonly scratchDir: string;
+    readonly scratchRegistryFile: string;
+    readonly scratchRegistryLockFile: string;
+    readonly tunnelRegistryFile: string;
+    readonly tunnelRunDir: string;
+    readonly appCacheDir: (appName: string, appRoot: string) => string;
+    readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
+    readonly shellHistoryFile: (appName: string, appRoot: string) => string;
+    readonly fileSyncSessionsDir: string;
+    readonly configFile: string;
+    readonly configDir: string;
+    readonly userIncludesDir: string;
+    readonly globalConfigFile: string;
+    readonly pluginTrustFile: string;
+  }
+>()("@lando/core/PathsService") {}
 
-export declare class StateStore extends Context.Tag("@lando/core/StateStore")<
+export declare class StateStore extends Context.Service<
   StateStore,
-  StateStoreShape
->() {}
+  {
+    readonly open: <A, I>(spec: StateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
+    readonly withLock: <A, E>(
+      key: string,
+      body: Effect.Effect<A, E>,
+    ) => Effect.Effect<A, E | StateStoreError>;
+  }
+>()("@lando/core/StateStore") {}
 
-export declare class AppPlanSanitizer extends Context.Tag("@lando/core/AppPlanSanitizer")<
+export declare class AppPlanSanitizer extends Context.Service<
   AppPlanSanitizer,
   {
     readonly sanitizeForPersistence: (plan: AppPlan) => AppPlan;
   }
->() {}
+>()("@lando/core/AppPlanSanitizer") {}
 
-export declare class LogFileHelperAssets extends Context.Tag("@lando/core/LogFileHelperAssets")<
+export declare class LogFileHelperAssets extends Context.Service<
   LogFileHelperAssets,
   {
     readonly payloads: Effect.Effect<Readonly<Record<string, Uint8Array>>, never>;
   }
->() {}
+>()("@lando/core/LogFileHelperAssets") {}
 
-export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<
+export declare class RemoteSource extends Context.Service<
   RemoteSource,
   {
     readonly id: string;
     readonly capabilities: RemoteCapabilities;
-    readonly configSchema: Schema.Schema<unknown>;
+    readonly configSchema: Schema.Codec<unknown>;
     readonly listEnvironments: (
       cfg: RemoteConfig,
     ) => Effect.Effect<ReadonlyArray<RemoteEnvironment>, RemoteSourceError>;
@@ -1037,9 +1147,9 @@ export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource"
       env?: RemoteEnvId,
     ) => Effect.Effect<RemoteTestResult, RemoteSourceError>;
   }
->() {}
+>()("@lando/core/RemoteSource") {}
 
-export declare class Dataset extends Context.Tag("@lando/core/Dataset")<
+export declare class Dataset extends Context.Service<
   Dataset,
   {
     readonly id: string;
@@ -1057,9 +1167,9 @@ export declare class Dataset extends Context.Tag("@lando/core/Dataset")<
     ) => Effect.Effect<DatasetApplyResult, DatasetServiceError, Scope.Scope>;
     readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetServiceError>;
   }
->() {}
+>()("@lando/core/Dataset") {}
 
-export declare class TunnelService extends Context.Tag("@lando/core/TunnelService")<
+export declare class TunnelService extends Context.Service<
   TunnelService,
   {
     readonly id: string;
@@ -1069,14 +1179,27 @@ export declare class TunnelService extends Context.Tag("@lando/core/TunnelServic
     readonly status: (request: TunnelStatusRequest) => Effect.Effect<TunnelStatus, TunnelError>;
     readonly list: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
   }
->() {}
+>()("@lando/core/TunnelService") {}
 
-export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
+export declare class ConfigTranslator extends Context.Service<
   ConfigTranslator,
-  ConfigTranslatorShape
->() {}
+  {
+    readonly id: string;
+    readonly summary: string;
+    readonly inputKinds: ReadonlyArray<string>;
+    readonly detect: (
+      input: ConfigTranslateDetectInput,
+    ) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never>;
+    readonly translate: (
+      input: ConfigTranslateInput,
+    ) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never>;
+    readonly encode?: (
+      input: ConfigTranslateEncodeInput,
+    ) => Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never>;
+  }
+>()("@lando/core/ConfigTranslator") {}
 
-export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/ConfigTranslatorRegistry")<
+export declare class ConfigTranslatorRegistry extends Context.Service<
   ConfigTranslatorRegistry,
   {
     readonly list: Effect.Effect<
@@ -1085,10 +1208,15 @@ export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/C
       never
     >;
   }
->() {}
+>()("@lando/core/ConfigTranslatorRegistry") {}
 
-export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDecomposer")<
+export declare class RecipeDecomposer extends Context.Service<
   RecipeDecomposer,
-  RecipeDecomposerShape
->() {}
+  {
+    readonly producer: RecipeDecomposeResult["provenance"]["producer"];
+    readonly decompose: (
+      input: RecipeDecomposeInput,
+    ) => Effect.Effect<RecipeDecomposeResult, RecipeDecomposeError, never>;
+  }
+>()("@lando/core/RecipeDecomposer") {}
 export type { VolumeInitialization } from "./volume-initialization.ts";

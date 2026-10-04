@@ -1,4 +1,4 @@
-import { Effect, type ParseResult, Schema, type Scope } from "effect";
+import { Effect, Schema, type Scope } from "effect";
 
 import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
 import { type StateStoreError, TunnelProviderUnavailableError } from "@lando/sdk/errors";
@@ -26,7 +26,7 @@ import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } fro
 
 export const ShareStopResultSchema = Schema.Struct({
   sessionId: Schema.String,
-  provider: Schema.optional(Schema.String),
+  provider: Schema.optionalKey(Schema.String),
   status: TunnelStatus,
 });
 export type ShareStopResult = typeof ShareStopResultSchema.Type;
@@ -59,7 +59,7 @@ export type ShareCommandError =
   | AppPlanResolutionError
   | TunnelError
   | TunnelProviderUnavailableError
-  | ParseResult.ParseError
+  | Schema.SchemaError
   | StateStoreError;
 
 export type ShareListCommandError =
@@ -71,14 +71,10 @@ export type ShareListCommandError =
 export type ShareStopCommandError =
   | TunnelError
   | TunnelProviderUnavailableError
-  | ParseResult.ParseError
+  | Schema.SchemaError
   | StateStoreError;
 
-type ShareRuntimeError =
-  | TunnelError
-  | TunnelProviderUnavailableError
-  | ParseResult.ParseError
-  | StateStoreError;
+type ShareRuntimeError = TunnelError | TunnelProviderUnavailableError | Schema.SchemaError | StateStoreError;
 type ShareListRuntimeError = TunnelError | TunnelProviderUnavailableError | StateStoreError;
 
 const unavailable = (requested?: string): TunnelProviderUnavailableError =>
@@ -96,30 +92,26 @@ const unavailable = (requested?: string): TunnelProviderUnavailableError =>
       "Install a TunnelService plugin, then rerun the command. Bundled tunnel connectors ship in Lando 4.1.",
   });
 
-const resolveTunnelService = (requested?: string) =>
-  Effect.gen(function* () {
-    const serviceOption = yield* Effect.serviceOption(TunnelService);
-    if (serviceOption._tag === "None") return yield* Effect.fail(unavailable(requested));
-    const service = serviceOption.value;
-    if (requested !== undefined && service.id !== requested)
-      return yield* Effect.fail(unavailable(requested));
-    return service;
-  });
+const resolveTunnelService = Effect.fnUntraced(function* (requested?: string) {
+  const serviceOption = yield* Effect.serviceOption(TunnelService);
+  if (serviceOption._tag === "None") return yield* Effect.fail(unavailable(requested));
+  const service = serviceOption.value;
+  if (requested !== undefined && service.id !== requested) return yield* Effect.fail(unavailable(requested));
+  return service;
+});
 
-const resolvePlan = (
+const resolvePlan = Effect.fnUntraced(function* (
   cwd: string | undefined,
   target: ResolvedAppTarget | undefined,
-): Effect.Effect<AppPlan, AppPlanResolutionError, ShareServices> => {
-  if (target !== undefined) return Effect.succeed(target.plan);
-  return Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
-    const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
-    const capabilities = yield* registry.capabilities;
-    return yield* planner.plan(landofile, capabilities);
-  });
-};
+): Effect.fn.Return<AppPlan, AppPlanResolutionError, ShareServices> {
+  if (target !== undefined) return target.plan;
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
+  const capabilities = yield* registry.capabilities;
+  return yield* planner.plan(landofile, capabilities);
+});
 
 /**
  * Default share target. A shared-router hostname is only reachable when the
@@ -132,94 +124,93 @@ export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
   return { _tag: "route", routeId: plan.id };
 };
 
-const appShareWithPlan = <E, R>(
+const appShareWithPlan = Effect.fnUntraced(function* <E, R>(
   options: ShareOptions,
   planEffect: Effect.Effect<AppPlan, E, R>,
-): Effect.Effect<TunnelSessionType, ShareRuntimeError | E, R | Scope.Scope | StateStore> =>
-  Effect.gen(function* () {
-    const service = yield* resolveTunnelService(options.provider);
-    const plan = yield* planEffect;
-    const tunnelTarget = yield* Schema.decodeUnknown(TunnelTarget)(
-      options.target ?? defaultTunnelTarget(plan),
-    );
-    const start = service.start({
-      app: plan.id,
-      target: tunnelTarget,
-      ...(options.provider === undefined ? {} : { provider: options.provider }),
-      detached: options.detach === true,
-      plan,
-    });
-    if (options.detach === true) {
-      const session = yield* Effect.scoped(start);
-      yield* recordTunnelSession(session);
-      return session;
-    }
-
-    const session = yield* start;
-    yield* recordTunnelSession(session);
-    yield* Effect.addFinalizer(() =>
-      removeTunnelSession(session.id).pipe(Effect.catchAll(() => Effect.void)),
-    );
-    return session;
+): Effect.fn.Return<TunnelSessionType, ShareRuntimeError | E, R | Scope.Scope | StateStore> {
+  const service = yield* resolveTunnelService(options.provider);
+  const plan = yield* planEffect;
+  const tunnelTarget = yield* Schema.decodeUnknownEffect(TunnelTarget)(
+    options.target ?? defaultTunnelTarget(plan),
+  );
+  const start = service.start({
+    app: plan.id,
+    target: tunnelTarget,
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
+    detached: options.detach === true,
+    plan,
   });
+  if (options.detach === true) {
+    const session = yield* Effect.scoped(start);
+    yield* recordTunnelSession(session);
+    return session;
+  }
 
-export const appShareForTarget = (
+  const session = yield* start;
+  yield* recordTunnelSession(session);
+  yield* Effect.addFinalizer(() => removeTunnelSession(session.id).pipe(Effect.catch(() => Effect.void)));
+  return session;
+});
+
+export const appShareForTarget = Effect.fn("AppOperation.shareForTarget")(function* (
   options: ShareOptions | undefined,
   target: ResolvedAppTarget,
-): Effect.Effect<TunnelSessionType, ShareAppError, Scope.Scope | StateStore> =>
-  appShareWithPlan(options ?? {}, Effect.succeed(target.plan));
+): Effect.fn.Return<TunnelSessionType, ShareAppError, Scope.Scope | StateStore> {
+  return yield* appShareWithPlan(options ?? {}, Effect.succeed(target.plan));
+});
 
-export const appShare = (
+export const appShare = Effect.fn("AppOperation.share")(function* (
   options: ShareOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<TunnelSessionType, ShareCommandError, ShareServices | Scope.Scope | StateStore> =>
-  appShareWithPlan(options, resolvePlan(options.cwd, target));
+): Effect.fn.Return<TunnelSessionType, ShareCommandError, ShareServices | Scope.Scope | StateStore> {
+  return yield* appShareWithPlan(options, resolvePlan(options.cwd, target));
+});
 
-const appShareListWithPlan = <E, R>(
+const appShareListWithPlan = Effect.fnUntraced(function* <E, R>(
   options: ShareListOptions,
   planEffect: Effect.Effect<AppPlan, E, R>,
-): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareListRuntimeError | E, R | StateStore> =>
-  Effect.gen(function* () {
-    const service = yield* resolveTunnelService(options.provider);
-    const plan = yield* planEffect;
-    const app = plan.id;
-    const listed = yield* service.list({
-      app,
-      ...(options.provider === undefined ? {} : { provider: options.provider }),
-    });
-    const reconciled = yield* reconcileTunnelRegistry(new Set(listed.map((session) => session.id)));
-    const byId = new Map<string, TunnelSessionType>();
-    for (const session of reconciled) byId.set(session.id, session);
-    for (const session of listed) byId.set(session.id, session);
-    return Array.from(byId.values()).filter(
-      (session) =>
-        session.app === app && (options.provider === undefined || session.provider === options.provider),
-    );
+): Effect.fn.Return<ReadonlyArray<TunnelSessionType>, ShareListRuntimeError | E, R | StateStore> {
+  const service = yield* resolveTunnelService(options.provider);
+  const plan = yield* planEffect;
+  const app = plan.id;
+  const listed = yield* service.list({
+    app,
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
   });
+  const reconciled = yield* reconcileTunnelRegistry(new Set(listed.map((session) => session.id)));
+  const byId = new Map<string, TunnelSessionType>();
+  for (const session of reconciled) byId.set(session.id, session);
+  for (const session of listed) byId.set(session.id, session);
+  return Array.from(byId.values()).filter(
+    (session) =>
+      session.app === app && (options.provider === undefined || session.provider === options.provider),
+  );
+});
 
-export const appShareListForTarget = (
+export const appShareListForTarget = Effect.fn("AppOperation.shareListForTarget")(function* (
   options: ShareListOptions | undefined,
   target: ResolvedAppTarget,
-): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareAppError, StateStore> =>
-  appShareListWithPlan(options ?? {}, Effect.succeed(target.plan));
+): Effect.fn.Return<ReadonlyArray<TunnelSessionType>, ShareAppError, StateStore> {
+  return yield* appShareListWithPlan(options ?? {}, Effect.succeed(target.plan));
+});
 
-export const appShareList = (
+export const appShareList = Effect.fn("AppOperation.shareList")(function* (
   options: ShareListOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareListCommandError, ShareServices | StateStore> =>
-  appShareListWithPlan(options, resolvePlan(options.cwd, target));
+): Effect.fn.Return<ReadonlyArray<TunnelSessionType>, ShareListCommandError, ShareServices | StateStore> {
+  return yield* appShareListWithPlan(options, resolvePlan(options.cwd, target));
+});
 
-export const appShareStop = (
+export const appShareStop = Effect.fn("AppOperation.shareStop")(function* (
   options: ShareStopOptions,
-): Effect.Effect<ShareStopResult, ShareStopCommandError, StateStore> =>
-  Effect.gen(function* () {
-    const stopRequest = yield* Schema.decodeUnknown(TunnelStopRequest)({
-      sessionId: options.sessionId,
-      ...(options.provider === undefined ? {} : { provider: options.provider }),
-      ...(options.force === undefined ? {} : { force: options.force }),
-    });
-    const service = yield* resolveTunnelService(stopRequest.provider);
-    yield* service.stop(stopRequest);
-    yield* removeTunnelSession(stopRequest.sessionId);
-    return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" };
+): Effect.fn.Return<ShareStopResult, ShareStopCommandError, StateStore> {
+  const stopRequest = yield* Schema.decodeUnknownEffect(TunnelStopRequest)({
+    sessionId: options.sessionId,
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
+    ...(options.force === undefined ? {} : { force: options.force }),
   });
+  const service = yield* resolveTunnelService(stopRequest.provider);
+  yield* service.stop(stopRequest);
+  yield* removeTunnelSession(stopRequest.sessionId);
+  return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" };
+});

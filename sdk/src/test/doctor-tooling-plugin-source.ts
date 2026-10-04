@@ -62,8 +62,8 @@ export interface DoctorCheckResult {
  */
 export class DoctorCheckError extends Schema.TaggedError<DoctorCheckError>()("DoctorCheckError", {
   message: Schema.String,
-  check: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Unknown),
+  check: Schema.optionalKey(Schema.String),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 const doctorCheckContractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -119,128 +119,125 @@ export interface DoctorCheckContractHarness {
   readonly redactedTranscriptProbe?: Effect.Effect<string>;
 }
 
-export const runDoctorCheckContractSuite = (
+export const runDoctorCheckContractSuite = Effect.fnUntraced(function* (
   harness: DoctorCheckContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const label = harness.name ?? harness.check.id;
+): Effect.fn.Return<void, ContractFailure> {
+  const label = harness.name ?? harness.check.id;
 
-    yield* requireDoctorCheckContract(
-      isNonEmptyString(harness.check.id),
-      `${label}: check exposes a non-empty id`,
-      harness.check.id,
+  yield* requireDoctorCheckContract(
+    isNonEmptyString(harness.check.id),
+    `${label}: check exposes a non-empty id`,
+    harness.check.id,
+  );
+
+  const readOnlyBaseline =
+    harness.readOnlyProbe === undefined ? undefined : yield* harness.readOnlyProbe.snapshot;
+
+  // --- default run returns issues carrying severity/context + a solution ---
+  const result = yield* harness.check
+    .run({ fix: false })
+    .pipe(
+      Effect.mapError((cause) => doctorCheckContractFailure(`${label}: run({ fix: false }) resolves`, cause)),
     );
+  yield* requireDoctorCheckContract(
+    Array.isArray(result.issues),
+    `${label}: run returns a DoctorCheckResult with an issues array`,
+    result,
+  );
+  for (const issue of result.issues) {
+    yield* requireDoctorCheckContract(
+      issue.severity === "info" || issue.severity === "warning" || issue.severity === "error",
+      `${label}: each issue carries a valid severity`,
+      issue,
+    );
+    yield* requireDoctorCheckContract(
+      typeof issue.context === "object" && issue.context !== null,
+      `${label}: each issue carries structured context`,
+      issue,
+    );
+    yield* requireDoctorCheckContract(
+      issue.solutionKind === "automatic" || issue.solutionKind === "manual",
+      `${label}: each issue carries an automatic or manual solution`,
+      issue,
+    );
+    if (issue.solutionKind === "automatic") {
+      yield* requireDoctorCheckContract(
+        isNonEmptyString(issue.command),
+        `${label}: an automatic solution carries a command`,
+        issue,
+      );
+    }
+  }
 
-    const readOnlyBaseline =
-      harness.readOnlyProbe === undefined ? undefined : yield* harness.readOnlyProbe.snapshot;
+  if (harness.expectedIssue) {
+    const expected = harness.expectedIssue;
+    const match = result.issues.find(
+      (issue) =>
+        issue.severity === expected.severity &&
+        issue.solutionKind === expected.solutionKind &&
+        (expected.contextKey === undefined || expected.contextKey in issue.context),
+    );
+    yield* requireDoctorCheckContract(
+      match !== undefined,
+      `${label}: run reports an issue matching the expected shape`,
+      { expected, issues: result.issues },
+    );
+  }
 
-    // --- default run returns issues carrying severity/context + a solution ---
-    const result = yield* harness.check
+  // --- optional: default run is read-only ---
+  if (harness.readOnlyProbe) {
+    yield* harness.check
       .run({ fix: false })
       .pipe(
         Effect.mapError((cause) =>
-          doctorCheckContractFailure(`${label}: run({ fix: false }) resolves`, cause),
+          doctorCheckContractFailure(`${label}: read-only probe run resolves`, cause),
         ),
       );
+    const unchanged = yield* harness.readOnlyProbe.assertUnchanged(readOnlyBaseline);
     yield* requireDoctorCheckContract(
-      Array.isArray(result.issues),
-      `${label}: run returns a DoctorCheckResult with an issues array`,
-      result,
+      unchanged,
+      `${label}: default run({ fix: false }) performs no mutation`,
+      readOnlyBaseline,
     );
-    for (const issue of result.issues) {
-      yield* requireDoctorCheckContract(
-        issue.severity === "info" || issue.severity === "warning" || issue.severity === "error",
-        `${label}: each issue carries a valid severity`,
-        issue,
-      );
-      yield* requireDoctorCheckContract(
-        typeof issue.context === "object" && issue.context !== null,
-        `${label}: each issue carries structured context`,
-        issue,
-      );
-      yield* requireDoctorCheckContract(
-        issue.solutionKind === "automatic" || issue.solutionKind === "manual",
-        `${label}: each issue carries an automatic or manual solution`,
-        issue,
-      );
-      if (issue.solutionKind === "automatic") {
-        yield* requireDoctorCheckContract(
-          isNonEmptyString(issue.command),
-          `${label}: an automatic solution carries a command`,
-          issue,
-        );
-      }
-    }
+  }
 
-    if (harness.expectedIssue) {
-      const expected = harness.expectedIssue;
-      const match = result.issues.find(
-        (issue) =>
-          issue.severity === expected.severity &&
-          issue.solutionKind === expected.solutionKind &&
-          (expected.contextKey === undefined || expected.contextKey in issue.context),
+  // --- optional: --fix executes automatic solutions ---
+  if (harness.fixProbe) {
+    yield* harness.check
+      .run({ fix: true })
+      .pipe(
+        Effect.mapError((cause) =>
+          doctorCheckContractFailure(`${label}: run({ fix: true }) resolves`, cause),
+        ),
       );
-      yield* requireDoctorCheckContract(
-        match !== undefined,
-        `${label}: run reports an issue matching the expected shape`,
-        { expected, issues: result.issues },
-      );
-    }
+    const fixed = yield* harness.fixProbe;
+    yield* requireDoctorCheckContract(
+      fixed,
+      `${label}: run({ fix: true }) executes the automatic solution`,
+      fixed,
+    );
+  }
 
-    // --- optional: default run is read-only ---
-    if (harness.readOnlyProbe) {
-      yield* harness.check
-        .run({ fix: false })
-        .pipe(
-          Effect.mapError((cause) =>
-            doctorCheckContractFailure(`${label}: read-only probe run resolves`, cause),
-          ),
-        );
-      const unchanged = yield* harness.readOnlyProbe.assertUnchanged(readOnlyBaseline);
-      yield* requireDoctorCheckContract(
-        unchanged,
-        `${label}: default run({ fix: false }) performs no mutation`,
-        readOnlyBaseline,
-      );
-    }
+  // --- optional: shell-shaped probes route through ShellRunner (transcript evidence) ---
+  if (harness.shellRunnerProbe) {
+    const transcript = yield* harness.shellRunnerProbe;
+    yield* requireDoctorCheckContract(
+      transcript.length > 0,
+      `${label}: shell-shaped probes appear in the doctor transcript via ShellRunner`,
+      transcript,
+    );
+  }
 
-    // --- optional: --fix executes automatic solutions ---
-    if (harness.fixProbe) {
-      yield* harness.check
-        .run({ fix: true })
-        .pipe(
-          Effect.mapError((cause) =>
-            doctorCheckContractFailure(`${label}: run({ fix: true }) resolves`, cause),
-          ),
-        );
-      const fixed = yield* harness.fixProbe;
-      yield* requireDoctorCheckContract(
-        fixed,
-        `${label}: run({ fix: true }) executes the automatic solution`,
-        fixed,
-      );
-    }
-
-    // --- optional: shell-shaped probes route through ShellRunner (transcript evidence) ---
-    if (harness.shellRunnerProbe) {
-      const transcript = yield* harness.shellRunnerProbe;
-      yield* requireDoctorCheckContract(
-        transcript.length > 0,
-        `${label}: shell-shaped probes appear in the doctor transcript via ShellRunner`,
-        transcript,
-      );
-    }
-
-    // --- optional: secrets are redacted from the transcript ---
-    if (harness.redactedTranscriptProbe && isNonEmptyString(harness.secretValue)) {
-      const transcript = yield* harness.redactedTranscriptProbe;
-      yield* requireDoctorCheckContract(
-        !transcript.includes(harness.secretValue),
-        `${label}: the redacted transcript never contains a raw secret value`,
-        { transcript },
-      );
-    }
-  });
+  // --- optional: secrets are redacted from the transcript ---
+  if (harness.redactedTranscriptProbe && isNonEmptyString(harness.secretValue)) {
+    const transcript = yield* harness.redactedTranscriptProbe;
+    yield* requireDoctorCheckContract(
+      !transcript.includes(harness.secretValue),
+      `${label}: the redacted transcript never contains a raw secret value`,
+      { transcript },
+    );
+  }
+});
 
 export const makeDoctorCheckContractSuite = runDoctorCheckContractSuite;
 
@@ -361,156 +358,155 @@ export interface ToolingEngineContractHarness {
   };
 }
 
-export const runToolingEngineContractSuite = (
+export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
   harness: ToolingEngineContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const label = harness.name ?? harness.engine.id;
-    const engine = harness.engine;
+): Effect.fn.Return<void, ContractFailure> {
+  const label = harness.name ?? harness.engine.id;
+  const engine = harness.engine;
 
-    yield* requireToolingEngineContract(
-      isNonEmptyString(engine.id),
-      `${label}: engine exposes a non-empty id`,
-      engine.id,
-    );
-    yield* requireToolingEngineContract(
-      Effect.isEffect(
-        engine.run(
-          harness.okScenario.invocation,
-          harness.okScenario.plan,
-          harness.okScenario.makeProvider().provider,
-        ),
-      ),
-      `${label}: run is Effect-typed`,
-    );
-
-    // --- ordered sequential execution + aggregated result ---
-    const okRun = harness.okScenario.makeProvider();
-    const okResult = yield* engine
-      .run(harness.okScenario.invocation, harness.okScenario.plan, okRun.provider)
-      .pipe(
-        Effect.mapError((cause) => toolingEngineContractFailure(`${label}: ok scenario run resolves`, cause)),
-      );
-    yield* requireToolingEngineContract(
-      stableJson(okResult) === stableJson(harness.okScenario.expected),
-      `${label}: run produces the expected aggregated result`,
-      { actual: okResult, expected: harness.okScenario.expected },
-    );
-    yield* requireToolingEngineContract(
-      stableJson(okRun.record()) === stableJson(harness.okScenario.expectedCommands),
-      `${label}: run executes commands in declared order`,
-      { actual: okRun.record(), expected: harness.okScenario.expectedCommands },
-    );
-
-    // --- determinism across repeated runs of the same scenario ---
-    const okRunAgain = harness.okScenario.makeProvider();
-    const okResultAgain = yield* engine
-      .run(harness.okScenario.invocation, harness.okScenario.plan, okRunAgain.provider)
-      .pipe(
-        Effect.mapError((cause) =>
-          toolingEngineContractFailure(`${label}: repeat ok scenario run resolves`, cause),
-        ),
-      );
-    yield* requireToolingEngineContract(
-      stableJson(okResult) === stableJson(okResultAgain),
-      `${label}: run is deterministic for the same scenario`,
-      { first: okResult, second: okResultAgain },
-    );
-
-    // --- first non-zero exit short-circuits the remaining commands ---
-    const failRun = harness.failScenario.makeProvider();
-    const failResult = yield* engine
-      .run(harness.failScenario.invocation, harness.failScenario.plan, failRun.provider)
-      .pipe(
-        Effect.mapError((cause) =>
-          toolingEngineContractFailure(`${label}: fail scenario run resolves with a non-zero result`, cause),
-        ),
-      );
-    yield* requireToolingEngineContract(
-      failResult.exitCode === harness.failScenario.expectedExitCode,
-      `${label}: run reports the failing command's exit code`,
-      { actual: failResult.exitCode, expected: harness.failScenario.expectedExitCode },
-    );
-    yield* requireToolingEngineContract(
-      failRun.record().length === harness.failScenario.expectedCommandCount,
-      `${label}: run stops at the first non-zero exit`,
-      { actual: failRun.record().length, expected: harness.failScenario.expectedCommandCount },
-    );
-
-    // --- a failed launch maps to a tagged ToolingExecError carrying the tool id ---
-    const execErrorExit = yield* Effect.exit(
+  yield* requireToolingEngineContract(
+    isNonEmptyString(engine.id),
+    `${label}: engine exposes a non-empty id`,
+    engine.id,
+  );
+  yield* requireToolingEngineContract(
+    Effect.isEffect(
       engine.run(
-        harness.execErrorScenario.invocation,
-        harness.execErrorScenario.plan,
-        harness.execErrorScenario.provider,
+        harness.okScenario.invocation,
+        harness.okScenario.plan,
+        harness.okScenario.makeProvider().provider,
+      ),
+    ),
+    `${label}: run is Effect-typed`,
+  );
+
+  // --- ordered sequential execution + aggregated result ---
+  const okRun = harness.okScenario.makeProvider();
+  const okResult = yield* engine
+    .run(harness.okScenario.invocation, harness.okScenario.plan, okRun.provider)
+    .pipe(
+      Effect.mapError((cause) => toolingEngineContractFailure(`${label}: ok scenario run resolves`, cause)),
+    );
+  yield* requireToolingEngineContract(
+    stableJson(okResult) === stableJson(harness.okScenario.expected),
+    `${label}: run produces the expected aggregated result`,
+    { actual: okResult, expected: harness.okScenario.expected },
+  );
+  yield* requireToolingEngineContract(
+    stableJson(okRun.record()) === stableJson(harness.okScenario.expectedCommands),
+    `${label}: run executes commands in declared order`,
+    { actual: okRun.record(), expected: harness.okScenario.expectedCommands },
+  );
+
+  // --- determinism across repeated runs of the same scenario ---
+  const okRunAgain = harness.okScenario.makeProvider();
+  const okResultAgain = yield* engine
+    .run(harness.okScenario.invocation, harness.okScenario.plan, okRunAgain.provider)
+    .pipe(
+      Effect.mapError((cause) =>
+        toolingEngineContractFailure(`${label}: repeat ok scenario run resolves`, cause),
       ),
     );
-    yield* requireToolingEngineContract(
-      Exit.isFailure(execErrorExit),
-      `${label}: exec-error scenario fails`,
-      execErrorExit,
+  yield* requireToolingEngineContract(
+    stableJson(okResult) === stableJson(okResultAgain),
+    `${label}: run is deterministic for the same scenario`,
+    { first: okResult, second: okResultAgain },
+  );
+
+  // --- first non-zero exit short-circuits the remaining commands ---
+  const failRun = harness.failScenario.makeProvider();
+  const failResult = yield* engine
+    .run(harness.failScenario.invocation, harness.failScenario.plan, failRun.provider)
+    .pipe(
+      Effect.mapError((cause) =>
+        toolingEngineContractFailure(`${label}: fail scenario run resolves with a non-zero result`, cause),
+      ),
     );
-    if (Exit.isFailure(execErrorExit)) {
-      const failure = Cause.failureOption(execErrorExit.cause);
-      yield* requireToolingEngineContract(
-        Option.isSome(failure) && failure.value instanceof ToolingExecError,
-        `${label}: failure is a tagged ToolingExecError`,
-        execErrorExit.cause,
-      );
-      if (Option.isSome(failure) && failure.value instanceof ToolingExecError) {
-        yield* requireToolingEngineContract(
-          failure.value.tool === harness.execErrorScenario.invocation.tool,
-          `${label}: ToolingExecError carries the failing task id`,
-          { actual: failure.value.tool, expected: harness.execErrorScenario.invocation.tool },
-        );
-      }
-    }
+  yield* requireToolingEngineContract(
+    failResult.exitCode === harness.failScenario.expectedExitCode,
+    `${label}: run reports the failing command's exit code`,
+    { actual: failResult.exitCode, expected: harness.failScenario.expectedExitCode },
+  );
+  yield* requireToolingEngineContract(
+    failRun.record().length === harness.failScenario.expectedCommandCount,
+    `${label}: run stops at the first non-zero exit`,
+    { actual: failRun.record().length, expected: harness.failScenario.expectedCommandCount },
+  );
 
-    // --- optional: capability declaration matches observed behavior ---
-    if (harness.capabilities && harness.behaviorTags) {
-      const declared = [...harness.capabilities].sort();
-      const observed = [...harness.behaviorTags].sort();
+  // --- a failed launch maps to a tagged ToolingExecError carrying the tool id ---
+  const execErrorExit = yield* Effect.exit(
+    engine.run(
+      harness.execErrorScenario.invocation,
+      harness.execErrorScenario.plan,
+      harness.execErrorScenario.provider,
+    ),
+  );
+  yield* requireToolingEngineContract(
+    Exit.isFailure(execErrorExit),
+    `${label}: exec-error scenario fails`,
+    execErrorExit,
+  );
+  if (Exit.isFailure(execErrorExit)) {
+    const failure = Cause.findErrorOption(execErrorExit.cause);
+    yield* requireToolingEngineContract(
+      Option.isSome(failure) && failure.value instanceof ToolingExecError,
+      `${label}: failure is a tagged ToolingExecError`,
+      execErrorExit.cause,
+    );
+    if (Option.isSome(failure) && failure.value instanceof ToolingExecError) {
       yield* requireToolingEngineContract(
-        JSON.stringify(declared) === JSON.stringify(observed),
-        `${label}: declared capabilities match observed behavior`,
-        { declared, observed },
+        failure.value.tool === harness.execErrorScenario.invocation.tool,
+        `${label}: ToolingExecError carries the failing task id`,
+        { actual: failure.value.tool, expected: harness.execErrorScenario.invocation.tool },
       );
     }
+  }
 
-    // --- optional: interruption cancels in-flight work and finalizes children ---
-    if (harness.interruptionProbe) {
-      const probe = harness.interruptionProbe;
-      const fiber = yield* Effect.fork(
-        engine.run(probe.invocation, probe.plan, probe.provider).pipe(Effect.either),
-      );
-      yield* Effect.yieldNow();
-      yield* Fiber.interrupt(fiber);
-      const finalized = yield* probe.assertFinalized;
-      yield* requireToolingEngineContract(
-        finalized === true,
-        `${label}: interruption finalizes in-flight work (no orphaned child)`,
-        { finalized },
-      );
-    }
+  // --- optional: capability declaration matches observed behavior ---
+  if (harness.capabilities && harness.behaviorTags) {
+    const declared = [...harness.capabilities].sort();
+    const observed = [...harness.behaviorTags].sort();
+    yield* requireToolingEngineContract(
+      JSON.stringify(declared) === JSON.stringify(observed),
+      `${label}: declared capabilities match observed behavior`,
+      { declared, observed },
+    );
+  }
 
-    // --- optional: a secret-resolved value never reaches the result output ---
-    if (harness.redactionProbe) {
-      const probe = harness.redactionProbe;
-      const result = yield* engine
-        .run(probe.invocation, probe.plan, probe.makeProvider().provider)
-        .pipe(
-          Effect.mapError((cause) =>
-            toolingEngineContractFailure(`${label}: redaction scenario run resolves`, cause),
-          ),
-        );
-      const rendered = probe.render(result);
-      yield* requireToolingEngineContract(
-        !rendered.includes(probe.secretValue),
-        `${label}: secret-resolved values never reach the result output`,
-        { rendered },
+  // --- optional: interruption cancels in-flight work and finalizes children ---
+  if (harness.interruptionProbe) {
+    const probe = harness.interruptionProbe;
+    const fiber = yield* Effect.forkChild(
+      engine.run(probe.invocation, probe.plan, probe.provider).pipe(Effect.result),
+    );
+    yield* Effect.yieldNow;
+    yield* Fiber.interrupt(fiber);
+    const finalized = yield* probe.assertFinalized;
+    yield* requireToolingEngineContract(
+      finalized === true,
+      `${label}: interruption finalizes in-flight work (no orphaned child)`,
+      { finalized },
+    );
+  }
+
+  // --- optional: a secret-resolved value never reaches the result output ---
+  if (harness.redactionProbe) {
+    const probe = harness.redactionProbe;
+    const result = yield* engine
+      .run(probe.invocation, probe.plan, probe.makeProvider().provider)
+      .pipe(
+        Effect.mapError((cause) =>
+          toolingEngineContractFailure(`${label}: redaction scenario run resolves`, cause),
+        ),
       );
-    }
-  });
+    const rendered = probe.render(result);
+    yield* requireToolingEngineContract(
+      !rendered.includes(probe.secretValue),
+      `${label}: secret-resolved values never reach the result output`,
+      { rendered },
+    );
+  }
+});
 
 export const makeToolingEngineContractSuite = runToolingEngineContractSuite;
 
@@ -587,114 +583,109 @@ export interface PluginSourceContractHarness<Spec> {
   };
 }
 
-export const runPluginSourceContractSuite = <Spec>(
+export const runPluginSourceContractSuite = Effect.fnUntraced(function* <Spec>(
   harness: PluginSourceContractHarness<Spec>,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    const label = harness.name ?? harness.source.id;
+): Effect.fn.Return<void, ContractFailure> {
+  const label = harness.name ?? harness.source.id;
 
-    yield* requirePluginSourceContract(
-      isNonEmptyString(harness.source.id),
-      `${label}: source exposes a non-empty id`,
-      harness.source.id,
+  yield* requirePluginSourceContract(
+    isNonEmptyString(harness.source.id),
+    `${label}: source exposes a non-empty id`,
+    harness.source.id,
+  );
+
+  // --- a contained spec resolves to a realpath under the managed store ---
+  const contained = yield* harness
+    .resolve(harness.containedSpec)
+    .pipe(
+      Effect.mapError((cause) => pluginSourceContractFailure(`${label}: contained spec resolves`, cause)),
     );
+  const root = harness.managedStoreRoot;
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  yield* requirePluginSourceContract(
+    contained === root || contained.startsWith(prefix),
+    `${label}: resolved root stays under the managed store after realpath`,
+    { resolved: contained, managedStoreRoot: root },
+  );
 
-    // --- a contained spec resolves to a realpath under the managed store ---
-    const contained = yield* harness
-      .resolve(harness.containedSpec)
-      .pipe(
-        Effect.mapError((cause) => pluginSourceContractFailure(`${label}: contained spec resolves`, cause)),
+  // --- resolution is deterministic ---
+  const containedAgain = yield* harness
+    .resolve(harness.containedSpec)
+    .pipe(
+      Effect.mapError((cause) =>
+        pluginSourceContractFailure(`${label}: repeat contained spec resolves`, cause),
+      ),
+    );
+  yield* requirePluginSourceContract(
+    contained === containedAgain,
+    `${label}: resolution is deterministic for the same spec`,
+    { first: contained, second: containedAgain },
+  );
+
+  // --- an escaping spec fails with a tagged error carrying remediation ---
+  const escapeExit = yield* Effect.exit(harness.resolve(harness.escapingSpec));
+  yield* requirePluginSourceContract(Exit.isFailure(escapeExit), `${label}: escaping spec fails`, escapeExit);
+  if (Exit.isFailure(escapeExit)) {
+    const failure = Cause.findErrorOption(escapeExit.cause);
+    yield* requirePluginSourceContract(
+      Option.isSome(failure) && typeof (failure.value as { _tag?: unknown })._tag === "string",
+      `${label}: escape failure is a tagged error (carries _tag)`,
+      escapeExit.cause,
+    );
+    if (Option.isSome(failure)) {
+      const remediation = (failure.value as { remediation?: unknown }).remediation;
+      yield* requirePluginSourceContract(
+        typeof remediation === "string" && remediation.length > 0,
+        `${label}: escape failure carries remediation`,
+        failure.value,
       );
-    const root = harness.managedStoreRoot;
-    const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
-    yield* requirePluginSourceContract(
-      contained === root || contained.startsWith(prefix),
-      `${label}: resolved root stays under the managed store after realpath`,
-      { resolved: contained, managedStoreRoot: root },
-    );
+    }
+  }
 
-    // --- resolution is deterministic ---
-    const containedAgain = yield* harness
-      .resolve(harness.containedSpec)
+  // --- optional: resolution honored network.proxy/network.ca ---
+  if (harness.networkTrustProbe) {
+    const probe = harness.networkTrustProbe;
+    yield* probe.resolve.pipe(
+      Effect.mapError((cause) =>
+        pluginSourceContractFailure(`${label}: network-trust resolve resolves`, cause),
+      ),
+    );
+    const observed = yield* probe.observed;
+    yield* requirePluginSourceContract(
+      observed.proxy === probe.expected.proxy && observed.ca === probe.expected.ca,
+      `${label}: resolution honored network.proxy/network.ca`,
+      { observed, expected: probe.expected },
+    );
+  }
+
+  // --- optional: registry auth tokens are redacted from logs/events ---
+  if (harness.authRedactionProbe) {
+    const probe = harness.authRedactionProbe;
+    const rendered = yield* probe.renderedOutput;
+    yield* requirePluginSourceContract(
+      !rendered.includes(probe.token),
+      `${label}: registry auth token is redacted from logs/events`,
+      { rendered },
+    );
+  }
+
+  // --- optional: already-locked sources resolve offline without re-fetch ---
+  if (harness.offlineLockedProbe) {
+    const probe = harness.offlineLockedProbe;
+    yield* probe
+      .resolve(probe.spec)
       .pipe(
         Effect.mapError((cause) =>
-          pluginSourceContractFailure(`${label}: repeat contained spec resolves`, cause),
+          pluginSourceContractFailure(`${label}: offline-locked resolve resolves`, cause),
         ),
       );
+    const fetches = yield* probe.fetchCount;
     yield* requirePluginSourceContract(
-      contained === containedAgain,
-      `${label}: resolution is deterministic for the same spec`,
-      { first: contained, second: containedAgain },
+      fetches === 0,
+      `${label}: already-locked source resolves offline without a re-fetch`,
+      { fetches },
     );
-
-    // --- an escaping spec fails with a tagged error carrying remediation ---
-    const escapeExit = yield* Effect.exit(harness.resolve(harness.escapingSpec));
-    yield* requirePluginSourceContract(
-      Exit.isFailure(escapeExit),
-      `${label}: escaping spec fails`,
-      escapeExit,
-    );
-    if (Exit.isFailure(escapeExit)) {
-      const failure = Cause.failureOption(escapeExit.cause);
-      yield* requirePluginSourceContract(
-        Option.isSome(failure) && typeof (failure.value as { _tag?: unknown })._tag === "string",
-        `${label}: escape failure is a tagged error (carries _tag)`,
-        escapeExit.cause,
-      );
-      if (Option.isSome(failure)) {
-        const remediation = (failure.value as { remediation?: unknown }).remediation;
-        yield* requirePluginSourceContract(
-          typeof remediation === "string" && remediation.length > 0,
-          `${label}: escape failure carries remediation`,
-          failure.value,
-        );
-      }
-    }
-
-    // --- optional: resolution honored network.proxy/network.ca ---
-    if (harness.networkTrustProbe) {
-      const probe = harness.networkTrustProbe;
-      yield* probe.resolve.pipe(
-        Effect.mapError((cause) =>
-          pluginSourceContractFailure(`${label}: network-trust resolve resolves`, cause),
-        ),
-      );
-      const observed = yield* probe.observed;
-      yield* requirePluginSourceContract(
-        observed.proxy === probe.expected.proxy && observed.ca === probe.expected.ca,
-        `${label}: resolution honored network.proxy/network.ca`,
-        { observed, expected: probe.expected },
-      );
-    }
-
-    // --- optional: registry auth tokens are redacted from logs/events ---
-    if (harness.authRedactionProbe) {
-      const probe = harness.authRedactionProbe;
-      const rendered = yield* probe.renderedOutput;
-      yield* requirePluginSourceContract(
-        !rendered.includes(probe.token),
-        `${label}: registry auth token is redacted from logs/events`,
-        { rendered },
-      );
-    }
-
-    // --- optional: already-locked sources resolve offline without re-fetch ---
-    if (harness.offlineLockedProbe) {
-      const probe = harness.offlineLockedProbe;
-      yield* probe
-        .resolve(probe.spec)
-        .pipe(
-          Effect.mapError((cause) =>
-            pluginSourceContractFailure(`${label}: offline-locked resolve resolves`, cause),
-          ),
-        );
-      const fetches = yield* probe.fetchCount;
-      yield* requirePluginSourceContract(
-        fetches === 0,
-        `${label}: already-locked source resolves offline without a re-fetch`,
-        { fetches },
-      );
-    }
-  });
+  }
+});
 
 export const makePluginSourceContractSuite = runPluginSourceContractSuite;

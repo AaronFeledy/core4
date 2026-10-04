@@ -4,55 +4,61 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
 
-import { DataMoverLive } from "@lando/data-mover/service";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunDataMover from "@lando/data-mover/service";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 
-const silentEvents = Layer.succeed(EventService, {
-  publish: () => Effect.void,
-  subscribe: () => Stream.empty,
-  subscribeQueue: Effect.never,
-  waitFor: () => Effect.never,
-  waitForAny: () => Effect.never,
-  query: () => Effect.succeed([]),
-});
+const silentEvents = Layer.succeed(
+  EventService,
+  EventService.of({
+    publish: () => Effect.void,
+    subscribe: () => Stream.empty,
+    subscribeQueue: Effect.never,
+    waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
+  }),
+);
 
-const passthroughRedaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () =>
-    Effect.succeed({
-      redactString: (input: string) => input,
-      redactValue: (input: unknown) => input,
-    }),
-});
+const passthroughRedaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () =>
+      Effect.succeed({
+        redactString: (input: string) => input,
+        redactValue: (input: unknown) => input,
+      }),
+  }),
+);
 
-describe("DataMoverLive call-time provider", () => {
+describe("BunDataMover.layer call-time provider", () => {
   test("uses the RuntimeProvider provided at call time, not the construction stub", async () => {
     const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-mover-call-time-"));
     const target = resolve(dir, "out.txt");
     try {
-      const stub = {
+      const stub = RuntimeProvider.of({
         ...TestRuntimeProvider,
         execStream: () => Stream.empty,
-      };
-      const selected = {
+      });
+      const selected = RuntimeProvider.of({
         ...TestRuntimeProvider,
         execStream: () =>
           Stream.fromIterable([
             { kind: "stdout" as const, chunk: new TextEncoder().encode("selected-output") },
             { exitCode: 0 },
           ]),
-      };
+      });
 
       await Effect.runPromise(
         Effect.scoped(
@@ -67,11 +73,11 @@ describe("DataMoverLive call-time provider", () => {
         ).pipe(
           Effect.provideService(RuntimeProvider, selected),
           Effect.provide(
-            DataMoverLive.pipe(
+            BunDataMover.layer.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  StateStoreLive,
-                  Layer.succeed(PathsService, makeLandoPaths()),
+                  stateStoreLayer,
+                  Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
                   Layer.succeed(RuntimeProvider, stub),
                   silentEvents,
                   passthroughRedaction,

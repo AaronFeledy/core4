@@ -20,10 +20,15 @@ export type DownloadError =
   | DownloadSourceForbiddenError
   | DownloaderUnavailableError;
 
-export interface DownloaderShape {
-  readonly id: string;
-  readonly capabilities: DownloaderCapabilities;
-  readonly download: (request: DownloadRequest) => Effect.Effect<DownloadResult, DownloadError, Scope.Scope>;
-}
+export class Downloader extends Context.Service<
+  Downloader,
+  {
+    readonly id: string;
+    readonly capabilities: DownloaderCapabilities;
+    readonly download: (
+      request: DownloadRequest,
+    ) => Effect.Effect<DownloadResult, DownloadError, Scope.Scope>;
+  }
+>()("@lando/core/Downloader") {}
 
-export class Downloader extends Context.Tag("@lando/core/Downloader")<Downloader, DownloaderShape>() {}
+export type DownloaderShape = Downloader["Service"];

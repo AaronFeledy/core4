@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { joomlaDecomposer } from "../../src/recipes/builtin/joomla/decomposer.ts";
 import { joomlaRecipeYaml } from "../../src/recipes/builtin/joomla/manifest.ts";
 import {
@@ -31,7 +31,7 @@ const decompose = (options: Readonly<Record<string, unknown>>) =>
 
 const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -113,15 +113,15 @@ describe("joomla decomposition", () => {
     { options: { ...defaults, webroot: "app" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
-      Effect.either(
+      Effect.result(
         decomposer.decompose({ producer: joomlaProducer, options, secrets: {} } as RecipeDecomposeInput),
       ),
     );
-    expect(Either.isLeft(failure)).toBe(true);
-    if (Either.isLeft(failure)) {
-      expect(failure.left.reason).toBe("option-type");
-      expect(failure.left.path).toBe(path);
-      expect(failure.left.remediation).toBeString();
+    expect(Result.isFailure(failure)).toBe(true);
+    if (Result.isFailure(failure)) {
+      expect(failure.failure.reason).toBe("option-type");
+      expect(failure.failure.path).toBe(path);
+      expect(failure.failure.remediation).toBeString();
     }
   });
 
@@ -143,7 +143,7 @@ describe("joomla decomposition", () => {
   test.each([defaults, alternatives, composerDisabled])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Either.getOrThrow(renderRecipeSnapshot(joomlaSnapshot, options))).toEqual(authoringOf(options));
+      expect(Result.getOrThrow(renderRecipeSnapshot(joomlaSnapshot, options))).toEqual(authoringOf(options));
     },
   );
 });

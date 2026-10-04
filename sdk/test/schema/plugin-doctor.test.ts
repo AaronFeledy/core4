@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { PluginDoctorReport, getJsonSchema } from "@lando/sdk/schema";
 
@@ -77,18 +77,18 @@ const overBoundReports: ReadonlyArray<{ readonly boundary: string; readonly repo
 
 describe("PluginDoctorReport", () => {
   test("accepts every documented maximum", () => {
-    const decoded = Schema.decodeUnknownEither(PluginDoctorReport, { onExcessProperty: "error" })(
+    const decoded = Schema.decodeUnknownResult(PluginDoctorReport, { onExcessProperty: "error" })(
       maximumReport,
     );
 
-    expect(Either.isRight(decoded)).toBe(true);
+    expect(Result.isSuccess(decoded)).toBe(true);
   });
 
   for (const { boundary, report } of overBoundReports) {
     test(`rejects a report over the ${boundary} boundary`, () => {
-      const decoded = Schema.decodeUnknownEither(PluginDoctorReport, { onExcessProperty: "error" })(report);
+      const decoded = Schema.decodeUnknownResult(PluginDoctorReport, { onExcessProperty: "error" })(report);
 
-      expect(Either.isLeft(decoded)).toBe(true);
+      expect(Result.isFailure(decoded)).toBe(true);
     });
   }
 

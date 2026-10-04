@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { CacheError, isErrnoCode } from "@lando/sdk/errors";
 import {
@@ -235,48 +235,47 @@ const versionConstraintsUsable = (entries: ReadonlyArray<VersionConstraintEntry>
   return evaluation.unsatisfied.length === 0 || isVersionConstraintSkipped(process.env);
 };
 
-export const readCachedAppPlan = (input: {
+export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly cacheRoot: string;
   readonly appName: string;
   readonly appRoot: string;
   readonly key: string;
-}): Effect.Effect<AppPlan | null, CacheError> =>
-  Effect.gen(function* () {
-    const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
-    const bytes = yield* Effect.tryPromise({
-      try: () => readFile(path),
-      catch: (cause) =>
-        new CacheError({
-          message: `Failed to read app-plan cache at ${path}.`,
-          key: "app-plan",
-          path,
-          cause,
-        }),
-    }).pipe(
-      Effect.catchIf(
-        (error) => isErrnoCode(error.cause, "ENOENT"),
-        () => Effect.succeed(null),
-      ),
-    );
-    if (bytes === null) return null;
-    const payload = decode(bytes);
-    if (payload === null) return null;
-    if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
-    if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
-    if (!versionConstraintsUsable(payload.versionConstraints)) return null;
-    return yield* Effect.try({
-      try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
-      catch: (cause) =>
-        new CacheError({
-          message: `Cached app plan at ${path} failed schema decode.`,
-          key: "app-plan",
-          path,
-          decodeError: cause,
-        }),
-    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
-  });
+}): Effect.fn.Return<AppPlan | null, CacheError> {
+  const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
+  const bytes = yield* Effect.tryPromise({
+    try: () => readFile(path),
+    catch: (cause) =>
+      new CacheError({
+        message: `Failed to read app-plan cache at ${path}.`,
+        key: "app-plan",
+        path,
+        cause,
+      }),
+  }).pipe(
+    Effect.catchIf(
+      (error) => isErrnoCode(error.cause, "ENOENT"),
+      () => Effect.succeed(null),
+    ),
+  );
+  if (bytes === null) return null;
+  const payload = decode(bytes);
+  if (payload === null) return null;
+  if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
+  if (!isVersionConstraintEntryArray(payload.versionConstraints)) return null;
+  if (!versionConstraintsUsable(payload.versionConstraints)) return null;
+  return yield* Effect.try({
+    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
+    catch: (cause) =>
+      new CacheError({
+        message: `Cached app plan at ${path} failed schema decode.`,
+        key: "app-plan",
+        path,
+        decodeError: cause,
+      }),
+  }).pipe(Effect.catch(() => Effect.succeed(null)));
+});
 
-export const writeCachedAppPlan = (input: {
+export const writeCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly cacheRoot: string;
   readonly appName: string;
   readonly appRoot: string;
@@ -284,21 +283,20 @@ export const writeCachedAppPlan = (input: {
   readonly plan: AppPlan;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
   readonly now?: () => number;
-}): Effect.Effect<string, CacheError, CacheService> => {
+}): Effect.fn.Return<string, CacheError, CacheService> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
-  return Effect.flatMap(CacheService, (cache) =>
-    cache
-      .writeAtomic(
-        path,
-        encode({
-          schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
-          landoVersion: CORE_VERSION,
-          key: input.key,
-          versionConstraints: input.versionConstraints ?? [],
-          generatedAtMs: (input.now ?? Date.now)(),
-          plan: Schema.encodeSync(AppPlan)(input.plan),
-        }),
-      )
-      .pipe(Effect.as(path)),
+  const cache = yield* CacheService;
+  const generatedAtMs = input.now === undefined ? yield* Clock.currentTimeMillis : input.now();
+  yield* cache.writeAtomic(
+    path,
+    encode({
+      schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
+      landoVersion: CORE_VERSION,
+      key: input.key,
+      versionConstraints: input.versionConstraints ?? [],
+      generatedAtMs,
+      plan: Schema.encodeSync(AppPlan)(input.plan),
+    }),
   );
-};
+  return path;
+});

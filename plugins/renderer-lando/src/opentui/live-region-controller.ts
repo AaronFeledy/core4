@@ -3,10 +3,10 @@ import { createInlineLiveRegionPainter } from "./inline-live-region.ts";
 import {
   type FullTailSession,
   acquireFullTail,
-  dropFullTailLive,
+  dropFullTailRegion,
   leaveFullTail,
   paintFullTailFooter,
-  requestFullTailLive,
+  requestFullTailRegion,
 } from "./live-region-full-tail.ts";
 import {
   DeferredScrollback,
@@ -101,12 +101,12 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
 
   requestLive(): void {
     const renderer = this.fullTail?.renderer;
-    if (renderer !== undefined) requestFullTailLive(renderer);
+    if (renderer !== undefined) requestFullTailRegion(renderer);
   }
 
   dropLive(): void {
     const renderer = this.fullTail?.renderer;
-    if (renderer !== undefined) dropFullTailLive(renderer);
+    if (renderer !== undefined) dropFullTailRegion(renderer);
   }
 
   resize(width: number, height: number): void {

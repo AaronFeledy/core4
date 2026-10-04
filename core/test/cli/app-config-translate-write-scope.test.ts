@@ -41,8 +41,8 @@ test.each(["foreign-path", "unwritable-layer", "foreign-deletion"] as const)(
       );
       // Then
       expect(result).toMatchObject({
-        _tag: "Left",
-        left: { _tag: "ConfigTranslateError", remediation: expect.any(String) },
+        _tag: "Failure",
+        failure: { _tag: "ConfigTranslateError", remediation: expect.any(String) },
       });
       expect(await snapshot(root)).toEqual(originals);
       expect((await readdir(root)).sort()).toEqual(Object.keys(originals).sort());

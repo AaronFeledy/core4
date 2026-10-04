@@ -50,6 +50,7 @@ describe("MCP executable guide", () => {
 
   test("executes the successful conversation, startup refusals, and bounded read-only contract", async () => {
     const guide = parseGuideScenarioAst(guidePath, await readText(guidePath));
+    expect(guide.scenarios.length).toBeGreaterThanOrEqual(3);
     expect(guide.frontmatter).toMatchObject({
       id: "mcp",
       provider: "test",
@@ -59,16 +60,29 @@ describe("MCP executable guide", () => {
     const conversation = scenarioById(guide, "stdio-conversation");
     const conversationRun = libraryRun(conversation);
     expect(conversationRun.code).toContain("mcpRegistryFromBuiltIns");
-    expect(conversationRun.code).toContain("makeStdioMcpTransport");
+    expect(conversationRun.code).toContain("makeStdioClient");
     expect(conversationRun.code).toContain("McpRuntimeConfig");
-    expect(conversationRun.code).toContain("McpServiceLive");
-    expect(conversationRun.code).toContain("McpTransport");
+    expect(conversationRun.code).toContain("serviceLayer: mcpServiceLayer");
+    expect(conversationRun.code).toContain("Effect.provideService(Stdio.Stdio, client.stdio)");
     expect(conversationRun.code).toContain("RedactionService");
     expect(conversationRun.code).toContain("LandofileService");
     expect(conversationRun.code).toContain('name: "mcp-guide", services: {}');
-    expect(conversationRun.code).toContain('method: "initialize"');
-    expect(conversationRun.code).toContain('method: "notifications/initialized"');
-    expect(conversationRun.code).toContain('method: "tools/list"');
+    expect(conversationRun.code).toContain("yield* client.initialize({})");
+    expect(conversationRun.displayCode).toContain('method: "initialize"');
+    expect(conversationRun.displayCode).toContain('method: "notifications/initialized"');
+    expect(conversationRun.code).toContain('client.request("tools/list")');
+    expect(conversationRun.code).toContain(
+      'result: { protocolVersion: "2025-06-18", serverInfo: { name: "lando" } }',
+    );
+    expect(conversationRun.code).toContain(
+      'name: "app:config:get", outputSchema: expect.objectContaining({ type: "object" })',
+    );
+    expect(conversationRun.code).toContain(
+      'name: "app:config:view", outputSchema: expect.objectContaining({ type: "object" })',
+    );
+    expect(conversationRun.code).toContain(
+      'structuredContent: { ok: true, command: "app:config:get", result: { value: "mcp-guide" } }',
+    );
     expect(conversationRun.code).toContain('name: "app:config:get"');
     expect(conversationRun.code).toContain("service.serve");
     expect(conversationRun.code).toContain("Effect.timeout");
@@ -102,8 +116,31 @@ describe("MCP executable guide", () => {
     expect(bounded.code).toContain("mcpRegistryFromBuiltIns");
     expect(bounded.code).toContain("MAX_OUTSTANDING_REQUESTS");
     expect(bounded.code).toContain('Effect.timeout("5 seconds")');
-    expect(bounded.code).toContain('error: { code: -32000, message: "Server busy" }');
+    expect(bounded.code).toContain("isError: Schema.Literal(true)");
+    expect(bounded.code).toContain('type: Schema.Literal("text"), text: Schema.String');
+    expect(bounded.code).toContain('expect(JSON.parse(busyResult.content[0]?.text ?? "{}")).toEqual');
+    expect(bounded.code).toContain('_tag: "McpTransportError"');
+    expect(bounded.code).toContain('message: "Server busy"');
+    expect(bounded.code).toContain("expect(busyResult.structuredContent).toBeUndefined()");
+    expect(bounded.code).toContain(
+      'expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId })',
+    );
+    expect(bounded.code).toContain("expect(observed.results).toHaveLength(MAX_OUTSTANDING_REQUESTS + 1)");
+    expect(bounded.code).toContain("expect(succeeded).toHaveLength(MAX_OUTSTANDING_REQUESTS)");
     expect(bounded.code).toContain('["app:config:get", "app:config:view"]');
+
+    const resources = libraryRun(scenarioById(guide, "resources-and-schema-completion"));
+    expect(resources.code).toContain("core/src/mcp-resources.ts");
+    expect(resources.code).toContain('client.request("resources/list")');
+    expect(resources.code).toContain('client.request("resources/templates/list")');
+    expect(resources.code).toContain('client.request("completion/complete"');
+    for (const uri of ["lando://app/config", "lando://app/info", "lando://apps", "lando://doctor"]) {
+      expect(resources.code).toContain(`"${uri}"`);
+    }
+    expect(resources.code).toContain('ref: { type: "ref/resource", uri: "lando://schemas/{name}" }');
+    expect(resources.code).toContain('JSON_SCHEMA_NAMES.filter((name) => name.startsWith("CommandResult"))');
+    expect(resources.code).toContain("expect(expected.length).toBeGreaterThan(0)");
+    expect(resources.code).toContain("result: { completion: { values: expected, hasMore: false } }");
 
     for (const scenario of guide.scenarios) {
       const generated = renderScenarioTest(guide, scenario, undefined, "linux");

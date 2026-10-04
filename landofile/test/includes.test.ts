@@ -108,6 +108,33 @@ describe("resolveLandofileIncludes", () => {
     expect(await exists(join(appRoot, ".lando.lock.yml"))).toBe(false);
   });
 
+  test("reports every merged include problem as a structured validation issue", async () => {
+    // Given: an include that misspells a service key and gives another key the wrong type.
+    await writeFile(
+      join(appRoot, "fragment.yml"),
+      "services:\n  api:\n    imgae: nginx\n    home: nope\n",
+      "utf8",
+    );
+
+    // When: the merged Landofile is decoded.
+    const error = await Effect.runPromise(
+      Effect.flip(resolveEffect({ name: "demo", includes: ["./fragment.yml"] }, appRoot, cacheRoot)),
+    );
+
+    // Then: both problems come back with paths, and the misspelling names the allowed key.
+    expect(error._tag).toBe("LandofileValidationError");
+    expect(error).toMatchObject({
+      issues: expect.arrayContaining([
+        {
+          path: ["services", "api", "imgae"],
+          message: "Expected no excess property",
+          suggestion: 'Did you mean "image"?',
+        },
+        expect.objectContaining({ path: ["services", "api", "home"] }),
+      ]),
+    });
+  });
+
   test("merges explicitly selected nested user profiles before project overrides", async () => {
     // Given: a user profile with declaring-directory and root-relative nested profiles.
     await mkdir(join(userIncludesDir, "corp"), { recursive: true });
@@ -384,7 +411,7 @@ describe("resolveLandofileIncludes", () => {
     );
 
     expect(error._tag).toBe("LandofileLockMismatchError");
-    expect(error.remediation).toContain("app:includes:update");
+    expect(error).toMatchObject({ remediation: expect.stringContaining("app:includes:update") });
   });
 
   test("records distinct lock entries for two fragments from one git repo", async () => {
