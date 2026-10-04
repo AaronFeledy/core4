@@ -70,7 +70,7 @@ Mixing root and non-root steps in one list is fine. The order is preserved, so `
 | `-root` | Rejected, leading hyphen |
 | `root;id` | Rejected, shell metacharacter |
 
-`lando app:config:lint` rejects a bad identity before anything builds. The report says `valid: false` and points at the field, `services.app.build.artifact.0.user` for the first artifact step above, so you fix the Landofile rather than reading a build log.
+`lando app:config:lint` rejects a bad identity before anything builds. The report says `valid: false` and points at the field, `["services", "app", "build", "artifact", 0, "user"]` for the first artifact step above, so you fix the Landofile rather than reading a build log.
 
 ## What changes when you change `user`
 
@@ -120,7 +120,7 @@ lando app:cache:refresh
     <Step name="lint-invalid-user">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.app\\.build\\.artifact\\.0\\.user\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"build\",\\s*\"artifact\",\\s*0,\\s*\"user\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />
