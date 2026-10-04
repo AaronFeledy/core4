@@ -1,0 +1,71 @@
+---
+id: trace-a-command
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, cli, tracing]
+---
+
+# Trace a slow command
+
+Add `--trace` to any command and Lando prints a timing tree after the result.
+
+```sh
+lando start --trace
+LANDO_TRACE=1 lando start
+```
+
+The flag is global, so it works on every dispatcher-routed command. `LANDO_TRACE=1` does the same thing from the environment. Without either, the tracer stays off and the command runs exactly as fast as it did before.
+
+## Read the timing tree
+
+The tree goes to stderr after the normal result, so it never pollutes stdout. Each line is a span: a named stage with how long it took and how much of the total that is. Every command runs under one root span named `lando <command-id>`, with init, run, and render stages underneath and planner phases, lifecycle steps, and provider calls nested below those.
+
+Spans under 1% of the total collapse into their parent. You see where the time went, not every blink.
+
+The tracer keeps at most 10,000 finished spans. Past that it counts what it dropped instead of growing without bound. A long `lando rebuild` with a chatty provider can hit the cap; the tree still prints and tells you how many spans it skipped.
+
+## Get the trace as JSON
+
+Pair `--trace` with `--format=json` and the envelope gains a `trace` field:
+
+```sh
+lando config --trace --format=json
+```
+
+The `trace` field is typed by the public `CommandTrace` schema:
+
+| Field | What it holds |
+| --- | --- |
+| `totalDurationMs` | Wall time of the root span. |
+| `spans[].id` | Span id, unique within this trace. |
+| `spans[].name` | Span name. The root is `lando <command-id>`. |
+| `spans[].parent` | Parent span id. Absent on the root. |
+| `spans[].startOffsetMs` | Start time relative to the root span. |
+| `spans[].durationMs` | How long the span ran. |
+| `spans[].status` | `ok`, `error`, or `interrupted`. |
+| `spans[].attributes` | Redacted key/value attributes, such as the command id and invocation id. |
+| `droppedSpans` | How many spans fell off the 10,000-span buffer. |
+
+JSON output is not collapsed. Every retained span is there, so you can sort by `durationMs` yourself.
+
+```sh
+lando config --trace --jq ".trace.spans | sort_by(.durationMs) | reverse | .[0:5]"
+```
+
+Attributes pass through the same redaction as the rest of the envelope. A token in your env or a flag never lands in a trace.
+
+<Guide>
+  <Scenario id="trace-json-envelope" render>
+    <Step name="trace-config">
+      <Run command="lando config --trace --format=json" />
+      <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"trace\":\\s*\\{" } }} />
+      <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"spans\":\\s*\\[\\s*\\{" } }} />
+      <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"lando meta:config\"" } }} />
+      <Verify command="lando config --trace --format=json" expect={{ stdout: { regex: "\"droppedSpans\":\\s*0" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+Want the spans in your own collector? See [Export traces](./export-traces.mdx). Want more log output instead of timing? See [See more CLI output](./verbosity-and-debug.mdx).

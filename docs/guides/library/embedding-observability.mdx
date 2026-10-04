@@ -1,0 +1,123 @@
+---
+id: embedding-observability
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, library, embedding, tracing]
+---
+
+# Observe an embedded runtime
+
+Provide your own `Tracer`, loggers, or `ErrorReporter` in the Effect context and Lando's spans, logs, and defects flow into them. Provide nothing and the library stays silent.
+
+```ts
+import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
+
+const program = Effect.gen(function* () {
+  const runtime = yield* openLandoRuntime({ cwd: process.cwd() });
+  const app = yield* runtime.app();
+  return yield* app.info();
+}).pipe(Effect.withSpan("host.request"));
+
+await Effect.runPromise(
+  Effect.scoped(program).pipe(Effect.withTracer(myTracer), Effect.withTracerEnabled(true)),
+);
+```
+
+Every Lando span under that program parents to `host.request`. Your tracer sees `LandoRuntime.open`, `LandoRuntime.run`, planner phases, lifecycle steps, and provider calls as one tree under your own span.
+
+## What Lando never overrides
+
+`openLandoRuntime` and `makeLandoRuntime` read these from the context you give them and leave them alone:
+
+| Context value | What it receives |
+| --- | --- |
+| `Tracer` | Every Lando span, parented to your current span. |
+| `References.CurrentLoggers` | Lando's structured logs. |
+| `References.MinimumLogLevel` | Your floor. Lando does not raise or lower it. |
+| `ErrorReporter` | Defects from operation boundaries. |
+
+The CLI shell installs its own tracer toggle, log level, and reporter. The library shell installs none of them. With nothing provided, spans go to Effect's default tracer and no further, no log lines print, and no reporter is called. If your host disables `References.TracerEnabled`, Lando respects that too.
+
+## Spans parent to your span
+
+Spans from `runtime.run(effect)` and every `App` handle method (`start`, `info`, `stop`, and friends) pick up the current span from the fiber. Wrap your call in `Effect.withSpan` and Lando's tree hangs under it. No special option, no context plumbing: Effect's own parent-span propagation does the work.
+
+Lando's span names follow `<Owner>.<method>`: `LandoRuntime.run`, `AppPlanner.plan`, `RuntimeProvider.bringUp`. Attributes carry ids and redacted inputs, never secrets.
+
+## Defects reach your reporter
+
+Lando wraps operation boundaries in `Effect.withErrorReporting`. That reports defects only: a thrown exception, an unexpected rejection, a bug. Tagged failures (`LandofileNotFoundError`, `ProviderUnavailableError`, and the rest) are the typed error channel and stay there for you to match on. They never hit the reporter.
+
+Provide an `ErrorReporter` when you want Lando's bugs in your error tracker alongside your own.
+
+## Logs
+
+Lando logs through Effect's logger. Add a logger to `References.CurrentLoggers` and set `References.MinimumLogLevel` to the floor you want. The library default is silent, so nothing prints until you ask.
+
+<Guide>
+  <Scenario id="host-tracer-parents-lando-spans">
+    <Step name="trace-runtime-run">
+      <Run
+        runtime="library"
+        code={`const { Option, Tracer } = yield* Effect.promise(() => import("effect"));
+const native = yield* Effect.tracer;
+const recorded: Array<ReturnType<typeof native.span>> = [];
+const hostTracer = Tracer.make({
+  span(options) {
+    const span = native.span(options);
+    recorded.push(span);
+    return span;
+  },
+});
+
+const value = yield* LandoCore.openLandoRuntime({
+  cwd: context.testDir,
+  plugins: { policy: "bundled-only" },
+}).pipe(
+  Effect.flatMap((runtime) => runtime.run(Effect.succeed("traced"))),
+  Effect.withSpan("host.request"),
+  Effect.withTracer(hostTracer),
+  Effect.withTracerEnabled(true),
+);
+
+expect(value).toBe("traced");
+const landoSpan = recorded.find((span) => span.name === "LandoRuntime.run");
+if (landoSpan === undefined) throw new Error("LandoRuntime.run span was not recorded");
+const ancestors: Array<string> = [];
+let cursor = Option.getOrUndefined(landoSpan.parent);
+while (cursor !== undefined && cursor._tag === "Span") {
+  ancestors.push(cursor.name);
+  cursor = Option.getOrUndefined(cursor.parent);
+}
+expect(ancestors).toContain("host.request");`}
+        displayCode={`import { Effect, Option, Tracer } from "effect";
+import { openLandoRuntime } from "@lando/core";
+
+const recorded: Tracer.Span[] = [];
+const hostTracer = Tracer.make({
+  span(options) {
+    const span = Effect.runSync(Effect.tracer).span(options);
+    recorded.push(span);
+    return span;
+  },
+});
+
+const program = openLandoRuntime({ cwd: process.cwd() }).pipe(
+  Effect.flatMap((runtime) => runtime.run(Effect.succeed("traced"))),
+  Effect.withSpan("host.request"),
+);
+
+await Effect.runPromise(
+  Effect.scoped(program).pipe(Effect.withTracer(hostTracer), Effect.withTracerEnabled(true)),
+);
+
+const landoSpan = recorded.find((span) => span.name === "LandoRuntime.run");
+console.log(Option.map(landoSpan!.parent, (parent) => parent._tag === "Span" && parent.name));`}
+      />
+    </Step>
+  </Scenario>
+</Guide>
+
+Want the runtime itself? Start with [Embedding the Lando runtime](./embedding-runtime.mdx). Running the CLI instead? See [Trace a slow command](../cli/trace-a-command.mdx) and [Export traces](../cli/export-traces.mdx).

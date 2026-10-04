@@ -18,6 +18,8 @@ import {
   encodeStreamStdoutFrame,
 } from "@lando/sdk/command-result";
 import { JqExpressionError } from "@lando/sdk/errors";
+import type { CommandTrace } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
@@ -44,6 +46,10 @@ export interface MachineResultEmitterDeps<A> {
   readonly jqExpression?: string;
   /** Envelope serialization for this run. Frames are always JSON. */
   readonly resultFormat?: CommandResultEnvelopeFormat;
+  readonly trace?: Effect.Effect<CommandTrace | undefined>;
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+  readonly extraRedactionTokens?: ReadonlyArray<string>;
+  readonly onRedactor?: (redactor: Redactor) => void;
 }
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
@@ -81,10 +87,12 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
   });
   const jsonRedactor = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string> = []) {
     const redaction = yield* RedactionService;
-    return yield* redaction.forProfile("secrets", {
-      sourceEnv: process.env,
-      redactionTokens,
+    const redactor = yield* redaction.forProfile("secrets", {
+      sourceEnv: deps.sourceEnv ?? process.env,
+      redactionTokens: [...(deps.extraRedactionTokens ?? []), ...redactionTokens],
     });
+    deps.onRedactor?.(redactor);
+    return redactor;
   });
   const emitJsonResult = Effect.fnUntraced(function* (
     outcome: CommandResultOutcome,
@@ -92,12 +100,14 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
   ) {
     const redactor = yield* jsonRedactor(redactionTokens);
     const warnings = yield* commandWarnings.list;
+    const trace = deps.trace === undefined ? undefined : yield* deps.trace;
     const line = yield* encodeCommandResult({
       command,
       resultSchema,
       outcome,
       redactor,
       warnings,
+      ...(trace === undefined ? {} : { trace }),
       format: envelopeFormat(outcome),
       ...projection,
     });
@@ -109,12 +119,14 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
   ) {
     const redactor = yield* jsonRedactor(redactionTokens);
     const warnings = yield* commandWarnings.list;
+    const trace = deps.trace === undefined ? undefined : yield* deps.trace;
     const args = {
       command,
       resultSchema,
       outcome,
       redactor,
       warnings,
+      ...(trace === undefined ? {} : { trace }),
       format: envelopeFormat(outcome),
       ...projection,
     };

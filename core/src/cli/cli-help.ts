@@ -11,7 +11,7 @@ const UNIVERSAL_FLAGS = new Set(["format", "json", "jq"]);
 const globalFlagsFooter = (command: { readonly resultFormats?: ReadonlyArray<OptInResultFormat> }): string =>
   `Global flags (--format (${commandResultFormats(command).join(
     ", ",
-  )}), --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.`;
+  )}), --json [fields], --jq, --renderer, --verbose, --log-level, --debug, --trace) work on every command.`;
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }

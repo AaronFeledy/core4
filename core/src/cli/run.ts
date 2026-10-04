@@ -74,6 +74,7 @@ import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveToolingRoute, toolingHelpRequested } from "./tooling-router";
+import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -243,6 +244,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       passthroughAliasResolution.success._tag === "not-tooling");
 
   let argv: ReadonlyArray<string> = rawArgv;
+  setActiveTrace(undefined);
   if (!isBunOrXPassthrough) {
     argv = normalizeCompiledScratchRunArgvForUniversalFlags(normalizeCompiledCommandArgv(rawArgv));
     const isProtocolStdoutCommand =
@@ -253,6 +255,13 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         passthroughAliasResolution.success.commandId === "meta:mcp");
     try {
       const configGlobals = await readConfigCliGlobals();
+      const trace = resolveTrace({
+        argv,
+        env: process.env,
+        ...(configGlobals.tracing === undefined ? {} : { config: configGlobals.tracing }),
+      });
+      argv = trace.remainingArgv;
+      setActiveTrace(trace);
       const logLevelResolution = resolveLogLevel({
         argv,
         env: process.env,

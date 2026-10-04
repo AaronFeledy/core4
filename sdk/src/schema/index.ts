@@ -110,6 +110,7 @@ export * from "./landofile-authoring.ts";
 export * from "./landofile-reference.ts";
 export * from "./log-level.ts";
 export * from "./log-source.ts";
+export * from "./command-trace.ts";
 export * from "./machine-output.ts";
 export * from "./host-proxy.ts";
 export * from "./managed-file.ts";

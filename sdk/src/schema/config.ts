@@ -170,6 +170,31 @@ export const AgentEnvConfig = Schema.Struct({
 export type AgentEnvConfig = typeof AgentEnvConfig.Type;
 
 /**
+ * Optional OTLP export settings under global `tracing:`.
+ * Endpoint and headers may also come from OTEL_EXPORTER_OTLP_* env vars.
+ */
+export const TracingConfig = Schema.Struct({
+  otlp: Schema.optionalKey(
+    Schema.Struct({
+      endpoint: Schema.optionalKey(Schema.String).annotate({
+        description: "OTLP/HTTP base URL. Lando appends `/v1/traces` (global tracing.otlp.endpoint).",
+      }),
+      headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)).annotate({
+        description:
+          "Extra OTLP request headers for auth tokens and tenant ids (global tracing.otlp.headers).",
+      }),
+    }),
+  ).annotate({
+    description: "OTLP exporter settings for command traces (global tracing.otlp).",
+  }),
+}).annotate({
+  identifier: "TracingConfig",
+  title: "Tracing Config",
+  description: "Global tracing export policy (global tracing).",
+});
+export type TracingConfig = typeof TracingConfig.Type;
+
+/**
  * Global configuration resolved at the `global` bootstrap level.
  *
  * `renderer` selects the CLI output mode (`lando`/`json`/`plain`/`verbose`)
@@ -290,6 +315,9 @@ export const GlobalConfig = Schema.Struct({
     }),
   ).annotate({
     description: "Global event delivery policy (global events).",
+  }),
+  tracing: Schema.optionalKey(TracingConfig).annotate({
+    description: "Global tracing export policy (global tracing).",
   }),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

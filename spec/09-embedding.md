@@ -109,6 +109,15 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 
 Hosts MAY register programmatic event subscribers, but manifest-declared subscribers are the recommended extension path. `EventService` itself is not replaceable.
 
+#### 16.6.1 Observability hooks
+
+`openLandoRuntime` and `makeLandoRuntime` MUST NOT override a host-provided `Tracer`, `References.CurrentLoggers`, `References.MinimumLogLevel`, `References.TracerEnabled`, or `ErrorReporter`. Lando reads them from the host context and leaves them in place.
+
+- Spans from `runtime.run` and every `App` handle method parent to the host's current span through Effect's parent-span propagation; no option is needed.
+- Operation boundaries use `Effect.withErrorReporting`, so defects (never tagged failures) reach the host `ErrorReporter`. Tagged failures stay in the typed error channel.
+- With no host-provided values the library is silent: no log output, no reporter calls, and spans go no further than Effect's default tracer.
+- The CLI shell installs its own tracer toggle (§8.11.6), log level, and an `ErrorReporter` that feeds the existing bug-report rendering, so both shells share one defect path.
+
 ### 16.7 Programmatic CLI invocation
 
 App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable command-shaped surface for hosts needing canonical ids, argv policy, schema-validated command input, renderer-independent typed results, or the same native dispatch behavior as the binary (§8.4.1).
