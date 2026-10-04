@@ -23,13 +23,13 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as FileStateStore from "@lando/state-store/service";
 import { DateTime, Effect, Layer } from "effect";
 import { appBuildKeyForStep, buildKeyForService } from "../../src/services/build-key.ts";
-import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
+import * as AppBuildOrchestrator from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+import * as AppEventService from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const provider = {
@@ -176,18 +176,18 @@ test("does not skip the provider when a version-1 persisted build result has the
         open: <A, I>(spec: StateBucketSpec<A, I>) =>
           live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),
       })),
-    ).pipe(Layer.provide(StateStoreLive.pipe(Layer.provide(ProcessRunnerLive))));
+    ).pipe(Layer.provide(FileStateStore.layer.pipe(Layer.provide(BunProcessRunner.layer))));
     const dependencies = Layer.mergeAll(
       paths,
       store,
-      EventServiceLive,
+      AppEventService.layer,
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([provider.id]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(runtime),
       }),
     );
-    const layer = Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
+    const layer = Layer.mergeAll(dependencies, AppBuildOrchestrator.layer.pipe(Layer.provide(dependencies)));
     const plan: AppPlan = {
       id: AppId.make("scratch-canonical"),
       name: "scratch-canonical",
