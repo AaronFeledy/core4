@@ -105,6 +105,9 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | EFFECT-V4 | US-663 | Plugin HTTP requests through Effect's `HttpClient` with Lando network trust | `docs/guides/plugins/http-requests.mdx` | Shipped |
 | EFFECT-V4 | US-668 | Validate a Landofile in your editor through the published schema | `docs/guides/landofile/editor-validation.mdx` | Shipped |
 | EFFECT-V4 | US-668 | Standard Schema views of the Landofile and config contracts | `docs/guides/schemas/standard-schema.mdx` | Shipped |
+| EFFECT-V4 | US-669 | `--trace` timing tree and the `trace` JSON envelope field | `docs/guides/cli/trace-a-command.mdx` | Shipped |
+| EFFECT-V4 | US-669 | Opt-in OTLP trace export | `docs/guides/cli/export-traces.mdx` | Shipped |
+| EFFECT-V4 | US-669 | Host-provided tracer, loggers, and error reporter for embedding hosts | `docs/guides/library/embedding-observability.mdx` | Shipped |
 | PRD-11 | US-276, US-277, US-278, US-279 | Linux-x64 binary-shipping acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Shipped |
 | PRD-12 | US-280, US-281, US-283 | Bundled default terminal renderer visual language | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
 | PRD-12 | US-282 | OpenTUI-backed interactive prompts | `docs/guides/cli/interactive-prompts.mdx` | Shipped |

@@ -102,6 +102,8 @@ export const sidebar = [
           { label: "Everyday commands", slug: "guides/cli/everyday-commands" },
           { label: "Refresh a stale app cache", slug: "guides/cli/cache-refresh" },
           { label: "See more CLI output", slug: "guides/cli/verbosity-and-debug" },
+          { label: "Trace a slow command", slug: "guides/cli/trace-a-command" },
+          { label: "Export traces", slug: "guides/cli/export-traces" },
           { label: "Start a scratch app from a recipe", slug: "guides/scratch/scratch-from-recipe" },
           { label: "Run a command in a disposable scratch", slug: "guides/scratch/disposable-tool-runner" },
           { label: "Fork the current app into a scratch", slug: "guides/scratch/fork-existing-app" },

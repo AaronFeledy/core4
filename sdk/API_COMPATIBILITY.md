@@ -199,6 +199,7 @@
   arguments remain separate. `ToolingEngine.run` additively exposes `ToolingCompileError` when host
   shell positional references cannot be bound safely.
 - `@lando/sdk/command-result` additively exports the canonical Effect-based command-result and stream-frame encoders, their option/outcome contracts, envelope builder, and identity redactor. The helpers serialize the existing `CommandResultEnvelope` and `StreamFrame` schemas; no schema registry membership changes.
+- `@lando/sdk/schema` additively exports `CommandTraceSpan`, `CommandTrace`, and `TracingConfig`. `CommandResultEnvelope` additively accepts optional `trace: CommandTrace` for machine-output timing trees when tracing is enabled. `@lando/sdk/command-result` `EncodeCommandResultOptions` additively accepts optional `trace`; success, failure, stream result frames, and encode fallbacks carry it through the same envelope seam. `GlobalConfig` and `GlobalConfigView` additively accept optional `tracing: TracingConfig` (`otlp.endpoint`, `otlp.headers`) for OTLP export configuration.
 - The type-only `InfoAppError`, `ExecAppError`, and `ToolingError` unions additively include
   `ComposeKeyRejectedError | LandofileLoadExpressionError`, matching failures reachable while
   reloading or planning through those bound App-handle methods. `ShareAppError` additively includes
@@ -484,6 +485,8 @@ It registers no JSON Schema.
 - `LandofileEvents` (named lifecycle fields plus a string index signature for pre-task and post-task brackets; name validation follows tooling resolution)
 - `CertificatePlan`
 - `CommandResultEnvelope`
+- `CommandTrace`
+- `CommandTraceSpan`
 - `CommandResultFormat`
 - `CommandAliasesShape`
 - `CommandSpec`
@@ -704,6 +707,7 @@ It registers no JSON Schema.
 - `TabProps`
 - `TabsProps`
 - `TelemetryConfig`
+- `TracingConfig`
 - `TemplateRenderContext`
 - `ToolArtifactEntry`
 - `ToolManifest`

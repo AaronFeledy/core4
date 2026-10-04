@@ -144,6 +144,7 @@ import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
 import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
+import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -157,6 +158,7 @@ import {
   NetworkConfig,
   NetworkProxyConfig,
   TelemetryConfig,
+  TracingConfig,
 } from "./config.ts";
 import {
   ArchiveFormat,
@@ -788,7 +790,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   CommandResultFormat,
   CommandWarning,
   CommandResultEnvelope,
+  CommandTraceSpan,
+  CommandTrace,
   StreamFrame,
+  TracingConfig,
   PreHttpCallEvent,
   PostHttpCallEvent,
 });
@@ -1237,7 +1242,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   CommandResultFormat: "Public Lando schema contract for Command Result Format.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
+  CommandTraceSpan: "One finished span in a command-invocation timing tree.",
+  CommandTrace: "Command-invocation timing tree for machine-output and display.",
   StreamFrame: "Public Lando schema contract for Stream Frame.",
+  TracingConfig: "Global tracing export policy (global tracing).",
   VolumeLocator: "Stable provider locator for one native volume before or after creation.",
   PreHttpCallEvent: "Public Lando schema contract for Pre Http Call Event.",
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",

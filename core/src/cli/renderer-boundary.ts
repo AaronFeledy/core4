@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Exit, Layer, References, Result, Schema, Tracer } from "effect";
+import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Result, Schema, Tracer } from "effect";
 
 import { JqExpressionError } from "@lando/sdk/errors";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
@@ -18,6 +18,8 @@ import {
   runCommandLifecycle,
   withCommandEventService,
 } from "./command-lifecycle";
+import { type CommandTraceCapture, formatCommandTrace } from "./command-tracer";
+import { withCommandTracing } from "./command-tracing";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
@@ -25,6 +27,7 @@ import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
+import { type TraceSelection, activeTrace } from "./trace-selection";
 
 export {
   type ResolveCliDeprecationWarningsOptions,
@@ -103,6 +106,11 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
    * `References.TracerEnabled` false and records nothing.
    */
   readonly tracer?: Tracer.Tracer;
+  readonly trace?: TraceSelection;
+  readonly traceCapture?: CommandTraceCapture;
+  readonly traceDisplay?: boolean;
+  readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
+  readonly extraRedactionTokens?: ReadonlyArray<string>;
 }
 
 const EmptyCommandResultSchema = Schema.Struct({});
@@ -114,8 +122,8 @@ const EmptyCommandResultSchema = Schema.Struct({});
 const withStageParent = <A, E, R>(effect: Effect.Effect<A, E, R>, span: Tracer.Span) =>
   Effect.provideService(effect, Tracer.ParentSpan, span);
 
-/** Ends a lifecycle stage span once; later calls are no-ops. */
-const makeStage = (name: "init" | "run" | "render") => {
+/** Ends a lifecycle stage span. Render may be revised after a formatter failure; other stages keep the first exit. */
+const makeStage = (name: "init" | "run" | "render", revisable = false) => {
   let span: Tracer.Span | undefined;
   let ended = false;
   const start = Effect.suspend(() =>
@@ -128,7 +136,9 @@ const makeStage = (name: "init" | "run" | "render") => {
   );
   const end = (exit: Exit.Exit<unknown, unknown>) =>
     Effect.suspend(() => {
-      if (span === undefined || ended) return Effect.void;
+      // Render can be closed once to fill the envelope, then again after a
+      // fallible formatter (jq) fails. Other stages stay first-exit-wins.
+      if (span === undefined || (ended && !revisable)) return Effect.void;
       ended = true;
       const current = span;
       return Effect.map(Clock.currentTimeNanos, (now) => current.end(now, exit));
@@ -151,6 +161,27 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
+  const selection = options.trace ?? activeTrace();
+  if (options.tracer === undefined && selection?.enabled === true) {
+    return withCommandTracing(
+      selection,
+      (capture, redactionTokens) =>
+        runWithRendererHandling(effect, {
+          ...options,
+          tracer: capture.tracer,
+          traceCapture: capture,
+          traceDisplay: selection.display,
+          sourceEnv: selection.env,
+          extraRedactionTokens: redactionTokens,
+        }),
+      options.invocation?.flags,
+    );
+  }
+  const sourceEnv = options.sourceEnv ?? process.env;
+  const extraTokens = options.extraRedactionTokens ?? [];
+  // Installed so command defects reach ErrorReporter. Display stays on formatError,
+  // which is the bug-report renderer for pre-command failures.
+  const reporter = ErrorReporter.make(() => undefined);
   const { landoRenderer } = await import("./renderer/bundled-renderers");
   const io = options.io ?? createStdioRendererIO();
   let brokenPipe = false;
@@ -164,13 +195,15 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     return Effect.sync(unsubscribe);
   });
   // Subscribe before command writes; raceFirst waits for interrupted scope finalizers.
-  const commandEffect = Effect.raceFirst(brokenPipeSignal, effect);
+  const commandEffect = Effect.raceFirst(brokenPipeSignal, effect).pipe(
+    Effect.withErrorReporting({ defectsOnly: true }),
+  );
   const renderContext: RenderContext = {
     mode: options.rendererMode,
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
     columns: io.terminalColumns,
     isTTY: io.isTTY === true,
-    env: process.env,
+    env: sourceEnv,
   };
   const rendererLayer = RendererOutput.layerServiceForMode(options.rendererMode, landoRenderer, io);
   const envelopeFormat = isEnvelopeResultFormat(renderContext.format);
@@ -200,7 +233,16 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       ? undefined
       : { ...options.invocation, invocationId: options.invocation.invocationId ?? newInvocationId() };
   const initStage = makeStage("init");
-  const renderStage = makeStage("render");
+  const renderStage = makeStage("render", true);
+  let resultExit: Exit.Exit<unknown, unknown> = Exit.void;
+  const capture = options.traceCapture;
+  const finishTrace =
+    capture === undefined
+      ? undefined
+      : Effect.gen(function* () {
+          yield* renderStage.end(resultExit);
+          return yield* capture.finish(resultExit);
+        });
   const runCommand = Effect.useSpan("CommandLifecycle.run", (span) => withStageParent(commandEffect, span));
   const program = Effect.gen(function* () {
     const initSpan = yield* initStage.start;
@@ -210,6 +252,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         command,
         resultSchema,
         commandWarnings,
+        sourceEnv,
+        extraRedactionTokens: extraTokens,
+        ...(capture === undefined ? {} : { onRedactor: capture.setRedactor }),
+        ...(finishTrace === undefined ? {} : { trace: finishTrace }),
         ...(options.streamFrames === undefined ? {} : { streamFrames: options.streamFrames }),
         ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
         ...(options.projectResultKeys === undefined ? {} : { projectResultKeys: options.projectResultKeys }),
@@ -234,6 +280,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         setExitCode(failure._tag === "Some" ? (options.failureExitCode?.(failure.value) ?? 1) : 1);
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
+      resultExit = Exit.failCause(cause);
       const error = yield* renderFailureEvidence(taggedFailureFromCause(cause));
       if (envelopeFormat) {
         const outcome = {
@@ -257,7 +304,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       let message = options.formatError(error);
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (redaction._tag === "Some") {
-        const redactor = yield* redaction.value.forProfile("secrets", { sourceEnv: process.env });
+        const redactor = yield* redaction.value.forProfile("secrets", {
+          sourceEnv,
+          redactionTokens: extraTokens,
+        });
         message = redactor.redactString(message);
       }
       if (isDecoratedContext(renderContext)) message = dimBugReportDetails(message);
@@ -280,6 +330,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         // Terminal subscribers publish to the command-scoped renderer before its scope closes.
         yield* Effect.yieldNow;
       }
+      resultExit = commandExit;
       const renderSpan = yield* renderStage.start;
       return yield* withStageParent(renderCommandExit(commandExit), renderSpan);
     });
@@ -356,6 +407,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
           local: true,
         }),
+        Effect.withErrorReporting({ defectsOnly: true }),
       ),
     );
     yield* initStage.end(commandOutcome);
@@ -384,10 +436,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         const redactor =
           redaction._tag === "Some"
             ? yield* redaction.value.forProfile("secrets", {
-                sourceEnv: process.env,
-                redactionTokens: options.redactionTokens?.(value) ?? [],
+                sourceEnv,
+                redactionTokens: [...extraTokens, ...(options.redactionTokens?.(value) ?? [])],
               })
             : undefined;
+        if (redactor !== undefined) capture?.setRedactor(redactor);
         // Redact command/result fields before the formatter paints SGR. Rewriting
         // an already-styled string can splice `[redacted]` into CSI parameters.
         const displayValue = redactor === undefined ? value : (redactor.redactValue(value) as A);
@@ -416,11 +469,22 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     { root: true, attributes: rootAttributes },
     (span) =>
       withStageParent(
-        program.pipe(Effect.onExit((exit) => Effect.andThen(initStage.end(exit), renderStage.end(exit)))),
+        program.pipe(
+          Effect.onExit((exit) =>
+            Effect.gen(function* () {
+              yield* initStage.end(exit);
+              yield* renderStage.end(resultExit);
+              if (capture !== undefined) yield* capture.finish(Exit.isFailure(exit) ? exit : resultExit);
+            }),
+          ),
+        ),
         span,
       ),
   );
-  const diagnosedProgram = tracedProgram.pipe(Effect.provide(failureDiagnosticsLayer));
+  const diagnosedProgram = tracedProgram.pipe(
+    Effect.withErrorReporting({ defectsOnly: true }),
+    Effect.provide(Layer.merge(failureDiagnosticsLayer, ErrorReporter.layer([reporter]))),
+  );
   const exit = await Effect.runPromiseExit(
     options.tracer === undefined
       ? diagnosedProgram.pipe(Effect.provideService(References.TracerEnabled, false))
@@ -430,4 +494,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         ),
   );
   if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+  if (options.traceCapture !== undefined && options.traceDisplay === true && !envelopeFormat && !brokenPipe) {
+    await Effect.runPromise(
+      writeDiagnosticLine(formatCommandTrace(options.traceCapture.snapshot())).pipe(
+        Effect.provide(rendererLayer),
+      ),
+    );
+  }
 };

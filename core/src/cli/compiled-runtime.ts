@@ -1,4 +1,4 @@
-import type { Effect, Layer, Schema } from "effect";
+import type { Effect, Layer, Schema, Tracer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
@@ -24,6 +24,7 @@ import { makeLandoRuntime } from "../runtime/layer";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import type { RendererIO } from "@lando/renderer/io";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { withCommandTracing } from "./command-tracing";
 import { landoSpecForId } from "./compiled-argv";
 import {
   type CompiledCommandInput,
@@ -38,6 +39,7 @@ import {
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
 import { EmptyResultSchema } from "./spec/command-base";
+import { activeTrace } from "./trace-selection";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
 
@@ -115,6 +117,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly preCommand?: boolean;
     readonly io?: RendererIO;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
+    readonly tracer?: Tracer.Tracer;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -167,7 +170,24 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.io === undefined ? {} : { io: options.io }),
     render,
     formatError: (error: unknown) => commandErrorMessage(error),
+    ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
+  const selection = activeTrace();
+  if (options.tracer === undefined && selection?.enabled === true) {
+    return withCommandTracing(
+      selection,
+      (capture, redactionTokens) =>
+        runWithRendererHandling(operation, {
+          ...rendererOptions,
+          tracer: capture.tracer,
+          traceCapture: capture,
+          traceDisplay: selection.display,
+          sourceEnv: selection.env,
+          extraRedactionTokens: redactionTokens,
+        }),
+      invocation?.flags,
+    );
+  }
   return runWithRendererHandling(operation, rendererOptions);
 };
 

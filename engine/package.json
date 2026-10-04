@@ -123,6 +123,7 @@
     "./runtime/host-maintenance": "./src/runtime/host-maintenance.ts",
     "./runtime/interrupt": "./src/runtime/interrupt.ts",
     "./runtime/managed-provider-machine": "./src/runtime/managed-provider-machine.ts",
+    "./runtime/observability": "./src/runtime/observability.ts",
     "./runtime/runtime-layer-factory": "./src/runtime/runtime-layer-factory.ts",
     "./runtime/runtime-options": "./src/runtime/runtime-options.ts",
     "./scratch-app/registry": "./src/scratch-app/registry.ts",

@@ -406,7 +406,10 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   CommandResultFormat: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandWarning: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandResultEnvelope: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  CommandTraceSpan: "sdk/test/schema/command-trace.test.ts",
+  CommandTrace: "sdk/test/schema/command-trace.test.ts",
   StreamFrame: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  TracingConfig: "sdk/test/schema/command-trace.test.ts",
   PreHttpCallEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PostHttpCallEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DotnetServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
@@ -803,6 +806,34 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   PortNumber: 8080,
   InternalEndpoint: { _tag: "internal", protocol: "http", port: 8080 },
   PublishedEndpoint: { _tag: "published", protocol: "http", port: 8080, publication: {} },
+  CommandTraceSpan: {
+    id: "root",
+    name: "lando meta:config",
+    startOffsetMs: 0,
+    durationMs: 1,
+    status: "ok",
+    attributes: { "lando.command.id": "meta:config" },
+  },
+  CommandTrace: {
+    totalDurationMs: 1,
+    spans: [
+      {
+        id: "root",
+        name: "lando meta:config",
+        startOffsetMs: 0,
+        durationMs: 1,
+        status: "ok",
+        attributes: { "lando.command.id": "meta:config" },
+      },
+    ],
+    droppedSpans: 0,
+  },
+  TracingConfig: {
+    otlp: {
+      endpoint: "http://localhost:4318",
+      headers: { Authorization: "Bearer token" },
+    },
+  },
 };
 
 export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknown => {

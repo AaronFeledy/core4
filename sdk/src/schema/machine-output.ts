@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { CommandTrace } from "./command-trace.ts";
 import { DeprecationUse } from "./deprecation.ts";
 import { ValidationIssue } from "./validation-issue.ts";
 
@@ -49,6 +50,9 @@ export const CommandResultEnvelope = Schema.Struct({
   error: Schema.optionalKey(TaggedErrorJson),
   warnings: Schema.Array(CommandWarning),
   deprecations: Schema.Array(DeprecationUse),
+  trace: Schema.optionalKey(CommandTrace).annotate({
+    description: "Optional command-invocation timing tree when tracing is enabled.",
+  }),
 });
 export type CommandResultEnvelope = typeof CommandResultEnvelope.Type;
 

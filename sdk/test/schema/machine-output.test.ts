@@ -92,6 +92,35 @@ describe("CommandResultEnvelope", () => {
     expect(Schema.encodeSync(CommandResultEnvelope)(decoded)).toEqual(wire);
   });
 
+  test("round-trips an optional command trace on the envelope", () => {
+    const wire = {
+      apiVersion: "v4" as const,
+      command: "app:info",
+      ok: true,
+      result: {},
+      warnings: [],
+      deprecations: [],
+      trace: {
+        totalDurationMs: 5,
+        spans: [
+          {
+            id: "root",
+            name: "lando app:info",
+            startOffsetMs: 0,
+            durationMs: 5,
+            status: "ok" as const,
+            attributes: { "lando.command.id": "app:info" },
+          },
+        ],
+        droppedSpans: 0,
+      },
+    };
+    const decoded = Schema.decodeUnknownSync(CommandResultEnvelope)(wire);
+    expect(decoded.trace?.totalDurationMs).toBe(5);
+    expect(decoded.trace?.spans[0]?.name).toBe("lando app:info");
+    expect(Schema.encodeSync(CommandResultEnvelope)(decoded)).toEqual(wire);
+  });
+
   test("round-trips a failing result envelope carrying a tagged error", () => {
     const wire = {
       apiVersion: "v4" as const,

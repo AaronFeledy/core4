@@ -21,6 +21,7 @@ import {
 } from "@lando/engine/landofile/app-resolution";
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { runtimeServiceContext } from "@lando/engine/runtime/observability";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 
 type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd | StateStore;
@@ -235,7 +236,7 @@ const resolveTarget = (
 export const buildAppHandle = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
 ): Effect.fn.Return<App, never, AppHandleRuntimeServices | Scope.Scope> {
-  const runtime = yield* Effect.context<AppHandleRuntimeServices>();
+  const runtime = runtimeServiceContext(yield* Effect.context<AppHandleRuntimeServices>());
   const runtimeScope = yield* Effect.scope;
   const handleScope = yield* Scope.fork(runtimeScope, "sequential");
   const lifecycle = yield* makeAppLifecycle(handleScope);

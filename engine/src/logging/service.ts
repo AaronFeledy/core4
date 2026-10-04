@@ -26,6 +26,7 @@ import { RedactionService } from "@lando/redaction/service";
 import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
+import { withLandoLogDefaults } from "../runtime/observability.ts";
 import {
   type DiagnosticLineWriter,
   type LoggerMode,
@@ -117,7 +118,7 @@ const loggerServiceLayer = (): Layer.Layer<Logger> => Layer.succeed(Logger, make
 
 const noopWriteLine: DiagnosticLineWriter = () => {};
 
-export const layer = (options: LoggerLayerOptions = {}): Layer.Layer<Logger> => {
+const defaultLayer = (options: LoggerLayerOptions): Layer.Layer<Logger> => {
   const logLevel = options.logLevel;
   if (logLevel === "none" || (logLevel === undefined && options.mode === "silent")) {
     return Layer.mergeAll(loggerServiceLayer(), EffectLogger.layer([]));
@@ -141,3 +142,16 @@ export const layer = (options: LoggerLayerOptions = {}): Layer.Layer<Logger> => 
     Layer.succeed(References.MinimumLogLevel, toEffectLogLevel(logLevel)),
   );
 };
+
+/**
+ * Lando's logging defaults, applied only where the embedding host has not
+ * provided its own `References.CurrentLoggers` / `References.MinimumLogLevel`.
+ * An explicit `logLevel`/`mode` option tunes those defaults; it never replaces
+ * a host-provided logger or level.
+ */
+export const layer = (options: LoggerLayerOptions = {}): Layer.Layer<Logger> =>
+  Layer.effectContext(
+    Effect.contextWith((host: Context.Context<never>) =>
+      Layer.build(defaultLayer(options)).pipe(Effect.map((defaults) => withLandoLogDefaults(host, defaults))),
+    ),
+  );

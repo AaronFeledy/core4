@@ -1,6 +1,6 @@
 import { Effect, Result, Schema } from "effect";
 
-import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
+import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, StreamFrame, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { SqlConfirmRequiredError } from "../errors/sql.ts";
@@ -25,6 +25,8 @@ export interface EncodeCommandResultOptions {
   readonly warnings?: ReadonlyArray<CommandWarning>;
   readonly deprecations?: ReadonlyArray<DeprecationUse>;
   readonly projectResultKeys?: readonly string[];
+  /** Optional command-invocation timing tree when tracing is enabled. */
+  readonly trace?: CommandTrace;
   /** Envelope serialization. Defaults to `json`; the frame encoders ignore it. */
   readonly format?: CommandResultEnvelopeFormat;
 }
@@ -113,6 +115,7 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
     command: options.command,
     warnings: [...(options.warnings ?? [])],
     deprecations: [...(options.deprecations ?? [])],
+    ...(options.trace === undefined ? {} : { trace: options.trace }),
   };
   const envelope =
     options.outcome._tag === "success"
@@ -133,13 +136,14 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
   return Schema.encodeSync(CommandResultEnvelope)(envelope as never);
 });
 
-const fallbackEnvelope = (command: string): unknown => ({
+const fallbackEnvelope = (command: string, trace?: CommandTrace): unknown => ({
   apiVersion: "v4",
   command,
   ok: false,
   error: { _tag: "CommandResultEncodeError", message: "Failed to encode command result." },
   warnings: [],
   deprecations: [],
+  ...(trace === undefined ? {} : { trace }),
 });
 
 const encodeJsonLine = (value: unknown, redactor: Redactor): string =>
@@ -178,7 +182,11 @@ export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect
       isJsonProjectionError(error)
         ? Effect.die(error)
         : Effect.succeed(
-            encodeEnvelopeLine(fallbackEnvelope(options.command), options.redactor, options.format),
+            encodeEnvelopeLine(
+              fallbackEnvelope(options.command, options.trace),
+              options.redactor,
+              options.format,
+            ),
           ),
     ),
   );
@@ -192,7 +200,9 @@ export const buildCommandResultEnvelope = (
       isJsonProjectionError(error)
         ? Effect.die(error)
         : Effect.succeed(
-            Schema.decodeSync(CommandResultEnvelope)(fallbackEnvelope(options.command) as never),
+            Schema.decodeSync(CommandResultEnvelope)(
+              fallbackEnvelope(options.command, options.trace) as never,
+            ),
           ),
     ),
   );
@@ -224,7 +234,7 @@ export const encodeStreamResultFrame = (options: EncodeCommandResultOptions): Ef
       isJsonProjectionError(error)
         ? Effect.die(error)
         : encodeStreamFrame(
-            { _tag: "result", envelope: fallbackEnvelope(options.command) },
+            { _tag: "result", envelope: fallbackEnvelope(options.command, options.trace) },
             options.redactor,
           ),
     ),

@@ -166,6 +166,9 @@ describe("@lando/sdk package exports", () => {
     expect(schema.CommandResultFormat).toBeDefined();
     expect(schema.CommandWarning).toBeDefined();
     expect(schema.CommandResultEnvelope).toBeDefined();
+    expect(schema.CommandTrace).toBeDefined();
+    expect(schema.CommandTraceSpan).toBeDefined();
+    expect(schema.TracingConfig).toBeDefined();
     expect(schema.StreamFrame).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
