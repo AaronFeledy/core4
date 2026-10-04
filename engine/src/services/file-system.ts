@@ -152,7 +152,7 @@ const remove = async (path: string): Promise<void> => {
   }
 };
 
-const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
+const fileSystemService: Context.Service.Shape<typeof FileSystem> = FileSystem.of({
   read: (path) => Stream.fromAsyncIterable(readChunks(path), mapFileError(path, `Failed to read ${path}`)),
   readText: (path) =>
     Effect.tryPromise({
@@ -211,6 +211,6 @@ const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
     }),
   readFile: (path) => fileSystemService.readText(path),
   writeFile: (path, content) => fileSystemService.write(path, content),
-};
+});
 
-export const FileSystemLive = Layer.succeed(FileSystem, fileSystemService);
+export const layer = Layer.succeed(FileSystem, fileSystemService);

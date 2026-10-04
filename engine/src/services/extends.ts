@@ -128,58 +128,57 @@ const collisionError = (
  * and chains deeper than {@link MAX_SERVICE_TYPE_EXTENDS_DEPTH} hops with
  * {@link ServiceTypeCollisionError} before any `resolve()` runs.
  */
-export const resolveExtendsChain = (
+export const resolveExtendsChain = Effect.fnUntraced(function* (
   leaf: ServiceType,
   lookup: (id: string) => ServiceType | undefined,
-): Effect.Effect<ReadonlyArray<ServiceType>, ServiceTypeCollisionError> =>
-  Effect.gen(function* () {
-    const descending: Array<ServiceType> = [leaf];
-    const seen = new Set<string>([leaf.id]);
-    let current = leaf;
-    let hops = 0;
-    while (current.extends !== undefined) {
-      hops += 1;
-      const parentId = current.extends;
-      if (hops > MAX_SERVICE_TYPE_EXTENDS_DEPTH) {
-        const chain = [parentId, ...descending.map((entry) => entry.id)];
-        return yield* Effect.fail(
-          collisionError(
-            leaf.id,
-            chain,
-            `Service type ${leaf.id} exceeds the maximum extends depth of ${MAX_SERVICE_TYPE_EXTENDS_DEPTH}.`,
-            `Flatten the inheritance chain so no service type extends more than ${MAX_SERVICE_TYPE_EXTENDS_DEPTH} parents.`,
-          ),
-        );
-      }
-      if (seen.has(parentId)) {
-        const chain = [parentId, ...descending.map((entry) => entry.id)];
-        return yield* Effect.fail(
-          collisionError(
-            leaf.id,
-            chain,
-            `Service type ${leaf.id} has a cyclic extends chain through ${parentId}.`,
-            "Remove the cycle so the inheritance chain terminates at a base service type.",
-          ),
-        );
-      }
-      const parent = lookup(parentId);
-      if (parent === undefined) {
-        const chain = [parentId, ...descending.map((entry) => entry.id)];
-        return yield* Effect.fail(
-          collisionError(
-            leaf.id,
-            chain,
-            `Service type ${leaf.id} extends unregistered parent ${parentId}.`,
-            `Register a service type with id ${parentId} or correct the extends reference.`,
-          ),
-        );
-      }
-      seen.add(parentId);
-      descending.push(parent);
-      current = parent;
+): Effect.fn.Return<ReadonlyArray<ServiceType>, ServiceTypeCollisionError> {
+  const descending: Array<ServiceType> = [leaf];
+  const seen = new Set<string>([leaf.id]);
+  let current = leaf;
+  let hops = 0;
+  while (current.extends !== undefined) {
+    hops += 1;
+    const parentId = current.extends;
+    if (hops > MAX_SERVICE_TYPE_EXTENDS_DEPTH) {
+      const chain = [parentId, ...descending.map((entry) => entry.id)];
+      return yield* Effect.fail(
+        collisionError(
+          leaf.id,
+          chain,
+          `Service type ${leaf.id} exceeds the maximum extends depth of ${MAX_SERVICE_TYPE_EXTENDS_DEPTH}.`,
+          `Flatten the inheritance chain so no service type extends more than ${MAX_SERVICE_TYPE_EXTENDS_DEPTH} parents.`,
+        ),
+      );
     }
-    return descending.reverse();
-  });
+    if (seen.has(parentId)) {
+      const chain = [parentId, ...descending.map((entry) => entry.id)];
+      return yield* Effect.fail(
+        collisionError(
+          leaf.id,
+          chain,
+          `Service type ${leaf.id} has a cyclic extends chain through ${parentId}.`,
+          "Remove the cycle so the inheritance chain terminates at a base service type.",
+        ),
+      );
+    }
+    const parent = lookup(parentId);
+    if (parent === undefined) {
+      const chain = [parentId, ...descending.map((entry) => entry.id)];
+      return yield* Effect.fail(
+        collisionError(
+          leaf.id,
+          chain,
+          `Service type ${leaf.id} extends unregistered parent ${parentId}.`,
+          `Register a service type with id ${parentId} or correct the extends reference.`,
+        ),
+      );
+    }
+    seen.add(parentId);
+    descending.push(parent);
+    current = parent;
+  }
+  return descending.reverse();
+});
 
 const mergeArtifacts = (chain: ReadonlyArray<ServiceType>): Readonly<Record<string, string>> | undefined => {
   let merged: Record<string, string> | undefined;
@@ -223,35 +222,32 @@ const mergeVersions = (chain: ReadonlyArray<ServiceType>): ReadonlyArray<string>
   return ordered.length === 0 ? undefined : ordered;
 };
 
-export const composeExtendedServiceType = (
+export const composeExtendedServiceType = Effect.fn("ServiceType.composeExtended")(function* (
   leaf: ServiceType,
   lookup: (id: string) => ServiceType | undefined,
-): Effect.Effect<ServiceType, ServiceTypeCollisionError> => {
-  if (leaf.extends === undefined) return Effect.succeed(leaf);
-  return Effect.gen(function* () {
-    const chain = yield* resolveExtendsChain(leaf, lookup);
-    const mergedArtifacts = mergeArtifacts(chain);
-    const mergedIdentity = mergeIdentity(chain);
-    const mergedVersions = mergeVersions(chain);
-    const resolve = (input: ServiceTypeInput): ReturnType<ServiceType["resolve"]> =>
-      Effect.gen(function* () {
-        let accumulated: ServiceTypeResolution | undefined = input.parentResolution;
-        for (const type of chain) {
-          const resolution = yield* type.resolve({
-            ...input,
-            ...(accumulated === undefined ? {} : { parentResolution: accumulated }),
-          });
-          accumulated =
-            accumulated === undefined ? resolution : mergeResolutionOverParent(accumulated, resolution);
-        }
-        return accumulated as ServiceTypeResolution;
+): Effect.fn.Return<ServiceType, ServiceTypeCollisionError> {
+  if (leaf.extends === undefined) return leaf;
+  const chain = yield* resolveExtendsChain(leaf, lookup);
+  const mergedArtifacts = mergeArtifacts(chain);
+  const mergedIdentity = mergeIdentity(chain);
+  const mergedVersions = mergeVersions(chain);
+  const resolve = Effect.fn("ServiceType.resolve")(function* (input: ServiceTypeInput) {
+    let accumulated: ServiceTypeResolution | undefined = input.parentResolution;
+    for (const type of chain) {
+      const resolution = yield* type.resolve({
+        ...input,
+        ...(accumulated === undefined ? {} : { parentResolution: accumulated }),
       });
-    return {
-      ...leaf,
-      resolve,
-      ...(mergedArtifacts === undefined ? {} : { artifacts: mergedArtifacts }),
-      ...(mergedIdentity === undefined ? {} : { identity: mergedIdentity }),
-      ...(mergedVersions === undefined ? {} : { versions: mergedVersions }),
-    } satisfies ServiceType;
+      accumulated =
+        accumulated === undefined ? resolution : mergeResolutionOverParent(accumulated, resolution);
+    }
+    return accumulated as ServiceTypeResolution;
   });
-};
+  return {
+    ...leaf,
+    resolve,
+    ...(mergedArtifacts === undefined ? {} : { artifacts: mergedArtifacts }),
+    ...(mergedIdentity === undefined ? {} : { identity: mergedIdentity }),
+    ...(mergedVersions === undefined ? {} : { versions: mergedVersions }),
+  } satisfies ServiceType;
+});

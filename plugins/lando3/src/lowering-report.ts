@@ -25,7 +25,7 @@ export const makeReport =
       kind,
       sourceId: occurrence?.sourceId ?? ConfigTranslateSourceId.make(ctx.fallbackSourceId),
       keyPath: [...keyPath],
-      span: spanOf(occurrence),
+      ...spanOf(occurrence),
       message,
       remediation,
     });

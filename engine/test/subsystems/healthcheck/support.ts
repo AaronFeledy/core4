@@ -1,16 +1,6 @@
 import { expect } from "bun:test";
-import {
-  Cause,
-  Clock,
-  type Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Option,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, Clock, type Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
+import { TestClock } from "effect/testing";
 
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AppId, type HealthcheckPlan, ServiceName } from "@lando/sdk/schema";
@@ -37,16 +27,16 @@ export type HealthcheckExec = {
 };
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(TestContext.TestContext)));
+  Effect.runPromise(effect.pipe(Effect.provide(TestClock.layer())));
 
 export const driveExit = <A, E>(effect: Effect.Effect<A, E, never>): Promise<Exit.Exit<A, E>> =>
-  Effect.runPromiseExit(effect.pipe(Effect.provide(TestContext.TestContext)));
+  Effect.runPromiseExit(effect.pipe(Effect.provide(TestClock.layer())));
 
 type TimedExit<A, E> = { readonly exit: Exit.Exit<A, E>; readonly elapsedMs: number };
 
 export const runExitUnderClock = <A, E>(
   effect: Effect.Effect<A, E, never>,
-  advance: Duration.DurationInput,
+  advance: Duration.Input,
 ): Promise<TimedExit<A, E>> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -55,10 +45,10 @@ export const runExitUnderClock = <A, E>(
         const exit = yield* Effect.exit(effect);
         return { exit, elapsedMs: (yield* Clock.currentTimeMillis) - started };
       });
-      const fiber = yield* Effect.fork(measured);
+      const fiber = yield* Effect.forkChild(measured);
       yield* TestClock.adjust(advance);
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestContext.TestContext)),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
 export const successOf = <A, E>(exit: Exit.Exit<A, E>): A => {
@@ -70,7 +60,7 @@ export const successOf = <A, E>(exit: Exit.Exit<A, E>): A => {
 export const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (Option.isSome(failure)) return failure.value;
   throw new Error("expected typed failure");
 };
@@ -112,7 +102,7 @@ const providerFailure = (message: string): ServiceExecError =>
 export const execFailing = (message: string): FakeExec =>
   makeExec(() => Effect.fail(providerFailure(message)));
 
-export const execSleepingExit = (sleepFor: Duration.DurationInput, exitCode: number): FakeExec =>
+export const execSleepingExit = (sleepFor: Duration.Input, exitCode: number): FakeExec =>
   makeExec(() => Effect.sleep(sleepFor).pipe(Effect.as(execResult(exitCode))));
 
 export const commandPlan = (

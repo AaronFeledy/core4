@@ -37,19 +37,19 @@ export const makeBuildTaskProgress = (events: ProgressEmitter, plan: AppPlan): B
     startTree: tree.start,
     startTask: (service, transcriptPath) => tree.startTask(String(service.name), { transcriptPath }),
     completeTask: (service, summary) =>
-      tree.completeTask(String(service.name), summary).pipe(Effect.zipRight(markSettled(service))),
+      tree.completeTask(String(service.name), summary).pipe(Effect.andThen(markSettled(service))),
     failTask: (service) =>
       tree
         .failTask(String(service.name), `Build ${String(service.name)} failed`, { exitCode: 1 })
-        .pipe(Effect.zipRight(markSettled(service))),
+        .pipe(Effect.andThen(markSettled(service))),
     abortTask: (service, transcriptPath) =>
       tree
         .startTask(String(service.name), { transcriptPath })
         .pipe(
-          Effect.zipRight(
+          Effect.andThen(
             tree.failTask(String(service.name), `Build ${String(service.name)} aborted`, { exitCode: 1 }),
           ),
-          Effect.zipRight(markSettled(service)),
+          Effect.andThen(markSettled(service)),
         ),
     unsettledServices: () => services.filter((service) => !settled.has(String(service.name))),
     completeTree: tree.close(`${plan.name} built`),

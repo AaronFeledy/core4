@@ -41,7 +41,7 @@ describe("writeFileAtomicViaRename", () => {
     try {
       // When enforcement succeeds on the replacement
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           writeAtomicCacheFile(target, "secret", async (created) => {
             original = `${created}.original`;
             await rename(created, original);
@@ -50,8 +50,8 @@ describe("writeFileAtomicViaRename", () => {
         ),
       );
       // Then the cache failure leaves the original empty and unpublished
-      expect(result._tag).toBe("Left");
-      if (result._tag === "Left") expect(result.left._tag).toBe("CacheError");
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") expect(result.failure._tag).toBe("CacheError");
       expect(await readFile(original, "utf8")).toBe("");
       expect(await fileExists(target)).toBe(false);
     } finally {

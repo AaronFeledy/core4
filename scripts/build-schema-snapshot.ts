@@ -14,7 +14,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { JSONSchema, Schema } from "effect";
+import { Schema } from "effect";
 
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
@@ -23,7 +23,9 @@ import {
   PluginManifest,
   assertJsonSchemaDeprecationsValid,
   assertPublicSchemaAnnotations,
+  getEditorJsonSchema,
   getJsonSchema,
+  getJsonSchemaWithDeprecations,
   publicSchemaMetadataIndex,
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
@@ -37,6 +39,7 @@ const BUNDLED_PLUGIN_MANIFESTS_OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/bu
 const SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/schemas");
 const COMMAND_SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/command-schemas");
 const SCHEMA_REFERENCE_DIR = resolve(REPO_ROOT, "docs/reference/schemas");
+const EDITOR_SCHEMA_DIR = resolve(REPO_ROOT, "docs/public/schemas");
 
 const stable = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stable);
@@ -85,7 +88,7 @@ const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifa
       return {
         commandId,
         artifactPath: `dist/command-schemas/${filename}`,
-        schema: stable(JSONSchema.make(spec.resultSchema)),
+        schema: stable(getJsonSchemaWithDeprecations(spec.resultSchema)),
       };
     } catch (cause) {
       throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });
@@ -130,6 +133,13 @@ const main = async (): Promise<void> => {
   await mkdir(SCHEMA_ARTIFACT_DIR, { recursive: true });
   await mkdir(COMMAND_SCHEMA_ARTIFACT_DIR, { recursive: true });
   await mkdir(SCHEMA_REFERENCE_DIR, { recursive: true });
+  await mkdir(EDITOR_SCHEMA_DIR, { recursive: true });
+  for (const [name, filename] of [
+    ["LandofileShape", "landofile.schema.json"],
+    ["GlobalConfig", "global-config.schema.json"],
+  ] as const) {
+    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(getEditorJsonSchema(name)));
+  }
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
   await Bun.write(metadataIndexPath, renderJson(publicSchemaMetadataIndex));
   const artifactPaths: string[] = [metadataIndexPath];
@@ -182,6 +192,7 @@ const main = async (): Promise<void> => {
     SCHEMA_ARTIFACT_DIR,
     COMMAND_SCHEMA_ARTIFACT_DIR,
     SCHEMA_REFERENCE_DIR,
+    EDITOR_SCHEMA_DIR,
   ]);
   await mirrorSchemaArtifacts({ repoRoot: REPO_ROOT });
 

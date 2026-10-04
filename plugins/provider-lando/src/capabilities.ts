@@ -45,7 +45,7 @@ const podmanInfoRootless = (info: unknown): boolean | undefined => {
 };
 
 export const decodeProviderCapabilities = (input: unknown) =>
-  Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
+  Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
     Effect.mapError(
       (cause) =>
         new ProviderCapabilityError({

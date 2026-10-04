@@ -34,38 +34,36 @@ const RANGE_SYNTAX_REMEDIATION = 'Use a valid semver range such as ">=4.1 <5", "
 const VERSION_CONSTRAINT_REMEDIATION =
   "Run `lando update` to move to a satisfying Lando version, or edit the `lando:` constraint in your Landofile.";
 
-const warnConstraintSkipped = (
+const warnConstraintSkipped = Effect.fnUntraced(function* (
   unsatisfied: ReadonlyArray<VersionConstraintEntry>,
   runningVersion: string,
-): Effect.Effect<void> => {
+): Effect.fn.Return<void> {
   const message = `Skipping unsatisfied Lando version constraint ${unsatisfied
     .map((entry) => `"${entry.range}"`)
     .join(", ")} (running ${runningVersion}); LANDO_SKIP_VERSION_CONSTRAINT is set.`;
-  return Effect.gen(function* () {
-    yield* Effect.forEach(
-      unsatisfied,
-      (entry) =>
-        recordCommandWarning({
-          code: "LANDO_VERSION_CONSTRAINT_SKIPPED",
-          message,
-          remediation: VERSION_CONSTRAINT_REMEDIATION,
-          context: {
-            range: entry.range,
-            source: entry.source,
-            layer: entry.layer,
-            order: String(entry.order),
-            runningVersion,
-          },
-        }),
-      { discard: true },
-    );
-    const renderer = yield* Effect.serviceOption(Renderer);
-    const machineOutput = yield* commandWarningsUseMachineOutput;
-    if (!machineOutput && Option.isSome(renderer)) {
-      yield* renderer.value.message.warn(message).pipe(Effect.catchAll(() => Effect.void));
-    }
-  });
-};
+  yield* Effect.forEach(
+    unsatisfied,
+    (entry) =>
+      recordCommandWarning({
+        code: "LANDO_VERSION_CONSTRAINT_SKIPPED",
+        message,
+        remediation: VERSION_CONSTRAINT_REMEDIATION,
+        context: {
+          range: entry.range,
+          source: entry.source,
+          layer: entry.layer,
+          order: String(entry.order),
+          runningVersion,
+        },
+      }),
+    { discard: true },
+  );
+  const renderer = yield* Effect.serviceOption(Renderer);
+  const machineOutput = yield* commandWarningsUseMachineOutput;
+  if (!machineOutput && Option.isSome(renderer)) {
+    yield* renderer.value.message.warn(message).pipe(Effect.catch(() => Effect.void));
+  }
+});
 
 export const assertLandoVersionConstraint = (
   landofile: LandofileShape,

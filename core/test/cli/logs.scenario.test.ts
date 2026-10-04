@@ -69,7 +69,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "logs.scenario.test",
   runtime: 4 as const,
 };
@@ -238,13 +238,19 @@ const makeLogsLayer = (
   };
 
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-logs", services: {} }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(effectivePlan) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(defaultProviderCapabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed({ name: "test-logs", services: {} }) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(effectivePlan) })),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(defaultProviderCapabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
   );
 
   return { layer, logCalls };
@@ -436,7 +442,7 @@ describe("lando logs", () => {
     expect(harness.logCalls).toEqual([]);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const error = failure.value as { _tag: string; message: string };
@@ -463,7 +469,7 @@ describe("lando logs", () => {
     expect(harness.logCalls).toEqual([]);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const error = failure.value as { _tag: string; message: string };
@@ -532,7 +538,7 @@ describe("lando logs", () => {
     expect(harness.logCalls).toEqual([]);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const error = failure.value as { _tag: string; capability: string };
@@ -557,7 +563,7 @@ describe("lando logs", () => {
     expect(harness.logCalls).toEqual([]);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const error = failure.value as { _tag: string; capability: string; providerId: string };
@@ -608,7 +614,7 @@ describe("lando logs", () => {
       expect(harness.logCalls).toEqual([]);
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const error = failure.value as { _tag: string; message: string };
@@ -623,12 +629,15 @@ describe("lando logs", () => {
   test("followLogsApp streams each provider chunk live through the StreamFrameSink", async () => {
     const harness = makeLogsLayer();
     const emitted: Array<{ readonly _tag: string; readonly chunk: string; readonly service?: string }> = [];
-    const sink = Layer.succeed(StreamFrameSink, {
-      emit: (frame) =>
-        Effect.sync(() => {
-          emitted.push(frame);
-        }),
-    });
+    const sink = Layer.succeed(
+      StreamFrameSink,
+      StreamFrameSink.of({
+        emit: (frame) =>
+          Effect.sync(() => {
+            emitted.push(frame);
+          }),
+      }),
+    );
     const result = await Effect.runPromise(
       followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),
     );
@@ -672,7 +681,7 @@ describe("lando logs", () => {
     let released = false;
     const controller = new AbortController();
     const infinite = (target: LogTarget): Stream.Stream<LogChunk, never> =>
-      Stream.repeatEffect(
+      Stream.fromEffectRepeat(
         Effect.succeed({ service: target.service, stream: "stdout" as const, line: "tick" }),
       ).pipe(
         Stream.ensuring(
@@ -683,13 +692,16 @@ describe("lando logs", () => {
       );
     const harness = makeLogsLayer({ serviceLogs: true, logs: infinite });
     let seen = 0;
-    const sink = Layer.succeed(StreamFrameSink, {
-      emit: () =>
-        Effect.sync(() => {
-          seen += 1;
-          if (seen === 3) controller.abort();
-        }),
-    });
+    const sink = Layer.succeed(
+      StreamFrameSink,
+      StreamFrameSink.of({
+        emit: () =>
+          Effect.sync(() => {
+            seen += 1;
+            if (seen === 3) controller.abort();
+          }),
+      }),
+    );
 
     const result = await Effect.runPromise(
       followLogsApp({ follow: true, signal: controller.signal }).pipe(
@@ -705,7 +717,7 @@ describe("lando logs", () => {
   test("followLogsApp without options.signal stays cancellable via Effect interruption with Scope cleanup", async () => {
     let released = false;
     const infinite = (target: LogTarget): Stream.Stream<LogChunk, never> =>
-      Stream.repeatEffect(
+      Stream.fromEffectRepeat(
         Effect.succeed({ service: target.service, stream: "stdout" as const, line: "tick" }),
       ).pipe(
         Stream.ensuring(
@@ -717,20 +729,23 @@ describe("lando logs", () => {
     const harness = makeLogsLayer({ serviceLogs: true, logs: infinite });
     const controller = new AbortController();
     let seen = 0;
-    const sink = Layer.succeed(StreamFrameSink, {
-      emit: () =>
-        Effect.sync(() => {
-          seen += 1;
-          if (seen === 3) controller.abort();
-        }),
-    });
+    const sink = Layer.succeed(
+      StreamFrameSink,
+      StreamFrameSink.of({
+        emit: () =>
+          Effect.sync(() => {
+            seen += 1;
+            if (seen === 3) controller.abort();
+          }),
+      }),
+    );
 
     const exit = await Effect.runPromiseExit(
       followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),
       { signal: controller.signal },
     );
 
-    expect(Exit.isInterrupted(exit)).toBe(true);
+    expect(Exit.hasInterrupts(exit)).toBe(true);
     expect(seen).toBeGreaterThanOrEqual(3);
     expect(released).toBe(true);
   });
@@ -774,7 +789,7 @@ describe("lando logs", () => {
     expect(harness.logCalls).toEqual([]);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         const error = failure.value as { _tag: string; message: string };

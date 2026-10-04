@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LandofileShape, ServiceConfig, ServiceName, getJsonSchema } from "../../src/schema/index.ts";
 
@@ -99,7 +99,7 @@ describe("ServiceConfig security authoring", () => {
     ] as const)("rejects simultaneous %s and %s spellings", (left, right) => {
       const security = { [left]: ["./corp-ca.pem"], [right]: ["./corp-ca.pem"] };
 
-      expect(Either.isLeft(Schema.decodeUnknownEither(ServiceConfig)({ security }, options))).toBe(true);
+      expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ security }, options))).toBe(true);
     });
   });
 
@@ -111,12 +111,12 @@ describe("ServiceConfig security authoring", () => {
     ["unknown field", { security: { ca: ["./corp-ca.pem"], unexpected: true } }],
     ["leaf certs alias", { security: { certs: ["./leaf.pem"] } }],
   ])("%s fails closed under production decode options", (_name, service) => {
-    const result = Schema.decodeUnknownEither(LandofileShape)(
+    const result = Schema.decodeUnknownResult(LandofileShape)(
       { name: "app", services: { web: service } },
       { onExcessProperty: "error" },
     );
 
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test.each([{}, { onExcessProperty: "error" } as const])(

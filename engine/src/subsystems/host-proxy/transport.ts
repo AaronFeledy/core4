@@ -123,10 +123,10 @@ export const createHostProxyRunLandoSession = (
       closed,
     };
   }).pipe(
-    Effect.catchAll((failure) =>
+    Effect.catch((failure) =>
       removeSessionState(paths, socketOwned).pipe(
-        Effect.catchAll(() => Effect.void),
-        Effect.zipRight(Effect.fail(failure)),
+        Effect.catch(() => Effect.void),
+        Effect.andThen(Effect.fail(failure)),
       ),
     ),
   );

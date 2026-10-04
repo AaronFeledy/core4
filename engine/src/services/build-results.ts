@@ -11,16 +11,16 @@ const KEEP_FAIL = 5;
 export const BuildResultEntry = Schema.Struct({
   buildKey: Schema.String,
   service: ServiceName,
-  phase: Schema.Literal("artifact", "app"),
-  outcome: Schema.Literal("complete", "fail"),
+  phase: Schema.Literals(["artifact", "app"]),
+  outcome: Schema.Literals(["complete", "fail"]),
   exitCode: Schema.Number,
   durationMs: Schema.Number,
-  artifactRef: Schema.optional(Schema.String),
-  artifactDigest: Schema.optional(Schema.String),
-  sourceArtifactRef: Schema.optional(Schema.String),
-  sourceArtifactDigest: Schema.optional(Schema.String),
+  artifactRef: Schema.optionalKey(Schema.String),
+  artifactDigest: Schema.optionalKey(Schema.String),
+  sourceArtifactRef: Schema.optionalKey(Schema.String),
+  sourceArtifactDigest: Schema.optionalKey(Schema.String),
   transcriptPath: AbsolutePath,
-  completedAt: Schema.DateTimeUtc,
+  completedAt: Schema.DateTimeUtcFromString,
 });
 export type BuildResultEntry = typeof BuildResultEntry.Type;
 
@@ -92,12 +92,10 @@ const rotateBuildResults = (entries: ReadonlyArray<BuildResultEntry>): ReadonlyA
     return newerOrSame.length <= limitFor(entry.outcome);
   });
 
-export const recordBuildResult = (
+export const recordBuildResult = Effect.fnUntraced(function* (
   bucket: StateBucket<ReadonlyArray<BuildResultEntry>>,
   entry: Omit<BuildResultEntry, "completedAt">,
-): Effect.Effect<void, StateStoreError> =>
-  bucket
-    .update((current) =>
-      rotateBuildResults([...(current ?? []), { ...entry, completedAt: DateTime.unsafeNow() }]),
-    )
-    .pipe(Effect.asVoid);
+): Effect.fn.Return<void, StateStoreError> {
+  const completedAt = yield* DateTime.now;
+  yield* bucket.update((current) => rotateBuildResults([...(current ?? []), { ...entry, completedAt }]));
+});

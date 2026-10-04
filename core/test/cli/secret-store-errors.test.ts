@@ -1,14 +1,11 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
 import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
-import {
-  RoutedSecretStoreLive,
-  makeSecretStoreRegistryLive,
-} from "@lando/engine/services/secret-store-registry";
-import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { SecretStoreUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -24,7 +21,7 @@ import {
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileLayers from "../_support/landofile-layer.ts";
 
 const unavailable = new SecretStoreUnavailableError({
   storeId: "fake-vault",
@@ -57,18 +54,21 @@ const renderStartFailure = async (reference: string) => {
     secretStores: new Map([
       [
         "fake-vault",
-        Layer.succeed(SecretStore, {
-          id: "fake-vault",
-          schemes: ["fake"],
-          get: (id) => Effect.sync(() => reads.push(id)).pipe(Effect.zipRight(Effect.fail(unavailable))),
-          has: () => Effect.fail(unavailable),
-          list: Effect.succeed([]),
-        }),
+        Layer.succeed(
+          SecretStore,
+          SecretStore.of({
+            id: "fake-vault",
+            schemes: ["fake"],
+            get: (id) => Effect.sync(() => reads.push(id)).pipe(Effect.andThen(Effect.fail(unavailable))),
+            has: () => Effect.fail(unavailable),
+            list: Effect.succeed([]),
+          }),
+        ),
       ],
     ]),
   };
-  const store = RoutedSecretStoreLive.pipe(
-    Layer.provide(Layer.mergeAll(base.layer, paths, makeSecretStoreRegistryLive([plugin]))),
+  const store = RoutedSecretStore.layer.pipe(
+    Layer.provide(Layer.mergeAll(base.layer, paths, RoutedSecretStore.SecretStoreRegistry.layer([plugin]))),
   );
   const metadata = { resolvedAt: "2026-06-01T00:00:00Z", source: "cli-test", runtime: 4 };
   const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -105,16 +105,19 @@ const renderStartFailure = async (reference: string) => {
     base.layer,
     paths,
     store,
-    RedactionServiceLive.pipe(Layer.provide(store)),
-    NoopTransactionGuardLive,
+    RedactionService.layer.pipe(Layer.provide(store)),
+    TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(RouterService, TestRouterService),
-    Layer.succeed(BuildOrchestrator, {
-      build: (value) => Effect.succeed(value),
-      buildApp: () => Effect.void,
-    }),
-    makeShellRunnerLive(() => {
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(RouterService, RouterService.of(TestRouterService)),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (value) => Effect.succeed(value),
+        buildApp: () => Effect.void,
+      }),
+    ),
+    BunShellRunner.layer(() => {
       throw new TypeError("Start must not open an interactive shell.");
     }),
   );

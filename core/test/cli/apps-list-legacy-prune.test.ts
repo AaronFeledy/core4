@@ -2,14 +2,14 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { StateStoreError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
@@ -48,40 +48,46 @@ const fixture = async (provider: string) => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            Layer.succeed(ConfigService, {
-              load: Effect.succeed(config),
-              get: (key) => Effect.succeed(config[key]),
-            }),
+            Layer.succeed(
+              ConfigService,
+              ConfigService.of({
+                load: Effect.succeed(config),
+                get: (key) => Effect.succeed(config[key]),
+              }),
+            ),
             Layer.succeed(PathsService, paths),
-            Layer.succeed(StateStore, {
-              ...store,
-              open: (spec) =>
-                store.open(spec).pipe(
-                  Effect.map((bucket) => {
-                    if (!failRemoval || bucket.path !== legacyPath) return bucket;
-                    expect(spec.lock).toBe("advisory");
-                    return {
-                      ...bucket,
-                      remove: Effect.fail(
-                        new StateStoreError({
-                          reason: "io",
-                          operation: "remove",
-                          path: legacyPath,
-                        }),
-                      ),
-                    };
-                  }),
-                ),
-            }),
-            FileSystemLive,
-            PrivateFileAccessLive,
+            Layer.succeed(
+              StateStore,
+              StateStore.of({
+                ...store,
+                open: (spec) =>
+                  store.open(spec).pipe(
+                    Effect.map((bucket) => {
+                      if (!failRemoval || bucket.path !== legacyPath) return bucket;
+                      expect(spec.lock).toBe("advisory");
+                      return {
+                        ...bucket,
+                        remove: Effect.fail(
+                          new StateStoreError({
+                            reason: "io",
+                            operation: "remove",
+                            path: legacyPath,
+                          }),
+                        ),
+                      };
+                    }),
+                  ),
+              }),
+            ),
+            BunFileSystem.layer,
+            PrivateFileAccessService.layer,
           ),
         ),
-        Effect.either,
+        Effect.result,
       ),
     ).then((result) => {
-      if (Either.isLeft(result)) throw result.left;
-      return result.right;
+      if (Result.isFailure(result)) throw result.failure;
+      return result.success;
     });
   return { root, paths, legacyDir, legacyPath, legacy, plan, store, run };
 };
@@ -207,7 +213,7 @@ test.each(["lando", "docker"])(
         providerId: provider,
         appRoot: f.plan.root,
         services: [],
-      }).pipe(Effect.provide(FileSystemLive)),
+      }).pipe(Effect.provide(BunFileSystem.layer)),
     );
     // Then: the live modern record is unchanged.
     expect(await readFile(modern, "utf8")).toBe(payload);
@@ -243,7 +249,7 @@ test("does not delete a live podman record for a stale missing-root candidate", 
       providerId: "podman",
       appRoot: f.plan.root,
       services: [],
-    }).pipe(Effect.provide(FileSystemLive)),
+    }).pipe(Effect.provide(BunFileSystem.layer)),
   );
   // Then
   expect(removed).toBe(false);

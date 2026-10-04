@@ -48,18 +48,18 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
 
     // When retention cannot persist its phase.
     const cause = await Effect.runPromise(
-      pending.retainTargets(Cause.parallel(Cause.fail(original), Cause.fail(secondary))),
+      pending.retainTargets(Cause.combine(Cause.fail(original), Cause.fail(secondary))),
     );
 
     // Then recovery stays first, followed by every original failure and the journal failure.
-    const retained = Option.getOrThrow(Cause.failureOption(cause));
+    const retained = Option.getOrThrow(Cause.findErrorOption(cause));
     expect(retained).toMatchObject({
       _tag: "FileSyncStartError",
       cause: original,
       message: expect.stringContaining(original.message),
       remediation: expect.stringContaining(path),
     });
-    expect(Array.from(Cause.failures(cause))).toEqual([
+    expect(Array.from(cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))).toEqual([
       retained,
       original,
       secondary,

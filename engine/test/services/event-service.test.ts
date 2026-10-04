@@ -5,8 +5,8 @@ import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { EventError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
-import { EventServiceLive } from "../../src/services/event-service.ts";
-import { EventDispatchControl, EventRuntimeLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
+import { EventDispatchControl } from "../../src/services/event-service.ts";
 
 const appRefFixture = {
   kind: "user",
@@ -19,7 +19,7 @@ const preAppStartInput: unknown = {
   eventName: "pre-app-start",
   appRef: appRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const postAppStartInput: unknown = {
@@ -27,26 +27,26 @@ const postAppStartInput: unknown = {
   eventName: "post-app-start",
   appRef: appRefFixture,
   providerId: "lando",
-  timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-11T07:30:00Z")),
+  timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-11T07:30:00Z")),
 };
 
 const preAppStartEvent = Schema.decodeUnknownSync(PreAppStartEvent)(preAppStartInput);
 const postAppStartEvent = Schema.decodeUnknownSync(PostAppStartEvent)(postAppStartInput);
 
-describe("EventServiceLive", () => {
+describe("LandoEventService.layer", () => {
   test("publishes lifecycle events to subscribers in order", async () => {
     const received = await Effect.runPromise(
       Effect.flatMap(EventService, (eventService) =>
         Effect.gen(function* () {
           const subscriber = yield* eventService
             .subscribe("*")
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(preAppStartEvent);
           yield* eventService.publish(postAppStartEvent);
           return yield* Fiber.join(subscriber);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Array.from(received)).toEqual([preAppStartEvent, postAppStartEvent]);
@@ -58,15 +58,15 @@ describe("EventServiceLive", () => {
         Effect.gen(function* () {
           const firstSubscriber = yield* eventService
             .subscribe("pre-app-start")
-            .pipe(Stream.take(1), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
           const secondSubscriber = yield* eventService
             .subscribe("pre-app-start")
-            .pipe(Stream.take(1), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(preAppStartEvent);
           return [yield* Fiber.join(firstSubscriber), yield* Fiber.join(secondSubscriber)] as const;
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Array.from(first)).toEqual([preAppStartEvent]);
@@ -81,11 +81,11 @@ describe("EventServiceLive", () => {
             Stream.take(1),
             Stream.runForEach(() => Effect.fail(new EventError({ message: "subscriber failed" }))),
             Effect.exit,
-            Effect.fork,
+            Effect.forkChild,
           );
           const healthySubscriber = yield* eventService
             .subscribe("pre-app-start")
-            .pipe(Stream.take(1), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(1), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(preAppStartEvent);
           return {
@@ -93,7 +93,7 @@ describe("EventServiceLive", () => {
             healthyEvents: yield* Fiber.join(healthySubscriber),
           };
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(Exit.isFailure(result.failingExit)).toBe(true);
@@ -106,13 +106,13 @@ describe("EventServiceLive", () => {
         Effect.gen(function* () {
           const waiter = yield* eventService
             .waitFor("pre-app-start", { filter: (event) => event._tag === "pre-app-start" })
-            .pipe(Effect.fork);
+            .pipe(Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* eventService.publish(postAppStartEvent);
           yield* eventService.publish(preAppStartEvent);
           return yield* Fiber.join(waiter);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
     expect(received).toEqual(preAppStartEvent);
@@ -130,10 +130,10 @@ describe("EventServiceLive", () => {
           yield* eventService.publish(preAppStartEvent);
           return yield* Fiber.await(scopedFiber);
         }),
-      ).pipe(Effect.provide(EventServiceLive)),
+      ).pipe(Effect.provide(LandoEventService.layer)),
     );
 
-    expect(Exit.isInterrupted(exit)).toBe(true);
+    expect(Exit.hasInterrupts(exit)).toBe(true);
   });
 
   test("awaits the dispatcher attached to the same event-service instance", async () => {
@@ -153,7 +153,7 @@ describe("EventServiceLive", () => {
             }),
         });
         yield* events.publish(preAppStartEvent);
-      }).pipe(Effect.provide(EventRuntimeLive)),
+      }).pipe(Effect.provide(LandoEventService.layerRuntime)),
     );
 
     // Then: publish does not complete before dispatcher delivery.
@@ -178,7 +178,7 @@ describe("EventServiceLive", () => {
         });
         yield* events.publish(preAppStartEvent);
         return yield* events.query("pre-app-start");
-      }).pipe(Effect.provide(EventRuntimeLive)),
+      }).pipe(Effect.provide(LandoEventService.layerRuntime)),
     );
 
     // Then: plugin dispatch is skipped while history/public consumers still receive the event.

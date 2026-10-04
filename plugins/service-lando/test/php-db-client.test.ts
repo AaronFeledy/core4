@@ -23,15 +23,15 @@ import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/serv
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({
-  buildSteps: Schema.optional(
+  buildSteps: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
-        id: Schema.optional(Schema.String),
+        id: Schema.optionalKey(Schema.String),
         command: Schema.Unknown,
-        phase: Schema.optional(Schema.String),
-        user: Schema.optional(Schema.String),
-        dependsOn: Schema.optional(Schema.Array(Schema.String)),
-        buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+        phase: Schema.optionalKey(Schema.String),
+        user: Schema.optionalKey(Schema.String),
+        dependsOn: Schema.optionalKey(Schema.Array(Schema.String)),
+        buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
       }),
     ),
   ),

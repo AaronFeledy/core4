@@ -36,7 +36,7 @@ export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
 
 export const StopAppResultSchema = Schema.Struct({
   app: Schema.String,
-  outcome: Schema.optional(Schema.Literal("stopped", "unchanged")),
+  outcome: Schema.optionalKey(Schema.Literals(["stopped", "unchanged"])),
   servicesStopped: Schema.Array(Schema.String),
 });
 
@@ -101,28 +101,27 @@ const stopAppWithResolvedPlan = (
         plan: resolvedTarget.plan,
         provider,
         stateStore,
-        body: () =>
-          Effect.gen(function* () {
-            yield* verifyActiveVolumeCoordination(provider);
-            const preflight = yield* preflightStopApp(resolvedTarget);
-            if (runInitEvents && validatedTarget.landofile !== undefined)
-              yield* runAppInitEvents(resolvedTarget.plan);
-            return yield* stopAppWithPlanUnlocked(options ?? {}, resolvedTarget, false, preflight);
-          }).pipe(Effect.provide(context)),
+        body: Effect.fnUntraced(function* () {
+          yield* verifyActiveVolumeCoordination(provider);
+          const preflight = yield* preflightStopApp(resolvedTarget);
+          if (runInitEvents && validatedTarget.landofile !== undefined)
+            yield* runAppInitEvents(resolvedTarget.plan);
+          return yield* stopAppWithPlanUnlocked(options ?? {}, resolvedTarget, false, preflight);
+        }, Effect.provide(context)),
       });
     }),
   );
 
-export const stopAppWithPlan = (
+export const stopAppWithPlan = Effect.fn("AppOperation.stopWithPlan")(function* (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
   execution: { readonly skipInitEvents?: boolean } = {},
-): Effect.Effect<
+): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   StopAppError,
   StopAppServices
-> =>
-  target === undefined
+> {
+  return yield* target === undefined
     ? resolveDesiredTarget.pipe(
         Effect.flatMap((resolved) =>
           stopAppWithResolvedPlan(options, resolved, false, true, execution.skipInitEvents !== true),
@@ -135,16 +134,18 @@ export const stopAppWithPlan = (
         target.landofile !== undefined,
         execution.skipInitEvents !== true,
       );
+});
 
-export const stopAppForTarget = (
+export const stopAppForTarget = Effect.fn("AppOperation.stopForTarget")(function* (
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
   afterSuccess?: Effect.Effect<void>,
-): Effect.Effect<StopAppResult, SdkStopAppError, BoundStopAppServices> =>
-  stopAppWithResolvedPlan(options, target, true, target.landofile !== undefined).pipe(
+): Effect.fn.Return<StopAppResult, SdkStopAppError, BoundStopAppServices> {
+  return yield* stopAppWithResolvedPlan(options, target, true, target.landofile !== undefined).pipe(
     Effect.tap(() => afterSuccess ?? Effect.void),
     Effect.map(({ result }) => result),
   );
+});
 
 const stopOrphans = (
   resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
@@ -168,9 +169,7 @@ const stopDesiredOrUnchanged = (
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
   resolveDesiredTarget.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
-    Effect.catchAll((error) =>
-      resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error),
-    ),
+    Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
     Effect.flatMap((desired) =>
       desired === undefined
         ? Effect.succeed(unchangedResult(basename(resolution.root)))
@@ -178,11 +177,11 @@ const stopDesiredOrUnchanged = (
     ),
   );
 
-export const stopApp = (
+export const stopApp = Effect.fn("AppOperation.stop")(function* (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
-  target !== undefined
+): Effect.fn.Return<StopAppResult, StopAppError, StopAppServices> {
+  return yield* target !== undefined
     ? stopAppForTarget(options, target)
     : resolveTeardownResolution.pipe(
         Effect.flatMap((resolution) => {
@@ -202,3 +201,4 @@ export const stopApp = (
             result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },
         ),
       );
+});

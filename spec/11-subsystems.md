@@ -364,15 +364,17 @@ The sole tagged error is `ManagedFileError`, with reasons `io`, `decode`, `confl
 
 `McpService` is the in-process Model Context Protocol server behind `lando mcp` (§8.2.6). MCP is a projection of canonical command, result, resource, and event registries, not a parallel command surface. It exposes scoped `serve` and `catalog` over `McpServeOptions`, `McpCatalogOptions`, and `McpCatalog`.
 
-- Tools derive from `LandoCommandSpec`, `FlagSpec`, and `ArgSpec`; results use `CommandResultEnvelope` and `encodeCommandResult`; streams use progress notifications and a final result envelope.
-- Optional tooling projection uses `mcp.tooling` or `--tooling` and `runTooling`. Resources reuse resolved config, deep info, apps list, and doctor schemas. Notifications replay redacted bounded `EventService` history.
+- The server runs on `effect/ai` `McpServer.layerStdio` and negotiates MCP protocol versions 2025-06-18, 2025-03-26, and 2024-11-05. `@lando/renderer` implements Effect's `Stdio` contract over Bun stdin and stdout, so it stays the only terminal writer. Inbound frames over 1 MiB end the session with `McpTransportError` before parsing.
+- Tools derive from `LandoCommandSpec`, `FlagSpec`, and `ArgSpec`; results use `CommandResultEnvelope` and `encodeCommandResult`; streams use progress notifications and a final result envelope. Each tool declares an `outputSchema` derived from its command result schema, and each result carries the redacted, bounded envelope as `structuredContent` plus a JSON text fallback.
+- Optional tooling projection uses `mcp.tooling` or `--tooling` and `runTooling`. Notifications replay redacted bounded `EventService` history.
+- Resources are `lando://app/config`, `lando://app/info`, `lando://apps`, `lando://doctor`, and the template `lando://schemas/{name}` with name completion from the public schema registry. Payloads reuse the resolved config, deep info, apps list, doctor, and public schema result schemas, and are redacted and bounded. App-scoped resources resolve through `resolveApp`/`AppSelector` and fail with the existing tagged errors.
 - v4.0 transport is stdio. Streamable HTTP is deferred, and future outbound HTTP MUST use `HttpClient`.
 - `serve` retains one `LandoRuntime`; app resolution uses `resolveApp`/`AppSelector` (§16.3).
 - Effective tools are generated `mcp-allowlist` plus `mcp.allow`/`--allow`, minus `mcp.deny`/`--deny`; deny wins. Destructive commands are never default-allowed.
-- Dispatch is non-interactive; prompt-requiring commands fail rather than hang, and confirmations require explicit inputs.
+- Dispatch is non-interactive; prompt-requiring commands fail rather than hang, and confirmations require an explicit input. That input is `yes: true` or, when the client advertises elicitation, an accepted `{ confirm: boolean }` elicitation whose message names the app and the consequence. Decline, cancel, or no answer within 120 seconds fails with `CommandConfirmationError` reason `declined`; clients without elicitation get reason `non-interactive`. Elicitation never lifts a deny, and destructive commands stay excluded from the default allowlist.
 - Calls are bounded, cancellable fibers; transport close interrupts the serve scope.
 - Every result, resource, notification, and JSON-RPC frame MUST be redacted and schema-bounded before retention; oversized serialization fails with `McpTransportError` without invoking application getters or `toJSON` hooks.
-- Every dispatch, including rejection, publishes `pre-mcp-call` and `post-mcp-call`.
+- Only effective-allowlist tools are registered with the server, so a call naming any other tool gets the protocol's unknown-tool error. Every call that reaches dispatch, including one rejected for input, capacity, or cancellation, publishes `pre-mcp-call` and `post-mcp-call`; dispatch-level rejections return a tool result with `isError: true` carrying the redacted tagged error.
 - `meta:mcp` MUST NOT be host-proxied or recipe-scaffolded. Doctor validates allowlist freshness, catalog generation, and a canary round trip.
 
 Tagged errors are `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError`; command failures remain inside unsuccessful result envelopes. `McpService` is core-owned and not plugin-replaceable in v4.0; `mcpServers:` is deferred.

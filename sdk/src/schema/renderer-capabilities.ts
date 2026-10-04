@@ -11,14 +11,14 @@ import { Schema } from "effect";
  * animation never demote.
  */
 export const RendererCapabilities = Schema.Struct({
-  color: Schema.Boolean.annotations({ description: "ANSI color output supported." }),
-  interactive: Schema.Boolean.annotations({
+  color: Schema.Boolean.annotate({ description: "ANSI color output supported." }),
+  interactive: Schema.Boolean.annotate({
     description: "Keyboard input honored (task-tree focus/expand, prompts).",
   }),
-  animation: Schema.Boolean.annotations({
+  animation: Schema.Boolean.annotate({
     description: "Continuous/live redraw supported (spinners, progress fill).",
   }),
-  notifications: Schema.Boolean.annotations({
+  notifications: Schema.Boolean.annotate({
     description: "Desktop-notification path supported.",
   }),
 });

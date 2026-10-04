@@ -1,5 +1,5 @@
 /**
- * Default `InteractionServiceLive` — the single prompting chokepoint.
+ * Default `layer` — the single prompting chokepoint.
  *
  * Wraps the existing line-based prompt engine (`collectPrompts`) behind the
  * published `InteractionService` Effect interface. `PromptIO` is an internal
@@ -13,8 +13,9 @@
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Semaphore } from "effect";
 
-import { Cause, type Context, Effect, Layer, Option, Redacted, Runtime } from "effect";
+import { Cause, type Context, Effect, Layer, Option, Redacted } from "effect";
 
 import {
   ChoicesUnavailableError,
@@ -64,7 +65,7 @@ import { getInteractionServiceOverride } from "./testing-override";
 
 const STDIO_INTERACTION_ID = "stdio";
 
-type RendererService = Context.Tag.Service<typeof Renderer>;
+type RendererService = Context.Service.Shape<typeof Renderer>;
 
 /** Driver-resolution seam: render rich (e.g. OpenTUI) controls when interactive on a TTY. */
 export type ResolveInteractionDriver = (gate: {
@@ -228,7 +229,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   // One reader per service instance: buffered-ahead stdin survives across batches.
   const lineReader: PromptLineReader = createLineReader(stdin);
   // Serialize batches: the shared reader and its buffer are mutable single-stream state.
-  const promptLock = Effect.unsafeMakeSemaphore(1);
+  const promptLock = Semaphore.makeUnsafe(1);
 
   const buildIo = (rendererOption: Option.Option<RendererService>, signal: AbortSignal): PromptIO => {
     const base = createStdioPromptIO({
@@ -258,7 +259,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   ): Effect.Effect<EnginePromptAnswers, InteractionError> =>
     Effect.uninterruptibleMask((restore) =>
       restore(
-        Effect.async<EnginePromptAnswers, InteractionError>((resume, signal) => {
+        Effect.callback<EnginePromptAnswers, InteractionError>((resume, signal) => {
           const rawModeBefore = readRawMode(stdin);
           const io = buildIo(rendererOption, signal);
           const driver = collect.interactiveDriver;
@@ -286,7 +287,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           return Effect.sync(() => {
             if (!settled) restoreTty(stdin, rawModeBefore);
           }).pipe(
-            Effect.zipRight(
+            Effect.andThen(
               Effect.promise(() =>
                 collectPromise.then(
                   () => undefined,
@@ -297,8 +298,8 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           );
         }),
       ).pipe(
-        Effect.catchAllCause((cause) =>
-          Cause.isInterruptedOnly(cause) ? Effect.fail(interruptedCancellation()) : Effect.failCause(cause),
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause) ? Effect.fail(interruptedCancellation()) : Effect.failCause(cause),
         ),
       ),
     );
@@ -324,102 +325,109 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           }),
         );
 
-  const runBatch = (
+  const runBatch = Effect.fnUntraced(function* (
     specs: ReadonlyArray<PromptSpec>,
     options: PromptBatchOptions | undefined,
-  ): Effect.Effect<EnginePromptAnswers, InteractionError> =>
-    Effect.gen(function* () {
-      const rendererOption = yield* Effect.serviceOption(Renderer);
-      const loggerOption = yield* Effect.serviceOption(Logger);
-      const runtime = yield* Effect.runtime<never>();
-      const tty = isTtyStdin(stdin);
-      const gate = resolveGate(options, tty, defaultMode);
-      const cwd = options?.cwd ?? process.cwd();
-      const explicit = options?.answers ?? {};
-      const answersFilePath =
-        options?.answersFile === undefined ? undefined : resolve(cwd, options.answersFile);
-      const internal = options as InternalPromptBatchOptions | undefined;
-      const choicesRunner = internal?.choicesRunner ?? deps.choicesRunner;
-      const chrome = internal?.chrome;
-      const fromFile =
-        answersFilePath === undefined
-          ? {}
-          : yield* Effect.tryPromise({
-              try: () => readAnswersFileJson(answersFilePath),
-              catch: (cause) =>
-                new PromptValidationError({
-                  message: `Could not load answers file: ${describeCause(cause)}`,
-                  promptName: "(answers file)",
-                  promptType: "text",
-                  issue: describeCause(cause),
-                  remediation: "Pass a readable JSON object of string answers via --answers <file>.",
-                }),
-            });
-      const answers: Record<string, string> = { ...fromFile, ...explicit };
-      const debug = Option.isNone(loggerOption)
-        ? undefined
-        : (message: string, data: Readonly<Record<string, unknown>>): Promise<void> =>
-            Runtime.runPromise(runtime)(loggerOption.value.debug(message, data).pipe(Effect.ignore));
-      const driver = yield* resolveDriver(gate.interactive, tty, gate, rendererOption, debug);
-      const collect: Omit<CollectPromptsOptions, "io"> = {
-        prompts: specs as ReadonlyArray<RecipePrompt>,
-        answers,
-        yes: gate.yes,
-        nonInteractive: gate.nonInteractive,
-        cwd,
-        ...(options?.runs === undefined ? {} : { runs: options.runs }),
-        ...(choicesRunner === undefined ? {} : { choicesRunner }),
-        ...(chrome === undefined ? {} : { chrome }),
-        ...(driver === undefined ? {} : { interactiveDriver: driver }),
+  ): Effect.fn.Return<EnginePromptAnswers, InteractionError> {
+    const rendererOption = yield* Effect.serviceOption(Renderer);
+    const loggerOption = yield* Effect.serviceOption(Logger);
+    const runtime = yield* Effect.context<never>();
+    const tty = isTtyStdin(stdin);
+    const gate = resolveGate(options, tty, defaultMode);
+    const cwd = options?.cwd ?? process.cwd();
+    const explicit = options?.answers ?? {};
+    const answersFilePath =
+      options?.answersFile === undefined ? undefined : resolve(cwd, options.answersFile);
+    const internal = options as InternalPromptBatchOptions | undefined;
+    const choicesRunner = internal?.choicesRunner ?? deps.choicesRunner;
+    const chrome = internal?.chrome;
+    const fromFile =
+      answersFilePath === undefined
+        ? {}
+        : yield* Effect.tryPromise({
+            try: () => readAnswersFileJson(answersFilePath),
+            catch: (cause) =>
+              new PromptValidationError({
+                message: `Could not load answers file: ${describeCause(cause)}`,
+                promptName: "(answers file)",
+                promptType: "text",
+                issue: describeCause(cause),
+                remediation: "Pass a readable JSON object of string answers via --answers <file>.",
+              }),
+          });
+    const answers: Record<string, string> = { ...fromFile, ...explicit };
+    const debug = Option.isNone(loggerOption)
+      ? undefined
+      : (message: string, data: Readonly<Record<string, unknown>>): Promise<void> =>
+          Effect.runPromiseWith(runtime)(loggerOption.value.debug(message, data).pipe(Effect.ignore));
+    const driver = yield* resolveDriver(gate.interactive, tty, gate, rendererOption, debug);
+    const collect: Omit<CollectPromptsOptions, "io"> = {
+      prompts: specs as ReadonlyArray<RecipePrompt>,
+      answers,
+      yes: gate.yes,
+      nonInteractive: gate.nonInteractive,
+      cwd,
+      ...(options?.runs === undefined ? {} : { runs: options.runs }),
+      ...(choicesRunner === undefined ? {} : { choicesRunner }),
+      ...(chrome === undefined ? {} : { chrome }),
+      ...(driver === undefined ? {} : { interactiveDriver: driver }),
+    };
+    return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));
+  });
+
+  const promptAll = Effect.fn("InteractionService.promptAll")(
+    (
+      specs: ReadonlyArray<PromptSpec>,
+      options?: PromptBatchOptions,
+    ): Effect.Effect<PromptAnswers, InteractionError> => runBatch(specs, options),
+  );
+
+  const prompt = Effect.fn("InteractionService.prompt")(
+    (spec: PromptSpec): Effect.Effect<SdkPromptAnswer, InteractionError> =>
+      runBatch([spec], undefined).pipe(Effect.map((answers) => answers[spec.name] as SdkPromptAnswer)),
+  );
+
+  const confirm = Effect.fn("InteractionService.confirm")(
+    (spec: ConfirmSpec): Effect.Effect<boolean, InteractionError> => {
+      const name = spec.name ?? "confirm";
+      const promptSpec: PromptSpec = {
+        name,
+        type: "confirm",
+        message: spec.message,
+        ...(spec.default === undefined ? {} : { default: spec.default }),
       };
-      return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));
-    });
+      return runBatch([promptSpec], spec).pipe(Effect.map((answers) => answers[name] === true));
+    },
+  );
 
-  const promptAll = (
-    specs: ReadonlyArray<PromptSpec>,
-    options?: PromptBatchOptions,
-  ): Effect.Effect<PromptAnswers, InteractionError> => runBatch(specs, options);
+  const select = Effect.fn("InteractionService.select")(
+    <A extends string | number | boolean>(spec: SelectSpec<A>): Effect.Effect<A, InteractionError> => {
+      const name = spec.name ?? "select";
+      const promptSpec: PromptSpec = {
+        name,
+        type: "select",
+        message: spec.message,
+        choices: spec.choices as ReadonlyArray<PromptChoice>,
+        ...(spec.default === undefined ? {} : { default: spec.default }),
+      };
+      return runBatch([promptSpec], spec).pipe(Effect.map((answers) => answers[name] as A));
+    },
+  );
 
-  const prompt = (spec: PromptSpec): Effect.Effect<SdkPromptAnswer, InteractionError> =>
-    runBatch([spec], undefined).pipe(Effect.map((answers) => answers[spec.name] as SdkPromptAnswer));
+  const secret = Effect.fn("InteractionService.secret")(
+    (spec: SecretSpec): Effect.Effect<Redacted.Redacted<string>, InteractionError> => {
+      const name = spec.name ?? "secret";
+      const promptSpec: PromptSpec = { name, type: "secret", message: spec.message };
+      return runBatch([promptSpec], spec).pipe(
+        Effect.map((answers) => {
+          const value = answers[name];
+          return Redacted.make(typeof value === "string" ? value : String(value));
+        }),
+      );
+    },
+  );
 
-  const confirm = (spec: ConfirmSpec): Effect.Effect<boolean, InteractionError> => {
-    const name = spec.name ?? "confirm";
-    const promptSpec: PromptSpec = {
-      name,
-      type: "confirm",
-      message: spec.message,
-      ...(spec.default === undefined ? {} : { default: spec.default }),
-    };
-    return runBatch([promptSpec], spec).pipe(Effect.map((answers) => answers[name] === true));
-  };
-
-  const select = <A extends string | number | boolean>(
-    spec: SelectSpec<A>,
-  ): Effect.Effect<A, InteractionError> => {
-    const name = spec.name ?? "select";
-    const promptSpec: PromptSpec = {
-      name,
-      type: "select",
-      message: spec.message,
-      choices: spec.choices as ReadonlyArray<PromptChoice>,
-      ...(spec.default === undefined ? {} : { default: spec.default }),
-    };
-    return runBatch([promptSpec], spec).pipe(Effect.map((answers) => answers[name] as A));
-  };
-
-  const secret = (spec: SecretSpec): Effect.Effect<Redacted.Redacted<string>, InteractionError> => {
-    const name = spec.name ?? "secret";
-    const promptSpec: PromptSpec = { name, type: "secret", message: spec.message };
-    return runBatch([promptSpec], spec).pipe(
-      Effect.map((answers) => {
-        const value = answers[name];
-        return Redacted.make(typeof value === "string" ? value : String(value));
-      }),
-    );
-  };
-
-  return {
+  return InteractionService.of({
     id,
     isInteractive: Effect.sync(() => isTtyStdin(stdin)),
     prompt,
@@ -427,10 +435,10 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     confirm,
     select,
     secret,
-  };
+  });
 };
 
-export const InteractionServiceLive: Layer.Layer<InteractionService> = Layer.suspend(() =>
+export const layer: Layer.Layer<InteractionService> = Layer.suspend(() =>
   Layer.succeed(
     InteractionService,
     getInteractionServiceOverride() ??

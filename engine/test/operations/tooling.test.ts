@@ -19,11 +19,11 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Either, Layer, Schema, Stream } from "effect";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
+import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
 const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   const calls: {
@@ -35,7 +35,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   }[] = [];
   const selections: number[] = [];
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
     source: "tooling.test",
     runtime: 4 as const,
   };
@@ -83,37 +83,49 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
-    ProviderExecToolingEngineLive,
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([service.provider]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () =>
-        Effect.sync(() => {
-          selections.push(1);
-          return provider;
-        }),
-    }),
-    Layer.succeed(ShellRunner, {
-      exec: (source, options) =>
-        Effect.sync(() => {
-          calls.push({
-            service: ":host",
-            command: [source, ...(options?.argv ?? [])],
-            ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-            ...(options?.env === undefined ? {} : { env: options.env }),
-          });
-          return { exitCode: failureCode, stdout: "", stderr: "" };
-        }),
-      runScript: () => Effect.die("unused script"),
-      run: () => Effect.die("unused run"),
-      interactive: () => Effect.die("unused interactive"),
-    }),
+    PrivateFileAccessService.layer,
+    ProviderExecToolingEngine.layer,
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "tooling-test", tooling: { custom: task } }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([service.provider]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () =>
+          Effect.sync(() => {
+            selections.push(1);
+            return provider;
+          }),
+      }),
+    ),
+    Layer.succeed(
+      ShellRunner,
+      ShellRunner.of({
+        exec: (source, options) =>
+          Effect.sync(() => {
+            calls.push({
+              service: ":host",
+              command: [source, ...(options?.argv ?? [])],
+              ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+              ...(options?.env === undefined ? {} : { env: options.env }),
+            });
+            return { exitCode: failureCode, stdout: "", stderr: "" };
+          }),
+        runScript: () => Effect.die("unused script"),
+        run: () => Effect.die("unused run"),
+        interactive: () => Effect.die("unused interactive"),
+      }),
+    ),
   );
   return {
     calls,
@@ -121,7 +133,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0) => {
     plan,
     run: (options: Omit<RunToolingOptions, "name"> = {}) =>
       Effect.runPromise(
-        runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.either),
+        runTooling({ name: "custom", ...options }).pipe(Effect.provide(layer), Effect.result),
       ),
   };
 };
@@ -134,8 +146,8 @@ test("rejects a freshly disabled task even when the plan carries an enabled task
   const result = await f.run();
   // Then the fresh declaration is authoritative
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "ToolingDisabledError", tool: "custom", source: { task: "custom" } },
+    _tag: "Failure",
+    failure: { _tag: "ToolingDisabledError", tool: "custom", source: { task: "custom" } },
   });
   expect(f.selections).toHaveLength(0);
 });
@@ -147,7 +159,7 @@ test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchang
   // When invoked
   const result = await f.run({ args });
   // Then raw tokens reach the provider
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.command.slice(-args.length)).toEqual(args);
 });
 
@@ -178,7 +190,7 @@ test.each([...invalidInputs])(
     // When invalid argv is submitted
     const result = await f.run({ args });
     // Then validation prevents all execution
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingInputError", field } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError", field } });
     expect(f.selections).toHaveLength(0);
     expect(f.calls).toHaveLength(0);
   },
@@ -190,7 +202,7 @@ test("resolves a service from its validated flag alias", async () => {
   // When the alias supplies the service
   const result = await f.run({ args: ["-s", "worker"] });
   // Then the provider receives the resolved service
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.service).toBe("worker");
 });
 
@@ -200,7 +212,7 @@ test("never selects a provider for all-host tooling", async () => {
   // When invoked with raw argv
   const result = await f.run({ args: ["a b"] });
   // Then host steps run without provider selection and only the last receives argv
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.selections).toHaveLength(0);
   expect(f.calls.map((call) => call.command)).toEqual([["echo first"], ["echo last", "a b"]]);
 });
@@ -217,7 +229,7 @@ test("selects once and executes mixed steps in authored order", async () => {
   // When invoked
   const result = await f.run();
   // Then no grouping or reordering occurs
-  expect(Either.isRight(result)).toBe(true);
+  expect(Result.isSuccess(result)).toBe(true);
   expect(f.selections).toHaveLength(1);
   expect(f.calls.map((call) => call.service)).toEqual(["worker", ":host", "worker"]);
 });
@@ -253,7 +265,7 @@ test("preserves ToolingExecError for an unknown service", async () => {
   // When invoked
   const result = await f.run();
   // Then the service resolver keeps its error contract
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingExecError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingExecError" } });
 });
 
 test.each(["worker", ":host"])("stops at the first nonzero step on %s", async (service) => {
@@ -270,7 +282,7 @@ test.each(["worker", ":host"])("stops at the first nonzero step on %s", async (s
   // When invoked
   const result = await f.run();
   // Then execution stops and the failing step's exit code is the task result
-  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 17 } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 17 } });
   expect(f.calls).toHaveLength(1);
 });
 
@@ -280,7 +292,7 @@ test("preserves arguments false rejection", async () => {
   // When arguments are provided
   const result = await f.run({ args: ["extra"] });
   // Then the original compile error tag is retained
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingCompileError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
   expect(f.selections).toHaveLength(0);
 });
 
@@ -295,6 +307,6 @@ test("accepts declared flags when arguments is false", async () => {
   // When a declared flag is supplied
   const result = await f.run({ args: ["--verbose"] });
   // Then the flag is parsed instead of treated as a forbidden positional
-  expect(result).toMatchObject({ _tag: "Right" });
+  expect(result).toMatchObject({ _tag: "Success" });
   expect(f.selections).toHaveLength(0);
 });

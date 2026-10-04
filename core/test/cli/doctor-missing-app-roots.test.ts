@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { shellArg } from "@lando/engine/services/shell-quote";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -53,16 +53,17 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
       : []),
   ],
 });
-const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) => ({
-  list: Effect.succeed([providerId]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed(TestRuntimeProvider),
-  observeRuntime: Effect.succeed(snapshots),
-});
+const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed([providerId]),
+    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+    select: () => Effect.succeed(TestRuntimeProvider),
+    observeRuntime: Effect.succeed(snapshots),
+  });
 const fsLayer = Layer.effect(
   FileSystem,
   Effect.map(FileSystem, (fs) => ({ ...fs, exists: () => Effect.succeed(false) })),
-).pipe(Layer.provide(FileSystemLive));
+).pipe(Layer.provide(BunFileSystem.layer));
 const run = (
   snapshots: ReadonlyArray<ProviderRuntimeSnapshot>,
   redact: (text: string) => string = (text) => text,
@@ -92,10 +93,13 @@ test("returns one redacted manual warning when app state cannot be read", async 
       Effect.provide(
         Layer.merge(
           fsLayer,
-          Layer.succeed(RuntimeProviderRegistry, {
-            ...registry([]),
-            observeRuntime: Effect.fail(error),
-          }),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              ...registry([]),
+              observeRuntime: Effect.fail(error),
+            }),
+          ),
         ),
       ),
     ),
@@ -123,13 +127,16 @@ test("does not observe the runtime without a filesystem", async () => {
   let observed = false;
   const checks = await Effect.runPromise(
     missingAppRootsDoctor((text) => text).pipe(
-      Effect.provideService(RuntimeProviderRegistry, {
-        ...registry([]),
-        observeRuntime: Effect.sync(() => {
-          observed = true;
-          return [];
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        RuntimeProviderRegistry.of({
+          ...registry([]),
+          observeRuntime: Effect.sync(() => {
+            observed = true;
+            return [];
+          }),
         }),
-      }),
+      ),
     ),
   );
   expect(checks).toEqual([]);

@@ -11,7 +11,7 @@ import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.t
 
 const providerId = ProviderId.make("test");
 const serviceName = ServiceName.make("appserver");
-const runtimeTag = Context.GenericTag<unknown>("exec-command-spec/runtime");
+const runtimeTag = Context.Service<unknown>("exec-command-spec/runtime");
 const plan: AppPlan = {
   id: AppId.make("exec-command-spec"),
   name: "exec-command-spec",
@@ -32,7 +32,7 @@ const plan: AppPlan = {
       dependsOn: [],
       hostAliases: [],
       metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
+        resolvedAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
         source: "exec-command-spec.test",
         runtime: 4,
       },
@@ -44,7 +44,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
     source: "exec-command-spec.test",
     runtime: 4,
   },

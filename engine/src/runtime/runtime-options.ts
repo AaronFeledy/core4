@@ -7,7 +7,7 @@
  * renderer preset → library renderer mode, and validation of host-supplied
  * plugin layers. No layer composition happens here.
  */
-import { Either, Layer, Schema } from "effect";
+import { Layer, Result, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
@@ -34,35 +34,35 @@ import { BootstrapLevel } from "./bootstrap.ts";
 // - bootstrap: required option (CLI: declared per command)
 
 const RuntimePluginDiscoveryOptions = Schema.Struct({
-  bundled: Schema.optional(Schema.Boolean),
-  system: Schema.optional(Schema.Boolean),
-  user: Schema.optional(Schema.Boolean),
-  app: Schema.optional(Schema.Boolean),
+  bundled: Schema.optionalKey(Schema.Boolean),
+  system: Schema.optionalKey(Schema.Boolean),
+  user: Schema.optionalKey(Schema.Boolean),
+  app: Schema.optionalKey(Schema.Boolean),
 });
 
 const RuntimePluginOptions = Schema.Struct({
-  policy: Schema.optional(EmbeddingPluginPolicy),
-  layers: Schema.optional(Schema.Array(Schema.Unknown)),
-  manifests: Schema.optional(Schema.Array(ResolvedPluginInput)),
-  discovery: Schema.optional(RuntimePluginDiscoveryOptions),
-  externalImports: Schema.optional(Schema.Boolean),
-  disable: Schema.optional(Schema.Array(Schema.String)),
+  policy: Schema.optionalKey(EmbeddingPluginPolicy),
+  layers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  manifests: Schema.optionalKey(Schema.Array(ResolvedPluginInput)),
+  discovery: Schema.optionalKey(RuntimePluginDiscoveryOptions),
+  externalImports: Schema.optionalKey(Schema.Boolean),
+  disable: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 type RuntimePluginOptions = typeof RuntimePluginOptions.Type;
 
 const GlobalConfigOverrides = Schema.Struct({
-  userDataRoot: Schema.optional(AbsolutePath),
-  userConfRoot: Schema.optional(AbsolutePath),
-  userCacheRoot: Schema.optional(AbsolutePath),
-  systemPluginRoot: Schema.optional(AbsolutePath),
-  defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
-  telemetry: Schema.optional(
+  userDataRoot: Schema.optionalKey(AbsolutePath),
+  userConfRoot: Schema.optionalKey(AbsolutePath),
+  userCacheRoot: Schema.optionalKey(AbsolutePath),
+  systemPluginRoot: Schema.optionalKey(AbsolutePath),
+  defaultProviderId: Schema.optionalKey(Schema.Union([ProviderId, Schema.Null])),
+  telemetry: Schema.optionalKey(
     Schema.Struct({
-      enabled: Schema.optional(Schema.Boolean),
+      enabled: Schema.optionalKey(Schema.Boolean),
     }),
   ),
-  renderer: Schema.optional(Schema.String),
-  logLevel: Schema.optional(Schema.String),
+  renderer: Schema.optionalKey(Schema.String),
+  logLevel: Schema.optionalKey(Schema.String),
 });
 
 const LIBRARY_RENDERER_MODES = ["json", "plain", "verbose", "lando"] as const;
@@ -87,7 +87,7 @@ export interface RuntimeLogging {
  * Resolve Effect logger mode + diagnostic level for bootstrap.
  *
  * `none` (or omitted) stays silent. A non-`none` level uses pretty mode so
- * `LoggerLive` can install the stderr pretty/structured logger. `logger:
+ * `LandoLogger.layer` can install the stderr pretty/structured logger. `logger:
  * "pretty"` remains an independent embedder override and does not flip the
  * library renderer. JSON renderer + a non-`none` level forces structured
  * stderr so machine output is not mixed with pretty prose.
@@ -111,25 +111,25 @@ export const resolveRuntimeLogging = (
 /** Runtime options bag. */
 export const LandoRuntimeOptions = Schema.Struct({
   /** Bootstrap depth. Default `"app"` for embedding. */
-  bootstrap: Schema.optional(BootstrapLevel),
+  bootstrap: Schema.optionalKey(BootstrapLevel),
   /** Working directory for Landofile discovery. Required if bootstrap >= "app". */
-  cwd: Schema.optional(Schema.String),
+  cwd: Schema.optionalKey(Schema.String),
   /** Plugin source policy. Default: host-provided only. */
-  plugins: Schema.optional(RuntimePluginOptions),
+  plugins: Schema.optionalKey(RuntimePluginOptions),
   /** Inline overrides applied after global config + env, before Landofile. */
-  config: Schema.optional(GlobalConfigOverrides),
+  config: Schema.optionalKey(GlobalConfigOverrides),
   /** Renderer/logger preset shortcuts. */
-  logger: Schema.optional(Schema.String),
-  renderer: Schema.optional(Schema.String),
-  logLevel: Schema.optional(Schema.String),
+  logger: Schema.optionalKey(Schema.String),
+  renderer: Schema.optionalKey(Schema.String),
+  logLevel: Schema.optionalKey(Schema.String),
   /** Telemetry: opt-in only in library mode. */
-  telemetry: Schema.optional(Schema.Boolean),
+  telemetry: Schema.optionalKey(Schema.Boolean),
   /** Default prompt interactivity. Library mode defaults to `non-interactive`. */
-  interaction: Schema.optional(Schema.Literal("auto", "interactive", "non-interactive")),
+  interaction: Schema.optionalKey(Schema.Literals(["auto", "interactive", "non-interactive"])),
   /** Cache root override. Defaults to `<userCacheRoot>/lando`. */
-  cacheRoot: Schema.optional(Schema.String),
+  cacheRoot: Schema.optionalKey(Schema.String),
   /** Signal handling: the host owns SIGINT/SIGTERM by default. Set true to install the same handler the CLI uses. */
-  installSignalHandlers: Schema.optional(Schema.Boolean),
+  installSignalHandlers: Schema.optionalKey(Schema.Boolean),
 });
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
@@ -142,12 +142,12 @@ export const bootstrapError = (message: string, cause: unknown): LandoRuntimeBoo
 
 export const collectEmbeddingPluginLayers = (
   entries: ReadonlyArray<unknown>,
-): Either.Either<ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>, LandoRuntimeBootstrapError> => {
+): Result.Result<ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>, LandoRuntimeBootstrapError> => {
   const layers: Layer.Layer<unknown, unknown, unknown>[] = [];
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index];
     if (!Layer.isLayer(entry)) {
-      return Either.left(
+      return Result.fail(
         bootstrapError(
           `Invalid Lando runtime options: plugins.layers[${index}] is not an Effect Layer.`,
           entry,
@@ -156,7 +156,7 @@ export const collectEmbeddingPluginLayers = (
     }
     layers.push(entry);
   }
-  return Either.right(layers);
+  return Result.succeed(layers);
 };
 
 export interface NormalizedPluginPolicy {

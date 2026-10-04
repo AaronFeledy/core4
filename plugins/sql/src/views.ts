@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import type { SqlCreds } from "./creds.ts";
 
 export type SqlLandofileService = {
@@ -30,8 +31,9 @@ export type SqlPlan = {
   readonly services: Readonly<Record<string, SqlPlanService>>;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const objectOrArray = Predicate.or(Predicate.isObject, (value: unknown): value is Record<string, unknown> =>
+  Array.isArray(value),
+);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 
@@ -50,15 +52,15 @@ const authoredCreds = (value: Record<string, unknown>): Partial<SqlCreds> | unde
 };
 
 export const toSqlLandofile = (value: unknown): SqlLandofile => {
-  if (!isRecord(value)) return {};
-  const services = isRecord(value.services) ? value.services : {};
+  if (!objectOrArray(value)) return {};
+  const services = objectOrArray(value.services) ? value.services : {};
   const name = asString(value.name);
   const mapped: Record<string, SqlLandofileService> = {};
   for (const [serviceName, service] of Object.entries(services)) {
-    if (!isRecord(service)) continue;
+    if (!objectOrArray(service)) continue;
     const type = asString(service.type);
-    const creds = isRecord(service.creds) ? authoredCreds(service.creds) : undefined;
-    const environment = isRecord(service.environment)
+    const creds = objectOrArray(service.creds) ? authoredCreds(service.creds) : undefined;
+    const environment = objectOrArray(service.environment)
       ? Object.fromEntries(
           Object.entries(service.environment).filter(
             (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -78,8 +80,8 @@ export const toSqlLandofile = (value: unknown): SqlLandofile => {
 };
 
 export const toSqlPlan = (value: unknown): SqlPlan => {
-  const record = isRecord(value) ? value : {};
-  const identityRecord = isRecord(record.identity) ? record.identity : undefined;
+  const record = objectOrArray(value) ? value : {};
+  const identityRecord = objectOrArray(record.identity) ? record.identity : undefined;
   const identityAppRoot = identityRecord === undefined ? undefined : asString(identityRecord.appRoot);
   const identityOwnerKey = identityRecord === undefined ? undefined : asString(identityRecord.ownerKey);
   const identityRepoGroupKey =
@@ -92,19 +94,19 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
           ownerKey: identityOwnerKey,
           ...(identityRepoGroupKey === undefined ? {} : { repoGroupKey: identityRepoGroupKey }),
         };
-  const services = isRecord(record.services) ? record.services : {};
+  const services = objectOrArray(record.services) ? record.services : {};
   const mapped: Record<string, SqlPlanService> = {};
   for (const [name, service] of Object.entries(services)) {
-    if (!isRecord(service)) continue;
+    if (!objectOrArray(service)) continue;
     const environment: Record<string, string> = {};
-    if (isRecord(service.environment)) {
+    if (objectOrArray(service.environment)) {
       for (const [key, item] of Object.entries(service.environment)) {
         if (typeof item === "string") environment[key] = item;
       }
     }
     const storage = Array.isArray(service.storage)
       ? service.storage.flatMap((entry) => {
-          if (!isRecord(entry) || typeof entry.store !== "string") return [];
+          if (!objectOrArray(entry) || typeof entry.store !== "string") return [];
           const target = asString(entry.target);
           return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
         })

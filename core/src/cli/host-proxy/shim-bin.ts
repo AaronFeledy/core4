@@ -8,10 +8,18 @@ const forwardedEnvNames: ReadonlyArray<string> = ["LANG", "TERM"];
 const agentEnvNames: ReadonlyArray<string> = [
   "CLAUDECODE",
   "CLAUDE_CODE",
+  "CLAUDE_CODE_IS_COWORK",
   "CURSOR_AGENT",
   "OPENCODE",
+  "OPENCODE_CLIENT",
   "COPILOT_CLI",
   "GEMINI_CLI",
+  "CODEX_SANDBOX",
+  "CODEX_CI",
+  "AUGMENT_AGENT",
+  "ANTIGRAVITY_AGENT",
+  "PI_CODING_AGENT",
+  "AI_AGENT",
   "AGENT",
   "CI",
 ];

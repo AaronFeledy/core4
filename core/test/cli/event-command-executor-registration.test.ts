@@ -22,7 +22,7 @@ test.each(["service", "standalone"] as const)(
       capabilities: RENDERER_CAPABILITIES_NONE,
       message: { info: write, warn: write, error: write },
       output: { stdout: write, stderr: write },
-    } satisfies Context.Tag.Service<typeof Renderer>;
+    } satisfies Context.Service.Shape<typeof Renderer>;
     const service = makeRedactionService({
       id: "empty",
       get: () => Effect.succeed(""),
@@ -30,18 +30,17 @@ test.each(["service", "standalone"] as const)(
       list: Effect.succeed([]),
     });
     const delegated: string[] = [];
-    const base = Context.make(Context.GenericTag<unknown>("test/runtime"), {}).pipe(
+    const base = Context.make(Context.Service<unknown>("test/runtime"), {}).pipe(
       Context.add(Renderer, renderer),
     );
     const context =
       mode === "service"
         ? Context.add(base, RedactionService, {
             ...service,
-            registerValues: (values) =>
-              Effect.gen(function* () {
-                delegated.push(...values);
-                yield* service.registerValues(values);
-              }),
+            registerValues: Effect.fnUntraced(function* (values) {
+              delegated.push(...values);
+              yield* service.registerValues(values);
+            }),
           })
         : base;
     const spec = {
@@ -50,12 +49,11 @@ test.each(["service", "standalone"] as const)(
       namespace: "meta",
       bootstrap: "none",
       resultSchema: Schema.Void,
-      run: () =>
-        Effect.gen(function* () {
-          const redaction = yield* RedactionService;
-          yield* redaction.registerValues([secret]);
-          yield* (yield* Renderer).output.stdout(secret);
-        }),
+      run: Effect.fnUntraced(function* () {
+        const redaction = yield* RedactionService;
+        yield* redaction.registerValues([secret]);
+        yield* (yield* Renderer).output.stdout(secret);
+      }),
     } satisfies LandoCommandSpec;
     // When
     await Effect.runPromise(

@@ -24,7 +24,7 @@ const toRuntimeBundleDownloadError = (cause: unknown): ProviderUnavailableError 
 };
 
 export const makeArtifactDownload =
-  (downloader: Context.Tag.Service<typeof Downloader>): ArtifactDownload =>
+  (downloader: Context.Service.Shape<typeof Downloader>): ArtifactDownload =>
   (request) =>
     Effect.scoped(
       Effect.gen(function* () {

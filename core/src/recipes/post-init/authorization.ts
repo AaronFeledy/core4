@@ -5,7 +5,7 @@ import {
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import type { RecipePostInitAction, RecipePrompt } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 import { RECIPE_POST_INIT_COMMAND_IDS } from "../../cli/allowlists/recipe-post-init";
 
 const allowed: readonly string[] = RECIPE_POST_INIT_COMMAND_IDS;
@@ -25,7 +25,7 @@ export const postInitAuthorizationIssue = (
     const parsed = parseExpressionEither(when.startsWith("{{") ? when : `{{ ${when} }}`, {
       filePath: "recipe",
     });
-    if (Either.isLeft(parsed) || !expressionTouchesOnlyScopes(parsed.right, ["options"])) {
+    if (Result.isFailure(parsed) || !expressionTouchesOnlyScopes(parsed.success, ["options"])) {
       return "Invalid when expression or forbidden scope.";
     }
   }
@@ -85,7 +85,7 @@ export const shouldRunPostInitAction = (
   const parsed = parseExpressionEither(when.startsWith("{{") ? when : `{{ ${when} }}`, {
     filePath: context.recipeId,
   });
-  if (Either.isLeft(parsed) || !expressionTouchesOnlyScopes(parsed.right, ["options"]))
+  if (Result.isFailure(parsed) || !expressionTouchesOnlyScopes(parsed.success, ["options"]))
     return fail("Invalid when expression or forbidden scope.");
   const options = Object.fromEntries(
     Object.entries(context.answers).map(([key, value]) => [
@@ -94,7 +94,7 @@ export const shouldRunPostInitAction = (
     ]),
   );
   const result = evaluateTemplateEither(
-    parsed.right,
+    parsed.success,
     { options },
     {
       budget: {
@@ -105,7 +105,7 @@ export const shouldRunPostInitAction = (
       },
     },
   );
-  if (Either.isLeft(result) || typeof result.right !== "boolean")
+  if (Result.isFailure(result) || typeof result.success !== "boolean")
     return fail("when must evaluate to a boolean within the evaluation budget.");
-  return result.right;
+  return result.success;
 };

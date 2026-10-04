@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Predicate } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
-
-import { isRecord } from "./extensions.ts";
 
 type ComposeConfigFileInput = {
   readonly name: string;
@@ -35,75 +34,103 @@ const providerRealizesConfigs = (capabilities: ProviderCapabilities): boolean =>
   (capabilities.composeProjectFields?.supported.includes("configs") ?? false) &&
   (capabilities.composeServiceFields?.supported.includes("configs") ?? false);
 
-export const loadComposeConfigFiles = (input: {
+export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")(function* (input: {
   readonly appRoot: string;
   readonly landofile: LandofileShape;
-  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly capabilities: ProviderCapabilities;
-}): Effect.Effect<ReadonlyArray<ComposeConfigFileInput>, LandofileValidationError> =>
-  Effect.gen(function* () {
-    const definitions = input.landofile.configs ?? {};
-    const grants = grantSources(input.landofile);
-    if (Object.keys(definitions).length === 0 && grants.length === 0) return [];
-    if (!providerRealizesConfigs(input.capabilities)) return [];
+}): Effect.fn.Return<ReadonlyArray<ComposeConfigFileInput>, LandofileValidationError> {
+  const definitions = input.landofile.configs ?? {};
+  const grants = grantSources(input.landofile);
+  if (Object.keys(definitions).length === 0 && grants.length === 0) return [];
+  if (!providerRealizesConfigs(input.capabilities)) return [];
 
-    const definedNames = new Set(Object.keys(definitions));
+  const definedNames = new Set(Object.keys(definitions));
 
-    for (const grant of grants) {
-      if (definedNames.has(grant.source)) continue;
-      return yield* Effect.fail(
-        new LandofileValidationError({
-          message: `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
-          file: `${input.appRoot}/.lando.yml`,
-          issues: [`services.${grant.service}.configs`, `configs.${grant.source}`],
-        }),
-      );
-    }
+  for (const grant of grants) {
+    if (definedNames.has(grant.source)) continue;
+    return yield* Effect.fail(
+      new LandofileValidationError({
+        message: `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
+        file: `${input.appRoot}/.lando.yml`,
+        issues: [
+          validationIssue(
+            ["services", grant.service, "configs"],
+            `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
+          ),
+          validationIssue(
+            ["configs", grant.source],
+            `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
+          ),
+        ],
+      }),
+    );
+  }
 
-    if (input.fileSystem === undefined) {
-      return yield* Effect.fail(
-        new LandofileValidationError({
-          message:
+  if (input.fileSystem === undefined) {
+    return yield* Effect.fail(
+      new LandofileValidationError({
+        message:
+          "The Landofile declares configs, but the FileSystem service is unavailable. Provide FileSystem so config files can be read.",
+        file: `${input.appRoot}/.lando.yml`,
+        issues: [
+          validationIssue(
+            ["configs"],
             "The Landofile declares configs, but the FileSystem service is unavailable. Provide FileSystem so config files can be read.",
+          ),
+        ],
+      }),
+    );
+  }
+
+  const inputs: Array<ComposeConfigFileInput> = [];
+  for (const [name, definition] of Object.entries(definitions)) {
+    if (!Predicate.isObject(definition)) continue;
+    if (definition.external === true) {
+      return yield* Effect.fail(
+        new LandofileValidationError({
+          message: `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
           file: `${input.appRoot}/.lando.yml`,
-          issues: ["configs"],
+          issues: [
+            validationIssue(
+              ["configs", name, "external"],
+              `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
+            ),
+          ],
         }),
       );
     }
-
-    const inputs: Array<ComposeConfigFileInput> = [];
-    for (const [name, definition] of Object.entries(definitions)) {
-      if (!isRecord(definition)) continue;
-      if (definition.external === true) {
-        return yield* Effect.fail(
-          new LandofileValidationError({
-            message: `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
-            file: `${input.appRoot}/.lando.yml`,
-            issues: [`configs.${name}.external`],
-          }),
-        );
-      }
-      if (typeof definition.file !== "string" || definition.file.length === 0) {
-        return yield* Effect.fail(
-          new LandofileValidationError({
-            message: `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
-            file: `${input.appRoot}/.lando.yml`,
-            issues: [`configs.${name}.file`],
-          }),
-        );
-      }
-      const source = resolve(input.appRoot, definition.file);
-      const content = yield* input.fileSystem.readText(source).pipe(
-        Effect.mapError(
-          (cause) =>
-            new LandofileValidationError({
-              message: `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,
-              file: source,
-              issues: [`configs.${name}.file`],
-            }),
-        ),
+    if (typeof definition.file !== "string" || definition.file.length === 0) {
+      return yield* Effect.fail(
+        new LandofileValidationError({
+          message: `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
+          file: `${input.appRoot}/.lando.yml`,
+          issues: [
+            validationIssue(
+              ["configs", name, "file"],
+              `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
+            ),
+          ],
+        }),
       );
-      inputs.push({ name, source, hash: createHash("sha256").update(content).digest("hex") });
     }
-    return inputs;
-  });
+    const source = resolve(input.appRoot, definition.file);
+    const content = yield* input.fileSystem.readText(source).pipe(
+      Effect.mapError(
+        (cause) =>
+          new LandofileValidationError({
+            message: `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,
+            file: source,
+            issues: [
+              validationIssue(
+                ["configs", name, "file"],
+                `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,
+              ),
+            ],
+          }),
+      ),
+    );
+    inputs.push({ name, source, hash: createHash("sha256").update(content).digest("hex") });
+  }
+  return inputs;
+});

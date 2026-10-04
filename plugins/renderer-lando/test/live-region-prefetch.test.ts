@@ -5,7 +5,7 @@ import { CliCommandInitEvent, type LandoEvent, TaskTreeStartEvent } from "@lando
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import {
@@ -127,7 +127,7 @@ describe("TTY consumer live-region prefetch", () => {
               createLiveRegion: (options) =>
                 createLiveRegionController(options, { loadModule, createRenderer }),
             }),
-            EventServiceLive,
+            LandoEventService.layer,
           ),
         ),
       ),

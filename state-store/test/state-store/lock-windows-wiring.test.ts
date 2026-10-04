@@ -5,15 +5,15 @@ import { join } from "node:path";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
-import { makePrivateFileAccessLive } from "../../src/private-file-access.ts";
-import { StateStoreWithPrivateFileAccessLive } from "../../src/service.ts";
+import { PrivateFileAccessService } from "../../src/private-file-access.ts";
+import * as StateStoreLayer from "../../src/service.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
 
 test("the default state layer uses its runner for Windows advisory-lock ACLs", async () => {
   // Given the Windows ACL implementation and a recording runner on any host
   const root = await mkdtemp(join(tmpdir(), "lando-state-windows-wiring-"));
   const worker = makeRecordingWorkerSpawn();
-  const privateFileAccess = makePrivateFileAccessLive({
+  const privateFileAccess = PrivateFileAccessService.layerWithOptions({
     platform: "win32",
     env: { SystemRoot: "C:\\Windows" },
     spawn: worker.spawn,
@@ -26,13 +26,15 @@ test("the default state layer uses its runner for Windows advisory-lock ACLs", a
         const bucket = yield* store.open({
           root: { path: AbsolutePath.make(root) },
           key: "applied-plans.json",
-          schema: Schema.Record({ key: Schema.String, value: Schema.String }),
+          schema: Schema.Record(Schema.String, Schema.String),
           version: 1,
           mode: 0o600,
           lock: "advisory",
         });
         yield* bucket.modify(() => [undefined, { app: "plan" }]);
-      }).pipe(Effect.provide(StateStoreWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccess)))),
+      }).pipe(
+        Effect.provide(StateStoreLayer.layerWithPrivateFileAccess.pipe(Layer.provide(privateFileAccess))),
+      ),
     );
     // Then lock creation, private data publication, and lock release all run the ACL scripts
     expect(worker.requests.map(({ operation }) => operation)).toEqual(["enforce", "enforce", "verify"]);

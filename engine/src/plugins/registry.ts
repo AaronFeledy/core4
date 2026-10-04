@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Context, Effect, Either, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -32,8 +32,8 @@ interface PluginRegistryDiscoveryOptions {
 }
 
 interface PluginRegistryServices {
-  readonly registry: Context.Tag.Service<typeof PluginRegistry>;
-  readonly globalManifests: Context.Tag.Service<typeof GlobalPluginManifests>;
+  readonly registry: Context.Service.Shape<typeof PluginRegistry>;
+  readonly globalManifests: Context.Service.Shape<typeof GlobalPluginManifests>;
 }
 
 interface PluginRegistryInput {
@@ -45,8 +45,8 @@ interface PluginRegistryInput {
 }
 
 const makePluginRegistry = (
-  configService: Context.Tag.Service<typeof ConfigService> | undefined,
-  logger: Context.Tag.Service<typeof Logger> | undefined,
+  configService: Context.Service.Shape<typeof ConfigService> | undefined,
+  logger: Context.Service.Shape<typeof Logger> | undefined,
   input: PluginRegistryInput,
 ): PluginRegistryServices => {
   const { capabilities, discovery } = input;
@@ -57,7 +57,7 @@ const makePluginRegistry = (
     const userDataRoot =
       configService === undefined
         ? resolveUserDataRoot()
-        : yield* configService.get("userDataRoot").pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+        : yield* configService.get("userDataRoot").pipe(Effect.catch(() => Effect.succeed(undefined)));
     const userPlugins =
       discovery.user === false || userDataRoot === undefined
         ? []
@@ -83,50 +83,47 @@ const makePluginRegistry = (
     ),
   );
 
-  const registry: Context.Tag.Service<typeof PluginRegistry> = {
+  const registry: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
     list: discover,
-    load: (name) =>
-      Effect.gen(function* () {
-        const manifests = yield* discover;
-        const manifest = manifests.find((plugin) => plugin.name === name);
+    load: Effect.fn("PluginRegistry.load")(function* (name) {
+      const manifests = yield* discover;
+      const manifest = manifests.find((plugin) => plugin.name === name);
 
-        if (manifest !== undefined) {
-          return manifest;
-        }
+      if (manifest !== undefined) {
+        return manifest;
+      }
 
-        return yield* Effect.fail(
-          new PluginLoadError({
-            message: `Plugin ${name} is not registered.`,
-            pluginName: name,
-          }),
+      return yield* Effect.fail(
+        new PluginLoadError({
+          message: `Plugin ${name} is not registered.`,
+          pluginName: name,
+        }),
+      );
+    }),
+    loadServiceType: Effect.fn("PluginRegistry.loadServiceType")(function* (id) {
+      const bundledServiceType = capabilities.serviceTypes.get(id);
+      if (bundledServiceType !== undefined) {
+        return yield* composeExtendedServiceType(bundledServiceType, (parentId) =>
+          capabilities.serviceTypes.get(parentId),
         );
-      }),
-    loadServiceType: (id) =>
-      Effect.gen(function* () {
-        const bundledServiceType = capabilities.serviceTypes.get(id);
-        if (bundledServiceType !== undefined) {
-          return yield* composeExtendedServiceType(bundledServiceType, (parentId) =>
-            capabilities.serviceTypes.get(parentId),
-          );
-        }
+      }
 
-        const plugins = yield* discoverPlugins;
-        const externalType = findExternalServiceType(plugins, id);
-        if (externalType !== undefined) {
-          return yield* composeExtendedServiceType(
-            externalType,
-            (parentId) =>
-              findExternalServiceType(plugins, parentId) ?? capabilities.serviceTypes.get(parentId),
-          );
-        }
-
-        return yield* Effect.fail(
-          new PluginLoadError({
-            message: `Service type ${id} is not registered.`,
-            pluginName: "@lando/core",
-          }),
+      const plugins = yield* discoverPlugins;
+      const externalType = findExternalServiceType(plugins, id);
+      if (externalType !== undefined) {
+        return yield* composeExtendedServiceType(
+          externalType,
+          (parentId) => findExternalServiceType(plugins, parentId) ?? capabilities.serviceTypes.get(parentId),
         );
-      }),
+      }
+
+      return yield* Effect.fail(
+        new PluginLoadError({
+          message: `Service type ${id} is not registered.`,
+          pluginName: "@lando/core",
+        }),
+      );
+    }),
     loadServiceFeature: (id) => {
       if (discovery.bundled === false) {
         return Effect.fail(
@@ -147,33 +144,32 @@ const makePluginRegistry = (
         }),
       );
     },
-    loadAppFeature: (id) =>
-      Effect.gen(function* () {
-        if (discovery.bundled !== false) {
-          const appFeature = capabilities.appFeatures.get(id);
-          if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
-        }
+    loadAppFeature: Effect.fn("PluginRegistry.loadAppFeature")(function* (id) {
+      if (discovery.bundled !== false) {
+        const appFeature = capabilities.appFeatures.get(id);
+        if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
+      }
 
-        const plugins = yield* discoverPlugins;
-        for (const plugin of plugins) {
-          const appFeature = externalAppFeature(plugin, id);
-          if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
-        }
+      const plugins = yield* discoverPlugins;
+      for (const plugin of plugins) {
+        const appFeature = externalAppFeature(plugin, id);
+        if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
+      }
 
-        return yield* Effect.fail(
-          new PluginLoadError({
-            message: `App feature ${id} is not registered.`,
-            pluginName: "@lando/core",
-          }),
-        );
-      }),
-  };
+      return yield* Effect.fail(
+        new PluginLoadError({
+          message: `App feature ${id} is not registered.`,
+          pluginName: "@lando/core",
+        }),
+      );
+    }),
+  });
   return { registry, globalManifests: { list: discoverGlobal } };
 };
 
 export { PluginRegistry };
 
-export const makePluginRegistryLive = (
+export const layerWith = (
   discovery: PluginRegistryDiscoveryOptions = {},
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
 ) =>
@@ -195,9 +191,9 @@ export const makePluginRegistryLive = (
           (module) => !(discovery.disable ?? []).includes(module.manifest.name),
         );
       }
-      const capabilities = yield* Either.match(makePluginCapabilityIndex(enabledModules), {
-        onLeft: (error) => Effect.fail(error),
-        onRight: (index) => Effect.succeed(index),
+      const capabilities = yield* Result.match(makePluginCapabilityIndex(enabledModules), {
+        onFailure: (error) => Effect.fail(error),
+        onSuccess: (index) => Effect.succeed(index),
       }).pipe(Effect.orDie);
       const services = makePluginRegistry(
         configService._tag === "Some" ? configService.value : undefined,
@@ -216,4 +212,4 @@ export const makePluginRegistryLive = (
     }),
   );
 
-export const PluginRegistryLive = Layer.suspend(() => makePluginRegistryLive());
+export const layer = Layer.suspend(() => layerWith());

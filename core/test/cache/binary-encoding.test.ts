@@ -35,7 +35,7 @@ import {
   writeCwdAppMapEntry,
 } from "@lando/engine/cache/cwd-app-map";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 
 const fixtureRoot = resolve(import.meta.dirname, "fixtures", "binary-cache");
 
@@ -71,7 +71,7 @@ const appPlanFixture: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-20T00:00:00Z"),
     source: "/workspace/fixture-app/.lando.yml",
     runtime: 4,
   },
@@ -87,7 +87,7 @@ const expectMagic = (bytes: Uint8Array, magic: Uint8Array): void => {
 };
 
 const writeWithCache = <A>(effect: Effect.Effect<A, unknown, CacheService>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
+  Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
 const makeAppPlanBytes = async (): Promise<Buffer> => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-fixture-"));

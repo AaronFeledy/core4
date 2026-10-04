@@ -22,7 +22,7 @@ test("keys CA descriptors by digest and archive name but not host path", async (
     dependsOn: [],
     hostAliases: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-07-30T00:00:00.000Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-07-30T00:00:00.000Z"),
       source: "build-key-ca.test",
       runtime: 4,
     },

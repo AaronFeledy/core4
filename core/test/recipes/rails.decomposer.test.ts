@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/recipes";
 import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { railsDecomposer } from "../../src/recipes/builtin/rails/decomposer.ts";
 import { railsRecipeSource, railsRecipeYaml } from "../../src/recipes/builtin/rails/manifest.ts";
 import { RAILS_GEMFILE } from "../../src/recipes/builtin/rails/scaffold.ts";
@@ -30,7 +30,7 @@ const decompose = (options: Readonly<Record<string, RecipeOptionValue>>) =>
 
 const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   const { recipe: _recipe, ...authoring } = Schema.decodeUnknownSync(
-    Schema.Record({ key: Schema.String, value: Schema.Unknown }),
+    Schema.Record(Schema.String, Schema.Unknown),
   )(decompose(options).fragment);
   return authoring;
 };
@@ -102,13 +102,13 @@ describe("rails decomposition", () => {
     "rejects an undeclared option key when input is %j",
     (options) => {
       const failure = Effect.runSync(
-        Effect.either(decomposer.decompose({ producer: railsProducer, options, secrets: {} })),
+        Effect.result(decomposer.decompose({ producer: railsProducer, options, secrets: {} })),
       );
-      expect(Either.isLeft(failure)).toBe(true);
-      if (Either.isLeft(failure)) {
-        expect(failure.left.reason).toBe("option-type");
-        expect(failure.left.path).toBe(`options.${Object.keys(options)[0] ?? ""}`);
-        expect(failure.left.remediation).toContain("declares no options");
+      expect(Result.isFailure(failure)).toBe(true);
+      if (Result.isFailure(failure)) {
+        expect(failure.failure.reason).toBe("option-type");
+        expect(failure.failure.path).toBe(`options.${Object.keys(options)[0] ?? ""}`);
+        expect(failure.failure.remediation).toContain("declares no options");
       }
     },
   );
@@ -141,6 +141,6 @@ describe("rails decomposition", () => {
   });
 
   test("renders the same authoring data from the snapshot", () => {
-    expect(Either.getOrThrow(renderRecipeSnapshot(railsSnapshot, defaults))).toEqual(authoringOf(defaults));
+    expect(Result.getOrThrow(renderRecipeSnapshot(railsSnapshot, defaults))).toEqual(authoringOf(defaults));
   });
 });

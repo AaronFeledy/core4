@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type { Redactor } from "@lando/sdk/secrets";
 
@@ -13,7 +13,7 @@ export interface DoctorNdjsonCheck {
 export interface DoctorNdjsonRenderOptions<Check extends DoctorNdjsonCheck> {
   readonly command?: string;
   readonly checks: ReadonlyArray<Check>;
-  readonly now?: Date | undefined;
+  readonly now?: Date | DateTime.DateTime | undefined;
   readonly checkEventPayload: (check: Check) => Record<string, unknown>;
   /** Defaults to {@link identityRedactor} to keep output byte-compatible; inject a `RedactionService` redactor to mask secret-bearing check results. */
   readonly redactor?: Redactor;
@@ -49,7 +49,7 @@ export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
   checkEventPayload,
   redactor = identityRedactor,
 }: DoctorNdjsonRenderOptions<Check>): string => {
-  const timestamp = (now ?? new Date()).toISOString();
+  const timestamp = DateTime.formatIso(now === undefined ? DateTime.nowUnsafe() : DateTime.makeUnsafe(now));
   const lines: string[] = [];
   for (const check of checks) {
     lines.push(

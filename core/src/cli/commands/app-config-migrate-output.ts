@@ -7,14 +7,14 @@ import { Schema } from "effect";
  * These are opaque or unreadable inputs: the chain never starts, so nothing is
  * committed. Distinct from a hunk that blocks mid-chain after a satisfied prefix.
  */
-export const MigrateBlockedReason = Schema.Literal(
+export const MigrateBlockedReason = Schema.Literals([
   "programmatic-landofile",
   "includes-present",
   "bare-provenance",
   "invalid-provenance",
   "unknown-recipe",
   "invalid-service-map",
-);
+]);
 export type MigrateBlockedReason = typeof MigrateBlockedReason.Type;
 
 /**
@@ -23,7 +23,7 @@ export type MigrateBlockedReason = typeof MigrateBlockedReason.Type;
  * Carried only when classification is `blocking` so machine consumers can branch
  * without scraping remediation prose.
  */
-export const MigrateHunkBlockReason = Schema.Literal(
+export const MigrateHunkBlockReason = Schema.Literals([
   "site-taken-over",
   "value-conflict",
   "layer-not-owned",
@@ -32,7 +32,7 @@ export const MigrateHunkBlockReason = Schema.Literal(
   "rename-target-collision",
   "rename-source-missing",
   "declined",
-);
+]);
 export type MigrateHunkBlockReason = typeof MigrateHunkBlockReason.Type;
 
 /** One classified hunk inside a migration edge, ready for machine output. */
@@ -43,8 +43,8 @@ export const MigrateHunkResult = Schema.Struct({
   path: Schema.String,
   mappedPath: Schema.String,
   classification: RecipeHunkClassification,
-  reason: Schema.optional(MigrateHunkBlockReason),
-  remediation: Schema.optional(Schema.String),
+  reason: Schema.optionalKey(MigrateHunkBlockReason),
+  remediation: Schema.optionalKey(Schema.String),
 });
 export type MigrateHunkResult = typeof MigrateHunkResult.Type;
 
@@ -57,20 +57,20 @@ export type MigrateHunkResult = typeof MigrateHunkResult.Type;
 export const MigrateEdgeResult = Schema.Struct({
   from: Schema.String,
   to: Schema.String,
-  status: Schema.Literal("satisfied", "blocked", "skipped"),
+  status: Schema.Literals(["satisfied", "blocked", "skipped"]),
   hunks: Schema.Array(MigrateHunkResult),
 });
 export type MigrateEdgeResult = typeof MigrateEdgeResult.Type;
 
 export const AppConfigMigrateResultSchema = Schema.Struct({
-  mode: Schema.Literal("write", "dry-run"),
-  status: Schema.Literal("committed", "partial", "blocked", "no-op"),
+  mode: Schema.Literals(["write", "dry-run"]),
+  status: Schema.Literals(["committed", "partial", "blocked", "no-op"]),
   landofilePath: Schema.String,
   target: RecipeProducer,
-  recorded: Schema.optional(RecipeProducer),
-  committed: Schema.optional(RecipeProducer),
-  noMutation: Schema.optional(Schema.Literal("missing-old-snapshot", "already-current")),
-  blocked: Schema.optional(
+  recorded: Schema.optionalKey(RecipeProducer),
+  committed: Schema.optionalKey(RecipeProducer),
+  noMutation: Schema.optionalKey(Schema.Literals(["missing-old-snapshot", "already-current"])),
+  blocked: Schema.optionalKey(
     Schema.Struct({
       reason: MigrateBlockedReason,
       detail: Schema.String,

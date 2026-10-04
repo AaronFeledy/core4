@@ -16,7 +16,7 @@ describe("Landofile runtime input failures", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new TypeError("Expected include resolution to fail");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new TypeError("Expected a typed include failure");
     expect(failure.value._tag).toBe("LandofileIncludeError");
@@ -39,7 +39,7 @@ describe("Landofile runtime input failures", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new TypeError("Expected include resolution to fail");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new TypeError("Expected a typed include failure");
     expect(failure.value._tag).toBe("LandofileIncludeError");

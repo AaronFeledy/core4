@@ -1,7 +1,7 @@
 import { Effect, Stream } from "effect";
 
 import type { DataTransferSpec } from "@lando/sdk/schema";
-import type { DataMoverShape } from "@lando/sdk/services";
+import { DataMover, type DataMoverShape } from "@lando/sdk/services";
 
 export interface TestDataMoverHandle {
   readonly service: DataMoverShape;
@@ -13,7 +13,7 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
   const transfers: DataTransferSpec[] = [];
   const streams: DataTransferSpec[] = [];
 
-  const service: DataMoverShape = {
+  const service = DataMover.of({
     transfer: (spec) =>
       Effect.sync(() => {
         transfers.push(spec);
@@ -32,7 +32,7 @@ export const makeTestDataMover = (): TestDataMoverHandle => {
     listSnapshots: () => Effect.succeed([]),
     removeSnapshot: (_id, _store?) => Effect.void,
     pruneSnapshots: () => Effect.succeed([]),
-  };
+  });
 
   return {
     service,

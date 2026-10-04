@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -252,11 +252,11 @@ export const loadInstalledPluginManifest = async (packageRootInput: string): Pro
     throw pluginManifestError(`Plugin package.json is invalid: ${packageJsonPath}`, cause);
   }
   const candidate = (parsed as { landoPlugin?: unknown }).landoPlugin ?? parsed;
-  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate, { onExcessProperty: "error" });
-  if (Either.isLeft(decoded)) {
-    throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.left);
+  const decoded = Schema.decodeUnknownResult(PluginManifest)(candidate, { onExcessProperty: "error" });
+  if (Result.isFailure(decoded)) {
+    throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.failure);
   }
-  return normalizeExternalContributionModules(packageRoot, decoded.right);
+  return normalizeExternalContributionModules(packageRoot, decoded.success);
 };
 
 export const loadInstalledPlugin = async (

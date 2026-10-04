@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
@@ -198,7 +198,7 @@ describe("composeExtendedServiceType", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ServiceTypeCollisionError);
       expect((error as ServiceTypeCollisionError).message).toContain("maximum extends depth");
     }
@@ -214,7 +214,7 @@ describe("composeExtendedServiceType", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ServiceTypeCollisionError);
       expect((error as ServiceTypeCollisionError).message).toContain("cyclic");
     }
@@ -226,7 +226,7 @@ describe("composeExtendedServiceType", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ServiceTypeCollisionError);
       expect((error as ServiceTypeCollisionError).message).toContain("unregistered parent");
     }

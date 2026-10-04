@@ -4,7 +4,7 @@ import { Context, Effect, Layer } from "effect";
 
 import { InteractionService } from "@lando/sdk/services";
 
-import { InteractionServiceLive } from "../../src/interaction/service.ts";
+import * as InteractionServiceLayer from "../../src/interaction/service.ts";
 import {
   getInteractionServiceOverride,
   withInteractionServiceOverride,
@@ -15,7 +15,7 @@ const buildLiveId = (): Promise<string> =>
   Effect.runPromise(
     Effect.scoped(
       Effect.gen(function* () {
-        const context = yield* Layer.build(InteractionServiceLive);
+        const context = yield* Layer.build(InteractionServiceLayer.layer);
         return Context.get(context, InteractionService).id;
       }),
     ),

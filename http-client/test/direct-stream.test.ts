@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { createServer } from "node:http";
 import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
-import { Effect, Stream } from "effect";
-import { makeHttpClientLive } from "../src/live.ts";
-import { HttpClient } from "../src/service.ts";
+import { Duration, Effect, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import { layer, layerWith } from "../src/live.ts";
 
 test.each([
   { encoding: "gzip", bytes: gzipSync("decoded-body") },
@@ -23,18 +24,15 @@ test.each([
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("expected TCP listener");
     try {
-      // When the scoped consumer takes one decoded chunk rather than buffering the body.
+      // When the consumer takes one decoded chunk rather than buffering the body.
       const chunks = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const client = yield* HttpClient;
-            const response = yield* client.stream({
-              url: `http://127.0.0.1:${address.port}/`,
-              timeoutMs: 1000,
-            });
-            return yield* Stream.runCollect(response.body.pipe(Stream.take(1)));
-          }).pipe(Effect.provide(makeHttpClientLive())),
-        ),
+        Effect.gen(function* () {
+          const client = yield* HttpClient.HttpClient;
+          const response = yield* client
+            .get(`http://127.0.0.1:${address.port}/`)
+            .pipe(Effect.timeout(Duration.millis(1000)));
+          return yield* Stream.runCollect(response.stream.pipe(Stream.take(1)));
+        }).pipe(Effect.provide(layerWith())),
       );
       await closed.promise;
       // Then decompression emits before EOF and cancellation closes the source socket.
@@ -49,7 +47,7 @@ test.each([
 );
 
 test.each([false, true])(
-  "destroys the direct socket on scope close with body consumed=%s",
+  "destroys the direct socket on response release with body consumed=%s",
   async (consume) => {
     // Given a real endpoint that sends headers and one chunk, but never completes.
     const closed = Promise.withResolvers<void>();
@@ -62,22 +60,19 @@ test.each([false, true])(
     const address = server.address();
     if (address === null || typeof address === "string") throw new Error("expected TCP listener");
     try {
-      // When a scoped caller takes only headers or a single chunk.
+      // When a caller takes only headers or a single chunk.
       const status = await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const client = yield* HttpClient;
-            const response = yield* client.stream({
-              url: `http://127.0.0.1:${address.port}/`,
-              timeoutMs: 1000,
-            });
-            if (consume) yield* Stream.runDrain(response.body.pipe(Stream.take(1)));
-            return response.status;
-          }).pipe(Effect.provide(makeHttpClientLive())),
-        ),
+        Effect.gen(function* () {
+          const client = yield* HttpClient.HttpClient;
+          const response = yield* client
+            .get(`http://127.0.0.1:${address.port}/`)
+            .pipe(Effect.timeout(Duration.millis(1000)));
+          if (consume) yield* Stream.runDrain(response.stream.pipe(Stream.take(1)));
+          return response.status;
+        }).pipe(Effect.provide(layerWith())),
       );
       await closed.promise;
-      // Then scope completion does not wait for EOF and destroys the live socket.
+      // Then completion does not wait for EOF and destroys the live socket.
       expect(status).toBe(200);
     } finally {
       server.closeAllConnections();
@@ -100,17 +95,15 @@ test("carries method and headers and streams the response bytes", async () => {
   try {
     // When an explicit method/header request is streamed to completion.
     const chunks = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const client = yield* HttpClient;
-          const response = yield* client.stream({
-            url: server.url.href,
-            method: "PUT",
-            headers: [{ name: "x-token", value: "test" }],
-          });
-          return yield* Stream.runCollect(response.body);
-        }).pipe(Effect.provide(makeHttpClientLive())),
-      ),
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        const response = yield* client.execute(
+          HttpClientRequest.put(server.url.href, {
+            headers: { "x-token": "test" },
+          }),
+        );
+        return yield* Stream.runCollect(response.stream);
+      }).pipe(Effect.provide(layer)),
     );
     // Then the adapter preserves metadata and binary bytes without text conversion.
     expect(seen).toEqual([{ method: "PUT", token: "test" }]);

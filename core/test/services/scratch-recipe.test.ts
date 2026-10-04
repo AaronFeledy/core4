@@ -14,29 +14,30 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { DataMoverLive } from "@lando/data-mover/service";
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunDataMover from "@lando/data-mover/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(
-  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(
+  Layer.provide(Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer)),
 );
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
-import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -62,13 +63,16 @@ const landofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 } satisfies LandofileRuntimeInputs;
 
-const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInputs);
+const landofileServiceLayer = TestLandofileServiceLayer.layerWithInputs(landofileRuntimeInputs);
 
-const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
-const redactionLive = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets")),
-});
+const pluginRegistryLive = PluginRegistryLayer.layerWith({}, BUNDLED_PLUGIN_MODULES);
+const redactionLive = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets")),
+  }),
+);
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -136,10 +140,10 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
 };
 
 const die = (operation: string) =>
-  Effect.dieMessage(`scratch recipe test provider should not call ${operation}`);
+  Effect.die(new Error(`scratch recipe test provider should not call ${operation}`));
 
 const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: boolean[]) => {
-  const provider: RuntimeProviderShape = {
+  const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
     id: String(providerId),
     displayName: "Scratch Recipe Test Provider",
@@ -169,52 +173,58 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
     logs: () => Stream.empty,
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
-  };
-
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
-  );
-  const registryLive = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(provider),
   });
+
+  const plannerLive = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
+  );
+  const registryLive = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
   const initPortLive =
     runPostInitCalls === undefined
-      ? ScratchInitAppPortLive
-      : Layer.succeed(ScratchInitAppPort, {
-          initApp: async (input) => {
-            runPostInitCalls.push(input.runPostInit);
-            await writeFile(
-              join(input.destination, ".lando.yml"),
-              [
-                `name: ${input.name}`,
-                "runtime: 4",
-                "provider: lando",
-                "services:",
-                "  app:",
-                "    image: node:20-alpine",
-                "    primary: true",
-                "    home: false",
-                "",
-              ].join("\n"),
-            );
-          },
-        });
+      ? ScratchInitAppPortLayer.layer
+      : Layer.succeed(
+          ScratchInitAppPort,
+          ScratchInitAppPort.of({
+            initApp: async (input) => {
+              runPostInitCalls.push(input.runPostInit);
+              await writeFile(
+                join(input.destination, ".lando.yml"),
+                [
+                  `name: ${input.name}`,
+                  "runtime: 4",
+                  "provider: lando",
+                  "services:",
+                  "  app:",
+                  "    image: node:20-alpine",
+                  "    primary: true",
+                  "    home: false",
+                  "",
+                ].join("\n"),
+              );
+            },
+          }),
+        );
   const scratchDeps = Layer.mergeAll(
-    FileSystemLive,
-    PrivateFileAccessLive,
-    landofileServiceLive,
+    BunFileSystem.layer,
+    PrivateFileAccessService.layer,
+    landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
+    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     initPortLive,
-    DataMoverLive.pipe(
+    BunDataMover.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
-          StateStoreLive,
-          EventServiceLive,
+          stateStoreLayer,
+          LandoEventService.layer,
           redactionLive,
           Layer.succeed(PathsService, makeLandoPaths()),
           Layer.succeed(RuntimeProvider, provider),
@@ -224,8 +234,8 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   );
   return Layer.mergeAll(
     scratchDeps,
-    makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  ).pipe(Layer.provide(PrivateFileAccessLive));
+    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+  ).pipe(Layer.provide(PrivateFileAccessService.layer));
 };
 
 const fileExists = async (path: string): Promise<boolean> => {
@@ -236,7 +246,7 @@ const fileExists = async (path: string): Promise<boolean> => {
   }
 };
 
-describe("ScratchAppServiceLive recipe acquire", () => {
+describe("ScratchAppServiceLayer.layer recipe acquire", () => {
   test("forwards --run-post-init to recipe initialization", async () => {
     await withTempEnv(async () => {
       const calls: boolean[] = [];
@@ -342,16 +352,18 @@ describe("ScratchAppServiceLive recipe acquire", () => {
               answers: { php: "9.0" },
             }),
           ),
-        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.either),
+        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") {
-        expect(outcome.left._tag).toBe("ScratchAppError");
-        expect(outcome.left.message).toContain('recipe prompt "php"');
-        expect(outcome.left.message).toContain('Invalid value for prompt "php"');
-        expect(outcome.left.message).not.toContain("Unable to render the recipe into the scratch app root");
-        expect(outcome.left.remediation).toBe(
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") {
+        expect(outcome.failure._tag).toBe("ScratchAppError");
+        expect(outcome.failure.message).toContain('recipe prompt "php"');
+        expect(outcome.failure.message).toContain('Invalid value for prompt "php"');
+        expect(outcome.failure.message).not.toContain(
+          "Unable to render the recipe into the scratch app root",
+        );
+        expect(outcome.failure.remediation).toBe(
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
       }
@@ -372,13 +384,13 @@ describe("ScratchAppServiceLive recipe acquire", () => {
               nonInteractive: true,
             }),
           ),
-        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.either),
+        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.result),
       );
 
-      expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") {
-        expect(outcome.left._tag).toBe("ScratchSourceUnresolvedError");
-        expect(outcome.left.remediation).toBe(
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") {
+        expect(outcome.failure._tag).toBe("ScratchSourceUnresolvedError");
+        expect(outcome.failure.remediation).toBe(
           "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
         );
       }

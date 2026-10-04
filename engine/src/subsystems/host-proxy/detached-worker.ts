@@ -1,4 +1,4 @@
-import { Effect, Ref, Schema } from "effect";
+import { DateTime, Effect, Ref, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
@@ -77,57 +77,59 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
             },
             catch: (cause) => cause,
           }).pipe(
-            Effect.flatMap((ready) => {
-              const transport: HostProxyTransportKind =
-                ready.transport ??
-                (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
-              const probeServices = hostProxyEligibleServices(options.plan).map((service) =>
-                String(service.name),
-              );
-              let terminatePromise: Promise<void> | undefined;
-              let resolveClosed: () => void = () => undefined;
-              const closed = new Promise<void>((resolveClosedPromise) => {
-                resolveClosed = resolveClosedPromise;
-              });
-              return writeWorkerRecord(
-                options.app,
-                options.paths,
-                {
-                  appId: options.app.id,
-                  appRoot: options.app.root,
-                  providerId: String(options.plan.provider),
-                  pid: worker.pid,
-                  ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-                  ...(ready.url === undefined ? {} : { url: ready.url }),
-                  ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-                  ...(probeServices.length === 0 ? {} : { probeServices }),
-                  shimPath: ready.shimPath,
-                  transport,
-                  protocolVersion: 1,
-                  startedAt: new Date().toISOString(),
-                  controlToken: ready.controlToken,
-                },
-                options.privateFileAccess,
-              ).pipe(
-                Effect.zipLeft(Ref.set(keepWorker, true)),
-                Effect.as({
-                  appId: ready.appId,
-                  sessionId: ready.sessionId,
-                  token: ready.token,
-                  controlToken: ready.controlToken,
-                  ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
-                  ...(ready.url === undefined ? {} : { url: ready.url }),
-                  ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-                  shimPath: ready.shimPath,
-                  transport,
-                  close: () => {
-                    terminatePromise ??= worker.terminate().finally(resolveClosed);
-                    return terminatePromise;
+            Effect.flatMap(
+              Effect.fnUntraced(function* (ready) {
+                const transport: HostProxyTransportKind =
+                  ready.transport ??
+                  (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
+                const probeServices = hostProxyEligibleServices(options.plan).map((service) =>
+                  String(service.name),
+                );
+                let terminatePromise: Promise<void> | undefined;
+                let resolveClosed: () => void = () => undefined;
+                const closed = new Promise<void>((resolveClosedPromise) => {
+                  resolveClosed = resolveClosedPromise;
+                });
+                return yield* writeWorkerRecord(
+                  options.app,
+                  options.paths,
+                  {
+                    appId: options.app.id,
+                    appRoot: options.app.root,
+                    providerId: String(options.plan.provider),
+                    pid: worker.pid,
+                    ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                    ...(ready.url === undefined ? {} : { url: ready.url }),
+                    ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                    ...(probeServices.length === 0 ? {} : { probeServices }),
+                    shimPath: ready.shimPath,
+                    transport,
+                    protocolVersion: 1,
+                    startedAt: DateTime.formatIso(yield* DateTime.now),
+                    controlToken: ready.controlToken,
                   },
-                  closed,
-                }),
-              );
-            }),
+                  options.privateFileAccess,
+                ).pipe(
+                  Effect.tap(Ref.set(keepWorker, true)),
+                  Effect.as({
+                    appId: ready.appId,
+                    sessionId: ready.sessionId,
+                    token: ready.token,
+                    controlToken: ready.controlToken,
+                    ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
+                    ...(ready.url === undefined ? {} : { url: ready.url }),
+                    ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                    shimPath: ready.shimPath,
+                    transport,
+                    close: () => {
+                      terminatePromise ??= worker.terminate().finally(resolveClosed);
+                      return terminatePromise;
+                    },
+                    closed,
+                  }),
+                );
+              }),
+            ),
           ),
         (worker) =>
           Ref.get(keepWorker).pipe(
@@ -137,7 +139,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
     }),
     options.privateFileAccess,
   ).pipe(
-    Effect.catchAll((cause) =>
+    Effect.catch((cause) =>
       Effect.fail(
         cause instanceof HostProxyTransportUnavailableError
           ? cause

@@ -6,7 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileService } from "@lando/core/services";
-import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-boundary-"));
@@ -22,7 +22,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 const discoverExit = () =>
   Effect.runPromiseExit(
     Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-      Effect.provide(LandofileServiceLive),
+      Effect.provide(TestLandofileServiceLayer.layer),
     ),
   );
 
@@ -31,7 +31,7 @@ const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValida
   if (!Exit.isFailure(exit)) {
     throw new Error("expected Landofile discovery to fail");
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") {
     throw new Error("expected a typed failure cause");
@@ -42,7 +42,7 @@ const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValida
   return failure.value;
 };
 
-describe("LandofileServiceLive — build shape discrimination boundary", () => {
+describe("LandofileService layer — build shape discrimination boundary", () => {
   test("a rejected Compose build key still reaches mixed-family remediation at the loader boundary", async () => {
     await withTempCwd(async (dir) => {
       // Given: a service build block that mixes a rejected Compose key with the Lando family
@@ -66,17 +66,17 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
 
       // Then: validationIssues keeps the schema remediation, not the dotted path
       expect(error._tag).toBe("LandofileValidationError");
-      const mixedIssue = error.issues.find((issue) => issue.startsWith("Landofile service"));
+      const mixedIssue = error.issues.find((issue) => issue.message.startsWith("Landofile service"));
       expect(mixedIssue).toBeDefined();
-      expect(mixedIssue?.startsWith("Landofile service")).toBe(true);
-      expect(mixedIssue).toContain("Compose");
-      expect(mixedIssue).toContain("Lando build-script");
-      expect(mixedIssue).toContain("artifact");
-      expect(mixedIssue).toContain("no_cache");
-      expect(mixedIssue).toContain("remove");
-      expect(mixedIssue).toContain("image:");
-      expect(mixedIssue).not.toContain("build.dockerfile");
-      expect(mixedIssue).not.toBe("services.web.build");
+      expect(mixedIssue?.message.startsWith("Landofile service")).toBe(true);
+      expect(mixedIssue?.message).toContain("Compose");
+      expect(mixedIssue?.message).toContain("Lando build-script");
+      expect(mixedIssue?.message).toContain("artifact");
+      expect(mixedIssue?.message).toContain("no_cache");
+      expect(mixedIssue?.message).toContain("remove");
+      expect(mixedIssue?.message).toContain("image:");
+      expect(mixedIssue?.message).not.toContain("build.dockerfile");
+      expect(mixedIssue?.message).not.toBe("services.web.build");
     });
   });
 
@@ -101,7 +101,11 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
       const error = validationErrorFrom(await discoverExit());
 
       // Then: merged strict-decode (onExcessProperty: error) reports the unknown key
-      expect(error.issues.some((issue) => issue.includes("composeBuild"))).toBe(true);
+      expect(
+        error.issues.some(
+          (issue) => issue.message.includes("composeBuild") || issue.path.includes("composeBuild"),
+        ),
+      ).toBe(true);
     });
   });
 });

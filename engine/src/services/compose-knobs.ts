@@ -1,5 +1,6 @@
 import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 
 export type ComposeKnobUse = {
   readonly service: string;
@@ -7,9 +8,6 @@ export type ComposeKnobUse = {
 };
 
 type ComposeCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeKnobs">;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const isStringList = (value: unknown): value is ReadonlyArray<string> =>
   Array.isArray(value) && value.every((entry: unknown) => typeof entry === "string");
@@ -22,7 +20,7 @@ const compareKnobUses = (left: ComposeKnobUse, right: ComposeKnobUse): number =>
 
 export const mergeComposeKnobs = (servicePlan: ServicePlan, serviceConfig: ServiceConfig): ServicePlan => {
   const currentCompose = servicePlan.extensions.compose;
-  const compose = isRecord(currentCompose) ? { ...currentCompose } : {};
+  const compose = Predicate.isObject(currentCompose) ? { ...currentCompose } : {};
   let changed = false;
 
   for (const key of ComposeServiceKnobKey.literals) {
@@ -64,12 +62,12 @@ export const collectComposeKnobs = (
 
   for (const servicePlan of Object.values(services)) {
     const compose = servicePlan.extensions.compose;
-    if (!isRecord(compose)) continue;
+    if (!Predicate.isObject(compose)) continue;
 
     for (const key of ComposeServiceKnobKey.literals) {
       if (key === "deploy.resources") {
         const deploy = compose.deploy;
-        if (isRecord(deploy) && deploy.resources !== undefined) {
+        if (Predicate.isObject(deploy) && deploy.resources !== undefined) {
           uses.push({ service: servicePlan.name, key });
         }
         continue;

@@ -87,7 +87,7 @@ for (const state of ["running", "exited"] as const) {
         expect(exitCode).toBe(0);
         expect(stderr).toBe("");
         const envelope = Schema.decodeUnknownSync(
-          Schema.parseJson(
+          Schema.fromJsonString(
             Schema.Struct({
               result: AppsListResultSchema,
             }),

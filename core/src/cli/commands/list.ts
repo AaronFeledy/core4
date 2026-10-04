@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, isAbsolute } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { Effect, Schema } from "effect";
 
@@ -16,8 +17,10 @@ import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
+import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundary";
 import {
   type AppsDiscoveryEvidence,
   type AppsListEntry,
@@ -36,14 +39,14 @@ export const AppsListEntrySchema = Schema.Struct({
   providerId: Schema.String,
   appRoot: Schema.String,
   services: Schema.Array(Schema.String),
-  status: Schema.Literal("active", "stopped", "unknown"),
-  stale: Schema.optionalWith(Schema.Boolean, { exact: true }),
-  scratch: Schema.optionalWith(Schema.Boolean, { exact: true }),
+  status: Schema.Literals(["active", "stopped", "unknown"]),
+  stale: Schema.optionalKey(Schema.Boolean),
+  scratch: Schema.optionalKey(Schema.Boolean),
 });
 
 export const AppsListResultSchema = Schema.Struct({
   apps: Schema.Array(AppsListEntrySchema),
-  pruned: Schema.optional(Schema.Array(AppsListEntrySchema)),
+  pruned: Schema.optionalKey(Schema.Array(AppsListEntrySchema)),
 });
 
 export interface ListServicesOptions {
@@ -72,10 +75,17 @@ const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => 
   services: [],
 });
 
+const linkAppRoot = (appRoot: string): string => {
+  if (appRoot.length === 0 || !isAbsolute(appRoot) || hasC0OrDel(appRoot)) return appRoot;
+  return hyperlink(appRoot, pathToFileURL(appRoot).href);
+};
+
 export const renderAppsListResult = (
   result: ListServicesResult,
   _format: "json" | "table" = "table",
+  ctx?: RenderContext,
 ): string => {
+  const linkRoots = contextAllowsHyperlinks(ctx);
   const inventory = (() => {
     if (result.apps.length === 0) return "No Lando apps applied on this host.";
     const header = ["APP", "STATUS", "PROVIDER", "SERVICES", "ROOT"];
@@ -88,7 +98,12 @@ export const renderAppsListResult = (
     ]);
     const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)));
     const pad = (cells: ReadonlyArray<string>): string =>
-      cells.map((c, i) => (i === cells.length - 1 ? c : c.padEnd(widths[i] ?? 0))).join("  ");
+      cells
+        .map((c, i) => {
+          if (i !== cells.length - 1) return c.padEnd(widths[i] ?? 0);
+          return linkRoots ? linkAppRoot(c) : c;
+        })
+        .join("  ");
     return [pad(header), ...rows.map(pad)].join("\n");
   })();
   if (result.pruned === undefined) return inventory;
@@ -111,163 +126,159 @@ interface PruneCandidateInput {
 
 type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<boolean, E, R>;
 
-const listServicesInternal = <E, R>(
+const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   options: ListServicesOptions,
   pruneCandidate?: PruneCandidate<E, R>,
-): Effect.Effect<ListServicesResult, CacheError | ConfigError | E | LandoCommandError, ConfigService | R> =>
-  Effect.gen(function* () {
-    const configService = yield* ConfigService;
-    const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
-    if (userDataRoot === undefined) return { apps: [] };
+): Effect.fn.Return<ListServicesResult, CacheError | ConfigError | E | LandoCommandError, ConfigService | R> {
+  const configService = yield* ConfigService;
+  const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
+  if (userDataRoot === undefined) return { apps: [] };
 
-    const persisted = yield* Effect.promise(async () => {
-      try {
-        return await readAppliedPlansFromUserData(userDataRoot);
-      } catch {
-        return [];
-      }
-    });
-
-    const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
-    const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(
-      Effect.catchAll(() => Effect.succeed([])),
-    );
-
-    const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
-      Effect.tryPromise(async () => {
-        if (options.discoverContainersEvidence !== undefined) {
-          const discovered = await options.discoverContainersEvidence(userDataRoot);
-          return {
-            ...discovered,
-            providerConfirmed: discovered.confirmedProviderIds.length > 0,
-            ownedAppIds: discovered.ownedAppIds ?? discovered.apps.map((app) => app.appId),
-          };
-        }
-        if (options.discoverContainers !== undefined) {
-          const apps = await options.discoverContainers(userDataRoot);
-          return {
-            apps,
-            providerConfirmed: true,
-            confirmedProviderIds: [...new Set(apps.map((app) => app.providerId))],
-            ownedAppIds: apps.map((app) => app.appId),
-          };
-        }
-        return discoverRunningAppsEvidenceFromSockets(
-          userDataRoot,
-          undefined,
-          options.includeScratch === true ? { includeScratch: true } : {},
-        );
-      }).pipe(
-        Effect.catchAll(() =>
-          Effect.succeed({ apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] }),
-        ),
-      );
-    const evidence = yield* discoverEvidence();
-    const running = evidence.apps;
-
-    const merged = mergeAppsListEntries([...persisted, ...cachedApps.map(cacheEntryToApp), ...running]);
-    const apps = yield* Effect.promise(() =>
-      Promise.all(
-        merged.map(async (app) => {
-          const status = running.some(
-            (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
-          )
-            ? "active"
-            : evidence.confirmedProviderIds.includes(app.providerId)
-              ? "stopped"
-              : "unknown";
-          const entry = { ...app, status } satisfies typeof AppsListEntrySchema.Type;
-          if (app.appRoot === "") return entry;
-          try {
-            await access(app.appRoot);
-            return entry;
-          } catch {
-            return { ...entry, stale: true as const };
-          }
-        }),
-      ),
-    );
-
-    const pruned: Array<typeof AppsListEntrySchema.Type> = [];
-    if (options.prune === true && evidence.providerConfirmed && pruneCandidate !== undefined) {
-      const ownedAppIds = new Set(evidence.ownedAppIds);
-      const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
-      const candidates = apps
-        .filter(
-          (entry) =>
-            entry.stale === true &&
-            confirmedProviderIds.has(entry.providerId) &&
-            !ownedAppIds.has(entry.appId),
-        )
-        .slice(0, options.pruneLimit ?? 100);
-      for (const entry of candidates) {
-        const removed = yield* pruneCandidate({ discoverEvidence, entry, userCacheRoot });
-        if (removed) pruned.push(entry);
-      }
+  const persisted = yield* Effect.promise(async () => {
+    try {
+      return await readAppliedPlansFromUserData(userDataRoot);
+    } catch {
+      return [];
     }
-
-    const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
-    const pathFilter = options.path;
-    const filtered = pathFilter === undefined ? listed : listed.filter((a) => a.appRoot.includes(pathFilter));
-    filtered.sort((a, b) => a.appName.localeCompare(b.appName));
-    const visible =
-      pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
-    return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
   });
 
-export const listServices = (
-  options: ListServicesOptions = {},
-): Effect.Effect<ListServicesResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
-  listServicesInternal<never, never>(options);
+  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
+  const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(Effect.catch(() => Effect.succeed([])));
 
-export const listServicesWithPrune = (
+  const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
+    Effect.tryPromise(async () => {
+      if (options.discoverContainersEvidence !== undefined) {
+        const discovered = await options.discoverContainersEvidence(userDataRoot);
+        return {
+          ...discovered,
+          providerConfirmed: discovered.confirmedProviderIds.length > 0,
+          ownedAppIds: discovered.ownedAppIds ?? discovered.apps.map((app) => app.appId),
+        };
+      }
+      if (options.discoverContainers !== undefined) {
+        const apps = await options.discoverContainers(userDataRoot);
+        return {
+          apps,
+          providerConfirmed: true,
+          confirmedProviderIds: [...new Set(apps.map((app) => app.providerId))],
+          ownedAppIds: apps.map((app) => app.appId),
+        };
+      }
+      return discoverRunningAppsEvidenceFromSockets(
+        userDataRoot,
+        undefined,
+        options.includeScratch === true ? { includeScratch: true } : {},
+      );
+    }).pipe(
+      Effect.catch(() =>
+        Effect.succeed({ apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] }),
+      ),
+    );
+  const evidence = yield* discoverEvidence();
+  const running = evidence.apps;
+
+  const merged = mergeAppsListEntries([...persisted, ...cachedApps.map(cacheEntryToApp), ...running]);
+  const apps = yield* Effect.promise(() =>
+    Promise.all(
+      merged.map(async (app) => {
+        const status = running.some(
+          (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
+        )
+          ? "active"
+          : evidence.confirmedProviderIds.includes(app.providerId)
+            ? "stopped"
+            : "unknown";
+        const entry = { ...app, status } satisfies typeof AppsListEntrySchema.Type;
+        if (app.appRoot === "") return entry;
+        try {
+          await access(app.appRoot);
+          return entry;
+        } catch {
+          return { ...entry, stale: true as const };
+        }
+      }),
+    ),
+  );
+
+  const pruned: Array<typeof AppsListEntrySchema.Type> = [];
+  if (options.prune === true && evidence.providerConfirmed && pruneCandidate !== undefined) {
+    const ownedAppIds = new Set(evidence.ownedAppIds);
+    const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
+    const candidates = apps
+      .filter(
+        (entry) =>
+          entry.stale === true && confirmedProviderIds.has(entry.providerId) && !ownedAppIds.has(entry.appId),
+      )
+      .slice(0, options.pruneLimit ?? 100);
+    for (const entry of candidates) {
+      const removed = yield* pruneCandidate({ discoverEvidence, entry, userCacheRoot });
+      if (removed) pruned.push(entry);
+    }
+  }
+
+  const listed = options.includeScratch === true ? apps : apps.filter((app) => app.scratch !== true);
+  const pathFilter = options.path;
+  const filtered = pathFilter === undefined ? listed : listed.filter((a) => a.appRoot.includes(pathFilter));
+  filtered.sort((a, b) => a.appName.localeCompare(b.appName));
+  const visible =
+    pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
+  return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
+});
+
+export const listServices = Effect.fn("AppsList.listServices")(
+  (
+    options: ListServicesOptions = {},
+  ): Effect.Effect<ListServicesResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
+    listServicesInternal<never, never>(options),
+);
+
+export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")(function* (
   options: ListServicesOptions = {},
-): Effect.Effect<
+): Effect.fn.Return<
   ListServicesResult,
   AppLockTimeoutError | CacheError | ConfigError | LandoCommandError | StateStoreError,
   ConfigService | FileSystem | PathsService | PrivateFileAccessService | StateStore
-> =>
-  Effect.gen(function* () {
-    const paths = yield* PathsService;
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const stateStore = yield* StateStore;
-    const pruneServices = { paths, privateFileAccess, stateStore } satisfies PruneServices;
-    return yield* listServicesInternal(
-      { ...options, prune: true },
-      ({ discoverEvidence, entry, userCacheRoot }) =>
-        withAppMutationLock(
-          { id: entry.appId, root: entry.appRoot },
-          Effect.gen(function* () {
-            const currentEvidence = yield* discoverEvidence();
-            if (
-              !currentEvidence.confirmedProviderIds.includes(entry.providerId) ||
-              currentEvidence.ownedAppIds.includes(entry.appId)
-            ) {
+> {
+  const paths = yield* PathsService;
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const stateStore = yield* StateStore;
+  const pruneServices = { paths, privateFileAccess, stateStore } satisfies PruneServices;
+  return yield* listServicesInternal(
+    { ...options, prune: true },
+    ({ discoverEvidence, entry, userCacheRoot }) =>
+      withAppMutationLock(
+        { id: entry.appId, root: entry.appRoot },
+        Effect.gen(function* () {
+          const currentEvidence = yield* discoverEvidence();
+          if (
+            !currentEvidence.confirmedProviderIds.includes(entry.providerId) ||
+            currentEvidence.ownedAppIds.includes(entry.appId)
+          ) {
+            return false;
+          }
+          const rootGone = yield* Effect.promise(async () => {
+            try {
+              await access(entry.appRoot);
               return false;
+            } catch {
+              return true;
             }
-            const rootGone = yield* Effect.promise(async () => {
-              try {
-                await access(entry.appRoot);
-                return false;
-              } catch {
-                return true;
-              }
-            });
-            if (!rootGone) return false;
-            const removedCache = yield* deleteCwdAppMapEntriesForRoot({
-              cacheRoot: userCacheRoot,
-              appRoot: entry.appRoot,
-            });
-            const removedState = yield* pruneAppliedPlanState(
-              pruneServices.paths,
-              pruneServices.stateStore,
-              entry,
-            );
-            return removedState || removedCache.length > 0;
-          }),
-        ).pipe(
-          Effect.provideService(PathsService, pruneServices.paths),
-          Effect.provideService(PrivateFileAccessService, pruneServices.privateFileAccess),
-        ),
-    );
-  });
+          });
+          if (!rootGone) return false;
+          const removedCache = yield* deleteCwdAppMapEntriesForRoot({
+            cacheRoot: userCacheRoot,
+            appRoot: entry.appRoot,
+          });
+          const removedState = yield* pruneAppliedPlanState(
+            pruneServices.paths,
+            pruneServices.stateStore,
+            entry,
+          );
+          return removedState || removedCache.length > 0;
+        }),
+      ).pipe(
+        Effect.provideService(PathsService, pruneServices.paths),
+        Effect.provideService(PrivateFileAccessService, pruneServices.privateFileAccess),
+      ),
+  );
+});

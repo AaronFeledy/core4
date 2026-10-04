@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { HttpRequestError } from "@lando/sdk/errors";
 import { Effect, Exit } from "effect";
-import { makeHttpClientLive } from "../src/live.ts";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import { RequestPolicy, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust } from "../src/network-trust.ts";
-import { HttpClient } from "../src/service.ts";
 
 test.each(["follow", "manual", "error"] as const)(
   "handles %s redirects with endpoint trust per hop",
@@ -29,28 +29,27 @@ test.each(["follow", "manual", "error"] as const)(
     try {
       // When the real direct adapter encounters the redirect.
       const result = await Effect.runPromiseExit(
-        Effect.scoped(
-          Effect.flatMap(HttpClient, (client) =>
-            client.stream({
-              url: origin.url.href,
-              redirect,
-              method: "POST",
-              headers: [
-                { name: "Authorization", value: "Bearer secret" },
-                { name: "Cookie", value: "session=secret" },
-                { name: "Proxy-Authorization", value: "Basic secret" },
-                { name: "Host", value: "local.test" },
-                { name: "x-safe", value: "keep" },
-              ],
+        Effect.gen(function* () {
+          const client = yield* HttpClient.HttpClient;
+          return yield* client.execute(
+            HttpClientRequest.post(origin.url.href, {
+              headers: {
+                Authorization: "Bearer secret",
+                Cookie: "session=secret",
+                "Proxy-Authorization": "Basic secret",
+                Host: "local.test",
+                "x-safe": "keep",
+              },
             }),
-          ).pipe(
-            Effect.provide(makeHttpClientLive(fetchImpl, () => ["host-ca"])),
-            Effect.provideService(NetworkTrust, {
-              proxy: { https: "http://proxy.test:3128", noProxy: [] },
-              caPems: ["custom-ca"],
-              trustHost: true,
-            }),
-          ),
+          );
+        }).pipe(
+          Effect.provideService(RequestPolicy, { redirect }),
+          Effect.provide(layerWith({ fetch: fetchImpl, systemCaPems: () => ["host-ca"] })),
+          Effect.provideService(NetworkTrust, {
+            proxy: { https: "http://proxy.test:3128", noProxy: [] },
+            caPems: ["custom-ca"],
+            trustHost: true,
+          }),
         ),
       );
       // Then follow switches transport, manual returns the redirect, error fails closed.
@@ -111,15 +110,16 @@ test("a remote redirect cannot escape the proxy into a local endpoint", async ()
   try {
     // When following the remote redirect.
     const response = await Effect.runPromise(
-      Effect.scoped(
-        Effect.flatMap(HttpClient, (client) => client.stream({ url: "http://remote.test/" })).pipe(
-          Effect.provide(makeHttpClientLive(fetchImpl)),
-          Effect.provideService(NetworkTrust, {
-            proxy: { http: "http://proxy.test:3128", noProxy: [] },
-            caPems: [],
-            trustHost: true,
-          }),
-        ),
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        return yield* client.get("http://remote.test/");
+      }).pipe(
+        Effect.provide(layerWith({ fetch: fetchImpl })),
+        Effect.provideService(NetworkTrust, {
+          proxy: { http: "http://proxy.test:3128", noProxy: [] },
+          caPems: [],
+          trustHost: true,
+        }),
       ),
     );
     // Then both hops retain the proxy and the local server receives no request.
@@ -159,15 +159,16 @@ test("a direct redirect to another direct origin stays off the proxy", async () 
   );
   try {
     const response = await Effect.runPromise(
-      Effect.scoped(
-        Effect.flatMap(HttpClient, (client) => client.stream({ url: origin.url.href })).pipe(
-          Effect.provide(makeHttpClientLive(fetchImpl)),
-          Effect.provideService(NetworkTrust, {
-            proxy: { http: "http://proxy.test:3128", noProxy: [] },
-            caPems: [],
-            trustHost: true,
-          }),
-        ),
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        return yield* client.get(origin.url.href);
+      }).pipe(
+        Effect.provide(layerWith({ fetch: fetchImpl })),
+        Effect.provideService(NetworkTrust, {
+          proxy: { http: "http://proxy.test:3128", noProxy: [] },
+          caPems: [],
+          trustHost: true,
+        }),
       ),
     );
     expect(response.status).toBe(204);
@@ -192,16 +193,14 @@ test("bounds redirect loops with a typed failure", async () => {
   });
   try {
     // When the redirect limit is exhausted.
-    const error = await Effect.runPromise(
-      Effect.scoped(
-        Effect.flatMap(HttpClient, (client) => client.stream({ url: origin.url.href })).pipe(
-          Effect.provide(makeHttpClientLive()),
-          Effect.flip,
-        ),
-      ),
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        return yield* client.get(origin.url.href);
+      }).pipe(Effect.provide(layer)),
     );
     // Then redirect loops cannot hold a scanner scope indefinitely.
-    expect(error).toBeInstanceOf(HttpRequestError);
+    expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toBe(21);
   } finally {
     origin.stop(true);

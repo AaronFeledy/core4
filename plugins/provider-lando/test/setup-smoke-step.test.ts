@@ -18,15 +18,14 @@ describe("provider-lando setup smoke step", () => {
         podmanApi,
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         smoke: true,
-        managedRuntimeSetup: (progress) =>
-          Effect.gen(function* () {
-            for (const phase of ["prerequisites", "launch", "readiness", "smoke"] as const) {
-              yield* progress.run(
-                phase,
-                Effect.sync(() => phases.push(phase)),
-              );
-            }
-          }),
+        managedRuntimeSetup: Effect.fnUntraced(function* (progress) {
+          for (const phase of ["prerequisites", "launch", "readiness", "smoke"] as const) {
+            yield* progress.run(
+              phase,
+              Effect.sync(() => phases.push(phase)),
+            );
+          }
+        }),
       }),
     );
 
@@ -41,15 +40,14 @@ describe("provider-lando setup smoke step", () => {
         platform: "linux",
         podmanApi,
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
-        managedRuntimeSetup: (progress) =>
-          Effect.gen(function* () {
-            for (const phase of ["prerequisites", "launch", "readiness"] as const) {
-              yield* progress.run(
-                phase,
-                Effect.sync(() => phases.push(phase)),
-              );
-            }
-          }),
+        managedRuntimeSetup: Effect.fnUntraced(function* (progress) {
+          for (const phase of ["prerequisites", "launch", "readiness"] as const) {
+            yield* progress.run(
+              phase,
+              Effect.sync(() => phases.push(phase)),
+            );
+          }
+        }),
       }),
     );
 

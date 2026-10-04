@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { LandofileParseError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -116,12 +116,12 @@ describe("renderLandofileTemplate (injected module registry)", () => {
         content: "template: fakehb\nname: {{env.APP}}",
         registry,
         context: ctx({ APP: "demo" }),
-      }).pipe(Effect.either),
+      }).pipe(Effect.result),
     );
 
     // Then: the injected engine renders and the directive line is blanked.
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right).toBe("\nname: demo");
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(result.success).toBe("\nname: demo");
   });
 
   test("unknown engine fails with LandofileParseError when modules lack it", async () => {
@@ -135,16 +135,16 @@ describe("renderLandofileTemplate (injected module registry)", () => {
         content: "template: nope\nname: x",
         registry,
         context: ctx(),
-      }).pipe(Effect.either),
+      }).pipe(Effect.result),
     );
 
     // Then: unknown-engine error is preserved on the directive line.
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(LandofileParseError);
-      expect(result.left.line).toBe(1);
-      expect(result.left.message).toContain("nope");
-      expect(result.left.message).toContain("known");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(LandofileParseError);
+      expect(result.failure.line).toBe(1);
+      expect(result.failure.message).toContain("nope");
+      expect(result.failure.message).toContain("known");
     }
   });
 });

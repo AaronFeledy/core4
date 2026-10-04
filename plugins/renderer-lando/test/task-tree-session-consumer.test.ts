@@ -17,7 +17,7 @@ import type { RendererIO } from "@lando/sdk/renderer";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
@@ -185,7 +185,9 @@ const drive = (
       for (const event of events) yield* svc.publish(event);
       yield* Effect.sleep("20 millis");
     }).pipe(
-      Effect.provide(Layer.provideMerge(makeLandoEventConsumer(io, { createLiveRegion }), EventServiceLive)),
+      Effect.provide(
+        Layer.provideMerge(makeLandoEventConsumer(io, { createLiveRegion }), LandoEventService.layer),
+      ),
     ),
   );
 
@@ -400,7 +402,7 @@ describe("lifecycle-backed task session", () => {
           Effect.provide(
             Layer.provideMerge(
               makeLandoEventConsumer(io, { createLiveRegion: () => Promise.resolve(controller) }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),
@@ -548,7 +550,7 @@ describe("lifecycle-backed task session", () => {
                 createLiveRegion: () => Promise.resolve(controller),
                 transcriptReader,
               }),
-              EventServiceLive,
+              LandoEventService.layer,
             ),
           ),
         ),

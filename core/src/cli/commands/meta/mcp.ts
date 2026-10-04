@@ -6,14 +6,14 @@ import { serializeToolingInput } from "@lando/landofile/tooling-input";
  *   - `--list` projects the effective tool catalog (id, summary, source of
  *     allowance) as a normal machine-output result (`McpListResult`).
  *   - serve mode runs the long-running stdio MCP server: it constructs
- *     `McpServiceLive` lazily, drives `McpService.serve` over the hand-rolled
- *     stdio JSON-RPC transport, and emits no command-result envelope, preserving
+ *     the MCP service layer lazily, drives `McpService.serve` over Effect's
+ *     stdio server, and emits no command-result envelope, preserving
  *     the MCP protocol stream.
  *
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, type Either, Layer, Predicate, Schema } from "effect";
+import { Effect, Layer, Predicate, type Result, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError, type ToolingInputError } from "@lando/sdk/errors";
@@ -30,10 +30,10 @@ import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
-import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
-import { McpTransport } from "@lando/mcp/transport";
 import type { RedactionService } from "@lando/redaction/service";
-import { McpServiceLive } from "../../../mcp-command-executor";
+import * as RendererStdio from "@lando/renderer/stdio";
+import { serviceLayer } from "../../../mcp-command-executor";
+import { resources } from "../../../mcp-resources";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
@@ -90,10 +90,10 @@ export const toolingArgvFromInput = (
   id: string,
   declaration: ToolingInput,
   input: unknown,
-): Either.Either<ReadonlyArray<string>, ToolingInputError> => {
-  const record = Predicate.isRecord(input) ? input : {};
-  const flags = Predicate.isRecord(record.flags) ? record.flags : {};
-  const args = Predicate.isRecord(record.args) ? record.args : {};
+): Result.Result<ReadonlyArray<string>, ToolingInputError> => {
+  const record = Predicate.isObject(input) ? input : {};
+  const flags = Predicate.isObject(record.flags) ? record.flags : {};
+  const args = Predicate.isObject(record.args) ? record.args : {};
   return serializeToolingInput({ ...declaration, name: toolingTaskName(id) }, { flags, args });
 };
 
@@ -103,7 +103,7 @@ const ToolingMcpResultSchema = Schema.Struct({
   exitCode: Schema.Number,
   stdout: Schema.String,
   stderr: Schema.String,
-  rendered: Schema.optional(Schema.Boolean),
+  rendered: Schema.optionalKey(Schema.Boolean),
 });
 
 const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
@@ -158,7 +158,7 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
     run: (input) =>
       command.input === undefined
         ? runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true })
-        : Effect.flatMap(toolingArgvFromInput(command.id, command.input, input), (args) =>
+        : Effect.flatMap(Effect.fromResult(toolingArgvFromInput(command.id, command.input, input)), (args) =>
             runTooling({ name: command.id, args, renderProgress: true }),
           ),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
@@ -227,16 +227,15 @@ const resolveRegistryForEffectiveOptions = (
 ): Effect.Effect<McpCommandRegistry, never, never> =>
   options.tooling === true ? resolveToolingRegistry(registry, runtimeLayer) : Effect.succeed(registry);
 
-const resolveRegistryForCommand = (
+const resolveRegistryForCommand = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.Effect<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> =>
-  Effect.gen(function* () {
-    const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
-    const options = resolveMcpOptions(flags, config);
-    return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
-  });
+): Effect.fn.Return<McpCommandRegistry, ConfigError | McpToolInputError, ConfigService> {
+  const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
+  const options = resolveMcpOptions(flags, config);
+  return yield* resolveRegistryForEffectiveOptions(registry, options, runtimeLayer);
+});
 
 /**
  * Compose CLI flags with global `mcp.*` config. Deny is unioned here and wins
@@ -285,16 +284,15 @@ export const validateMcpAllowlistIds = (
   return Effect.void;
 };
 
-const resolveOptions = (
+const resolveOptions = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.Effect<ResolvedMcpOptions, ConfigError | McpToolInputError, ConfigService> =>
-  Effect.gen(function* () {
-    const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
-    const options = resolveMcpOptions(flags, config);
-    yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
-    return options;
-  });
+): Effect.fn.Return<ResolvedMcpOptions, ConfigError | McpToolInputError, ConfigService> {
+  const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
+  const options = resolveMcpOptions(flags, config);
+  yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
+  return options;
+});
 
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
@@ -304,64 +302,62 @@ export const buildMcpRuntimeConfig = (
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
   defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
   runtimeLayer,
+  resources,
 });
 
-export const mcpListResult = (
+export const mcpListResult = Effect.fn("Mcp.list")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
-): Effect.Effect<McpListResult, ConfigError | McpToolInputError, ConfigService> =>
-  Effect.gen(function* () {
-    const options = yield* resolveOptions(registry, flags);
-    return buildMcpListResult({
-      defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
-      commandEntries: registry.commandEntries,
-      ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
-      allow: options.allow,
-      deny: options.deny,
-      tooling: options.tooling,
-    });
+): Effect.fn.Return<McpListResult, ConfigError | McpToolInputError, ConfigService> {
+  const options = yield* resolveOptions(registry, flags);
+  return buildMcpListResult({
+    defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
+    commandEntries: registry.commandEntries,
+    ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
+    allow: options.allow,
+    deny: options.deny,
+    tooling: options.tooling,
   });
+});
 
 /**
  * Serve MCP over stdio until the transport closes (stdin EOF). Constructs
- * `McpServiceLive` lazily, computes the catalog for `tools/list`, and runs the
+ * the MCP service layer lazily, computes the catalog for `tools/list`, and runs the
  * dispatch loop. Emits no command-result envelope on the protocol stream;
  * startup validation failures still surface as one failure envelope.
  */
-export const serveMcp = (
+export const serveMcp = Effect.fn("Mcp.serve")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
-): Effect.Effect<
+): Effect.fn.Return<
   void,
   ConfigError | McpToolInputError | McpTransportError,
   ConfigService | RedactionService
-> =>
-  Effect.gen(function* () {
-    const options = yield* resolveOptions(registry, flags);
-    const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
-    const catalogOptions = {
-      allow: options.allow,
-      deny: options.deny,
-      tooling: options.tooling,
-    };
-    yield* Effect.gen(function* () {
-      const service = yield* McpService;
-      const catalog = yield* service.catalog(catalogOptions);
-      const transport = yield* makeStdioMcpTransport({ catalog });
-      yield* service
-        .serve({
-          transport: "stdio",
-          ...catalogOptions,
-          ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
-        })
-        .pipe(Effect.provideService(McpTransport, transport));
-    }).pipe(
-      Effect.scoped,
-      Effect.provide(McpServiceLive),
-      Effect.provideService(McpRuntimeConfig, runtimeConfig),
-    );
-  });
+> {
+  const options = yield* resolveOptions(registry, flags);
+  const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
+  const catalogOptions = {
+    allow: options.allow,
+    deny: options.deny,
+    tooling: options.tooling,
+  };
+  yield* Effect.gen(function* () {
+    const service = yield* McpService;
+    yield* service
+      .serve({
+        transport: "stdio",
+        cwd: process.cwd(),
+        ...catalogOptions,
+        ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
+      })
+      .pipe(Effect.provide(RendererStdio.layer));
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(serviceLayer),
+    Effect.provideService(McpRuntimeConfig, runtimeConfig),
+  );
+});
 
 export const dispatchMcpCommand = async (params: {
   readonly flags: McpCommandFlags;

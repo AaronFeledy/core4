@@ -49,13 +49,13 @@ import { makeTestRouterService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
@@ -258,7 +258,7 @@ const makeHarness = async (
       });
     },
   };
-  const pluginRegistry = {
+  const pluginRegistry = PluginRegistry.of({
     list: Effect.succeed([manifest]),
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(fakeServiceType),
@@ -267,8 +267,8 @@ const makeHarness = async (
         ? Effect.succeed(fakeServiceType.testFeature)
         : Effect.die(`unexpected service feature ${id}`),
     loadAppFeature: () => Effect.die("not used"),
-  };
-  const buildOrchestrator = {
+  });
+  const buildOrchestrator = BuildOrchestrator.of({
     build: (plan: AppPlan) =>
       Effect.sync(() => {
         calls.actions.push("build");
@@ -284,65 +284,83 @@ const makeHarness = async (
         };
       }),
     buildApp: () => Effect.void,
-  };
+  });
   const layer = Layer.mergeAll(
-    ConfigServiceLive,
-    CacheServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event);
-          options.timeline?.push(event._tag);
-        }),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Queue.unbounded<LandoEvent>(),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    }),
+    LandoConfigService.layer,
+    AppCacheService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+            options.timeline?.push(event._tag);
+          }),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Queue.unbounded<LandoEvent>(),
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      }),
+    ),
     Layer.succeed(PluginRegistry, pluginRegistry),
-    Layer.succeed(RouterService, {
-      ...makeTestRouterService(),
-      revalidateStartup: options.revalidateStartup ?? Effect.void,
-      setup: () =>
-        Effect.sync(() => {
-          calls.routerSetups.push(1);
-        }),
-      applyRoutes: (routes, app) =>
-        Effect.sync(() => {
-          calls.routes.push({ app: String(app), hostnames: routes.map((route) => route.hostname) });
-          return {
-            app,
-            appliedRoutes: [...routes],
-            authorities: routes.map((route) => ({
-              scheme: "https" as const,
-              hostname: route.hostname,
-              port: 444,
-            })),
-          };
-        }),
-      removeRoutes: (app) =>
-        Effect.sync(() => {
-          calls.routesRemoved.push(String(app));
-        }),
-    }),
+    Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...makeTestRouterService(),
+        revalidateStartup: options.revalidateStartup ?? Effect.void,
+        setup: () =>
+          Effect.sync(() => {
+            calls.routerSetups.push(1);
+          }),
+        applyRoutes: (routes, app) =>
+          Effect.sync(() => {
+            calls.routes.push({ app: String(app), hostnames: routes.map((route) => route.hostname) });
+            return {
+              app,
+              appliedRoutes: [...routes],
+              authorities: routes.map((route) => ({
+                scheme: "https" as const,
+                hostname: route.hostname,
+                port: 444,
+              })),
+            };
+          }),
+        removeRoutes: (app) =>
+          Effect.sync(() => {
+            calls.routesRemoved.push(String(app));
+          }),
+      }),
+    ),
     Layer.succeed(BuildOrchestrator, buildOrchestrator),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(SecretStore, {
-      id: "global-command-test",
-      get: () => Effect.succeed("resolved-global-token"),
-      has: () => Effect.succeed(true),
-      list: Effect.succeed(["GLOBAL_TOKEN"]),
-    }),
-    AppPlannerLive.pipe(
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "global-command-test",
+        get: () => Effect.succeed("resolved-global-token"),
+        has: () => Effect.succeed(true),
+        list: Effect.succeed(["GLOBAL_TOKEN"]),
+      }),
+    ),
+    AppPlannerLayer.layer.pipe(
       Layer.provide(
-        Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
+        Layer.mergeAll(
+          Layer.succeed(PluginRegistry, pluginRegistry),
+          AppCacheService.layer,
+          LandoConfigService.layer,
+        ),
       ),
     ),
   );
@@ -396,7 +414,7 @@ const writeWatcherRecord = async (observedAt: string): Promise<void> => {
 
 const failingWatcherObservation = (observedAt: string) =>
   Effect.promise(() => writeWatcherRecord(observedAt)).pipe(
-    Effect.zipRight(
+    Effect.andThen(
       Effect.fail(
         new RouterWatcherError({
           message: "Router file-provider watcher failed.",
@@ -419,7 +437,7 @@ const parseDist = async (path: string) => {
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
@@ -590,10 +608,10 @@ describe("meta:global command effects", () => {
         eventName: "pre-app-start",
         appRef: { kind: "user", id: "myapp", root: "/srv/apps/myapp" },
         providerId: "lando",
-        timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-31T07:30:00Z")),
+        timestamp: DateTime.formatIso(DateTime.makeUnsafe("2026-05-31T07:30:00Z")),
       });
 
-      const layer = Layer.mergeAll(harness.layer, EventServiceLive);
+      const layer = Layer.mergeAll(harness.layer, LandoEventService.layer);
 
       const tags = await Effect.runPromise(
         Effect.scoped(
@@ -859,13 +877,16 @@ describe("meta:global command effects", () => {
       });
       const layer = Layer.mergeAll(
         harness.layer,
-        Layer.succeed(PluginRegistry, {
-          list: Effect.succeed([disabledManifest]),
-          load: () => Effect.succeed(disabledManifest),
-          loadServiceType: () => Effect.die("not used"),
-          loadServiceFeature: () => Effect.die("not used"),
-          loadAppFeature: () => Effect.die("not used"),
-        }),
+        Layer.succeed(
+          PluginRegistry,
+          PluginRegistry.of({
+            list: Effect.succeed([disabledManifest]),
+            load: () => Effect.succeed(disabledManifest),
+            loadServiceType: () => Effect.die("not used"),
+            loadServiceFeature: () => Effect.die("not used"),
+            loadAppFeature: () => Effect.die("not used"),
+          }),
+        ),
       );
 
       const result = await Effect.runPromise(globalList().pipe(Effect.provide(layer)));
@@ -1078,13 +1099,16 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       const layer = Layer.mergeAll(
         harness.layer,
-        Layer.succeed(PluginRegistry, {
-          list: Effect.succeed([]),
-          load: () => Effect.die("not used"),
-          loadServiceType: () => Effect.die("not used"),
-          loadServiceFeature: () => Effect.die("not used"),
-          loadAppFeature: () => Effect.die("not used"),
-        }),
+        Layer.succeed(
+          PluginRegistry,
+          PluginRegistry.of({
+            list: Effect.succeed([]),
+            load: () => Effect.die("not used"),
+            loadServiceType: () => Effect.die("not used"),
+            loadServiceFeature: () => Effect.die("not used"),
+            loadAppFeature: () => Effect.die("not used"),
+          }),
+        ),
       );
 
       const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(layer)));
@@ -1117,11 +1141,14 @@ describe("meta:global command effects", () => {
       });
       const layer = Layer.mergeAll(
         harness.layer,
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([]),
-          capabilities: Effect.fail(missingProvider),
-          select: () => Effect.fail(missingProvider),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([]),
+            capabilities: Effect.fail(missingProvider),
+            select: () => Effect.fail(missingProvider),
+          }),
+        ),
       );
 
       const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(layer)));
@@ -1196,7 +1223,10 @@ describe("meta:global command effects", () => {
       const followExit = await Effect.runPromiseExit(
         followGlobalLogs({ since: "bogus" }).pipe(
           Effect.provide(
-            Layer.mergeAll(harness.layer, Layer.succeed(StreamFrameSink, { emit: () => Effect.void })),
+            Layer.mergeAll(
+              harness.layer,
+              Layer.succeed(StreamFrameSink, StreamFrameSink.of({ emit: () => Effect.void })),
+            ),
           ),
         ),
       );
@@ -1211,15 +1241,18 @@ describe("meta:global command effects", () => {
       await materializeDist(harness, { proxy: { type: "lando", home: false } });
 
       const emitted: Array<{ readonly service?: string; readonly chunk: string }> = [];
-      const sinkLayer = Layer.succeed(StreamFrameSink, {
-        emit: (frame) =>
-          Effect.sync(() => {
-            emitted.push({
-              chunk: frame.chunk,
-              ...(frame.service === undefined ? {} : { service: frame.service }),
-            });
-          }),
-      });
+      const sinkLayer = Layer.succeed(
+        StreamFrameSink,
+        StreamFrameSink.of({
+          emit: (frame) =>
+            Effect.sync(() => {
+              emitted.push({
+                chunk: frame.chunk,
+                ...(frame.service === undefined ? {} : { service: frame.service }),
+              });
+            }),
+        }),
+      );
 
       const result = await Effect.runPromise(
         followGlobalLogs().pipe(Effect.provide(Layer.mergeAll(harness.layer, sinkLayer))),

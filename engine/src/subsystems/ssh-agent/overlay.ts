@@ -10,7 +10,7 @@ import { Schema } from "effect";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../ssh/intent.ts";
 import type { AgentRelaySession } from "./session.ts";
 
-const Intent = Schema.Struct({ mode: Schema.Literal("host", "sidecar") });
+const Intent = Schema.Struct({ mode: Schema.Literals(["host", "sidecar"]) });
 const Features = Schema.Struct({ featureIds: Schema.Array(Schema.String) });
 const target = PortablePath.make(AGENT_SOCKET_CONTAINER_DIR.ssh);
 type OverlaySession = Pick<AgentRelaySession, "mount" | "kind" | "socketName">;

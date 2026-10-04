@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
@@ -11,15 +11,15 @@ const DIGEST_A = "a".repeat(64);
 const DIGEST_B = "b".repeat(64);
 
 const FeatureExtension = Schema.Struct({
-  buildSteps: Schema.optional(
+  buildSteps: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
-        id: Schema.optional(Schema.String),
+        id: Schema.optionalKey(Schema.String),
         phase: Schema.String,
         command: Schema.Unknown,
-        user: Schema.optional(Schema.String),
-        buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-        caFiles: Schema.optional(
+        user: Schema.optionalKey(Schema.String),
+        buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+        caFiles: Schema.optionalKey(
           Schema.Array(
             Schema.Struct({
               path: Schema.String,
@@ -100,9 +100,10 @@ describe("lando.security feature", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("ServiceFeatureError");
-      expect(exit.cause.error.feature).toBe("lando.security");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+      expect(error?._tag).toBe("ServiceFeatureError");
+      expect(error && "feature" in error ? error.feature : undefined).toBe("lando.security");
     }
   });
 

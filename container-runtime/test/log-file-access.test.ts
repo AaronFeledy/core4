@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Option, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import type { DataPlaneApiClient, DataPlaneHttpRequest } from "@lando/container-runtime/data-plane";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
@@ -453,8 +453,8 @@ describe("Docker-compatible log file access", () => {
     const exit = await Effect.runPromiseExit(access.stat("/var/log/app.log"));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ProviderInternalError);
     }
   });
 
@@ -526,8 +526,8 @@ describe("Docker-compatible log file access", () => {
     const exit = await Effect.runPromiseExit(access.stat("/var/log/app.log"));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ProviderInternalError);
     }
   });
 
@@ -547,8 +547,8 @@ describe("Docker-compatible log file access", () => {
     await Effect.runPromise(handle.close);
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ProviderInternalError);
     }
   });
 
@@ -578,8 +578,8 @@ describe("Docker-compatible log file access", () => {
     const exit = await Effect.runPromiseExit(access.stat("/var/log/app.log"));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ProviderInternalError);
     }
   });
 });

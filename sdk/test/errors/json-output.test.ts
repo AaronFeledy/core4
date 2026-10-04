@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { JqExpressionError, JsonJqConflictError, JsonProjectionError } from "@lando/sdk/errors";
 
@@ -43,7 +43,7 @@ describe("JsonProjectionError", () => {
   });
 
   test("fails schema decode when a required field is missing", () => {
-    const decoded = Schema.decodeUnknownEither(JsonProjectionError)({
+    const decoded = Schema.decodeUnknownResult(JsonProjectionError)({
       _tag: "JsonProjectionError",
       message: "Unknown projection key.",
       keys: ["missing"],
@@ -51,7 +51,7 @@ describe("JsonProjectionError", () => {
       reason: "unknown_key",
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });
 
@@ -68,12 +68,12 @@ describe("JsonJqConflictError", () => {
   });
 
   test("fails schema decode when a required field is missing", () => {
-    const decoded = Schema.decodeUnknownEither(JsonJqConflictError)({
+    const decoded = Schema.decodeUnknownResult(JsonJqConflictError)({
       _tag: "JsonJqConflictError",
       message: "Cannot combine --jq with bare --json.",
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });
 
@@ -110,13 +110,13 @@ describe("JqExpressionError", () => {
   });
 
   test("fails schema decode when a required field is missing", () => {
-    const decoded = Schema.decodeUnknownEither(JqExpressionError)({
+    const decoded = Schema.decodeUnknownResult(JqExpressionError)({
       _tag: "JqExpressionError",
       message: "jq expression failed.",
       reason: "eval",
       remediation: "Fix the --jq expression.",
     });
 
-    expect(Either.isLeft(decoded)).toBe(true);
+    expect(Result.isFailure(decoded)).toBe(true);
   });
 });

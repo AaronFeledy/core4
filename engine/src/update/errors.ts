@@ -13,8 +13,8 @@ export const CoreUpdateFailureSchema = Schema.Struct({
 
 export class UpdateNetworkError extends Schema.TaggedError<UpdateNetworkError>()("UpdateNetworkError", {
   message: Schema.String,
-  url: Schema.optional(Schema.String),
-  cause: Schema.optional(Schema.Unknown),
+  url: Schema.optionalKey(Schema.String),
+  cause: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 export class UpdateSignatureVerificationError extends Schema.TaggedError<UpdateSignatureVerificationError>()(
@@ -23,7 +23,7 @@ export class UpdateSignatureVerificationError extends Schema.TaggedError<UpdateS
     message: Schema.String,
     manifestUrl: Schema.String,
     signatureUrl: Schema.String,
-    cause: Schema.optional(Schema.Unknown),
+    cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
 
@@ -60,7 +60,7 @@ export class UpdateChecksumSignatureVerificationError extends Schema.TaggedError
     message: Schema.String,
     checksumsUrl: Schema.String,
     signatureUrl: Schema.String,
-    cause: Schema.optional(Schema.Unknown),
+    cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
 
@@ -69,8 +69,8 @@ export class UpdateChecksumVerificationError extends Schema.TaggedError<UpdateCh
   {
     message: Schema.String,
     artifact: Schema.String,
-    expected: Schema.optional(Schema.String),
-    actual: Schema.optional(Schema.String),
+    expected: Schema.optionalKey(Schema.String),
+    actual: Schema.optionalKey(Schema.String),
   },
 ) {}
 
@@ -83,8 +83,8 @@ export class UpdateLaunchProbeError extends Schema.TaggedError<UpdateLaunchProbe
     probeCommand: Schema.String,
     outputSummary: Schema.String,
     exitCode: Schema.Number,
-    rollbackFailure: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Unknown),
+    rollbackFailure: Schema.optionalKey(Schema.String),
+    cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
 
@@ -92,9 +92,9 @@ export class UpdatePermissionError extends Schema.TaggedError<UpdatePermissionEr
   "UpdatePermissionError",
   {
     message: Schema.String,
-    path: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Unknown),
+    path: Schema.optionalKey(Schema.String),
+    remediation: Schema.optionalKey(Schema.String),
+    cause: Schema.optionalKey(Schema.Unknown),
   },
 ) {}
 

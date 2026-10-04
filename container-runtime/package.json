@@ -41,6 +41,7 @@
     "./dialect": "./src/dialect.ts",
     "./runtime-provider": "./src/runtime-provider.ts",
     "./image-pull": "./src/image-pull.ts",
+    "./image-ensure": "./src/image-ensure.ts",
     "./labels": "./src/labels.ts",
     "./service-lifecycle": "./src/service-lifecycle.ts",
     "./wait-for-exit": "./src/wait-for-exit.ts",
@@ -64,7 +65,7 @@
   "keywords": ["lando", "container-runtime", "provider"],
   "dependencies": {
     "@lando/sdk": "workspace:*",
-    "effect": "^3.21.2"
+    "effect": "catalog:"
   },
   "scripts": {
     "build": "tsc -b && bun run build:log-file-helper",

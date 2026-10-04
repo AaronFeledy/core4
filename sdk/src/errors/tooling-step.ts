@@ -4,7 +4,7 @@ export class ToolingStepSelectorUnavailableError extends Schema.TaggedError<Tool
   "ToolingStepSelectorUnavailableError",
   {
     message: Schema.String,
-    selector: Schema.Literal("sources", "generates"),
+    selector: Schema.Literals(["sources", "generates"]),
     remediation: Schema.String,
   },
 ) {}

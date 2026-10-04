@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { ConfigError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-import { ConfigServiceLive } from "../../src/services/config.ts";
+import * as LandoConfigService from "../../src/services/config.ts";
 
 const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-config-service-"));
@@ -36,11 +36,11 @@ const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<
 const loadConfig = () =>
   Effect.runPromise(
     Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
-      Effect.provide(ConfigServiceLive),
+      Effect.provide(LandoConfigService.layer),
     ),
   );
 
-describe("ConfigServiceLive", () => {
+describe("LandoConfigService.layer", () => {
   test("loads config.yml and applies the LANDO_CONFIG__ overlay", async () => {
     await withTempConfigRoot(async (dir) => {
       await writeFile(
@@ -101,13 +101,13 @@ describe("ConfigServiceLive", () => {
 
       const exit = await Effect.runPromiseExit(
         Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
-          Effect.provide(ConfigServiceLive),
+          Effect.provide(LandoConfigService.layer),
         ),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ConfigError);
@@ -124,7 +124,7 @@ describe("ConfigServiceLive", () => {
 
       const value = await Effect.runPromise(
         Effect.flatMap(ConfigService, (configService) => configService.get("defaultProviderId")).pipe(
-          Effect.provide(ConfigServiceLive),
+          Effect.provide(LandoConfigService.layer),
         ),
       );
 

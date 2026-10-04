@@ -88,7 +88,10 @@ describe("Engine package seam", () => {
       expect(target).toBe(key === "." ? "./src/index.ts" : `./src/${key.slice(2)}.ts`);
       expect(existsSync(resolve(repositoryRoot, "engine", target))).toBe(true);
     }
-    expect(stringArray(rootManifest.workspaces)).toContain("engine");
+    expect(isJsonObject(rootManifest.workspaces)).toBe(true);
+    if (!isJsonObject(rootManifest.workspaces))
+      throw new TypeError("Expected workspace catalog configuration");
+    expect(stringArray(rootManifest.workspaces.packages)).toContain("engine");
     expect(projectReferencePaths(rootTsconfig.references)).toContain("./engine");
     expect(scripts).toEqual({
       build: "tsc -b",
@@ -173,7 +176,7 @@ describe("Engine package seam", () => {
     expect(workspaceDevDependencies).toEqual([["@lando/service-lando", "workspace:*"]]);
     expect(workspacePeerDependencies).toEqual([]);
     expect(runtimeDependencies).toEqual([
-      ["effect", "^3.21.2"],
+      ["effect", "catalog:"],
       ["semver", "^7.8.5"],
     ]);
     expect(nonWorkspaceDevDependencies).toEqual([["@types/semver", "^7.7.1"]]);

@@ -24,7 +24,7 @@ const RAW_HOSTNAME = `raw.${SLUG}.lndo.site`;
 const BACKEND_CONTENT = "lando route filter backend\n";
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-30T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-30T00:00:00Z"),
   source: "route-filters-live.integration.test",
   runtime: 4 as const,
 };
@@ -191,8 +191,8 @@ describe("route filters — live integration", () => {
       const backendPlan = appPlan(SLUG, nginxService, routes);
       const proxyPlan = appPlan(`${SLUG}-proxy`, traefikService, []);
 
-      await Effect.runPromise(Effect.either(bringDown(proxyPlan, { api })));
-      await Effect.runPromise(Effect.either(bringDown(backendPlan, { api })));
+      await Effect.runPromise(Effect.result(bringDown(proxyPlan, { api })));
+      await Effect.runPromise(Effect.result(bringDown(backendPlan, { api })));
       try {
         const backendApplied = await Effect.runPromise(bringUp(backendPlan, { api }));
         expect(backendApplied.changed).toBe(true);
@@ -211,8 +211,8 @@ describe("route filters — live integration", () => {
         expect(await raw.text()).toContain("nginx");
         expect(raw.headers.get("x-lando-route")).toBeNull();
       } finally {
-        await Effect.runPromise(Effect.either(bringDown(proxyPlan, { api })));
-        await Effect.runPromise(Effect.either(bringDown(backendPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(proxyPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(backendPlan, { api })));
       }
     },
     240_000,

@@ -61,7 +61,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Perf budget | Compiled-artifact tests enforce §2.1 end-to-end, first-paint, hot-path, concurrency, and runtime-reuse budgets. |
 | End-to-end | The relocated compiled binary runs against real operating systems, providers, plugins, routes, files, and offline-after-build state. |
 
-**Effect testing rules:** tests MUST inject mocks with Layers, provide them per test, use `TestClock` and `TestRandom` for nondeterminism, and feed stream services with deterministic Streams. Tests MUST NOT patch globals.
+**Effect testing rules:** tests MUST inject mocks with Layers, provide them per test, use `TestClock` from `effect/testing` (provided with `TestClock.layer()`) and `TestRandom` for nondeterminism, and feed stream services with deterministic Streams. Tests MUST NOT patch globals.
 
 **Provider contract suite:** every provider plugin MUST prove capability truthfulness, idempotent `apply`, complete `destroy`, tagged missing-service errors, terminating log Streams, capability-correct mount/endpoint/storage/route behavior, actionable remediation, and rollback on interruption. Bundled providers MUST run the same suite; no provider-specific substitute is acceptable.
 
@@ -98,6 +98,7 @@ A PR cannot merge unless:
 - The Linux x64 perf suite and e2e smoke pass; per-PR macOS and Windows perf results are advisory but nightly failures block release.
 - Scenario and recipe suites pass on every per-PR platform.
 - Boundary gates pass through the shared `check:boundaries` surface, with package seams primary and residual AST rules limited to behavior package edges cannot express.
+- The `effect-idioms` boundary rule keeps retired Effect forms out of the shared shipped-runtime tier (core, primitive packages, engine, renderer, data-mover, MCP, telemetry, and bundled plugins): `Data.TaggedError` and `Data.Error`; `Date.now()` and `new Date(` in modules that import `effect`; named functions or methods whose body only returns `Effect.gen(...)`; local definitions named `isRecord`, `isPlainObject`, or `isObject`; exports named `*Live`; and imports from `@effect/*`. It has no carve-outs.
 - Command, service, event, deprecation, export, and package-DAG registry drift checks pass.
 - New CLI or library behavior has scenario coverage; new CLI behavior also has e2e coverage.
 - New recipes have recipe and e2e smoke coverage; new schemas have annotations and round-trip coverage.

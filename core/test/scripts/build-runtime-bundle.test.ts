@@ -8,8 +8,8 @@ import { Effect, Layer } from "effect";
 import { makeDefaultRuntimeBundleDownloader } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { HttpClientLive } from "@lando/http-client/live";
+import * as LandoHttpClient from "@lando/http-client";
+import * as VerifiedDownloader from "@lando/http-client/downloader";
 import {
   LANDO_RUNTIME_BUNDLE_REPOSITORY_DEFAULT,
   RUNTIME_BUNDLE_TARGETS,
@@ -28,7 +28,7 @@ const fileUrl = (path: string): string => new URL(`file://${path}`).href;
 const coreArtifactDownload = Effect.gen(function* () {
   const downloader = yield* Downloader;
   return makeArtifactDownload(downloader);
-}).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(HttpClientLive))));
+}).pipe(Effect.provide(VerifiedDownloader.layer.pipe(Layer.provide(LandoHttpClient.layer))));
 
 describe("RUNTIME_BUNDLE_TARGETS", () => {
   test("covers supported host platform keys and never darwin-x64", () => {

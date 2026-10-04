@@ -1,245 +1,167 @@
-import { describe, expect, test } from "bun:test";
-import { Effect, Option } from "effect";
+import { expect, test } from "bun:test";
+import { McpService } from "@lando/mcp/service";
+import { startStdioClient } from "@lando/mcp/testing";
+import { Effect, Fiber, Schema } from "effect";
+import { resultObject, serverLayer, startServer } from "./server";
 
-import type { McpCatalog } from "@lando/sdk/schema";
-
-import { makeStdioMcpTransport } from "@lando/mcp/stdio-transport";
-
-const encoder = new TextEncoder();
-
-const catalog = {
-  tools: [
-    {
-      toolId: "app:info",
-      commandId: "app:info",
-      title: "App info",
-      description: "Show app information.",
-      destructive: false,
-      inputSchema: { type: "object" },
-    },
-  ],
-} satisfies McpCatalog;
-
-const inputFromMessages = (messages: ReadonlyArray<unknown>): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    start: (controller) => {
-      controller.enqueue(
-        encoder.encode(`${messages.map((message) => JSON.stringify(message)).join("\n")}\n`),
-      );
-      controller.close();
-    },
-  });
-
-const openInputFromMessage = (message: unknown): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
-    start: (controller) => {
-      controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
-    },
-  });
-
-const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
-const parseJsonObject = (line: string | undefined): Readonly<Record<string, unknown>> => {
-  if (line === undefined) throw new Error("expected JSON-RPC line to be written");
-  const parsed: unknown = JSON.parse(line);
-  if (!isJsonObject(parsed)) throw new Error("expected JSON-RPC line to decode to an object");
-  return parsed;
+const spec = {
+  id: "app:info",
+  summary: "App info",
+  description: "Show app information.",
+  flags: { format: { type: "string" } },
+  args: { service: { type: "string" } },
+  resultSchema: Schema.Struct({ service: Schema.String }),
+  run: (input: { readonly args: Record<string, unknown> }) =>
+    Effect.succeed({ service: input.args.service ?? "appserver" }),
 };
+const layer = serverLayer({ commandEntries: [{ spec }], defaultAllowlist: [spec.id], version: "4.0.0-test" });
 
-const findResponse = (
-  messages: ReadonlyArray<Readonly<Record<string, unknown>>>,
-  id: number,
-): Readonly<Record<string, unknown>> => {
-  const found = messages.find((message) => message.id === id);
-  if (found === undefined) throw new Error(`expected response for id ${id}`);
-  return found;
-};
-
-describe("makeStdioMcpTransport", () => {
-  test("answers initialize and tools/list then closes on EOF", async () => {
-    const writes: string[] = [];
-    const input = inputFromMessages([
-      { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
-      { jsonrpc: "2.0", method: "notifications/initialized" },
-      { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-    ]);
-
-    const received = await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          serverInfo: { name: "lando-test", version: "4.0.0-test" },
-          write: (line) =>
-            Effect.sync(() => {
-              writes.push(line);
-            }),
-        });
-        while (writes.length < 2) yield* Effect.sleep("10 millis");
-        return yield* transport.receive;
-      }).pipe(Effect.scoped),
+test.each(["2025-06-18", "2025-03-26", "2024-11-05"])(
+  "negotiates %s, lists tools with outputSchema, and closes on EOF",
+  async (protocol) => {
+    const observed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const service = yield* McpService;
+          const { makeStdioClient } = yield* Effect.promise(() => import("@lando/mcp/testing"));
+          const client = yield* makeStdioClient();
+          const fiber = yield* service
+            .serve({ transport: "stdio" })
+            .pipe(Effect.provide(client.layer), Effect.forkScoped);
+          const initialize = yield* client.initialize({}, protocol);
+          const tools = yield* client.request("tools/list");
+          yield* client.close;
+          const exit = yield* Fiber.await(fiber);
+          return { initialize, tools, exit };
+        }),
+      ).pipe(Effect.provide(layer)),
     );
-
-    expect(Option.isNone(received)).toBe(true);
-    const responses = writes.map(parseJsonObject);
-    expect(findResponse(responses, 1)).toMatchObject({
+    expect(observed.initialize).toMatchObject({
       jsonrpc: "2.0",
-      id: 1,
       result: {
-        protocolVersion: "2024-11-05",
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "lando-test", version: "4.0.0-test" },
+        protocolVersion: protocol,
+        capabilities: { tools: {} },
+        serverInfo: { name: "lando", version: "4.0.0-test" },
       },
     });
-    expect(findResponse(responses, 2)).toMatchObject({
-      jsonrpc: "2.0",
-      id: 2,
-      result: { tools: [{ name: "app:info" }] },
-    });
-  });
-
-  test("forwards tools/call requests and writes correlated tool results", async () => {
-    const writes: string[] = [];
-    const input = openInputFromMessage({
-      jsonrpc: "2.0",
-      id: 3,
-      method: "tools/call",
-      params: {
-        name: "app:info",
-        arguments: {
-          flags: { format: "json" },
-          args: { service: "appserver" },
-        },
-      },
-    });
-
-    const received = await Effect.runPromise(
-      Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) =>
-            Effect.sync(() => {
-              writes.push(line);
-            }),
-        });
-        const incoming = yield* transport.receive;
-        if (Option.isSome(incoming)) {
-          yield* transport.reply({
-            id: incoming.value.id,
-            ok: true,
-            result: { envelope: { apiVersion: "v4", command: "app:info", ok: true }, ok: true },
-          });
-        }
-        return incoming;
-      }).pipe(Effect.scoped),
-    );
-
-    expect(Option.isSome(received)).toBe(true);
-    if (Option.isSome(received)) {
-      expect(received.value.request).toEqual({
-        toolId: "app:info",
-        input: { flags: { format: "json" }, args: { service: "appserver" } },
-      });
-    }
-    expect(parseJsonObject(writes[0])).toMatchObject({
-      jsonrpc: "2.0",
-      id: 3,
+    expect(observed.tools).toMatchObject({
       result: {
-        content: [
-          { type: "text", text: JSON.stringify({ apiVersion: "v4", command: "app:info", ok: true }) },
+        tools: [
+          {
+            name: "app:info",
+            inputSchema: { type: "object" },
+            ...(protocol === "2025-06-18" ? { outputSchema: { type: "object" } } : {}),
+          },
         ],
-        isError: false,
       },
     });
-  });
+    expect(observed.exit._tag).toBe("Success");
+  },
+);
 
-  test("writes MCP-shaped progress notifications for correlated tool calls", async () => {
-    const writes: string[] = [];
-    const frame = { _tag: "output", stream: "stdout", line: "Starting" };
-    const input = openInputFromMessage({
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "app:info", _meta: { progressToken: "progress-1" } },
-    });
-
-    await Effect.runPromise(
+test("forwards tools/call arguments and writes correlated text and structured envelopes", async () => {
+  const response = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        const transport = yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) =>
-            Effect.sync(() => {
-              writes.push(line);
-            }),
+        const client = yield* startServer();
+        return yield* client.request("tools/call", {
+          name: spec.id,
+          arguments: { flags: { format: "json" }, args: { service: "appserver" } },
         });
-        const incoming = yield* transport.receive;
-        if (Option.isSome(incoming)) yield* transport.notify({ id: incoming.value.id, frame });
-        while (writes.length < 1) yield* Effect.sleep("10 millis");
-      }).pipe(Effect.scoped),
-    );
+      }),
+    ).pipe(Effect.provide(layer)),
+  );
+  const result = resultObject(response);
+  expect(result).toMatchObject({
+    isError: false,
+    structuredContent: { apiVersion: "v4", command: "app:info", ok: true, result: { service: "appserver" } },
+  });
+  const text = Schema.decodeUnknownSync(
+    Schema.Struct({
+      content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
+    }),
+  )(result).content[0]?.text;
+  expect(JSON.parse(text ?? "null")).toEqual(result.structuredContent);
+});
 
-    expect(parseJsonObject(writes[0])).toMatchObject({
+test("writes MCP-shaped progress notifications with increasing tokens and skips absent tokens", async () => {
+  const streaming = {
+    ...spec,
+    streamFrames: () => [
+      { _tag: "stdout" as const, chunk: "Starting" },
+      { _tag: "stderr" as const, chunk: "Waiting" },
+    ],
+  };
+  const messages = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        yield* client.request("tools/call", { name: spec.id, _meta: { progressToken: "progress-1" } });
+        yield* client.request("tools/call", { name: spec.id });
+        return yield* client.messages;
+      }),
+    ).pipe(
+      Effect.provide(serverLayer({ commandEntries: [{ spec: streaming }], defaultAllowlist: [spec.id] })),
+    ),
+  );
+  expect(messages.filter((message) => message.method === "notifications/progress")).toEqual([
+    {
       jsonrpc: "2.0",
       method: "notifications/progress",
-      params: {
-        progressToken: "progress-1",
-        progress: 1,
-        message: JSON.stringify(frame),
-        data: frame,
-      },
-    });
-  });
-
-  test("writes an Invalid Request error when a request id is invalid", async () => {
-    const writes: string[] = [];
-    const input = inputFromMessages([{ jsonrpc: "2.0", id: { invalid: true }, method: "tools/list" }]);
-
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) =>
-            Effect.sync(() => {
-              writes.push(line);
-            }),
-        });
-        while (writes.length < 1) yield* Effect.sleep("10 millis");
-      }).pipe(Effect.scoped),
-    );
-
-    expect(parseJsonObject(writes[0])).toMatchObject({
+      params: { progressToken: "progress-1", progress: 1, message: '{"_tag":"stdout","chunk":"Starting"}' },
+    },
+    {
       jsonrpc: "2.0",
-      id: null,
-      error: { code: -32600, message: "Invalid Request" },
-    });
-  });
+      method: "notifications/progress",
+      params: { progressToken: "progress-1", progress: 2, message: '{"_tag":"stderr","chunk":"Waiting"}' },
+    },
+  ]);
+});
 
-  test("writes an Invalid Request error when a request method omits id", async () => {
-    const writes: string[] = [];
-    const input = inputFromMessages([{ jsonrpc: "2.0", method: "tools/list" }]);
-
-    await Effect.runPromise(
+test("denied tools are absent from tools/list and rejected as unknown without execution", async () => {
+  let executed = false;
+  const response = await Effect.runPromise(
+    Effect.scoped(
       Effect.gen(function* () {
-        yield* makeStdioMcpTransport({
-          catalog,
-          input,
-          write: (line) =>
-            Effect.sync(() => {
-              writes.push(line);
-            }),
-        });
-        while (writes.length < 1) yield* Effect.sleep("10 millis");
-      }).pipe(Effect.scoped),
-    );
+        const service = yield* McpService;
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", deny: [spec.id] }));
+        const list = yield* client.request("tools/list");
+        const rejected = yield* client.request("tools/call", { name: spec.id });
+        return { list, rejected };
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer({
+          commandEntries: [
+            {
+              spec: {
+                ...spec,
+                run: () =>
+                  Effect.sync(() => {
+                    executed = true;
+                    return { service: "appserver" };
+                  }),
+              },
+            },
+          ],
+          defaultAllowlist: [spec.id],
+        }),
+      ),
+    ),
+  );
+  expect(response.list).toMatchObject({ result: { tools: [] } });
+  expect(response.rejected).toMatchObject({ error: { code: -32602, message: "Tool 'app:info' not found" } });
+  expect(executed).toBe(false);
+});
 
-    expect(parseJsonObject(writes[0])).toMatchObject({
-      jsonrpc: "2.0",
-      id: null,
-      error: { code: -32600, message: "Invalid Request" },
-    });
-  });
+test("undecodable tools/call parameters stay protocol errors", async () => {
+  const response = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        return yield* client.request("tools/call", { arguments: {} });
+      }),
+    ).pipe(Effect.provide(layer)),
+  );
+  expect(response).toMatchObject({ error: { code: -32602 } });
 });

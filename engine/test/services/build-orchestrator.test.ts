@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { type Context, DateTime, Deferred, Effect, Fiber, Layer, Predicate, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
@@ -28,13 +28,13 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { buildKeyForService } from "../../src/services/build-key.ts";
-import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
+import * as BuildOrchestratorLayer from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("test");
@@ -42,7 +42,7 @@ const appId = AppId.make("myapp");
 const appRoot = AbsolutePath.make("/srv/apps/myapp");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "build-orchestrator.test",
   runtime: 4 as const,
 };
@@ -81,8 +81,7 @@ const plan: AppPlan = {
   extensions: {},
 };
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => Predicate.isObject(value);
 
 const buildLifecycleEntry = (event: unknown): readonly [unknown, unknown] | undefined => {
   if (!isRecord(event)) return undefined;
@@ -104,34 +103,45 @@ const buildLifecycleDetails = (event: unknown) => {
 };
 
 const registryLayer = (provider = TestRuntimeProvider) =>
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
 
-const layer = (provider = TestRuntimeProvider, stateStoreLive = StateStoreLive) => {
-  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
-  const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), stateStoreLive);
-  return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
+const layer = (provider = TestRuntimeProvider, injectedStateStoreLayer = stateStoreLayer) => {
+  const pathsLayer = Layer.succeed(PathsService, makeLandoPaths());
+  const dependencies = Layer.mergeAll(
+    LandoEventService.layer,
+    pathsLayer,
+    registryLayer(provider),
+    injectedStateStoreLayer,
+  );
+  return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
 };
 
 const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Layer<RedactionService>) => {
-  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
+  const pathsLayer = Layer.succeed(PathsService, makeLandoPaths());
   const dependencies = Layer.mergeAll(
-    EventServiceLive,
-    pathsLive,
+    LandoEventService.layer,
+    pathsLayer,
     registryLayer(provider),
-    StateStoreLive,
+    stateStoreLayer,
     redaction,
   );
-  return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
+  return Layer.mergeAll(dependencies, BuildOrchestratorLayer.layer.pipe(Layer.provide(dependencies)));
 };
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-});
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
+  }),
+);
 
 const withTempUserRoots = async <T>(run: () => Promise<T>): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-build-orchestrator-cache-")));
@@ -169,7 +179,7 @@ const serviceFeatureExtension = (service: ServicePlan) =>
       }
     | undefined;
 
-describe("BuildOrchestratorLive", () => {
+describe("BuildOrchestratorLayer.layer", () => {
   test("drops only the temporary CA bundle mount after successful and cached trust-store builds", async () => {
     await withTempUserRoots(async () => {
       // Given
@@ -273,18 +283,17 @@ describe("BuildOrchestratorLive", () => {
     let maxActive = 0;
     const provider = {
       ...TestRuntimeProvider,
-      buildArtifact: (spec: ArtifactBuildSpec) =>
-        Effect.gen(function* () {
-          expect(spec.app).toBe(concurrentPlan.id);
-          expect(spec.plan).toBe(concurrentPlan);
-          expect(spec.buildKey).toBeString();
-          active += 1;
-          maxActive = Math.max(maxActive, active);
-          calls.push(String(spec.service));
-          yield* Effect.sleep("30 millis");
-          active -= 1;
-          return { providerId, ref: `${spec.service}:test` };
-        }),
+      buildArtifact: Effect.fnUntraced(function* (spec: ArtifactBuildSpec) {
+        expect(spec.app).toBe(concurrentPlan.id);
+        expect(spec.plan).toBe(concurrentPlan);
+        expect(spec.buildKey).toBeString();
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        calls.push(String(spec.service));
+        yield* Effect.sleep("30 millis");
+        active -= 1;
+        return { providerId, ref: `${spec.service}:test` };
+      }),
     };
 
     // When
@@ -294,7 +303,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(6), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(6), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
             Effect.map(orchestrator.build(concurrentPlan), (builtPlan) => {
@@ -342,7 +351,7 @@ describe("BuildOrchestratorLive", () => {
             const queue = yield* eventService.subscribeQueue;
             const orchestrator = yield* BuildOrchestrator;
             yield* orchestrator.build(plan);
-            return [...(yield* Queue.takeAll(queue))];
+            return [...(yield* Queue.clear(queue))];
           }),
         ).pipe(Effect.provide(layer(provider))),
       );
@@ -385,13 +394,16 @@ describe("BuildOrchestratorLive", () => {
       services: { [web.name]: web, [db.name]: db },
     };
     let cacheOpenCount = 0;
-    const failingStateStore = Layer.succeed(StateStore, {
-      withLock: (_key, body) => body,
-      open: () => {
-        cacheOpenCount += 1;
-        return cacheOpenCount === 1 ? Effect.fail(cacheFailure) : Effect.never;
-      },
-    });
+    const failingStateStore = Layer.succeed(
+      StateStore,
+      StateStore.of({
+        withLock: (_key, body) => body,
+        open: () => {
+          cacheOpenCount += 1;
+          return cacheOpenCount === 1 ? Effect.fail(cacheFailure) : Effect.never;
+        },
+      }),
+    );
 
     // When
     const result = await Effect.runPromise(
@@ -401,7 +413,7 @@ describe("BuildOrchestratorLive", () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.build(scratchPlan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(layer(TestRuntimeProvider, failingStateStore))),
     );
@@ -450,16 +462,19 @@ describe("BuildOrchestratorLive", () => {
       services: { [web.name]: web },
     };
     const testStore = makeTestStateStore();
-    const failingStateStore = Layer.succeed(StateStore, {
-      withLock: testStore.service.withLock,
-      open: (spec) =>
-        testStore.service.open(spec).pipe(
-          Effect.map((bucket) => ({
-            ...bucket,
-            update: () => Effect.fail(cacheFailure),
-          })),
-        ),
-    });
+    const failingStateStore = Layer.succeed(
+      StateStore,
+      StateStore.of({
+        withLock: testStore.service.withLock,
+        open: (spec) =>
+          testStore.service.open(spec).pipe(
+            Effect.map((bucket) => ({
+              ...bucket,
+              update: () => Effect.fail(cacheFailure),
+            })),
+          ),
+      }),
+    );
     const provider = {
       ...TestRuntimeProvider,
       buildArtifact: () => Effect.fail(providerFailure),
@@ -473,7 +488,7 @@ describe("BuildOrchestratorLive", () => {
           const queue = yield* eventService.subscribeQueue;
           const orchestrator = yield* BuildOrchestrator;
           const error = yield* Effect.flip(orchestrator.build(scratchPlan));
-          return { error, events: [...(yield* Queue.takeAll(queue))] };
+          return { error, events: [...(yield* Queue.clear(queue))] };
         }),
       ).pipe(Effect.provide(layer(provider, failingStateStore))),
     );
@@ -493,13 +508,16 @@ describe("BuildOrchestratorLive", () => {
       message: "build failed",
     });
     const calls: string[] = [];
+    const siblingStarted = Deferred.makeUnsafe<void>();
     const provider = {
       ...TestRuntimeProvider,
       buildArtifact: (spec: ArtifactBuildSpec) => {
         calls.push(String(spec.service));
         return spec.service === ServiceName.make("web")
-          ? Effect.fail(failure)
-          : Effect.succeed({ providerId, ref: `${spec.service}:test` });
+          ? Deferred.await(siblingStarted).pipe(Effect.andThen(Effect.fail(failure)))
+          : Deferred.succeed(siblingStarted, undefined).pipe(
+              Effect.as({ providerId, ref: `${spec.service}:test` }),
+            );
       },
     };
 
@@ -654,7 +672,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
           return yield* Fiber.join(subscriber);
@@ -698,11 +716,14 @@ describe("BuildOrchestratorLive", () => {
       ...TestRuntimeProvider,
       buildArtifact: () => Effect.succeed({ providerId: secretProviderId, ref: "ok" }),
     };
-    const envRedactionLayer = Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (_profile, options) =>
-        Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
-    } satisfies Context.Tag.Service<typeof RedactionService>);
+    const envRedactionLayer = Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (_profile, options) =>
+          Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
+      } satisfies Context.Service.Shape<typeof RedactionService>),
+    );
 
     try {
       const events = await Effect.runPromise(
@@ -711,7 +732,7 @@ describe("BuildOrchestratorLive", () => {
             const subscriber = yield* eventService
               .subscribe("*")
               .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-              .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+              .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
             yield* Effect.sleep("10 millis");
             yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
             return yield* Fiber.join(subscriber);
@@ -745,14 +766,17 @@ describe("BuildOrchestratorLive", () => {
       ...TestRuntimeProvider,
       buildArtifact: () => Effect.succeed({ providerId, ref: "ok" }),
     };
-    const lazyRedactionLayer = Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () =>
-        Effect.sync(() => {
-          profileReads += 1;
-          return createRedactor("secrets", { values: ["latersecret"] });
-        }),
-    });
+    const lazyRedactionLayer = Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () =>
+          Effect.sync(() => {
+            profileReads += 1;
+            return createRedactor("secrets", { values: ["latersecret"] });
+          }),
+      }),
+    );
 
     const events = await Effect.runPromise(
       Effect.flatMap(EventService, (eventService) =>
@@ -762,7 +786,7 @@ describe("BuildOrchestratorLive", () => {
           const subscriber = yield* eventService
             .subscribe("*")
             .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
-            .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
+            .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           yield* orchestrator.build(secretPlan);
           return yield* Fiber.join(subscriber);
@@ -1173,7 +1197,7 @@ describe("BuildOrchestratorLive", () => {
       await Effect.runPromise(
         Effect.flatMap(BuildOrchestrator, (orchestrator) =>
           Effect.gen(function* () {
-            yield* Effect.either(orchestrator.build(planWithRedirect("/logs/failure.log")));
+            yield* Effect.result(orchestrator.build(planWithRedirect("/logs/failure.log")));
             yield* orchestrator.build(planWithRedirect("/logs/failure.log"));
           }),
         ).pipe(Effect.provide(layer(failingProvider))),

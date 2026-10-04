@@ -157,7 +157,7 @@ export const makeTaskTree = (
       opened = true;
       treeStartedAt = nowFn();
     }).pipe(
-      Effect.zipRight(
+      Effect.andThen(
         publishTreeStart(events, {
           parentId: args.parentId,
           label: args.label,
@@ -177,11 +177,11 @@ export const makeTaskTree = (
     failTask: (localId, summary, options) => settleChild(localId, "fail", summary, options),
     detail: (localId, stream, line) => publishTaskDetail(events, { taskId: childId(localId), stream, line }),
     settleSuccess: (summary, durationMs) =>
-      settleRemaining("complete").pipe(Effect.zipRight(closeTree(summary, durationMs))),
+      settleRemaining("complete").pipe(Effect.andThen(closeTree(summary, durationMs))),
     settleFailure: (summary, durationMs) =>
-      settleRemaining("fail", summary).pipe(Effect.zipRight(closeTree(summary, durationMs))),
+      settleRemaining("fail", summary).pipe(Effect.andThen(closeTree(summary, durationMs))),
     settleInterrupt: (summary, durationMs) =>
-      settleRemaining("fail", summary).pipe(Effect.zipRight(closeTree(summary, durationMs))),
+      settleRemaining("fail", summary).pipe(Effect.andThen(closeTree(summary, durationMs))),
     close: closeTree,
   };
 };
@@ -192,7 +192,7 @@ export const runWithTaskTree = <A, E, R>(
   summaries: TaskTreeSummaries,
 ): Effect.Effect<A, E, R> =>
   tree.start.pipe(
-    Effect.zipRight(work(tree)),
+    Effect.andThen(work(tree)),
     Effect.tap(() => tree.settleSuccess(summaries.success)),
     Effect.tapError(() => tree.settleFailure(summaries.failure)),
     Effect.onInterrupt(() => tree.settleInterrupt(summaries.interrupt)),

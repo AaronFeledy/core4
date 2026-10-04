@@ -24,7 +24,9 @@ const resolveStatus = (
   resolve: typeof CertificateAuthorityResolver.Service.resolve,
 ): Promise<CertsDoctorStatus> =>
   Effect.runPromise(
-    certsDoctorStatus(redact).pipe(Effect.provideService(CertificateAuthorityResolver, { resolve })),
+    certsDoctorStatus(redact).pipe(
+      Effect.provideService(CertificateAuthorityResolver, CertificateAuthorityResolver.of({ resolve })),
+    ),
   );
 
 describe("certificate authority doctor status", () => {

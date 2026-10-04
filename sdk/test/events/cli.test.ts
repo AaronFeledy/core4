@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 
@@ -22,12 +22,12 @@ describe("generic CLI lifecycle event schemas", () => {
     const payload = { _tag: "cli-app:start-init", ...invocation };
 
     // When
-    const decoded = Schema.decodeUnknownEither(CliCommandInitEvent)(payload, {
+    const decoded = Schema.decodeUnknownResult(CliCommandInitEvent)(payload, {
       onExcessProperty: "error",
     });
 
     // Then
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
   });
 
   test("allows init events without an app binding", () => {
@@ -35,7 +35,7 @@ describe("generic CLI lifecycle event schemas", () => {
     const { app: _app, ...unboundInvocation } = invocation;
 
     // When
-    const decoded = Schema.decodeUnknownEither(CliCommandInitEvent)({
+    const decoded = Schema.decodeUnknownResult(CliCommandInitEvent)({
       _tag: "cli-meta:version-init",
       ...unboundInvocation,
       commandId: "meta:version",
@@ -45,7 +45,7 @@ describe("generic CLI lifecycle event schemas", () => {
     });
 
     // Then
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
   });
 
   test("decodes a canonical dynamic run tag with terminal fields", () => {
@@ -58,12 +58,12 @@ describe("generic CLI lifecycle event schemas", () => {
     };
 
     // When
-    const decoded = Schema.decodeUnknownEither(CliCommandRunEvent)(payload, {
+    const decoded = Schema.decodeUnknownResult(CliCommandRunEvent)(payload, {
       onExcessProperty: "error",
     });
 
     // Then
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
   });
 
   test("decodes a canonical dynamic error tag with failure identity", () => {
@@ -78,11 +78,11 @@ describe("generic CLI lifecycle event schemas", () => {
     };
 
     // When
-    const decoded = Schema.decodeUnknownEither(CliCommandErrorEvent)(payload, {
+    const decoded = Schema.decodeUnknownResult(CliCommandErrorEvent)(payload, {
       onExcessProperty: "error",
     });
 
     // Then
-    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    expect(Result.isSuccess(decoded), String(Result.getFailure(decoded))).toBe(true);
   });
 });

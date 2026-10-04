@@ -2,7 +2,7 @@ import { lstat, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest, type PluginManifest as PluginManifestShape } from "@lando/sdk/schema";
@@ -35,7 +35,7 @@ export const PluginAddResultSchema = Schema.Struct({
   pluginsRoot: Schema.String,
   entry: Schema.String,
   trusted: Schema.Boolean,
-  trustSource: Schema.Literal("flag", "persistent", "prompt", "session", "untrusted"),
+  trustSource: Schema.Literals(["flag", "persistent", "prompt", "session", "untrusted"]),
 });
 
 const decodePackageJson = (content: string, packageDir: string): PluginManifestShape => {
@@ -49,17 +49,17 @@ const decodePackageJson = (content: string, packageDir: string): PluginManifestS
     });
   }
   const candidate = (parsed as { landoPlugin?: unknown })?.landoPlugin ?? parsed;
-  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate, { onExcessProperty: "error" });
-  if (Either.isLeft(decoded)) {
+  const decoded = Schema.decodeUnknownResult(PluginManifest)(candidate, { onExcessProperty: "error" });
+  if (Result.isFailure(decoded)) {
     const nameField = (parsed as { name?: unknown })?.name;
     const name = typeof nameField === "string" ? nameField : undefined;
     throw new PluginManifestError({
       message: `Plugin manifest validation failed${name === undefined ? "" : ` for ${name}`}.`,
       ...(name === undefined ? {} : { pluginName: name }),
-      issues: [String(decoded.left)],
+      issues: [String(decoded.failure)],
     });
   }
-  return decoded.right;
+  return decoded.success;
 };
 
 const verifyContainment = async (manifest: PluginManifestShape, packageDir: string): Promise<string> => {
@@ -111,10 +111,10 @@ export interface FinalizePluginInstallOptions {
 
 const defaultIo = { recordInstalledPlugin };
 
-export const finalizePluginInstall = (
+export const finalizePluginInstall = Effect.fn("AppOperation.finalizePluginInstall")(function* (
   options: FinalizePluginInstallOptions,
   io: typeof defaultIo = defaultIo,
-): Effect.Effect<void, NotImplementedError> => {
+): Effect.fn.Return<void, NotImplementedError> {
   const finalize = Effect.gen(function* () {
     if (options.expectedActivation !== undefined) {
       const registry = yield* Effect.promise(() => readInstalledPluginRegistry(options.pluginsRoot));
@@ -220,11 +220,11 @@ export const finalizePluginInstall = (
       ),
     );
   }).pipe(
-    Effect.zipRight(
+    Effect.andThen(
       invalidatePluginCommandCache({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       }),
     ),
   );
-  return withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
-};
+  return yield* withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
+});

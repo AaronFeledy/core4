@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 
 import { type Context, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import { GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
@@ -17,7 +19,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { RuntimeProviderRegistryLive } from "@lando/engine/providers/registry";
+import * as RuntimeProviderRegistryLayer from "@lando/engine/providers/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
@@ -39,7 +41,7 @@ interface FakeRegistryOptions {
   readonly defaultProviderId?: string | null;
 }
 
-/** Builds the exact dependency set `RuntimeProviderRegistryLive` requires, fully faked. */
+/** Builds the exact dependency set `RuntimeProviderRegistryLayer.layer` requires, fully faked. */
 const buildDependencyLayer = (
   options: FakeRegistryOptions,
 ): Layer.Layer<
@@ -51,36 +53,41 @@ const buildDependencyLayer = (
   | ManagedFileService
   | PathsService
   | StateStore
+  | HttpClient.HttpClient
 > => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({
     telemetry: { enabled: false },
     ...(options.defaultProviderId === undefined ? {} : { defaultProviderId: options.defaultProviderId }),
   });
   const load = Effect.succeed(config);
-  const configService: Context.Tag.Service<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 
-  const pluginRegistryService: Context.Tag.Service<typeof PluginRegistry> = {
+  const pluginRegistryService: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
     list: Effect.succeed(options.manifests),
     load: (name) => Effect.fail(notRegistered(name)),
     loadServiceType: (id) => Effect.fail(notRegistered(id)),
     loadServiceFeature: (id) => Effect.fail(notRegistered(id)),
     loadAppFeature: (id) => Effect.fail(notRegistered(id)),
-  };
+  });
 
   const downloaderHandle = Effect.runSync(makeTestDownloader());
   const managedFileHandle = Effect.runSync(makeTestManagedFileStore());
   const stateStoreHandle = makeTestStateStore();
   const landoPaths = makeLandoPaths({ userDataRoot: "/tmp/registry-characterization" });
 
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
   return Layer.mergeAll(
-    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
+    Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     Layer.succeed(ConfigService, configService),
     Layer.succeed(PluginRegistry, pluginRegistryService),
-    Layer.succeed(Downloader, downloaderHandle.service),
-    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(Downloader, Downloader.of(downloaderHandle.service)),
+    Layer.succeed(HttpClient.HttpClient, httpClient),
+    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
     Layer.succeed(ManagedFileService, managedFileHandle.service),
     Layer.succeed(PathsService, landoPaths),
     Layer.succeed(StateStore, stateStoreHandle.service),
@@ -92,7 +99,9 @@ const runList = (options: FakeRegistryOptions) =>
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       return yield* registry.list;
-    }).pipe(Effect.provide(RuntimeProviderRegistryLive.pipe(Layer.provide(buildDependencyLayer(options))))),
+    }).pipe(
+      Effect.provide(RuntimeProviderRegistryLayer.layer.pipe(Layer.provide(buildDependencyLayer(options)))),
+    ),
   );
 
 const runSelectEither = (options: FakeRegistryOptions, providerId?: string) =>
@@ -101,8 +110,10 @@ const runSelectEither = (options: FakeRegistryOptions, providerId?: string) =>
       const registry = yield* RuntimeProviderRegistry;
       return yield* registry
         .select(providerId === undefined ? undefined : ({ provider: ProviderId.make(providerId) } as never))
-        .pipe(Effect.either);
-    }).pipe(Effect.provide(RuntimeProviderRegistryLive.pipe(Layer.provide(buildDependencyLayer(options))))),
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(RuntimeProviderRegistryLayer.layer.pipe(Layer.provide(buildDependencyLayer(options)))),
+    ),
   );
 
 /** Save/restore LANDO_PROVIDER around a test — registry.ts reads `process.env` directly (not injectable). */
@@ -153,10 +164,10 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
 
     const result = await runSelectEither({ manifests }, "totally-unknown-provider");
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("NoProviderInstalledError");
-      expect(result.left.message).toBe("Runtime provider totally-unknown-provider is not installed.");
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("NoProviderInstalledError");
+      expect(result.failure.message).toBe("Runtime provider totally-unknown-provider is not installed.");
     }
   });
 
@@ -165,10 +176,10 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
 
     const result = await runSelectEither({ manifests }, "docker");
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("NoProviderInstalledError");
-      expect(result.left.message).toBe("Runtime provider docker is not installed.");
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("NoProviderInstalledError");
+      expect(result.failure.message).toBe("Runtime provider docker is not installed.");
     }
   });
 });
@@ -180,9 +191,9 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
     await withEnvProvider(undefined, async () => {
       const result = await runSelectEither({ manifests, defaultProviderId: null });
 
-      expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left.message).toBe("Runtime provider lando is not installed.");
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toBe("Runtime provider lando is not installed.");
       }
     });
   });
@@ -191,9 +202,9 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
     await withEnvProvider(undefined, async () => {
       const result = await runSelectEither({ manifests, defaultProviderId: "custom-config-provider" });
 
-      expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left.message).toBe("Runtime provider custom-config-provider is not installed.");
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toBe("Runtime provider custom-config-provider is not installed.");
       }
     });
   });
@@ -202,9 +213,9 @@ describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > ca
     await withEnvProvider("custom-env-provider", async () => {
       const result = await runSelectEither({ manifests, defaultProviderId: "custom-config-provider" });
 
-      expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left.message).toBe("Runtime provider custom-env-provider is not installed.");
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure.message).toBe("Runtime provider custom-env-provider is not installed.");
       }
     });
   });

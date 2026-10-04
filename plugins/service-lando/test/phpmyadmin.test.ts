@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { AppFeatureSelectorMatchedNothingError, PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
@@ -155,9 +155,7 @@ const applyWireExit = (views: ReadonlyArray<AppFeatureServiceView>) => {
 const expectHostsCredsFailure = (result: Awaited<ReturnType<typeof Effect.runPromiseExit>>) => {
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  const error = result.cause.error;
+  const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
   expect(error).toBeInstanceOf(PhpMyAdminHostsCredsError);
   if (!(error instanceof PhpMyAdminHostsCredsError)) return;
   expect(error._tag).toBe("PhpMyAdminHostsCredsError");
@@ -505,11 +503,11 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
-    expect(result.cause._tag).toBe("Fail");
-    if (result.cause._tag !== "Fail") return;
-    expect(result.cause.error).toBeInstanceOf(AppFeatureSelectorMatchedNothingError);
-    expect(result.cause.error._tag).toBe("SelectorMatchedNothing");
-    expect(result.cause.error.remediation).toContain("hosts:");
-    expect(result.cause.error.remediation).toContain("mysql");
+    const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+    expect(error).toBeInstanceOf(AppFeatureSelectorMatchedNothingError);
+    if (!(error instanceof AppFeatureSelectorMatchedNothingError)) return;
+    expect(error._tag).toBe("SelectorMatchedNothing");
+    expect(error.remediation).toContain("hosts:");
+    expect(error.remediation).toContain("mysql");
   });
 });

@@ -99,7 +99,7 @@ const SYNC_KIND_LABEL = "dev.lando.sync.kind";
 const assertNoPersistedAcceleratedSync = async (userDataRoot: string): Promise<void> => {
   const { readdir, readFile } = await import("node:fs/promises");
   const { AppPlan } = await import("@lando/sdk/schema");
-  const { Either, Schema } = await import("effect");
+  const [Result, Schema] = await Promise.all([import("effect/Result"), import("effect/Schema")]);
   const plansDir = join(
     makeLandoPaths({ userDataRoot }).pluginsDir,
     "@lando",
@@ -140,7 +140,7 @@ const assertNoPersistedAcceleratedSync = async (userDataRoot: string): Promise<v
         Array.isArray(services)
       )
         throw new Error("invalid sync fields");
-      if (!reservedGlobalWithoutSessions && Either.isLeft(Schema.decodeUnknownEither(AppPlan)(plan)))
+      if (!reservedGlobalWithoutSessions && Result.isFailure(Schema.decodeUnknownResult(AppPlan)(plan)))
         throw new Error("invalid app plan");
       if (Array.isArray(fileSync) && fileSync.length > 0) throw new Error("accelerated sync plan");
       for (const service of Object.values(services)) {

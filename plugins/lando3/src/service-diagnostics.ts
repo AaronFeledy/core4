@@ -12,12 +12,14 @@ type ServiceDiagnosticInput = ServiceLocation & {
   readonly remediation: string;
 };
 
-export const spanOf = (occurrence: LegacyOccurrence | undefined): ConfigTranslateDiagnostic["span"] =>
+export const spanOf = (occurrence: LegacyOccurrence | undefined): Pick<ConfigTranslateDiagnostic, "span"> =>
   occurrence?.span === undefined
-    ? undefined
+    ? {}
     : {
-        start: { line: occurrence.span.start.line, column: occurrence.span.start.column },
-        end: { line: occurrence.span.end.line, column: occurrence.span.end.column },
+        span: {
+          start: { line: occurrence.span.start.line, column: occurrence.span.start.column },
+          end: { line: occurrence.span.end.line, column: occurrence.span.end.column },
+        },
       };
 
 const serviceDiagnostic = (
@@ -29,7 +31,7 @@ const serviceDiagnostic = (
     kind,
     sourceId: occurrence?.sourceId ?? ConfigTranslateSourceId.make(args.ctx.fallbackSourceId),
     keyPath: [...args.ctx.keyPath, ...args.relative],
-    span: spanOf(occurrence),
+    ...spanOf(occurrence),
     message: args.message,
     remediation:
       args.remediation.trim() === "" ? "Review this setting in the generated Landofile." : args.remediation,

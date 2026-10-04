@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Duration, Effect, Fiber, TestClock, TestContext } from "effect";
+import { Deferred, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
@@ -27,34 +28,33 @@ const fakeApi = (requests: EngineHttpRequest[], options: FakeOptions = {}): Podm
   return {
     info: Effect.succeed({}),
     ping: Effect.void,
-    request: (request) =>
-      Effect.gen(function* () {
-        requests.push(request);
-        const path = request.path;
-        if (path.startsWith("/images/") && path.endsWith("/json")) {
-          return { status: imageExists ? 204 : 404, body: "" };
-        }
-        if (path.startsWith("/libpod/images/pull")) {
-          if (options.failBaseImage === true) return { status: 500, body: "registry token=s3cr3t" };
-          imageExists = true;
-          return { status: 200, body: "{}" };
-        }
-        if (path.startsWith("/build?")) {
-          if (options.failBuild !== undefined) return yield* Effect.fail(options.failBuild);
-          return { status: 200, body: "{}" };
-        }
-        if (path.includes("/wait")) {
-          return { status: 200, body: JSON.stringify({ StatusCode: options.runExitCode ?? 0 }) };
-        }
-        if (path.endsWith("/json")) {
-          if (options.blockHealthInspect !== undefined) yield* Deferred.await(options.blockHealthInspect);
-          const states = options.health ?? ["healthy"];
-          const health = states[Math.min(healthInspect, states.length - 1)] ?? "healthy";
-          healthInspect += 1;
-          return { status: 200, body: JSON.stringify({ State: { Health: { Status: health } } }) };
-        }
-        return { status: request.method === "POST" ? 201 : 204, body: JSON.stringify({ Id: "created" }) };
-      }),
+    request: Effect.fnUntraced(function* (request) {
+      requests.push(request);
+      const path = request.path;
+      if (path.startsWith("/images/") && path.endsWith("/json")) {
+        return { status: imageExists ? 204 : 404, body: "" };
+      }
+      if (path.startsWith("/libpod/images/pull")) {
+        if (options.failBaseImage === true) return { status: 500, body: "registry token=s3cr3t" };
+        imageExists = true;
+        return { status: 200, body: "{}" };
+      }
+      if (path.startsWith("/build?")) {
+        if (options.failBuild !== undefined) return yield* Effect.fail(options.failBuild);
+        return { status: 200, body: "{}" };
+      }
+      if (path.includes("/wait")) {
+        return { status: 200, body: JSON.stringify({ StatusCode: options.runExitCode ?? 0 }) };
+      }
+      if (path.endsWith("/json")) {
+        if (options.blockHealthInspect !== undefined) yield* Deferred.await(options.blockHealthInspect);
+        const states = options.health ?? ["healthy"];
+        const health = states[Math.min(healthInspect, states.length - 1)] ?? "healthy";
+        healthInspect += 1;
+        return { status: 200, body: JSON.stringify({ State: { Health: { Status: health } } }) };
+      }
+      return { status: request.method === "POST" ? 201 : 204, body: JSON.stringify({ Id: "created" }) };
+    }),
   };
 };
 
@@ -158,10 +158,10 @@ describe("runSmokeReadinessProbe", () => {
 
     await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(run(requests, { health: ["starting", "healthy"] }));
+        const fiber = yield* Effect.forkChild(run(requests, { health: ["starting", "healthy"] }));
         yield* TestClock.adjust(Duration.millis(10));
         yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
 
     expect(

@@ -145,17 +145,17 @@ test.each(["sidecar", "host"] as const)(
             app: { kind: "user", id: selected.id, root: selected.root },
             landofile: { name: selected.name, services: {}, sshAgent: { sidecar: mode === "sidecar" } },
           },
-        ).pipe(Effect.either, Effect.provide(harness.layer)),
+        ).pipe(Effect.result, Effect.provide(harness.layer)),
       );
       // Then
       if (mode === "host") {
         expect(result).toMatchObject({
-          _tag: "Left",
-          left: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
+          _tag: "Failure",
+          failure: { _tag: "SshAgentUnavailableError", reason: "capability-missing" },
         });
         expect(applied).toEqual([]);
       } else {
-        expect(result._tag).toBe("Right");
+        expect(result._tag).toBe("Success");
         expect(applied).toHaveLength(1);
         expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
         expect(applied[0]?.services[web.name]?.mounts).toEqual([]);

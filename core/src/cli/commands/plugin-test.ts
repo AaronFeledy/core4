@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 
@@ -36,49 +36,48 @@ const splitPluginTestArgv = (
   return { paths: argv.slice(0, dash), forwarded: argv.slice(dash + 1) };
 };
 
-export const pluginTest = (
+export const pluginTest = Effect.fn("PluginTest.test")(function* (
   options: PluginTestOptions = {},
-): Effect.Effect<PluginTestResult, NotImplementedError | PluginManifestError> =>
-  Effect.gen(function* () {
-    const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:test");
-    const { manifest } = yield* Effect.tryPromise({
-      try: () => validatePluginManifest(pluginRoot),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Plugin manifest validation failed in ${pluginRoot}.`,
-              issues: [String(cause)],
-            }),
-    });
-    const { paths, forwarded } = splitPluginTestArgv(options.argv ?? []);
-    const argv = ["test", ...paths, ...forwarded];
-    const callerSubsystem = `plugin-authoring:meta:plugin:test:${manifest.name}`;
-    yield* publishOptionalEvent({
-      _tag: "cli-meta:plugin:test-start",
-      pluginName: manifest.name,
-      pluginRoot,
-      argv,
-      timestamp: new Date().toISOString(),
-    });
-    const result = yield* bunSelfRun({
-      argv,
-      cwd: pluginRoot,
-      verb: "test",
-      callerSubsystem,
-      ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-      ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
-    });
-    yield* publishOptionalEvent({
-      _tag: "cli-meta:plugin:test-complete",
-      pluginName: manifest.name,
-      pluginRoot,
-      argv,
-      exitCode: result.exitCode,
-      timestamp: new Date().toISOString(),
-    });
-    return { pluginName: manifest.name, pluginRoot, argv, exitCode: result.exitCode };
+): Effect.fn.Return<PluginTestResult, NotImplementedError | PluginManifestError> {
+  const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:test");
+  const { manifest } = yield* Effect.tryPromise({
+    try: () => validatePluginManifest(pluginRoot),
+    catch: (cause) =>
+      cause instanceof PluginManifestError
+        ? cause
+        : new PluginManifestError({
+            message: `Plugin manifest validation failed in ${pluginRoot}.`,
+            issues: [String(cause)],
+          }),
   });
+  const { paths, forwarded } = splitPluginTestArgv(options.argv ?? []);
+  const argv = ["test", ...paths, ...forwarded];
+  const callerSubsystem = `plugin-authoring:meta:plugin:test:${manifest.name}`;
+  yield* publishOptionalEvent({
+    _tag: "cli-meta:plugin:test-start",
+    pluginName: manifest.name,
+    pluginRoot,
+    argv,
+    timestamp: DateTime.formatIso(yield* DateTime.now),
+  });
+  const result = yield* bunSelfRun({
+    argv,
+    cwd: pluginRoot,
+    verb: "test",
+    callerSubsystem,
+    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
+    ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+  });
+  yield* publishOptionalEvent({
+    _tag: "cli-meta:plugin:test-complete",
+    pluginName: manifest.name,
+    pluginRoot,
+    argv,
+    exitCode: result.exitCode,
+    timestamp: DateTime.formatIso(yield* DateTime.now),
+  });
+  return { pluginName: manifest.name, pluginRoot, argv, exitCode: result.exitCode };
+});
 
 export const renderPluginTestResult = (result: PluginTestResult): string =>
   [

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ManagedFileTransactionError } from "@lando/sdk/errors";
 import { ManagedFileTransactionGuard } from "@lando/sdk/services";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startAppForTarget } from "../../src/operations/start.ts";
@@ -38,12 +38,12 @@ test("fails start before events or provider action when the transaction is block
         pending: () => Effect.succeed(null),
       }),
       Effect.provide(harness.layer),
-      Effect.either,
+      Effect.result,
     ),
   );
 
   // Then
-  expect(Either.isLeft(result) && result.left).toBe(failure);
+  expect(Result.isFailure(result) && result.failure).toBe(failure);
   expect(roots).toEqual([String(plan.root)]);
   expect(providerActions).toEqual([]);
   expect(harness.events).toEqual([]);
@@ -77,10 +77,10 @@ for (const [name, operation] of [
       operation({}, target).pipe(
         Effect.provideService(ManagedFileTransactionGuard, guard),
         Effect.provide(harness.layer),
-        Effect.either,
+        Effect.result,
       ),
     );
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
     expect(calls).toEqual([]);
     expect(harness.events).toEqual([]);
   });
@@ -118,7 +118,7 @@ for (const name of ["start", "restart", "rebuild"] as const) {
             startAppForTarget({}, target).pipe(
               Effect.provideService(ManagedFileTransactionGuard, guard),
               Effect.provide(harness.layer),
-              Effect.either,
+              Effect.result,
             ),
           )
         : name === "restart"
@@ -126,17 +126,17 @@ for (const name of ["start", "restart", "rebuild"] as const) {
               restartApp({}, target).pipe(
                 Effect.provideService(ManagedFileTransactionGuard, guard),
                 Effect.provide(harness.layer),
-                Effect.either,
+                Effect.result,
               ),
             )
           : await Effect.runPromise(
               rebuildApp({}, target).pipe(
                 Effect.provideService(ManagedFileTransactionGuard, guard),
                 Effect.provide(harness.layer),
-                Effect.either,
+                Effect.result,
               ),
             );
-    expect(Either.isLeft(result) && result.left).toBe(failure);
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
     expect(calls).toEqual([`guard:${plan.root}`]);
     expect(harness.events).toEqual([]);
   });

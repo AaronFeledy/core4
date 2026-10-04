@@ -7,9 +7,9 @@ import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider, type makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 export type AppPlannerCertsTestCa = ReturnType<typeof makeTestCertificateAuthority>;
 
@@ -22,8 +22,8 @@ export type AppPlannerCertsPlanInput = {
 
 export const planAppPlannerCertsEffect = (input: AppPlannerCertsPlanInput) => {
   const dependencies = Layer.mergeAll(
-    PluginRegistryLive,
-    FileSystemLive,
+    PluginRegistryLayer.layer,
+    BunFileSystem.layer,
     Layer.succeed(
       PathsService,
       makeLandoPaths({
@@ -35,9 +35,14 @@ export const planAppPlannerCertsEffect = (input: AppPlannerCertsPlanInput) => {
     ),
     ...(input.ca === undefined
       ? []
-      : [Layer.succeed(CertificateAuthorityResolver, { resolve: Effect.succeed(input.ca) })]),
+      : [
+          Layer.succeed(
+            CertificateAuthorityResolver,
+            CertificateAuthorityResolver.of({ resolve: Effect.succeed(input.ca) }),
+          ),
+        ]),
   );
-  const planner = AppPlannerLive.pipe(Layer.provide(dependencies));
+  const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.flatMap(AppPlanner, (service) =>
     service.plan(rememberLandofileAppRoot(input.landofile, input.appRoot), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(planner));

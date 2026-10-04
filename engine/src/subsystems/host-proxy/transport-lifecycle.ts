@@ -9,17 +9,16 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 
-export const cleanupHostProxyRunLandoState = (
-  app: AppRef,
-  paths?: RootOverrides,
-): Effect.Effect<void, never, PrivateFileAccessService> =>
-  Effect.gen(function* () {
+export const cleanupHostProxyRunLandoState = Effect.fnUntraced(
+  function* (app: AppRef, paths?: RootOverrides): Effect.fn.Return<void, never, PrivateFileAccessService> {
     const privateFileAccess = yield* PrivateFileAccessService;
     const { removeOwnedHostProxyWorkerState } = yield* Effect.promise(() => import("./worker-ownership.ts"));
     yield* removeOwnedHostProxyWorkerState(app, paths, {
       privateFileAccess,
     });
-  }).pipe(Effect.catchAll(() => Effect.void));
+  },
+  Effect.catch(() => Effect.void),
+);
 
 export const removeSessionState = (paths: HostProxySessionPaths, socketOwned: boolean): Effect.Effect<void> =>
   Effect.promise(async () => {

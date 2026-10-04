@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { DateTime, Effect, Predicate } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
@@ -59,9 +59,7 @@ const parseJson = (value: string): unknown | undefined => {
 };
 
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
+  Predicate.isObject(value) ? (value as Readonly<Record<string, unknown>>) : undefined;
 
 const containerIdForEvent = (payload: unknown): string | undefined => {
   const event = asRecord(payload);
@@ -87,23 +85,26 @@ const enrichOomKilled = (
       const state = asRecord(inspect?.State);
       return state?.OOMKilled === true ? { ...event, OOMKilled: true } : payload;
     }),
-    Effect.catchAll(() => Effect.succeed(payload)),
+    Effect.catch(() => Effect.succeed(payload)),
   );
 };
 
-export const getContainerDiedEvents = (
+export const getContainerDiedEvents = Effect.fn("RuntimeProvider.containerDiedEvents")(function* (
   api: EngineHttpApi,
   options: ContainerDiedEventsOptions,
-): Effect.Effect<ReadonlyArray<unknown>, ProviderUnavailableError | ProviderInternalError> =>
-  Effect.gen(function* () {
-    const request = api.request;
-    const ctx = options.ctx;
-    if (request === undefined) return yield* Effect.fail(missingRequest(ctx));
-    const response = yield* request(buildContainerDiedEventsRequest((options.now ?? (() => new Date()))()));
-    if (response.status < 200 || response.status >= 300) {
-      return yield* Effect.fail(eventsFailure(ctx, response.status, response.body));
-    }
-    return yield* Effect.forEach(parseContainerEventPayloads(response.body), (payload) =>
-      enrichOomKilled(request, payload),
-    );
-  });
+): Effect.fn.Return<ReadonlyArray<unknown>, ProviderUnavailableError | ProviderInternalError> {
+  const request = api.request;
+  const ctx = options.ctx;
+  if (request === undefined) return yield* Effect.fail(missingRequest(ctx));
+  const now =
+    options.now === undefined
+      ? DateTime.toDate(yield* DateTime.now)
+      : DateTime.toDate(DateTime.fromDateUnsafe(options.now()));
+  const response = yield* request(buildContainerDiedEventsRequest(now));
+  if (response.status < 200 || response.status >= 300) {
+    return yield* Effect.fail(eventsFailure(ctx, response.status, response.body));
+  }
+  return yield* Effect.forEach(parseContainerEventPayloads(response.body), (payload) =>
+    enrichOomKilled(request, payload),
+  );
+});

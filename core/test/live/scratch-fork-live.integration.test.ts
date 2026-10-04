@@ -28,7 +28,7 @@ interface ContainerInspect {
 }
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-31T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-31T00:00:00Z"),
   source: "scratch-fork-live.integration.test",
   runtime: 4 as const,
 };
@@ -161,8 +161,8 @@ describe("scratch fork app resources — live integration", () => {
       const sourcePlan = appPlan("forksrc");
       const forkPlan = rewritePlanIdentity(sourcePlan, "scratch-forksrc-abc123");
 
-      await Effect.runPromise(Effect.either(bringDown(forkPlan, { api, volumes: true })));
-      await Effect.runPromise(Effect.either(bringDown(sourcePlan, { api, volumes: true })));
+      await Effect.runPromise(Effect.result(bringDown(forkPlan, { api, volumes: true })));
+      await Effect.runPromise(Effect.result(bringDown(sourcePlan, { api, volumes: true })));
 
       try {
         const sourceApplied = await Effect.runPromise(bringUp(sourcePlan, { api }));
@@ -189,8 +189,8 @@ describe("scratch fork app resources — live integration", () => {
           expect(forkContainerIds).not.toContain(containerId);
         }
       } finally {
-        await Effect.runPromise(Effect.either(bringDown(forkPlan, { api, volumes: true })));
-        await Effect.runPromise(Effect.either(bringDown(sourcePlan, { api, volumes: true })));
+        await Effect.runPromise(Effect.result(bringDown(forkPlan, { api, volumes: true })));
+        await Effect.runPromise(Effect.result(bringDown(sourcePlan, { api, volumes: true })));
       }
     },
     240_000,

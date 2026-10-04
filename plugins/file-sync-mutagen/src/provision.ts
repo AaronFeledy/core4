@@ -108,32 +108,31 @@ export const readInstalledMutagenStatus = async (
   return { installedVersion, isCurrent: valid.every(Boolean) };
 };
 
-export const provisionMutagen = (
+export const provisionMutagen = Effect.fn("Mutagen.provision")(function* (
   input: ProvisionMutagenInput,
-): Effect.Effect<void, ToolError, Downloader | Scope.Scope> =>
-  Effect.gen(function* () {
-    const platform = input.platform ?? process.platform;
-    const arch = input.arch ?? process.arch;
-    const hostKey = resolveHostKey(platform, arch);
+): Effect.fn.Return<void, ToolError, Downloader | Scope.Scope> {
+  const platform = input.platform ?? process.platform;
+  const arch = input.arch ?? process.arch;
+  const hostKey = resolveHostKey(platform, arch);
 
-    if (input.force !== true) {
-      const installed = yield* Effect.promise(() => readInstalledMutagenStatus(input.binDir, platform, arch));
-      if (installed.isCurrent) return;
-    }
+  if (input.force !== true) {
+    const installed = yield* Effect.promise(() => readInstalledMutagenStatus(input.binDir, platform, arch));
+    if (installed.isCurrent) return;
+  }
 
-    const common = {
-      manifest: MUTAGEN_TOOL_MANIFEST,
-      toolId: TOOL_ID,
-      binDir: input.binDir,
-      toolDownloadsDir: input.toolDownloadsDir,
-      platform,
-      ...(input.force === undefined ? {} : { force: input.force }),
-      ...(input.offline === undefined ? {} : { offline: input.offline }),
-    };
+  const common = {
+    manifest: MUTAGEN_TOOL_MANIFEST,
+    toolId: TOOL_ID,
+    binDir: input.binDir,
+    toolDownloadsDir: input.toolDownloadsDir,
+    platform,
+    ...(input.force === undefined ? {} : { force: input.force }),
+    ...(input.offline === undefined ? {} : { offline: input.offline }),
+  };
 
-    yield* provisionTool({ ...common, key: `${hostKey}/cli` });
-    yield* provisionTool({ ...common, key: `${hostKey}/agent-bundle` });
-    for (const guest of AGENT_GUESTS) {
-      yield* provisionTool({ ...common, key: `${hostKey}/agent/${guest}` });
-    }
-  });
+  yield* provisionTool({ ...common, key: `${hostKey}/cli` });
+  yield* provisionTool({ ...common, key: `${hostKey}/agent-bundle` });
+  for (const guest of AGENT_GUESTS) {
+    yield* provisionTool({ ...common, key: `${hostKey}/agent/${guest}` });
+  }
+});

@@ -19,7 +19,7 @@ const withApp = async <A>(files: Readonly<Record<string, string>>, run: (appRoot
 
 const failureMessage = (exit: Exit.Exit<unknown, unknown>): string => {
   if (!Exit.isFailure(exit)) return "";
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) ? String((failure.value as { message?: unknown }).message ?? "") : "";
 };
 

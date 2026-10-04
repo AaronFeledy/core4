@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Duration, Effect, Fiber, Schema, TestClock, TestContext } from "effect";
+import { Cause, Duration, Effect, Fiber, Schema } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   type ClassifyFn,
@@ -15,7 +16,7 @@ import {
 } from "@lando/sdk/probe";
 
 const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(TestContext.TestContext)));
+  Effect.runPromise(effect.pipe(Effect.provide(TestClock.layer())));
 
 const spec = (policy: RetryPolicy, classify?: ClassifyFn): ProbeSpec => ({
   id: "test:probe",
@@ -27,16 +28,13 @@ const spec = (policy: RetryPolicy, classify?: ClassifyFn): ProbeSpec => ({
  * Run a probe under TestClock by forking it, advancing virtual time, then
  * joining — all inside one program so the fiber and the clock share a runtime.
  */
-const runUnderClock = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  advance: Duration.DurationInput,
-): Promise<A> =>
+const runUnderClock = <A, E>(effect: Effect.Effect<A, E, never>, advance: Duration.Input): Promise<A> =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const fiber = yield* Effect.fork(effect);
+      const fiber = yield* Effect.forkChild(effect);
       yield* TestClock.adjust(advance);
       return yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestContext.TestContext)),
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
 describe("@lando/sdk/probe schemas", () => {
@@ -349,12 +347,12 @@ describe("runProbe", () => {
     const attempt = Effect.die("kaboom");
 
     const exit = await Effect.runPromiseExit(
-      runProbe(spec({ maxAttempts: 1 }), attempt).pipe(Effect.provide(TestContext.TestContext)),
+      runProbe(spec({ maxAttempts: 1 }), attempt).pipe(Effect.provide(TestClock.layer())),
     );
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = exit.cause.reasons.find(Cause.isFailReason)?.error;
       expect(failure).toBeInstanceOf(ProbeError);
     }
   });
@@ -362,18 +360,18 @@ describe("runProbe", () => {
   test("interruption-only attempt exit propagates interrupt, not ProbeError", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           runProbe(spec({ maxAttempts: 3, delay: Duration.millis(100) }), Effect.never),
         );
         yield* Fiber.interrupt(fiber);
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(TestClock.layer())),
     );
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
-      expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).not.toBeInstanceOf(ProbeError);
+      expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+      expect(exit.cause.reasons.find(Cause.isFailReason)?.error).not.toBeInstanceOf(ProbeError);
     }
   });
 });

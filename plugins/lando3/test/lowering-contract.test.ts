@@ -6,7 +6,7 @@ import {
   asStringArray,
   blockedPatch,
   emptyPatch,
-  isPlainObject,
+  hasPlainObjectPrototype,
   mergePatches,
 } from "../src/lowering-contract.ts";
 import {
@@ -154,7 +154,7 @@ describe("lowering patches", () => {
     ["text", false],
   ])("recognizes only plain objects for %j", (input, expected) => {
     // Given / When
-    const result = isPlainObject(input);
+    const result = hasPlainObjectPrototype(input);
     // Then
     expect(result).toBe(expected);
   });

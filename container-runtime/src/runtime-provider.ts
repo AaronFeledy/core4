@@ -139,35 +139,51 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
   };
 
   return {
-    start: (target) =>
-      resolveTarget(target, "start", (plan) => input.service.lifecycle(plan, target, "start")),
-    stop: (target) => resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop")),
-    restart: (target) =>
-      resolveTarget(target, "restart", (plan) => input.service.lifecycle(plan, target, "restart")),
-    resume: (target, identity) =>
-      resolveTarget(target, "resume", () => {
+    start: Effect.fn("RuntimeProvider.start")(function* (target) {
+      return yield* resolveTarget(target, "start", (plan) => input.service.lifecycle(plan, target, "start"));
+    }),
+    stop: Effect.fn("RuntimeProvider.stop")(function* (target) {
+      return yield* resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop"));
+    }),
+    restart: Effect.fn("RuntimeProvider.restart")(function* (target) {
+      return yield* resolveTarget(target, "restart", (plan) =>
+        input.service.lifecycle(plan, target, "restart"),
+      );
+    }),
+    resume: Effect.fn("RuntimeProvider.resume")(function* (target, identity) {
+      return yield* resolveTarget(target, "resume", () => {
         const resume = input.service.resume;
         return resume === undefined ? Effect.fail(unavailable("resume")) : resume(target, identity);
-      }),
-    suspend: (target, identity) =>
-      resolveTarget(target, "suspend", () => {
+      });
+    }),
+    suspend: Effect.fn("RuntimeProvider.suspend")(function* (target, identity) {
+      return yield* resolveTarget(target, "suspend", () => {
         const suspend = input.service.suspend;
         return suspend === undefined ? Effect.fail(unavailable("suspend")) : suspend(target, identity);
-      }),
-    waitForExit: (target, options) =>
-      resolveTarget(target, "waitForExit", (plan) => input.service.waitForExit(plan, target, options)),
-    exec: (target, command) =>
-      resolveTarget(target, "exec", (plan) => input.service.exec(plan, target, command)),
+      });
+    }),
+    waitForExit: Effect.fn("RuntimeProvider.waitForExit")(function* (target, options) {
+      return yield* resolveTarget(target, "waitForExit", (plan) =>
+        input.service.waitForExit(plan, target, options),
+      );
+    }),
+    exec: Effect.fn("RuntimeProvider.exec")(function* (target, command) {
+      return yield* resolveTarget(target, "exec", (plan) => input.service.exec(plan, target, command));
+    }),
     execStream: (target, command) =>
       resolveTargetStream(target, "execStream", (plan) => input.service.execStream(plan, target, command)),
-    inspect: (target) => resolveTarget(target, "inspect", (plan) => input.service.inspect(plan, target)),
+    inspect: Effect.fn("RuntimeProvider.inspect")(function* (target) {
+      return yield* resolveTarget(target, "inspect", (plan) => input.service.inspect(plan, target));
+    }),
     locateVolume: (ref) =>
       requireDataPlane("locateVolume").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.locateVolume(ref)))),
       ),
     observeVolume: (target, destination) =>
-      resolveTarget(target, "observeVolume", (plan) =>
-        Effect.gen(function* () {
+      resolveTarget(
+        target,
+        "observeVolume",
+        Effect.fn("RuntimeProvider.observeVolume")(function* (plan) {
           const runtime = yield* input.service.inspect(plan, target);
           if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
           const dataPlane = yield* requireDataPlane("observeVolume");
@@ -179,8 +195,10 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
         }),
       ),
     adoptVolume: (target, destination) =>
-      resolveTarget(target, "adoptVolume", (plan) =>
-        Effect.gen(function* () {
+      resolveTarget(
+        target,
+        "adoptVolume",
+        Effect.fn("RuntimeProvider.adoptVolume")(function* (plan) {
           if (!plan.identity) return yield* Effect.fail(unavailable("adoptVolume"));
           const runtime = yield* input.service.inspect(plan, target);
           if (!runtime.containerId) return yield* Effect.fail(unavailable("adoptVolume"));

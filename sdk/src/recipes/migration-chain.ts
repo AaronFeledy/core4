@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { Either } from "effect";
+import { Result } from "effect";
 import { compare } from "semver";
 import { canonicalJson } from "../digest/index.ts";
 import { RecipeMigrationChainError } from "../errors/recipe.ts";
@@ -57,9 +57,9 @@ export const validateMigrationChain = (
   target: RecipeProducer,
   migrations: ReadonlyArray<RecipeMigration>,
   raw?: ReadonlyArray<unknown>,
-): Either.Either<ReadonlyArray<RecipeMigration>, RecipeMigrationChainError> => {
+): Result.Result<ReadonlyArray<RecipeMigration>, RecipeMigrationChainError> => {
   const fail = (reason: RecipeMigrationChainError["reason"], edge?: RecipeMigration) =>
-    Either.left(
+    Result.fail(
       new RecipeMigrationChainError({
         reason,
         family: recipeFamilyKey(target),
@@ -137,7 +137,7 @@ export const validateMigrationChain = (
       ids.add(hunk.id);
     }
   }
-  return Either.right(sorted);
+  return Result.succeed(sorted);
 };
 
 /**

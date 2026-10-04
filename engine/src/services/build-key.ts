@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -40,13 +40,10 @@ interface AppBuildKeyInput {
   readonly user?: string;
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const stableValue = (value: unknown): unknown => {
   if (typeof value === "string") return secretAwareString(value);
   if (Array.isArray(value)) return value.map(stableValue);
-  if (!isRecord(value)) return value;
+  if (!Predicate.isObject(value)) return value;
   return Object.fromEntries(
     Object.entries(value)
       .filter(([, entry]) => entry !== undefined)
@@ -151,13 +148,13 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
 
 export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!isRecord(extension)) return [];
+  if (!Predicate.isObject(extension)) return [];
   const buildSteps = extension.buildSteps;
   return Array.isArray(buildSteps) ? buildSteps.map(stableValue) : [];
 };
 
 const artifactBuildStepInput = (step: unknown): unknown => {
-  if (!isRecord(step)) return step;
+  if (!Predicate.isObject(step)) return step;
   return {
     id: step.id,
     phase: step.phase,
@@ -168,7 +165,7 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     caFiles: Array.isArray(step.caFiles)
       ? step.caFiles
           .map((descriptor) =>
-            isRecord(descriptor)
+            Predicate.isObject(descriptor)
               ? {
                   digest: typeof descriptor.digest === "string" ? descriptor.digest : undefined,
                   archiveName:
@@ -183,14 +180,14 @@ const artifactBuildStepInput = (step: unknown): unknown => {
 
 export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> =>
   buildStepsFor(service)
-    .filter((step) => !isRecord(step) || step.phase !== "app")
+    .filter((step) => !Predicate.isObject(step) || step.phase !== "app")
     .map(artifactBuildStepInput);
 
 const configSourcesFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!isRecord(extension) || !Array.isArray(extension.configSources)) return [];
+  if (!Predicate.isObject(extension) || !Array.isArray(extension.configSources)) return [];
   return extension.configSources
-    .filter(isRecord)
+    .filter(Predicate.isObject)
     .sort((left, right) => String(left.key).localeCompare(String(right.key)))
     .map((source) => ({
       key: source.key,

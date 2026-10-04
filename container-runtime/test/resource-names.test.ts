@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { inspectEngineResourceNames } from "../src/resource-names.ts";
 
@@ -92,10 +92,10 @@ test.each([
   async (_name, api, tag) => {
     // Given / When
     const result = await Effect.runPromise(
-      Effect.either(inspectEngineResourceNames(api, { kind: "volume", limit: 64 }, ctx)),
+      Effect.result(inspectEngineResourceNames(api, { kind: "volume", limit: 64 }, ctx)),
     );
     // Then
-    expect(Either.isLeft(result) && result.left).toMatchObject({
+    expect(Result.isFailure(result) && result.failure).toMatchObject({
       _tag: tag,
       providerId: "test",
       remediation: ctx.remediation,

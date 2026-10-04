@@ -1,22 +1,22 @@
 import { expect, test } from "bun:test";
-import { JSONSchema, Schema } from "effect";
+import { JsonSchema, Schema } from "effect";
 
 import { GlobalConfig, LandofileShape, ProxyConfig } from "@lando/sdk/schema";
 
 test.each([
   {
     name: "ProxyConfig",
-    decode: Schema.decodeUnknownEither(ProxyConfig, { onExcessProperty: "error" }),
+    decode: Schema.decodeUnknownResult(ProxyConfig, { onExcessProperty: "error" }),
     input: { defaultDomain: "lndo.site", autoApprove: true },
   },
   {
     name: "GlobalConfig.router",
-    decode: Schema.decodeUnknownEither(GlobalConfig, { onExcessProperty: "error" }),
+    decode: Schema.decodeUnknownResult(GlobalConfig, { onExcessProperty: "error" }),
     input: { router: { autoApprove: true } },
   },
   {
     name: "LandofileShape.router",
-    decode: Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" }),
+    decode: Schema.decodeUnknownResult(LandofileShape, { onExcessProperty: "error" }),
     input: { name: "consent", router: { autoApprove: true } },
   },
 ])("rejects invocation consent in $name", ({ decode, input }) => {
@@ -24,12 +24,12 @@ test.each([
   // When
   const result = decode(input);
   // Then
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
 });
 
 test("omits invocation consent from the published proxy configuration schema", () => {
   // Given / When
-  const schema = JSONSchema.make(ProxyConfig);
+  const schema = JsonSchema.toDocumentDraft07(Schema.toJsonSchemaDocument(ProxyConfig)).schema;
   // Then
   expect(schema).toHaveProperty("properties.defaultDomain");
   expect(schema).not.toHaveProperty("properties.autoApprove");

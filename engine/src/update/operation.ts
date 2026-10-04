@@ -90,13 +90,13 @@ export interface UpdateOptions {
 
 export interface UpdateResult {
   readonly coreReplacementPending?: boolean;
-  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type | undefined;
+  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type;
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
-  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow> | undefined;
-  readonly hasFailures?: boolean | undefined;
-  readonly coreBlocked?: boolean | undefined;
-  readonly coreUpdateAvailable?: boolean | undefined;
+  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow>;
+  readonly hasFailures?: boolean;
+  readonly coreBlocked?: boolean;
+  readonly coreUpdateAvailable?: boolean;
 }
 
 export interface PluginUpdateRunInput {
@@ -185,32 +185,31 @@ const withRollbackFailure = (error: UpdateLaunchProbeError, cause: unknown): Upd
     cause: error.cause,
   });
 
-const runLaunchProbe = (
+const runLaunchProbe = Effect.fn("Update.runLaunchProbe")(function* (
   path: string,
   attemptedVersion: string,
   platformId: string,
-): Effect.Effect<void, UpdateLaunchProbeError, ProcessRunner> =>
-  Effect.gen(function* () {
-    const processRunner = yield* ProcessRunner;
-    const result = yield* processRunner
-      .run({ cmd: path, args: ["--version"], timeoutMs: 15_000 })
-      .pipe(
-        Effect.mapError((cause) =>
-          launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause }),
-        ),
-      );
-    if (result.exitCode === 0) return;
-    return yield* Effect.fail(
-      launchProbeError({
-        path,
-        platformId,
-        attemptedVersion,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      }),
+): Effect.fn.Return<void, UpdateLaunchProbeError, ProcessRunner> {
+  const processRunner = yield* ProcessRunner;
+  const result = yield* processRunner
+    .run({ cmd: path, args: ["--version"], timeoutMs: 15_000 })
+    .pipe(
+      Effect.mapError((cause) =>
+        launchProbeError({ path, attemptedVersion, platformId, exitCode: -1, cause }),
+      ),
     );
-  });
+  if (result.exitCode === 0) return;
+  return yield* Effect.fail(
+    launchProbeError({
+      path,
+      platformId,
+      attemptedVersion,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    }),
+  );
+});
 
 const applyPosixSelfUpdate = ({
   attemptedVersion,
@@ -252,15 +251,15 @@ const applyPosixSelfUpdate = ({
             });
             yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
             yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.catchAll(() => Effect.void),
+                  Effect.catch(() => Effect.void),
                   Effect.flatMap(() => Effect.fail(error)),
                 ),
               ),
             );
             yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 Effect.tryPromise({
                   try: () => selfUpdate.rename(backupPath, executablePath),
                   catch: (rollbackFailure) =>
@@ -294,9 +293,9 @@ const applyPosixSelfUpdate = ({
                   releaseVersion: attemptedVersion,
                 }),
               ),
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-                  Effect.zipRight(Effect.fail(error)),
+                  Effect.andThen(Effect.fail(error)),
                 ),
               ),
             );
@@ -323,7 +322,7 @@ const applyPosixSelfUpdate = ({
     cleanupUpdateTempDir,
   );
 
-const applyWindowsSelfUpdate = ({
+const applyWindowsSelfUpdate = Effect.fn("Update.applyWindowsSelfUpdate")(function* ({
   attemptedVersion,
   binaryBytes,
   executablePath,
@@ -339,52 +338,51 @@ const applyWindowsSelfUpdate = ({
   readonly guardCoreReplacement?: PluginUpdateRunResult["guardCoreReplacement"];
   readonly precondition?: CoreReplacementPrecondition | undefined;
   readonly completedResult?: UpdateResult | undefined;
-}): Effect.Effect<void, UpdateError, ProcessRunner> =>
-  Effect.gen(function* () {
-    const tempDir = yield* Effect.tryPromise({
-      try: () => mkdtemp(join(dirname(executablePath), ".lando-update-")),
-      catch: (cause) =>
-        new UpdatePermissionError({
-          message: `Failed to create update temp directory next to ${executablePath}.`,
-          path: executablePath,
-          remediation: windowsPermissionRemediation(executablePath),
-          cause,
-        }),
-    });
-    const stagedBinaryPath = join(tempDir, basename(executablePath));
-    const backupPath = `${executablePath}.bak`;
-    const manualFallback = windowsManualFallback({ executablePath, stagedBinaryPath, backupPath });
-    const replacementInput: UpdateWindowsReplacementInput = {
-      executablePath,
-      installRecordFile: selfUpdate.installRecordFile,
-      stagedBinaryPath,
-      backupPath,
-      attemptedVersion,
-      manualFallback,
-      ...(precondition === undefined ? {} : { precondition }),
-      ...(completedResult === undefined ? {} : { completedResult }),
-    };
-
-    yield* writeDownloadedBinary(stagedBinaryPath, binaryBytes, executablePath, manualFallback).pipe(
-      Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
-    );
-    yield* runLaunchProbe(stagedBinaryPath, attemptedVersion, updatePlatformId(selfUpdate)).pipe(
-      Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
-    );
-    yield* guardCoreReplacement(
-      selfUpdate.replaceWindows(replacementInput).pipe(
-        Effect.mapError(
-          (cause) =>
-            new UpdatePermissionError({
-              message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,
-              path: executablePath,
-              remediation: manualFallback,
-              cause,
-            }),
-        ),
-      ),
-    ).pipe(Effect.tapError(() => cleanupUpdateTempDir(tempDir)));
+}): Effect.fn.Return<void, UpdateError, ProcessRunner> {
+  const tempDir = yield* Effect.tryPromise({
+    try: () => mkdtemp(join(dirname(executablePath), ".lando-update-")),
+    catch: (cause) =>
+      new UpdatePermissionError({
+        message: `Failed to create update temp directory next to ${executablePath}.`,
+        path: executablePath,
+        remediation: windowsPermissionRemediation(executablePath),
+        cause,
+      }),
   });
+  const stagedBinaryPath = join(tempDir, basename(executablePath));
+  const backupPath = `${executablePath}.bak`;
+  const manualFallback = windowsManualFallback({ executablePath, stagedBinaryPath, backupPath });
+  const replacementInput: UpdateWindowsReplacementInput = {
+    executablePath,
+    installRecordFile: selfUpdate.installRecordFile,
+    stagedBinaryPath,
+    backupPath,
+    attemptedVersion,
+    manualFallback,
+    ...(precondition === undefined ? {} : { precondition }),
+    ...(completedResult === undefined ? {} : { completedResult }),
+  };
+
+  yield* writeDownloadedBinary(stagedBinaryPath, binaryBytes, executablePath, manualFallback).pipe(
+    Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
+  );
+  yield* runLaunchProbe(stagedBinaryPath, attemptedVersion, updatePlatformId(selfUpdate)).pipe(
+    Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
+  );
+  yield* guardCoreReplacement(
+    selfUpdate.replaceWindows(replacementInput).pipe(
+      Effect.mapError(
+        (cause) =>
+          new UpdatePermissionError({
+            message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,
+            path: executablePath,
+            remediation: manualFallback,
+            cause,
+          }),
+      ),
+    ),
+  ).pipe(Effect.tapError(() => cleanupUpdateTempDir(tempDir)));
+});
 
 const applySelfUpdate = ({
   attemptedVersion,
@@ -426,198 +424,197 @@ interface DefaultUpdateSuccess {
   readonly result: UpdateResult;
 }
 
-const defaultUpdate = (
+const defaultUpdate = Effect.fn("Update.defaultUpdate")(function* (
   options: RequiredUpdateOptions,
-): Effect.Effect<DefaultUpdateSuccess, UpdateError, ProcessRunner> =>
-  Effect.gen(function* () {
-    const manifestUrl = resolveUpdateManifestUrl(options.channel);
-    const signatureUrl = `${manifestUrl}.sig`;
-    const certificateUrl = `${manifestUrl}.crt`;
-    const [manifestBytes, signatureBytes, certificateBytes] = yield* Effect.all([
-      fetchBytes(options.fetchManifestBytes, manifestUrl),
-      fetchBytes(options.fetchManifestBytes, signatureUrl),
-      fetchBytes(options.fetchManifestBytes, certificateUrl),
-    ]);
-    yield* verifyManifestSignature(options.verifyManifestSignature, {
-      manifestUrl,
-      manifestBytes,
-      signatureUrl,
-      signatureBytes,
-      certificateUrl,
-      certificateBytes,
-    });
-    const manifest = yield* parseJson(manifestBytes, manifestUrl).pipe(
-      Effect.flatMap((json) => decodeManifest(json, manifestUrl)),
-    );
-    if (manifest.channel !== options.channel) {
-      return yield* Effect.fail(
-        new UpdateNetworkError({
-          message: `Update manifest channel ${manifest.channel} does not match requested channel ${options.channel}.`,
-          url: manifestUrl,
-        }),
-      );
-    }
-    let selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
-    const manifestPlatform = updateManifestPlatform(selfUpdate);
-    const binary = manifest.binaries[manifestPlatform];
-    if (binary === undefined) {
-      return yield* Effect.fail(
-        new UpdateNetworkError({
-          message: `Update manifest at ${manifestUrl} has no binary entry for ${manifestPlatform}.`,
-          url: manifestUrl,
-        }),
-      );
-    }
-    if (isPlaceholderBinary(binary)) {
-      return yield* Effect.fail(
-        new UpdateNetworkError({
-          message: `Update manifest at ${manifestUrl} has a placeholder binary entry for ${manifestPlatform}.`,
-          url: manifestUrl,
-        }),
-      );
-    }
-    const binaryUrl = binary.url;
-    const checksumsUrl = manifest.checksums.url;
-    const checksumSignatureUrl = manifest.checksums.signature;
-    const checksumCertificateUrl = checksumCertificateUrlFor(checksumSignatureUrl);
-    yield* enforceMinimumVersion(manifest, options.currentVersion);
-    yield* enforceNoDowngrade(manifest, options.currentVersion);
-    yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
-    const hasNewCoreVersion = compareVersions(manifest.latest, options.currentVersion) > 0;
-    const pluginExecution =
-      options.runPluginUpdates === undefined
-        ? undefined
-        : yield* options.runPluginUpdates({
-            currentCoreVersion: options.currentVersion,
-            targetCoreVersion: manifest.latest,
-            combined: hasNewCoreVersion,
-            upgradePlugins: options.only !== "core",
-            dryRun: options.dryRun,
-          });
-    const pendingResult: UpdateResult = {
-      updatedCore: !options.dryRun && hasNewCoreVersion && pluginExecution?.blockCore !== true,
-      updatedPlugins: pluginExecution?.updatedPlugins ?? [],
-      coreUpdateAvailable: hasNewCoreVersion,
-      ...(pluginExecution === undefined
-        ? {}
-        : {
-            pluginResults: pluginExecution.rows,
-            hasFailures: pluginExecution.hasFailures,
-            coreBlocked: pluginExecution.blockCore,
-          }),
-    };
-    let handoffToken: string | undefined;
-    return yield* Effect.gen(function* () {
-      if (
-        !options.dryRun &&
-        options.only !== "plugins" &&
-        selfUpdate !== undefined &&
-        selfUpdate.platform !== "win32" &&
-        hasNewCoreVersion &&
-        pluginExecution?.blockCore !== true &&
-        options.handoff !== undefined
-      ) {
-        const token = yield* options.handoff.save(pendingResult);
-        handoffToken = token;
-        selfUpdate = {
-          ...selfUpdate,
-          env: { ...selfUpdate.env, LANDO_UPDATE_HANDOFF_TOKEN: token },
-        };
-      }
-      if (
-        !options.dryRun &&
-        options.only !== "plugins" &&
-        selfUpdate !== undefined &&
-        hasNewCoreVersion &&
-        pluginExecution?.blockCore !== true
-      ) {
-        const owned = yield* resolveOwnedExecutable({
-          recordFile: selfUpdate.installRecordFile,
-          platform: selfUpdate.platform,
-        });
-        const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
-          yield* Effect.all([
-            fetchBytes(options.fetchManifestBytes, binaryUrl),
-            fetchBytes(options.fetchManifestBytes, checksumsUrl),
-            fetchBytes(options.fetchManifestBytes, checksumSignatureUrl),
-            fetchBytes(options.fetchManifestBytes, checksumCertificateUrl),
-          ]);
-        yield* verifyChecksumSignature(options.verifyChecksumSignature, {
-          checksumsUrl,
-          checksumsBytes,
-          signatureUrl: checksumSignatureUrl,
-          signatureBytes: checksumSignatureBytes,
-          certificateUrl: checksumCertificateUrl,
-          certificateBytes: checksumCertificateBytes,
-        });
-        yield* verifyBinaryChecksum({
-          artifact: artifactNameFromUrl(binaryUrl),
-          binaryBytes,
-          checksumsBytes,
-          manifestSha256: binary.sha256,
-        });
-        yield* applySelfUpdate({
-          attemptedVersion: manifest.latest,
-          binaryBytes,
-          executablePath: owned.path,
-          selfUpdate,
-          guardCoreReplacement: pluginExecution?.guardCoreReplacement,
-          precondition: pluginExecution?.coreReplacementPrecondition,
-          completedResult: pendingResult,
-        }).pipe(
-          Effect.tapError((error) =>
-            writeUpdateFailureState({
-              path: options.updateStatePath,
-              channel: options.channel,
-              category: failureOutcomeFromError(error),
-              targetVersion: manifest.latest,
-              platform: platform(),
-            }),
-          ),
-        );
-      }
-      if (!options.dryRun) {
-        const state = yield* readUpdateManifestState(options.updateStatePath);
-        const cached = state[manifest.channel];
-        yield* writeUpdateManifestState(options.updateStatePath, {
-          ...state,
-          [manifest.channel]: { ...cached, latest: manifest.latest },
-        });
-      }
-      return {
-        manifest,
-        result:
-          selfUpdate?.platform === "win32" && pendingResult.updatedCore
-            ? { ...pendingResult, updatedCore: false, coreReplacementPending: true }
-            : pendingResult,
-      };
-    }).pipe(
-      Effect.catchAll((error) =>
-        Effect.gen(function* () {
-          if (handoffToken !== undefined && options.handoff !== undefined) {
-            yield* options.handoff.consume(handoffToken).pipe(Effect.catchAll(() => Effect.void));
-          }
-          if (pluginExecution === undefined) return yield* Effect.fail(error);
-          return {
-            manifest,
-            result: {
-              ...pendingResult,
-              updatedCore: false,
-              hasFailures: true,
-              coreFailure: {
-                tag: error._tag,
-                message: scrubTelemetryValue(error.message),
-                remediation:
-                  "remediation" in error && typeof error.remediation === "string"
-                    ? scrubTelemetryValue(error.remediation)
-                    : "Resolve the core update failure and retry; completed plugin updates remain active.",
-              },
-            },
-          };
-        }),
-      ),
-    );
+): Effect.fn.Return<DefaultUpdateSuccess, UpdateError, ProcessRunner> {
+  const manifestUrl = resolveUpdateManifestUrl(options.channel);
+  const signatureUrl = `${manifestUrl}.sig`;
+  const certificateUrl = `${manifestUrl}.crt`;
+  const [manifestBytes, signatureBytes, certificateBytes] = yield* Effect.all([
+    fetchBytes(options.fetchManifestBytes, manifestUrl),
+    fetchBytes(options.fetchManifestBytes, signatureUrl),
+    fetchBytes(options.fetchManifestBytes, certificateUrl),
+  ]);
+  yield* verifyManifestSignature(options.verifyManifestSignature, {
+    manifestUrl,
+    manifestBytes,
+    signatureUrl,
+    signatureBytes,
+    certificateUrl,
+    certificateBytes,
   });
+  const manifest = yield* parseJson(manifestBytes, manifestUrl).pipe(
+    Effect.flatMap((json) => decodeManifest(json, manifestUrl)),
+  );
+  if (manifest.channel !== options.channel) {
+    return yield* Effect.fail(
+      new UpdateNetworkError({
+        message: `Update manifest channel ${manifest.channel} does not match requested channel ${options.channel}.`,
+        url: manifestUrl,
+      }),
+    );
+  }
+  let selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
+  const manifestPlatform = updateManifestPlatform(selfUpdate);
+  const binary = manifest.binaries[manifestPlatform];
+  if (binary === undefined) {
+    return yield* Effect.fail(
+      new UpdateNetworkError({
+        message: `Update manifest at ${manifestUrl} has no binary entry for ${manifestPlatform}.`,
+        url: manifestUrl,
+      }),
+    );
+  }
+  if (isPlaceholderBinary(binary)) {
+    return yield* Effect.fail(
+      new UpdateNetworkError({
+        message: `Update manifest at ${manifestUrl} has a placeholder binary entry for ${manifestPlatform}.`,
+        url: manifestUrl,
+      }),
+    );
+  }
+  const binaryUrl = binary.url;
+  const checksumsUrl = manifest.checksums.url;
+  const checksumSignatureUrl = manifest.checksums.signature;
+  const checksumCertificateUrl = checksumCertificateUrlFor(checksumSignatureUrl);
+  yield* enforceMinimumVersion(manifest, options.currentVersion);
+  yield* enforceNoDowngrade(manifest, options.currentVersion);
+  yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
+  const hasNewCoreVersion = compareVersions(manifest.latest, options.currentVersion) > 0;
+  const pluginExecution =
+    options.runPluginUpdates === undefined
+      ? undefined
+      : yield* options.runPluginUpdates({
+          currentCoreVersion: options.currentVersion,
+          targetCoreVersion: manifest.latest,
+          combined: hasNewCoreVersion,
+          upgradePlugins: options.only !== "core",
+          dryRun: options.dryRun,
+        });
+  const pendingResult: UpdateResult = {
+    updatedCore: !options.dryRun && hasNewCoreVersion && pluginExecution?.blockCore !== true,
+    updatedPlugins: pluginExecution?.updatedPlugins ?? [],
+    coreUpdateAvailable: hasNewCoreVersion,
+    ...(pluginExecution === undefined
+      ? {}
+      : {
+          pluginResults: pluginExecution.rows,
+          hasFailures: pluginExecution.hasFailures,
+          coreBlocked: pluginExecution.blockCore,
+        }),
+  };
+  let handoffToken: string | undefined;
+  return yield* Effect.gen(function* () {
+    if (
+      !options.dryRun &&
+      options.only !== "plugins" &&
+      selfUpdate !== undefined &&
+      selfUpdate.platform !== "win32" &&
+      hasNewCoreVersion &&
+      pluginExecution?.blockCore !== true &&
+      options.handoff !== undefined
+    ) {
+      const token = yield* options.handoff.save(pendingResult);
+      handoffToken = token;
+      selfUpdate = {
+        ...selfUpdate,
+        env: { ...selfUpdate.env, LANDO_UPDATE_HANDOFF_TOKEN: token },
+      };
+    }
+    if (
+      !options.dryRun &&
+      options.only !== "plugins" &&
+      selfUpdate !== undefined &&
+      hasNewCoreVersion &&
+      pluginExecution?.blockCore !== true
+    ) {
+      const owned = yield* resolveOwnedExecutable({
+        recordFile: selfUpdate.installRecordFile,
+        platform: selfUpdate.platform,
+      });
+      const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
+        yield* Effect.all([
+          fetchBytes(options.fetchManifestBytes, binaryUrl),
+          fetchBytes(options.fetchManifestBytes, checksumsUrl),
+          fetchBytes(options.fetchManifestBytes, checksumSignatureUrl),
+          fetchBytes(options.fetchManifestBytes, checksumCertificateUrl),
+        ]);
+      yield* verifyChecksumSignature(options.verifyChecksumSignature, {
+        checksumsUrl,
+        checksumsBytes,
+        signatureUrl: checksumSignatureUrl,
+        signatureBytes: checksumSignatureBytes,
+        certificateUrl: checksumCertificateUrl,
+        certificateBytes: checksumCertificateBytes,
+      });
+      yield* verifyBinaryChecksum({
+        artifact: artifactNameFromUrl(binaryUrl),
+        binaryBytes,
+        checksumsBytes,
+        manifestSha256: binary.sha256,
+      });
+      yield* applySelfUpdate({
+        attemptedVersion: manifest.latest,
+        binaryBytes,
+        executablePath: owned.path,
+        selfUpdate,
+        guardCoreReplacement: pluginExecution?.guardCoreReplacement,
+        precondition: pluginExecution?.coreReplacementPrecondition,
+        completedResult: pendingResult,
+      }).pipe(
+        Effect.tapError((error) =>
+          writeUpdateFailureState({
+            path: options.updateStatePath,
+            channel: options.channel,
+            category: failureOutcomeFromError(error),
+            targetVersion: manifest.latest,
+            platform: platform(),
+          }),
+        ),
+      );
+    }
+    if (!options.dryRun) {
+      const state = yield* readUpdateManifestState(options.updateStatePath);
+      const cached = state[manifest.channel];
+      yield* writeUpdateManifestState(options.updateStatePath, {
+        ...state,
+        [manifest.channel]: { ...cached, latest: manifest.latest },
+      });
+    }
+    return {
+      manifest,
+      result:
+        selfUpdate?.platform === "win32" && pendingResult.updatedCore
+          ? { ...pendingResult, updatedCore: false, coreReplacementPending: true }
+          : pendingResult,
+    };
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        if (handoffToken !== undefined && options.handoff !== undefined) {
+          yield* options.handoff.consume(handoffToken).pipe(Effect.catch(() => Effect.void));
+        }
+        if (pluginExecution === undefined) return yield* Effect.fail(error);
+        return {
+          manifest,
+          result: {
+            ...pendingResult,
+            updatedCore: false,
+            hasFailures: true,
+            coreFailure: {
+              tag: error._tag,
+              message: scrubTelemetryValue(error.message),
+              remediation:
+                "remediation" in error && typeof error.remediation === "string"
+                  ? scrubTelemetryValue(error.remediation)
+                  : "Resolve the core update failure and retry; completed plugin updates remain active.",
+            },
+          },
+        };
+      }),
+    ),
+  );
+});
 
 interface RequiredUpdateOptions {
   readonly channel: UpdateChannel;
@@ -647,94 +644,93 @@ const resolvedOptions = (options: UpdateOptions): RequiredUpdateOptions => ({
   ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
 });
 
-export const update = (
+export const update = Effect.fn("Update.update")(function* (
   options: UpdateOptions = {},
-): Effect.Effect<UpdateResult, UpdateError, Telemetry | ProcessRunner> =>
-  Effect.gen(function* () {
-    const telemetry = yield* Telemetry;
-    const required = resolvedOptions(options);
-    if (!required.dryRun && options.handoff?.token !== undefined) {
-      const receipt = yield* options.handoff.consume(options.handoff.token);
-      if (receipt !== undefined) {
-        const consumed: UpdateResult = {
-          ...(receipt.coreFailure === undefined ? {} : { coreFailure: receipt.coreFailure }),
-          updatedCore: receipt.updatedCore,
-          updatedPlugins: receipt.updatedPlugins,
-          ...(receipt.pluginResults === undefined ? {} : { pluginResults: receipt.pluginResults }),
-          ...(receipt.hasFailures === undefined ? {} : { hasFailures: receipt.hasFailures }),
-          ...(receipt.coreBlocked === undefined ? {} : { coreBlocked: receipt.coreBlocked }),
-          ...(receipt.coreUpdateAvailable === undefined
-            ? {}
-            : { coreUpdateAvailable: receipt.coreUpdateAvailable }),
-        };
-        return consumed;
-      }
-      return yield* Effect.fail(
-        new UpdateNetworkError({
-          message: "The one-shot update replacement receipt is missing or was already consumed.",
-          url: "state://update/handoff",
-        }),
-      );
+): Effect.fn.Return<UpdateResult, UpdateError, Telemetry | ProcessRunner> {
+  const telemetry = yield* Telemetry;
+  const required = resolvedOptions(options);
+  if (!required.dryRun && options.handoff?.token !== undefined) {
+    const receipt = yield* options.handoff.consume(options.handoff.token);
+    if (receipt !== undefined) {
+      const consumed: UpdateResult = {
+        ...(receipt.coreFailure === undefined ? {} : { coreFailure: receipt.coreFailure }),
+        updatedCore: receipt.updatedCore,
+        updatedPlugins: receipt.updatedPlugins,
+        ...(receipt.pluginResults === undefined ? {} : { pluginResults: receipt.pluginResults }),
+        ...(receipt.hasFailures === undefined ? {} : { hasFailures: receipt.hasFailures }),
+        ...(receipt.coreBlocked === undefined ? {} : { coreBlocked: receipt.coreBlocked }),
+        ...(receipt.coreUpdateAvailable === undefined
+          ? {}
+          : { coreUpdateAvailable: receipt.coreUpdateAvailable }),
+      };
+      return consumed;
     }
-    let targetVersion = options.targetVersion ?? CORE_VERSION;
-    const operation: Effect.Effect<UpdateResult, UpdateError, ProcessRunner> =
-      options.runUpdate === undefined && options.only === "plugins" && required.runPluginUpdates !== undefined
-        ? required
-            .runPluginUpdates({
-              currentCoreVersion: required.currentVersion,
-              targetCoreVersion: required.currentVersion,
-              combined: false,
-              dryRun: required.dryRun,
-            })
-            .pipe(
-              Effect.map(
-                (execution): UpdateResult => ({
-                  updatedCore: false,
-                  updatedPlugins: execution.updatedPlugins,
-                  pluginResults: execution.rows,
-                  hasFailures: execution.hasFailures,
-                }),
-              ),
-            )
-        : options.runUpdate === undefined
-          ? defaultUpdate(required).pipe(
-              Effect.tap(({ manifest }) =>
-                Effect.sync(() => {
-                  targetVersion = manifest.latest;
-                }),
-              ),
-              Effect.map(({ result }) => result),
-            )
-          : options.runUpdate();
-
-    return yield* operation.pipe(
-      Effect.tap((result) =>
-        recordUpdateOutcomeTelemetry(telemetry, {
-          version: CORE_VERSION,
-          targetVersion,
-          channel: required.channel,
-          platform: platform(),
-          outcome:
-            result.coreFailure !== undefined
-              ? result.coreFailure.tag === "InstallOwnershipError"
-                ? "permission_failure"
-                : updateOutcomeFromError({ _tag: result.coreFailure.tag })
-              : result.coreBlocked === true
-                ? "permission_failure"
-                : result.hasFailures === true
-                  ? updateOutcomeFromError(undefined)
-                  : "success",
-        }),
-      ),
-      Effect.tapError((error) =>
-        recordUpdateOutcomeTelemetry(telemetry, {
-          version: CORE_VERSION,
-          targetVersion,
-          channel: required.channel,
-          platform: platform(),
-          outcome:
-            error._tag === "InstallOwnershipError" ? "permission_failure" : updateOutcomeFromError(error),
-        }),
-      ),
+    return yield* Effect.fail(
+      new UpdateNetworkError({
+        message: "The one-shot update replacement receipt is missing or was already consumed.",
+        url: "state://update/handoff",
+      }),
     );
-  });
+  }
+  let targetVersion = options.targetVersion ?? CORE_VERSION;
+  const operation: Effect.Effect<UpdateResult, UpdateError, ProcessRunner> =
+    options.runUpdate === undefined && options.only === "plugins" && required.runPluginUpdates !== undefined
+      ? required
+          .runPluginUpdates({
+            currentCoreVersion: required.currentVersion,
+            targetCoreVersion: required.currentVersion,
+            combined: false,
+            dryRun: required.dryRun,
+          })
+          .pipe(
+            Effect.map(
+              (execution): UpdateResult => ({
+                updatedCore: false,
+                updatedPlugins: execution.updatedPlugins,
+                pluginResults: execution.rows,
+                hasFailures: execution.hasFailures,
+              }),
+            ),
+          )
+      : options.runUpdate === undefined
+        ? defaultUpdate(required).pipe(
+            Effect.tap(({ manifest }) =>
+              Effect.sync(() => {
+                targetVersion = manifest.latest;
+              }),
+            ),
+            Effect.map(({ result }) => result),
+          )
+        : options.runUpdate();
+
+  return yield* operation.pipe(
+    Effect.tap((result) =>
+      recordUpdateOutcomeTelemetry(telemetry, {
+        version: CORE_VERSION,
+        targetVersion,
+        channel: required.channel,
+        platform: platform(),
+        outcome:
+          result.coreFailure !== undefined
+            ? result.coreFailure.tag === "InstallOwnershipError"
+              ? "permission_failure"
+              : updateOutcomeFromError({ _tag: result.coreFailure.tag })
+            : result.coreBlocked === true
+              ? "permission_failure"
+              : result.hasFailures === true
+                ? updateOutcomeFromError(undefined)
+                : "success",
+      }),
+    ),
+    Effect.tapError((error) =>
+      recordUpdateOutcomeTelemetry(telemetry, {
+        version: CORE_VERSION,
+        targetVersion,
+        channel: required.channel,
+        platform: platform(),
+        outcome:
+          error._tag === "InstallOwnershipError" ? "permission_failure" : updateOutcomeFromError(error),
+      }),
+    ),
+  );
+});

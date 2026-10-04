@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { lstat, readFile, readdir, rename, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { Latch } from "effect";
 import { Effect, Fiber } from "effect";
 import type { TransactionCheckpoint } from "../src/transaction.ts";
 import { fixture, scoped } from "./transaction-fixture.ts";
@@ -20,7 +21,7 @@ for (const point of [
     await writeFile(join(appRoot, "b"), "old-b");
     // When the ordered transaction reaches that boundary
     const result = await scoped(
-      Effect.either(
+      Effect.result(
         transactions.run({
           appRoot,
           operations: [
@@ -31,7 +32,7 @@ for (const point of [
       ),
     );
     // Then the full plan survives with the corresponding partial disk state
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     const journal = await scoped(transactions.readJournal(appRoot));
     expect(journal?.state).toBe(point === "after-mutation" ? "committing" : point);
     expect(journal?.entries).toHaveLength(2);
@@ -39,8 +40,8 @@ for (const point of [
       point === "committed" || point === "after-mutation" ? "new-a" : "old-a",
     );
     expect(await readFile(join(appRoot, "b"), "utf8")).toBe(point === "committed" ? "new-b" : "old-b");
-    const retry = await scoped(Effect.either(transactions.prepare({ appRoot, operations: [] })));
-    expect(retry._tag).toBe("Left");
+    const retry = await scoped(Effect.result(transactions.prepare({ appRoot, operations: [] })));
+    expect(retry._tag).toBe("Failure");
   });
 }
 
@@ -53,7 +54,7 @@ test("cleans identity-owned stages when creation checkpoint fails", async () => 
   await writeFile(join(appRoot, foreign), "foreign");
   // When prepare fails after its first exclusive stage
   await scoped(
-    Effect.either(
+    Effect.result(
       transactions.prepare({ appRoot, operations: [{ kind: "write", path: "a", content: "secret" }] }),
     ),
   );
@@ -72,12 +73,12 @@ test("preserves a replacement inode during pre-prepared cleanup", async () => {
           if (stage === undefined) throw new Error("missing stage");
           await rename(join(appRoot, stage), join(appRoot, "saved"));
           await writeFile(join(appRoot, stage), "foreign");
-        }).pipe(Effect.zipRight(Effect.fail("stop")))
+        }).pipe(Effect.andThen(Effect.fail("stop")))
       : Effect.void,
   );
   // When the registered finalizer runs
   await scoped(
-    Effect.either(
+    Effect.result(
       transactions.prepare({ appRoot, operations: [{ kind: "write", path: "a", content: "ours" }] }),
     ),
   );
@@ -97,7 +98,7 @@ test("rechecks each target after the global before-state check", async () => {
   await writeFile(join(appRoot, "b"), "old");
   // When the second entry reaches its immediate recheck
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       transactions.run({
         appRoot,
         operations: [
@@ -108,7 +109,7 @@ test("rechecks each target after the global before-state check", async () => {
     ),
   );
   // Then the concurrent edit survives and the journal stays committing
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(await readFile(join(appRoot, "b"), "utf8")).toBe("concurrent");
   expect((await scoped(transactions.readJournal(appRoot)))?.state).toBe("committing");
 });
@@ -118,7 +119,7 @@ test("holds one canonical-root lock and releases it on interruption", async () =
   const { root, appRoot, transactions } = await fixture();
   const alias = join(root, "alias");
   await symlink(appRoot, alias);
-  const ready = await Effect.runPromise(Effect.makeLatch());
+  const ready = await Effect.runPromise(Latch.make());
   const fiber = Effect.runFork(
     Effect.scoped(
       Effect.gen(function* () {
@@ -131,14 +132,14 @@ test("holds one canonical-root lock and releases it on interruption", async () =
   await Effect.runPromise(ready.await);
   const journal = await scoped(transactions.readJournal(alias));
   // When the alias contends, then the original scope is interrupted
-  const contention = await scoped(Effect.either(transactions.prepare({ appRoot: alias, operations: [] })));
+  const contention = await scoped(Effect.result(transactions.prepare({ appRoot: alias, operations: [] })));
   await Effect.runPromise(Fiber.interrupt(fiber));
   // Then contention was lock-bounded and interruption released that exact lock
-  expect(contention._tag).toBe("Left");
-  if (contention._tag === "Left") expect(contention.left.reason).toBe("lock");
+  expect(contention._tag).toBe("Failure");
+  if (contention._tag === "Failure") expect(contention.failure.reason).toBe("lock");
   expect(journal?.root).toBe(appRoot);
-  const retry = await scoped(Effect.either(transactions.prepare({ appRoot, operations: [] })));
-  if (retry._tag === "Left") expect(retry.left.reason).toBe("journal");
+  const retry = await scoped(Effect.result(transactions.prepare({ appRoot, operations: [] })));
+  if (retry._tag === "Failure") expect(retry.failure.reason).toBe("journal");
 });
 
 test("keeps stages physically owner-only before publication", async () => {
@@ -176,7 +177,7 @@ test("never overwrites a stage planted after path validation", async () => {
   );
   // When exclusive creation encounters that foreign stage
   const result = await scoped(
-    Effect.either(
+    Effect.result(
       transactions.prepare({
         appRoot,
         operations: [
@@ -187,7 +188,7 @@ test("never overwrites a stage planted after path validation", async () => {
     ),
   );
   // Then it fails without replacing or cleaning the foreign inode
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   const names = await readdir(appRoot);
   expect(names).toHaveLength(1);
   expect(await readFile(join(appRoot, names[0] ?? "missing"), "utf8")).toBe("foreign");

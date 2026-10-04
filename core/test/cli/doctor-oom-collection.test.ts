@@ -24,28 +24,29 @@ const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unkn
   ...overrides,
 });
 
-const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
-  list: Effect.succeed([ProviderId.make(provider.id)]),
-  capabilities: Effect.succeed(provider.capabilities),
-  select: () => Effect.succeed(provider),
-});
+const buildRegistry = (provider: typeof TestRuntimeProvider) =>
+  RuntimeProviderRegistry.of({
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  });
 
-const buildConfigService = (): Context.Tag.Service<typeof ConfigService> => {
+const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const buildLayers = (provider: typeof TestRuntimeProvider) =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
-    Layer.succeed(ConfigService, buildConfigService()),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
 

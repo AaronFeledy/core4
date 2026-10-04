@@ -56,59 +56,58 @@ const contributionId = (entry: ContributionRef): string => (typeof entry === "st
 const contributionNotice = (entry: ContributionRef): DeprecationNotice | undefined =>
   typeof entry === "string" ? undefined : entry.deprecated;
 
-const registerPluginDeprecations = (manifests: ReadonlyArray<PluginManifest>) =>
-  Effect.gen(function* () {
-    const deprecations = yield* DeprecationService;
-    for (const manifest of manifests) {
-      if (manifest.deprecated !== undefined) {
-        yield* deprecations.register("plugin", "plugin", manifest.name, manifest.deprecated);
-      }
-      for (const kind of CONTRIBUTION_KINDS) {
-        const entries = manifest.contributes?.[kind] ?? [];
-        for (const entry of entries) {
-          const notice = contributionNotice(entry);
-          if (notice !== undefined) {
-            yield* deprecations.register(
-              "plugin",
-              CONTRIBUTION_KIND_TO_DEPRECATION_KIND[kind],
-              contributionId(entry),
-              notice,
-            );
-          }
-        }
-      }
-      for (const service of manifest.contributes?.globalServices ?? []) {
-        if (service.deprecated !== undefined) {
+const registerPluginDeprecations = Effect.fnUntraced(function* (manifests: ReadonlyArray<PluginManifest>) {
+  const deprecations = yield* DeprecationService;
+  for (const manifest of manifests) {
+    if (manifest.deprecated !== undefined) {
+      yield* deprecations.register("plugin", "plugin", manifest.name, manifest.deprecated);
+    }
+    for (const kind of CONTRIBUTION_KINDS) {
+      const entries = manifest.contributes?.[kind] ?? [];
+      for (const entry of entries) {
+        const notice = contributionNotice(entry);
+        if (notice !== undefined) {
           yield* deprecations.register(
             "plugin",
-            "manifest-contribution",
-            `${manifest.name}:globalServices.${service.id}`,
-            service.deprecated,
-          );
-        }
-      }
-      for (const proxy of manifest.contributes?.routerServices ?? []) {
-        if (proxy.deprecated !== undefined) {
-          yield* deprecations.register(
-            "plugin",
-            "provider-extension",
-            `${manifest.name}:routerServices.${proxy.id}`,
-            proxy.deprecated,
-          );
-        }
-      }
-      for (const flag of manifest.contributes?.setup?.flags ?? []) {
-        if (flag.deprecated !== undefined) {
-          yield* deprecations.register(
-            "plugin",
-            "flag",
-            `${manifest.name}:setup.${flag.name}`,
-            flag.deprecated,
+            CONTRIBUTION_KIND_TO_DEPRECATION_KIND[kind],
+            contributionId(entry),
+            notice,
           );
         }
       }
     }
-  });
+    for (const service of manifest.contributes?.globalServices ?? []) {
+      if (service.deprecated !== undefined) {
+        yield* deprecations.register(
+          "plugin",
+          "manifest-contribution",
+          `${manifest.name}:globalServices.${service.id}`,
+          service.deprecated,
+        );
+      }
+    }
+    for (const proxy of manifest.contributes?.routerServices ?? []) {
+      if (proxy.deprecated !== undefined) {
+        yield* deprecations.register(
+          "plugin",
+          "provider-extension",
+          `${manifest.name}:routerServices.${proxy.id}`,
+          proxy.deprecated,
+        );
+      }
+    }
+    for (const flag of manifest.contributes?.setup?.flags ?? []) {
+      if (flag.deprecated !== undefined) {
+        yield* deprecations.register(
+          "plugin",
+          "flag",
+          `${manifest.name}:setup.${flag.name}`,
+          flag.deprecated,
+        );
+      }
+    }
+  }
+});
 
 const registerSchemaDeprecations = Effect.gen(function* () {
   const deprecations = yield* DeprecationService;
@@ -119,10 +118,10 @@ const registerSchemaDeprecations = Effect.gen(function* () {
   }
 });
 
-export const DeprecationPluginRegistryLive = Layer.scopedDiscard(
+export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const plugins = yield* PluginRegistry;
-    const manifests = yield* plugins.list.pipe(Effect.catchAll(() => Effect.succeed([])));
+    const manifests = yield* plugins.list.pipe(Effect.catch(() => Effect.succeed([])));
     const deprecations = yield* DeprecationService;
     const collision = findSetupFlagCollision(
       SETUP_BUILTIN_FLAG_NAMES,

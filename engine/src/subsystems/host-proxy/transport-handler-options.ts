@@ -10,7 +10,7 @@ import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
 
 export interface HostProxyInFlightRequest {
-  readonly fiber: Fiber.RuntimeFiber<void, never>;
+  readonly fiber: Fiber.Fiber<void, never>;
   readonly response: ServerResponse;
   readonly releaseSlot: () => void;
 }

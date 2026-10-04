@@ -102,28 +102,25 @@ const parsePid = (raw: string): number | undefined => {
 const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
   actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
 
-const ownedRuntimePid = (
+const ownedRuntimePid = Effect.fnUntraced(function* (
   spec: ManagedRuntimeServiceSpec,
   processSeam: ProcessSeam,
-): Effect.Effect<number | undefined> =>
-  Effect.gen(function* () {
-    const rawPid = yield* processSeam
-      .readPid(spec.pidPath)
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-    if (rawPid === undefined) return undefined;
+): Effect.fn.Return<number | undefined> {
+  const rawPid = yield* processSeam.readPid(spec.pidPath).pipe(Effect.catch(() => Effect.succeed(undefined)));
+  if (rawPid === undefined) return undefined;
 
-    const pid = parsePid(rawPid);
-    if (pid === undefined) return undefined;
+  const pid = parsePid(rawPid);
+  if (pid === undefined) return undefined;
 
-    const alive = yield* processSeam.isAlive(pid).pipe(Effect.catchAll(() => Effect.succeed(false)));
-    if (!alive) return undefined;
+  const alive = yield* processSeam.isAlive(pid).pipe(Effect.catch(() => Effect.succeed(false)));
+  if (!alive) return undefined;
 
-    const argv = yield* processSeam.readCmdline(pid).pipe(Effect.catchAll(() => Effect.succeed(emptyArgv)));
-    return sameArgv(argv, [spec.command, ...spec.args]) ? pid : undefined;
-  });
+  const argv = yield* processSeam.readCmdline(pid).pipe(Effect.catch(() => Effect.succeed(emptyArgv)));
+  return sameArgv(argv, [spec.command, ...spec.args]) ? pid : undefined;
+});
 
 const bestEffortUnlink = (fsSeam: FsSeam, path: string): Effect.Effect<void> =>
-  fsSeam.unlink(path).pipe(Effect.catchAll(() => Effect.void));
+  fsSeam.unlink(path).pipe(Effect.catch(() => Effect.void));
 
 export const buildManagedRuntimeServiceArgs = (
   parts: ManagedRuntimeServiceArgsParts,
@@ -167,21 +164,21 @@ export const verifyOwnedRuntimePid = (
   processSeam: ProcessSeam = realProcessSeam,
 ): Effect.Effect<boolean> => ownedRuntimePid(spec, processSeam).pipe(Effect.map((pid) => pid !== undefined));
 
-export const terminateOwnedRuntimeService = (
-  spec: ManagedRuntimeServiceSpec,
-  seams: RuntimeServiceSeams = {},
-): Effect.Effect<TerminationResult> => {
-  const processSeam = seams.process ?? realProcessSeam;
-  const fsSeam = seams.fs ?? realFsSeam;
+export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOwnedRuntimeService")(
+  function* (
+    spec: ManagedRuntimeServiceSpec,
+    seams: RuntimeServiceSeams = {},
+  ): Effect.fn.Return<TerminationResult> {
+    const processSeam = seams.process ?? realProcessSeam;
+    const fsSeam = seams.fs ?? realFsSeam;
 
-  return Effect.gen(function* () {
     const pid = yield* ownedRuntimePid(spec, processSeam);
     const result = yield* Effect.gen(function* () {
       if (pid === undefined) return { terminated: false };
 
       const terminated = yield* processSeam.terminate(pid).pipe(
         Effect.as(true),
-        Effect.catchAll(() => Effect.succeed(false)),
+        Effect.catch(() => Effect.succeed(false)),
       );
       return terminated ? { terminated: true, pid } : { terminated: false, pid };
     });
@@ -192,5 +189,5 @@ export const terminateOwnedRuntimeService = (
     }
 
     return result;
-  });
-};
+  },
+);

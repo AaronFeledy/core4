@@ -73,63 +73,62 @@ const unavailableFromProbe = (
     },
   });
 
-export const waitForServiceHealth = (
+export const waitForServiceHealth = Effect.fn("RuntimeProvider.waitForServiceHealth")(function* (
   plan: AppPlan,
   target: ServiceSelector,
   options: WaitForServiceHealthOptions,
-): Effect.Effect<ServiceRuntimeInfo, ProviderError> =>
-  Effect.gen(function* () {
-    const ctx = options.ctx;
-    const lastInfo = yield* Ref.make<ServiceRuntimeInfo | undefined>(undefined);
-    const service = String(target.service);
-    const attempt = inspect(plan, target, { api: options.api, ctx }).pipe(
-      Effect.tap((info) => Ref.set(lastInfo, info)),
-    );
+): Effect.fn.Return<ServiceRuntimeInfo, ProviderError> {
+  const ctx = options.ctx;
+  const lastInfo = yield* Ref.make<ServiceRuntimeInfo | undefined>(undefined);
+  const service = String(target.service);
+  const attempt = inspect(plan, target, { api: options.api, ctx }).pipe(
+    Effect.tap((info) => Ref.set(lastInfo, info)),
+  );
 
-    const result = yield* runProbe(
-      {
-        id: `provider-${ctx.providerId}-service-health`,
-        policy: options.policy ?? defaultServiceHealthPolicy,
-        classify: {
-          success: (value) => {
-            const health = healthFromProbeValue(value);
-            if (statusFromProbeValue(value) === "running" && (health === "healthy" || health === undefined)) {
-              return "green";
-            }
-            if (health === "starting") return "yellow";
-            return "red";
-          },
-          failure: () => "red",
+  const result = yield* runProbe(
+    {
+      id: `provider-${ctx.providerId}-service-health`,
+      policy: options.policy ?? defaultServiceHealthPolicy,
+      classify: {
+        success: (value) => {
+          const health = healthFromProbeValue(value);
+          if (statusFromProbeValue(value) === "running" && (health === "healthy" || health === undefined)) {
+            return "green";
+          }
+          if (health === "starting") return "yellow";
+          return "red";
         },
+        failure: () => "red",
       },
-      attempt,
-    ).pipe(
-      Effect.mapError((cause) =>
-        unavailableFromProbe(ctx, {
-          service,
-          attempts: 0,
-          elapsedMs: 0,
-          outcome: "red",
-          lastError: cause,
-        }),
-      ),
-    );
-
-    const info = yield* Ref.get(lastInfo);
-    if (result.outcome === "green") {
-      return yield* info === undefined
-        ? Effect.fail(missingSuccessfulInspect(ctx, service))
-        : Effect.succeed(info);
-    }
-
-    return yield* Effect.fail(
+    },
+    attempt,
+  ).pipe(
+    Effect.mapError((cause) =>
       unavailableFromProbe(ctx, {
         service,
-        attempts: result.attempts,
-        elapsedMs: result.elapsedMs,
-        outcome: result.outcome,
-        ...(info?.health === undefined ? {} : { lastHealth: info.health }),
-        ...(result.lastError === undefined ? {} : { lastError: result.lastError }),
+        attempts: 0,
+        elapsedMs: 0,
+        outcome: "red",
+        lastError: cause,
       }),
-    );
-  });
+    ),
+  );
+
+  const info = yield* Ref.get(lastInfo);
+  if (result.outcome === "green") {
+    return yield* info === undefined
+      ? Effect.fail(missingSuccessfulInspect(ctx, service))
+      : Effect.succeed(info);
+  }
+
+  return yield* Effect.fail(
+    unavailableFromProbe(ctx, {
+      service,
+      attempts: result.attempts,
+      elapsedMs: result.elapsedMs,
+      outcome: result.outcome,
+      ...(info?.health === undefined ? {} : { lastHealth: info.health }),
+      ...(result.lastError === undefined ? {} : { lastError: result.lastError }),
+    }),
+  );
+});

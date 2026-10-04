@@ -1,7 +1,7 @@
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 
@@ -74,116 +74,116 @@ const writeDeclarationTsconfig = async (
   await writeFile(join(pluginRoot, declarationTsconfigName), `${JSON.stringify(config, null, 2)}\n`);
 };
 
-export const pluginBuild = (
+export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
   options: PluginBuildOptions = {},
-): Effect.Effect<PluginBuildResult, NotImplementedError | PluginManifestError | PluginBuildMixedTreeError> =>
-  Effect.gen(function* () {
-    const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:build");
-    const { manifest } = yield* Effect.tryPromise({
-      try: () => validatePluginManifest(pluginRoot),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Plugin manifest validation failed in ${pluginRoot}.`,
-              issues: [String(cause)],
-            }),
-    });
-    const pkg = yield* Effect.tryPromise({
-      try: () => readPackageJson(pluginRoot),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Unable to read package.json in ${pluginRoot}.`,
-              issues: [String(cause)],
-            }),
-    });
-    const entries = yield* Effect.tryPromise({
-      try: async () => entriesFromExports(pluginRoot, pkg.exports),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : commandError("Invalid package exports.", String(cause)),
-    });
-    yield* Effect.tryPromise({
-      try: () => assertNoMixedTrees(pluginRoot, entries),
-      catch: (cause) =>
-        cause instanceof PluginBuildMixedTreeError
-          ? cause
-          : new PluginBuildMixedTreeError({
-              message: `Unable to inspect plugin source tree at ${pluginRoot}.`,
-              remediation: String(cause),
-              path: join(pluginRoot, "src"),
-            }),
-    });
-    yield* Effect.promise(() => mkdir(join(pluginRoot, "dist"), { recursive: true }));
-    const callerSubsystem = `plugin-authoring:meta:plugin:build:${manifest.name}`;
-    const buildRoot = declarationRootDir(entries);
-    const buildArgv = [
-      "build",
-      ...entries.map((entry) => entry.source),
-      "--outdir",
-      "./dist",
-      "--root",
-      buildRoot,
-      "--target",
-      "bun",
-      "--format",
-      "esm",
-    ];
-    const declarationArgv = ["x", "tsc", "--project", declarationTsconfigName];
-    yield* publishOptionalEvent({
-      _tag: "cli-meta:plugin:build-start",
-      pluginName: manifest.name,
-      pluginRoot,
-      entrypoints: entries.map((entry) => entry.source),
-      timestamp: new Date().toISOString(),
-    });
-    const build = yield* bunSelfRun({
-      argv: buildArgv,
+): Effect.fn.Return<
+  PluginBuildResult,
+  NotImplementedError | PluginManifestError | PluginBuildMixedTreeError
+> {
+  const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:build");
+  const { manifest } = yield* Effect.tryPromise({
+    try: () => validatePluginManifest(pluginRoot),
+    catch: (cause) =>
+      cause instanceof PluginManifestError
+        ? cause
+        : new PluginManifestError({
+            message: `Plugin manifest validation failed in ${pluginRoot}.`,
+            issues: [String(cause)],
+          }),
+  });
+  const pkg = yield* Effect.tryPromise({
+    try: () => readPackageJson(pluginRoot),
+    catch: (cause) =>
+      cause instanceof PluginManifestError
+        ? cause
+        : new PluginManifestError({
+            message: `Unable to read package.json in ${pluginRoot}.`,
+            issues: [String(cause)],
+          }),
+  });
+  const entries = yield* Effect.tryPromise({
+    try: async () => entriesFromExports(pluginRoot, pkg.exports),
+    catch: (cause) =>
+      cause instanceof PluginManifestError ? cause : commandError("Invalid package exports.", String(cause)),
+  });
+  yield* Effect.tryPromise({
+    try: () => assertNoMixedTrees(pluginRoot, entries),
+    catch: (cause) =>
+      cause instanceof PluginBuildMixedTreeError
+        ? cause
+        : new PluginBuildMixedTreeError({
+            message: `Unable to inspect plugin source tree at ${pluginRoot}.`,
+            remediation: String(cause),
+            path: join(pluginRoot, "src"),
+          }),
+  });
+  yield* Effect.promise(() => mkdir(join(pluginRoot, "dist"), { recursive: true }));
+  const callerSubsystem = `plugin-authoring:meta:plugin:build:${manifest.name}`;
+  const buildRoot = declarationRootDir(entries);
+  const buildArgv = [
+    "build",
+    ...entries.map((entry) => entry.source),
+    "--outdir",
+    "./dist",
+    "--root",
+    buildRoot,
+    "--target",
+    "bun",
+    "--format",
+    "esm",
+  ];
+  const declarationArgv = ["x", "tsc", "--project", declarationTsconfigName];
+  yield* publishOptionalEvent({
+    _tag: "cli-meta:plugin:build-start",
+    pluginName: manifest.name,
+    pluginRoot,
+    entrypoints: entries.map((entry) => entry.source),
+    timestamp: DateTime.formatIso(yield* DateTime.now),
+  });
+  const build = yield* bunSelfRun({
+    argv: buildArgv,
+    cwd: pluginRoot,
+    verb: "build",
+    callerSubsystem,
+    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
+    ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+  });
+  let declarationExitCode = 0;
+  if (build.exitCode === 0) {
+    yield* Effect.promise(() => writeDeclarationTsconfig(pluginRoot, entries));
+    const declarations = yield* bunSelfRun({
+      argv: declarationArgv,
       cwd: pluginRoot,
       verb: "build",
       callerSubsystem,
       ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
       ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
     });
-    let declarationExitCode = 0;
-    if (build.exitCode === 0) {
-      yield* Effect.promise(() => writeDeclarationTsconfig(pluginRoot, entries));
-      const declarations = yield* bunSelfRun({
-        argv: declarationArgv,
-        cwd: pluginRoot,
-        verb: "build",
-        callerSubsystem,
-        ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-        ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
-      });
-      yield* Effect.promise(() => rm(join(pluginRoot, declarationTsconfigName), { force: true }));
-      declarationExitCode = declarations.exitCode;
-    }
-    const exitCode = build.exitCode === 0 ? declarationExitCode : build.exitCode;
-    if (exitCode === 0) yield* Effect.promise(() => writeDistPackageJson(pluginRoot, pkg, entries));
-    const outputs = (yield* Effect.promise(() => outputDirectoryExists(pluginRoot)))
-      ? yield* Effect.promise(() => listOutputs(pluginRoot))
-      : [];
-    yield* publishOptionalEvent({
-      _tag: "cli-meta:plugin:build-complete",
-      pluginName: manifest.name,
-      pluginRoot,
-      entrypoints: entries.map((entry) => entry.source),
-      outputs,
-      exitCode,
-      timestamp: new Date().toISOString(),
-    });
-    return {
-      pluginName: manifest.name,
-      pluginRoot,
-      entrypoints: entries.map((entry) => entry.source),
-      outputs,
-      exitCode,
-    };
+    yield* Effect.promise(() => rm(join(pluginRoot, declarationTsconfigName), { force: true }));
+    declarationExitCode = declarations.exitCode;
+  }
+  const exitCode = build.exitCode === 0 ? declarationExitCode : build.exitCode;
+  if (exitCode === 0) yield* Effect.promise(() => writeDistPackageJson(pluginRoot, pkg, entries));
+  const outputs = (yield* Effect.promise(() => outputDirectoryExists(pluginRoot)))
+    ? yield* Effect.promise(() => listOutputs(pluginRoot))
+    : [];
+  yield* publishOptionalEvent({
+    _tag: "cli-meta:plugin:build-complete",
+    pluginName: manifest.name,
+    pluginRoot,
+    entrypoints: entries.map((entry) => entry.source),
+    outputs,
+    exitCode,
+    timestamp: DateTime.formatIso(yield* DateTime.now),
   });
+  return {
+    pluginName: manifest.name,
+    pluginRoot,
+    entrypoints: entries.map((entry) => entry.source),
+    outputs,
+    exitCode,
+  };
+});
 
 export const renderPluginBuildResult = (result: PluginBuildResult): string =>
   [

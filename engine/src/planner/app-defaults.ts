@@ -44,8 +44,11 @@ export const resolveUserAppDefaults = (
     appName === "global" ||
     (paths !== undefined && (appRoot === paths.globalAppRoot || isPathWithin(paths.scratchDir, appRoot)));
   return excluded
-    ? { appEnv: undefined, appLabels: undefined }
-    : { appEnv: config?.appEnv, appLabels: config?.appLabels };
+    ? {}
+    : {
+        ...(config?.appEnv === undefined ? {} : { appEnv: config.appEnv }),
+        ...(config?.appLabels === undefined ? {} : { appLabels: config.appLabels }),
+      };
 };
 
 export const withUserAppDefaults = (input: {

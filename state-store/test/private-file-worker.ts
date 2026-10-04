@@ -3,12 +3,12 @@ import type { PrivateFileAccessProcess, PrivateFileAccessSpawn } from "../src/pr
 
 const WorkerRequest = Schema.Struct({
   id: Schema.String,
-  operation: Schema.Literal("enforce", "verify"),
+  operation: Schema.Literals(["enforce", "verify"]),
   path: Schema.String,
 });
 const WorkerFrame = Schema.Struct({
   id: Schema.String,
-  operation: Schema.Literal("enforce", "verify"),
+  operation: Schema.Literals(["enforce", "verify"]),
   pathBase64: Schema.String,
 });
 

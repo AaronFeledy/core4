@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Stream } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { ArtifactTransferError, ServiceCopyError, VolumeOperationError } from "@lando/sdk/errors";
@@ -338,8 +338,8 @@ describe("provider data plane", () => {
 
     // Then: the import fails instead of returning an image reference.
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArtifactTransferError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ArtifactTransferError);
     }
   });
 
@@ -377,8 +377,8 @@ describe("provider data plane", () => {
     const exit = await Effect.runPromiseExit(provider.importArtifact(Stream.make(bytes("tar payload"))));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArtifactTransferError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ArtifactTransferError);
     }
   });
 
@@ -1224,22 +1224,22 @@ describe("provider data plane", () => {
       redactDetails: (value) => value,
     });
     const result = await Effect.runPromise(
-      provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.either),
+      provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.result),
     );
-    expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") return;
-    expect(result.left).toBeInstanceOf(VolumeOperationError);
-    expect(result.left.operation).toBe("removeVolume");
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") return;
+    expect(result.failure).toBeInstanceOf(VolumeOperationError);
+    expect(result.failure.operation).toBe("removeVolume");
     if (reason === undefined) {
-      expect(result.left.message).toBe("Provider volume remove failed.");
-      expect(result.left.remediation).toBe(
+      expect(result.failure.message).toBe("Provider volume remove failed.");
+      expect(result.failure.remediation).toBe(
         "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
       );
     } else {
-      expect(result.left.message).toContain(reason);
-      expect(result.left.remediation).toContain("Remove that container first");
-      expect(result.left.remediation).toContain("lando destroy");
-      expect(result.left.remediation).toContain("lando doctor");
+      expect(result.failure.message).toContain(reason);
+      expect(result.failure.remediation).toContain("Remove that container first");
+      expect(result.failure.remediation).toContain("lando destroy");
+      expect(result.failure.remediation).toContain("lando doctor");
     }
   });
 
@@ -1334,8 +1334,8 @@ describe("provider data plane", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ServiceCopyError);
+    if (exit._tag === "Failure") {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ServiceCopyError);
     }
   });
 

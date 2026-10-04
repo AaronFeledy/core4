@@ -16,7 +16,7 @@ export class SecretStoreUnavailableError extends Schema.TaggedError<SecretStoreU
   {
     message: Schema.String,
     storeId: Schema.String,
-    reason: Schema.Literal("locked", "unauthenticated", "denied", "timeout", "cli-missing"),
+    reason: Schema.Literals(["locked", "unauthenticated", "denied", "timeout", "cli-missing"]),
     remediation: Schema.String,
   },
 ) {}

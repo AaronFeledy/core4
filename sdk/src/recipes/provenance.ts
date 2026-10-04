@@ -1,4 +1,5 @@
-import { Either, ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Result, Schema } from "effect";
 import { RecipeProvenanceError } from "../errors/recipe.ts";
 import { RecipeProducer } from "../schema/recipe-identity.ts";
 import { LandofileRecipeField } from "../schema/recipe-provenance.ts";
@@ -17,9 +18,9 @@ export {
  */
 export const validateLandofileRecipeProvenance = (
   value: unknown,
-): Either.Either<LandofileRecipeField, RecipeProvenanceError> =>
-  Schema.decodeUnknownEither(LandofileRecipeField)(value).pipe(
-    Either.mapLeft((error) => {
+): Result.Result<LandofileRecipeField, RecipeProvenanceError> =>
+  Schema.decodeUnknownResult(LandofileRecipeField)(value).pipe(
+    Result.mapError((error) => {
       const message = error.message;
       let reason: RecipeProvenanceError["reason"];
       let path: string | undefined;
@@ -34,9 +35,9 @@ export const validateLandofileRecipeProvenance = (
         path = "producer.manifestVersion";
       } else {
         reason = "malformed";
-        path = ParseResult.ArrayFormatter.formatErrorSync(error)
-          .find((issue) => issue.path.length > 0)
-          ?.path.map(String)
+        path = SchemaIssue.makeFormatterStandardSchemaV1()(error.issue)
+          .issues?.find((issue) => (issue.path?.length ?? 0) > 0)
+          ?.path?.map(String)
           .join(".");
       }
       return new RecipeProvenanceError({

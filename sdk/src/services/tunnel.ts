@@ -28,16 +28,16 @@ export type TunnelError =
   | TunnelDetachedStateError
   | TunnelStopError;
 
-export interface TunnelServiceShape {
-  readonly id: string;
-  readonly capabilities: TunnelCapabilities;
-  readonly start: (request: TunnelStartRequest) => Effect.Effect<TunnelSession, TunnelError, Scope.Scope>;
-  readonly stop: (request: TunnelStopRequest) => Effect.Effect<void, TunnelError>;
-  readonly status: (request: TunnelStatusRequest) => Effect.Effect<TunnelStatus, TunnelError>;
-  readonly list: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
-}
-
-export class TunnelService extends Context.Tag("@lando/core/TunnelService")<
+export class TunnelService extends Context.Service<
   TunnelService,
-  TunnelServiceShape
->() {}
+  {
+    readonly id: string;
+    readonly capabilities: TunnelCapabilities;
+    readonly start: (request: TunnelStartRequest) => Effect.Effect<TunnelSession, TunnelError, Scope.Scope>;
+    readonly stop: (request: TunnelStopRequest) => Effect.Effect<void, TunnelError>;
+    readonly status: (request: TunnelStatusRequest) => Effect.Effect<TunnelStatus, TunnelError>;
+    readonly list: (filter?: TunnelSessionFilter) => Effect.Effect<ReadonlyArray<TunnelSession>, TunnelError>;
+  }
+>()("@lando/core/TunnelService") {}
+
+export type TunnelServiceShape = TunnelService["Service"];

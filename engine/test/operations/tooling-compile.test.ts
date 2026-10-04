@@ -206,21 +206,21 @@ describe("compileToolingInvocations", () => {
 
     // When
     const result = Effect.runSync(
-      compileToolingInvocations({ name: "off", lookupKey: "off", task, source }).pipe(Effect.either),
+      compileToolingInvocations({ name: "off", lookupKey: "off", task, source }).pipe(Effect.result),
     );
 
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingDisabledError", tool: "off" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingDisabledError", tool: "off" } });
   });
 
   test("fails rather than throws when a task defines no steps", () => {
     // When
     const result = Effect.runSync(
-      compileToolingInvocations({ name: "empty", lookupKey: "empty", task: {}, source }).pipe(Effect.either),
+      compileToolingInvocations({ name: "empty", lookupKey: "empty", task: {}, source }).pipe(Effect.result),
     );
 
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingCompileError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
   });
 
   test("rejects the drupal-scaffold composer.json deletion reproducer", () => {

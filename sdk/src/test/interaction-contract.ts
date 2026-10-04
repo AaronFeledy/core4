@@ -15,7 +15,7 @@ const interactionContractFailure = (assertion: string, details?: unknown): Contr
 const requireInteractionContract = (condition: boolean, assertion: string, details?: unknown) =>
   condition ? Effect.void : Effect.fail(interactionContractFailure(assertion, details));
 
-type RendererServiceShape = Context.Tag.Service<typeof Renderer>;
+type RendererServiceShape = Context.Service.Shape<typeof Renderer>;
 
 /**
  * Capturing renderer used by the contract to prove prompt chrome routes
@@ -76,7 +76,7 @@ export interface InteractionServiceSpec {
  * Harness for {@link runInteractionContract}.
  *
  * `makeService` builds an `InteractionServiceShape` from a {@link InteractionServiceSpec}.
- * The Live caller wires `makeInteractionService` with scripted IO; the test-double
+ * The production caller wires `makeInteractionService` with scripted IO; the test-double
  * caller wires `makeTestInteractionService`. Capability flags gate assertions that
  * a given implementation can satisfy (e.g. a non-stdin test double cannot exercise
  * the interrupt/TTY-restore path).
@@ -115,7 +115,7 @@ const runInteractionScoped = <A>(
 
 const interactionFailureTag = <A>(exit: Exit.Exit<A, InteractionError>): string | undefined => {
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined;
 };
 
@@ -132,204 +132,205 @@ const interactionFailureTag = <A>(exit: Exit.Exit<A, InteractionError>): string 
  * `InteractionRequiredError` manual fallback when choices cannot resolve
  * non-interactively.
  */
-export const runInteractionContract = (
+export const runInteractionContract = Effect.fnUntraced(function* (
   harness: InteractionContractHarness,
-): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireInteractionContract(
+    typeof harness.capabilities.interactive === "boolean" &&
+      Array.isArray(harness.capabilities.promptTypes) &&
+      harness.capabilities.promptTypes.length > 0 &&
+      typeof harness.capabilities.secretRedaction === "boolean",
+    "the harness declares interaction capabilities (interactive, promptTypes, secretRedaction)",
+    harness.capabilities,
+  );
+
+  const idService = harness.makeService({ neverStdin: true });
+  yield* requireInteractionContract(
+    typeof idService.id === "string" && idService.id.length > 0,
+    "the interaction service declares a non-empty id",
+    idService.id,
+  );
+
+  const precedenceService = harness.makeService({ neverStdin: true });
+  const precedenceExit = yield* runInteractionScoped(
+    precedenceService.promptAll([interactionTextPrompt("app")], {
+      answers: { app: "explicit" },
+      mode: "non-interactive",
+    }),
+  );
+  yield* requireInteractionContract(
+    Exit.isSuccess(precedenceExit) && (precedenceExit.value as Record<string, unknown>).app === "explicit",
+    "an explicit answer wins over prompting and over the default",
+    precedenceExit,
+  );
+
+  const defaultService = harness.makeService({ neverStdin: true });
+  const defaultExit = yield* runInteractionScoped(
+    defaultService.promptAll([{ name: "app", type: "text", message: "Name?", default: "fallback" }], {
+      yes: true,
+    }),
+  );
+  yield* requireInteractionContract(
+    Exit.isSuccess(defaultExit) && (defaultExit.value as Record<string, unknown>).app === "fallback",
+    "--yes resolves a prompt default without reading input",
+    defaultExit,
+  );
+
+  const nonTtyService = harness.makeService({ neverStdin: true });
+  const isInteractive = yield* nonTtyService.isInteractive;
+  yield* requireInteractionContract(
+    isInteractive === false,
+    "auto mode reports non-interactive when stdin is not a TTY",
+    isInteractive,
+  );
+  const autoExit = yield* runInteractionScoped(
+    nonTtyService.promptAll([interactionTextPrompt("app")], { mode: "auto" }),
+  );
+  yield* requireInteractionContract(
+    interactionFailureTag(autoExit) === "InteractionRequiredError",
+    "auto-mode TTY gating fails fast on a non-TTY when no answer is supplied",
+    autoExit,
+  );
+
+  const failFastService = harness.makeService({ neverStdin: true });
+  // Against a never-readable stdin this resolves only if the service fails fast
+  // instead of blocking on a read; a short timeout converts a hang into a
+  // contract failure rather than a hung test.
+  const failFastExit = yield* runInteractionScoped(
+    failFastService.promptAll([interactionTextPrompt("app")], { mode: "non-interactive" }),
+  ).pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.seconds(5),
+      orElse: () =>
+        Effect.fail((() => interactionContractFailure("non-interactive resolution never blocks on stdin"))()),
+    }),
+  );
+  yield* requireInteractionContract(
+    interactionFailureTag(failFastExit) === "InteractionRequiredError",
+    "non-interactive resolution fails fast with InteractionRequiredError",
+    failFastExit,
+  );
+
+  const validationService = harness.makeService({ neverStdin: true });
+  const validationExit = yield* runInteractionScoped(
+    validationService.promptAll([{ name: "port", type: "number", message: "Port?" }], {
+      answers: { port: "not-a-number" },
+      mode: "non-interactive",
+    }),
+  );
+  yield* requireInteractionContract(
+    interactionFailureTag(validationExit) === "PromptValidationError",
+    "an invalid answer for a typed prompt fails with PromptValidationError",
+    validationExit,
+  );
+
+  if (harness.capabilities.secretRedaction) {
+    const secretService = harness.makeService({
+      scriptedInput: ["hunter2"],
+      tty: true,
+    });
+    const secretExit = yield* runInteractionScoped(
+      secretService.secret({ name: "token", message: "Token?", answers: { token: "hunter2" } }),
+    );
     yield* requireInteractionContract(
-      typeof harness.capabilities.interactive === "boolean" &&
-        Array.isArray(harness.capabilities.promptTypes) &&
-        harness.capabilities.promptTypes.length > 0 &&
-        typeof harness.capabilities.secretRedaction === "boolean",
-      "the harness declares interaction capabilities (interactive, promptTypes, secretRedaction)",
-      harness.capabilities,
-    );
-
-    const idService = harness.makeService({ neverStdin: true });
-    yield* requireInteractionContract(
-      typeof idService.id === "string" && idService.id.length > 0,
-      "the interaction service declares a non-empty id",
-      idService.id,
-    );
-
-    const precedenceService = harness.makeService({ neverStdin: true });
-    const precedenceExit = yield* runInteractionScoped(
-      precedenceService.promptAll([interactionTextPrompt("app")], {
-        answers: { app: "explicit" },
-        mode: "non-interactive",
-      }),
+      Exit.isSuccess(secretExit) && Redacted.value(secretExit.value) === "hunter2",
+      "secret answers are carried as Redacted values",
+      secretExit,
     );
     yield* requireInteractionContract(
-      Exit.isSuccess(precedenceExit) && (precedenceExit.value as Record<string, unknown>).app === "explicit",
-      "an explicit answer wins over prompting and over the default",
-      precedenceExit,
+      Exit.isSuccess(secretExit) &&
+        !String(secretExit.value).includes("hunter2") &&
+        !JSON.stringify(secretExit.value).includes("hunter2"),
+      "a secret value never appears in its string or JSON representation",
+      secretExit,
     );
+  }
 
-    const defaultService = harness.makeService({ neverStdin: true });
-    const defaultExit = yield* runInteractionScoped(
-      defaultService.promptAll([{ name: "app", type: "text", message: "Name?", default: "fallback" }], {
-        yes: true,
-      }),
+  if (harness.supportsInteractiveInput === true) {
+    const renderer = makeInteractionContractRenderer();
+    const routedService = harness.makeService({
+      scriptedInput: ["routed-value"],
+      tty: true,
+      renderer: renderer.service,
+    });
+    const routedExit = yield* runInteractionScoped(
+      Effect.provideService(
+        routedService.promptAll([{ name: "app", type: "text", message: "RoutedQuestion?" }], {
+          mode: "interactive",
+        }),
+        Renderer,
+        renderer.service,
+      ),
     );
     yield* requireInteractionContract(
-      Exit.isSuccess(defaultExit) && (defaultExit.value as Record<string, unknown>).app === "fallback",
-      "--yes resolves a prompt default without reading input",
-      defaultExit,
+      Exit.isSuccess(routedExit) && renderer.stdout().includes("RoutedQuestion?"),
+      "prompt chrome routes through Renderer.output.stdout when a renderer is present",
+      { exit: routedExit, captured: renderer.stdout() },
     );
+  }
 
-    const nonTtyService = harness.makeService({ neverStdin: true });
-    const isInteractive = yield* nonTtyService.isInteractive;
+  if (harness.supportsInterruption === true) {
+    const interruptService = harness.makeService({ neverStdin: true, tty: true });
+    const interruptExit = yield* Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(
+        Effect.scoped(interruptService.promptAll([interactionTextPrompt("app")], { mode: "interactive" })),
+      );
+      yield* Effect.sleep("25 millis");
+      yield* Fiber.interrupt(fiber);
+      return yield* Fiber.await(fiber);
+    });
     yield* requireInteractionContract(
-      isInteractive === false,
-      "auto mode reports non-interactive when stdin is not a TTY",
-      isInteractive,
+      interactionFailureTag(interruptExit) === "InteractionCancelledError",
+      "external Effect.interrupt surfaces InteractionCancelledError",
+      interruptExit,
     );
-    const autoExit = yield* runInteractionScoped(
-      nonTtyService.promptAll([interactionTextPrompt("app")], { mode: "auto" }),
-    );
-    yield* requireInteractionContract(
-      interactionFailureTag(autoExit) === "InteractionRequiredError",
-      "auto-mode TTY gating fails fast on a non-TTY when no answer is supplied",
-      autoExit,
-    );
+  }
 
-    const failFastService = harness.makeService({ neverStdin: true });
-    // Against a never-readable stdin this resolves only if the service fails fast
-    // instead of blocking on a read; a short timeout converts a hang into a
-    // contract failure rather than a hung test.
-    const failFastExit = yield* runInteractionScoped(
-      failFastService.promptAll([interactionTextPrompt("app")], { mode: "non-interactive" }),
-    ).pipe(
-      Effect.timeoutFail({
-        duration: Duration.seconds(5),
-        onTimeout: () => interactionContractFailure("non-interactive resolution never blocks on stdin"),
-      }),
-    );
-    yield* requireInteractionContract(
-      interactionFailureTag(failFastExit) === "InteractionRequiredError",
-      "non-interactive resolution fails fast with InteractionRequiredError",
-      failFastExit,
-    );
-
-    const validationService = harness.makeService({ neverStdin: true });
-    const validationExit = yield* runInteractionScoped(
-      validationService.promptAll([{ name: "port", type: "number", message: "Port?" }], {
-        answers: { port: "not-a-number" },
-        mode: "non-interactive",
-      }),
+  if (harness.supportsDynamicChoices === true) {
+    const choicesService = harness.makeService({
+      neverStdin: true,
+      choicesResult: { exitCode: 0, stdout: "8.1\n8.2\n", stderr: "" },
+    });
+    const choicesExit = yield* runInteractionScoped(
+      choicesService.promptAll(
+        [
+          {
+            name: "phpVersion",
+            type: "select",
+            message: "PHP?",
+            choicesFrom: { command: "services:list", parse: "lines" },
+          },
+        ],
+        { answers: { phpVersion: "8.2" }, mode: "non-interactive", runs: ["services:list"] },
+      ),
     );
     yield* requireInteractionContract(
-      interactionFailureTag(validationExit) === "PromptValidationError",
-      "an invalid answer for a typed prompt fails with PromptValidationError",
-      validationExit,
+      Exit.isSuccess(choicesExit) && (choicesExit.value as Record<string, unknown>).phpVersion === "8.2",
+      "a seeded answer resolves a dynamic choicesFrom prompt",
+      choicesExit,
     );
 
-    if (harness.capabilities.secretRedaction) {
-      const secretService = harness.makeService({
-        scriptedInput: ["hunter2"],
-        tty: true,
-      });
-      const secretExit = yield* runInteractionScoped(
-        secretService.secret({ name: "token", message: "Token?", answers: { token: "hunter2" } }),
-      );
-      yield* requireInteractionContract(
-        Exit.isSuccess(secretExit) && Redacted.value(secretExit.value) === "hunter2",
-        "secret answers are carried as Redacted values",
-        secretExit,
-      );
-      yield* requireInteractionContract(
-        Exit.isSuccess(secretExit) &&
-          !String(secretExit.value).includes("hunter2") &&
-          !JSON.stringify(secretExit.value).includes("hunter2"),
-        "a secret value never appears in its string or JSON representation",
-        secretExit,
-      );
-    }
-
-    if (harness.supportsInteractiveInput === true) {
-      const renderer = makeInteractionContractRenderer();
-      const routedService = harness.makeService({
-        scriptedInput: ["routed-value"],
-        tty: true,
-        renderer: renderer.service,
-      });
-      const routedExit = yield* runInteractionScoped(
-        Effect.provideService(
-          routedService.promptAll([{ name: "app", type: "text", message: "RoutedQuestion?" }], {
-            mode: "interactive",
-          }),
-          Renderer,
-          renderer.service,
-        ),
-      );
-      yield* requireInteractionContract(
-        Exit.isSuccess(routedExit) && renderer.stdout().includes("RoutedQuestion?"),
-        "prompt chrome routes through Renderer.output.stdout when a renderer is present",
-        { exit: routedExit, captured: renderer.stdout() },
-      );
-    }
-
-    if (harness.supportsInterruption === true) {
-      const interruptService = harness.makeService({ neverStdin: true, tty: true });
-      const interruptExit = yield* Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
-          Effect.scoped(interruptService.promptAll([interactionTextPrompt("app")], { mode: "interactive" })),
-        );
-        yield* Effect.sleep("25 millis");
-        return yield* Fiber.interrupt(fiber);
-      });
-      yield* requireInteractionContract(
-        interactionFailureTag(interruptExit) === "InteractionCancelledError",
-        "external Effect.interrupt surfaces InteractionCancelledError",
-        interruptExit,
-      );
-    }
-
-    if (harness.supportsDynamicChoices === true) {
-      const choicesService = harness.makeService({
-        neverStdin: true,
-        choicesResult: { exitCode: 0, stdout: "8.1\n8.2\n", stderr: "" },
-      });
-      const choicesExit = yield* runInteractionScoped(
-        choicesService.promptAll(
-          [
-            {
-              name: "phpVersion",
-              type: "select",
-              message: "PHP?",
-              choicesFrom: { command: "services:list", parse: "lines" },
-            },
-          ],
-          { answers: { phpVersion: "8.2" }, mode: "non-interactive", runs: ["services:list"] },
-        ),
-      );
-      yield* requireInteractionContract(
-        Exit.isSuccess(choicesExit) && (choicesExit.value as Record<string, unknown>).phpVersion === "8.2",
-        "a seeded answer resolves a dynamic choicesFrom prompt",
-        choicesExit,
-      );
-
-      const manualFallbackService = harness.makeService({
-        neverStdin: true,
-        choicesResult: { exitCode: 0, stdout: "8.1\n8.2\n", stderr: "" },
-      });
-      const manualExit = yield* runInteractionScoped(
-        manualFallbackService.promptAll(
-          [
-            {
-              name: "phpVersion",
-              type: "select",
-              message: "PHP?",
-              choicesFrom: { command: "services:list", parse: "lines" },
-            },
-          ],
-          { mode: "non-interactive", runs: ["services:list"] },
-        ),
-      );
-      yield* requireInteractionContract(
-        interactionFailureTag(manualExit) === "InteractionRequiredError",
-        "a resolvable dynamic-choices prompt with no answer fails fast non-interactively",
-        manualExit,
-      );
-    }
-  });
+    const manualFallbackService = harness.makeService({
+      neverStdin: true,
+      choicesResult: { exitCode: 0, stdout: "8.1\n8.2\n", stderr: "" },
+    });
+    const manualExit = yield* runInteractionScoped(
+      manualFallbackService.promptAll(
+        [
+          {
+            name: "phpVersion",
+            type: "select",
+            message: "PHP?",
+            choicesFrom: { command: "services:list", parse: "lines" },
+          },
+        ],
+        { mode: "non-interactive", runs: ["services:list"] },
+      ),
+    );
+    yield* requireInteractionContract(
+      interactionFailureTag(manualExit) === "InteractionRequiredError",
+      "a resolvable dynamic-choices prompt with no answer fails fast non-interactively",
+      manualExit,
+    );
+  }
+});

@@ -11,7 +11,7 @@ test("exports only public material and preserves binary bytes with readable perm
   const destDir = join(root, "keyring");
   const calls: ReadonlyArray<string>[] = [];
   const bytes = new Uint8Array([0x99, 0xff, 0x00, 0x80]);
-  const runner: Pick<ProcessRunner["Type"], "streamWithExit"> = {
+  const runner: Pick<ProcessRunner["Service"], "streamWithExit"> = {
     streamWithExit: ({ args }) => {
       calls.push(args);
       return Stream.make({ kind: "stdout" as const, chunk: bytes }, { exitCode: 0 });

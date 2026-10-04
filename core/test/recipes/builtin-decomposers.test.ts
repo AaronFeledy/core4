@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando/sdk/schema";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { buildConfig } from "../../build.config.ts";
 import { astroSnapshot } from "../../src/recipes/builtin/astro/snapshot.ts";
@@ -136,7 +136,7 @@ describe("bundled recipe decomposers", () => {
       const snapshot = SNAPSHOTS[recipeId];
       for (const [name, descriptor] of Object.entries(snapshot.optionTypes)) {
         const result = Effect.runSync(
-          Effect.either(
+          Effect.result(
             decomposer.decompose({
               producer: decomposer.producer,
               options: { ...snapshot.defaults, [name]: mistypedValueFor(descriptor) },
@@ -144,9 +144,9 @@ describe("bundled recipe decomposers", () => {
             }),
           ),
         );
-        expect(Either.isLeft(result)).toBe(true);
-        if (!Either.isLeft(result)) continue;
-        const failure = result.left as { reason: string; path?: string; remediation: string };
+        expect(Result.isFailure(result)).toBe(true);
+        if (!Result.isFailure(result)) continue;
+        const failure = result.failure as { reason: string; path?: string; remediation: string };
         expect<unknown>({ reason: failure.reason, path: failure.path }).toEqual({
           reason: "option-type",
           path: `options.${name}`,

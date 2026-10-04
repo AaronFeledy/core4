@@ -12,9 +12,9 @@ import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 import {
   HOST_GATEWAY_TARGET,
   HOST_INTERNAL_ALIAS,
@@ -24,11 +24,11 @@ import {
 const capabilities = TestRuntimeProvider.capabilities;
 
 const planEffect = (appRoot: string, landofile: LandofileShape, providerCapabilities = capabilities) => {
-  const planner = AppPlannerLive.pipe(
+  const planner = AppPlannerLayer.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        PluginRegistryLive,
-        FileSystemLive,
+        PluginRegistryLayer.layer,
+        BunFileSystem.layer,
         Layer.succeed(
           PathsService,
           makeLandoPaths({
@@ -64,7 +64,7 @@ const planFailure = async (appRoot: string, landofile: LandofileShape) => {
   const exit = await Effect.runPromiseExit(planEffect(appRoot, landofile));
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected failure");
-  return Option.getOrThrow(Cause.failureOption(exit.cause));
+  return Option.getOrThrow(Cause.findErrorOption(exit.cause));
 };
 
 const landofile = (services: Record<string, unknown>): LandofileShape =>
@@ -206,7 +206,7 @@ describe("AppPlanner home persistence and host reachability", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       expect(failure).toMatchObject({
         _tag: "LandofileValidationError",
-        issues: ["services.web.home.path"],
+        issues: [{ path: ["services", "web", "home", "path"] }],
       });
       expect(String((failure as LandofileValidationError).message)).toContain(
         "cannot mount over the filesystem root",
@@ -225,7 +225,7 @@ describe("AppPlanner home persistence and host reachability", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       expect(failure).toMatchObject({
         _tag: "LandofileValidationError",
-        issues: ["services.web.home.path"],
+        issues: [{ path: ["services", "web", "home", "path"] }],
       });
     });
   });

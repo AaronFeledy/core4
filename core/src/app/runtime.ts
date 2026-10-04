@@ -14,11 +14,12 @@ import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services
 import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
 import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
 import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import { ScratchRegistryWithPrivateFileAccessLive } from "@lando/engine/scratch-app/registry";
-import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchAppServiceLive, acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
+import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
+import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
+import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
+import { acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
 import { type LandoRuntimeOptions, makeLandoRuntime } from "../runtime/layer";
-import { ScratchInitAppPortLive } from "../runtime/scratch-init-port.ts";
+import * as ScratchInitAppPortLayer from "../runtime/scratch-init-port.ts";
 import { buildAppHandle, resolveApp } from "./resolve";
 
 type RuntimeContext = Context.Context<AppHandleRuntimeServices | ScratchAppService | RuntimeCwd>;
@@ -39,74 +40,79 @@ export type OpenLandoRuntimeOptions = LandoRuntimeOptions & {
  * resolves from the construction-time `cwd` (captured once), or the acquired
  * scratch app when the runtime is constructed with `scratch`.
  */
-export const openLandoRuntime = (
+export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
   options: OpenLandoRuntimeOptions,
-): Effect.Effect<LandoRuntime, ConfigError | LandoRuntimeBootstrapError | ScratchAcquireError, Scope.Scope> =>
-  Effect.gen(function* () {
-    const { scratch: scratchInput, ...runtimeOptions } = options;
-    const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? process.cwd());
-    const appLayer = makeLandoRuntime({ bootstrap: "app", ...runtimeOptions } as LandoRuntimeOptions & {
-      readonly bootstrap: "app";
-    });
-    const scratchDeps = Layer.mergeAll(
-      appLayer,
-      ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(appLayer)),
-      ScratchResourceScannerLive.pipe(Layer.provide(appLayer)),
-      ScratchInitAppPortLive.pipe(Layer.provide(appLayer)),
-    );
-    const layer = Layer.mergeAll(
-      appLayer,
-      ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(appLayer)),
-      ScratchResourceScannerLive.pipe(Layer.provide(appLayer)),
-      ScratchInitAppPortLive.pipe(Layer.provide(appLayer)),
-      ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
-    );
-    const context: RuntimeContext = yield* Layer.build(layer);
-    const runtimeScope = yield* Effect.scope;
+): Effect.fn.Return<
+  LandoRuntime,
+  ConfigError | LandoRuntimeBootstrapError | ScratchAcquireError,
+  Scope.Scope
+> {
+  const { scratch: scratchInput, ...runtimeOptions } = options;
+  const capturedCwd = AbsolutePath.make(runtimeOptions.cwd ?? process.cwd());
+  const appLayer = makeLandoRuntime({ bootstrap: "app", ...runtimeOptions } as LandoRuntimeOptions & {
+    readonly bootstrap: "app";
+  });
+  const scratchDeps = Layer.mergeAll(
+    appLayer,
+    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
+    ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
+  );
+  const layer = Layer.mergeAll(
+    appLayer,
+    ScratchRegistryLayer.ScratchRegistry.layerWithPrivateFileAccess.pipe(Layer.provide(appLayer)),
+    ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(appLayer)),
+    ScratchInitAppPortLayer.layer.pipe(Layer.provide(appLayer)),
+    ScratchAppServiceLayer.layer.pipe(Layer.provide(scratchDeps)),
+  );
+  const context: RuntimeContext = yield* Layer.build(layer);
+  const runtimeScope = yield* Effect.scope;
 
-    const defaultTarget: ResolvedAppTarget | undefined =
-      scratchInput === undefined
-        ? undefined
-        : yield* withResolvedCwd(
-            capturedCwd,
-            Effect.suspend(() => acquireScratchAppWithPlan(scratchInput)),
-          ).pipe(
-            Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
-            Effect.mapError((cause) =>
-              cause instanceof LandofileParseError
-                ? new ScratchAppError({
-                    message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,
-                    operation: "acquire",
-                    cause,
-                  })
-                : cause,
-            ),
-            Effect.provide(context),
-          );
-
-    const run = ((program: Effect.Effect<unknown, unknown, unknown>) =>
-      Effect.provide(program, context)) as LandoRuntime["run"];
-
-    const app = (selector?: AppSelector): Effect.Effect<App, AppResolveError> => {
-      if (selector === undefined && defaultTarget !== undefined) {
-        return buildAppHandle(defaultTarget).pipe(
-          Effect.provideService(Scope.Scope, runtimeScope),
+  const defaultTarget: ResolvedAppTarget | undefined =
+    scratchInput === undefined
+      ? undefined
+      : yield* withResolvedCwd(
+          capturedCwd,
+          Effect.suspend(() => acquireScratchAppWithPlan(scratchInput)),
+        ).pipe(
+          Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
+          Effect.mapError((cause) =>
+            cause instanceof LandofileParseError
+              ? new ScratchAppError({
+                  message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,
+                  operation: "acquire",
+                  cause,
+                })
+              : cause,
+          ),
           Effect.provide(context),
         );
-      }
-      return resolveApp(selector ?? { cwd: capturedCwd }).pipe(
+
+  const run = Effect.fn("LandoRuntime.run")((program: Effect.Effect<unknown, unknown, unknown>) =>
+    Effect.provide(program, context),
+  ) as LandoRuntime["run"];
+
+  const app = Effect.fn("LandoRuntime.app")((selector?: AppSelector): Effect.Effect<App, AppResolveError> => {
+    if (selector === undefined && defaultTarget !== undefined) {
+      return buildAppHandle(defaultTarget).pipe(
         Effect.provideService(Scope.Scope, runtimeScope),
         Effect.provide(context),
       );
-    };
-
-    return {
-      app,
-      scratch: (input) =>
-        ScratchAppService.pipe(
-          Effect.flatMap((service) => service.acquire(input)),
-          Effect.provide(context),
-        ),
-      run,
-    };
+    }
+    return resolveApp(selector ?? { cwd: capturedCwd }).pipe(
+      Effect.provideService(Scope.Scope, runtimeScope),
+      Effect.provide(context),
+    );
   });
+
+  return {
+    app,
+    scratch: Effect.fn("LandoRuntime.scratch")((input) =>
+      ScratchAppService.pipe(
+        Effect.flatMap((service) => service.acquire(input)),
+        Effect.provide(context),
+      ),
+    ),
+    run,
+  };
+});

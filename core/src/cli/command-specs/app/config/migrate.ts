@@ -44,14 +44,13 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
     }),
     format: Flags.string({ description: "Output format.", default: "text" }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const privateFileAccess = yield* PrivateFileAccessService;
-      return yield* appConfigMigrate({
-        ...appConfigMigrateOptionsFromInput(input),
-        privateFileAccess,
-      });
-    }),
+  run: Effect.fn("ConfigMigrateCommand.run")(function* (input: unknown) {
+    const privateFileAccess = yield* PrivateFileAccessService;
+    return yield* appConfigMigrate({
+      ...appConfigMigrateOptionsFromInput(input),
+      privateFileAccess,
+    });
+  }),
   render: (result) =>
     renderAppConfigMigrateResult(Schema.decodeUnknownSync(AppConfigMigrateResultSchema)(result)),
 };

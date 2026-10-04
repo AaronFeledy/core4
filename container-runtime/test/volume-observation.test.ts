@@ -87,7 +87,7 @@ test("fails closed when a destination is a bind mount", async () => {
   };
   // When observing it as a physical named volume.
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       observeMountedVolume(
         { providerId: "podman", api },
         {
@@ -99,7 +99,7 @@ test("fails closed when a destination is a bind mount", async () => {
     ),
   );
   // Then no volume identity is inferred from the plan or bind source.
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
 });
 
 test("returns owner-bound generation only with an observed daemon namespace", async () => {
@@ -160,7 +160,7 @@ test.each([
     },
   };
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       observeMountedVolume(
         { providerId: "lando", api },
         {
@@ -171,7 +171,7 @@ test.each([
       ),
     ),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(paths).toEqual(["/containers/id/json"]);
 });
 

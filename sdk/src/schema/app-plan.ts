@@ -37,27 +37,27 @@ export const ServicePlan = Schema.Struct({
   type: Schema.String,
   provider: ProviderId,
   primary: Schema.Boolean,
-  artifact: Schema.optional(Schema.Union(ArtifactRef, ArtifactBuildSpec)),
-  command: Schema.optional(CommandSpec),
-  entrypoint: Schema.optional(CommandSpec),
-  environment: Schema.Record({ key: Schema.String, value: Schema.String }),
-  user: Schema.optional(Schema.String),
-  workingDirectory: Schema.optional(PortablePath),
-  appMount: Schema.optional(AppMountPlan),
+  artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
+  command: Schema.optionalKey(CommandSpec),
+  entrypoint: Schema.optionalKey(CommandSpec),
+  environment: Schema.Record(Schema.String, Schema.String),
+  user: Schema.optionalKey(Schema.String),
+  workingDirectory: Schema.optionalKey(PortablePath),
+  appMount: Schema.optionalKey(AppMountPlan),
   mounts: Schema.Array(MountPlan),
   storage: Schema.Array(DataStoreMountPlan),
   endpoints: Schema.Array(EndpointPlan),
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
-  healthcheck: Schema.optional(HealthcheckPlan),
-  scanner: Schema.optional(ScanPlan).annotations({
+  healthcheck: Schema.optionalKey(HealthcheckPlan),
+  scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
   }),
-  logSources: Schema.optional(Schema.Array(LogSource)),
-  certs: Schema.optional(CertificatePlan),
+  logSources: Schema.optionalKey(Schema.Array(LogSource)),
+  certs: Schema.optionalKey(CertificatePlan),
   hostAliases: Schema.Array(HostAliasPlan),
   metadata: PlanMetadata,
-  provenance: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })).annotations({
+  provenance: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)).annotate({
     description: "Service-type resolution inputs and selected artifact, excluding source file contents.",
   }),
   extensions: ProviderExtensionConfig,
@@ -159,8 +159,8 @@ export const sameAppMountTarget = (
 export const FileSyncPlan = Schema.Struct({
   engineId: Schema.String,
   session: Schema.suspend(
-    (): Schema.Schema<FileSyncSessionSpec, typeof FileSyncSessionSpec.Encoded> => FileSyncSessionSpec,
-  ).annotations({
+    (): Schema.Codec<FileSyncSessionSpec, typeof FileSyncSessionSpec.Encoded> => FileSyncSessionSpec,
+  ).annotate({
     identifier: "FileSyncSessionSpec",
   }),
 });
@@ -178,11 +178,11 @@ export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: stri
   createHash("sha256").update(`${kind}\0${canonicalPath}`).digest("hex");
 
 export const AppIdentity = Schema.Struct({
-  appRoot: AbsolutePath.annotations({ description: "Canonical root that owns this app instance." }),
-  ownerKey: Schema.String.annotations({
+  appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),
+  ownerKey: Schema.String.annotate({
     description: "Stable identity derived from the canonical app root.",
   }),
-  repoGroupKey: Schema.optional(Schema.String).annotations({
+  repoGroupKey: Schema.optionalKey(Schema.String).annotate({
     description: "Stable identity shared by worktrees from one Git common directory.",
   }),
 });
@@ -193,11 +193,11 @@ export const AppPlan = Schema.Struct({
   name: Schema.String,
   slug: Schema.String,
   root: AbsolutePath,
-  identity: Schema.optional(AppIdentity).annotations({
+  identity: Schema.optionalKey(AppIdentity).annotate({
     description: "Canonical ownership and optional repository grouping identity.",
   }),
   provider: ProviderId,
-  services: Schema.Record({ key: ServiceName, value: ServicePlan }),
+  services: Schema.Record(ServiceName, ServicePlan),
   routes: Schema.Array(RoutePlan),
   networks: Schema.Array(NetworkPlan),
   /**
@@ -206,7 +206,7 @@ export const AppPlan = Schema.Struct({
    * service-less apps and legacy/hand-built plans (providers then fall back to
    * slug-derived network names).
    */
-  networking: Schema.optional(NetworkingPlan),
+  networking: Schema.optionalKey(NetworkingPlan),
   stores: Schema.Array(DataStorePlan),
   /**
    * File-sync sessions auto-selected by the planner for accelerated mounts.
@@ -216,11 +216,11 @@ export const AppPlan = Schema.Struct({
   fileSync: Schema.Array(FileSyncPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
-  router: Schema.optional(
+  router: Schema.optionalKey(
     Schema.Struct({
-      enabled: Schema.Boolean.annotations({ description: "Whether shared routing is enabled for this app." }),
+      enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
     }),
-  ).annotations({
+  ).annotate({
     description:
       "Resolved router enablement; optional only because persisted cached plans predate this field.",
   }),
@@ -230,7 +230,7 @@ export const AppPlan = Schema.Struct({
    * path ensures these are running in the global app before bringing the app up.
    * Omitted when the app needs no global services.
    */
-  requires: Schema.optional(
+  requires: Schema.optionalKey(
     Schema.Struct({
       globalServices: Schema.Array(Schema.String),
     }),

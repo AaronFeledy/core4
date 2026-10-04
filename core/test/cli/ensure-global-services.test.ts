@@ -35,15 +35,15 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { CacheServiceLive } from "@lando/engine/cache/service";
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import * as AppCacheService from "@lando/engine/cache/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
 } from "@lando/engine/operations/ensure-global-services";
-import { ConfigServiceLive } from "@lando/engine/services/config";
-import { FileSystemLive } from "@lando/engine/services/file-system";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as LandoConfigService from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 interface ApplyCall {
   readonly plan: AppPlan;
@@ -178,7 +178,7 @@ const makeHarness = async (
       });
     },
   };
-  const pluginRegistry = {
+  const pluginRegistry = PluginRegistry.of({
     list: Effect.succeed([manifest]),
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(fakeServiceType),
@@ -187,46 +187,64 @@ const makeHarness = async (
         ? Effect.succeed(fakeServiceType.testFeature)
         : Effect.die(`unexpected service feature ${id}`),
     loadAppFeature: () => Effect.die("not used"),
-  };
+  });
   const layer = Layer.mergeAll(
-    ConfigServiceLive,
-    CacheServiceLive,
-    FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event);
-        }),
-      subscribe: () => Stream.empty,
-      subscribeQueue: Queue.unbounded<LandoEvent>(),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: () => Effect.succeed([]),
-    }),
+    LandoConfigService.layer,
+    AppCacheService.layer,
+    BunFileSystem.layer,
+    GlobalAppServiceLayer.layer.pipe(
+      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Queue.unbounded<LandoEvent>(),
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      }),
+    ),
     Layer.succeed(PluginRegistry, pluginRegistry),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(SecretStore, {
-      id: "ensure-global-test",
-      get: () => Effect.succeed("resolved-global-token"),
-      has: () => Effect.succeed(true),
-      list: Effect.succeed(["GLOBAL_TOKEN"]),
-    }),
-    Layer.succeed(BuildOrchestrator, {
-      build: (plan) =>
-        Effect.sync(() => {
-          operations.push("build");
-          return plan;
-        }),
-      buildApp: () => Effect.void,
-    }),
-    AppPlannerLive.pipe(
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "ensure-global-test",
+        get: () => Effect.succeed("resolved-global-token"),
+        has: () => Effect.succeed(true),
+        list: Effect.succeed(["GLOBAL_TOKEN"]),
+      }),
+    ),
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (plan) =>
+          Effect.sync(() => {
+            operations.push("build");
+            return plan;
+          }),
+        buildApp: () => Effect.void,
+      }),
+    ),
+    AppPlannerLayer.layer.pipe(
       Layer.provide(
-        Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
+        Layer.mergeAll(
+          Layer.succeed(PluginRegistry, pluginRegistry),
+          AppCacheService.layer,
+          LandoConfigService.layer,
+        ),
       ),
     ),
   );
@@ -259,7 +277,7 @@ const appPlan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
     source: "ensure-global-services.test",
     runtime: 4,
   },
@@ -270,7 +288,7 @@ const appPlan: AppPlan = {
 const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected typed failure");
   return failure.value;
@@ -279,7 +297,7 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 describe("ensureGlobalServicesRunning", () => {
   test("reads required global services from AppPlan.requires", () => {
     expect(requiredGlobalServicesForPlan(appPlan)).toEqual(["traefik"]);
-    expect(requiredGlobalServicesForPlan({ ...appPlan, requires: undefined })).toEqual([]);
+    expect(requiredGlobalServicesForPlan({})).toEqual([]);
   });
 
   test("cold ensure publishes pre/post-global-start and applies the selected global service", async () => {

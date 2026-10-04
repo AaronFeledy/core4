@@ -14,14 +14,14 @@ test.each([{ argv: ["--yes"] }, { argv: ["--no-interactive"] }, { argv: ["--yes"
     // Given: a parsed setup invocation and an in-memory router.
     const configs: ProxyConfig[] = [];
     const approvals: Parameters<RouterServiceShape["setup"]>[1][] = [];
-    const router = {
+    const router = RouterService.of({
       ...makeTestRouterService(),
       setup: (config: ProxyConfig, options: Parameters<RouterServiceShape["setup"]>[1]) =>
         Effect.sync(() => {
           configs.push(config);
           approvals.push(options);
         }),
-    };
+    });
     const input = compiledCommandInputFromArgv("meta:setup", argv);
 
     // When: setup runs its router step without touching the host.
@@ -42,14 +42,14 @@ test("preserves interactive consent when setup has no approval flags", async () 
   // Given
   const configs: ProxyConfig[] = [];
   const approvals: Parameters<RouterServiceShape["setup"]>[1][] = [];
-  const router = {
+  const router = RouterService.of({
     ...makeTestRouterService(),
     setup: (config: ProxyConfig, options: Parameters<RouterServiceShape["setup"]>[1]) =>
       Effect.sync(() => {
         configs.push(config);
         approvals.push(options);
       }),
-  };
+  });
 
   // When
   await Effect.runPromise(

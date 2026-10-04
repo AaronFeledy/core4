@@ -98,7 +98,7 @@ export const isCustomCodec = <A, I>(
 ): codec is { encode: (a: A) => string | Uint8Array; decode: (raw: Uint8Array) => A } =>
   codec !== undefined && typeof codec === "object";
 
-export const makeSchemaCodec = <A, I>(schema: Schema.Schema<A, I>) => ({
-  decode: Schema.decodeUnknown(schema),
-  encode: Schema.encode(schema),
+export const makeSchemaCodec = <A, I>(schema: Schema.Codec<A, I>) => ({
+  decode: Schema.decodeUnknownEffect(schema),
+  encode: Schema.encodeEffect(schema),
 });

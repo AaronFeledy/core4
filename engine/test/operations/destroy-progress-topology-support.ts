@@ -27,7 +27,7 @@ import {
   type StateStoreShape,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
@@ -39,7 +39,7 @@ export { destroyTreeId };
 const providerId = ProviderId.make("lando");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "destroy-progress-topology.test",
   runtime: 4 as const,
 };
@@ -125,7 +125,7 @@ export const makeHarness = (
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     Layer.succeed(StateStore, options.stateStore ?? makeTestStateStore().service),
     Layer.succeed(
       PathsService,
@@ -135,24 +135,30 @@ export const makeHarness = (
         userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
       }),
     ),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Schema.is(LandoEventSchema)(event)
-          ? Effect.sync(() => {
-              events.push(event);
-            })
-          : Effect.die(new TypeError(`Unexpected event in destroy progress topology test: ${event._tag}`)),
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Schema.is(LandoEventSchema)(event)
+            ? Effect.sync(() => {
+                events.push(event);
+              })
+            : Effect.die(new TypeError(`Unexpected event in destroy progress topology test: ${event._tag}`)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
     ...(options.proxyAvailable === false ? [] : [Layer.succeed(RouterService, TestRouterService)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import {
   ProviderLandoConflictError,
@@ -67,8 +67,7 @@ describe("provider-podman provider-lando conflict detection", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const cause = exit.cause;
-      const error = cause._tag === "Fail" ? cause.error : undefined;
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderLandoStateError);
     }
   });
@@ -84,8 +83,7 @@ describe("provider-podman provider-lando conflict detection", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const cause = exit.cause;
-      const error = cause._tag === "Fail" ? cause.error : undefined;
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderLandoStateError);
     }
   });
@@ -113,8 +111,7 @@ describe("provider-podman provider-lando conflict detection", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const cause = exit.cause;
-      const error = cause._tag === "Fail" ? cause.error : undefined;
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderLandoConflictError);
       expect(error).toBeInstanceOf(ProviderUnavailableError);
       if (error instanceof ProviderLandoConflictError) {
@@ -164,8 +161,7 @@ describe("provider-podman provider-lando conflict detection", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const cause = exit.cause;
-      const error = cause._tag === "Fail" ? cause.error : undefined;
+      const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderLandoConflictError);
     }
   });

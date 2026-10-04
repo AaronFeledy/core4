@@ -20,16 +20,17 @@ export const MetaBunResultSchema = Schema.Struct({
   exitCode: Schema.Number,
 });
 
-export const metaBun = (options: MetaBunOptions): Effect.Effect<MetaBunResult, NotImplementedError> =>
-  Effect.gen(function* () {
-    const result = yield* bunSelfRun({
-      argv: options.argv,
-      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-      ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
-    });
-    return { exitCode: result.exitCode };
+export const metaBun = Effect.fn("MetaBun.run")(function* (
+  options: MetaBunOptions,
+): Effect.fn.Return<MetaBunResult, NotImplementedError> {
+  const result = yield* bunSelfRun({
+    argv: options.argv,
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
+    ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   });
+  return { exitCode: result.exitCode };
+});
 
 export const renderMetaBunResult = (result: MetaBunResult): string | undefined =>
   result.exitCode === 0 ? undefined : `bun exited with code ${result.exitCode}`;
@@ -53,20 +54,21 @@ export const MetaXResultSchema = Schema.Struct({
   exitCode: Schema.Number,
 });
 
-export const metaX = (options: MetaXOptions): Effect.Effect<MetaXResult, NotImplementedError> =>
-  Effect.gen(function* () {
-    const banner = `Running ${options.spec}`;
-    if (options.onBanner !== undefined) options.onBanner(banner);
-    else yield* emitOptionalStdout(`${banner}\n`);
-    const result = yield* bunSelfX({
-      spec: options.spec,
-      argv: options.argv,
-      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-      ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
-    });
-    return { spec: options.spec, exitCode: result.exitCode };
+export const metaX = Effect.fn("MetaBun.runX")(function* (
+  options: MetaXOptions,
+): Effect.fn.Return<MetaXResult, NotImplementedError> {
+  const banner = `Running ${options.spec}`;
+  if (options.onBanner !== undefined) options.onBanner(banner);
+  else yield* emitOptionalStdout(`${banner}\n`);
+  const result = yield* bunSelfX({
+    spec: options.spec,
+    argv: options.argv,
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
+    ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   });
+  return { spec: options.spec, exitCode: result.exitCode };
+});
 
 export const renderMetaXResult = (result: MetaXResult): string | undefined =>
   result.exitCode === 0 ? undefined : `${result.spec} exited with code ${result.exitCode}`;

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 const abortEffect = (signal: AbortSignal): Effect.Effect<never> =>
-  Effect.async<never>((resume) => {
+  Effect.callback<never>((resume) => {
     if (signal.aborted) {
       resume(Effect.interrupt);
       return;

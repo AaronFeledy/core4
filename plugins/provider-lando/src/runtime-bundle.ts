@@ -28,16 +28,16 @@ export class ProviderBundleChecksumError extends ProviderUnavailableError {
 }
 
 const RuntimeBundleEntrySchema = Schema.Struct({
-  url: Schema.String.pipe(Schema.pattern(/^https:\/\//u)),
-  sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
-  filename: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
-  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+  url: Schema.String.pipe(Schema.check(Schema.isPattern(/^https:\/\//u))),
+  sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
+  filename: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u))),
+  sizeBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
 const RuntimeBundleManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  runtimeVersion: Schema.String.pipe(Schema.minLength(1)),
-  bundles: Schema.Record({ key: Schema.String, value: RuntimeBundleEntrySchema }),
+  runtimeVersion: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  bundles: Schema.Record(Schema.String, RuntimeBundleEntrySchema),
 });
 
 export type RuntimeBundleEntry = Schema.Schema.Type<typeof RuntimeBundleEntrySchema>;
@@ -57,16 +57,16 @@ export const RUNTIME_BUNDLE_MANIFEST: RuntimeBundleManifest =
 export const RUNTIME_BUNDLE_MANIFEST_ENV = "LANDO_RUNTIME_BUNDLE_MANIFEST";
 
 const OverrideRuntimeBundleEntrySchema = Schema.Struct({
-  url: Schema.String.pipe(Schema.pattern(/^(?:https|file):\/\//u)),
-  sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
-  filename: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
-  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+  url: Schema.String.pipe(Schema.check(Schema.isPattern(/^(?:https|file):\/\//u))),
+  sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
+  filename: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u))),
+  sizeBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
 const OverrideRuntimeBundleManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  runtimeVersion: Schema.String.pipe(Schema.minLength(1)),
-  bundles: Schema.Record({ key: Schema.String, value: OverrideRuntimeBundleEntrySchema }),
+  runtimeVersion: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  bundles: Schema.Record(Schema.String, OverrideRuntimeBundleEntrySchema),
 });
 
 export type OverrideRuntimeBundleManifest = Schema.Schema.Type<typeof OverrideRuntimeBundleManifestSchema>;
@@ -94,7 +94,7 @@ const loadOverrideManifest = (
       }),
     ),
     Effect.flatMap((data) =>
-      Schema.decodeUnknown(OverrideRuntimeBundleManifestSchema)(data).pipe(
+      Schema.decodeUnknownEffect(OverrideRuntimeBundleManifestSchema)(data).pipe(
         Effect.mapError((cause) => overrideManifestError(path, "failed schema validation", cause)),
       ),
     ),
@@ -112,7 +112,7 @@ export const resolveRuntimeBundleEntry = (
   arch: string,
 ): Effect.Effect<RuntimeBundleEntry, ProviderUnavailableError> =>
   rejectIntelMacHost(platform, arch).pipe(
-    Effect.zipRight(
+    Effect.andThen(
       Effect.sync(() => RUNTIME_BUNDLE_MANIFEST.bundles[platformArchKey(platform, arch)]).pipe(
         Effect.flatMap((entry) =>
           entry === undefined

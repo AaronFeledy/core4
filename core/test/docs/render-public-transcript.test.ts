@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   InvalidSourceFileError,
@@ -115,8 +115,8 @@ describe("public transcript rendering", () => {
   });
 
   test("decodes public transcript inputs", () => {
-    expect(Either.isLeft(decodePublicTranscriptEither({}))).toBe(true);
-    expect(Either.isRight(decodePublicTranscriptEither(phpTranscriptObject))).toBe(true);
+    expect(Result.isFailure(decodePublicTranscriptEither({}))).toBe(true);
+    expect(Result.isSuccess(decodePublicTranscriptEither(phpTranscriptObject))).toBe(true);
   });
 
   test("sanitizes decoded public transcript artifacts at load time", async () => {

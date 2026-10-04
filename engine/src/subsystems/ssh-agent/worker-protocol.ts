@@ -16,20 +16,20 @@ import { Schema } from "effect";
 export const AGENT_RELAY_WORKER_COMMAND = "__internal:agent-relay-worker";
 export const AGENT_RELAY_WORKER_PROTOCOL_VERSION = 1;
 export const AgentRelayWorkerInput = Schema.Struct({
-  app: Schema.Struct({ kind: Schema.Literal("user", "scratch"), id: Schema.String, root: AbsolutePath }),
+  app: Schema.Struct({ kind: Schema.Literals(["user", "scratch"]), id: Schema.String, root: AbsolutePath }),
   plan: Schema.Struct({ id: AppId, provider: ProviderId }),
   kind: AgentSocketKind,
-  upstream: Schema.Union(AgentSocketUpstream, Schema.TaggedStruct("named-pipe", { path: Schema.String })),
+  upstream: Schema.Union([AgentSocketUpstream, Schema.TaggedStruct("named-pipe", { path: Schema.String })]),
   delivery: AgentSocketDelivery,
-  socketName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)),
+  socketName: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/))),
   paths: Schema.Struct({
-    userConfRoot: Schema.optional(Schema.String),
-    userCacheRoot: Schema.optional(Schema.String),
-    userDataRoot: Schema.optional(Schema.String),
-    systemPluginRoot: Schema.optional(Schema.String),
-    platform: Schema.optional(Schema.String),
+    userConfRoot: Schema.optionalKey(Schema.String),
+    userCacheRoot: Schema.optionalKey(Schema.String),
+    userDataRoot: Schema.optionalKey(Schema.String),
+    systemPluginRoot: Schema.optionalKey(Schema.String),
+    platform: Schema.optionalKey(Schema.String),
   }),
-  token: Schema.optional(Schema.String),
+  token: Schema.optionalKey(Schema.String),
 });
 export type AgentRelayWorkerInput = typeof AgentRelayWorkerInput.Type;
 
@@ -39,7 +39,7 @@ export const AgentRelayWorkerIdentity = Schema.Struct({
   sessionId: Schema.String,
   kind: AgentSocketKind,
   protocolVersion: Schema.Literal(1),
-  pid: Schema.Number.pipe(Schema.int(), Schema.positive()),
+  pid: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
 });
 export type AgentRelayWorkerIdentity = typeof AgentRelayWorkerIdentity.Type;
 export const AgentRelayWorkerRecord = Schema.Struct({

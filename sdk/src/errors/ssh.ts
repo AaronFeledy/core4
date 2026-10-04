@@ -10,14 +10,14 @@ export class SshAgentUnavailableError extends Schema.TaggedError<SshAgentUnavail
   "SshAgentUnavailableError",
   {
     message: Schema.String,
-    mode: Schema.Literal("sidecar", "host"),
-    reason: Schema.Literal(
+    mode: Schema.Literals(["sidecar", "host"]),
+    reason: Schema.Literals([
       "host-agent-not-found",
       "socket-missing",
       "capability-missing",
       "sidecar-not-running",
       "bridge-failed",
-    ),
+    ]),
     socketPath: Schema.optional(Schema.String),
     remediation: Schema.String,
   },
@@ -27,7 +27,7 @@ export class SshAgentTransportError extends Schema.TaggedError<SshAgentTransport
   "SshAgentTransportError",
   {
     message: Schema.String,
-    stage: Schema.Literal("broker", "worker", "bridge"),
+    stage: Schema.Literals(["broker", "worker", "bridge"]),
     remediation: Schema.String,
     cause: Schema.optional(Schema.Unknown),
   },

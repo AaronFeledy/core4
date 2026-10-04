@@ -10,9 +10,9 @@ import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
 import { landofileRuntimeInputs } from "../../src/composition.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 test("plans user profile build context and env_file from the consuming app root", async () => {
   // Given: app and profile directories contain deliberately different env files.
@@ -46,7 +46,11 @@ test("plans user profile build context and env_file from the consuming app root"
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(landofile, { ...TestRuntimeProvider.capabilities, artifactBuild: true }),
       ).pipe(
-        Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.merge(PluginRegistryLive, FileSystemLive)))),
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
+          ),
+        ),
       ),
     );
 

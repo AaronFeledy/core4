@@ -9,7 +9,7 @@ type RecordingHarness = {
 
 export const makeRecordingHarness = (): RecordingHarness => {
   const events: Array<LandoEvent> = [];
-  const service: EventServiceShape = {
+  const service: EventServiceShape = EventService.of({
     publish: (event) =>
       Effect.sync(() => {
         events.push(event);
@@ -23,7 +23,7 @@ export const makeRecordingHarness = (): RecordingHarness => {
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
-  };
+  });
   return {
     events,
     layer: Layer.succeed(EventService, service),

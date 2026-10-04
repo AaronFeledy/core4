@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,8 +7,8 @@ import { ServiceConfig } from "../landofile.ts";
 // .NET catalog service authoring contract
 // ============================================================================
 
-export const DotnetServiceConfig = Schema.extend(
-  ServiceConfig.pick(
+export const DotnetServiceConfig = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
     "image",
     "port",
     "user",
@@ -29,15 +30,18 @@ export const DotnetServiceConfig = Schema.extend(
     "networks",
     "security",
     "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(Schema.Literal("dotnet", "dotnet:8.0", "dotnet:9.0")).annotations({
-      description: ".NET catalog service type and supported major-version aliases.",
+  ]),
+)
+  .pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Literals(["dotnet", "dotnet:8.0", "dotnet:9.0"])).annotate({
+        description: ".NET catalog service type and supported major-version aliases.",
+      }),
     }),
-  }),
-).annotations({
-  identifier: "DotnetServiceConfig",
-  title: "Dotnet Service Config",
-  description: "Landofile configuration accepted by the .NET catalog service.",
-});
+  )
+  .annotate({
+    identifier: "DotnetServiceConfig",
+    title: "Dotnet Service Config",
+    description: "Landofile configuration accepted by the .NET catalog service.",
+  });
 export type DotnetServiceConfig = typeof DotnetServiceConfig.Type;

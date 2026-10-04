@@ -12,7 +12,7 @@ import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const authorityLayer = (id: string) =>
-  Layer.succeed(CertificateAuthority, { ...makeTestCertificateAuthority(), id });
+  Layer.succeed(CertificateAuthority, CertificateAuthority.of({ ...makeTestCertificateAuthority(), id }));
 
 const resolvedManifest = (id: string, platforms?: ReadonlyArray<string>) => {
   const manifest = Schema.decodeSync(PluginManifest)({
@@ -51,7 +51,7 @@ describe("runtime certificate authority contributions", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof NoCertificateAuthorityError).toBe(true);
     }
   });
@@ -75,7 +75,7 @@ describe("runtime certificate authority contributions", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof AmbiguousCertificateAuthoritiesError).toBe(
         true,
       );
@@ -127,7 +127,7 @@ describe("runtime certificate authority contributions", () => {
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof NoCertificateAuthorityError).toBe(true);
     }
   });

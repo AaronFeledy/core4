@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ValidationIssuePath } from "./validation-issue.ts";
+
 // Config-lint result shapes — the stable, editor/LSP-facing output of
 // `lando app:config:lint`. Validating a Landofile against the canonical
 // `LandofileShape` schema yields zero or more structured violations. The
@@ -11,16 +13,16 @@ import { Schema } from "effect";
  * diagnostics.
  */
 export const ConfigLintViolation = Schema.Struct({
-  /** Dot-joined path to the offending node ("" for the document root). */
-  path: Schema.String,
+  /** Object keys and array indexes. Empty for the document root. */
+  path: ValidationIssuePath,
   /** Human-readable description of the violation. */
   message: Schema.String,
-  /** Optional remediation hint (e.g. "Remove unknown key …"). */
-  suggestedFix: Schema.optional(Schema.String),
+  /** Likely fix, such as the closest allowed key or a Compose disposition. */
+  suggestion: Schema.optionalKey(Schema.String),
   /** 1-based source line for diagnostics that can be located. */
-  line: Schema.optional(Schema.Number),
+  line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */
-  column: Schema.optional(Schema.Number),
+  column: Schema.optionalKey(Schema.Number),
 });
 export type ConfigLintViolation = typeof ConfigLintViolation.Type;
 

@@ -26,16 +26,19 @@ test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local
     const url = direct ? origin.url.href : target;
     const script = `
       import { Effect } from "effect";
-      import { HttpClientLive } from "./http-client/src/live.ts";
-      import { HttpClient } from "./http-client/src/service.ts";
+      import * as HttpClient from "effect/http/HttpClient";
+      import { layer } from "./http-client/src/live.ts";
       import { NetworkTrust } from "./http-client/src/network-trust.ts";
-      const program = Effect.flatMap(HttpClient, client => client.stream({ url: ${JSON.stringify(url)} }));
+      const program = Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        return yield* client.get(${JSON.stringify(url)});
+      });
       const trusted = ${JSON.stringify(target)} === "no-proxy"
         ? program.pipe(Effect.provideService(NetworkTrust, {
             proxy: { http: ${JSON.stringify(proxy.url.href)}, noProxy: ["127.0.0.1"] },
             caPems: [], trustHost: true,
           })) : program;
-      const response = await Effect.runPromise(Effect.scoped(trusted.pipe(Effect.provide(HttpClientLive))));
+      const response = await Effect.runPromise(trusted.pipe(Effect.provide(layer)));
       if (response.status !== ${direct ? 204 : 203}) process.exit(2);
     `;
     try {

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { CliCommandErrorEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import type { RenderEvent } from "@lando/sdk/events";
@@ -8,6 +10,11 @@ import { NotifyConfig } from "@lando/sdk/schema";
 
 import notify from "../src/notify.ts";
 
+const stubHttpClient = (): HttpClient.HttpClient =>
+  HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
+
 const context = (published: Array<RenderEvent>): LandoPluginContext => ({
   id: "@lando/notify-lando",
   managedFiles: { pluginId: "@lando/notify-lando" },
@@ -15,6 +22,7 @@ const context = (published: Array<RenderEvent>): LandoPluginContext => ({
     open: () => Effect.die("unused"),
     withLock: (_key, body) => body,
   },
+  httpClient: stubHttpClient(),
   events: {
     publishRender: (event) =>
       Effect.sync(() => {

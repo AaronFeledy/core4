@@ -3,25 +3,29 @@ import { Effect, Layer } from "effect";
 
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { ProviderId, ServiceName } from "@lando/sdk/schema";
-import { HttpClient, RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
+import { RuntimeProvider, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import * as HttpClient from "effect/http/HttpClient";
 
-import { UrlScannerDefaultLayer, UrlScannerLive } from "../../../src/subsystems/scanner/live.ts";
+import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
 import { appId, asHttpClient, drive, driveExit, failureOf, httpStatus, requestSequence } from "./support.ts";
 
 const web = ServiceName.make("web");
 const worker = ServiceName.make("worker");
 
-const provideScanner = (provider: RuntimeProviderShape, http: ReturnType<typeof requestSequence>) =>
-  Effect.gen(function* () {
+const provideScanner = Effect.fnUntraced(
+  function* (_provider: RuntimeProviderShape, _http: ReturnType<typeof requestSequence>) {
     return yield* UrlScanner;
-  }).pipe(
-    Effect.provide(UrlScannerLive),
-    Effect.provide(Layer.succeed(RuntimeProvider, provider)),
-    Effect.provide(Layer.succeed(HttpClient, asHttpClient(http))),
-  );
+  },
+  Effect.provide(ProviderUrlScanner.layer),
+  (effect, provider, http) =>
+    effect.pipe(
+      Effect.provide(Layer.succeed(RuntimeProvider, provider)),
+      Effect.provide(Layer.succeed(HttpClient.HttpClient, asHttpClient(http))),
+    ),
+);
 
-describe("UrlScannerLive", () => {
+describe("ProviderUrlScanner.layer", () => {
   test("wires the probe scanner from RuntimeProvider endpoints and HttpClient", async () => {
     const http = requestSequence([httpStatus(200)]);
     const provider = {
@@ -65,7 +69,6 @@ describe("UrlScannerLive", () => {
     expect(result.endpoints[0]?.service).toBe(web);
     expect(result.endpoints[0]?.url).toBe("http://localhost:8080/");
     expect(result.endpoints[0]?.outcome).toBe("green");
-    expect(UrlScannerDefaultLayer).toBe(UrlScannerLive);
   });
 
   test("maps provider list failures to ScannerError", async () => {

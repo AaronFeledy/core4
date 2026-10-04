@@ -29,7 +29,7 @@ test("retains the CA bundle mount for an app-phase reserved step after another a
     dependsOn: [],
     hostAliases: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-07-30T00:00:00.000Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-07-30T00:00:00.000Z"),
       source: "build-artifact-runner.test",
       runtime: 4,
     },

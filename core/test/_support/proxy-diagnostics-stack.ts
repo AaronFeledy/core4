@@ -44,7 +44,7 @@ const BACKEND_PORT = 31087;
 const BACKEND_IMAGE = "nginx:1.27";
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-13T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-13T00:00:00Z"),
   source: "proxy-diagnostics-live.integration.test",
   runtime: 4 as const,
 };
@@ -195,7 +195,7 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
   };
   const api = makePodmanApiClient(socketPath);
   const stop = async () => {
-    await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+    await Effect.runPromise(Effect.result(bringDown(plan, { api })));
     await rm(root, { recursive: true, force: true });
   };
 
