@@ -1,52 +1,11 @@
-import { readdir, readlink } from "node:fs/promises";
-
-import type { ProcWalk } from "./leftover-proxy-ports-linux.ts";
-
 import { systemdServiceFromCgroup } from "./occupied-port-warning.ts";
-
-const TCP_LISTEN = "0A";
-const COMM_SCAN_BUDGET_MS = 800;
+import { COMM_SCAN_BUDGET_MS, type ProcWalk, TCP_LISTEN, pastDeadline, systemProcWalk } from "./proc-walk.ts";
 
 export type PortHolder = {
   readonly comm: string;
   readonly pid: number;
   readonly cmdline?: string;
 };
-
-const optionalText = async (path: string): Promise<string | undefined> => {
-  try {
-    return await Bun.file(path).text();
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
-  }
-};
-
-const optionalNames = async (path: string): Promise<ReadonlyArray<string> | undefined> => {
-  try {
-    return await readdir(path);
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
-  }
-};
-
-const optionalLink = async (path: string): Promise<string | undefined> => {
-  try {
-    return await readlink(path);
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
-  }
-};
-
-const systemWalk: ProcWalk = {
-  names: optionalNames,
-  text: optionalText,
-  link: optionalLink,
-};
-
-const pastDeadline = (walk: ProcWalk, deadline: number): boolean => (walk.now ?? Date.now)() >= deadline;
 
 export const parseListenInodeForPort = (table: string, port: number): string | undefined => {
   const expectedPort = port.toString(16).toUpperCase().padStart(4, "0");
@@ -101,7 +60,7 @@ const holderForSocketInode = async (
 
 export const identifyAnyPortHolder = async (
   port: number,
-  walk: ProcWalk = systemWalk,
+  walk: ProcWalk = systemProcWalk,
   budgetMs: number = COMM_SCAN_BUDGET_MS,
 ): Promise<PortHolder | undefined> => {
   const tables = await Promise.all([walk.text("/proc/net/tcp"), walk.text("/proc/net/tcp6")]);
@@ -117,7 +76,7 @@ export const identifyAnyPortHolder = async (
 
 export const systemdUnitForPid = async (
   pid: number,
-  walk: ProcWalk = systemWalk,
+  walk: ProcWalk = systemProcWalk,
 ): Promise<string | undefined> => {
   const cgroup = await walk.text(`/proc/${pid}/cgroup`);
   if (cgroup === undefined) return undefined;

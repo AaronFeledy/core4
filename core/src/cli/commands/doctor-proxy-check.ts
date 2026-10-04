@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { Effect, Result, Schema } from "effect";
 
-import { PortNumber } from "@lando/sdk/schema";
+import { PortNumber, ROUTER_LAST_RESORT_HTTPS_PORT, ROUTER_LAST_RESORT_HTTP_PORT } from "@lando/sdk/schema";
 import { FileSystem, PathsService, type RouterService } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
@@ -20,8 +20,8 @@ import {
 const ACQUISITION_MODES = ["direct", "occupied-hop", "needs-helper", "socket-helper"] as const;
 type AcquisitionMode = (typeof ACQUISITION_MODES)[number];
 
-const LAST_FALLBACK_HTTP = 38080;
-const LAST_FALLBACK_HTTPS = 38443;
+const LAST_FALLBACK_HTTP = ROUTER_LAST_RESORT_HTTP_PORT;
+const LAST_FALLBACK_HTTPS = ROUTER_LAST_RESORT_HTTPS_PORT;
 
 const occupiedHopRemediation = ({ httpPort, httpsPort }: AcquisitionSnapshot, running: boolean): string =>
   `A preferred router port is in use by another program. Lando ${running ? "is serving on" : "last selected"} HTTP :${httpPort} and HTTPS :${httpsPort}. Run lando info in the app to see its URL. To use the preferred ports, free any occupied preferred ports, then run lando global:restart.`;
