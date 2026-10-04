@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { type Context, Effect, Stream } from "effect";
 
+import { isPathWithin } from "@lando/paths";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { validationIssue } from "@lando/sdk/schema";
 import type {
@@ -38,8 +39,7 @@ const containedPath = (
   authoredPath: string,
 ): Effect.Effect<string, LandofileValidationError> => {
   const absolute = resolve(input.appRoot, authoredPath);
-  const rel = relative(input.appRoot, absolute);
-  if (isAbsolute(authoredPath) || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+  if (isAbsolute(authoredPath) || !isPathWithin(input.appRoot, absolute)) {
     return Effect.fail(
       validationError(
         input,

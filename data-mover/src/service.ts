@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import {
   Cause,
@@ -16,7 +16,7 @@ import {
 } from "effect";
 
 import { findAppRoot } from "@lando/landofile/discovery";
-import type { LandoPaths } from "@lando/paths";
+import { type LandoPaths, isPathWithin } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
@@ -63,6 +63,7 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import { findRealpathAncestor } from "@lando/state-store/paths";
 import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
@@ -577,16 +578,9 @@ const mapVerifiedError = (error: VerifiedStreamError, spec: DataTransferSpec) =>
 };
 
 const realpathNearestExisting = async (path: string): Promise<string> => {
-  let candidate = path;
-  for (;;) {
-    try {
-      return await realpath(candidate);
-    } catch {
-      const parent = dirname(candidate);
-      if (parent === candidate) throw new Error(`No existing ancestor for ${path}`);
-      candidate = parent;
-    }
-  }
+  const found = await findRealpathAncestor(path, (candidate) => realpath(candidate).catch(() => null));
+  if (found === null) throw new Error(`No existing ancestor for ${path}`);
+  return found.realAncestor;
 };
 
 const resolveAppRoot = async (paths: ReadonlyArray<string>): Promise<string> => {
@@ -603,8 +597,7 @@ const resolveAppRoot = async (paths: ReadonlyArray<string>): Promise<string> => 
 
 const ensureInsideRoot = Effect.fnUntraced(function* (path: string, root: string) {
   const normalized = resolve(path);
-  const relativeNormalized = relative(root, normalized);
-  if (relativeNormalized.startsWith("..") || isAbsolute(relativeNormalized)) {
+  if (!isPathWithin(root, normalized)) {
     return yield* Effect.fail(
       new DataSourceOutsideRootError({
         message: "Host data endpoint escapes the permitted app root.",
@@ -624,8 +617,7 @@ const ensureInsideRoot = Effect.fnUntraced(function* (path: string, root: string
         remediation: "Use a host endpoint with an existing ancestor inside the app root.",
       }),
   });
-  const relativeToRoot = relative(root, existing);
-  if (relativeToRoot === "" || (!relativeToRoot.startsWith("..") && !isAbsolute(relativeToRoot))) return;
+  if (isPathWithin(root, existing)) return;
   return yield* Effect.fail(
     new DataSourceOutsideRootError({
       message: "Host data endpoint escapes the permitted app root.",
@@ -636,10 +628,7 @@ const ensureInsideRoot = Effect.fnUntraced(function* (path: string, root: string
   );
 });
 
-const lexicallyInside = (path: string, base: string): boolean => {
-  const rel = relative(base, resolve(path));
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-};
+const lexicallyInside = (path: string, base: string): boolean => isPathWithin(base, resolve(path));
 
 const ensureInsideScratch = Effect.fnUntraced(function* (path: string, scratchDir: string) {
   const configuredBase = resolve(scratchDir);

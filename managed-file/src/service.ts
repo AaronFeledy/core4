@@ -11,7 +11,7 @@
 
 import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
@@ -41,10 +41,11 @@ import {
   ManagedFileService,
 } from "@lando/sdk/services";
 
-import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
+import { isPathWithin, makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
+import { findRealpathAncestor } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
@@ -953,9 +954,9 @@ const resolveContained = async (base: string, relPath: string): Promise<string |
   if (isAbsolute(relPath)) return null;
   const target = resolve(base, relPath);
   const realBase = await realpathOrSelf(base);
-  const real = (await realpathIfExists(target)) ?? (await resolveMissingTargetRealPath(target));
-  const rel = relative(realBase, real);
-  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  const found = await findRealpathAncestor(target, realpathIfExists);
+  const real = found === null ? target : resolve(found.realAncestor, relative(found.ancestor, target));
+  if (!isPathWithin(realBase, real)) return null;
   if (relative(resolve(realBase, relPath), real) !== "") return null;
   return target;
 };
@@ -978,17 +979,6 @@ const isMissingPath = (cause: unknown): boolean =>
   cause !== null &&
   ((cause as { readonly code?: unknown }).code === "ENOENT" ||
     (cause as { readonly code?: unknown }).code === "ENOTDIR");
-
-const resolveMissingTargetRealPath = async (target: string): Promise<string> => {
-  let ancestor = dirname(target);
-  while (true) {
-    const realAncestor = await realpathIfExists(ancestor);
-    if (realAncestor !== null) return resolve(realAncestor, relative(ancestor, target));
-    const parent = dirname(ancestor);
-    if (parent === ancestor) return target;
-    ancestor = parent;
-  }
-};
 
 /** Build the disk-backed backend rooted at `cwd` with the ledger under userData. */
 export const makeDiskBackend = Effect.fnUntraced(function* (options: {
