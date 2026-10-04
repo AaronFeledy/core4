@@ -8,11 +8,11 @@ import type {
 } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { type EventService, PathsService } from "@lando/sdk/services";
-import { PrivateFileAccessLive, type PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import { withStartedGpgAgent } from "../../src/operations/start-gpg-agent.ts";
 import { withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as EventServiceImplementation from "../../src/services/event-service.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { app, plan } from "../subsystems/gpg-agent/fixture.ts";
 
@@ -91,8 +91,8 @@ for (const kind of ["ssh", "gpg"] as const) {
       const fiber = Effect.runFork(
         operation.pipe(
           Effect.provideService(PathsService, makeLandoPaths()),
-          Effect.provide(PrivateFileAccessLive),
-          Effect.provide(EventServiceLive),
+          Effect.provide(PrivateFileAccessService.layer),
+          Effect.provide(EventServiceImplementation.layer),
         ),
       );
       if (outcome === "interrupted") {
