@@ -10,7 +10,7 @@ import {
   type RecipeSourceError,
 } from "@lando/sdk/errors";
 
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import { BUNDLED_RECIPES } from "../bundled";
 import type { GitRecipeCloner } from "../git-source";
 import { loadRecipeTs } from "../ts-loader";
@@ -211,10 +211,7 @@ const readLocalParent = Effect.fnUntraced(function* (
         message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
         source: expanded,
         issues: [
-          validationIssueFromText(
-            "recipe.yml and recipe.ts are mutually exclusive in a recipe directory",
-            `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
-          ),
+          validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
         ],
       }),
     );
@@ -225,9 +222,9 @@ const readLocalParent = Effect.fnUntraced(function* (
         message: `Remote recipe parents cannot execute recipe.ts at ${tsPath}.`,
         source: tsPath,
         issues: [
-          validationIssueFromText(
+          validationIssue(
+            [],
             "remote extends hops load YAML only; recipe.ts is not executed from a remote parent tree",
-            `Remote recipe parents cannot execute recipe.ts at ${tsPath}.`,
           ),
         ],
       }),

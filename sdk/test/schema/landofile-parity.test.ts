@@ -98,21 +98,19 @@ function decoderIssues(decoded: Result.Result<unknown, Schema.SchemaError>) {
 
 test("published JSON Schema and Standard Schema agree with the Landofile decoder", async () => {
   // Given all guide/recipe Landofile data plus explicitly invalid boundary inputs.
-  // The editor draft-07 artifact derives from this same public 2020-12 document;
-  // parity here validates that source rather than performing a lossy dialect round trip.
-  // getJsonSchema is mid-migration to draft 2020-12. Until that lands, the
-  // generated snapshot is the published 2020-12 document. The draft-07 editor
-  // artifact is derived from that document, so this test does not round-trip it.
-  const published = getJsonSchema("LandofileShape");
+  // The published 2020-12 document is getJsonSchema("LandofileShape"). The
+  // generated snapshot must be that same document. The draft-07 editor artifact
+  // is derived from it, so this test does not round-trip the editor dialect.
+  const generated = getJsonSchema("LandofileShape");
   const snapshot = JSON.parse(
     await Bun.file(new URL("../../../dist/schemas/landofile-shape.json", import.meta.url)).text(),
   );
-  const selected = isJsonSchema(published) && published.$schema === DRAFT_2020_12 ? published : snapshot;
-  expect(isJsonSchema(selected)).toBe(true);
-  if (!isJsonSchema(selected)) return;
-  expect(selected.$schema).toBe(DRAFT_2020_12);
+  expect(isJsonSchema(generated)).toBe(true);
+  if (!isJsonSchema(generated)) return;
+  expect(generated.$schema).toBe(DRAFT_2020_12);
+  expect(snapshot).toEqual(generated);
   const jsonSchema = SchemaRepresentation.fromJsonSchemaDocument(
-    JsonSchema.fromSchemaDraft2020_12(selected),
+    JsonSchema.fromSchemaDraft2020_12(generated),
     {
       patterns: "apply",
       onEnter: importableNode,

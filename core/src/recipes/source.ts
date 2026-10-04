@@ -29,7 +29,7 @@ import {
 } from "@lando/sdk/errors";
 import type { RecipeManifest } from "@lando/sdk/schema";
 
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import { BUNDLED_RECIPES } from "./bundled";
 import { flattenRecipe } from "./manifest/flatten";
 import { validateRecipeManifestObject } from "./manifest/service";
@@ -120,12 +120,7 @@ const idMismatchError = (
       `Recipe id "${declaredId}" must match the directory basename "${dirBasename}" ` +
       `(recipe at ${manifestPath}).`,
     source: manifestPath,
-    issues: [
-      validationIssueFromText(
-        `id: "${declaredId}" must equal directory basename "${dirBasename}"`,
-        `Recipe id "${declaredId}" must match the directory basename "${dirBasename}" (recipe at ${manifestPath}).`,
-      ),
-    ],
+    issues: [validationIssue([], `id: "${declaredId}" must equal directory basename "${dirBasename}"`)],
   });
 
 const resolveLocalTs = Effect.fnUntraced(function* (
@@ -189,10 +184,7 @@ const resolveLocal = Effect.fnUntraced(function* (
         message: `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
         source: expanded,
         issues: [
-          validationIssueFromText(
-            "recipe.yml and recipe.ts are mutually exclusive in a recipe directory",
-            `Both recipe.yml and recipe.ts are present in ${expanded}. A recipe ships one or the other, never both.`,
-          ),
+          validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
         ],
       }),
     );

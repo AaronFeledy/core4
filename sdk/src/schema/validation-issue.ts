@@ -71,7 +71,7 @@ export const parseValidationIssuePath = (text: string): ValidationIssuePath | un
 /** A dotted or bracket path becomes that path; anything else is a root issue whose message is `message`. */
 export const validationIssueFromText = (text: string, message: string): ValidationIssue => {
   const path = parseValidationIssuePath(text);
-  return path === undefined ? { path: [], message: text } : { path, message };
+  return path === undefined ? { path: [], message } : { path, message };
 };
 
 /** `services.web.ports[0].mode`. Root is `""`. */

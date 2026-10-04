@@ -466,3 +466,13 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Review notes (deferred/rejected): Standard JSON Schema views still emit open objects. Rejected: `Schema.toStandardJSONSchemaV1` takes no generation options, the parity contract is the published documents plus `~standard.validate` (those reject unknown keys), and the subpath test forbids importing the publication pipeline. Remote list/add/remove still wrap a schema failure as `LandofileParseError`. Rejected: their public app-handle channels are only not-found and parse errors; widening them is a signature change the include-error criterion does not name.
 - Verification: typecheck passed; guide lint, coverage, scenario codegen, public transcripts, and guide drift against `origin/main` passed. Spot checks passed for recipe manifests, include verify, service config sources, parity, and issue rendering. `gate:pr` rerun after the fix.
 ---
+
+## 2026-10-03 19:17 CDT - US-668 Drift Audit
+- Trigger: 2 cycles, +2465/−494 across 126 files, 5 commits
+- Weakened proof: the Landofile parity test accepted the snapshot whenever the publisher was not draft 2020-12. It now requires the publisher and the published snapshot to be the same 2020-12 document.
+- Scar: a non-path validation issue dropped the message it was given, and several root issues depended on that drop. Root issues state the message directly, and a non-path keeps the message argument.
+- Re-checked deferrals: remote list/add stays a parse error because that channel is only not-found and parse, and the include criterion does not name it. Standard JSON Schema views stay open because that converter takes no excess-property option; parity is the published document plus Standard Schema validate. The bug-report line formatter stays local so the cold path does not import the schema barrel. The two service-key allowlists still match.
+- Fixed: non-path issues keep their message; parity no longer has a dialect fallback.
+- Split/excise: none.
+- Verification: typecheck and lint pass. Spot checks pass (108 tests: parity, issue helpers, recipe source and manifest, issue rendering, home planner).
+---

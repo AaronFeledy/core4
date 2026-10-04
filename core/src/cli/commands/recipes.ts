@@ -22,7 +22,7 @@ import {
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
-import { validationIssueFromText } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import { getRecipeCatalog } from "../../recipes/catalog";
 import { renderRecipeCatalog } from "../../recipes/catalog-render";
 import { parseRecipe } from "../../recipes/manifest/service";
@@ -210,10 +210,7 @@ const ensureSingleRecipeManifestForm = (
               message: `Both recipe.yml and recipe.ts are present in ${recipeRoot}. A recipe ships one or the other, never both.`,
               source: recipeRoot,
               issues: [
-                validationIssueFromText(
-                  "recipe.yml and recipe.ts are mutually exclusive in a recipe directory",
-                  `Both recipe.yml and recipe.ts are present in ${recipeRoot}. A recipe ships one or the other, never both.`,
-                ),
+                validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
               ],
             }),
           )
@@ -235,10 +232,7 @@ const ensureRecipeIdMatchesDirectory = (
           message: `Recipe id "${manifest.id}" must match the directory basename "${dirBasename}" (recipe at ${manifestPath}).`,
           source: manifestPath,
           issues: [
-            validationIssueFromText(
-              `id: "${manifest.id}" must equal directory basename "${dirBasename}"`,
-              `Recipe id "${manifest.id}" must match the directory basename "${dirBasename}" (recipe at ${manifestPath}).`,
-            ),
+            validationIssue([], `id: "${manifest.id}" must equal directory basename "${dirBasename}"`),
           ],
         }),
       );

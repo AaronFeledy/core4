@@ -5,6 +5,7 @@ import {
   LandofileShape,
   formatValidationIssueLine,
   suggestionForUnknownKey,
+  validationIssueFromText,
   validationIssuesFromSchemaIssue,
 } from "@lando/sdk/schema";
 
@@ -39,5 +40,16 @@ describe("validation issues", () => {
     const image = ours.find((issue) => issue.path.at(-1) === "imgae");
     expect(image?.suggestion).toBe('Did you mean "image"?');
     expect(formatValidationIssueLine(image ?? { path: [], message: "" })).toContain("services.web.imgae:");
+  });
+
+  test("uses the message when the text is not a document path", () => {
+    expect(validationIssueFromText("not a path", "the message")).toEqual({
+      path: [],
+      message: "the message",
+    });
+    expect(validationIssueFromText("services.web.port", "Expected a number.")).toEqual({
+      path: ["services", "web", "port"],
+      message: "Expected a number.",
+    });
   });
 });
