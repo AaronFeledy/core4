@@ -1,16 +1,8 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import {
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
-import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
@@ -24,16 +16,7 @@ export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[numb
 export const PYTHON_FEATURE_ID = "service-lando.python" as const;
 export const PYTHON_FEATURE_PRIORITY = 600;
 
-const APP_MOUNT_TARGET = PortablePath.make("/app");
-const DEFAULT_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
-
-interface FrameworkPreset {
-  readonly port: number;
-  readonly defaultCommand: ReadonlyArray<string> | null;
-  readonly env: ReadonlyMap<string, string>;
-}
-
-const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, FrameworkPreset> = {
+const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, LanguageFrameworkPreset> = {
   django: {
     port: 8000,
     defaultCommand: ["uvicorn", "--host", "0.0.0.0", "--port", "8000"],
@@ -63,138 +46,29 @@ const PythonFeatureConfigSchema = Schema.Struct({
   defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type PythonFeatureConfig = typeof PythonFeatureConfigSchema.Type;
-
-const REMEDIATION_VERSION = (requested: string): string =>
-  `Set type to one of: ${SUPPORTED_PYTHON_VERSIONS.map((v) => `python:${v}`).join(", ")} (got python:${requested}).`;
-
-const REMEDIATION_FRAMEWORK = (requested: string): string =>
-  `Set framework to one of: ${SUPPORTED_PYTHON_FRAMEWORKS.join(", ")} (got ${requested}).`;
-
-const frameworkDefaults = (framework: SupportedPythonFramework): Record<string, string> => {
-  const env: Record<string, string> = {
-    PYTHONUNBUFFERED: "1",
-    PYTHONDONTWRITEBYTECODE: "1",
-  };
-  for (const [key, value] of FRAMEWORK_PRESETS[framework].env) {
-    env[key] = value;
-  }
-  return env;
-};
-
-const validateFramework = (raw: string | undefined): SupportedPythonFramework => {
-  if (raw === undefined) return "none";
-  if ((SUPPORTED_PYTHON_FRAMEWORKS as ReadonlyArray<string>).includes(raw)) {
-    return raw as SupportedPythonFramework;
-  }
-  throw new Error(`Unsupported Python framework "${raw}". ${REMEDIATION_FRAMEWORK(raw)}`);
-};
-
-const validateVersion = (
-  declaredType: string | undefined,
-  fallback: SupportedPythonVersion,
-): SupportedPythonVersion => {
-  if (declaredType === undefined) return fallback;
-  if (!declaredType.startsWith("python:")) return fallback;
-  const version = declaredType.slice("python:".length);
-  if ((SUPPORTED_PYTHON_VERSIONS as ReadonlyArray<string>).includes(version)) {
-    return version as SupportedPythonVersion;
-  }
-  throw new Error(`Unsupported Python version "${version}". ${REMEDIATION_VERSION(version)}`);
-};
-
 const configFor = (ctx: ServiceFeatureContext): PythonFeatureConfig => ctx.config as PythonFeatureConfig;
 
-const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
-  const service = ctx.normalizedConfig;
-  const { framework, version, port, defaultCommand } = configFor(ctx);
-
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? `python:${version}-slim` });
-  for (const [key, value] of Object.entries(frameworkDefaults(framework))) {
-    ctx.addEnv(key, value);
-  }
-  ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
-  ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  applyAuthoredProcessFields(ctx, ["user"]);
-  const appMount = {
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    excludes: ["__pycache__"],
-    includes: [],
-    realization: "passthrough",
-  };
-  ctx.setAppMount(appMount);
-  const mount = {
-    type: "bind" as const,
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    realization: "passthrough",
-  };
-  ctx.addMount(mount);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
-
-  applyAuthoredProcessFields(ctx, ["entrypoint"]);
-
-  ctx.addExtension("lando-service-python", {
-    framework,
-    version,
-    defaultCommand: defaultCommand ?? null,
-    port,
-  });
-};
-
-export const pythonServiceFeature: ServiceFeatureDefinition = {
-  id: PYTHON_FEATURE_ID,
-  schema: PythonFeatureConfigSchema as Schema.Codec<unknown>,
-  priority: PYTHON_FEATURE_PRIORITY,
-  apply: serviceFeatureApply(PYTHON_FEATURE_ID, "service-lando.python failed to apply", applyPythonFeature),
-};
-
-const normalizedService = (
-  service: ServiceConfig,
-  resolvedVersion: SupportedPythonVersion,
-): ServiceConfig => ({
-  ...service,
-  type: `python:${resolvedVersion}`,
-});
-
-export const makePythonServiceType = (version: SupportedPythonVersion): ServiceType => ({
-  id: `python:${version}`,
-  name: `python:${version}`,
-  base: "lando",
+const runtime = makeLanguageRuntime({
+  language: "python",
+  displayName: "Python",
   versions: SUPPORTED_PYTHON_VERSIONS,
   artifacts: PYTHON_ARTIFACTS,
-  identity: rootIdentity(),
-  schema: Schema.Unknown,
-  resolve: (input) =>
-    serviceTypeResolve(`python:${version}`, `Failed to resolve python:${version}`, () => {
-      const resolvedVersion = validateVersion(input.service.type, version);
-      const framework = validateFramework(input.service.framework);
-      const preset = FRAMEWORK_PRESETS[framework];
-      const endpointPort = input.service.port ?? preset.port;
-
-      return {
-        base: "lando" as const,
-        normalizedConfig: normalizedService(input.service, resolvedVersion),
-        features: [
-          {
-            id: PYTHON_FEATURE_ID,
-            config: {
-              framework,
-              version: resolvedVersion,
-              port: endpointPort,
-              defaultCommand: preset.defaultCommand,
-            },
-          },
-          {
-            id: "lando.env",
-            config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
-          },
-        ],
-      };
-    }),
+  artifactFor: (version) => `python:${version}-slim`,
+  frameworks: SUPPORTED_PYTHON_FRAMEWORKS,
+  presets: FRAMEWORK_PRESETS,
+  baseEnv: { PYTHONUNBUFFERED: "1", PYTHONDONTWRITEBYTECODE: "1" },
+  mountExcludes: ["__pycache__"],
+  mountRealization: "passthrough",
+  includeWebrootInFeatureConfig: false,
+  extensionKey: "lando-service-python",
+  featureId: PYTHON_FEATURE_ID,
+  priority: PYTHON_FEATURE_PRIORITY,
+  featureSchema: PythonFeatureConfigSchema,
+  configFor,
+  applyFallback: "service-lando.python failed to apply",
+  resolveFallback: (version) => `Failed to resolve python:${version}`,
 });
 
+export const pythonServiceFeature: ServiceFeatureDefinition = runtime.serviceFeature;
+export const makePythonServiceType = runtime.makeServiceType;
 export const python312ServiceType: ServiceType = makePythonServiceType("3.12");
