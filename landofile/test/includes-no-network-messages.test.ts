@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Effect } from "effect";
 import { updateLandofileIncludes } from "../src/includes.ts";
 import { makeTestLandofileStateStore } from "./support.ts";
@@ -32,6 +32,40 @@ describe("offline include diagnostics", () => {
       cachePath: ["npm", "-acme-fragments-1.2.3", "package", "postgres.yml"],
     },
   ]) {
+    test(`${fixture.source} reads a warm cache without acquisition ports`, async () => {
+      // Given: a matching lock and provider-specific published fragment.
+      const content = "services:\n  db:\n    type: postgres\n";
+      const checksum = new Bun.CryptoHasher("sha256").update(content).digest("hex");
+      const cacheRoot = join(root, "cache");
+      const filePath = join(cacheRoot, "includes", ...fixture.cachePath);
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, content);
+      await writeFile(
+        join(root, ".lando.lock.yml"),
+        `includes:\n  - source: ${fixture.sourceId}\n    resolved: ${fixture.resolved}\n    checksum: ${checksum}\n`,
+      );
+      // When: an offline refresh resolves only from disk.
+      const report = await Effect.runPromise(
+        updateLandofileIncludes({
+          landofile: { includes: [{ source: fixture.source, path: "postgres.yml" }] },
+          appRoot: root,
+          cacheRoot,
+          stateStore: makeTestLandofileStateStore(),
+          noNetwork: true,
+        }),
+      );
+      // Then: the lock identity, version, and content digest are unchanged.
+      expect(report.entries).toEqual([
+        {
+          source: fixture.sourceId,
+          resolved: fixture.resolved,
+          checksum,
+          status: "unchanged",
+        },
+      ]);
+      expect(report.wrote).toBe(false);
+    });
+
     test(`${fixture.source} reports an absent lock entry`, async () => {
       // Given: no lockfile and no acquisition ports.
       const options = {
