@@ -15,6 +15,19 @@ export const renderGlobalServiceRow = (service: GlobalStartedService): string =>
   serviceStateRow(service.name, service.state, service.endpoints);
 
 type GlobalServiceNames = Readonly<Record<string, { readonly name: string }>>;
+export const withGlobalLifecycleEvents = Effect.fnUntraced(function* <A, E, R, PreE, PreR, PostE, PostR>(
+  events: {
+    readonly pre: () => Effect.Effect<unknown, PreE, PreR>;
+    readonly post: (result: A) => Effect.Effect<unknown, PostE, PostR>;
+  },
+  body: Effect.Effect<A, E, R>,
+) {
+  yield* events.pre();
+  const result = yield* body;
+  yield* events.post(result);
+  return result;
+});
+
 type GlobalSelectionCommand = "meta:global:start" | "meta:global:info" | "meta:global:status";
 
 export const availableGlobalServiceList = (services: GlobalServiceNames): string =>

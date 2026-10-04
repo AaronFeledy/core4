@@ -7,12 +7,60 @@ import {
   renderGlobalServiceRow,
   selectGlobalServices,
   unknownGlobalServiceError,
+  withGlobalLifecycleEvents,
 } from "../../../src/cli/commands/meta/global-common";
 
 test("marks the app global when projecting a plan identity", () => {
   const plan = { id: AppId.make("host"), root: AbsolutePath.make("/tmp/global") };
   const result = globalAppRef(plan);
   expect(result).toEqual({ kind: "global", id: plan.id, root: plan.root });
+});
+
+test("brackets successful work in pre/body/post order and preserves its result", async () => {
+  const order: string[] = [];
+  const result = await Effect.runPromise(
+    withGlobalLifecycleEvents(
+      {
+        pre: () =>
+          Effect.sync(() => {
+            order.push("pre");
+          }),
+        post: (value) =>
+          Effect.sync(() => {
+            order.push(`post:${value}`);
+          }),
+      },
+      Effect.sync(() => {
+        order.push("body");
+        return 42;
+      }),
+    ),
+  );
+  expect(order).toEqual(["pre", "body", "post:42"]);
+  expect(result).toBe(42);
+});
+
+test("suppresses the post event when the body fails", async () => {
+  const order: string[] = [];
+  const result = await Effect.runPromise(
+    Effect.flip(
+      withGlobalLifecycleEvents(
+        {
+          pre: () =>
+            Effect.sync(() => {
+              order.push("pre");
+            }),
+          post: () =>
+            Effect.sync(() => {
+              order.push("post");
+            }),
+        },
+        Effect.fail("failure"),
+      ),
+    ),
+  );
+  expect(order).toEqual(["pre"]);
+  expect(result).toBe("failure");
 });
 
 const services = {

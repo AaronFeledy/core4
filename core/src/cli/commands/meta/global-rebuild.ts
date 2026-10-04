@@ -26,7 +26,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { joinServiceRows } from "../service-summary";
-import { globalAppRef, renderGlobalServiceRow } from "./global-common";
+import { globalAppRef, renderGlobalServiceRow, withGlobalLifecycleEvents } from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
@@ -100,52 +100,62 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
   const events = yield* EventService;
   const builder = yield* BuildOrchestrator;
 
-  yield* events.publish(
-    PreGlobalRebuildEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      plan: loaded.plan,
-      timestamp: now(),
+  const { builtPlan, servicesRebuilt } = yield* withGlobalLifecycleEvents(
+    {
+      pre: () =>
+        events.publish(
+          PreGlobalRebuildEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            plan: loaded.plan,
+            timestamp: now(),
+          }),
+        ),
+      post: ({ builtPlan, servicesRebuilt }) =>
+        events.publish(
+          PostGlobalRebuildEvent.make({
+            scope: "global",
+            app: globalAppRef(builtPlan),
+            plan: builtPlan,
+            services: servicesRebuilt.map((service) => service.name),
+            timestamp: now(),
+          }),
+        ),
+    },
+    Effect.gen(function* () {
+      yield* provider.destroy(
+        { app: loaded.plan.id, plan: loaded.plan },
+        { volumes: false, removeState: false },
+      );
+
+      const builtPlan = yield* builder.build(loaded.plan);
+      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+      yield* Effect.scoped(
+        provider.apply(builtPlan, {
+          reconcile: true,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          serviceEnvironment,
+        }),
+      );
+
+      const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
+        provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
+          Effect.map((runtime) => ({
+            name: String(service.name),
+            state: runtime.state ?? runtime.status,
+            endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+          })),
+        ),
+      );
+
+      // Re-observe the router before the post event: a rebuild that leaves the
+      // router's startup observation broken has not finished rebuilding.
+      const router = yield* RouterService;
+      yield* router.revalidateStartup;
+
+      return { builtPlan, servicesRebuilt };
     }),
   );
-
-  yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes: false, removeState: false });
-
-  const builtPlan = yield* builder.build(loaded.plan);
-  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-  yield* Effect.scoped(
-    provider.apply(builtPlan, {
-      reconcile: true,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      serviceEnvironment,
-    }),
-  );
-
-  const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
-    provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-      Effect.map((runtime) => ({
-        name: String(service.name),
-        state: runtime.state ?? runtime.status,
-        endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-      })),
-    ),
-  );
-
-  // Re-observe the router before the post event: a rebuild that leaves the
-  // router's startup observation broken has not finished rebuilding.
-  const router = yield* RouterService;
-  yield* router.revalidateStartup;
-
-  yield* events.publish(
-    PostGlobalRebuildEvent.make({
-      scope: "global",
-      app: globalAppRef(builtPlan),
-      plan: builtPlan,
-      services: servicesRebuilt.map((service) => service.name),
-      timestamp: now(),
-    }),
-  );
-
   return { app: builtPlan.name, materialized: true, servicesRebuilt };
 });
 

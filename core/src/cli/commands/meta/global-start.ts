@@ -37,7 +37,12 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { joinServiceRows } from "../service-summary";
-import { globalAppRef, renderGlobalServiceRow, selectGlobalServices } from "./global-common";
+import {
+  globalAppRef,
+  renderGlobalServiceRow,
+  selectGlobalServices,
+  withGlobalLifecycleEvents,
+} from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
@@ -144,54 +149,60 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
           ),
         };
 
-  yield* events.publish(
-    PreGlobalStartEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      plan: loaded.plan,
-      triggeredBy: "meta:global:start",
-      ensuringServices: [],
-      cached: false,
-      timestamp: now(),
+  return yield* withGlobalLifecycleEvents(
+    {
+      pre: () =>
+        events.publish(
+          PreGlobalStartEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            plan: loaded.plan,
+            triggeredBy: "meta:global:start",
+            ensuringServices: [],
+            cached: false,
+            timestamp: now(),
+          }),
+        ),
+      post: () =>
+        events.publish(
+          PostGlobalStartEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            plan: loaded.plan,
+            cached: false,
+            timestamp: now(),
+          }),
+        ),
+    },
+    Effect.gen(function* () {
+      const builds = yield* BuildOrchestrator;
+      const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
+
+      yield* Effect.scoped(
+        provider.apply(builtPlan, {
+          reconcile: false,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          serviceEnvironment,
+        }),
+      );
+
+      const router = yield* RouterService;
+      const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
+      const servicesStarted = yield* Effect.forEach(services, (service) =>
+        provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
+          Effect.map((runtime) => ({
+            name: String(service.name),
+            state: runtime.state ?? runtime.status,
+            endpoints: [
+              ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+              ...(routeUrls.get(service.name) ?? []),
+            ],
+          })),
+        ),
+      );
+
+      return { app: loaded.plan.name, servicesStarted };
     }),
   );
-
-  const builds = yield* BuildOrchestrator;
-  const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
-  const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-
-  yield* Effect.scoped(
-    provider.apply(builtPlan, {
-      reconcile: false,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      serviceEnvironment,
-    }),
-  );
-
-  const router = yield* RouterService;
-  const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
-  const servicesStarted = yield* Effect.forEach(services, (service) =>
-    provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
-      Effect.map((runtime) => ({
-        name: String(service.name),
-        state: runtime.state ?? runtime.status,
-        endpoints: [
-          ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-          ...(routeUrls.get(service.name) ?? []),
-        ],
-      })),
-    ),
-  );
-
-  yield* events.publish(
-    PostGlobalStartEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      plan: loaded.plan,
-      cached: false,
-      timestamp: now(),
-    }),
-  );
-
-  return { app: loaded.plan.name, servicesStarted };
 });

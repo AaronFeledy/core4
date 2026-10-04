@@ -12,7 +12,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { globalAppRef } from "./global-common";
+import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
@@ -62,26 +62,34 @@ export const globalStop = Effect.fn("GlobalStop.stop")(function* (): Effect.fn.R
     .reverse()
     .map((service) => String(service.name));
 
-  yield* events.publish(
-    PreGlobalStopEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      triggeredBy: "meta:global:stop",
-      timestamp: now(),
+  return yield* withGlobalLifecycleEvents(
+    {
+      pre: () =>
+        events.publish(
+          PreGlobalStopEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            triggeredBy: "meta:global:stop",
+            timestamp: now(),
+          }),
+        ),
+      post: () =>
+        events.publish(
+          PostGlobalStopEvent.make({
+            scope: "global",
+            app: globalAppRef(loaded.plan),
+            timestamp: now(),
+          }),
+        ),
+    },
+    Effect.gen(function* () {
+      yield* provider.destroy(
+        { app: loaded.plan.id, plan: loaded.plan },
+        { volumes: false, removeState: false },
+      );
+      const router = yield* RouterService;
+      yield* router.removeRoutes(loaded.plan.id);
+      return { app: loaded.plan.name, materialized: true, servicesStopped };
     }),
   );
-
-  yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes: false, removeState: false });
-  const router = yield* RouterService;
-  yield* router.removeRoutes(loaded.plan.id);
-
-  yield* events.publish(
-    PostGlobalStopEvent.make({
-      scope: "global",
-      app: globalAppRef(loaded.plan),
-      timestamp: now(),
-    }),
-  );
-
-  return { app: loaded.plan.name, materialized: true, servicesStopped };
 });
