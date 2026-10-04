@@ -20,7 +20,7 @@ const assertType = <T extends true>(value: T): T => value;
 type StreamValue<T> = T extends Stream.Stream<infer A, unknown, unknown> ? A : never;
 type EffectValue<T> = T extends Effect.Effect<infer A, unknown, unknown> ? A : never;
 
-type Service = Context.Tag.Service<typeof EventService>;
+type Service = Context.Service.Shape<typeof EventService>;
 declare const service: Service;
 
 type SubscribeFor<Name extends string> = StreamValue<ReturnType<typeof service.subscribe<Name>>>;
@@ -81,7 +81,7 @@ describe("EventService typed narrowing", () => {
       invocationId: "01jbtestouterinvocation0001",
       exitCode: 0,
       durationMs: 5,
-      timestamp: DateTime.unsafeMake("2026-07-13T16:00:00.000Z"),
+      timestamp: DateTime.makeUnsafe("2026-07-13T16:00:00.000Z"),
     };
 
     // When

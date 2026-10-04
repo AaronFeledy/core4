@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
@@ -377,7 +377,7 @@ const writeAppCommandCacheTask = async (
     toolingFingerprint,
     entriesFingerprint,
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
-    generatedAtMs: (options.now ?? Date.now)(),
+    generatedAtMs: options.now === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : options.now(),
     entries: options.entries,
   };
 
@@ -389,7 +389,7 @@ const writeAppCommandCacheTask = async (
 export const writeAppCommandCache = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, never> =>
-  writeAppCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writeAppCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export interface WritePluginCommandCacheOptions {
   readonly manifests?: ReadonlyArray<PluginManifest>;
@@ -438,7 +438,7 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
     manifestFingerprint,
     pluginListSha,
     commandsByPlugin,
-    generatedAtMs: (options.now ?? Date.now)(),
+    generatedAtMs: options.now === undefined ? DateTime.toEpochMillis(DateTime.nowUnsafe()) : options.now(),
     entries: compilePluginCommands(manifests),
   };
 
@@ -648,7 +648,7 @@ export const writePluginCommandCacheStrict = (
 export const writePluginCommandCache = (
   options: WritePluginCommandCacheOptions = {},
 ): Effect.Effect<string | undefined, never> =>
-  writePluginCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writePluginCommandCacheStrict(options).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export const invalidatePluginCommandCache = (
   options: { readonly cacheRoot?: string } = {},

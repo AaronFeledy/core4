@@ -1,12 +1,12 @@
 import { Schema } from "effect";
 
-export const ComposeServiceFieldKey = Schema.Literal(
+export const ComposeServiceFieldKey = Schema.Literals([
   "networks",
   "configs",
   "secrets",
   "profiles",
   "labels",
-).annotations({
+]).annotate({
   identifier: "ComposeServiceFieldKey",
   title: "Compose Service Field Key",
   description:
@@ -15,11 +15,11 @@ export const ComposeServiceFieldKey = Schema.Literal(
 export type ComposeServiceFieldKey = typeof ComposeServiceFieldKey.Type;
 
 export const ComposeServiceFieldCapabilities = Schema.Struct({
-  supported: Schema.Array(ComposeServiceFieldKey).annotations({
+  supported: Schema.Array(ComposeServiceFieldKey).annotate({
     title: "Supported Compose Service Fields",
     description: "Exact preserved Compose service-level fields realized by a native-tier provider.",
   }),
-}).annotations({
+}).annotate({
   identifier: "ComposeServiceFieldCapabilities",
   title: "Compose Service Field Capabilities",
   description:

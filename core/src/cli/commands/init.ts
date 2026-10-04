@@ -24,7 +24,7 @@ import {
   previewRecipeLandofile,
   runRecipeInitPipeline,
 } from "../../recipes/init-pipeline";
-import { RecipeManifestServiceLive } from "../../recipes/manifest/service";
+import { layer as RecipeManifestServiceLayer } from "../../recipes/manifest/service";
 import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime";
 import type { ChoicesCommandRunner, PromptAnswers } from "../../recipes/prompts/index";
@@ -152,10 +152,10 @@ const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
     Effect.map(
       Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
       (manifest) => ({ resolved, manifest }),
-    ).pipe(Effect.provide(RecipeManifestServiceLive)),
+    ).pipe(Effect.provide(RecipeManifestServiceLayer)),
   );
   if (Exit.isSuccess(exit)) return exit.value;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag === "Some") throw failure.value;
   throw new Error(Cause.pretty(exit.cause));
 };
@@ -163,7 +163,7 @@ const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
 const loadRecipe = async (recipeRef: string, cwd: string) => {
   const exit = await Effect.runPromiseExit(resolveRecipeRef(recipeRef, { cwd }));
   if (Exit.isSuccess(exit)) return parseResolvedRecipe(exit.value);
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag === "Some") throw failure.value;
   throw new Error(Cause.pretty(exit.cause));
 };

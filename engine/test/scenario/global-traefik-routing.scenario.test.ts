@@ -15,9 +15,9 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
   name: "@lando/proxy-traefik",
@@ -77,8 +77,8 @@ const planApp = (
   const landofile = Schema.decodeUnknownSync(LandofileShape)(landofileInput);
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 };
@@ -236,7 +236,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
   test("rejects routed apps for a provider without sharedCrossAppNetwork", async () => {
     const result = planUserApp(baseCapabilities({ sharedCrossAppNetwork: false }));
 
-    await expect(result).rejects.toHaveProperty("name", "(FiberFailure) CapabilityError");
+    await expect(result).rejects.toHaveProperty("name", "CapabilityError");
     await expect(result).rejects.toHaveProperty(
       "message",
       "Routes require provider capability sharedCrossAppNetwork.",

@@ -40,29 +40,34 @@ export type DataMoverError =
   | VolumeNotFoundError
   | ArchiveFormatError;
 
-export interface DataMoverShape {
-  readonly volumeInitialization?: (
-    identity: VolumeIdentity,
-  ) => Effect.Effect<VolumeInitialization, StateStoreError>;
-  readonly transfer: (
-    spec: DataTransferSpec,
-  ) => Effect.Effect<DataTransferResult, DataMoverError, Scope.Scope>;
-  readonly transferStream: (
-    spec: DataTransferSpec,
-  ) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
-  readonly snapshot: (
-    store: VolumeRef,
-    opts?: SnapshotOptions,
-  ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
-  readonly restore: (
-    handle: SnapshotHandle | SnapshotId,
-    store: VolumeRef,
-  ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
-  readonly listSnapshots: (
-    filter: SnapshotFilter,
-  ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
-  readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
-  readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
-}
+export class DataMover extends Context.Service<
+  DataMover,
+  {
+    readonly volumeInitialization?: (
+      identity: VolumeIdentity,
+    ) => Effect.Effect<VolumeInitialization, StateStoreError>;
+    readonly transfer: (
+      spec: DataTransferSpec,
+    ) => Effect.Effect<DataTransferResult, DataMoverError, Scope.Scope>;
+    readonly transferStream: (
+      spec: DataTransferSpec,
+    ) => Stream.Stream<DataTransferProgress, DataMoverError, Scope.Scope>;
+    readonly snapshot: (
+      store: VolumeRef,
+      opts?: SnapshotOptions,
+    ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
+    readonly restore: (
+      handle: SnapshotHandle | SnapshotId,
+      store: VolumeRef,
+    ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
+    readonly listSnapshots: (
+      filter: SnapshotFilter,
+    ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+    readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
+    readonly pruneSnapshots: (
+      policy: PrunePolicy,
+    ) => Effect.Effect<ReadonlyArray<SnapshotId>, DataMoverError>;
+  }
+>()("@lando/core/DataMover") {}
 
-export class DataMover extends Context.Tag("@lando/core/DataMover")<DataMover, DataMoverShape>() {}
+export type DataMoverShape = DataMover["Service"];

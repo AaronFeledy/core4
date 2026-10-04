@@ -25,38 +25,38 @@ const PULL_FAILURE_SIGNATURES = [
 ] as const;
 const MAX_CAUSE_DEPTH = 8;
 
-const HttpStatusSchema = Schema.Int.pipe(Schema.between(100, 599));
+const HttpStatusSchema = Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 100, maximum: 599 })));
 const FailureCauseEvidenceSchema = Schema.Struct({
-  _tag: Schema.optional(Schema.Literal(...FAILURE_TAGS)),
-  name: Schema.optional(Schema.Literal(...FAILURE_TAGS)),
-  providerId: Schema.optional(Schema.Literal(...PROVIDER_IDS)),
-  operation: Schema.optional(Schema.Literal(...OPERATIONS)),
-  kind: Schema.optional(Schema.Literal(...TRANSPORT_KINDS)),
-  systemCode: Schema.optional(Schema.Literal(...TRANSPORT_SYSTEM_CODES)),
-  details: Schema.optional(
+  _tag: Schema.optionalKey(Schema.Literals([...FAILURE_TAGS])),
+  name: Schema.optionalKey(Schema.Literals([...FAILURE_TAGS])),
+  providerId: Schema.optionalKey(Schema.Literals([...PROVIDER_IDS])),
+  operation: Schema.optionalKey(Schema.Literals([...OPERATIONS])),
+  kind: Schema.optionalKey(Schema.Literals([...TRANSPORT_KINDS])),
+  systemCode: Schema.optionalKey(Schema.Literals([...TRANSPORT_SYSTEM_CODES])),
+  details: Schema.optionalKey(
     Schema.Struct({
-      status: Schema.optional(HttpStatusSchema),
-      method: Schema.optional(Schema.Literal(...HTTP_METHODS)),
-      failureKind: Schema.optional(Schema.Literal(...PULL_FAILURE_KINDS)),
-      source: Schema.optional(Schema.Literal(...PULL_FAILURE_SOURCES)),
-      signature: Schema.optional(Schema.Literal(...PULL_FAILURE_SIGNATURES)),
+      status: Schema.optionalKey(HttpStatusSchema),
+      method: Schema.optionalKey(Schema.Literals([...HTTP_METHODS])),
+      failureKind: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_KINDS])),
+      source: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_SOURCES])),
+      signature: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_SIGNATURES])),
     }),
   ),
 });
 
 export const ImagePullFailureDiagnosticSchema = Schema.Struct({
   domain: Schema.Literal("image-pull"),
-  failureKind: Schema.Literal(...PULL_FAILURE_KINDS),
-  httpStatus: Schema.optional(HttpStatusSchema),
-  transportKind: Schema.optional(Schema.Literal(...TRANSPORT_KINDS)),
-  systemCode: Schema.optional(Schema.Literal(...TRANSPORT_SYSTEM_CODES)),
-  source: Schema.optional(Schema.Literal(...PULL_FAILURE_SOURCES)),
-  signature: Schema.optional(Schema.Literal(...PULL_FAILURE_SIGNATURES)),
+  failureKind: Schema.Literals([...PULL_FAILURE_KINDS]),
+  httpStatus: Schema.optionalKey(HttpStatusSchema),
+  transportKind: Schema.optionalKey(Schema.Literals([...TRANSPORT_KINDS])),
+  systemCode: Schema.optionalKey(Schema.Literals([...TRANSPORT_SYSTEM_CODES])),
+  source: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_SOURCES])),
+  signature: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_SIGNATURES])),
 });
 
 export const FailureEvidenceSchema = Schema.Struct({
-  causes: Schema.Array(FailureCauseEvidenceSchema).pipe(Schema.maxItems(MAX_CAUSE_DEPTH)),
-  imagePull: Schema.optional(ImagePullFailureDiagnosticSchema),
+  causes: Schema.Array(FailureCauseEvidenceSchema).pipe(Schema.check(Schema.isMaxLength(MAX_CAUSE_DEPTH))),
+  imagePull: Schema.optionalKey(ImagePullFailureDiagnosticSchema),
 });
 
 export type FailureEvidence = typeof FailureEvidenceSchema.Type;

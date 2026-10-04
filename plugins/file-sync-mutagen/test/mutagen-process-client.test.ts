@@ -252,7 +252,7 @@ describe("Mutagen process client", () => {
     const exit = await Effect.runPromiseExit(client.create({ name, spec }));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value.message).toContain(id);
@@ -313,7 +313,7 @@ describe("Mutagen process client", () => {
       const ownership = await Effect.runPromiseExit(hasDurableMutagenOwnership(stateStore));
       expect(Exit.isFailure(ownership)).toBe(true);
       if (Exit.isFailure(ownership)) {
-        const failure = Cause.failureOption(ownership.cause);
+        const failure = Cause.findErrorOption(ownership.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value.message).toContain("unknown version");
       }

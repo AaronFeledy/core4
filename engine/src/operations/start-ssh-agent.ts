@@ -62,131 +62,129 @@ export const validateAgentSocketCapability = (capabilities: Capabilities, intent
       )
     : Effect.succeed(capabilities.agentSocket.delivery);
 
-export const resolveSshAgentUpstream = (
+export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
   input: SessionOptions & {
     readonly appId: AppId;
     readonly provider?: ProviderId;
     readonly intent: SshAgentIntent;
   },
-): Effect.Effect<
+): Effect.fn.Return<
   AgentRelayUpstream | { readonly _tag: "volume"; readonly volume: string },
   SshAgentUnavailableError
-> =>
-  Effect.gen(function* () {
-    const unavailable = () =>
-      new SshAgentUnavailableError({
-        message: "The selected SSH agent is unavailable.",
-        mode: "sidecar",
-        reason: "sidecar-not-running",
-        remediation: "Run `lando setup` to install and start the SSH agent sidecar, then restart this app.",
+> {
+  const unavailable = () =>
+    new SshAgentUnavailableError({
+      message: "The selected SSH agent is unavailable.",
+      mode: "sidecar",
+      reason: "sidecar-not-running",
+      remediation: "Run `lando setup` to install and start the SSH agent sidecar, then restart this app.",
+    });
+  switch (input.intent.mode) {
+    case "sidecar": {
+      const ssh = yield* Effect.serviceOption(SshService);
+      if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
+      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
+      if (input.provider === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
+        if (!(yield* runtimeSshAgentReady)) return yield* Effect.fail(unavailable());
+        return { _tag: "volume" as const, volume: socket.runtimeVolume };
+      }
+      const upstream: AgentRelayUpstream = { _tag: "unix", path: socket.socketPath };
+      yield* Effect.tryPromise({
+        try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
+        catch: unavailable,
       });
-    switch (input.intent.mode) {
-      case "sidecar": {
-        const ssh = yield* Effect.serviceOption(SshService);
-        if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
-        const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(Effect.mapError(unavailable));
-        if (input.provider === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
-          if (!(yield* runtimeSshAgentReady)) return yield* Effect.fail(unavailable());
-          return { _tag: "volume" as const, volume: socket.runtimeVolume };
-        }
-        const upstream: AgentRelayUpstream = { _tag: "unix", path: socket.socketPath };
-        yield* Effect.tryPromise({
-          try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
-          catch: unavailable,
-        });
-        return upstream;
-      }
-      case "host": {
-        const discovered = yield* discoverHostSshAgent({
-          platform: input.platform ?? process.platform,
-          env: input.env ?? process.env,
-          home: input.home ?? homedir(),
-          ...(input.intent.socket === undefined ? {} : { explicitSocket: input.intent.socket }),
-          ...(input.exists === undefined ? {} : { exists: input.exists }),
-          ...(input.runGpgconf === undefined ? {} : { runGpgconf: input.runGpgconf }),
-          ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
-          ...(input.probe === undefined ? {} : { probe: input.probe }),
-          ...(input.gpgSocket === undefined ? {} : { gpgSocket: input.gpgSocket }),
-          ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
-          gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
-        });
-        return discovered.upstream;
-      }
-      default:
-        return input.intent.mode satisfies never;
+      return upstream;
     }
-  });
+    case "host": {
+      const discovered = yield* discoverHostSshAgent({
+        platform: input.platform ?? process.platform,
+        env: input.env ?? process.env,
+        home: input.home ?? homedir(),
+        ...(input.intent.socket === undefined ? {} : { explicitSocket: input.intent.socket }),
+        ...(input.exists === undefined ? {} : { exists: input.exists }),
+        ...(input.runGpgconf === undefined ? {} : { runGpgconf: input.runGpgconf }),
+        ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+        ...(input.probe === undefined ? {} : { probe: input.probe }),
+        ...(input.gpgSocket === undefined ? {} : { gpgSocket: input.gpgSocket }),
+        ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
+        gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
+      });
+      return discovered.upstream;
+    }
+    default:
+      return input.intent.mode satisfies never;
+  }
+});
 
-export const startSshAgentSession = (
+export const startSshAgentSession = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: Capabilities,
   intent: SshAgentIntent,
   options: SessionOptions = {},
-) =>
-  Effect.gen(function* () {
-    if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
-      return undefined;
-    const delivery = yield* validateAgentSocketCapability(capabilities, intent);
-    const paths = yield* PathsService;
-    const upstream = yield* resolveSshAgentUpstream({
-      ...options,
+) {
+  if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
+    return undefined;
+  const delivery = yield* validateAgentSocketCapability(capabilities, intent);
+  const paths = yield* PathsService;
+  const upstream = yield* resolveSshAgentUpstream({
+    ...options,
+    appId: plan.id,
+    provider: plan.provider,
+    intent,
+    platform: options.platform ?? paths.platform,
+  });
+  if (upstream._tag === "volume") {
+    return {
       appId: plan.id,
-      provider: plan.provider,
-      intent,
-      platform: options.platform ?? paths.platform,
-    });
-    if (upstream._tag === "volume") {
-      return {
-        appId: plan.id,
-        sessionId: `runtime:${upstream.volume}`,
-        kind: "ssh",
-        mount: upstream,
-        socketName: SSH_AGENT_SOCKET_NAME,
-        close: () => Promise.resolve(),
-        closed: Promise.resolve(),
-      } satisfies AgentRelaySession;
-    }
-    const privateFileAccess = yield* PrivateFileAccessService;
-    const events = yield* EventService;
-    const acquired = yield* Ref.make<AgentRelaySession | undefined>(undefined);
-    return yield* runWithTaskTree(
-      makeTaskTree(events, {
-        parentId: startSshAgentTreeId(String(plan.id)),
-        label: `SSH agent ${plan.name}`,
-        children: [{ id: "session", label: "Start SSH agent session" }],
-        prefixChildIds: true,
+      sessionId: `runtime:${upstream.volume}`,
+      kind: "ssh",
+      mount: upstream,
+      socketName: SSH_AGENT_SOCKET_NAME,
+      close: () => Promise.resolve(),
+      closed: Promise.resolve(),
+    } satisfies AgentRelaySession;
+  }
+  const privateFileAccess = yield* PrivateFileAccessService;
+  const events = yield* EventService;
+  const acquired = yield* Ref.make<AgentRelaySession | undefined>(undefined);
+  return yield* runWithTaskTree(
+    makeTaskTree(events, {
+      parentId: startSshAgentTreeId(String(plan.id)),
+      label: `SSH agent ${plan.name}`,
+      children: [{ id: "session", label: "Start SSH agent session" }],
+      prefixChildIds: true,
+    }),
+    (tree) =>
+      Effect.gen(function* () {
+        yield* tree.startTask("session");
+        const session = yield* startDetachedAgentRelayWorker({
+          app,
+          plan,
+          upstream,
+          delivery,
+          kind: "ssh",
+          socketName: SSH_AGENT_SOCKET_NAME,
+          paths: { ...paths.roots, platform: options.platform ?? paths.platform },
+          privateFileAccess,
+        });
+        yield* Ref.set(acquired, session);
+        yield* tree.completeTask("session");
+        return session;
       }),
-      (tree) =>
-        Effect.gen(function* () {
-          yield* tree.startTask("session");
-          const session = yield* startDetachedAgentRelayWorker({
-            app,
-            plan,
-            upstream,
-            delivery,
-            kind: "ssh",
-            socketName: SSH_AGENT_SOCKET_NAME,
-            paths: { ...paths.roots, platform: options.platform ?? paths.platform },
-            privateFileAccess,
-          });
-          yield* Ref.set(acquired, session);
-          yield* tree.completeTask("session");
-          return session;
-        }),
-      { success: "SSH agent ready", failure: "SSH agent unavailable", interrupt: "SSH agent interrupted" },
-    ).pipe(
-      Effect.onError(() =>
-        Ref.get(acquired).pipe(
-          Effect.flatMap((session) =>
-            session === undefined ? Effect.void : Effect.promise(() => session.close()),
-          ),
+    { success: "SSH agent ready", failure: "SSH agent unavailable", interrupt: "SSH agent interrupted" },
+  ).pipe(
+    Effect.onError(() =>
+      Ref.get(acquired).pipe(
+        Effect.flatMap((session) =>
+          session === undefined ? Effect.void : Effect.promise(() => session.close()),
         ),
       ),
-    );
-  });
+    ),
+  );
+});
 
-export const withStartedSshAgent = <A, E, R>(
+export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
   plan: AppPlan,
   app: AppRef,
   capabilities: Capabilities,
@@ -196,58 +194,57 @@ export const withStartedSshAgent = <A, E, R>(
     readonly use: (plan: AppPlan) => Effect.Effect<A, E, R>;
     readonly startSession?: () => Effect.Effect<AgentRelaySession | undefined, AgentError>;
   },
-) =>
-  Effect.gen(function* () {
-    if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
-      return yield* options.use(plan);
-    const keep = yield* Ref.make(false);
-    const acquire = (
-      options.startSession?.() ?? startSshAgentSession(plan, app, capabilities, intent, options)
-    ).pipe(
-      Effect.catchAll((error) => {
-        switch (intent.mode) {
-          case "host":
-            return Effect.fail(error);
-          case "sidecar":
-            return Effect.gen(function* () {
-              const events = yield* EventService;
-              yield* events
-                .publish(
-                  MessageWarnEvent.make({
-                    body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
-                    timestamp: DateTime.unsafeNow(),
-                  }),
-                )
-                .pipe(Effect.catchAll(() => Effect.void));
-              return undefined;
-            });
-          default:
-            return intent.mode satisfies never;
-        }
-      }),
-    );
-    return yield* Effect.acquireUseRelease(
-      acquire,
-      (session) =>
-        options
-          .use(session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session))
-          .pipe(
-            Effect.tap(() =>
-              Effect.gen(function* () {
-                if (session !== undefined && options.managed !== undefined) {
-                  yield* Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
-                    Effect.provideService(Scope.Scope, options.managed.scope),
-                  );
-                }
-                yield* Ref.set(keep, true);
-              }),
-            ),
-          ),
-      (session) =>
-        Ref.get(keep).pipe(
-          Effect.flatMap((retained) =>
-            retained || session === undefined ? Effect.void : Effect.promise(() => session.close()),
+): Effect.fn.Return<A, E | AgentError, R | PathsService | PrivateFileAccessService | EventService> {
+  if (app.kind === "global" || plan.id === "global" || sshAgentEligibleServices(plan).length === 0)
+    return yield* options.use(plan);
+  const keep = yield* Ref.make(false);
+  const acquire = (
+    options.startSession?.() ?? startSshAgentSession(plan, app, capabilities, intent, options)
+  ).pipe(
+    Effect.catch((error) => {
+      switch (intent.mode) {
+        case "host":
+          return Effect.fail(error);
+        case "sidecar":
+          return Effect.gen(function* () {
+            const events = yield* EventService;
+            yield* events
+              .publish(
+                MessageWarnEvent.make({
+                  body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
+                  timestamp: DateTime.nowUnsafe(),
+                }),
+              )
+              .pipe(Effect.catch(() => Effect.void));
+            return undefined;
+          });
+        default:
+          return intent.mode satisfies never;
+      }
+    }),
+  );
+  return yield* Effect.acquireUseRelease(
+    acquire,
+    (session) =>
+      options
+        .use(session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session))
+        .pipe(
+          Effect.tap(() =>
+            Effect.gen(function* () {
+              if (session !== undefined && options.managed !== undefined) {
+                yield* Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
+                  Effect.provideService(Scope.Scope, options.managed.scope),
+                );
+              }
+              yield* Ref.set(keep, true);
+            }),
           ),
         ),
-    );
-  });
+    (session) =>
+      Ref.get(keep).pipe(
+        Effect.flatMap((retained) =>
+          retained || session === undefined ? Effect.void : Effect.promise(() => session.close()),
+        ),
+      ),
+  );
+});

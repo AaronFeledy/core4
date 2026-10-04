@@ -1,12 +1,12 @@
-import { ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
 
-const durationFailure = (literal: string): ParseResult.Type => {
+const durationFailure = (literal: string): SchemaIssue.InvalidValue => {
   // The "Landofile service" prefix is load-bearing: core's Landofile validation
   // formatter only surfaces a nested issue's message when it starts with that
   // prefix, otherwise the user sees the bare key path instead of the remediation.
   const message =
     'Landofile service Compose duration is invalid; expected one or more decimal-unit groups such as "30s", "1m30s", or "1h2m3s" (units: ns, us, µs, μs, ms, s, m, h), or bare "0".';
-  return new ParseResult.Type(Schema.String.ast, literal, message);
+  return new SchemaIssue.InvalidValue({ message: message }, literal);
 };
 
 const componentSeconds = (decimal: string, unit: string): number | undefined => {

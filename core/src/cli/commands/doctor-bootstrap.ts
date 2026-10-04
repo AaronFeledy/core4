@@ -11,11 +11,11 @@
  * The runtime is built exactly once, inside a `Scope` that stays open for the
  * runtime-dependent sections and closes with the report.
  */
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, type Scope } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { ConfigServiceLive } from "@lando/engine/services/config";
+import * as LandoConfigService from "@lando/engine/services/config";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
@@ -32,65 +32,58 @@ const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   command: "lando config view",
 };
 
-export const resilientDoctorReport = (
-  options: DoctorOptions = {},
-): Effect.Effect<DoctorReport, never, RuntimeLayerFactory> =>
-  interruptOnAbort(collectResilientDoctorReport(options), options.signal);
+export const resilientDoctorReport = Effect.fn("Doctor.resilientReport")(
+  (options: DoctorOptions = {}): Effect.Effect<DoctorReport, never, RuntimeLayerFactory> =>
+    interruptOnAbort(collectResilientDoctorReport(options), options.signal),
+);
 
-const collectResilientDoctorReport = (
+const collectResilientDoctorReport = Effect.fnUntraced(function* (
   options: DoctorOptions,
-): Effect.Effect<DoctorReport, never, RuntimeLayerFactory> =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const sourceEnv = { ...(options.env ?? process.env) };
-      const { redactor } = yield* resolveSecretsRedactor({ sourceEnv });
+): Effect.fn.Return<DoctorReport, never, RuntimeLayerFactory | Scope.Scope> {
+  const sourceEnv = { ...(options.env ?? process.env) };
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv });
 
-      const runtimeLayerFactory = yield* RuntimeLayerFactory;
-      const runtime = runtimeLayerFactory.make(
-        cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
-      );
-      const built = yield* isolateDoctorSection({
-        section: "provider-bootstrap",
-        effect: Layer.build(runtime),
-        fallback: undefined,
-        budgetMs: doctorSectionBudgetMs(sourceEnv),
-        redact: (value) => redactor.redactString(value),
-        solutions: [BOOTSTRAP_REMEDIATION],
-      });
-      const context = built.value;
-
-      // `ConfigServiceLive` is a pure `Layer.succeed`, so providing it here
-      // cannot fail even when the full runtime could not be built.
-      return yield* collectDoctorReport({
-        options,
-        appConfig:
-          context === undefined
-            ? Effect.succeed(undefined)
-            : appConfigForReport().pipe(Effect.provide(context)),
-        certs:
-          context === undefined
-            ? Effect.succeed(UNRESOLVED_CERTS_STATUS)
-            : certsDoctorStatus(redactor.redactString).pipe(Effect.provide(context)),
-        provider:
-          context === undefined
-            ? Effect.succeed({ checks: [] })
-            : doctor(options).pipe(Effect.provide(context)),
-        deprecations:
-          context === undefined
-            ? Effect.succeed({ entries: [] })
-            : doctorDeprecations().pipe(Effect.provide(context)),
-        ...(context === undefined
-          ? {}
-          : {
-              // First provide in the pipe wins: selected Traefik/SSH overlay the
-              // unavailable stubs in DefaultSubsystemDoctorLayer.
-              subsystems: (subsystemOptions) =>
-                subsystemDoctor(subsystemOptions).pipe(
-                  Effect.provide(context),
-                  Effect.provide(DefaultSubsystemDoctorLayer),
-                ),
-            }),
-        ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
-      }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(ConfigServiceLive));
-    }),
+  const runtimeLayerFactory = yield* RuntimeLayerFactory;
+  const runtime = runtimeLayerFactory.make(
+    cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }),
   );
+  const built = yield* isolateDoctorSection({
+    section: "provider-bootstrap",
+    effect: Layer.build(runtime),
+    fallback: undefined,
+    budgetMs: doctorSectionBudgetMs(sourceEnv),
+    redact: (value) => redactor.redactString(value),
+    solutions: [BOOTSTRAP_REMEDIATION],
+  });
+  const context = built.value;
+
+  // `LandoConfigService.layer` is a pure `Layer.succeed`, so providing it here
+  // cannot fail even when the full runtime could not be built.
+  return yield* collectDoctorReport({
+    options,
+    appConfig:
+      context === undefined ? Effect.succeed(undefined) : appConfigForReport().pipe(Effect.provide(context)),
+    certs:
+      context === undefined
+        ? Effect.succeed(UNRESOLVED_CERTS_STATUS)
+        : certsDoctorStatus(redactor.redactString).pipe(Effect.provide(context)),
+    provider:
+      context === undefined ? Effect.succeed({ checks: [] }) : doctor(options).pipe(Effect.provide(context)),
+    deprecations:
+      context === undefined
+        ? Effect.succeed({ entries: [] })
+        : doctorDeprecations().pipe(Effect.provide(context)),
+    ...(context === undefined
+      ? {}
+      : {
+          // First provide in the pipe wins: selected Traefik/SSH overlay the
+          // unavailable stubs in DefaultSubsystemDoctorLayer.
+          subsystems: (subsystemOptions) =>
+            subsystemDoctor(subsystemOptions).pipe(
+              Effect.provide(context),
+              Effect.provide(DefaultSubsystemDoctorLayer),
+            ),
+        }),
+    ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
+  }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(LandoConfigService.layer));
+}, Effect.scoped);

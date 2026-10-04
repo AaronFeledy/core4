@@ -21,7 +21,7 @@ export const PostMcpCallEvent = Schema.TaggedStruct("post-mcp-call", {
   toolId: Schema.String,
   commandId: Schema.String,
   appRef: Schema.optional(Schema.String),
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   durationMs: Schema.optional(Schema.Number),
   failureDetail: Schema.optional(Schema.String),
   timestamp: Timestamp,

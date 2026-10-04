@@ -1,4 +1,5 @@
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import {
   NoProviderInstalledError,
@@ -8,7 +9,7 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, type PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
@@ -23,11 +24,7 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
@@ -106,6 +103,7 @@ export const makeRuntimeProviderRegistry = (
       const redaction = yield* Effect.serviceOption(RedactionService);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
+      const httpClient = yield* HttpClient.HttpClient;
 
       const providerManifests = pluginRegistry.list.pipe(Effect.mapError(toProviderUnavailable));
       const providerIds = providerManifests.pipe(
@@ -126,70 +124,70 @@ export const makeRuntimeProviderRegistry = (
         }).providerId;
       });
 
-      const contributionFor = (providerId: ProviderId) =>
-        Effect.gen(function* () {
-          const manifests = yield* providerManifests;
-          const providerIdText = String(providerId);
-          const manifest = manifests.find((candidate) =>
-            manifestProviderIds(candidate).some((installedId) => String(installedId) === providerIdText),
+      const contributionFor = Effect.fnUntraced(function* (providerId: ProviderId) {
+        const manifests = yield* providerManifests;
+        const providerIdText = String(providerId);
+        const manifest = manifests.find((candidate) =>
+          manifestProviderIds(candidate).some((installedId) => String(installedId) === providerIdText),
+        );
+        if (manifest === undefined) {
+          return yield* Effect.fail(
+            new NoProviderInstalledError({
+              message: `Runtime provider ${providerIdText} is not installed.`,
+            }),
           );
-          if (manifest === undefined) {
-            return yield* Effect.fail(
-              new NoProviderInstalledError({
-                message: `Runtime provider ${providerIdText} is not installed.`,
-              }),
-            );
-          }
+        }
 
-          if (Either.isLeft(capabilityIndex)) return yield* Effect.die(capabilityIndex.left);
-          const contribution = capabilityIndex.right.runtimeProviders.get(providerId);
-          const module = modules.find(
-            (candidate) => candidate.runtimeProviders?.get(providerId) === contribution,
+        if (Result.isFailure(capabilityIndex)) return yield* Effect.die(capabilityIndex.failure);
+        const contribution = capabilityIndex.success.runtimeProviders.get(providerId);
+        const module = modules.find(
+          (candidate) => candidate.runtimeProviders?.get(providerId) === contribution,
+        );
+        if (contribution === undefined || module === undefined) {
+          const manifestModule = modules.find((candidate) => candidate.name === manifest.name);
+          return yield* Effect.die(
+            new PluginDescriptorMismatchError({
+              pluginName: manifest.name,
+              kind: "providers",
+              declared: [providerIdText],
+              provided: [...(manifestModule?.runtimeProviders?.keys() ?? [])].map(String),
+              message: `Plugin ${manifest.name} manifest and descriptor disagree for providers.`,
+              remediation: `Align ${manifest.name}'s manifest providers ids with its descriptor providers ids.`,
+            }),
           );
-          if (contribution === undefined || module === undefined) {
-            const manifestModule = modules.find((candidate) => candidate.name === manifest.name);
-            return yield* Effect.die(
-              new PluginDescriptorMismatchError({
-                pluginName: manifest.name,
-                kind: "providers",
-                declared: [providerIdText],
-                provided: [...(manifestModule?.runtimeProviders?.keys() ?? [])].map(String),
-                message: `Plugin ${manifest.name} manifest and descriptor disagree for providers.`,
-                remediation: `Align ${manifest.name}'s manifest providers ids with its descriptor providers ids.`,
-              }),
-            );
-          }
+        }
 
-          const pluginStateRoot = yield* Schema.decodeUnknown(AbsolutePath)(
-            paths.pluginStateDir(module.name),
-          ).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ProviderUnavailableError({
-                  providerId: providerIdText,
-                  operation: "select",
-                  message: `Unable to initialize runtime provider plugin ${module.name}.`,
-                  remediation: `Verify the plugin state directory for ${module.name} is a valid absolute path.`,
-                  cause,
-                }),
-            ),
-          );
-          const publishRender =
-            eventService._tag === "Some" && redaction._tag === "Some"
-              ? makePublishRender(eventService.value, redaction.value)
-              : undefined;
-          const context = makeLandoPluginContext({
-            id: module.name,
-            managedFileService,
-            stateStore,
-            pluginStateRoot,
-            privateFileAccess,
-            ...(publishRender === undefined ? {} : { publishRender }),
-          });
-          return { contribution, context };
+        const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
+          paths.pluginStateDir(module.name),
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProviderUnavailableError({
+                providerId: providerIdText,
+                operation: "select",
+                message: `Unable to initialize runtime provider plugin ${module.name}.`,
+                remediation: `Verify the plugin state directory for ${module.name} is a valid absolute path.`,
+                cause,
+              }),
+          ),
+        );
+        const publishRender =
+          eventService._tag === "Some" && redaction._tag === "Some"
+            ? makePublishRender(eventService.value, redaction.value)
+            : undefined;
+        const context = makeLandoPluginContext({
+          id: module.name,
+          managedFileService,
+          stateStore,
+          pluginStateRoot,
+          privateFileAccess,
+          httpClient,
+          ...(publishRender === undefined ? {} : { publishRender }),
         });
+        return { contribution, context };
+      });
 
-      const makeProvider = (descriptor: Effect.Effect.Success<ReturnType<typeof contributionFor>>) => {
+      const makeProvider = (descriptor: Effect.Success<ReturnType<typeof contributionFor>>) => {
         const { contribution, context } = descriptor;
         const provider = contribution
           .make(context)
@@ -232,7 +230,7 @@ export const makeRuntimeProviderRegistry = (
                     ),
                   ),
                 ),
-                Effect.catchAll(() => Effect.succeed(false)),
+                Effect.catch(() => Effect.succeed(false)),
               ),
               list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
               listVolumes: (filter) =>
@@ -242,28 +240,34 @@ export const makeRuntimeProviderRegistry = (
         );
       });
 
-      const resolveAppliedPlan = (root: AbsolutePath) =>
-        appliedStateProviders.pipe(
-          Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers)),
-        );
+      const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
+        (root: AbsolutePath) =>
+          appliedStateProviders.pipe(
+            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers)),
+          ),
+      );
 
-      const resolveTeardown = (root: AbsolutePath) =>
-        appliedStateProviders.pipe(Effect.flatMap((providers) => resolveTeardownEvidence(root, providers)));
+      const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(
+        (root: AbsolutePath) =>
+          appliedStateProviders.pipe(Effect.flatMap((providers) => resolveTeardownEvidence(root, providers))),
+      );
 
-      return {
+      return RuntimeProviderRegistry.of({
         list: providerIds,
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
-        select: (plan) => (plan === undefined ? activeProvider : providerFor(plan.provider)),
+        select: Effect.fn("RuntimeProviderRegistry.select")(function* (plan?: AppPlan) {
+          return yield* plan === undefined ? activeProvider : providerFor(plan.provider);
+        }),
         resolveAppliedPlan,
         resolveTeardownEvidence: resolveTeardown,
         observeRuntime: appliedStateProviders.pipe(Effect.flatMap(observeProviderRuntime)),
-      };
+      });
     }),
   );
 };
 
 export const makeRuntimeProviderRegistryWithPrivateFileAccess = (modules: ReadonlyArray<LandoPluginModule>) =>
-  Layer.unwrapEffect(
+  Layer.unwrap(
     Effect.map(PrivateFileAccessService, (privateFileAccess) =>
       makeRuntimeProviderRegistry(modules, privateFileAccess),
     ),
@@ -271,8 +275,8 @@ export const makeRuntimeProviderRegistryWithPrivateFileAccess = (modules: Readon
 
 export { RuntimeProviderRegistry };
 
-export const RuntimeProviderRegistryLive = Layer.suspend(() =>
+export const layer = Layer.suspend(() =>
   makeRuntimeProviderRegistryWithPrivateFileAccess(bundledPluginModules()).pipe(
-    Layer.provide(PrivateFileAccessLive),
+    Layer.provide(PrivateFileAccessService.layer),
   ),
 );

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderId } from "@lando/sdk/schema";
@@ -42,22 +42,25 @@ test("safe-mode doctor inventories the state store supplied by its provider runt
       ...fs,
       readDir: () => Effect.succeed([key]),
     })),
-  ).pipe(Layer.provide(FileSystemLive));
+  ).pipe(Layer.provide(BunFileSystem.layer));
   const runtime = Layer.mergeAll(
     store.layer,
     fsLayer,
-    PluginRegistryLive,
+    PluginRegistryLayer.layer,
     Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
   );
   // When the safe-mode entry point builds the runtime and collects its report.
   const report = await Effect.runPromise(
     resilientDoctorReport({ env: {} }).pipe(
-      Effect.provideService(RuntimeLayerFactory, { make: () => runtime }),
+      Effect.provideService(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtime })),
     ),
   );
   // Then exactly the injected journal is reported, not journals from the ambient home.

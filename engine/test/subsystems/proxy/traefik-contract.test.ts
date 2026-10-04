@@ -8,7 +8,7 @@ import { makeTraefikRouterService } from "@lando/proxy-traefik";
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import { type CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 import { makeTestCertificateAuthority, runRouterServiceContractSuite } from "@lando/sdk/test";
-import { FileSystemLive } from "../../../src/services/file-system.ts";
+import * as BunFileSystem from "../../../src/services/file-system.ts";
 
 test("bundled Traefik satisfies the RouterService contract suite", async () => {
   const files = new Map<string, string>();
@@ -65,7 +65,7 @@ test("real filesystem status sees configured routing and stop removes route and 
       setup: () => Effect.void,
       issueCert: () => Effect.succeed({ certPath: sourceCert, keyPath: sourceKey, caPath: sourceCert }),
     };
-    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(FileSystemLive)));
+    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
     const proxyFileSystem = {
       mkdir: fileSystem.mkdir,
       exists: fileSystem.exists,

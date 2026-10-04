@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Layer, Stream } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -29,7 +29,7 @@ const eventPlan = (): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"),
     source: "test",
     runtime: 4,
   },
@@ -43,42 +43,57 @@ const eventRuntime = (
 ) =>
   Layer.mergeAll(
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(EventService, {
-      publish: (event) => Effect.sync(() => void published.push(event._tag)),
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-    Layer.succeed(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.sync(() => {
-          const command = invocation.commands[0]?.[2] ?? invocation.tool;
-          const label = command.replace(/ "[$]@"$/u, "");
-          executed.push(label);
-          return {
-            tool: invocation.tool,
-            service: invocation.service ?? ":lando",
-            exitCode: failures.has(label) ? 7 : 0,
-            stdout: label,
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(EventCommandExecutor, {
-      run: () => Effect.die("not used"),
-    }),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) => Effect.sync(() => void published.push(event._tag)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "recording",
+        run: (invocation) =>
+          Effect.sync(() => {
+            const command = invocation.commands[0]?.[2] ?? invocation.tool;
+            const label = command.replace(/ "[$]@"$/u, "");
+            executed.push(label);
+            return {
+              tool: invocation.tool,
+              service: invocation.service ?? ":lando",
+              exitCode: failures.has(label) ? 7 : 0,
+              stdout: label,
+              stderr: "",
+            };
+          }),
+      }),
+    ),
+    Layer.succeed(
+      EventCommandExecutor,
+      EventCommandExecutor.of({
+        run: () => Effect.die("not used"),
+      }),
+    ),
   );
 
 describe("app initialization lifecycle events", () => {
@@ -136,7 +151,7 @@ describe("app initialization lifecycle events", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected post-init failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure).toMatchObject({
       _tag: "Some",
       value: {

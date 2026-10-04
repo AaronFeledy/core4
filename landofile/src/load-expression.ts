@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import {
   LandofileExpressionEvalError,
@@ -127,7 +127,7 @@ const invalidImportRefPath = (
   value: unknown,
   path: ReadonlyArray<string | number>,
 ): ReadonlyArray<string | number> | undefined => {
-  if (typeof value !== "object" || value === null) return undefined;
+  if (!Predicate.isObjectOrArray(value)) return undefined;
   if ("_tag" in value && value._tag === "ImportRef") return acceptsImportRef(path) ? undefined : path;
   for (const [key, entry] of Object.entries(value)) {
     const nestedPath = invalidImportRefPath(entry, [...path, Array.isArray(value) ? Number(key) : key]);
@@ -147,18 +147,18 @@ export const resolveLandofileLoadExpressions = (
           if (isServiceEnvironmentSecretReference(value, path)) return value;
           session.beginExpression();
           const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
-          if (Either.isLeft(parsed)) throw parsed.left;
+          if (Result.isFailure(parsed)) throw parsed.failure;
           // Unescaped `${...}` parameter and `${secret:...}` references are
           // not supported on this path, and a parsed segment cannot tell them
           // from a bare `$name` or the `$${` escape, so the raw source decides
           // before the segment-level question.
           if (
             !sourceHasUnescapedBracedForm(value) &&
-            expressionInterpolationsTouchOnlyScopes(parsed.right, LOAD_DEFERRED_EXPRESSION_SCOPES)
+            expressionInterpolationsTouchOnlyScopes(parsed.success, LOAD_DEFERRED_EXPRESSION_SCOPES)
           ) {
             return value;
           }
-          const expression = templateExpression(parsed.right);
+          const expression = templateExpression(parsed.success);
           if (expression === undefined || !containsLoad(expression) || containsContextPath(expression)) {
             throw new NotImplementedError({
               message: `Configuration expressions are not supported at ${options.source.sourcePath}.`,
@@ -178,15 +178,15 @@ export const resolveLandofileLoadExpressions = (
             });
           }
           const evaluated = evaluateTemplateEither(
-            parsed.right,
+            parsed.success,
             {},
             {
               filePath: options.source.sourcePath,
               helperOverrides: makeLandofileLoadHelperOverrides(session),
             },
           );
-          if (Either.isLeft(evaluated)) throw evaluated.left;
-          const result = decodeImplicitFileRef(session, evaluated.right);
+          if (Result.isFailure(evaluated)) throw evaluated.failure;
+          const result = decodeImplicitFileRef(session, evaluated.success);
           const producedImportRefPath = invalidImportRefPath(result, path);
           if (producedImportRefPath !== undefined) {
             throw new LandofileImportRefMisuseError({
@@ -200,7 +200,7 @@ export const resolveLandofileLoadExpressions = (
           return result;
         }
         if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
-        if (typeof value !== "object" || value === null) return value;
+        if (!Predicate.isObject(value)) return value;
         return Object.fromEntries(
           Object.entries(value).map(([key, entry]) => [key, visit(entry, [...path, key])]),
         );

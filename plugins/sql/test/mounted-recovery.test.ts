@@ -32,9 +32,9 @@ it("refuses restore when the mounted generation changes during backup", async ()
       ),
   };
   const result = await Effect.runPromise(
-    Effect.either(executeDbCommand(deps, { action: "restore", snapshotId: "source", yes: true })),
+    Effect.result(executeDbCommand(deps, { action: "restore", snapshotId: "source", yes: true })),
   );
-  expect(result._tag).toBe("Left");
+  expect(result._tag).toBe("Failure");
   expect(harness.lifecycle()).toEqual(["lock", "suspend", "snapshot"]);
 });
 

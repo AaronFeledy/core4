@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 
-import { DateTime, Either, ParseResult, Schema } from "effect";
+import { DateTime, Result, Schema } from "effect";
 
 import {
   AbsolutePath,
@@ -14,7 +15,7 @@ import {
   ServicePlan,
 } from "@lando/sdk/schema";
 
-const FIXED_RESOLVED_AT = DateTime.unsafeMake("2026-05-10T18:51:00Z");
+const FIXED_RESOLVED_AT = DateTime.makeUnsafe("2026-05-10T18:51:00Z");
 
 const planMetadataFixture = {
   resolvedAt: FIXED_RESOLVED_AT,
@@ -79,37 +80,37 @@ const appPlanFixture: typeof AppPlan.Encoded = {
 describe("AppRef", () => {
   test("decodes the three identity-namespace kinds (user | global | scratch)", () => {
     for (const kind of ["user", "global", "scratch"] as const) {
-      const result = Schema.decodeUnknownEither(AppRef)({
+      const result = Schema.decodeUnknownResult(AppRef)({
         kind,
         id: kind === "global" ? "global" : "myapp",
         root: "/srv/apps/myapp",
       });
-      expect(Either.isRight(result)).toBe(true);
+      expect(Result.isSuccess(result)).toBe(true);
     }
   });
 
   test("rejects an unknown kind discriminator with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(AppRef)({
+    const result = Schema.decodeUnknownResult(AppRef)({
       kind: "bogus",
       id: "myapp",
       root: "/srv/apps/myapp",
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
       expect(issues.length).toBeGreaterThan(0);
-      expect(issues.some((issue) => issue.path.includes("kind"))).toBe(true);
+      expect(issues.some((issue) => (issue.path ?? []).includes("kind"))).toBe(true);
     }
   });
 
   test("rejects missing required fields with a structured ParseError", () => {
-    const result = Schema.decodeUnknownEither(AppRef)({ kind: "user", id: "myapp" });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("root"))).toBe(true);
+    const result = Schema.decodeUnknownResult(AppRef)({ kind: "user", id: "myapp" });
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("root"))).toBe(true);
     }
   });
 });
@@ -139,23 +140,23 @@ describe("ServicePlan", () => {
 
   test("rejects a malformed service (missing required `metadata`) with a structured ParseError", () => {
     const { metadata: _omitted, ...withoutMetadata } = servicePlanFixture;
-    const result = Schema.decodeUnknownEither(ServicePlan)(withoutMetadata);
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("metadata"))).toBe(true);
+    const result = Schema.decodeUnknownResult(ServicePlan)(withoutMetadata);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("metadata"))).toBe(true);
     }
   });
 
   test("rejects an unknown endpoint protocol literal", () => {
-    const result = Schema.decodeUnknownEither(ServicePlan)({
+    const result = Schema.decodeUnknownResult(ServicePlan)({
       ...servicePlanFixture,
       endpoints: [{ _tag: "internal", port: 3000, protocol: "websocket" }],
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
     }
   });
 });
@@ -197,27 +198,29 @@ describe("AppPlan", () => {
 
   test("rejects a malformed plan (missing required `id`) with a structured ParseError", () => {
     const { id: _omitted, ...withoutId } = appPlanFixture;
-    const result = Schema.decodeUnknownEither(AppPlan)(withoutId);
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("id"))).toBe(true);
+    const result = Schema.decodeUnknownResult(AppPlan)(withoutId);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues.some((issue) => (issue.path ?? []).includes("id"))).toBe(true);
     }
   });
 
   test("rejects malformed nested service inside `services` record", () => {
-    const result = Schema.decodeUnknownEither(AppPlan)({
+    const result = Schema.decodeUnknownResult(AppPlan)({
       ...appPlanFixture,
       services: { web: { ...servicePlanFixture, primary: "yes" } },
     });
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("services") && issue.path.includes("primary"))).toBe(
-        true,
-      );
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(Schema.isSchemaError(result.failure)).toBe(true);
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(
+        issues.some(
+          (issue) => (issue.path ?? []).includes("services") && (issue.path ?? []).includes("primary"),
+        ),
+      ).toBe(true);
     }
   });
 });

@@ -14,7 +14,7 @@ export type ProviderRuntimeLayer = Layer.Layer<
 
 type ProviderRuntimeOptions = LandoRuntimeOptions & { readonly bootstrap: "provider" };
 
-export class RuntimeLayerFactory extends Context.Tag("@lando/engine/RuntimeLayerFactory")<
+export class RuntimeLayerFactory extends Context.Service<
   RuntimeLayerFactory,
   {
     readonly make: {
@@ -22,4 +22,4 @@ export class RuntimeLayerFactory extends Context.Tag("@lando/engine/RuntimeLayer
       (options: LandoRuntimeOptions): RuntimeLayer;
     };
   }
->() {}
+>()("@lando/engine/RuntimeLayerFactory") {}

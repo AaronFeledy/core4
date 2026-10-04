@@ -8,10 +8,9 @@ export interface CommandWarningsShape {
   readonly list: Effect.Effect<ReadonlyArray<CommandWarning>>;
 }
 
-export class CommandWarnings extends Context.Tag("@lando/core/CommandWarnings")<
-  CommandWarnings,
-  CommandWarningsShape
->() {}
+export class CommandWarnings extends Context.Service<CommandWarnings, CommandWarningsShape>()(
+  "@lando/core/CommandWarnings",
+) {}
 
 export const makeCommandWarnings = (machineOutput: boolean): CommandWarningsShape => {
   const warnings: CommandWarning[] = [];

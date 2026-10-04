@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { Result } from "effect";
 
 import { Cause, type Context, DateTime, Effect, Layer, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { PluginDescriptorMismatchError, PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -53,26 +56,30 @@ const notRegistered = (id: string): PluginLoadError =>
 const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
   const load = Effect.succeed(config);
-  const configService: Context.Tag.Service<typeof ConfigService> = {
+  const configService: Context.Service.Shape<typeof ConfigService> = ConfigService.of({
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
-  const pluginRegistry: Context.Tag.Service<typeof PluginRegistry> = {
+  });
+  const pluginRegistry: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
     list: Effect.succeed(manifests),
     load: (name) => Effect.fail(notRegistered(name)),
     loadServiceType: (id) => Effect.fail(notRegistered(id)),
     loadServiceFeature: (id) => Effect.fail(notRegistered(id)),
     loadAppFeature: (id) => Effect.fail(notRegistered(id)),
-  };
+  });
   const downloader = Effect.runSync(makeTestDownloader());
   const managedFiles = Effect.runSync(makeTestManagedFileStore());
   const stateStore = makeTestStateStore();
 
+  const httpClient = HttpClient.make((request) =>
+    Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+  );
   return Layer.mergeAll(
-    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
+    Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     Layer.succeed(ConfigService, configService),
-    Layer.succeed(Downloader, downloader.service),
-    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(Downloader, Downloader.of(downloader.service)),
+    Layer.succeed(HttpClient.HttpClient, httpClient),
+    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
     Layer.succeed(ManagedFileService, managedFiles.service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/descriptor-registry-test" })),
     Layer.succeed(PluginRegistry, pluginRegistry),
@@ -92,7 +99,7 @@ const planFor = (provider: ProviderId): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
     source: "registry.descriptor.test",
     runtime: 4,
   },
@@ -117,7 +124,7 @@ const selectEither = (modules: ReadonlyArray<LandoPluginModule>, manifests: Read
   Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
-      return yield* registry.select(planFor(fakeProviderId)).pipe(Effect.either);
+      return yield* registry.select(planFor(fakeProviderId)).pipe(Effect.result);
     }).pipe(
       Effect.provide(
         makeRuntimeProviderRegistry(modules, ownerOnlyFileAccess).pipe(
@@ -139,7 +146,7 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
     // Then: the packaging invariant violation is a defect carrying the tagged mismatch error.
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const defect = Cause.dieOption(exit.cause);
+      const defect = Result.getSuccess(Cause.findDefect(exit.cause));
       expect(defect._tag).toBe("Some");
       if (defect._tag === "Some" && defect.value instanceof PluginDescriptorMismatchError) {
         expect(defect.value._tag).toBe("PluginDescriptorMismatchError");
@@ -172,9 +179,9 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
     const result = await selectEither([module], [manifest]);
 
     // Then: the descriptor factory's provider shape is returned unchanged.
-    expect(result._tag).toBe("Right");
-    if (result._tag === "Right") {
-      expect(result.right).toEqual(fakeProvider);
+    expect(result._tag).toBe("Success");
+    if (result._tag === "Success") {
+      expect(result.success).toEqual(fakeProvider);
     }
   });
 });

@@ -20,68 +20,69 @@ const deprecationKey = (kind: DeprecationSurfaceKind, id: string): DeprecationKe
 
 const makeDeprecationService = (
   state: Ref.Ref<DeprecationState>,
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
-): Context.Tag.Service<typeof DeprecationService> => ({
-  use: (use) =>
-    Ref.update(state, (current) => {
-      const key = deprecationKey(use.kind, use.id);
-      const existing = current.uses.get(key);
-      const uses = new Map(current.uses);
-      uses.set(key, {
-        use: existing?.use ?? use,
-        count: (existing?.count ?? 0) + 1,
-      });
-      return { ...current, uses };
-    }).pipe(
-      Effect.flatMap(() =>
-        Option.match(eventService, {
-          onNone: () => Effect.void,
-          onSome: (events) =>
-            events.publish({ _tag: "deprecation-used", use }).pipe(Effect.catchAll(() => Effect.void)),
-        }),
-      ),
-      Effect.flatMap(() =>
-        use.notice.severity === "error"
-          ? Effect.fail(new DeprecatedSurfaceError({ kind: use.kind, id: use.id, notice: use.notice }))
-          : Effect.void,
-      ),
-    ),
-  summary: () =>
-    Ref.get(state).pipe(
-      Effect.map((current) =>
-        [...current.uses.values()].map(
-          (record): DeprecationSummaryEntry => ({ ...record.use, count: record.count }),
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
+): Context.Service.Shape<typeof DeprecationService> =>
+  DeprecationService.of({
+    use: (use) =>
+      Ref.update(state, (current) => {
+        const key = deprecationKey(use.kind, use.id);
+        const existing = current.uses.get(key);
+        const uses = new Map(current.uses);
+        uses.set(key, {
+          use: existing?.use ?? use,
+          count: (existing?.count ?? 0) + 1,
+        });
+        return { ...current, uses };
+      }).pipe(
+        Effect.flatMap(() =>
+          Option.match(eventService, {
+            onNone: () => Effect.void,
+            onSome: (events) =>
+              events.publish({ _tag: "deprecation-used", use }).pipe(Effect.catch(() => Effect.void)),
+          }),
+        ),
+        Effect.flatMap(() =>
+          use.notice.severity === "error"
+            ? Effect.fail(new DeprecatedSurfaceError({ kind: use.kind, id: use.id, notice: use.notice }))
+            : Effect.void,
         ),
       ),
-    ),
-  lookup: (kind, id) =>
-    Ref.get(state).pipe(
-      Effect.map((current) => Option.fromNullable(current.registry.get(deprecationKey(kind, id)))),
-    ),
-  register: (_source, kind, id, notice) =>
-    Ref.update(state, (current) => {
-      const registry = new Map(current.registry);
-      registry.set(deprecationKey(kind, id), notice);
-      return { ...current, registry };
-    }),
-  registerAlias: (_source, kind, canonicalId, aliasId, aliasNotice) =>
-    Ref.get(state).pipe(
-      Effect.flatMap((current) => {
-        const canonicalNotice = current.registry.get(deprecationKey(kind, canonicalId));
-        if (canonicalNotice !== undefined && aliasNotice === undefined) {
-          return Effect.fail(new DeprecationContradictionError({ canonicalId, aliasId, canonicalNotice }));
-        }
-        if (aliasNotice === undefined) return Effect.void;
-        return Ref.update(state, (latest) => {
-          const registry = new Map(latest.registry);
-          registry.set(deprecationKey(kind, aliasId), aliasNotice);
-          return { ...latest, registry };
-        });
+    summary: () =>
+      Ref.get(state).pipe(
+        Effect.map((current) =>
+          [...current.uses.values()].map(
+            (record): DeprecationSummaryEntry => ({ ...record.use, count: record.count }),
+          ),
+        ),
+      ),
+    lookup: (kind, id) =>
+      Ref.get(state).pipe(
+        Effect.map((current) => Option.fromNullishOr(current.registry.get(deprecationKey(kind, id)))),
+      ),
+    register: (_source, kind, id, notice) =>
+      Ref.update(state, (current) => {
+        const registry = new Map(current.registry);
+        registry.set(deprecationKey(kind, id), notice);
+        return { ...current, registry };
       }),
-    ),
-});
+    registerAlias: (_source, kind, canonicalId, aliasId, aliasNotice) =>
+      Ref.get(state).pipe(
+        Effect.flatMap((current) => {
+          const canonicalNotice = current.registry.get(deprecationKey(kind, canonicalId));
+          if (canonicalNotice !== undefined && aliasNotice === undefined) {
+            return Effect.fail(new DeprecationContradictionError({ canonicalId, aliasId, canonicalNotice }));
+          }
+          if (aliasNotice === undefined) return Effect.void;
+          return Ref.update(state, (latest) => {
+            const registry = new Map(latest.registry);
+            registry.set(deprecationKey(kind, aliasId), aliasNotice);
+            return { ...latest, registry };
+          });
+        }),
+      ),
+  });
 
-export const DeprecationServiceLive = Layer.effect(
+export const layer = Layer.effect(
   DeprecationService,
   Effect.gen(function* () {
     const state = yield* Ref.make<DeprecationState>({ registry: new Map(), uses: new Map() });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import * as SDK from "@lando/sdk/schema";
 
@@ -28,8 +28,8 @@ describe("ServiceFileConfig", () => {
 
   test("rejects empty config.server", () => {
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(SDK.ServiceConfigInput)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(SDK.ServiceConfigInput)({
           type: "mysql",
           config: { server: "" },
         }),
@@ -39,8 +39,8 @@ describe("ServiceFileConfig", () => {
 
   test("rejects empty config.dir", () => {
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(SDK.ServiceConfigInput)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(SDK.ServiceConfigInput)({
           type: "solr",
           config: { dir: "" },
         }),
@@ -53,8 +53,8 @@ describe("ServiceFileConfig", () => {
     // when decoded,
     // then report a schema failure.
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(SDK.ServiceConfigInput)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(SDK.ServiceConfigInput)({
           type: "mysql",
           config: { server: 1 },
         }),

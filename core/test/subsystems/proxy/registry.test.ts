@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Either, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
@@ -20,27 +22,27 @@ import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
 } from "@lando/engine/plugins/certificate-authority-resolver";
+import * as RouterServiceRegistryLayer from "@lando/engine/subsystems/proxy/registry";
 import {
   type RouterServiceRegistration,
   RouterServiceRegistry,
-  SelectedRouterServiceLive,
   makeRouterServiceRegistry,
-  makeRouterServiceRegistryLive,
 } from "@lando/engine/subsystems/proxy/registry";
 import { makeTestManagedFileStore } from "../../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../../src/testing/state-store.ts";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
-const service = (id: string): RouterServiceShape => ({
-  id,
-  capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-  setup: () => Effect.void,
-  revalidateStartup: Effect.void,
-  applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-  removeRoutes: () => Effect.void,
-  status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
-  stop: Effect.void,
-});
+const service = (id: string): RouterServiceShape =>
+  RouterService.of({
+    id,
+    capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+    setup: () => Effect.void,
+    revalidateStartup: Effect.void,
+    applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+    removeRoutes: () => Effect.void,
+    status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
+    stop: Effect.void,
+  });
 
 const registration = (
   id: string,
@@ -52,20 +54,30 @@ const registration = (
 });
 
 const config = Schema.decodeSync(GlobalConfig)({});
-const configLayer = Layer.succeed(ConfigService, {
-  load: Effect.succeed(config),
-  get: (key) => Effect.succeed(config[key]),
-});
+const configLayer = Layer.succeed(
+  ConfigService,
+  ConfigService.of({
+    load: Effect.succeed(config),
+    get: (key) => Effect.succeed(config[key]),
+  }),
+);
 const pathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 const managedFileLayer = Layer.succeed(
   ManagedFileService,
   Effect.runSync(makeTestManagedFileStore()).service,
 );
 const stateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
-const privateFileAccessLayer = Layer.succeed(PrivateFileAccessService, {
-  enforce: async () => undefined,
-  verify: async () => undefined,
-});
+const privateFileAccessLayer = Layer.succeed(
+  PrivateFileAccessService,
+  PrivateFileAccessService.of({
+    enforce: async () => undefined,
+    verify: async () => undefined,
+  }),
+);
+const stubHttpClient = HttpClient.make((request) =>
+  Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
+);
+const httpClientLayer = Layer.succeed(HttpClient.HttpClient, stubHttpClient);
 
 const proxyModule = (
   id: string,
@@ -96,7 +108,7 @@ const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explici
   Effect.runPromise(
     Effect.flatMap(RouterServiceRegistry, (registry) => registry.select({ explicit })).pipe(
       Effect.provide(
-        makeRouterServiceRegistryLive(modules).pipe(
+        RouterServiceRegistryLayer.RouterServiceRegistry.layerWith(modules).pipe(
           Layer.provide(
             Layer.mergeAll(
               configLayer,
@@ -104,26 +116,27 @@ const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explici
               managedFileLayer,
               stateStoreLayer,
               privateFileAccessLayer,
+              httpClientLayer,
             ),
           ),
         ),
       ),
-      Effect.either,
+      Effect.result,
     ),
   );
 
 const buildSelectedProxy = (
-  registry: Context.Tag.Service<typeof RouterServiceRegistry>,
+  registry: Context.Service.Shape<typeof RouterServiceRegistry>,
   resolver: CertificateAuthorityResolverShape,
 ) =>
   Effect.scoped(
     Effect.map(
       Layer.build(
-        SelectedRouterServiceLive.pipe(
+        RouterServiceRegistryLayer.layerSelected.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(RouterServiceRegistry, registry),
-              Layer.succeed(CertificateAuthorityResolver, resolver),
+              Layer.succeed(RouterServiceRegistry, RouterServiceRegistry.of(registry)),
+              Layer.succeed(CertificateAuthorityResolver, CertificateAuthorityResolver.of(resolver)),
               Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/proxy-registry-test" })),
               provideTestRuntime({ bootstrap: "global" }),
             ),
@@ -139,21 +152,25 @@ describe("RouterService registry selection", () => {
     // Given
     const fakeLayer = Layer.succeed(RouterService, service("fake"));
     let owningPluginId: string | undefined;
+    let contextHttpClient: unknown;
 
     // When
     const result = await runInjectedSelection(
       [
         proxyModule("fake", fakeLayer, (context) => {
           owningPluginId = context.id;
+          contextHttpClient = context.httpClient;
         }),
       ],
       "fake",
     );
 
     // Then
-    expect(Either.isRight(result)).toBe(true);
+    expect(Result.isSuccess(result)).toBe(true);
     expect(owningPluginId).toBe("@lando/proxy-test");
-    if (Either.isRight(result)) expect(result.right.layer).toBe(fakeLayer);
+    expect(contextHttpClient).toBeDefined();
+    expect(typeof (contextHttpClient as { get?: unknown }).get).toBe("function");
+    if (Result.isSuccess(result)) expect(result.success.layer).toBe(fakeLayer);
   });
 
   test("preserves the typed selection error for an id absent from injected modules", async () => {
@@ -164,11 +181,11 @@ describe("RouterService registry selection", () => {
     const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "missing");
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left).toBeInstanceOf(ProxyError);
-      expect(result.left.proxyId).toBe("missing");
-      expect(result.left.message).toBe("Router service missing is not installed.");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure).toBeInstanceOf(ProxyError);
+      expect(result.failure.proxyId).toBe("missing");
+      expect(result.failure.message).toBe("Router service missing is not installed.");
     }
   });
 

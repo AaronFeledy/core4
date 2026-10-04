@@ -164,92 +164,90 @@ const parseValue = (
   });
 };
 
-const parseRecord = (
+const parseRecord = Effect.fnUntraced(function* (
   target: string,
   kind: InputKind,
   values: Readonly<Record<string, unknown>>,
   definitions: Readonly<Record<string, InputDefinition>>,
-): Effect.Effect<Readonly<Record<string, unknown>>, CommandInputValidationError> =>
-  Effect.gen(function* () {
-    const label = kind === "arg" ? "argument" : kind;
-    for (const field of Object.keys(values)) {
-      if (!Object.hasOwn(definitions, field)) {
+): Effect.fn.Return<Readonly<Record<string, unknown>>, CommandInputValidationError> {
+  const label = kind === "arg" ? "argument" : kind;
+  for (const field of Object.keys(values)) {
+    if (!Object.hasOwn(definitions, field)) {
+      return yield* Effect.fail(
+        failure(
+          target,
+          kind,
+          field,
+          "unknown",
+          `Unknown ${label} ${field} for canonical command ${target}.`,
+          `Remove ${field} or use a ${label} declared by ${target}.`,
+        ),
+      );
+    }
+  }
+
+  const parsed: Record<string, unknown> = Object.create(null);
+  for (const field of Object.keys(definitions)) {
+    const definition = definitions[field];
+    if (definition === undefined) continue;
+    const supplied = Object.hasOwn(values, field);
+    const value = supplied ? values[field] : definition.default;
+    if (!supplied && value === undefined) {
+      if (definition.required === true) {
         return yield* Effect.fail(
           failure(
             target,
             kind,
             field,
-            "unknown",
-            `Unknown ${label} ${field} for canonical command ${target}.`,
-            `Remove ${field} or use a ${label} declared by ${target}.`,
+            "required",
+            `Missing required ${label} ${field} for ${target}.`,
+            `Provide ${field}.`,
           ),
         );
       }
+      continue;
     }
+    parsed[field] = yield* parseValue(target, kind, field, value, definition);
+  }
+  return parsed;
+});
 
-    const parsed: Record<string, unknown> = Object.create(null);
-    for (const field of Object.keys(definitions)) {
-      const definition = definitions[field];
-      if (definition === undefined) continue;
-      const supplied = Object.hasOwn(values, field);
-      const value = supplied ? values[field] : definition.default;
-      if (!supplied && value === undefined) {
-        if (definition.required === true) {
-          return yield* Effect.fail(
-            failure(
-              target,
-              kind,
-              field,
-              "required",
-              `Missing required ${label} ${field} for ${target}.`,
-              `Provide ${field}.`,
-            ),
-          );
-        }
-        continue;
-      }
-      parsed[field] = yield* parseValue(target, kind, field, value, definition);
-    }
-    return parsed;
-  });
-
-export const validateEventCommandInput = (
+export const validateEventCommandInput = Effect.fnUntraced(function* (
   spec: EventCommandInputSpec,
   input: {
     readonly flags: Readonly<Record<string, unknown>>;
     readonly args: Readonly<Record<string, unknown>>;
     readonly raw: ReadonlyArray<string>;
   },
-): Effect.Effect<
+): Effect.fn.Return<
   ExecutableCommandInput & { readonly interaction: "interactive" | "non-interactive" },
   CommandInputValidationError
-> =>
-  Effect.gen(function* () {
-    const flags = yield* parseRecord(spec.id, "flag", input.flags, spec.flags ?? {});
-    const args = yield* parseRecord(spec.id, "arg", input.args, spec.args ?? {});
-    if (spec.strict !== false && input.raw.length > 0) {
-      return yield* Effect.fail(
-        failure(
-          spec.id,
-          "arg",
-          "raw",
-          "strict",
-          `Canonical command ${spec.id} does not accept raw arguments.`,
-          "Remove raw arguments.",
-        ),
-      );
-    }
-    const parsedArgv = [
-      ...Object.values(args).flatMap((value) =>
-        Array.isArray(value) ? value.map((occurrence) => String(occurrence)) : [String(value)],
+> {
+  const flags = yield* parseRecord(spec.id, "flag", input.flags, spec.flags ?? {});
+  const args = yield* parseRecord(spec.id, "arg", input.args, spec.args ?? {});
+  if (spec.strict !== false && input.raw.length > 0) {
+    return yield* Effect.fail(
+      failure(
+        spec.id,
+        "arg",
+        "raw",
+        "strict",
+        `Canonical command ${spec.id} does not accept raw arguments.`,
+        "Remove raw arguments.",
       ),
-      ...input.raw,
-    ];
-    return {
-      argv: input.raw,
-      parsedArgv,
-      flags,
-      args,
-      interaction: flags.interactive === true ? "interactive" : "non-interactive",
-    };
-  });
+    );
+  }
+  const parsedArgv = [
+    ...Object.values(args).flatMap((value) =>
+      Array.isArray(value) ? value.map((occurrence) => String(occurrence)) : [String(value)],
+    ),
+    ...input.raw,
+  ];
+  return {
+    argv: input.raw,
+    parsedArgv,
+    flags,
+    args,
+    interaction: flags.interactive === true ? "interactive" : "non-interactive",
+  };
+});

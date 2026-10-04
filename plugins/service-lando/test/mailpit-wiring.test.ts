@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
@@ -33,7 +33,7 @@ const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string
       }),
       TestRuntimeProvider.capabilities,
     ),
-  ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive));
+  ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
 const plan = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
   Effect.runPromise(planEffect(mailFrom, php, firstOverrides));
 
@@ -78,7 +78,7 @@ describe("Mailpit selected PHP senders", () => {
     const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "mailpit" });
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         mailpitServiceType.resolve({
           name,
           service,
@@ -88,7 +88,7 @@ describe("Mailpit selected PHP senders", () => {
       ),
     );
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ServiceTypeError" } });
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ServiceTypeError" } });
   });
   test("deduplicates mailFrom by first occurrence without sorting authored order", async () => {
     // Given
@@ -140,8 +140,8 @@ describe("Mailpit selected PHP senders", () => {
     "rejects invalid targets before returning a provider plan: %j",
     async (...targets) => {
       // Given / When / Then
-      const result = await Effect.runPromise(Effect.either(planEffect(targets)));
-      expect(result).toMatchObject({ _tag: "Left", left: { _tag: "LandofileValidationError" } });
+      const result = await Effect.runPromise(Effect.result(planEffect(targets)));
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileValidationError" } });
     },
   );
 
@@ -177,13 +177,13 @@ describe("Mailpit selected PHP senders", () => {
   test("fails planning closed when a selected PHP image has no provable base family", async () => {
     // Given / When
     const result = await Effect.runPromise(
-      Effect.either(planEffect(undefined, true, { image: "my-registry.example/php:8.3", home: false })),
+      Effect.result(planEffect(undefined, true, { image: "my-registry.example/php:8.3", home: false })),
     );
     // Then
-    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "LandofileValidationError" } });
-    if (result._tag !== "Left") return;
-    expect(result.left.message).toContain("first");
-    expect(result.left.message).toContain("my-registry.example/php:8.3");
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileValidationError" } });
+    if (result._tag !== "Failure") return;
+    expect(result.failure.message).toContain("first");
+    expect(result.failure.message).toContain("my-registry.example/php:8.3");
   });
 
   test("an unprovable image still plans when mailFrom excludes it", async () => {

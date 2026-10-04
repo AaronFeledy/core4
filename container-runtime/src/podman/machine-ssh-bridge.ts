@@ -48,8 +48,11 @@ const Machine = Schema.Struct({
   Created: Schema.NonEmptyString,
   SSHConfig: Schema.Struct({
     IdentityPath: Schema.NonEmptyString,
-    Port: Schema.Number.pipe(Schema.int(), Schema.between(1, 65535)),
-    RemoteUsername: Schema.String.pipe(Schema.pattern(/^[a-z_][a-z0-9_-]*$/u)),
+    Port: Schema.Number.pipe(
+      Schema.check(Schema.isInt()),
+      Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+    ),
+    RemoteUsername: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-z_][a-z0-9_-]*$/u))),
   }),
 });
 
@@ -73,7 +76,9 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
       throw new BridgeCommandError("Guest socket name must be a filename.");
     const inspected = await host.run(options.podmanBin, ["machine", "inspect", options.machineName]);
     if (inspected.exitCode !== 0) throw new BridgeCommandError("Podman machine inspect failed.");
-    const machine = Schema.decodeUnknownSync(Schema.parseJson(Schema.Array(Machine)))(inspected.stdout)[0];
+    const machine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Machine)))(
+      inspected.stdout,
+    )[0];
     if (machine === undefined || machine.Name !== options.machineName)
       throw new BridgeCommandError("The selected Podman machine is not running.");
     const knownHostsDir = join(options.stateDir, "host-proxy");
@@ -151,22 +156,24 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
     }
     return { dir: AbsolutePath.make(dir), socket: AbsolutePath.make(socket), release };
   };
-  const open = (operation: "host-proxy-bridge" | "agent-socket-bridge", target: () => BridgeTarget) =>
-    Effect.gen(function* () {
-      const processRunner = yield* Effect.serviceOption(ProcessRunner);
-      const host: MachineSshBridgeHost = options.host ?? {
-        ...defaultHost,
-        run: async (command, args) => {
-          if (Option.isNone(processRunner))
-            throw new BridgeCommandError("ProcessRunner is unavailable for the Podman machine SSH bridge.");
-          return Effect.runPromise(processRunner.value.run({ cmd: command, args, timeoutMs: 15_000 }));
-        },
-      };
-      return yield* Effect.acquireRelease(
-        Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure(operation) }),
-        ({ release }) => Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(Effect.orDie),
-      );
-    });
+  const open = Effect.fn("RuntimeProvider.openMachineSshBridge")(function* (
+    operation: "host-proxy-bridge" | "agent-socket-bridge",
+    target: () => BridgeTarget,
+  ) {
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const host: MachineSshBridgeHost = options.host ?? {
+      ...defaultHost,
+      run: async (command, args) => {
+        if (Option.isNone(processRunner))
+          throw new BridgeCommandError("ProcessRunner is unavailable for the Podman machine SSH bridge.");
+        return Effect.runPromise(processRunner.value.run({ cmd: command, args, timeoutMs: 15_000 }));
+      },
+    };
+    return yield* Effect.acquireRelease(
+      Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure(operation) }),
+      ({ release }) => Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(Effect.orDie),
+    );
+  });
   return {
     openHostProxyBridge: (input: HostProxyBridgeInput): BridgeEffect<HostProxyBridgeResult> =>
       open("host-proxy-bridge", () => {

@@ -1,21 +1,22 @@
 /** Source-preserving shapes, not a validator for plugin-specific Lando 3 intent. */
 import { type LegacyTagged, isLegacyTagged } from "@lando/sdk/landofile";
-import { Schema, type SchemaAST } from "effect";
+import { Predicate, Schema, SchemaAST } from "effect";
 import type { Lando3Path } from "./contract.ts";
 
-const Bag = Schema.Record({ key: Schema.String, value: Schema.Unknown });
+const Bag = Schema.Record(Schema.String, Schema.Unknown);
 const Tagged = Schema.declare<LegacyTagged>(isLegacyTagged);
-const Text = Schema.Union(Schema.String, Tagged);
+const Text = Schema.Union([Schema.String, Tagged]);
 const Strings = Schema.Array(Text);
-const TextOrList = Schema.Union(Text, Strings);
-const Toggle = Schema.Union(Schema.Boolean, Schema.String);
-const Port = Schema.Union(Schema.Number, Schema.String);
-const Environment = Schema.Union(Bag, Strings);
-const open = <F extends Schema.Struct.Fields>(fields: F) => Schema.Struct(fields).pipe(Schema.extend(Bag));
-const optional = Schema.optional;
-const record = <A, I>(value: Schema.Schema<A, I>) => Schema.Record({ key: Schema.String, value });
+const TextOrList = Schema.Union([Text, Strings]);
+const Toggle = Schema.Union([Schema.Boolean, Schema.String]);
+const Port = Schema.Union([Schema.Number, Schema.String]);
+const Environment = Schema.Union([Bag, Strings]);
+const open = <F extends Schema.Struct.Fields>(fields: F) =>
+  Schema.StructWithRest(Schema.Struct(fields), [Bag]);
+const optional = Schema.optionalKey;
+const record = <S extends Schema.Constraint>(value: S) => Schema.Record(Schema.String, value);
 const CommandMap = record(TextOrList);
-const Command = Schema.Union(Text, Schema.Array(Schema.Union(Text, CommandMap)));
+const Command = Schema.Union([Text, Schema.Array(Schema.Union([Text, CommandMap]))]);
 
 export const Lando3Scanner = open({
   okCodes: optional(Schema.Array(Schema.Number)),
@@ -30,8 +31,8 @@ export const Lando3Healthcheck = open({
   retry: optional(Schema.Number),
   delay: optional(Schema.Number),
 });
-const healthcheck = optional(Schema.Union(Toggle, Tagged, Lando3Healthcheck));
-const scanner = optional(Schema.Union(Schema.Boolean, Lando3Scanner));
+const healthcheck = optional(Schema.Union([Toggle, Tagged, Lando3Healthcheck]));
+const scanner = optional(Schema.Union([Schema.Boolean, Lando3Scanner]));
 const hooks = {
   build: optional(Command),
   build_as_root: optional(Command),
@@ -48,7 +49,7 @@ const api3 = {
   config: optional(Bag),
   overrides: optional(Bag),
   scanner,
-  ssl: optional(Schema.Union(Schema.Boolean, Port)),
+  ssl: optional(Schema.Union([Schema.Boolean, Port])),
   sslExpose: optional(Schema.Boolean),
   app_mount: optional(Toggle),
   moreHttpPorts: optional(Schema.Array(Port)),
@@ -58,13 +59,13 @@ const api3 = {
 
 export const Lando3Api3CatalogService = open({
   ...api3,
-  type: optional(Schema.String.pipe(Schema.filter((type) => type !== "lando" && type !== "compose"))),
+  type: optional(Schema.String.check(Schema.makeFilter((type) => type !== "lando" && type !== "compose"))),
   via: optional(Text),
   webroot: optional(Text),
   composer_version: optional(Toggle),
   composer: optional(Bag),
   xdebug: optional(
-    Schema.Union(
+    Schema.Union([
       Toggle,
       open({
         mode: optional(Text),
@@ -72,12 +73,12 @@ export const Lando3Api3CatalogService = open({
         client_port: optional(Port),
         config: optional(Bag),
       }),
-    ),
+    ]),
   ),
   db_client: optional(Text),
   path: optional(Strings),
   environment: optional(Environment),
-  portforward: optional(Schema.Union(Schema.Boolean, Port)),
+  portforward: optional(Schema.Union([Schema.Boolean, Port])),
   creds: optional(open({ user: optional(Text), password: optional(Text), database: optional(Text) })),
   authentication: optional(Text),
   port: optional(Port),
@@ -100,7 +101,7 @@ export type Lando3Api3CatalogService = typeof Lando3Api3CatalogService.Type;
 
 export const Lando3Api3RawService = open({
   ...api3,
-  type: Schema.Literal("lando", "compose"),
+  type: Schema.Literals(["lando", "compose"]),
   services: optional(Bag),
   user: optional(Text),
   scriptsDir: optional(Text),
@@ -127,23 +128,23 @@ const Mount = open({
   includes: optional(Strings),
   excludes: optional(Strings),
   scope: optional(Text),
-  instructions: optional(Schema.Union(TextOrList, Schema.Array(Bag))),
+  instructions: optional(Schema.Union([TextOrList, Schema.Array(Bag)])),
 });
-const Mounts = Schema.Array(Schema.Union(Text, Mount));
+const Mounts = Schema.Array(Schema.Union([Text, Mount]));
 export const Lando3Image = open({
   imagefile: optional(Text),
   dockerfile: optional(Text),
   tag: optional(Text),
   buildx: optional(Schema.Boolean),
   buildkit: optional(Schema.Boolean),
-  ssh: optional(Schema.Union(Toggle, Strings)),
+  ssh: optional(Schema.Union([Toggle, Strings])),
   args: optional(Environment),
   context: optional(Mounts),
   groups: optional(Schema.Array(Bag)),
   steps: optional(
     Schema.Array(
       open({
-        instructions: optional(Schema.Union(TextOrList, Schema.Array(Bag))),
+        instructions: optional(Schema.Union([TextOrList, Schema.Array(Bag)])),
         group: optional(Text),
         weight: optional(Schema.Number),
         user: optional(Text),
@@ -153,15 +154,15 @@ export const Lando3Image = open({
 });
 export const Lando3Api4Service = open({
   api: Schema.Literal(4),
-  type: optional(Schema.Literal("lando", "l337")),
+  type: optional(Schema.Literals(["lando", "l337"])),
   primary: optional(Schema.Boolean),
-  image: optional(Schema.Union(Text, Lando3Image)),
+  image: optional(Schema.Union([Text, Lando3Image])),
   mounts: optional(Mounts),
   storage: optional(Mounts),
   "persistent-storage": optional(Mounts),
-  appMount: optional(Schema.Union(Toggle, Mount)),
-  "app-mount": optional(Schema.Union(Toggle, Mount)),
-  certs: optional(Schema.Union(Toggle, open({ cert: optional(Text), key: optional(Text) }))),
+  appMount: optional(Schema.Union([Toggle, Mount])),
+  "app-mount": optional(Schema.Union([Toggle, Mount])),
+  certs: optional(Schema.Union([Toggle, open({ cert: optional(Text), key: optional(Text) })])),
   security: optional(
     open({
       ca: optional(TextOrList),
@@ -170,7 +171,7 @@ export const Lando3Api4Service = open({
       "certificate-authorities": optional(TextOrList),
     }),
   ),
-  endpoints: optional(Schema.Union(Bag, Schema.Array(Schema.Union(Text, Bag)))),
+  endpoints: optional(Schema.Union([Bag, Schema.Array(Schema.Union([Text, Bag]))])),
   healthcheck,
   hostnames: optional(Strings),
   packages: optional(record(Schema.Boolean)),
@@ -182,9 +183,9 @@ export const Lando3Api4Service = open({
   tty: optional(Schema.Boolean),
   stdin_open: optional(Schema.Boolean),
   environment: optional(Environment),
-  ports: optional(Schema.Array(Schema.Union(Port, Bag))),
-  volumes: optional(Schema.Union(Strings, Bag)),
-  networks: optional(Schema.Union(Strings, Bag)),
+  ports: optional(Schema.Array(Schema.Union([Port, Bag]))),
+  volumes: optional(Schema.Union([Strings, Bag])),
+  networks: optional(Schema.Union([Strings, Bag])),
   labels: optional(Environment),
   overrides: optional(Bag),
   scanner,
@@ -193,7 +194,7 @@ export const Lando3Api4Service = open({
 export type Lando3Api4Service = typeof Lando3Api4Service.Type;
 
 /** The record branch retains future APIs and malformed fields without claiming a typed family. */
-export const Lando3Service = Schema.Union(
+export const Lando3Service = Schema.Union([
   Lando3Api3CatalogService,
   Lando3Api3RawService,
   Lando3Api4Service,
@@ -204,7 +205,7 @@ export const Lando3Service = Schema.Union(
   Schema.String,
   Schema.Number,
   Schema.Array(Schema.Unknown),
-);
+]);
 export type Lando3Service = typeof Lando3Service.Type;
 
 export const Lando3ToolingEntry = open({
@@ -218,13 +219,15 @@ export const Lando3ToolingEntry = open({
   options: optional(record(Bag)),
   usage: optional(Text),
   examples: optional(Strings),
-  interactive: optional(Schema.Union(Schema.Boolean, Bag)),
+  interactive: optional(Schema.Union([Schema.Boolean, Bag])),
   disabled: optional(Schema.Boolean),
   positionals: optional(record(Bag)),
 });
 export type Lando3ToolingEntry = typeof Lando3ToolingEntry.Type;
-export const Lando3Tooling = record(Schema.Union(Lando3ToolingEntry, Text, Schema.Boolean, Schema.Null, Bag));
-export const Lando3Events = record(Schema.Array(Schema.Union(Text, CommandMap)));
+export const Lando3Tooling = record(
+  Schema.Union([Lando3ToolingEntry, Text, Schema.Boolean, Schema.Null, Bag]),
+);
+export const Lando3Events = record(Schema.Array(Schema.Union([Text, CommandMap])));
 export const Lando3ProxyRoute = open({
   hostname: optional(Text),
   port: optional(Port),
@@ -233,7 +236,7 @@ export const Lando3ProxyRoute = open({
     Schema.Array(open({ name: optional(Text), key: optional(Text), value: optional(Schema.Unknown) })),
   ),
 });
-export const Lando3Proxy = record(Schema.Array(Schema.Union(Text, Lando3ProxyRoute)));
+export const Lando3Proxy = record(Schema.Array(Schema.Union([Text, Lando3ProxyRoute])));
 
 export const Lando3LandofileShape = open({
   name: optional(Text),
@@ -246,7 +249,7 @@ export const Lando3LandofileShape = open({
   compose: optional(TextOrList),
   excludes: optional(Strings),
   env_file: optional(TextOrList),
-  keys: optional(Schema.Union(Schema.Boolean, Strings)),
+  keys: optional(Schema.Union([Schema.Boolean, Strings])),
   plugins: optional(record(Text)),
   pluginDirs: optional(Strings),
   volumes: optional(Bag),
@@ -257,7 +260,7 @@ export const Lando3LandofileShape = open({
 });
 export type Lando3LandofileShape = typeof Lando3LandofileShape.Type;
 /** Narrow with Lando3LandofileShape for typed fields; malformed documents remain intact records. */
-export const Lando3Landofile = Schema.Union(Lando3LandofileShape, Bag);
+export const Lando3Landofile = Schema.Union([Lando3LandofileShape, Bag]);
 export type Lando3Landofile = typeof Lando3Landofile.Type;
 export interface Lando3DecodeResult {
   readonly landofile: Lando3Landofile;
@@ -265,8 +268,6 @@ export interface Lando3DecodeResult {
   readonly tags: ReadonlyArray<{ readonly path: Lando3Path; readonly tag: string }>;
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value) && !isLegacyTagged(value);
 const UnknownService = Schema.Struct({ api: optional(Schema.Unknown), type: optional(Schema.Unknown) });
 const serviceAst = (value: Readonly<Record<string, unknown>>): SchemaAST.AST => {
   switch (value.api ?? 3) {
@@ -286,16 +287,17 @@ const serviceAst = (value: Readonly<Record<string, unknown>>): SchemaAST.AST => 
 /** Choose a structural branch even when a modeled field has an unexpected value. */
 const structuralAst = (ast: SchemaAST.AST | undefined, value: unknown): SchemaAST.AST | undefined => {
   if (ast === undefined) return undefined;
+  if (ast.encoding !== undefined) return structuralAst(SchemaAST.toEncoded(ast), value);
   switch (ast._tag) {
-    case "Refinement":
-      return structuralAst(ast.from, value);
+    case "Suspend":
+      return structuralAst(ast.thunk(), value);
     case "Union":
       return ast.types
         .map((member) => structuralAst(member, value))
         .find(
           (member) =>
-            (isRecord(value) && member?._tag === "TypeLiteral") ||
-            (Array.isArray(value) && member?._tag === "TupleType"),
+            (Predicate.isObject(value) && !isLegacyTagged(value) && member?._tag === "Objects") ||
+            (Array.isArray(value) && member?._tag === "Arrays"),
         );
     default:
       return ast;
@@ -324,15 +326,15 @@ export const decodeLando3Landofile = (value: unknown): Lando3DecodeResult => {
         visit(
           item,
           [...path, index],
-          ast?._tag === "TupleType" ? (ast.elements[index]?.type ?? ast.rest[0]?.type) : undefined,
+          ast?._tag === "Arrays" ? (ast.elements[index] ?? ast.rest[0]) : undefined,
         ),
       );
-    } else if (isRecord(node)) {
+    } else if (Predicate.isObject(node) && !isLegacyTagged(node)) {
       const selected =
         path.length === 2 && path[0] === "services" && shape !== undefined ? serviceAst(node) : ast;
       for (const [key, child] of Object.entries(node)) {
         const childPath = [...path, key];
-        const fields = selected?._tag === "TypeLiteral" ? selected : undefined;
+        const fields = selected?._tag === "Objects" ? selected : undefined;
         const field = fields?.propertySignatures.find((property) => property.name === key);
         const bag = fields?.propertySignatures.length === 0 ? fields.indexSignatures[0]?.type : undefined;
         const ignored = path.length === 0 && key.startsWith("x-");

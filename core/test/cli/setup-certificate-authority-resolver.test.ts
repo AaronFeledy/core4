@@ -39,7 +39,10 @@ describe("CA setup resolver", () => {
     // When
     await Effect.runPromise(
       runCaSetupStep({}, {}, recorder).pipe(
-        Effect.provideService(CertificateAuthorityResolver, { resolve: Effect.succeed(ca) }),
+        Effect.provideService(
+          CertificateAuthorityResolver,
+          CertificateAuthorityResolver.of({ resolve: Effect.succeed(ca) }),
+        ),
       ),
     );
 
@@ -61,17 +64,20 @@ describe("CA setup resolver", () => {
       ...makeTestCertificateAuthority(),
       setup: () => processRunner.run().pipe(Effect.asVoid),
     };
-    const eventService = {
+    const eventService = EventService.of({
       publish: (event: { readonly _tag: string; readonly body?: string }) =>
         Effect.sync(() => {
           sequence.push(`event: ${event.body ?? event._tag}`);
         }),
-    } as unknown as Context.Tag.Service<typeof EventService>;
+    } as unknown as Context.Service.Shape<typeof EventService>);
     const { recorder } = makeRecorder();
 
     await Effect.runPromise(
       runCaSetupStep({}, {}, recorder, "lando", "win32").pipe(
-        Effect.provideService(CertificateAuthorityResolver, { resolve: Effect.succeed(ca) }),
+        Effect.provideService(
+          CertificateAuthorityResolver,
+          CertificateAuthorityResolver.of({ resolve: Effect.succeed(ca) }),
+        ),
         Effect.provideService(EventService, eventService),
       ),
     );
@@ -94,7 +100,10 @@ describe("CA setup resolver", () => {
     // When
     await Effect.runPromise(
       runCaSetupStep({}, {}, recorder).pipe(
-        Effect.provideService(CertificateAuthorityResolver, { resolve: Effect.fail(unavailable) }),
+        Effect.provideService(
+          CertificateAuthorityResolver,
+          CertificateAuthorityResolver.of({ resolve: Effect.fail(unavailable) }),
+        ),
       ),
     );
 
@@ -112,12 +121,15 @@ describe("CA setup resolver", () => {
     // When
     await Effect.runPromise(
       runCaSetupStep({ flags: { "skip-install-ca": true } }, {}, recorder).pipe(
-        Effect.provideService(CertificateAuthorityResolver, {
-          resolve: Effect.sync(() => {
-            resolved = true;
-            return ca;
+        Effect.provideService(
+          CertificateAuthorityResolver,
+          CertificateAuthorityResolver.of({
+            resolve: Effect.sync(() => {
+              resolved = true;
+              return ca;
+            }),
           }),
-        }),
+        ),
       ),
     );
 

@@ -51,10 +51,7 @@ const route = (hostname: string, pathPrefix?: string): RoutePlan =>
 
 const DynamicConfig = Schema.Struct({
   http: Schema.Struct({
-    routers: Schema.Record({
-      key: Schema.String,
-      value: Schema.Struct({ rule: Schema.String, priority: Schema.Number }),
-    }),
+    routers: Schema.Record(Schema.String, Schema.Struct({ rule: Schema.String, priority: Schema.Number })),
   }),
 });
 

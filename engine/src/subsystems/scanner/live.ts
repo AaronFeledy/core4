@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { ScannerError } from "@lando/sdk/errors";
 import type { AppId, ServiceName } from "@lando/sdk/schema";
@@ -12,7 +13,6 @@ import {
   type UrlScannerShape,
 } from "@lando/sdk/services";
 
-import { HttpClient } from "@lando/http-client/service";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   SCANNER_ID,
@@ -46,58 +46,56 @@ export const makeUrlScanner = (
   overrides: Partial<UrlScanConfig> = {},
 ): UrlScannerShape => {
   const config: UrlScanConfig = { ...defaultUrlScanConfig, ...overrides };
-  return {
+  return UrlScanner.of({
     id: SCANNER_ID,
-    scan: (appId, options) =>
-      Effect.gen(function* () {
-        if (options?.plan === undefined && options?.urls === undefined && !config.enabled) {
-          return { appId, endpoints: [] };
+    scan: Effect.fn("UrlScanner.scan")(function* (appId, options) {
+      if (options?.plan === undefined && options?.urls === undefined && !config.enabled) {
+        return { appId, endpoints: [] };
+      }
+      const redactor = yield* resolveRedactor;
+      const targets =
+        options?.urls === undefined
+          ? (yield* deps.listEndpoints(appId)).flatMap((endpoint) => {
+              const scan = options?.plan?.services[endpoint.service]?.scanner;
+              const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+              return resolved.enabled
+                ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
+                : [];
+            })
+          : options.urls.flatMap((supplied) => {
+              const protocol = URL.parse(supplied.url)?.protocol;
+              if (protocol !== undefined && protocol !== "http:" && protocol !== "https:") return [];
+              const scan = options.plan?.services[supplied.service]?.scanner;
+              const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+              return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
+            });
+      const scanned = yield* Effect.forEach(
+        targets,
+        ({ target, config }) => scanTarget(deps, config, redactor, target),
+        { concurrency: 4 },
+      );
+      return { appId, endpoints: scanned };
+    }),
+    detectCollisions: Effect.fn("UrlScanner.detectCollisions")(function* (appIds) {
+      const claims = new Map<number, Array<{ appId: AppId; service: ServiceName }>>();
+      for (const app of appIds) {
+        const endpoints = yield* deps.listEndpoints(app);
+        for (const endpoint of endpoints) {
+          const hostPort = publishedHostPort(endpoint);
+          if (hostPort === undefined) continue;
+          const claimants = claims.get(hostPort) ?? [];
+          claimants.push({ appId: app, service: endpoint.service });
+          claims.set(hostPort, claimants);
         }
-        const redactor = yield* resolveRedactor;
-        const targets =
-          options?.urls === undefined
-            ? (yield* deps.listEndpoints(appId)).flatMap((endpoint) => {
-                const scan = options?.plan?.services[endpoint.service]?.scanner;
-                const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
-                return resolved.enabled
-                  ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
-                  : [];
-              })
-            : options.urls.flatMap((supplied) => {
-                const protocol = URL.parse(supplied.url)?.protocol;
-                if (protocol !== undefined && protocol !== "http:" && protocol !== "https:") return [];
-                const scan = options.plan?.services[supplied.service]?.scanner;
-                const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
-                return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
-              });
-        const scanned = yield* Effect.forEach(
-          targets,
-          ({ target, config }) => scanTarget(deps, config, redactor, target),
-          { concurrency: 4 },
-        );
-        return { appId, endpoints: scanned };
-      }),
-    detectCollisions: (appIds) =>
-      Effect.gen(function* () {
-        const claims = new Map<number, Array<{ appId: AppId; service: ServiceName }>>();
-        for (const app of appIds) {
-          const endpoints = yield* deps.listEndpoints(app);
-          for (const endpoint of endpoints) {
-            const hostPort = publishedHostPort(endpoint);
-            if (hostPort === undefined) continue;
-            const claimants = claims.get(hostPort) ?? [];
-            claimants.push({ appId: app, service: endpoint.service });
-            claims.set(hostPort, claimants);
-          }
-        }
-        const collisions: PortCollision[] = [];
-        for (const [port, apps] of [...claims.entries()].sort((left, right) => left[0] - right[0])) {
-          const distinctApps = new Set<AppId>(apps.map((claimant) => claimant.appId));
-          if (distinctApps.size >= 2) collisions.push({ port, apps });
-        }
-        return collisions;
-      }),
-  };
+      }
+      const collisions: PortCollision[] = [];
+      for (const [port, apps] of [...claims.entries()].sort((left, right) => left[0] - right[0])) {
+        const distinctApps = new Set<AppId>(apps.map((claimant) => claimant.appId));
+        if (distinctApps.size >= 2) collisions.push({ port, apps });
+      }
+      return collisions;
+    }),
+  });
 };
 
 const providerListError = (error: ProviderError, redactor: Redactor): ScannerError =>
@@ -109,33 +107,31 @@ const providerListError = (error: ProviderError, redactor: Redactor): ScannerErr
     cause: redactor.redactValue(error),
   });
 
-const listEndpointsFromProvider =
-  (provider: RuntimeProviderShape) =>
-  (appId: AppId): Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError> =>
-    Effect.gen(function* () {
-      const redactor = yield* resolveRedactor;
-      const infos = yield* provider
-        .list({ app: appId })
-        .pipe(Effect.mapError((error) => providerListError(error, redactor)));
-      return infos.flatMap((info) =>
-        (info.state ?? info.status) === "stopped" || info.endpoints === undefined
-          ? []
-          : info.endpoints.flatMap((endpoint) =>
-              endpoint._tag === "published" ? [{ ...endpoint, service: info.service }] : [],
-            ),
-      );
-    });
+const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
+  Effect.fn("RuntimeProvider.listEndpoints")(function* (
+    appId: AppId,
+  ): Effect.fn.Return<ReadonlyArray<ScanSourceEndpoint>, ScannerError> {
+    const redactor = yield* resolveRedactor;
+    const infos = yield* provider
+      .list({ app: appId })
+      .pipe(Effect.mapError((error) => providerListError(error, redactor)));
+    return infos.flatMap((info) =>
+      (info.state ?? info.status) === "stopped" || info.endpoints === undefined
+        ? []
+        : info.endpoints.flatMap((endpoint) =>
+            endpoint._tag === "published" ? [{ ...endpoint, service: info.service }] : [],
+          ),
+    );
+  });
 
-export const UrlScannerLive: Layer.Layer<UrlScanner, never, RuntimeProvider | HttpClient> = Layer.effect(
+export const layer: Layer.Layer<UrlScanner, never, RuntimeProvider | HttpClient.HttpClient> = Layer.effect(
   UrlScanner,
   Effect.gen(function* () {
     const provider = yield* RuntimeProvider;
-    const http = yield* HttpClient;
+    const http = yield* HttpClient.HttpClient;
     return makeUrlScanner({
-      stream: http.stream,
+      http,
       listEndpoints: listEndpointsFromProvider(provider),
     });
   }),
 );
-
-export const UrlScannerDefaultLayer = UrlScannerLive;

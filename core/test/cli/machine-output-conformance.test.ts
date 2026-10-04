@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Arbitrary, Effect, FastCheck, Schema } from "effect";
+import { Arbitrary, Effect, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
 import { ScratchRunTargetError } from "@lando/sdk/errors";
@@ -59,12 +59,22 @@ const landofileResultCommandIds = new Set<string>([
   "meta:global:config:validate",
 ]);
 
+// Effect 4's string arbitrary can emit lone surrogates, which no YAML document can carry.
+const isWellFormedDeep = (value: unknown): boolean => {
+  if (typeof value === "string") return value.isWellFormed();
+  if (Array.isArray(value)) return value.every(isWellFormedDeep);
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value).every(([key, entry]) => key.isWellFormed() && isWellFormedDeep(entry));
+  }
+  return true;
+};
+
 const successValueFor = (spec: LandoCommandSpec): unknown => {
   if (landofileResultCommandIds.has(spec.id)) return {};
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
-  const arbitrary = Arbitrary.make(spec.resultSchema);
-  const [sample] = FastCheck.sample(arbitrary, { numRuns: 1, seed: 7 });
+  const arbitrary = Arbitrary.schema(spec.resultSchema).pipe(Arbitrary.filter(isWellFormedDeep));
+  const [sample] = Effect.runSync(Arbitrary.sampleEffect(arbitrary, { count: 1, seed: 7 }));
   return sample;
 };
 

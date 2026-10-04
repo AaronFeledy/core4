@@ -182,72 +182,71 @@ export const makeUnixDockerApiClient = (
     Stream.fromAsyncIterable(streamUnixSocketRequest(socketPath, input), (cause) =>
       dockerApiFailure(ctx)(input, cause),
     ),
-  request: (input) =>
-    Effect.gen(function* () {
-      const args = [
-        "--silent",
-        "--show-error",
-        "--unix-socket",
-        socketPath,
-        "--request",
-        input.method,
-        "--write-out",
-        "\n%{http_code}",
-      ];
-      if (input.body !== undefined) {
-        args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(input.body));
-      }
-      for (const [key, value] of Object.entries(input.headers ?? {})) {
-        args.push("--header", `${key}: ${value}`);
-      }
-      if (input.stdin !== undefined) {
-        args.push("--data-binary", "@-");
-      }
-      args.push(`http://localhost${DOCKER_API_PREFIX}${input.path}`);
+  request: Effect.fn("DockerApiClient.request")(function* (input) {
+    const args = [
+      "--silent",
+      "--show-error",
+      "--unix-socket",
+      socketPath,
+      "--request",
+      input.method,
+      "--write-out",
+      "\n%{http_code}",
+    ];
+    if (input.body !== undefined) {
+      args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(input.body));
+    }
+    for (const [key, value] of Object.entries(input.headers ?? {})) {
+      args.push("--header", `${key}: ${value}`);
+    }
+    if (input.stdin !== undefined) {
+      args.push("--data-binary", "@-");
+    }
+    args.push(`http://localhost${DOCKER_API_PREFIX}${input.path}`);
 
-      const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
-        try: async () => {
-          const payload = await collectRequestStdin(input.stdin);
-          const proc = (options?.spawn ?? Bun.spawn)(["curl", ...args], {
-            stderr: "pipe",
-            stdin: payload === undefined ? "ignore" : "pipe",
-            stdout: "pipe",
-          });
-          writeStdinPayload(proc.stdin, payload);
-          const [stdout, stderr, exitCode] = await Promise.all([
-            new Response(proc.stdout).text(),
-            new Response(proc.stderr).text(),
-            proc.exited,
-          ]);
-          return { stdout, stderr, exitCode };
-        },
-        catch: (cause) => dockerApiFailure(ctx)(input, cause),
-      });
-      if (exitCode !== 0) {
-        yield* Effect.fail(
-          unavailable(ctx)("docker-api", `Docker API request failed with exit code ${exitCode}.`, {
-            method: input.method,
-            path: input.path,
-            stderr,
-          }),
-        );
-      }
+    const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
+      try: async () => {
+        const payload = await collectRequestStdin(input.stdin);
+        const proc = (options?.spawn ?? Bun.spawn)(["curl", ...args], {
+          stderr: "pipe",
+          stdin: payload === undefined ? "ignore" : "pipe",
+          stdout: "pipe",
+        });
+        writeStdinPayload(proc.stdin, payload);
+        const [stdout, stderr, exitCode] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        return { stdout, stderr, exitCode };
+      },
+      catch: (cause) => dockerApiFailure(ctx)(input, cause),
+    });
+    if (exitCode !== 0) {
+      yield* Effect.fail(
+        unavailable(ctx)("docker-api", `Docker API request failed with exit code ${exitCode}.`, {
+          method: input.method,
+          path: input.path,
+          stderr,
+        }),
+      );
+    }
 
-      const marker = stdout.lastIndexOf("\n");
-      const statusText = marker === -1 ? stdout : stdout.slice(marker + 1);
-      const status = Number.parseInt(statusText, 10);
-      if (!Number.isInteger(status)) {
-        yield* Effect.fail(
-          new ProviderInternalError({
-            providerId: ctx.providerId,
-            operation: "docker-api",
-            message: "Docker API response did not include an HTTP status code.",
-            details: stdout,
-          }),
-        );
-      }
-      return { status, body: marker === -1 ? "" : stdout.slice(0, marker) };
-    }),
+    const marker = stdout.lastIndexOf("\n");
+    const statusText = marker === -1 ? stdout : stdout.slice(marker + 1);
+    const status = Number.parseInt(statusText, 10);
+    if (!Number.isInteger(status)) {
+      yield* Effect.fail(
+        new ProviderInternalError({
+          providerId: ctx.providerId,
+          operation: "docker-api",
+          message: "Docker API response did not include an HTTP status code.",
+          details: stdout,
+        }),
+      );
+    }
+    return { status, body: marker === -1 ? "" : stdout.slice(0, marker) };
+  }),
   info: Effect.gen(function* () {
     const response = yield* makeUnixDockerApiClient(socketPath, ctx, options).request?.({
       method: "GET",

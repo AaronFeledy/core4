@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -27,12 +27,12 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
@@ -53,7 +53,7 @@ const planAt = (root: string): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-15T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-15T00:00:00.000Z"),
     source: "applied-state",
     runtime: 4,
   },
@@ -75,7 +75,7 @@ const appliedPlanMismatches: ReadonlyArray<readonly [string, (plan: AppPlan) => 
 const invalidDesiredConfig = new LandofileValidationError({
   message: "The current Landofile is invalid.",
   file: ".lando.yml",
-  issues: ["invalid test fixture"],
+  issues: [{ path: [], message: "invalid test fixture" }],
 });
 
 const withTempRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> => {
@@ -121,7 +121,7 @@ const makeLayer = (input: {
       Effect.sync(() => {
         listFilters.push(filter);
       }).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           input.listFailure === undefined
             ? Effect.succeed(input.observed ?? [])
             : Effect.fail(input.listFailure),
@@ -141,7 +141,7 @@ const makeLayer = (input: {
           volumes: options.volumes === true,
         });
       }).pipe(
-        Effect.zipRight(input.destroy?.() ?? Effect.void),
+        Effect.andThen(input.destroy?.() ?? Effect.void),
         Effect.tap(() =>
           options.removeState === false
             ? Effect.void
@@ -199,33 +199,42 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
-    FileSystemLive,
-    PrivateFileAccessLive,
+    BunFileSystem.layer,
+    PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
-    Layer.succeed(LandofileService, {
-      discover: Effect.suspend(() => {
-        desiredLoads.push("discover");
-        return input.desiredPlan === undefined
-          ? Effect.fail(invalidDesiredConfig)
-          : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.suspend(() => {
+          desiredLoads.push("discover");
+          return input.desiredPlan === undefined
+            ? Effect.fail(invalidDesiredConfig)
+            : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+        }),
       }),
-    }),
-    Layer.succeed(AppPlanner, {
-      plan: () =>
-        input.desiredPlan === undefined
-          ? Effect.die("desired planning must not run")
-          : Effect.succeed(input.desiredPlan),
-    }),
+    ),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({
+        plan: () =>
+          input.desiredPlan === undefined
+            ? Effect.die("desired planning must not run")
+            : Effect.succeed(input.desiredPlan),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, registry),
-    Layer.succeed(EventService, {
-      publish: () => Effect.void,
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: () => Effect.void,
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
   return {
     layer,
@@ -352,9 +361,9 @@ describe("applied-state teardown", () => {
         removalFailure: failure,
       });
       const result = await Effect.runPromise(
-        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.either),
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      expect(result).toMatchObject({ _tag: "Left", left: failure });
+      expect(result).toMatchObject({ _tag: "Failure", failure });
       expect(harness.destroyCalls).toEqual([]);
     });
   });
@@ -396,10 +405,10 @@ describe("applied-state teardown", () => {
       const root = join(parent, "gone");
       const harness = makeLayer({ appliedPlan: mutate(planAt(root)) });
       const result = await Effect.runPromise(
-        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
-      expect(result.left).toMatchObject({ _tag: "AppResolveError", reason: "mismatch", detail });
+      if (result._tag !== "Failure") throw new TypeError("expected ownership refusal");
+      expect(result.failure).toMatchObject({ _tag: "AppResolveError", reason: "mismatch", detail });
       expect(harness.destroyCalls).toEqual([]);
     });
   });
@@ -408,10 +417,10 @@ describe("applied-state teardown", () => {
     await withTempRoot(async (root) => {
       const harness = makeLayer({ appliedPlan: planAt(root) });
       const result = await Effect.runPromise(
-        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.result),
       );
-      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
-      expect(result.left).toMatchObject({
+      if (result._tag !== "Failure") throw new TypeError("expected existing-root refusal");
+      expect(result.failure).toMatchObject({
         _tag: "AppResolveError",
         reason: "mismatch",
         detail: "root-exists",
@@ -431,10 +440,10 @@ describe("applied-state teardown", () => {
         const root = join(broken, "gone");
         const harness = makeLayer({});
         const result = await Effect.runPromise(
-          destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+          destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.result),
         );
-        if (result._tag !== "Left") throw new TypeError("expected unresolvable-root refusal");
-        expect(result.left).toMatchObject({
+        if (result._tag !== "Failure") throw new TypeError("expected unresolvable-root refusal");
+        expect(result.failure).toMatchObject({
           _tag: "AppResolveError",
           reason: "missing-root",
           detail: "unresolvable-root",

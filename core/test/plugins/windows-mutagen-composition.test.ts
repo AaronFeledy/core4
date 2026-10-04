@@ -31,7 +31,7 @@ const provider = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
 const volumeName = fileSyncVolumeName("demo", serviceName, "app-mount");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "windows-mutagen-composition.test.ts",
   runtime: 4 as const,
 };
@@ -138,8 +138,10 @@ describe("opt-in Windows Mutagen composition", () => {
   });
 
   test("rejects duplicate planned sessions and missing accelerated mounts before alias preparation", async () => {
+    const plannedSync = plan.fileSync[0];
+    if (plannedSync === undefined) throw new Error("Expected a planned sync session");
     for (const invalidPlan of [
-      { ...plan, fileSync: [plan.fileSync[0]!, plan.fileSync[0]!] },
+      { ...plan, fileSync: [plannedSync, plannedSync] },
       {
         ...plan,
         services: {

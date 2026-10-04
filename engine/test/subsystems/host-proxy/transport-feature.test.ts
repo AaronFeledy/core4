@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Exit, Layer } from "effect";
+import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -55,7 +55,7 @@ const envelope: CommandResultEnvelope = {
   deprecations: [],
 };
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "host-proxy-transport-feature.test",
   runtime: 4 as const,
 };
@@ -67,15 +67,24 @@ const fakeExecutable = async (): Promise<string> => {
   return path;
 };
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-});
-const eventLayer = Layer.succeed(EventService, {
-  publish: () => Effect.void,
-  subscribe: () => Effect.die("unused"),
-  waitFor: () => Effect.die("unused"),
-} as never);
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+  }),
+);
+const eventLayer = Layer.succeed(
+  EventService,
+  EventService.of({
+    publish: () => Effect.void,
+    subscribe: () => Stream.die("unused"),
+    subscribeQueue: Effect.die("unused"),
+    waitForAny: () => Effect.die("unused"),
+    query: () => Effect.die("unused"),
+    waitFor: () => Effect.die("unused"),
+  }),
+);
 const run = <Value, Error>(program: Effect.Effect<Value, Error, EventService | RedactionService>) =>
   Effect.runPromise(program.pipe(Effect.provide(Layer.mergeAll(redactionLayer, eventLayer))));
 const runExit = <Value, Error>(program: Effect.Effect<Value, Error, EventService | RedactionService>) =>

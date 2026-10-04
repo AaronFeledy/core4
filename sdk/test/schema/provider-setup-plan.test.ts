@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { ProviderSetupConsentDeniedError } from "@lando/sdk/errors";
 import { ProviderId, ProviderSetupPlan } from "@lando/sdk/schema";
@@ -36,10 +36,10 @@ describe("ProviderSetupPlan", () => {
     };
 
     // When
-    const result = Schema.decodeUnknownEither(ProviderSetupPlan)(encoded);
+    const result = Schema.decodeUnknownResult(ProviderSetupPlan)(encoded);
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   test("publishes the consent-denied tagged error shape", () => {

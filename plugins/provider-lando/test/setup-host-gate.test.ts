@@ -57,7 +57,7 @@ describe("provider-lando setup Intel Mac host gate", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isSuccess(exit)) return;
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag === "None") return;
     const error = failure.value;
@@ -118,7 +118,7 @@ describe("provider-lando setup Intel Mac host gate", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);
     if (Exit.isSuccess(exit)) return;
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag === "None") return;
     expect(failure.value).toBeInstanceOf(IntelMacUnsupportedError);
@@ -146,7 +146,7 @@ describe("provider-lando setup Intel Mac host gate", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);
     if (Exit.isSuccess(exit)) return;
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag === "None") return;
     const error = failure.value;

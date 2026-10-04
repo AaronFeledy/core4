@@ -10,7 +10,7 @@
  */
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { LoweredTask } from "./lower-tooling.ts";
-import { type V4Wire, isPlainObject } from "./lowering-contract.ts";
+import { type V4Wire, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
 const LIFECYCLE = new Set(
@@ -31,9 +31,9 @@ export interface EventLoweringInput {
 }
 
 export const defaultEventService = (services: unknown, recipeServices: ReadonlyArray<string>): string => {
-  const authored = isPlainObject(services)
+  const authored = hasPlainObjectPrototype(services)
     ? Object.entries(services).filter((entry): entry is [string, Record<string, unknown>] =>
-        isPlainObject(entry[1]),
+        hasPlainObjectPrototype(entry[1]),
       )
     : [];
   const primary = authored.find(([, service]) => service.api === 4 && service.primary === true);
@@ -55,7 +55,7 @@ const commandText = (value: unknown, path: ReadonlyArray<string | number>, repor
 
 export const lowerEvents = (value: unknown, input: EventLoweringInput, report: Report): V4Wire => {
   const events: Record<string, unknown> = {};
-  if (!isPlainObject(value)) return events;
+  if (!hasPlainObjectPrototype(value)) return events;
   const appDefault = defaultEventService(input.services, input.recipeServices);
   for (const [event, steps] of Object.entries(value)) {
     const path = ["events", event];
@@ -93,7 +93,7 @@ export const lowerEvents = (value: unknown, input: EventLoweringInput, report: R
     const lowered: Record<string, unknown>[] = [];
     steps.forEach((step: unknown, index) => {
       const stepPath = [...path, index];
-      if (isPlainObject(step) && !isLegacyTagged(step)) {
+      if (hasPlainObjectPrototype(step) && !isLegacyTagged(step)) {
         const [[service, command] = [], ...extra] = Object.entries(step);
         const cmd = service === undefined ? undefined : commandText(command, [...stepPath, service], report);
         if (service === undefined || typeof cmd !== "string") {

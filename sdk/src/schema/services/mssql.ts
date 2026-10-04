@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,8 +7,8 @@ import { ServiceConfig } from "../landofile.ts";
 // SQL Server catalog service authoring contract
 // ============================================================================
 
-export const MssqlServiceConfig = Schema.extend(
-  ServiceConfig.pick(
+export const MssqlServiceConfig = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
     "image",
     "port",
     "user",
@@ -30,15 +31,18 @@ export const MssqlServiceConfig = Schema.extend(
     "networks",
     "security",
     "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(Schema.Literal("mssql", "mssql:2019", "mssql:2022")).annotations({
-      description: "SQL Server catalog service type and supported major-version aliases.",
+  ]),
+)
+  .pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(Schema.Literals(["mssql", "mssql:2019", "mssql:2022"])).annotate({
+        description: "SQL Server catalog service type and supported major-version aliases.",
+      }),
     }),
-  }),
-).annotations({
-  identifier: "MssqlServiceConfig",
-  title: "Mssql Service Config",
-  description: "Landofile configuration accepted by the SQL Server catalog service.",
-});
+  )
+  .annotate({
+    identifier: "MssqlServiceConfig",
+    title: "Mssql Service Config",
+    description: "Landofile configuration accepted by the SQL Server catalog service.",
+  });
 export type MssqlServiceConfig = typeof MssqlServiceConfig.Type;

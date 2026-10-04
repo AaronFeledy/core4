@@ -8,13 +8,13 @@ import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
 } from "../../../src/plugins/certificate-authority-resolver.ts";
-import { DeferredCertificateAuthorityLive } from "../../../src/subsystems/proxy/deferred-certificate-authority.ts";
+import * as DeferredCertificateAuthority from "../../../src/subsystems/proxy/deferred-certificate-authority.ts";
 
 const buildAuthority = (resolver: CertificateAuthorityResolverShape) =>
   Effect.scoped(
     Effect.map(
       Layer.build(
-        DeferredCertificateAuthorityLive.pipe(
+        DeferredCertificateAuthority.layer.pipe(
           Layer.provide(Layer.succeed(CertificateAuthorityResolver, resolver)),
         ),
       ),
@@ -82,7 +82,7 @@ describe("deferred proxy certificate authority", () => {
     // Then: callers receive CaError with actionable text and the original tagged error.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof CaError).toBe(true);
       if (Option.isSome(failure) && failure.value instanceof CaError) {
         expect(failure.value.message).toContain("Enable the mkcert plugin.");

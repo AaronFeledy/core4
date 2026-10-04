@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 import {
   AgentEnvPatternError,
@@ -16,6 +16,7 @@ import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
+import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath } from "../config-write/dot-path";
 import {
@@ -79,28 +80,28 @@ export interface ConfigResult {
 }
 
 export const ConfigResultSchema = Schema.Struct({
-  config: Schema.optional(GlobalConfigView),
-  subcommand: Schema.optional(Schema.String),
-  key: Schema.optional(Schema.String),
-  value: Schema.optional(Schema.Unknown),
-  path: Schema.optional(Schema.String),
-  format: Schema.Union(Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")),
-  telemetry: Schema.optional(
+  config: Schema.optionalKey(GlobalConfigView),
+  subcommand: Schema.optionalKey(Schema.String),
+  key: Schema.optionalKey(Schema.String),
+  value: Schema.optionalKey(Schema.Unknown),
+  path: Schema.optionalKey(Schema.String),
+  format: Schema.Union([Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")]),
+  telemetry: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.Boolean,
-      source: Schema.Union(
+      source: Schema.Union([
         Schema.Literal("flag"),
         Schema.Literal("env"),
         Schema.Literal("config"),
         Schema.Literal("default"),
-      ),
+      ]),
     }),
   ),
-  changed: Schema.optional(Schema.Boolean),
-  dryRun: Schema.optional(Schema.Boolean),
-  valid: Schema.optional(Schema.Boolean),
-  issues: Schema.optional(Schema.Array(Schema.String)),
-  configPath: Schema.optional(Schema.String),
+  changed: Schema.optionalKey(Schema.Boolean),
+  dryRun: Schema.optionalKey(Schema.Boolean),
+  valid: Schema.optionalKey(Schema.Boolean),
+  issues: Schema.optionalKey(Schema.Array(Schema.String)),
+  configPath: Schema.optionalKey(Schema.String),
 });
 
 const translateRemediation =
@@ -141,7 +142,7 @@ const setTelemetryEnabled = (
   return {
     ...configObject,
     telemetry: {
-      ...(telemetry !== null && typeof telemetry === "object" && !Array.isArray(telemetry) ? telemetry : {}),
+      ...(Predicate.isObject(telemetry) ? telemetry : {}),
       enabled,
     },
   };
@@ -200,13 +201,14 @@ const writeConfigAtomic = (path: string, content: string): Effect.Effect<void, C
     catch: (cause) => configWriteError(path, cause),
   });
 
-const decodeGlobalConfig = Schema.decodeUnknownEither(GlobalConfig);
+const decodeGlobalConfig = (input: unknown) =>
+  Schema.decodeUnknownResult(GlobalConfig)(input, { onExcessProperty: "error", errors: "all" });
 
 const agentEnvPatternError = (
   decoded: ReturnType<typeof decodeGlobalConfig>,
 ): AgentEnvPatternError | undefined => {
-  if (Either.isLeft(decoded)) return undefined;
-  const agentEnv = decoded.right.agentEnv;
+  if (Result.isFailure(decoded)) return undefined;
+  const agentEnv = decoded.success.agentEnv;
   if (agentEnv === undefined) return undefined;
   const patterns = findAgentEnvPatternNames([...(agentEnv.allow ?? []), ...(agentEnv.deny ?? [])]);
   if (patterns.length === 0) return undefined;
@@ -220,183 +222,178 @@ const agentEnvPatternError = (
 
 const configValidationError = (
   path: string,
-  issues: ReadonlyArray<string>,
+  issues: readonly ValidationIssue[],
   key?: string,
 ): LandofileWriteValidationError =>
   writeValidationErrorFromIssues({ file: path, issues, ...(key === undefined ? {} : { path: key }) });
 
-const metaConfigSet = (
+const metaConfigSet = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
-  Effect.gen(function* () {
-    const key = options.key ?? options.path;
-    const raw = options.value;
-    if (key === undefined || raw === undefined) {
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: "`meta config set` requires a <key.path> and a <value>.",
-          file: "",
-          issues: ["Missing key path or value."],
-          remediation:
-            "Usage: `lando config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
-        }),
-      );
-    }
-    const path = resolveConfigWritePath(options);
-    const tree = yield* readConfigTree(path);
-    const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
-    const decoded = decodeGlobalConfig(next);
-    const issues = decodeIssues(decoded);
-    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
-    const patternError = agentEnvPatternError(decoded);
-    if (patternError !== undefined) return yield* Effect.fail(patternError);
-    const dryRun = options.dryRun === true;
-    if (!dryRun) {
-      const emitted = emitConfigYaml({ file: path, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeConfigAtomic(path, emitted.right);
-    }
-    return {
-      subcommand: "set",
-      key,
-      value: mutation.right.value,
-      changed: true,
-      dryRun,
-      configPath: path,
-      format: options.format ?? "table",
-    };
-  });
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+  const key = options.key ?? options.path;
+  const raw = options.value;
+  if (key === undefined || raw === undefined) {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: "`meta config set` requires a <key.path> and a <value>.",
+        file: "",
+        issues: [validationIssue([], "Missing key path or value.")],
+        remediation: "Usage: `lando config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
+      }),
+    );
+  }
+  const path = resolveConfigWritePath(options);
+  const tree = yield* readConfigTree(path);
+  const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
+  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+  const next = mutation.success.next;
+  const decoded = decodeGlobalConfig(next);
+  const issues = decodeIssues(decoded);
+  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+  const patternError = agentEnvPatternError(decoded);
+  if (patternError !== undefined) return yield* Effect.fail(patternError);
+  const dryRun = options.dryRun === true;
+  if (!dryRun) {
+    const emitted = emitConfigYaml({ file: path, value: next, path: key });
+    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+    yield* writeConfigAtomic(path, emitted.success);
+  }
+  return {
+    subcommand: "set",
+    key,
+    value: mutation.success.value,
+    changed: true,
+    dryRun,
+    configPath: path,
+    format: options.format ?? "table",
+  };
+});
 
-const metaConfigUnset = (
+const metaConfigUnset = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
-  Effect.gen(function* () {
-    const key = options.key ?? options.path;
-    if (key === undefined) {
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: "`meta config unset` requires a <key.path>.",
-          file: "",
-          issues: ["Missing key path."],
-          remediation: "Usage: `lando config unset <key.path>`.",
-        }),
-      );
-    }
-    const path = resolveConfigWritePath(options);
-    const tree = yield* readConfigTree(path);
-    const mutation = applyUnsetMutation({ tree, key, file: path });
-    if (Either.isLeft(mutation)) return yield* Effect.fail(mutation.left);
-    const next = mutation.right.next;
-    const decoded = decodeGlobalConfig(next);
-    const issues = decodeIssues(decoded);
-    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
-    const patternError = agentEnvPatternError(decoded);
-    if (patternError !== undefined) return yield* Effect.fail(patternError);
-    const dryRun = options.dryRun === true;
-    if (!dryRun && mutation.right.changed) {
-      const emitted = emitConfigYaml({ file: path, value: next, path: key });
-      if (Either.isLeft(emitted)) return yield* Effect.fail(emitted.left);
-      yield* writeConfigAtomic(path, emitted.right);
-    }
-    return {
-      subcommand: "unset",
-      key,
-      changed: mutation.right.changed,
-      dryRun,
-      configPath: path,
-      format: options.format ?? "table",
-    };
-  });
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+  const key = options.key ?? options.path;
+  if (key === undefined) {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: "`meta config unset` requires a <key.path>.",
+        file: "",
+        issues: [validationIssue([], "Missing key path.")],
+        remediation: "Usage: `lando config unset <key.path>`.",
+      }),
+    );
+  }
+  const path = resolveConfigWritePath(options);
+  const tree = yield* readConfigTree(path);
+  const mutation = applyUnsetMutation({ tree, key, file: path });
+  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
+  const next = mutation.success.next;
+  const decoded = decodeGlobalConfig(next);
+  const issues = decodeIssues(decoded);
+  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
+  const patternError = agentEnvPatternError(decoded);
+  if (patternError !== undefined) return yield* Effect.fail(patternError);
+  const dryRun = options.dryRun === true;
+  if (!dryRun && mutation.success.changed) {
+    const emitted = emitConfigYaml({ file: path, value: next, path: key });
+    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
+    yield* writeConfigAtomic(path, emitted.success);
+  }
+  return {
+    subcommand: "unset",
+    key,
+    changed: mutation.success.changed,
+    dryRun,
+    configPath: path,
+    format: options.format ?? "table",
+  };
+});
 
-const metaConfigValidate = (
+const metaConfigValidate = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
-  Effect.gen(function* () {
-    const path = resolveConfigWritePath(options);
-    const tree = yield* readConfigTree(path);
-    const decoded = decodeGlobalConfig(tree);
-    const issues = decodeIssues(decoded);
-    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
-    const patternError = agentEnvPatternError(decoded);
-    if (patternError !== undefined) return yield* Effect.fail(patternError);
-    return {
-      subcommand: "validate",
-      valid: true,
-      issues: [],
-      configPath: path,
-      format: options.format ?? "table",
-    };
-  });
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+  const path = resolveConfigWritePath(options);
+  const tree = yield* readConfigTree(path);
+  const decoded = decodeGlobalConfig(tree);
+  const issues = decodeIssues(decoded);
+  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+  const patternError = agentEnvPatternError(decoded);
+  if (patternError !== undefined) return yield* Effect.fail(patternError);
+  return {
+    subcommand: "validate",
+    valid: true,
+    issues: [],
+    configPath: path,
+    format: options.format ?? "table",
+  };
+});
 
-const metaConfigEdit = (
+const metaConfigEdit = Effect.fnUntraced(function* (
   options: ConfigOptions,
-): Effect.Effect<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> =>
-  Effect.gen(function* () {
-    const path = resolveConfigWritePath(options);
-    const content = yield* readConfigText(path);
-    const runner = options.editorRunner;
-    if (runner === undefined) {
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: "No editor is configured.",
-          file: path,
-          issues: ["Neither $VISUAL nor $EDITOR is set."],
-          remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-        }),
-      );
-    }
-    const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) }));
-    if (edited.kind === "no-editor") {
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: "No editor is configured.",
-          file: path,
-          issues: ["Neither $VISUAL nor $EDITOR is set."],
-          remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-        }),
-      );
-    }
-    if (edited.kind === "failed") {
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: `The editor session failed: ${edited.reason}`,
-          file: path,
-          issues: [edited.reason],
-          remediation:
-            "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
-        }),
-      );
-    }
-    const parsed = yield* Effect.try({
-      try: () => parseMinimalYaml(edited.content),
-      catch: (cause) =>
-        new LandofileWriteValidationError({
-          message: `The edited config is not valid YAML: ${cause instanceof Error ? cause.message : String(cause)}`,
-          file: path,
-          issues: [cause instanceof Error ? cause.message : String(cause)],
-          remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
-        }),
-    });
-    const decoded = decodeGlobalConfig(parsed);
-    const issues = decodeIssues(decoded);
-    if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
-    const patternError = agentEnvPatternError(decoded);
-    if (patternError !== undefined) return yield* Effect.fail(patternError);
-    yield* writeConfigAtomic(path, edited.content);
-    return {
-      subcommand: "edit",
-      changed: true,
-      valid: true,
-      configPath: path,
-      format: options.format ?? "table",
-    };
+): Effect.fn.Return<ConfigResult, ConfigError | LandofileWriteValidationError | AgentEnvPatternError> {
+  const path = resolveConfigWritePath(options);
+  const content = yield* readConfigText(path);
+  const runner = options.editorRunner;
+  if (runner === undefined) {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: "No editor is configured.",
+        file: path,
+        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
+        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
+      }),
+    );
+  }
+  const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) }));
+  if (edited.kind === "no-editor") {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: "No editor is configured.",
+        file: path,
+        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
+        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
+      }),
+    );
+  }
+  if (edited.kind === "failed") {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: `The editor session failed: ${edited.reason}`,
+        file: path,
+        issues: [validationIssue([], edited.reason)],
+        remediation:
+          "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
+      }),
+    );
+  }
+  const parsed = yield* Effect.try({
+    try: () => parseMinimalYaml(edited.content),
+    catch: (cause) =>
+      new LandofileWriteValidationError({
+        message: `The edited config is not valid YAML: ${cause instanceof Error ? cause.message : String(cause)}`,
+        file: path,
+        issues: [validationIssue([], cause instanceof Error ? cause.message : String(cause))],
+        remediation: "Fix the YAML syntax so it parses, then retry. The file was left unchanged.",
+      }),
   });
+  const decoded = decodeGlobalConfig(parsed);
+  const issues = decodeIssues(decoded);
+  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues));
+  const patternError = agentEnvPatternError(decoded);
+  if (patternError !== undefined) return yield* Effect.fail(patternError);
+  yield* writeConfigAtomic(path, edited.content);
+  return {
+    subcommand: "edit",
+    changed: true,
+    valid: true,
+    configPath: path,
+    format: options.format ?? "table",
+  };
+});
 
-export const config = (
+export const config = Effect.fn("AppOperation.config")(function* (
   options: ConfigOptions = {},
-): Effect.Effect<
+): Effect.fn.Return<
   ConfigResult,
   | ConfigError
   | LandoCommandError
@@ -404,44 +401,43 @@ export const config = (
   | NotImplementedError
   | AgentEnvPatternError,
   ConfigService
-> =>
-  Effect.gen(function* () {
-    const subcommand = options.subcommand ?? "view";
-    if (subcommand === "telemetry") return yield* telemetryConfig(options.key, options.format);
-    if (subcommand === "set") return yield* metaConfigSet(options);
-    if (subcommand === "unset") return yield* metaConfigUnset(options);
-    if (subcommand === "validate") return yield* metaConfigValidate(options);
-    if (subcommand === "edit") return yield* metaConfigEdit(options);
+> {
+  const subcommand = options.subcommand ?? "view";
+  if (subcommand === "telemetry") return yield* telemetryConfig(options.key, options.format);
+  if (subcommand === "set") return yield* metaConfigSet(options);
+  if (subcommand === "unset") return yield* metaConfigUnset(options);
+  if (subcommand === "validate") return yield* metaConfigValidate(options);
+  if (subcommand === "edit") return yield* metaConfigEdit(options);
 
-    if (subcommand === "translate") {
-      return yield* Effect.fail(
-        new NotImplementedError({
-          message: `meta:config ${subcommand} is not available here.`,
-          commandId: "meta:config",
-          remediation: translateRemediation,
-        }),
-      );
-    }
+  if (subcommand === "translate") {
+    return yield* Effect.fail(
+      new NotImplementedError({
+        message: `meta:config ${subcommand} is not available here.`,
+        commandId: "meta:config",
+        remediation: translateRemediation,
+      }),
+    );
+  }
 
-    if (subcommand !== "view" && subcommand !== "get") {
-      return yield* Effect.fail(
-        new LandofileWriteValidationError({
-          message: `Unknown \`meta config\` subcommand: "${subcommand}".`,
-          file: "",
-          issues: [`Unsupported subcommand: "${subcommand}".`],
-          remediation: "Usage: `lando meta config [view|get|set|unset|edit|validate|translate|telemetry]`.",
-        }),
-      );
-    }
+  if (subcommand !== "view" && subcommand !== "get") {
+    return yield* Effect.fail(
+      new LandofileWriteValidationError({
+        message: `Unknown \`meta config\` subcommand: "${subcommand}".`,
+        file: "",
+        issues: [validationIssue([], `Unsupported subcommand: "${subcommand}".`)],
+        remediation: "Usage: `lando meta config [view|get|set|unset|edit|validate|translate|telemetry]`.",
+      }),
+    );
+  }
 
-    const merged = yield* loadGlobalConfigView;
+  const merged = yield* loadGlobalConfigView;
 
-    const key = options.key ?? options.path;
-    const value = key === undefined ? undefined : getAtPath(merged, key);
-    return {
-      config: merged,
-      ...(key === undefined ? {} : { key }),
-      ...(value === undefined ? {} : { value }),
-      format: options.format ?? "table",
-    };
-  });
+  const key = options.key ?? options.path;
+  const value = key === undefined ? undefined : getAtPath(merged, key);
+  return {
+    config: merged,
+    ...(key === undefined ? {} : { key }),
+    ...(value === undefined ? {} : { value }),
+    format: options.format ?? "table",
+  };
+});

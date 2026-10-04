@@ -47,7 +47,7 @@ export class CommandInputValidationError extends Schema.TaggedError<CommandInput
     target: Schema.String,
     /** Offending flag or arg key. */
     field: Schema.String,
-    kind: Schema.Literal("flag", "arg"),
+    kind: Schema.Literals(["flag", "arg"]),
     /** Machine-readable validation reason (e.g. unknown, required, type). */
     reason: Schema.String,
     remediation: Schema.String,
@@ -64,7 +64,7 @@ export class JsonProjectionError extends Schema.TaggedError<JsonProjectionError>
   command: Schema.optional(Schema.String),
   keys: Schema.Array(Schema.String),
   available: Schema.Array(Schema.String),
-  reason: Schema.Literal("unknown_key", "duplicate_key", "non_object_result", "format_conflict"),
+  reason: Schema.Literals(["unknown_key", "duplicate_key", "non_object_result", "format_conflict"]),
   remediation: Schema.String,
 }) {}
 
@@ -78,7 +78,7 @@ export class JsonJqConflictError extends Schema.TaggedError<JsonJqConflictError>
 export class JqExpressionError extends Schema.TaggedError<JqExpressionError>()("JqExpressionError", {
   message: Schema.String,
   expression: Schema.String,
-  reason: Schema.Literal("eval", "timeout", "too_large", "missing_value"),
+  reason: Schema.Literals(["eval", "timeout", "too_large", "missing_value"]),
   remediation: Schema.String,
   detail: Schema.optional(Schema.String),
 }) {}

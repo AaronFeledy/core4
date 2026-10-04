@@ -5,27 +5,18 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientError from "effect/http/HttpClientError";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
 import type { AbsolutePath, DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader, type DownloaderShape, EventService, type LandoEvent } from "@lando/sdk/services";
 import { type DownloaderContractHarness, runDownloaderContract } from "@lando/sdk/test";
 
-import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
-import type { HttpClientCapabilities } from "@lando/sdk/schema";
-
 import { makeTestDownloader } from "@lando/engine/testing/downloader";
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import { layer as DownloaderLayer } from "@lando/http-client/downloader";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
-import { HttpClient, type HttpClientShape } from "@lando/http-client/service";
-
-const CONTRACT_HTTP_CAPABILITIES: HttpClientCapabilities = {
-  schemes: ["https", "http", "file"],
-  streaming: true,
-  upload: false,
-  customCa: true,
-  proxyAware: true,
-};
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -54,7 +45,7 @@ const fsHarnessHooks = (tempDir: string) => ({
 
 const captureEventService = () => {
   const captured: Array<LandoEvent> = [];
-  const service: Context.Tag.Service<typeof EventService> = {
+  const service: Context.Service.Shape<typeof EventService> = {
     publish: (event) => Effect.sync(() => void captured.push(event)),
     subscribe: () => Stream.empty,
     subscribeQueue: Queue.unbounded<LandoEvent>(),
@@ -74,7 +65,7 @@ describe("Downloader contract suite", () => {
         name: "TestDownloader",
         service: td.service,
         tempDir: dir as AbsolutePath,
-        serveSource: (url, bytes) => Effect.sync(() => td.serve(url, bytes)),
+        serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => td.events()),
@@ -89,43 +80,30 @@ describe("Downloader contract suite", () => {
     });
   });
 
-  test("DownloaderLive (instrumented HttpClient) satisfies the contract and egress fence", async () => {
+  test("Downloader layer (instrumented HttpClient) satisfies the contract and egress fence", async () => {
     await withTempDir(async (dir) => {
       const sources = new Map<string, Uint8Array>();
       let streamCalls = 0;
       let bytesStreamed = 0;
-      const http: HttpClientShape = {
-        id: "instrumented-http",
-        capabilities: CONTRACT_HTTP_CAPABILITIES,
-        request: (request) =>
-          Effect.suspend(() => {
-            const body = sources.get(request.url);
-            if (body === undefined) {
-              return Effect.fail(
-                new HttpRequestError({ message: "no source", urlOrigin: request.url, status: 404 }),
-              );
-            }
-            return Effect.succeed({ status: 200, headers: [], contentLength: body.length });
-          }),
-        stream: (request) =>
-          Effect.suspend(() => {
-            streamCalls += 1;
-            const body = sources.get(request.url);
-            if (body === undefined) {
-              return Effect.fail(
-                new HttpRequestError({ message: "no source", urlOrigin: request.url, status: 404 }),
-              );
-            }
-            bytesStreamed += body.length;
-            return Effect.succeed({
-              status: 200,
-              headers: [],
-              body: Stream.fromIterable([body]),
-            });
-          }),
-        upload: (request) =>
-          Effect.fail(new HttpUploadError({ message: "upload unsupported", urlOrigin: request.url })),
-      };
+      const http = HttpClient.make((request, url) =>
+        Effect.gen(function* () {
+          streamCalls += 1;
+          const body = sources.get(url.href) ?? sources.get(request.url);
+          if (body === undefined) {
+            return yield* Effect.fail(
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.TransportError({
+                  request,
+                  cause: "no source",
+                  description: "no source",
+                }),
+              }),
+            );
+          }
+          bytesStreamed += body.length;
+          return HttpClientResponse.fromWeb(request, new Response(body, { status: 200 }));
+        }),
+      );
       const capture = captureEventService();
       const service = await run(
         Effect.scoped(
@@ -133,9 +111,12 @@ describe("Downloader contract suite", () => {
             Effect.gen(function* () {
               return yield* Downloader;
             }),
-            DownloaderLive.pipe(
+            DownloaderLayer.pipe(
               Layer.provide(
-                Layer.mergeAll(Layer.succeed(HttpClient, http), Layer.succeed(EventService, capture.service)),
+                Layer.mergeAll(
+                  Layer.succeed(HttpClient.HttpClient, http),
+                  Layer.succeed(EventService, EventService.of(capture.service)),
+                ),
               ),
             ),
           ),
@@ -143,10 +124,10 @@ describe("Downloader contract suite", () => {
       );
       const hooks = fsHarnessHooks(dir);
       const harness: DownloaderContractHarness = {
-        name: "DownloaderLive",
+        name: "Downloader.layer",
         service,
         tempDir: dir as AbsolutePath,
-        serveSource: (url, bytes) => Effect.sync(() => void sources.set(url, bytes)),
+        serveSource: (url, body) => Effect.sync(() => void sources.set(url, body)),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => capture.events()),
@@ -195,7 +176,7 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
       const harness: DownloaderContractHarness = {
         service: rogue,
         tempDir: dir as AbsolutePath,
-        serveSource: (url, bytes) => Effect.sync(() => td.serve(url, bytes)),
+        serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => td.events()),
@@ -230,7 +211,7 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
       const harness: DownloaderContractHarness = {
         service: rogue,
         tempDir: dir as AbsolutePath,
-        serveSource: (url, bytes) => Effect.sync(() => td.serve(url, bytes)),
+        serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => td.events()),
@@ -246,24 +227,23 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
       const rogue: DownloaderShape = {
         id: "rogue-redaction",
         capabilities: td.service.capabilities,
-        download: (request) =>
-          Effect.gen(function* () {
-            if (request.redactionTokens !== undefined && request.redactionTokens.length > 0) {
-              leaked.push({
-                _tag: "pre-download",
-                eventName: "pre-download",
-                urlOrigin: request.url,
-                leaked: request.redactionTokens[0],
-              } as unknown as LandoEvent);
-            }
-            return yield* td.service.download(request);
-          }),
+        download: Effect.fnUntraced(function* (request) {
+          if (request.redactionTokens !== undefined && request.redactionTokens.length > 0) {
+            leaked.push({
+              _tag: "pre-download",
+              eventName: "pre-download",
+              urlOrigin: request.url,
+              leaked: request.redactionTokens[0],
+            } as unknown as LandoEvent);
+          }
+          return yield* td.service.download(request);
+        }),
       };
       const hooks = fsHarnessHooks(dir);
       const harness: DownloaderContractHarness = {
         service: rogue,
         tempDir: dir as AbsolutePath,
-        serveSource: (url, bytes) => Effect.sync(() => td.serve(url, bytes)),
+        serveSource: (url, body) => Effect.sync(() => td.serve(url, body)),
         read: hooks.read,
         listDir: hooks.listDir,
         events: () => Effect.sync(() => [...td.events(), ...leaked]),
@@ -273,7 +253,7 @@ describe("Downloader contract rejects weakened contributed downloaders", () => {
   });
 });
 
-describe("DownloaderLive threads network trust through HttpClient", () => {
+describe("Downloader layer threads network trust through HttpClient", () => {
   const payload = new TextEncoder().encode("trust canary payload");
   const expectedSha256 = sha256Hex(payload);
 
@@ -299,21 +279,21 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
           return yield* downloader.download(request);
         }),
       ).pipe(
-        Effect.provideService(NetworkTrust, trust),
+        Effect.provideService(NetworkTrust, NetworkTrust.of(trust)),
         Effect.provide(
-          DownloaderLive.pipe(
+          DownloaderLayer.pipe(
             Layer.provide(
-              makeHttpClientLive(
-                captureFetch,
-                () => [],
-                (url, init) =>
-                  captureFetch(url.href, {
+              httpClientLayerWith({
+                fetch: captureFetch,
+                systemCaPems: () => [],
+                direct: (requestUrl, init) =>
+                  captureFetch(requestUrl.href, {
                     method: init.method,
                     headers: init.headers,
                     signal: init.signal,
                     ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
                   }),
-              ),
+              }),
             ),
           ),
         ),

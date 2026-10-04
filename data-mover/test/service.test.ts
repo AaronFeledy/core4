@@ -4,16 +4,25 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, type Scope, Stream } from "effect";
+import {
+  Cause,
+  Context,
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  Option,
+  Queue,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
 
 import { providerImages } from "@lando/data-mover/provider-images";
-import {
-  DataMoverLive,
-  __testOnlyEncodeTarOctal,
-  __testOnlyUnarchivePayloadWithCap,
-} from "@lando/data-mover/service";
+import * as BunDataMover from "@lando/data-mover/service";
+import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import {
@@ -46,9 +55,9 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
@@ -144,59 +153,68 @@ const dataPlaneCapabilities = (overrides: Partial<ProviderCapabilities> = {}): P
 
 const pinnedHelper = providerImages.images.dataHelper;
 
-const verifyingPullArtifact: Context.Tag.Service<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
+const verifyingPullArtifact: Context.Service.Shape<typeof RuntimeProvider>["pullArtifact"] = (spec) =>
   Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref, digest: pinnedHelper.digest });
 
-const providerLayer = (overrides: Partial<Context.Tag.Service<typeof RuntimeProvider>> = {}) =>
+const providerLayer = (overrides: Partial<Context.Service.Shape<typeof RuntimeProvider>> = {}) =>
   Layer.mergeAll(
-    StateStoreLive,
-    Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(RuntimeProvider, {
-      ...TestRuntimeProvider,
-      pullArtifact: verifyingPullArtifact,
-      ...overrides,
-      capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
-    }),
+    stateStoreLayer,
+    Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
+    Layer.succeed(
+      RuntimeProvider,
+      RuntimeProvider.of({
+        ...TestRuntimeProvider,
+        pullArtifact: verifyingPullArtifact,
+        ...overrides,
+        capabilities: overrides.capabilities ?? TestRuntimeProvider.capabilities,
+      }),
+    ),
   );
 
 const captureEvents = () => {
   const captured: LandoEvent[] = [];
-  const serviceLayer = Layer.succeed(EventService, {
-    publish: (event) =>
-      Effect.sync(() => {
-        captured.push(event);
-      }),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: <Name extends string>(name: Name, options?: EventWaitOptions<Name>) =>
-      Effect.sync(() => {
-        const found = captured.find(
-          (event): event is EventFor<Name> =>
-            event.eventName === name && (options?.filter?.(event as EventFor<Name>) ?? true),
-        );
-        if (found === undefined) throw new Error(`missing event ${name}`);
-        return found;
-      }),
-    waitForAny: () => Effect.never,
-    query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
-      Effect.sync(() =>
-        captured.filter(
-          (event): event is EventFor<Name> =>
-            event.eventName === name && (filter?.(event as EventFor<Name>) ?? true),
+  const serviceLayer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event) =>
+        Effect.sync(() => {
+          captured.push(event);
+        }),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: <Name extends string>(name: Name, options?: EventWaitOptions<Name>) =>
+        Effect.sync(() => {
+          const found = captured.find(
+            (event): event is EventFor<Name> =>
+              event.eventName === name && (options?.filter?.(event as EventFor<Name>) ?? true),
+          );
+          if (found === undefined) throw new Error(`missing event ${name}`);
+          return found;
+        }),
+      waitForAny: () => Effect.never,
+      query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
+        Effect.sync(() =>
+          captured.filter(
+            (event): event is EventFor<Name> =>
+              event.eventName === name && (filter?.(event as EventFor<Name>) ?? true),
+          ),
         ),
-      ),
-  } satisfies Context.Tag.Service<typeof EventService>);
+    }),
+  );
   return { layer: serviceLayer, events: () => [...captured] };
 };
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () =>
-    Effect.succeed({
-      redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
-      redactValue: (input: unknown) => input,
-    }),
-} satisfies Context.Tag.Service<typeof RedactionService>);
+const redactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () =>
+      Effect.succeed({
+        redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
+        redactValue: (input: unknown) => input,
+      }),
+  }),
+);
 
 const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
   const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-mover-"));
@@ -211,14 +229,14 @@ const runDataMover = <A, E>(effect: Effect.Effect<A, E, DataMover | Scope.Scope>
   Effect.runPromise(
     Effect.scoped(effect).pipe(
       Effect.provide(
-        DataMoverLive.pipe(
+        BunDataMover.layer.pipe(
           Layer.provide(Layer.mergeAll(providerLayer(), captureEvents().layer, redactionLayer)),
         ),
       ),
     ),
   );
 
-describe("DataMoverLive", () => {
+describe("BunDataMover.layer", () => {
   test("dispatches native service file copies and reports accelerated", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "payload.txt");
@@ -242,7 +260,7 @@ describe("DataMoverLive", () => {
 
       const result = await Effect.runPromise(
         Effect.scoped(mover).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({ capabilities: dataPlaneCapabilities({ serviceFileCopy: "native" }) }),
           ),
@@ -291,7 +309,7 @@ describe("DataMoverLive", () => {
             return { importResult, exportResult };
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               listVolumes: ({ store }) =>
@@ -368,13 +386,14 @@ describe("DataMoverLive", () => {
 
     // Then: decompression fails before collecting an unbounded buffer.
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
-      expect(exit.cause.error).toMatchObject({ format: "tar.gz", archivePath: "payload.tar.gz" });
-      expect(exit.cause.error.message).toContain("decompressed size exceeded");
-      expect(exit.cause.error.message).toContain(String(capBytes));
-      expect(exit.cause.error.message).toContain("tar.gz");
-      expect(exit.cause.error.remediation).toContain("smaller archive");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ArchiveFormatError);
+      expect(error).toMatchObject({ format: "tar.gz", archivePath: "payload.tar.gz" });
+      expect(error.message).toContain("decompressed size exceeded");
+      expect(error.message).toContain(String(capBytes));
+      expect(error.message).toContain("tar.gz");
+      expect(error.remediation).toContain("smaller archive");
     }
   });
 
@@ -395,13 +414,14 @@ describe("DataMoverLive", () => {
 
     // Then: decompression fails before collecting an unbounded buffer.
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
-      expect(exit.cause.error).toMatchObject({ format: "tar.zst", archivePath: "payload.tar.zst" });
-      expect(exit.cause.error.message).toContain("decompressed size exceeded");
-      expect(exit.cause.error.message).toContain(String(capBytes));
-      expect(exit.cause.error.message).toContain("tar.zst");
-      expect(exit.cause.error.remediation).toContain("smaller archive");
+    if (exit._tag === "Failure") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ArchiveFormatError);
+      expect(error).toMatchObject({ format: "tar.zst", archivePath: "payload.tar.zst" });
+      expect(error.message).toContain("decompressed size exceeded");
+      expect(error.message).toContain(String(capBytes));
+      expect(error.message).toContain("tar.zst");
+      expect(error.remediation).toContain("smaller archive");
     }
   });
 
@@ -445,7 +465,7 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               listVolumes: () =>
@@ -532,15 +552,15 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(providerLayer()),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
         ),
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(ArchiveFormatError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ArchiveFormatError);
       }
       expect(await readFile(target, "utf8")).toBe("old");
     });
@@ -610,7 +630,7 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               exec: (_target, command) =>
@@ -660,7 +680,7 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               exec: (_target, command) =>
@@ -701,7 +721,7 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               run: (command) =>
@@ -729,7 +749,7 @@ describe("DataMoverLive", () => {
       const scratchDir = join(dir, "scratch");
       await writeFile(source, "interrupt-volume-payload");
       const helperStarted = await Effect.runPromise(Deferred.make<void>());
-      const paths = { ...makeLandoPaths(), scratchDir };
+      const paths = PathsService.of({ ...makeLandoPaths(), scratchDir });
       const transfer = Effect.scoped(
         Effect.gen(function* () {
           const dataMover = yield* DataMover;
@@ -740,16 +760,19 @@ describe("DataMoverLive", () => {
           });
         }),
       ).pipe(
-        Effect.provide(DataMoverLive),
+        Effect.provide(BunDataMover.layer),
         Effect.provide(
           Layer.mergeAll(
-            StateStoreLive,
+            stateStoreLayer,
             Layer.succeed(PathsService, paths),
-            Layer.succeed(RuntimeProvider, {
-              ...TestRuntimeProvider,
-              pullArtifact: verifyingPullArtifact,
-              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.zipRight(Effect.never)),
-            }),
+            Layer.succeed(
+              RuntimeProvider,
+              RuntimeProvider.of({
+                ...TestRuntimeProvider,
+                pullArtifact: verifyingPullArtifact,
+                run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
+              }),
+            ),
             captureEvents().layer,
             redactionLayer,
           ),
@@ -790,7 +813,7 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ serviceFileCopy: "native" }),
@@ -815,7 +838,7 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 run: (spec) =>
@@ -840,7 +863,7 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 importArtifact: () =>
@@ -865,7 +888,7 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 exec: () =>
@@ -882,8 +905,10 @@ describe("DataMoverLive", () => {
 
       for (const exit of exits) {
         expect(exit._tag).toBe("Failure");
-        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        if (exit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+            DataChecksumMismatchError,
+          );
         }
       }
       expect(copyToServiceCalls).toBe(0);
@@ -917,7 +942,7 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(providerLayer()),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
         ),
@@ -925,10 +950,10 @@ describe("DataMoverLive", () => {
 
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        expect(exit.cause._tag).toBe("Fail");
-        if (exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
-        }
+        expect(Cause.hasFails(exit.cause)).toBe(true);
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataChecksumMismatchError,
+        );
       }
       expect(await readFile(archive, "utf8")).toBe("old");
 
@@ -942,14 +967,16 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(providerLayer({ capabilities: dataPlaneCapabilities({ artifactExport: false }) })),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
         ),
       );
       expect(unsupported._tag).toBe("Failure");
-      if (unsupported._tag === "Failure" && unsupported.cause._tag === "Fail") {
-        expect(unsupported.cause.error).toBeInstanceOf(DataEndpointUnsupportedError);
+      if (unsupported._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(unsupported.cause))).toBeInstanceOf(
+          DataEndpointUnsupportedError,
+        );
       }
     });
   });
@@ -974,15 +1001,17 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
         );
 
         expect(outsideExit._tag).toBe("Failure");
-        if (outsideExit._tag === "Failure" && outsideExit.cause._tag === "Fail") {
-          expect(outsideExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+        if (outsideExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(outsideExit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
         }
 
         await Effect.runPromise(
@@ -995,7 +1024,7 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1015,15 +1044,17 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
         );
 
         expect(traversalExit._tag).toBe("Failure");
-        if (traversalExit._tag === "Failure" && traversalExit.cause._tag === "Fail") {
-          expect(traversalExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+        if (traversalExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(traversalExit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
         }
         const escapedReadExit = await Effect.runPromiseExit(
           Effect.tryPromise(() => readFile(escapedTarget, "utf8")),
@@ -1040,7 +1071,7 @@ describe("DataMoverLive", () => {
               });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 listVolumes: () => Effect.succeed([{ ref: { app, store: "existing" } }]),
@@ -1051,8 +1082,10 @@ describe("DataMoverLive", () => {
         );
 
         expect(existsExit._tag).toBe("Failure");
-        if (existsExit._tag === "Failure" && existsExit.cause._tag === "Fail") {
-          expect(existsExit.cause.error).toBeInstanceOf(DataTargetExistsError);
+        if (existsExit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(existsExit.cause))).toBeInstanceOf(
+            DataTargetExistsError,
+          );
         }
       });
     } finally {
@@ -1095,15 +1128,17 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(providerLayer()),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
         ),
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataSourceOutsideRootError,
+        );
       }
     });
   });
@@ -1126,7 +1161,7 @@ describe("DataMoverLive", () => {
             });
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(providerLayer()),
           Effect.provide(Layer.merge(capture.layer, redactionLayer)),
         ),
@@ -1153,7 +1188,7 @@ describe("DataMoverLive", () => {
           yield* dataMover.snapshot({ app, store: "data" }, { format: "tar", label: "snap-one" });
         }),
       ).pipe(
-        Effect.provide(DataMoverLive),
+        Effect.provide(BunDataMover.layer),
         Effect.provide(providerLayer()),
         Effect.provide(Layer.merge(capture.layer, redactionLayer)),
       ),
@@ -1178,7 +1213,7 @@ describe("DataMoverLive", () => {
           yield* dataMover.snapshot({ app, store: "data" });
         }),
       ).pipe(
-        Effect.provide(DataMoverLive),
+        Effect.provide(BunDataMover.layer),
         Effect.provide(
           providerLayer({
             capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -1245,7 +1280,7 @@ describe("DataMoverLive", () => {
               return { handle, listed };
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1312,7 +1347,7 @@ describe("DataMoverLive", () => {
               yield* dataMover.restore(handle, { app, store: "tamper" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1332,8 +1367,10 @@ describe("DataMoverLive", () => {
 
         // Then: archive verification fails and the existing target bytes remain unchanged.
         expect(exit._tag).toBe("Failure");
-        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        if (exit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+            DataChecksumMismatchError,
+          );
         }
         expect(await readFile(restored, "utf8")).toBe("target-must-survive");
       } finally {
@@ -1371,7 +1408,7 @@ describe("DataMoverLive", () => {
               return { first, second, listed };
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1434,7 +1471,7 @@ describe("DataMoverLive", () => {
               return { first, second, pruned, listed };
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1482,7 +1519,7 @@ describe("DataMoverLive", () => {
               return { first, second, pruned, listed };
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1558,7 +1595,7 @@ describe("DataMoverLive", () => {
               return { recovery, manual, ordinary, pruned, listed };
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 listVolumes: ({ store }) =>
@@ -1621,7 +1658,7 @@ describe("DataMoverLive", () => {
               );
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -1691,7 +1728,7 @@ describe("DataMoverLive", () => {
               );
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -1748,7 +1785,7 @@ describe("DataMoverLive", () => {
               return yield* dataMover.listSnapshots({ app, store: "data" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -1818,7 +1855,7 @@ describe("DataMoverLive", () => {
               yield* dataMover.restore(handle, { app, store: "target" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -1873,7 +1910,7 @@ describe("DataMoverLive", () => {
               return yield* dataMover.listSnapshots({ app, label: "shared-label" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1924,7 +1961,7 @@ describe("DataMoverLive", () => {
               return { before, after };
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1967,7 +2004,7 @@ describe("DataMoverLive", () => {
               return yield* dataMover.listSnapshots({ app, label: "same-id" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(providerLayer()),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -2009,7 +2046,7 @@ describe("DataMoverLive", () => {
               yield* dataMover.restore(handle, { app, store: "data" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -2021,16 +2058,15 @@ describe("DataMoverLive", () => {
                       provenance: "known",
                     },
                   ]),
-                snapshotVolume: (spec) =>
-                  Effect.gen(function* () {
-                    const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
-                    yield* Effect.addFinalizer(() =>
-                      (TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void).pipe(
-                        Effect.catchAll(() => Effect.void),
-                      ),
-                    );
-                    return ref;
-                  }),
+                snapshotVolume: Effect.fn("RuntimeProvider.snapshotVolume")(function* (spec) {
+                  const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
+                  yield* Effect.addFinalizer(() =>
+                    (TestRuntimeProvider.removeVolumeSnapshot?.(ref) ?? Effect.void).pipe(
+                      Effect.catch(() => Effect.void),
+                    ),
+                  );
+                  return ref;
+                }),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -2064,7 +2100,7 @@ describe("DataMoverLive", () => {
               return yield* dataMover.listSnapshots({ app, store: "data" });
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
@@ -2102,13 +2138,17 @@ describe("DataMoverLive", () => {
       const testStore = Context.get(
         await Effect.runPromise(
           Effect.scoped(
-            Layer.build(StateStoreLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+            Layer.build(
+              stateStoreLayer.pipe(
+                Layer.provide(Layer.succeed(PathsService, PathsService.of(makeLandoPaths()))),
+              ),
+            ),
           ),
         ),
         StateStore,
       );
       let removeNativeCalls = 0;
-      const failingStateStore: Context.Tag.Service<typeof StateStore> = {
+      const failingStateStore = StateStore.of({
         ...testStore,
         open: (spec) =>
           testStore.open(spec).pipe(
@@ -2128,7 +2168,7 @@ describe("DataMoverLive", () => {
                 : bucket,
             ),
           ),
-      };
+      });
 
       try {
         const exit = await Effect.runPromiseExit(
@@ -2141,23 +2181,26 @@ describe("DataMoverLive", () => {
               );
             }),
           ).pipe(
-            Effect.provide(DataMoverLive),
+            Effect.provide(BunDataMover.layer),
             Effect.provide(
               Layer.mergeAll(
                 Layer.succeed(StateStore, failingStateStore),
-                Layer.succeed(PathsService, makeLandoPaths()),
-                Layer.succeed(RuntimeProvider, {
-                  ...TestRuntimeProvider,
-                  capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
-                  removeVolumeSnapshot: (snapshot) =>
-                    (TestRuntimeProvider.removeVolumeSnapshot?.(snapshot) ?? Effect.void).pipe(
-                      Effect.tap(() =>
-                        Effect.sync(() => {
-                          removeNativeCalls += 1;
-                        }),
+                Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
+                Layer.succeed(
+                  RuntimeProvider,
+                  RuntimeProvider.of({
+                    ...TestRuntimeProvider,
+                    capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                    removeVolumeSnapshot: (snapshot) =>
+                      (TestRuntimeProvider.removeVolumeSnapshot?.(snapshot) ?? Effect.void).pipe(
+                        Effect.tap(() =>
+                          Effect.sync(() => {
+                            removeNativeCalls += 1;
+                          }),
+                        ),
                       ),
-                    ),
-                }),
+                  }),
+                ),
               ),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -2189,7 +2232,7 @@ describe("DataMoverLive", () => {
                 yield* dataMover.restore("missing", { app, store: "data" });
               }),
             ).pipe(
-              Effect.provide(DataMoverLive),
+              Effect.provide(BunDataMover.layer),
               Effect.provide(providerLayer()),
               Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
             ),
@@ -2201,8 +2244,11 @@ describe("DataMoverLive", () => {
       })();
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toMatchObject({ _tag: "SnapshotNotFoundError", snapshotId: "missing" });
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+          _tag: "SnapshotNotFoundError",
+          snapshotId: "missing",
+        });
       }
     });
   });
@@ -2299,28 +2345,31 @@ describe("DataMover helpers", () => {
   });
 });
 
-describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
+describe("BunDataMover.layer hostPath -> hostPath directory transfers", () => {
   const countingProviderLayer = (counters: {
     pullArtifact: number;
     run: number;
     runStream: number;
   }) =>
-    Layer.succeed(RuntimeProvider, {
-      ...TestRuntimeProvider,
-      pullArtifact: (spec) =>
-        Effect.sync(() => {
-          counters.pullArtifact += 1;
-          return { providerId: ProviderId.make("lando"), ref: spec.ref };
-        }),
-      run: (spec) => {
-        counters.run += 1;
-        return TestRuntimeProvider.run(spec);
-      },
-      runStream: (spec) => {
-        counters.runStream += 1;
-        return TestRuntimeProvider.runStream(spec);
-      },
-    } satisfies Context.Tag.Service<typeof RuntimeProvider>);
+    Layer.succeed(
+      RuntimeProvider,
+      RuntimeProvider.of({
+        ...TestRuntimeProvider,
+        pullArtifact: (spec) =>
+          Effect.sync(() => {
+            counters.pullArtifact += 1;
+            return { providerId: ProviderId.make("lando"), ref: spec.ref };
+          }),
+        run: (spec) => {
+          counters.run += 1;
+          return TestRuntimeProvider.run(spec);
+        },
+        runStream: (spec) => {
+          counters.runStream += 1;
+          return TestRuntimeProvider.runStream(spec);
+        },
+      }),
+    );
 
   const runWithScratchDir = <A, E>(
     scratchDir: string,
@@ -2330,11 +2379,11 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
     Effect.runPromiseExit(
       Effect.scoped(effect).pipe(
         Effect.provide(
-          DataMoverLive.pipe(
+          BunDataMover.layer.pipe(
             Layer.provide(
               Layer.mergeAll(
-                StateStoreLive,
-                Layer.succeed(PathsService, { ...makeLandoPaths(), scratchDir }),
+                stateStoreLayer,
+                Layer.succeed(PathsService, PathsService.of({ ...makeLandoPaths(), scratchDir })),
                 countingProviderLayer(counters),
                 captureEvents().layer,
                 redactionLayer,
@@ -2505,8 +2554,10 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataSourceOutsideRootError,
+        );
       }
     });
   });
@@ -2540,19 +2591,21 @@ describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
       );
 
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
+      if (exit._tag === "Failure") {
+        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+          DataSourceOutsideRootError,
+        );
       }
     });
   });
 });
 
-describe("DataMoverLive pinned helper image resolution", () => {
+describe("BunDataMover.layer pinned helper image resolution", () => {
   const pinned = providerImages.images.dataHelper;
   const volumeCaps = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: true });
   const volumeCapsWithoutPull = dataPlaneCapabilities({ ephemeralMounts: true, artifactPull: false });
 
-  const importToVolume = (dataMover: Context.Tag.Service<typeof DataMover>, source: string) =>
+  const importToVolume = (dataMover: Context.Service.Shape<typeof DataMover>, source: string) =>
     dataMover.transfer({
       from: { _tag: "hostPath", path: absolute(source) },
       to: { _tag: "volume", app, store: "data" },
@@ -2573,7 +2626,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
             yield* importToVolume(dataMover, source);
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               capabilities: volumeCaps,
@@ -2611,7 +2664,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
             yield* importToVolume(dataMover, source);
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               capabilities: volumeCapsWithoutPull,
@@ -2652,7 +2705,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
             yield* importToVolume(dataMover, source);
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               capabilities: volumeCaps,
@@ -2690,7 +2743,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
             yield* importToVolume(dataMover, source);
           }),
         ).pipe(
-          Effect.provide(DataMoverLive),
+          Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
               capabilities: volumeCaps,
@@ -2735,7 +2788,7 @@ describe("DataMoverLive pinned helper image resolution", () => {
           yield* importToVolume(dataMover, source);
         }),
       ).pipe(
-        Effect.provide(DataMoverLive),
+        Effect.provide(BunDataMover.layer),
         Effect.provide(provider),
         Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
       );

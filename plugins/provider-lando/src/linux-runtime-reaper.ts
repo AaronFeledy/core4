@@ -41,25 +41,26 @@ export const readRuntimePid = (pidPath: string): Effect.Effect<number | undefine
       return /^\d+$/u.test(raw) ? Number(raw) : undefined;
     },
     catch: () => undefined,
-  }).pipe(Effect.catchAll((pid) => Effect.succeed(pid)));
+  }).pipe(Effect.catch((pid) => Effect.succeed(pid)));
 
-const servicePids = (deps: LinuxRuntimeReaperDeps): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const spec = buildPodmanServiceArgs(deps);
-    const recordedPid = yield* readRuntimePid(deps.pidPath);
-    const recordedOwned =
-      recordedPid !== undefined &&
-      (yield* deps.serviceRunner.isAlive(recordedPid)) &&
-      (yield* deps.serviceRunner.isServiceProcess?.(recordedPid, spec) ?? Effect.succeed(false));
-    const matching = yield* deps.serviceRunner.findMatchingServicePids?.(spec) ?? Effect.succeed([]);
-    const managed = yield* deps.serviceRunner.findManagedServicePids?.(spec) ?? Effect.succeed([]);
-    const candidates = new Set([...(recordedOwned ? [recordedPid] : []), ...matching, ...managed]);
-    const alive: number[] = [];
-    for (const pid of candidates) {
-      if (yield* deps.serviceRunner.isAlive(pid)) alive.push(pid);
-    }
-    return alive;
-  });
+const servicePids = Effect.fnUntraced(function* (
+  deps: LinuxRuntimeReaperDeps,
+): Effect.fn.Return<ReadonlyArray<number>> {
+  const spec = buildPodmanServiceArgs(deps);
+  const recordedPid = yield* readRuntimePid(deps.pidPath);
+  const recordedOwned =
+    recordedPid !== undefined &&
+    (yield* deps.serviceRunner.isAlive(recordedPid)) &&
+    (yield* deps.serviceRunner.isServiceProcess?.(recordedPid, spec) ?? Effect.succeed(false));
+  const matching = yield* deps.serviceRunner.findMatchingServicePids?.(spec) ?? Effect.succeed([]);
+  const managed = yield* deps.serviceRunner.findManagedServicePids?.(spec) ?? Effect.succeed([]);
+  const candidates = new Set([...(recordedOwned ? [recordedPid] : []), ...matching, ...managed]);
+  const alive: number[] = [];
+  for (const pid of candidates) {
+    if (yield* deps.serviceRunner.isAlive(pid)) alive.push(pid);
+  }
+  return alive;
+});
 
 const terminateAndWait = (
   deps: LinuxRuntimeReaperDeps,
@@ -108,11 +109,10 @@ const terminateAndWait = (
   );
 };
 
-export const reapStaleLinuxRuntime = (
+export const reapStaleLinuxRuntime = Effect.fn("ProviderLando.reapStaleLinuxRuntime")(function* (
   deps: LinuxRuntimeReaperDeps,
-): Effect.Effect<void, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    const generationState = yield* readLinuxRuntimeGenerationState(deps);
-    yield* terminateAndWait(deps, yield* servicePids(deps));
-    yield* applyLinuxRuntimeGenerationState(deps, generationState);
-  });
+): Effect.fn.Return<void, ProviderUnavailableError> {
+  const generationState = yield* readLinuxRuntimeGenerationState(deps);
+  yield* terminateAndWait(deps, yield* servicePids(deps));
+  yield* applyLinuxRuntimeGenerationState(deps, generationState);
+});

@@ -13,7 +13,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { elasticsearch8ServiceType } from "../src/services/elasticsearch.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -29,9 +29,9 @@ const metadata = {
 };
 
 const waitForElasticsearch = async (port: number, timeoutMs: number): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/_cluster/health`);
       if (resp.ok) return;
@@ -101,7 +101,7 @@ describe("elasticsearch service type — live integration: cluster health endpoi
           expect(indicesResp.ok).toBe(true);
           expect(await indicesResp.text()).toBeString();
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

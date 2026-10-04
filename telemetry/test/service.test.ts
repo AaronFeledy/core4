@@ -2,12 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { Telemetry } from "@lando/sdk/services";
-import {
-  type TelemetryRecord,
-  type TelemetrySink,
-  TelemetrySinks,
-  makeTelemetryLayer,
-} from "@lando/telemetry/service";
+import * as TelemetryLayer from "@lando/telemetry/service";
+import { type TelemetryRecord, type TelemetrySink, TelemetrySinks } from "@lando/telemetry/service";
 
 const capturingSink = (id = "capture") => {
   const records: Array<TelemetryRecord> = [];
@@ -22,7 +18,7 @@ const capturingSink = (id = "capture") => {
 };
 
 const withSinks = (enabled: boolean, sinks: ReadonlyArray<TelemetrySink>, flushBudgetMillis?: number) =>
-  makeTelemetryLayer(enabled, flushBudgetMillis === undefined ? undefined : { flushBudgetMillis }).pipe(
+  TelemetryLayer.layer(enabled, flushBudgetMillis === undefined ? undefined : { flushBudgetMillis }).pipe(
     Layer.provide(Layer.succeed(TelemetrySinks, sinks)),
   );
 
@@ -64,7 +60,7 @@ describe("Telemetry transport service", () => {
         expect(telemetry.enabled).toBe(true);
         yield* telemetry.record("update-outcome", { outcome: "success" });
         yield* Effect.sleep("20 millis");
-      }).pipe(Effect.provide(makeTelemetryLayer(true)), Effect.scoped),
+      }).pipe(Effect.provide(TelemetryLayer.layer(true)), Effect.scoped),
     );
   });
 

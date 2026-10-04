@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { buildKeyForService } from "@lando/engine/services/build-key";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -24,9 +24,13 @@ const serviceName = ServiceName.make("web");
 const providerId = ProviderId.make("lando");
 const appRoot = AbsolutePath.make("/tmp/php-prerequisites-smoke");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-23T00:00:00Z"),
+  resolvedAt: "2026-07-23T00:00:00Z",
   source: "php-prerequisites.integration.test",
   runtime: 4 as const,
+};
+const planMetadata = {
+  ...metadata,
+  resolvedAt: DateTime.makeUnsafe(metadata.resolvedAt),
 };
 
 const runBuiltImage = async (
@@ -93,7 +97,7 @@ describe("stock PHP prerequisites — live provider", () => {
         appRoot,
         appName: String(appId),
         serviceName: String(serviceName),
-        metadata: { ...metadata, resolvedAt: DateTime.formatIso(metadata.resolvedAt) },
+        metadata,
         featureOverrides: new Map([[phpServiceFeature.id, phpServiceFeature]]),
       });
       const plan: AppPlan = {
@@ -107,7 +111,7 @@ describe("stock PHP prerequisites — live provider", () => {
         networks: [],
         stores: [],
         fileSync: [],
-        metadata,
+        metadata: planMetadata,
         extensions: {},
       };
       const buildKey = await Effect.runPromise(buildKeyForService(provider, service));

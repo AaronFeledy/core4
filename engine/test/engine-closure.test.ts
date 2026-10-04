@@ -36,7 +36,7 @@ const runtimeBrainDirectories = [
 ] as const;
 
 const coreShellDirectories = new Set(["cli", "docs", "interaction", "mcp", "recipes", "testing"]);
-const coreRootFiles = new Set(["index.ts", "mcp-command-executor.ts", "version.ts"]);
+const coreRootFiles = new Set(["index.ts", "mcp-command-executor.ts", "mcp-resources.ts", "version.ts"]);
 const coreRuntimeAllowlist = new Set([
   "app/index.ts",
   "app/resolve.ts",
@@ -180,18 +180,21 @@ describe("Engine closure", () => {
 
   test("engine runtime services operate using engine-only layers", async () => {
     // Given
-    const [{ EventServiceLive }, { RedactionServiceLive }] = await Promise.all([
+    const [LandoEventService, { RedactionService }] = await Promise.all([
       import("@lando/engine/services/event-service"),
       import("@lando/redaction/service"),
     ]);
-    const secretStore = Layer.succeed(SecretStore, {
-      id: "engine-closure",
-      get: () => Effect.die("unused"),
-      has: () => Effect.succeed(false),
-      list: Effect.succeed([]),
-    });
-    const redaction = RedactionServiceLive.pipe(Layer.provide(secretStore));
-    const layer = EventServiceLive.pipe(Layer.provide(redaction));
+    const secretStore = Layer.succeed(
+      SecretStore,
+      SecretStore.of({
+        id: "engine-closure",
+        get: () => Effect.die("unused"),
+        has: () => Effect.succeed(false),
+        list: Effect.succeed([]),
+      }),
+    );
+    const redaction = RedactionService.layer.pipe(Layer.provide(secretStore));
+    const layer = LandoEventService.layer.pipe(Layer.provide(redaction));
 
     // When
     const events = await Effect.runPromise(

@@ -11,7 +11,7 @@ import { DateTime } from "effect";
 
 export const app: AppRef = { kind: "user", id: "gpg-test", root: AbsolutePath.make("/apps/gpg-test") };
 const metadata: AppPlan["metadata"] = {
-  resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
   source: "test",
   runtime: 4,
 };

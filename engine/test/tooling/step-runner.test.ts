@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Option } from "effect";
 
 import { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
@@ -38,16 +38,15 @@ const commandOf = (leaf: ResolvedToolingStepLeaf): string => {
 const harness = (failures: ReadonlySet<string> = new Set()): Harness => {
   const seen: Harness["seen"] = [];
   const presented: string[] = [];
-  const run = (
+  const run = Effect.fnUntraced(function* (
     leaf: ResolvedToolingStepLeaf,
     context: Parameters<ToolingStepRunners<LeafFailure, string>["runCmd"]>[1],
-  ) =>
-    Effect.gen(function* () {
-      const command = commandOf(leaf);
-      seen.push({ kind: leaf.kind, command, item: context.item, key: context.key });
-      if (failures.has(command)) return yield* Effect.fail(new LeafFailure(command));
-      return command;
-    });
+  ) {
+    const command = commandOf(leaf);
+    seen.push({ kind: leaf.kind, command, item: context.item, key: context.key });
+    if (failures.has(command)) return yield* Effect.fail(new LeafFailure(command));
+    return command;
+  });
   return {
     seen,
     presented,
@@ -91,8 +90,8 @@ describe("runToolingStepProgram conditions and leaves", () => {
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["literal", "expression"]);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ToolingStepConditionError);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ToolingStepConditionError);
     }
   });
 
@@ -109,8 +108,8 @@ describe("runToolingStepProgram conditions and leaves", () => {
     // Then
     expect(tools.seen).toEqual([]);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(ToolingStepConditionError);
+    if (Exit.isFailure(exit)) {
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(ToolingStepConditionError);
     }
   });
 
@@ -356,9 +355,10 @@ describe("runToolingStepProgram deferred finalization", () => {
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["body", "second", "first"]);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(LeafFailure);
-      if (exit.cause.error instanceof LeafFailure) expect(exit.cause.error.command).toBe("body");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(LeafFailure);
+      if (error instanceof LeafFailure) expect(error.command).toBe("body");
     }
   });
 
@@ -372,9 +372,10 @@ describe("runToolingStepProgram deferred finalization", () => {
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["body", "second", "first"]);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(LeafFailure);
-      if (exit.cause.error instanceof LeafFailure) expect(exit.cause.error.command).toBe("second");
+    if (Exit.isFailure(exit)) {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(LeafFailure);
+      if (error instanceof LeafFailure) expect(error.command).toBe("second");
     }
   });
 
@@ -393,7 +394,7 @@ describe("runToolingStepProgram deferred finalization", () => {
 
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["cleanup"]);
-    expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
   });
 
   test("preserves interruption and runs finalizers without sleeps", async () => {
@@ -404,7 +405,7 @@ describe("runToolingStepProgram deferred finalization", () => {
       ...tools.runners,
       runCmd: (leaf, context) =>
         leaf.command === "wait"
-          ? Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.never))
+          ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
           : tools.runners.runCmd(leaf, context),
     };
     const program = await Effect.runPromise(compileEventStepProgram([{ defer: "cleanup" }, "wait"]));
@@ -412,10 +413,10 @@ describe("runToolingStepProgram deferred finalization", () => {
     await Effect.runPromise(Deferred.await(entered));
 
     // When
-    const exit = await Effect.runPromise(Fiber.interrupt(fiber));
+    const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
 
     // Then
     expect(tools.seen.map(({ command }) => command)).toEqual(["cleanup"]);
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   });
 });

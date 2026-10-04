@@ -9,10 +9,10 @@ const CA_BUNDLE_PATH = "/etc/lando/certs/ca-bundle.pem" as const;
 
 const hasTrustStoreBuild = (service: ServicePlan): boolean => {
   const extension = service.extensions["@lando/core/service-features"];
-  if (!Predicate.isRecord(extension) || !Array.isArray(extension.buildSteps)) return false;
+  if (!Predicate.isObject(extension) || !Array.isArray(extension.buildSteps)) return false;
   return extension.buildSteps.some(
     (step) =>
-      Predicate.isRecord(step) &&
+      Predicate.isObject(step) &&
       step.id === "lando.security:trust-store" &&
       step.phase === "build" &&
       Array.isArray(step.caFiles) &&
@@ -28,31 +28,32 @@ interface ProviderBuildInput {
   readonly resolvedSource?: ArtifactRef;
 }
 
-export const runProviderBuild = (input: ProviderBuildInput): Effect.Effect<ArtifactRef, ProviderError> =>
-  Effect.gen(function* () {
-    const { provider, plan, service, buildKey, resolvedSource } = input;
-    const artifact = service.artifact;
-    if (artifact?.kind === "ref" && artifactBuildStepsFor(service).length === 0) {
-      if (resolvedSource !== undefined) {
-        return resolvedSource.digest !== undefined || artifact.digest === undefined
-          ? resolvedSource
-          : { ...resolvedSource, digest: artifact.digest };
-      }
-      if (provider.capabilities.artifactPull) {
-        const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
-        if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;
-        return { ...pulled, digest: artifact.digest };
-      }
-      return {
-        providerId: plan.provider,
-        ref: artifact.ref,
-        ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
-      };
+export const runProviderBuild = Effect.fn("RuntimeProvider.buildArtifact")(function* (
+  input: ProviderBuildInput,
+): Effect.fn.Return<ArtifactRef, ProviderError> {
+  const { provider, plan, service, buildKey, resolvedSource } = input;
+  const artifact = service.artifact;
+  if (artifact?.kind === "ref" && artifactBuildStepsFor(service).length === 0) {
+    if (resolvedSource !== undefined) {
+      return resolvedSource.digest !== undefined || artifact.digest === undefined
+        ? resolvedSource
+        : { ...resolvedSource, digest: artifact.digest };
     }
-    return yield* Effect.scoped(
-      provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey }),
-    );
-  });
+    if (provider.capabilities.artifactPull) {
+      const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
+      if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;
+      return { ...pulled, digest: artifact.digest };
+    }
+    return {
+      providerId: plan.provider,
+      ref: artifact.ref,
+      ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
+    };
+  }
+  return yield* Effect.scoped(
+    provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey }),
+  );
+});
 
 export const serviceWithArtifact = (service: ServicePlan, artifact: ArtifactRef): ServicePlan => {
   const mounts = hasTrustStoreBuild(service)

@@ -61,7 +61,10 @@ describe("Landofile leading comment blocks", () => {
     expect(plain).toContain("id: drupal");
   });
 
-  test("the block registry exposes exactly one named block", () => {
-    expect(Object.keys(landofile.LANDOFILE_LEADING_COMMENT_BLOCKS)).toEqual(["recipe-provenance"]);
+  test("the block registry exposes the editor-schema and recipe-provenance blocks", () => {
+    expect(Object.keys(landofile.LANDOFILE_LEADING_COMMENT_BLOCKS)).toEqual([
+      "editor-schema",
+      "recipe-provenance",
+    ]);
   });
 });

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runTooling } from "@lando/engine/operations/tooling";
-import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import * as LandoEventService from "@lando/engine/services/event-service";
+import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import { bringDown, bringUp, makePodmanApiClient, layer as makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -21,8 +21,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Clock, DateTime, Effect, Layer, Schema } from "effect";
 
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
@@ -31,7 +31,7 @@ const appId = AppId.make("gointtest");
 const GO_PORT = 31082;
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-27T00:00:00Z"),
   source: "go.integration.test",
   runtime: 4 as const,
 };
@@ -123,9 +123,9 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
 });
 
 const waitForHttp = async (url: string, timeoutMs: number): Promise<Response> => {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
   let lastError: unknown;
-  while (Date.now() < deadline) {
+  while ((await Effect.runPromise(Clock.currentTimeMillis)) < deadline) {
     try {
       const response = await fetch(url);
       if (response.ok) return response;
@@ -196,16 +196,19 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           });
 
           const toolingLayer = Layer.mergeAll(
-            PrivateFileAccessLive,
-            Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-            Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-            Layer.succeed(RuntimeProviderRegistry, {
-              list: Effect.succeed([providerId]),
-              capabilities: Effect.succeed(capabilities),
-              select: () => Effect.succeed(provider),
-            }),
-            ProviderExecToolingEngineLive,
-            EventServiceLive,
+            PrivateFileAccessService.layer,
+            Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+            Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              RuntimeProviderRegistry.of({
+                list: Effect.succeed([providerId]),
+                capabilities: Effect.succeed(capabilities),
+                select: () => Effect.succeed(provider),
+              }),
+            ),
+            ProviderExecToolingEngine.layer,
+            LandoEventService.layer,
             emptyConfigServiceLayer,
           );
 
@@ -218,7 +221,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           expect(result.exitCode).toBe(0);
           expect(result.stdout).toMatch(/go version go1\.22/u);
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+          await Effect.runPromise(Effect.result(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

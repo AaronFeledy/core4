@@ -11,15 +11,19 @@ import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const configLayer = (config: GlobalConfig) => {
   const load = Effect.succeed(config);
-  return Layer.succeed(ConfigService, {
-    load,
-    get: <K extends keyof GlobalConfig>(key: K) => Effect.map(load, (loaded): GlobalConfig[K] => loaded[key]),
-  });
+  return Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load,
+      get: <K extends keyof GlobalConfig>(key: K) =>
+        Effect.map(load, (loaded): GlobalConfig[K] => loaded[key]),
+    }),
+  );
 };
 
 const plan = (input: {
@@ -29,11 +33,11 @@ const plan = (input: {
   readonly paths: ReturnType<typeof makeLandoPaths>;
 }) => {
   const dependencies = Layer.mergeAll(
-    PluginRegistryLive,
+    PluginRegistryLayer.layer,
     configLayer(input.config),
     Layer.succeed(PathsService, input.paths),
   );
-  const planner = AppPlannerLive.pipe(Layer.provide(dependencies));
+  const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (service) =>
       service.plan(

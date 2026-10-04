@@ -13,12 +13,12 @@ export const ServiceInfo = Schema.Struct({
   type: Schema.String,
   provider: Schema.String,
   primary: Schema.Boolean,
-  status: Schema.Literal("unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"),
+  status: Schema.Literals(["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"]),
   /** Resolved endpoints (host-reachable). */
-  endpoints: Schema.optional(Schema.Array(EndpointInfo)),
+  endpoints: Schema.optionalKey(Schema.Array(EndpointInfo)),
   /** Resolved routes pointing at this service. */
-  routes: Schema.optional(Schema.Array(RoutePlan)),
-  creds: Schema.optional(ServiceCreds).annotations({
+  routes: Schema.optionalKey(Schema.Array(RoutePlan)),
+  creds: Schema.optionalKey(ServiceCreds).annotate({
     description: "Service login credentials surfaced by `lando info` when the service publishes them.",
   }),
 });

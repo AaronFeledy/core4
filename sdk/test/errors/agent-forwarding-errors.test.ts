@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import * as errors from "@lando/sdk/errors";
 
@@ -46,30 +46,30 @@ test("agent errors reject unsupported reasons and transport stages", () => {
   const fields = { message: "Unavailable", remediation: "Retry." };
   // When
   const results = [
-    Schema.decodeUnknownEither(errors.SshAgentUnavailableError)({
+    Schema.decodeUnknownResult(errors.SshAgentUnavailableError)({
       ...fields,
       _tag: "SshAgentUnavailableError",
       mode: "host",
       reason: "gpg-missing",
     }),
-    Schema.decodeUnknownEither(errors.GpgAgentUnavailableError)({
+    Schema.decodeUnknownResult(errors.GpgAgentUnavailableError)({
       ...fields,
       _tag: "GpgAgentUnavailableError",
       reason: "sidecar-not-running",
     }),
-    Schema.decodeUnknownEither(errors.SshAgentTransportError)({
+    Schema.decodeUnknownResult(errors.SshAgentTransportError)({
       ...fields,
       _tag: "SshAgentTransportError",
       stage: "discovery",
     }),
-    Schema.decodeUnknownEither(errors.GpgAgentTransportError)({
+    Schema.decodeUnknownResult(errors.GpgAgentTransportError)({
       ...fields,
       _tag: "GpgAgentTransportError",
       stage: "discovery",
     }),
   ];
   // Then
-  expect(results.every(Either.isLeft<unknown, unknown>)).toBe(true);
+  expect(results.every(Result.isFailure<unknown, unknown>)).toBe(true);
 });
 
 test.each(["locked", "unauthenticated", "denied", "timeout", "cli-missing"] as const)(

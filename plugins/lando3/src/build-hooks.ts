@@ -4,7 +4,7 @@ import {
   type LoweringPatch,
   type ServiceLoweringContext,
   emptyPatch,
-  isPlainObject,
+  hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 
@@ -57,7 +57,7 @@ export const lowerBuildHooks = (
   };
 
   const build = service.build;
-  const api4Build = isPlainObject(build) && !("tag" in build) ? build : undefined;
+  const api4Build = hasPlainObjectPrototype(build) && !("tag" in build) ? build : undefined;
   for (const [phase, target, root] of PHASES) {
     if (phase === "build" && api4Build !== undefined) {
       steps.artifact.push(...lowerCommands(api4Build.image, ["build", "image"], meUser));

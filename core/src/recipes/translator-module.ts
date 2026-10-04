@@ -2,7 +2,7 @@
  * In-process plugin module for the bundled `recipe` config translator.
  *
  * Built by the private init pipeline and injected through
- * `makeConfigTranslatorRegistryLive([module])`; not a separate workspace package.
+ * `ConfigTranslatorRegistryLayer.layerWith([module])`; not a separate workspace package.
  */
 import { Schema } from "effect";
 

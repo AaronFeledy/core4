@@ -22,11 +22,11 @@ import diagnosticsGlobalService from "./global-services/diagnostics.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
-import { makeProxyLayer } from "./proxy.ts";
+import { layer } from "./proxy.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
-export { makeProxyLayer, makeTraefikRouterService, renderTraefikDynamicConfig } from "./proxy.ts";
+export { layer, makeTraefikRouterService, renderTraefikDynamicConfig } from "./proxy.ts";
 export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
@@ -48,7 +48,7 @@ export {
   renderTraefikFallbackConfig,
 } from "./diagnostics.ts";
 export const routerServices = new Map([
-  ["traefik", { make: (ctx: LandoPluginContext) => makeProxyLayer(ctx.stateStore) }],
+  ["traefik", { make: (ctx: LandoPluginContext) => layer(ctx.stateStore) }],
 ]);
 
 export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([

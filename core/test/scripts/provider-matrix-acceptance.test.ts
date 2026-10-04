@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Predicate } from "effect";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
@@ -67,9 +68,6 @@ class AcceptanceModuleShapeError extends Error {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 const acceptanceModuleKeys = [
   "buildProviderAcceptancePlan",
   "evaluateProviderAcceptanceReport",
@@ -79,7 +77,8 @@ const acceptanceModuleKeys = [
 ] as const satisfies readonly (keyof AcceptanceModule)[];
 
 const isAcceptanceModule = (value: unknown): value is AcceptanceModule =>
-  isRecord(value) && acceptanceModuleKeys.every((key) => typeof value[key] === "function");
+  Predicate.isObjectOrArray(value) &&
+  acceptanceModuleKeys.every((key) => typeof Reflect.get(value, key) === "function");
 
 const loadAcceptanceModule = async (): Promise<AcceptanceModule> => {
   const moduleUrl = new URL("../../../scripts/provider-matrix-acceptance.ts", import.meta.url);

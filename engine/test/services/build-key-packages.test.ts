@@ -31,7 +31,7 @@ const key = (buildSteps: ReadonlyArray<PackageStep>) => {
     dependsOn: [],
     hostAliases: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-09-13T00:00:00.000Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-09-13T00:00:00.000Z"),
       source: "build-key-packages.test",
       runtime: 4,
     },

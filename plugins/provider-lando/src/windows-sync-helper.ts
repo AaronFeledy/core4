@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
 
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -18,7 +18,7 @@ const ReceiptSchema = Schema.Struct({
   volumeCreatedAt: Schema.NullOr(Schema.String),
   helperNonce: Schema.String,
   containerId: Schema.NullOr(Schema.String),
-  removing: Schema.optional(Schema.Boolean),
+  removing: Schema.optionalKey(Schema.Boolean),
 });
 type Receipt = typeof ReceiptSchema.Type;
 const nonce = (): string => randomBytes(32).toString("hex");
@@ -79,8 +79,7 @@ export interface WindowsSyncHelperEndpoint {
 type Api = Pick<PodmanApiClient, "request">;
 type JsonRecord = Record<string, unknown>;
 
-const record = (value: unknown): JsonRecord | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value) ? (value as JsonRecord) : undefined;
+const record = (value: unknown): JsonRecord | undefined => (Predicate.isObject(value) ? value : undefined);
 
 const strings = (value: unknown): ReadonlyArray<string> | undefined =>
   Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
@@ -190,30 +189,29 @@ const identity = (spec: WindowsSyncHelperSpec) => {
 };
 
 /** Podman may report a cached tag in Config.Image even when created from a pinned ref. */
-const matchesPinnedImage = (api: Api, body: JsonRecord, image: string) =>
-  Effect.gen(function* () {
-    const inspected = yield* request(api, {
-      method: "GET",
-      path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
-    }).pipe(
-      Effect.mapError(() =>
-        failure("syncHelper.image.inspect", "Podman image identity could not be verified."),
-      ),
-    );
-    if (inspected.status !== 200) return false;
-    const resolved = parse(inspected.body);
-    const resolvedId = resolved?.Id;
-    const repoDigests = resolved?.RepoDigests;
-    return (
-      typeof resolvedId === "string" &&
-      resolvedId.length > 0 &&
-      typeof body.Image === "string" &&
-      body.Image.length > 0 &&
-      resolvedId.replace(/^sha256:/u, "") === body.Image.replace(/^sha256:/u, "") &&
-      Array.isArray(repoDigests) &&
-      repoDigests.includes(image)
-    );
-  });
+const matchesPinnedImage = Effect.fnUntraced(function* (api: Api, body: JsonRecord, image: string) {
+  const inspected = yield* request(api, {
+    method: "GET",
+    path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
+  }).pipe(
+    Effect.mapError(() =>
+      failure("syncHelper.image.inspect", "Podman image identity could not be verified."),
+    ),
+  );
+  if (inspected.status !== 200) return false;
+  const resolved = parse(inspected.body);
+  const resolvedId = resolved?.Id;
+  const repoDigests = resolved?.RepoDigests;
+  return (
+    typeof resolvedId === "string" &&
+    resolvedId.length > 0 &&
+    typeof body.Image === "string" &&
+    body.Image.length > 0 &&
+    resolvedId.replace(/^sha256:/u, "") === body.Image.replace(/^sha256:/u, "") &&
+    Array.isArray(repoDigests) &&
+    repoDigests.includes(image)
+  );
+});
 
 const labelsFor = (
   spec: WindowsSyncHelperSpec,
@@ -290,7 +288,7 @@ const inspectContainer = (api: Api, name: string) =>
     }),
   );
 
-const ownedContainerId = (
+const ownedContainerId = Effect.fnUntraced(function* (
   api: Api,
   body: JsonRecord,
   name: string,
@@ -298,41 +296,40 @@ const ownedContainerId = (
   volumeName: string,
   labels: Readonly<Record<string, string>>,
   expectedId: string,
-): Effect.Effect<string, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    const imageMatches = yield* matchesPinnedImage(api, body, spec.image);
-    const config = record(body.Config);
-    const host = record(body.HostConfig);
-    const policy = record(host?.RestartPolicy);
-    const mounts = Array.isArray(body.Mounts) ? body.Mounts : [];
-    const mount = mounts.length === 1 ? record(mounts[0]) : undefined;
-    const id = body.Id;
-    const exact =
-      typeof id === "string" &&
-      id === expectedId &&
-      (body.Name === name || body.Name === `/${name}`) &&
-      imageMatches &&
-      config !== undefined &&
-      sameStrings(config.Entrypoint, ENTRYPOINT) &&
-      sameStrings(config.Cmd, KEEP_ALIVE) &&
-      config.User === HELPER_USER &&
-      sameLabels(config.Labels, labels) &&
-      safeHostConfig(host) &&
-      host?.NetworkMode === "none" &&
-      policy?.Name === "unless-stopped" &&
-      mount?.Type === "volume" &&
-      mount.Name === volumeName &&
-      mount.Destination === TARGET_PATH &&
-      mount.RW === true;
-    return exact
-      ? id
-      : yield* Effect.fail(
-          failure(
-            "syncHelper.container",
-            "The sync helper exists with foreign ownership or a different specification.",
-          ),
-        );
-  });
+): Effect.fn.Return<string, ProviderUnavailableError> {
+  const imageMatches = yield* matchesPinnedImage(api, body, spec.image);
+  const config = record(body.Config);
+  const host = record(body.HostConfig);
+  const policy = record(host?.RestartPolicy);
+  const mounts = Array.isArray(body.Mounts) ? body.Mounts : [];
+  const mount = mounts.length === 1 ? record(mounts[0]) : undefined;
+  const id = body.Id;
+  const exact =
+    typeof id === "string" &&
+    id === expectedId &&
+    (body.Name === name || body.Name === `/${name}`) &&
+    imageMatches &&
+    config !== undefined &&
+    sameStrings(config.Entrypoint, ENTRYPOINT) &&
+    sameStrings(config.Cmd, KEEP_ALIVE) &&
+    config.User === HELPER_USER &&
+    sameLabels(config.Labels, labels) &&
+    safeHostConfig(host) &&
+    host?.NetworkMode === "none" &&
+    policy?.Name === "unless-stopped" &&
+    mount?.Type === "volume" &&
+    mount.Name === volumeName &&
+    mount.Destination === TARGET_PATH &&
+    mount.RW === true;
+  return exact
+    ? id
+    : yield* Effect.fail(
+        failure(
+          "syncHelper.container",
+          "The sync helper exists with foreign ownership or a different specification.",
+        ),
+      );
+});
 
 const requireCreatedAt = (body: JsonRecord): Effect.Effect<string, ProviderUnavailableError> =>
   typeof body.CreatedAt === "string" && body.CreatedAt.length > 0

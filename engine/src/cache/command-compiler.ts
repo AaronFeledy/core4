@@ -1,5 +1,5 @@
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
@@ -21,7 +21,7 @@ export const compileToolingCommands = (
     .sort(([a], [b]) => compareOrdinal(a, b))
     .map(([name, authored]) => {
       // Preserve the synchronous API by throwing the tagged error into callers' Effect boundaries.
-      const task = Either.getOrThrowWith(normalizeToolingTask(name, authored), (error) => error);
+      const task = Result.getOrThrowWith(normalizeToolingTask(name, authored), (error) => error);
       let service: string | undefined;
       switch (task.service?.kind) {
         case "service":

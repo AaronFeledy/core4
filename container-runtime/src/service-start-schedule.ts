@@ -105,115 +105,117 @@ export const buildServiceStartGraph = (plan: AppPlan): ScheduleGraph<ServiceStar
   };
 };
 
-const probeHealthy = <E, R>(
+const probeHealthy = Effect.fnUntraced(function* <E, R>(
   service: ServicePlan,
   handlers: ServiceStartHandlers<E, R>,
-): Effect.Effect<boolean, never, R> =>
-  Effect.gen(function* () {
-    const healthcheck = service.healthcheck;
-    const command = gateVerifiableCommand(healthcheck);
-    if (healthcheck === undefined || command === undefined) return false;
+): Effect.fn.Return<boolean, never, R> {
+  const healthcheck = service.healthcheck;
+  const command = gateVerifiableCommand(healthcheck);
+  if (healthcheck === undefined || command === undefined) return false;
 
-    if (healthcheck.startPeriodSeconds !== undefined && healthcheck.startPeriodSeconds > 0) {
-      yield* Effect.sleep(Duration.seconds(healthcheck.startPeriodSeconds));
-    }
+  if (healthcheck.startPeriodSeconds !== undefined && healthcheck.startPeriodSeconds > 0) {
+    yield* Effect.sleep(Duration.seconds(healthcheck.startPeriodSeconds));
+  }
 
-    const attempt = Effect.timeoutTo(Effect.either(handlers.execHealthcheck(service, command)), {
+  const attempt = Effect.timeoutOrElse(
+    Effect.map(Effect.result(handlers.execHealthcheck(service, command)), (result) =>
+      result._tag === "Success" && result.success.exitCode === 0 ? "green" : "red",
+    ),
+    {
       duration: Duration.seconds(healthcheck.timeoutSeconds),
-      onSuccess: (result) => (result._tag === "Right" && result.right.exitCode === 0 ? "green" : "red"),
-      onTimeout: () => "red" as const,
-    });
+      orElse: () => Effect.succeed((() => "red" as const)()),
+    },
+  );
 
-    return yield* runProbe(
-      {
-        id: `service-start-health:${String(service.name)}`,
-        policy: {
-          maxAttempts: Math.max(1, healthcheck.retries),
-          delay: Duration.seconds(healthcheck.intervalSeconds),
-          backoff: "fixed",
-        },
-        classify: {
-          success: (value) => (value === "green" ? "green" : "red"),
-          failure: () => "red",
-        },
+  return yield* runProbe(
+    {
+      id: `service-start-health:${String(service.name)}`,
+      policy: {
+        maxAttempts: Math.max(1, healthcheck.retries),
+        delay: Duration.seconds(healthcheck.intervalSeconds),
+        backoff: "fixed",
       },
-      attempt,
-    ).pipe(
-      Effect.map((result) => result.outcome === "green"),
-      Effect.catchAll(() => Effect.succeed(false)),
-    );
-  });
+      classify: {
+        success: (value) => (value === "green" ? "green" : "red"),
+        failure: () => "red",
+      },
+    },
+    attempt,
+  ).pipe(
+    Effect.map((result) => result.outcome === "green"),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+});
 
-export const runServiceStartSchedule = <E, R>(
+export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule")(function* <E, R>(
   plan: AppPlan,
   handlers: ServiceStartHandlers<E, R>,
-): Effect.Effect<ServiceStartResult, E, R> =>
-  Effect.gen(function* () {
-    const graph = buildServiceStartGraph(plan);
-    const nodeById = new Map(graph.nodes.map((node) => [node.id, node.value]));
-    const optionalOnlyServices = new Set(
-      graph.nodes.flatMap((node) => {
-        if (node.value._tag !== "service") return [];
-        const gateIds = graph.edges
-          .filter((edge) => edge.predecessor === node.id)
-          .map((edge) => edge.dependent);
-        if (gateIds.length === 0) return [];
-        const consumers = graph.edges.filter((edge) => gateIds.includes(edge.predecessor));
-        return consumers.length > 0 && consumers.every((edge) => !edge.required) ? [node.id] : [];
-      }),
-    );
-    const blocked: Array<BlockedService> = [];
-    let changed = false;
+): Effect.fn.Return<ServiceStartResult, E, R> {
+  const graph = buildServiceStartGraph(plan);
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node.value]));
+  const optionalOnlyServices = new Set(
+    graph.nodes.flatMap((node) => {
+      if (node.value._tag !== "service") return [];
+      const gateIds = graph.edges
+        .filter((edge) => edge.predecessor === node.id)
+        .map((edge) => edge.dependent);
+      if (gateIds.length === 0) return [];
+      const consumers = graph.edges.filter((edge) => gateIds.includes(edge.predecessor));
+      return consumers.length > 0 && consumers.every((edge) => !edge.required) ? [node.id] : [];
+    }),
+  );
+  const blocked: Array<BlockedService> = [];
+  let changed = false;
 
-    const settled = yield* runDependencySchedule(graph, {
-      concurrency: 1,
-      run: (node, blockedBy) => {
-        const value = node.value;
-        const [unmetGate] = blockedBy;
-        if (unmetGate !== undefined) {
-          if (value._tag === "service") {
-            const unmet = nodeById.get(unmetGate);
-            blocked.push({
-              service: String(value.service.name),
-              unmetGate:
-                unmet?._tag === "gate" ? gateId(String(unmet.service.name), unmet.condition) : unmetGate,
-            });
-          }
-          return Effect.succeed("blocked" as const);
-        }
+  const settled = yield* runDependencySchedule(graph, {
+    concurrency: 1,
+    run: (node, blockedBy) => {
+      const value = node.value;
+      const [unmetGate] = blockedBy;
+      if (unmetGate !== undefined) {
         if (value._tag === "service") {
-          const start = handlers.startService(value.service).pipe(
-            Effect.map((result) => {
-              changed = changed || result.changed;
-              return "succeeded" as const;
-            }),
-          );
-          return optionalOnlyServices.has(node.id)
-            ? start.pipe(
-                Effect.catchAll(() =>
-                  (handlers.cleanupOptionalStartFailure?.(value.service) ?? Effect.void).pipe(
-                    Effect.as("failed" as const),
-                  ),
+          const unmet = nodeById.get(unmetGate);
+          blocked.push({
+            service: String(value.service.name),
+            unmetGate:
+              unmet?._tag === "gate" ? gateId(String(unmet.service.name), unmet.condition) : unmetGate,
+          });
+        }
+        return Effect.succeed("blocked" as const);
+      }
+      if (value._tag === "service") {
+        const start = handlers.startService(value.service).pipe(
+          Effect.map((result) => {
+            changed = changed || result.changed;
+            return "succeeded" as const;
+          }),
+        );
+        return optionalOnlyServices.has(node.id)
+          ? start.pipe(
+              Effect.catch(() =>
+                (handlers.cleanupOptionalStartFailure?.(value.service) ?? Effect.void).pipe(
+                  Effect.as("failed" as const),
                 ),
-              )
-            : start;
-        }
-        switch (value.condition) {
-          case "service_started":
-            return Effect.succeed("succeeded" as const);
-          case "service_healthy":
-            return probeHealthy(value.service, handlers).pipe(
-              Effect.map((healthy) => (healthy ? ("succeeded" as const) : ("failed" as const))),
-            );
-          case "service_completed_successfully":
-            return handlers.waitForExit(value.service).pipe(
-              Effect.map((result) => (result.exitCode === 0 ? ("succeeded" as const) : ("failed" as const))),
-              Effect.catchAll(() => Effect.succeed("failed" as const)),
-            );
-        }
-      },
-    });
-
-    if (settled._tag === "Cycle") return { _tag: "Cycle", edges: settled.edges };
-    return { _tag: "Settled", changed, blocked };
+              ),
+            )
+          : start;
+      }
+      switch (value.condition) {
+        case "service_started":
+          return Effect.succeed("succeeded" as const);
+        case "service_healthy":
+          return probeHealthy(value.service, handlers).pipe(
+            Effect.map((healthy) => (healthy ? ("succeeded" as const) : ("failed" as const))),
+          );
+        case "service_completed_successfully":
+          return handlers.waitForExit(value.service).pipe(
+            Effect.map((result) => (result.exitCode === 0 ? ("succeeded" as const) : ("failed" as const))),
+            Effect.catch(() => Effect.succeed("failed" as const)),
+          );
+      }
+    },
   });
+
+  if (settled._tag === "Cycle") return { _tag: "Cycle", edges: settled.edges };
+  return { _tag: "Settled", changed, blocked };
+});

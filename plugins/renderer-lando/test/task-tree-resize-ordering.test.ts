@@ -4,7 +4,7 @@ import { Effect, Layer, Schema } from "effect";
 import { MessageWarnEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { createTestLiveRegionController, makeLiveRegionFixture } from "./live-region-test-kit.ts";
@@ -94,7 +94,7 @@ test("semantic footer reflow completes before resize replay through production c
             makeLandoEventConsumer(liveIo, {
               createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
             }),
-            EventServiceLive,
+            LandoEventService.layer,
           ),
         ),
       ),

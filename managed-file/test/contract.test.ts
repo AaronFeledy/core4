@@ -56,7 +56,7 @@ describe("ManagedFileService contract suite", () => {
       );
 
       const harness: ManagedFileContractHarness = {
-        name: "ManagedFileServiceLive (disk)",
+        name: "ManagedFileService disk layer",
         service,
         base,
         read: (path) =>

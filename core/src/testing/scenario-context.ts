@@ -2,7 +2,19 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Cause, Chunk, Console, Context, Effect, Exit, Layer, Schema, type Scope, Stream } from "effect";
+import {
+  type Cause,
+  Clock,
+  Console,
+  Context,
+  DateTime,
+  Effect,
+  Exit,
+  Layer,
+  Schema,
+  type Scope,
+  Stream,
+} from "effect";
 
 import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
@@ -21,7 +33,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
 import { redactDetails } from "../cli/redact";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
@@ -191,7 +203,7 @@ export interface ScenarioContext {
  * Effect service tag for the active scenario context.
  * Scenario bodies receive this service automatically from `withScenarioContext` and factory runners.
  */
-export const ScenarioContext = Context.GenericTag<ScenarioContext>("@lando/core/ScenarioContext");
+export const ScenarioContext = Context.Service<ScenarioContext>("@lando/core/ScenarioContext");
 
 /**
  * Options used to create a scenario context.
@@ -301,20 +313,24 @@ const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
 const transcriptPath = (guideId: string, scenarioId: string): string =>
   join(process.cwd(), "dist", "transcripts", "guides", guideId, `${scenarioId}.json`);
 
-const persistTranscript = (
+const persistTranscript = Effect.fnUntraced(function* (
   context: ScenarioContext,
   startedAt: string,
   exit: Exit.Exit<unknown, unknown>,
-): Effect.Effect<void> =>
-  Effect.tryPromise(async () => {
-    const finishedAt = new Date().toISOString();
+): Effect.fn.Return<void, import("effect").Cause.UnknownError> {
+  const finished = yield* DateTime.now;
+  const finishedAt = DateTime.formatIso(finished);
+  return yield* Effect.tryPromise(async () => {
     const transcript = Schema.encodeSync(Transcript)({
       guideId: context.guideId,
       scenarioId: context.scenarioId,
       render: context.render,
       startedAt,
       finishedAt,
-      durationMs: Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()),
+      durationMs: Math.max(
+        0,
+        DateTime.toEpochMillis(finished) - DateTime.toEpochMillis(DateTime.makeUnsafe(startedAt)),
+      ),
       exitStatus: Exit.isSuccess(exit) ? "pass" : "fail",
       frames: context.transcript.frames,
     });
@@ -322,89 +338,89 @@ const persistTranscript = (
     const output = transcriptPath(context.guideId, context.scenarioId);
     await mkdir(dirname(output), { recursive: true });
     await writeFile(output, `${JSON.stringify(stable(sanitized), null, 2)}\n`);
-  }).pipe(Effect.orDie);
-
-const readBytes = (path: string): Effect.Effect<Uint8Array, FileSystemError, FileSystem> =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem;
-    const chunks = yield* Stream.runCollect(fileSystem.read(path));
-    const arrays = Chunk.toReadonlyArray(chunks);
-    const total = arrays.reduce((size, chunk) => size + chunk.byteLength, 0);
-    const bytes = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of arrays) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return bytes;
   });
+}, Effect.orDie);
 
-const copyFixtureDirectory = (
+const readBytes = Effect.fnUntraced(function* (
+  path: string,
+): Effect.fn.Return<Uint8Array, FileSystemError, FileSystem> {
+  const fileSystem = yield* FileSystem;
+  const chunks = yield* Stream.runCollect(fileSystem.read(path));
+  const arrays = chunks;
+  const total = arrays.reduce((size, chunk) => size + chunk.byteLength, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of arrays) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+});
+
+const copyFixtureDirectory = Effect.fnUntraced(function* (
   name: string,
   source: string,
   target: string,
-): Effect.Effect<void, GuideFixtureSymlinkError | FileSystemError, FileSystem> =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem;
-    const sourceStat = yield* fileSystem.lstat(source);
-    if (sourceStat.isSymbolicLink === true) {
-      return yield* Effect.fail(fixtureSymlinkError(name, source));
-    }
-    if (!sourceStat.isDirectory) {
-      return yield* Effect.fail(
-        fixtureIoError(source, `Fixture "${name}" source is not a directory: ${source}`),
-      );
-    }
+): Effect.fn.Return<void, GuideFixtureSymlinkError | FileSystemError, FileSystem> {
+  const fileSystem = yield* FileSystem;
+  const sourceStat = yield* fileSystem.lstat(source);
+  if (sourceStat.isSymbolicLink === true) {
+    return yield* Effect.fail(fixtureSymlinkError(name, source));
+  }
+  if (!sourceStat.isDirectory) {
+    return yield* Effect.fail(
+      fixtureIoError(source, `Fixture "${name}" source is not a directory: ${source}`),
+    );
+  }
 
-    yield* fileSystem.mkdir(target);
-    const entries = yield* fileSystem.readDir(source);
-    for (const entry of entries) {
-      const childSource = join(source, entry);
-      const childTarget = join(target, entry);
-      const childStat = yield* fileSystem.lstat(childSource);
-      if (childStat.isSymbolicLink === true) {
-        return yield* Effect.fail(fixtureSymlinkError(name, childSource));
-      }
-      if (childStat.isDirectory) {
-        yield* copyFixtureDirectory(name, childSource, childTarget);
-        continue;
-      }
-      if (childStat.isFile) {
-        yield* fileSystem.write(childTarget, yield* readBytes(childSource));
-      }
+  yield* fileSystem.mkdir(target);
+  const entries = yield* fileSystem.readDir(source);
+  for (const entry of entries) {
+    const childSource = join(source, entry);
+    const childTarget = join(target, entry);
+    const childStat = yield* fileSystem.lstat(childSource);
+    if (childStat.isSymbolicLink === true) {
+      return yield* Effect.fail(fixtureSymlinkError(name, childSource));
     }
-  });
+    if (childStat.isDirectory) {
+      yield* copyFixtureDirectory(name, childSource, childTarget);
+      continue;
+    }
+    if (childStat.isFile) {
+      yield* fileSystem.write(childTarget, yield* readBytes(childSource));
+    }
+  }
+});
 
-const findFixtureSource = (
+const findFixtureSource = Effect.fnUntraced(function* (
   name: string,
   candidates: ReadonlyArray<string>,
-): Effect.Effect<
+): Effect.fn.Return<
   string,
   GuideFixtureNotFoundError | GuideFixtureSymlinkError | FileSystemError,
   FileSystem
-> =>
-  Effect.gen(function* () {
-    const fileSystem = yield* FileSystem;
-    for (const candidate of candidates) {
-      const stat = yield* Effect.either(fileSystem.lstat(candidate));
-      if (stat._tag === "Left") {
-        if (stat.left instanceof FileNotFoundError) {
-          continue;
-        }
-        return yield* Effect.fail(stat.left);
+> {
+  const fileSystem = yield* FileSystem;
+  for (const candidate of candidates) {
+    const stat = yield* Effect.result(fileSystem.lstat(candidate));
+    if (stat._tag === "Failure") {
+      if (stat.failure instanceof FileNotFoundError) {
+        continue;
       }
-      if (stat.right.isSymbolicLink === true) {
-        return yield* Effect.fail(fixtureSymlinkError(name, candidate));
-      }
-      if (stat.right.isDirectory) {
-        return candidate;
-      }
-      return yield* Effect.fail(
-        fixtureIoError(candidate, `Fixture "${name}" source is not a directory: ${candidate}`),
-      );
+      return yield* Effect.fail(stat.failure);
     }
-    return yield* Effect.fail(fixtureNotFoundError(name, candidates));
-  });
+    if (stat.success.isSymbolicLink === true) {
+      return yield* Effect.fail(fixtureSymlinkError(name, candidate));
+    }
+    if (stat.success.isDirectory) {
+      return candidate;
+    }
+    return yield* Effect.fail(
+      fixtureIoError(candidate, `Fixture "${name}" source is not a directory: ${candidate}`),
+    );
+  }
+  return yield* Effect.fail(fixtureNotFoundError(name, candidates));
+});
 
 const createFixtureUse = (
   guideId: string,
@@ -437,7 +453,7 @@ const createFixtureUse = (
           appendFrame({ kind: "fixture", name, copiedTo: target });
         }),
       ),
-      Effect.provide(FileSystemLive),
+      Effect.provide(BunFileSystem.layer),
     );
   };
 };
@@ -452,34 +468,32 @@ const safeJsonParse = (text: string): unknown => {
 
 // `<Inspect>` captures read-only state into the transcript and must never change
 // pass/fail, so a missing file is recorded as `null` rather than raising.
-const createInspect =
-  (
-    testDir: string,
-    events: LandoEvent[],
-    transcriptFrames: ScenarioTranscriptFrame[],
-    appendFrame: (frame: ScenarioTranscriptFrame) => void,
-  ): ScenarioContext["inspect"] =>
-  (props) =>
-    Effect.gen(function* () {
-      if (props.file !== undefined || props.json !== undefined) {
-        const target = props.file !== undefined ? "file" : "json";
-        const relativePath = (props.file ?? props.json) as string;
-        const file = Bun.file(join(testDir, relativePath));
-        const exists = yield* Effect.promise(() => file.exists());
-        const text = exists ? yield* Effect.promise(() => file.text()) : undefined;
-        const value = text === undefined ? null : target === "json" ? safeJsonParse(text) : text;
-        yield* Effect.sync(() => appendFrame({ kind: "inspect", target, value }));
-        return;
-      }
-      if (props.events === true) {
-        const value = [...events];
-        yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "events", value }));
-        return;
-      }
-      const lastRun = transcriptFrames.findLast((frame) => frame.kind === "run");
-      const value = lastRun !== undefined && lastRun.kind === "run" ? lastRun.stdout : "";
-      yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "output", value }));
-    });
+const createInspect = (
+  testDir: string,
+  events: LandoEvent[],
+  transcriptFrames: ScenarioTranscriptFrame[],
+  appendFrame: (frame: ScenarioTranscriptFrame) => void,
+): ScenarioContext["inspect"] =>
+  Effect.fn("ScenarioContext.inspect")(function* (props) {
+    if (props.file !== undefined || props.json !== undefined) {
+      const target = props.file !== undefined ? "file" : "json";
+      const relativePath = (props.file ?? props.json) as string;
+      const file = Bun.file(join(testDir, relativePath));
+      const exists = yield* Effect.promise(() => file.exists());
+      const text = exists ? yield* Effect.promise(() => file.text()) : undefined;
+      const value = text === undefined ? null : target === "json" ? safeJsonParse(text) : text;
+      yield* Effect.sync(() => appendFrame({ kind: "inspect", target, value }));
+      return;
+    }
+    if (props.events === true) {
+      const value = [...events];
+      yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "events", value }));
+      return;
+    }
+    const lastRun = transcriptFrames.findLast((frame) => frame.kind === "run");
+    const value = lastRun !== undefined && lastRun.kind === "run" ? lastRun.stdout : "";
+    yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "output", value }));
+  });
 
 const captureWrite = (stream: typeof process.stdout | typeof process.stderr) => {
   const chunks: string[] = [];
@@ -627,11 +641,11 @@ const runInitDispatchWithSeededAnswers = (
   return withInteractionServiceOverride(interaction.service, runDispatch);
 };
 
-const testRuntimeProviderRegistry = {
+const testRuntimeProviderRegistry = RuntimeProviderRegistry.of({
   list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),
-} satisfies Context.Tag.Service<typeof RuntimeProviderRegistry>;
+});
 
 const testRuntimeProviderRegistryLayer = Layer.succeed(RuntimeProviderRegistry, testRuntimeProviderRegistry);
 
@@ -816,23 +830,22 @@ const createRunCli = (
       : (command: string | ReadonlyArray<string>, options?: ScenarioRunOptions) =>
           Effect.tryPromise(() => override(parseCommand(command), options));
 
-  return (command, options) =>
-    Effect.gen(function* () {
-      const started = Date.now();
-      const result = yield* runner(command, options);
-      const durationMs = Math.max(0, Date.now() - started);
-      yield* Effect.sync(() => {
-        appendFrame({
-          kind: "run",
-          command: result.command,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exit: result.exitCode,
-          durationMs,
-        });
+  return Effect.fn("ScenarioContext.runCli")(function* (command, options) {
+    const started = yield* Clock.currentTimeMillis;
+    const result = yield* runner(command, options);
+    const durationMs = Math.max(0, (yield* Clock.currentTimeMillis) - started);
+    yield* Effect.sync(() => {
+      appendFrame({
+        kind: "run",
+        command: result.command,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exit: result.exitCode,
+        durationMs,
       });
-      return result;
     });
+    return result;
+  });
 };
 
 const makeScenarioContext = (
@@ -865,7 +878,7 @@ const makeScenarioContext = (
     workingDirectory = path;
   };
 
-  return {
+  return ScenarioContext.of({
     guideId: options.guideId,
     scenarioId: options.scenarioId,
     layer: runnerKind === "e2e" ? "e2e" : "scenario",
@@ -893,14 +906,14 @@ const makeScenarioContext = (
     fixtures: {
       use: createFixtureUse(options.guideId, testDir, setWorkingDirectory, appendFrame),
     },
-  };
+  });
 };
 
 const withScenarioContextInternal = <A, E, R>(
   options: WithScenarioContextOptions,
   runnerKind: ScenarioRunnerKind,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
   Effect.scoped(
     Effect.acquireRelease(
       Effect.tryPromise(() =>
@@ -915,16 +928,18 @@ const withScenarioContextInternal = <A, E, R>(
           : Effect.void;
       },
     ).pipe(
-      Effect.flatMap((testDir) => {
-        const context = makeScenarioContext(options, testDir, runnerKind);
-        const startedAt = new Date().toISOString();
-        // Inner Effect.scoped is load-bearing: it closes the body's scope
-        // (running `addFinalizer` callbacks that push cleanup frames) BEFORE
-        // Effect.onExit fires persistTranscript. Do not remove.
-        return Effect.scoped(body(context).pipe(Effect.provideService(ScenarioContext, context))).pipe(
-          Effect.onExit((exit) => persistTranscript(context, startedAt, exit)),
-        );
-      }),
+      Effect.flatMap(
+        Effect.fnUntraced(function* (testDir) {
+          const context = makeScenarioContext(options, testDir, runnerKind);
+          const startedAt = DateTime.formatIso(yield* DateTime.now);
+          // Inner Effect.scoped is load-bearing: it closes the body's scope
+          // (running `addFinalizer` callbacks that push cleanup frames) BEFORE
+          // Effect.onExit fires persistTranscript. Do not remove.
+          return yield* Effect.scoped(
+            body(context).pipe(Effect.provideService(ScenarioContext, context)),
+          ).pipe(Effect.onExit((exit) => persistTranscript(context, startedAt, exit)));
+        }),
+      ),
     ),
   );
 
@@ -938,7 +953,7 @@ const withScenarioContextInternal = <A, E, R>(
 export const withScenarioContext = <A, E, R>(
   options: WithScenarioContextOptions,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
   withScenarioContextInternal(options, "testOnlyFake", body);
 
 /**
@@ -955,7 +970,7 @@ export const ScenarioContextFactory = {
   scenario: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+  ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "scenario", body),
   /**
    * Runs with the compiled binary e2e runner.
@@ -966,7 +981,7 @@ export const ScenarioContextFactory = {
   e2e: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+  ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "e2e", body),
   /**
    * Runs with the deterministic fake runner used by unit tests.
@@ -977,6 +992,6 @@ export const ScenarioContextFactory = {
   testOnlyFake: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-  ): Effect.Effect<A, E | Cause.UnknownException, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
+  ): Effect.Effect<A, E | Cause.UnknownError, Exclude<Exclude<R, ScenarioContext>, Scope.Scope>> =>
     withScenarioContextInternal(options, "testOnlyFake", body),
 } as const;

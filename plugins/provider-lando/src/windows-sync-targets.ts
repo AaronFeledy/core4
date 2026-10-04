@@ -52,43 +52,42 @@ const invalidPlan = (message: string) =>
  * fails closed and may require manual remediation. Deleting without an exact
  * instance-conditional API could affect a concurrent user.
  */
-export const prepareWindowsSyncTargets = (
+export const prepareWindowsSyncTargets = Effect.fn("ProviderLando.prepareWindowsSyncTargets")(function* (
   plan: AppPlan,
   image: string,
   helpers: WindowsSyncTargetOperations,
-): Effect.Effect<PreparedWindowsSyncTargets, ProviderUnavailableError> =>
-  Effect.gen(function* () {
-    const sessions = verifiedFileSyncSessions(plan);
-    if (String(plan.provider) !== "lando" || sessions === undefined) {
-      return yield* Effect.fail(
-        invalidPlan("The accelerated mount plan has incomplete or invalid file-sync targets."),
+): Effect.fn.Return<PreparedWindowsSyncTargets, ProviderUnavailableError> {
+  const sessions = verifiedFileSyncSessions(plan);
+  if (String(plan.provider) !== "lando" || sessions === undefined) {
+    return yield* Effect.fail(
+      invalidPlan("The accelerated mount plan has incomplete or invalid file-sync targets."),
+    );
+  }
+  if (!/@sha256:[a-f0-9]{64}$/u.test(image)) {
+    return yield* Effect.fail(invalidPlan("The sync helper image must use an immutable SHA-256 digest."));
+  }
+
+  yield* helpers.prepareImage(image);
+
+  const targets = yield* Effect.forEach(sessions, (session) => {
+    const spec: WindowsSyncHelperSpec = {
+      appId: String(plan.id),
+      appName: plan.name,
+      service: String(session.service),
+      mountKey: session.mountKey,
+      image,
+    };
+    return helpers
+      .ensure(spec)
+      .pipe(
+        Effect.flatMap((endpoint) =>
+          session.target._tag === "volume" &&
+          endpoint.volumeName === session.target.name &&
+          endpoint.path === "/sync"
+            ? Effect.succeed({ session, endpoint })
+            : Effect.fail(invalidPlan("The prepared helper endpoint does not match its planned volume.")),
+        ),
       );
-    }
-    if (!/@sha256:[a-f0-9]{64}$/u.test(image)) {
-      return yield* Effect.fail(invalidPlan("The sync helper image must use an immutable SHA-256 digest."));
-    }
-
-    yield* helpers.prepareImage(image);
-
-    const targets = yield* Effect.forEach(sessions, (session) => {
-      const spec: WindowsSyncHelperSpec = {
-        appId: String(plan.id),
-        appName: plan.name,
-        service: String(session.service),
-        mountKey: session.mountKey,
-        image,
-      };
-      return helpers
-        .ensure(spec)
-        .pipe(
-          Effect.flatMap((endpoint) =>
-            session.target._tag === "volume" &&
-            endpoint.volumeName === session.target.name &&
-            endpoint.path === "/sync"
-              ? Effect.succeed({ session, endpoint })
-              : Effect.fail(invalidPlan("The prepared helper endpoint does not match its planned volume.")),
-          ),
-        );
-    });
-    return { targets };
   });
+  return { targets };
+});

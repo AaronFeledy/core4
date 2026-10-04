@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import { SecretNotFoundError, SecretStoreUnavailableError } from "@lando/sdk/errors";
 import { createSecretRedactor, parseSecretReference } from "@lando/sdk/secrets";
@@ -17,7 +17,7 @@ const makeInMemoryStore = (id: string, secrets: Record<string, string>): SecretS
     id,
     get: (secret) => {
       const reference = parseSecretReference(secret);
-      if (Either.isLeft(reference)) return Effect.fail(reference.left);
+      if (Result.isFailure(reference)) return Effect.fail(reference.failure);
       const value = map.get(secret);
       return value === undefined
         ? Effect.fail(new SecretNotFoundError({ message: `missing ${secret}`, secret }))
@@ -131,10 +131,10 @@ describe("SecretStore contract", () => {
       invalidReference: "op://A//B",
     };
     // When
-    const result = await Effect.runPromise(Effect.either(runSecretStoreContractSuite(harness)));
+    const result = await Effect.runPromise(Effect.result(runSecretStoreContractSuite(harness)));
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(result.left).toBeInstanceOf(ContractFailure);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(ContractFailure);
   });
 
   test.each(["get", "has"] as const)(
@@ -159,7 +159,7 @@ describe("SecretStore contract", () => {
           : { ...unavailable, has: () => Effect.succeed(false) };
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           runSecretStoreContractSuite({
             store: makeInMemoryStore("mem", { TOKEN: "value" }),
             known: { key: "TOKEN", value: "value" },
@@ -170,7 +170,7 @@ describe("SecretStore contract", () => {
         ),
       );
       // Then
-      expect(Either.isLeft(result)).toBe(true);
+      expect(Result.isFailure(result)).toBe(true);
     },
   );
 
@@ -192,7 +192,7 @@ describe("SecretStore contract", () => {
       };
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           runSecretStoreContractSuite({
             store: makeInMemoryStore("mem", { TOKEN: "value" }),
             known: { key: "TOKEN", value: "value" },
@@ -204,7 +204,7 @@ describe("SecretStore contract", () => {
         ),
       );
       // Then
-      expect(Either.isRight(result)).toBe(true);
+      expect(Result.isSuccess(result)).toBe(true);
     },
   );
 
@@ -224,7 +224,7 @@ describe("SecretStore contract", () => {
     };
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         runSecretStoreContractSuite({
           store: makeInMemoryStore("mem", { TOKEN: "value" }),
           known: { key: "TOKEN", value: "value" },
@@ -235,6 +235,6 @@ describe("SecretStore contract", () => {
       ),
     );
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 });

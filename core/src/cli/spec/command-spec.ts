@@ -100,14 +100,14 @@ export type {
   ExecutableCommandValue,
 } from "@lando/sdk/plugins";
 
-export const EmptyResultSchema = Schema.Struct({});
+export const EmptyResultSchema = Schema.ObjectKeyword;
 
 export class CommandRegistrationError extends Schema.TaggedError<CommandRegistrationError>()(
   "CommandRegistrationError",
   {
     message: Schema.String,
-    commandId: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    commandId: Schema.optionalKey(Schema.String),
+    remediation: Schema.optionalKey(Schema.String),
   },
 ) {}
 

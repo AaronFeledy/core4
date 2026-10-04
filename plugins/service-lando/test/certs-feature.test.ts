@@ -90,7 +90,7 @@ describe("lando.certs feature", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected feature failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure._tag).toBe("ServiceFeatureError");
     expect(String(failure)).toContain("keyPath requires certPath");
   });
@@ -132,7 +132,7 @@ describe("lando.certs feature", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected feature failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
     expect(failure._tag).toBe("ServiceFeatureError");
     expect(failure.feature).toBe(LANDO_CERTS_FEATURE_ID);
   });

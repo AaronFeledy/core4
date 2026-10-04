@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { KeymapConflictError } from "@lando/sdk/errors";
 import { CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent, RenderEvent } from "@lando/sdk/events";
@@ -23,7 +23,7 @@ import {
 describe("4.1 renderer surface freeze (schemas)", () => {
   test("panel slot vocabulary and manifest entry decode", () => {
     expect(Schema.decodeUnknownSync(RendererPanelSlot)("status-bar")).toBe("status-bar");
-    expect(Either.isLeft(Schema.decodeUnknownEither(RendererPanelSlot)("unknown"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(RendererPanelSlot)("unknown"))).toBe(true);
 
     const id = Schema.decodeUnknownSync(RendererPanelId)("build-status");
     const watch = Schema.decodeUnknownSync(RendererPanelWatch)(["post-start", "post-stop"]);
@@ -34,7 +34,7 @@ describe("4.1 renderer surface freeze (schemas)", () => {
       module: "./panels/status.ts",
     });
     expect(entry.slot).toBe("status-bar");
-    expect(Either.isLeft(Schema.decodeUnknownEither(RendererPanelWatch)(["a", "a"]))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(RendererPanelWatch)(["a", "a"]))).toBe(true);
   });
 
   test("PanelView enforces row/span/byte bounds without clipping", () => {
@@ -42,17 +42,17 @@ describe("4.1 renderer surface freeze (schemas)", () => {
     expect(ok).toHaveLength(1);
 
     const nineRows = Array.from({ length: 9 }, () => [{ text: "x" }]);
-    expect(Either.isLeft(Schema.decodeUnknownEither(PanelView)(nineRows))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(PanelView)(nineRows))).toBe(true);
 
     const big = [[{ text: "x".repeat(5000) }]];
-    expect(Either.isLeft(Schema.decodeUnknownEither(PanelView)(big))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(PanelView)(big))).toBe(true);
   });
 
   test("keymap chord grammar rejects reserved ctrl+c and unknown keys as schema failure", () => {
     expect(Schema.decodeUnknownSync(RendererKeyChord)("ctrl+alt+shift+f")).toBe("ctrl+alt+shift+f");
-    expect(Either.isLeft(Schema.decodeUnknownEither(RendererKeyChord)("ctrl+c"))).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(RendererKeyChord)("shift+ctrl+f"))).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(RendererKeyChord)("?"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(RendererKeyChord)("ctrl+c"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(RendererKeyChord)("shift+ctrl+f"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(RendererKeyChord)("?"))).toBe(true);
     expect(Schema.decodeUnknownSync(RendererActionId)("tree.expand")).toBe("tree.expand");
   });
 
@@ -62,39 +62,39 @@ describe("4.1 renderer surface freeze (schemas)", () => {
       "viewer.quit": ["q", "ctrl+d"],
     });
     expect(ok["tree.expand"]).toBe("space");
-    expect(Either.isRight(validateKeymapConfigConflicts(ok))).toBe(true);
+    expect(Result.isSuccess(validateKeymapConfigConflicts(ok))).toBe(true);
 
     const colliding = Schema.decodeUnknownSync(KeymapConfig)({
       "tree.expand": "enter",
       "tree.collapse": "enter",
     });
     const conflict = validateKeymapConfigConflicts(colliding);
-    expect(Either.isLeft(conflict)).toBe(true);
-    if (Either.isLeft(conflict)) {
-      expect(conflict.left).toBeInstanceOf(KeymapConflictError);
-      expect(conflict.left.surface).toBe("task-tree");
-      expect(conflict.left.chord).toBe("enter");
+    expect(Result.isFailure(conflict)).toBe(true);
+    if (Result.isFailure(conflict)) {
+      expect(conflict.failure).toBeInstanceOf(KeymapConflictError);
+      expect(conflict.failure.surface).toBe("task-tree");
+      expect(conflict.failure.chord).toBe("enter");
     }
 
     const crossSurface = Schema.decodeUnknownSync(KeymapConfig)({
       "tree.expand": "f",
       "viewer.follow": "f",
     });
-    expect(Either.isRight(validateKeymapConfigConflicts(crossSurface))).toBe(true);
+    expect(Result.isSuccess(validateKeymapConfigConflicts(crossSurface))).toBe(true);
 
     // Override colliding with another action's retained default is still a conflict.
     const vsDefault = Schema.decodeUnknownSync(KeymapConfig)({
       "tree.expand": "up",
     });
     const defaultConflict = validateKeymapConfigConflicts(vsDefault);
-    expect(Either.isLeft(defaultConflict)).toBe(true);
-    if (Either.isLeft(defaultConflict)) {
-      expect(defaultConflict.left.chord).toBe("up");
-      expect(defaultConflict.left.surface).toBe("task-tree");
+    expect(Result.isFailure(defaultConflict)).toBe(true);
+    if (Result.isFailure(defaultConflict)) {
+      expect(defaultConflict.failure.chord).toBe("up");
+      expect(defaultConflict.failure.surface).toBe("task-tree");
     }
 
     const reserved = decodeKeymapConfig({ "prompt.cancel": "ctrl+c" });
-    expect(Either.isLeft(reserved)).toBe(true);
+    expect(Result.isFailure(reserved)).toBe(true);
   });
 
   test("rich render events require positive line numbers", () => {
@@ -106,8 +106,8 @@ describe("4.1 renderer surface freeze (schemas)", () => {
     });
     expect(snippet.code).toBe("const x = 1");
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(CodeSnippetEvent)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(CodeSnippetEvent)({
           _tag: "code.snippet",
           code: "x",
           startLine: 0,
@@ -137,7 +137,7 @@ describe("4.1 renderer surface freeze (schemas)", () => {
 
   test("subscriber manifest entry and published config key", () => {
     expect(Schema.decodeUnknownSync(PublishedGlobalConfigKey)("notify")).toBe("notify");
-    expect(Either.isLeft(Schema.decodeUnknownEither(PublishedGlobalConfigKey)("other"))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(PublishedGlobalConfigKey)("other"))).toBe(true);
 
     const selector = Schema.decodeUnknownSync(SubscriberSelector)({ family: "cli-command-terminal" });
     expect("family" in selector).toBe(true);
@@ -153,8 +153,8 @@ describe("4.1 renderer surface freeze (schemas)", () => {
     expect(entry.abortOnError).toBe(false);
 
     expect(
-      Either.isLeft(
-        Schema.decodeUnknownEither(SubscriberManifestEntry)({
+      Result.isFailure(
+        Schema.decodeUnknownResult(SubscriberManifestEntry)({
           id: "bad",
           selectors: [{ family: "cli-command-terminal" }],
           module: "./x.ts",

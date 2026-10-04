@@ -1,24 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { TestClock } from "effect/testing";
 
-import {
-  Cause,
-  type Context,
-  Deferred,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Option,
-  Schema,
-  TestClock,
-  TestContext,
-} from "effect";
+import { Cause, type Context, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionServiceLive } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
@@ -40,19 +29,19 @@ const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 
 const buildConfigService = (
   options: { readonly failGet?: boolean } = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
   } as GlobalConfig;
   const load = Effect.succeed(config);
-  return {
+  return ConfigService.of({
     load,
     get: (key) =>
       options.failGet === true
         ? Effect.fail(new ConfigError({ message: `config file is corrupt: ${String(key)}` }))
         : Effect.map(load, (loadedConfig) => loadedConfig[key]),
-  };
+  });
 };
 
 const failingSelectRegistry = () => ({
@@ -89,10 +78,23 @@ const layersFor = (
   configOptions: { readonly failGet?: boolean } = {},
 ) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, registry as never),
-    Layer.succeed(ConfigService, buildConfigService(configOptions)),
+    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry as never)),
+    Layer.succeed(ConfigService, ConfigService.of(buildConfigService(configOptions))),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
+
+/**
+ * Effect 4's TestClock fires every due sleep in one `adjust`, yielding only once
+ * between them, so work woken by an earlier deadline cannot settle before a later
+ * deadline fires. Advance a millisecond at a time and drain the scheduler between
+ * steps, as a real clock would.
+ */
+const advanceSettled = Effect.fnUntraced(function* (millis: number) {
+  for (let elapsed = 0; elapsed < millis; elapsed += 1) {
+    yield* TestClock.adjust("1 millis");
+    yield* Effect.promise(() => new Promise<void>((resume) => setImmediate(resume)));
+  }
+});
 
 const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>
   (report.self?.checks ?? []).map((check) => check.section);
@@ -105,7 +107,7 @@ describe("doctor chaos: provider path", () => {
     const layers = layersFor(
       statusRegistry(
         Deferred.succeed(started, undefined).pipe(
-          Effect.zipRight(Effect.never),
+          Effect.andThen(Effect.never),
         ) as typeof TestRuntimeProvider.getStatus,
       ),
     );
@@ -113,7 +115,9 @@ describe("doctor chaos: provider path", () => {
     // When the caller aborts the run
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(doctor({ signal: controller.signal }).pipe(Effect.provide(layers)));
+        const fiber = yield* Effect.forkChild(
+          doctor({ signal: controller.signal }).pipe(Effect.provide(layers)),
+        );
         yield* Deferred.await(started);
         yield* Effect.sync(() => controller.abort());
         return yield* Fiber.await(fiber);
@@ -122,7 +126,7 @@ describe("doctor chaos: provider path", () => {
 
     // Then cancellation interrupts the run instead of becoming a self check
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
   test("reports a failed selected-provider check when provider selection fails", async () => {
@@ -262,7 +266,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
       }),
     };
     const secretStore = makeTestSecretStore({ secrets: { DUPLICATE_DOCTOR_TOKEN: secret } });
-    const redactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+    const redactionLayer = RedactionService.layer.pipe(Layer.provide(secretStore.layer));
     const layers = Layer.merge(layersFor(statusRegistry(TestRuntimeProvider.getStatus)), redactionLayer);
 
     // When
@@ -339,7 +343,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const healthyStarted = Effect.runSync(Deferred.make<void>());
     const hanging = doctorModule({
       id: "chaos-report-hang",
-      run: () => Deferred.succeed(hangStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+      run: () => Deferred.succeed(hangStarted, undefined).pipe(Effect.andThen(Effect.never)),
     });
     const healthy: LandoPluginModule = {
       ...doctorModule({
@@ -370,7 +374,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const report = await Effect.runPromise(
       Effect.gen(function* () {
         const options = { env: SHORT_BUDGET_ENV };
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options,
             provider: doctor(options, [hanging, healthy]),
@@ -378,11 +382,11 @@ describe("doctor chaos: plugin-contributed checks", () => {
           }),
         );
         yield* Deferred.await(hangStarted);
-        yield* Effect.yieldNow();
+        yield* Effect.yieldNow;
         expect(Option.isSome(yield* Deferred.poll(healthyStarted))).toBe(true);
-        yield* TestClock.adjust("1 second");
+        yield* advanceSettled(1_000);
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(layers), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
 
     // Then
@@ -407,7 +411,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
       id: "chaos-order-first",
       run: () =>
         Deferred.succeed(firstStarted, undefined).pipe(
-          Effect.zipRight(Deferred.await(secondFinished)),
+          Effect.andThen(Deferred.await(secondFinished)),
           Effect.as([
             {
               name: "chaos-order-first",
@@ -446,7 +450,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const report = await Effect.runPromise(
       Effect.gen(function* () {
         const options = { env: SHORT_BUDGET_ENV };
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options,
             provider: doctor(options, [first, second]),
@@ -454,10 +458,10 @@ describe("doctor chaos: plugin-contributed checks", () => {
           }),
         );
         yield* Deferred.await(firstStarted);
-        yield* Effect.yieldNow();
-        yield* TestClock.adjust("1 second");
+        yield* Effect.yieldNow;
+        yield* advanceSettled(1_000);
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(layers), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
 
     // Then
@@ -474,12 +478,12 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const providerStarted = Effect.runSync(Deferred.make<void>());
     const hanging = doctorModule({
       id: "chaos-aggregate-hang",
-      run: () => Deferred.succeed(pluginStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+      run: () => Deferred.succeed(pluginStarted, undefined).pipe(Effect.andThen(Effect.never)),
     });
     const layers = layersFor(
       statusRegistry(
         Deferred.succeed(providerStarted, undefined).pipe(
-          Effect.zipRight(Effect.never),
+          Effect.andThen(Effect.never),
         ) as typeof TestRuntimeProvider.getStatus,
       ),
     );
@@ -489,7 +493,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
       Effect.gen(function* () {
         const reportOptions = { env: SHORT_BUDGET_ENV };
         const doctorOptions = { env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "800" } };
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options: reportOptions,
             provider: doctor(doctorOptions, [hanging]),
@@ -497,11 +501,11 @@ describe("doctor chaos: plugin-contributed checks", () => {
           }),
         );
         yield* Deferred.await(pluginStarted);
-        yield* TestClock.adjust("800 millis");
+        yield* advanceSettled(800);
         yield* Deferred.await(providerStarted);
-        yield* TestClock.adjust("200 millis");
+        yield* advanceSettled(200);
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(layers), Effect.provide(TestContext.TestContext)),
+      }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
 
     // Then both inner timeouts remain attributed and the selected provider survives
@@ -523,10 +527,10 @@ describe("doctor chaos: whole report", () => {
     // When the caller aborts the report collector
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           collectDoctorReport({
             options: { signal: controller.signal },
-            provider: Deferred.succeed(started, undefined).pipe(Effect.zipRight(Effect.never)),
+            provider: Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
             deprecations: Effect.succeed({ entries: [] }),
           }).pipe(Effect.provide(layers)),
         );
@@ -538,7 +542,7 @@ describe("doctor chaos: whole report", () => {
 
     // Then cancellation interrupts collection instead of becoming a provider self check
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
   test("interrupts doctorReport when its AbortSignal aborts mid-flight", async () => {
@@ -548,7 +552,7 @@ describe("doctor chaos: whole report", () => {
     const layers = layersFor(
       statusRegistry(
         Deferred.succeed(started, undefined).pipe(
-          Effect.zipRight(Effect.never),
+          Effect.andThen(Effect.never),
         ) as typeof TestRuntimeProvider.getStatus,
       ),
     );
@@ -556,10 +560,10 @@ describe("doctor chaos: whole report", () => {
     // When the caller aborts the report
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(
+        const fiber = yield* Effect.forkChild(
           doctorReport({ signal: controller.signal }).pipe(
             Effect.provide(layers),
-            Effect.provide(PluginRegistryLive),
+            Effect.provide(PluginRegistryLayer.layer),
           ),
         );
         yield* Deferred.await(started);
@@ -570,7 +574,7 @@ describe("doctor chaos: whole report", () => {
 
     // Then cancellation interrupts the report instead of becoming a provider self check
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.hasInterrupts(exit.cause)).toBe(true);
   });
 
   test("emits a schema-valid report when the provider section is fully broken", async () => {
@@ -581,7 +585,7 @@ describe("doctor chaos: whole report", () => {
     const report = await Effect.runPromise(
       doctorReport({ env: SHORT_BUDGET_ENV }).pipe(
         Effect.provide(layers),
-        Effect.provide(PluginRegistryLive),
+        Effect.provide(PluginRegistryLayer.layer),
       ),
     );
 

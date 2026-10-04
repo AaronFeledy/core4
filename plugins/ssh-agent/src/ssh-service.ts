@@ -31,29 +31,29 @@ export const ensurePrivateSshDirectory = async (sshDir: string): Promise<void> =
   }
 };
 
-export const sshService = Layer.effect(
+export const layer = Layer.effect(
   SshService,
   Effect.gen(function* () {
     const globalApp = yield* GlobalAppService;
     const paths = yield* PathsService;
 
-    return {
+    return SshService.of({
       id: SSH_SIDECAR_ID,
-      setup: (_options) =>
-        Effect.gen(function* () {
-          const sshDir = `${paths.roots.userDataRoot}/ssh`;
-          yield* Effect.tryPromise({
-            try: () => ensurePrivateSshDirectory(sshDir),
-            catch: (cause: unknown) => cause,
-          });
-          yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
-        }).pipe(Effect.mapError(setupError)),
-      getAgentSocket: (appId) =>
+      setup: Effect.fn("SshService.setup")(function* (_options) {
+        const sshDir = `${paths.roots.userDataRoot}/ssh`;
+        yield* Effect.tryPromise({
+          try: () => ensurePrivateSshDirectory(sshDir),
+          catch: (cause: unknown) => cause,
+        });
+        yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
+      }, Effect.mapError(setupError)),
+      getAgentSocket: Effect.fn("SshService.getAgentSocket")((appId) =>
         Effect.succeed({
           socketPath: `${paths.roots.userDataRoot}/ssh/ssh-agent.sock`,
           runtimeVolume: SSH_AGENT_VOLUME,
           appId,
         }),
-    };
+      ),
+    });
   }),
 );

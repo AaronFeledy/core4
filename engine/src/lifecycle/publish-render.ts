@@ -7,20 +7,21 @@ import type { EventService } from "@lando/sdk/services";
 
 import type { RedactionServiceShape } from "@lando/redaction/service";
 
-export const makePublishRender =
-  (events: Context.Tag.Service<typeof EventService>, redaction: RedactionServiceShape): PublishRender =>
-  (event) =>
-    Effect.gen(function* () {
-      const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-      const decoded = yield* Schema.decodeUnknown(RenderEvent)(redactor.redactValue(event)).pipe(
-        Effect.mapError(
-          (cause) =>
-            new EventError({
-              event: event._tag,
-              message: `Plugin render event failed schema decoding: ${event._tag}`,
-              cause,
-            }),
-        ),
-      );
-      yield* events.publish(decoded);
-    });
+export const makePublishRender = (
+  events: Context.Service.Shape<typeof EventService>,
+  redaction: RedactionServiceShape,
+): PublishRender =>
+  Effect.fnUntraced(function* (event) {
+    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+    const decoded = yield* Schema.decodeUnknownEffect(RenderEvent)(redactor.redactValue(event)).pipe(
+      Effect.mapError(
+        (cause) =>
+          new EventError({
+            event: event._tag,
+            message: `Plugin render event failed schema decoding: ${event._tag}`,
+            cause,
+          }),
+      ),
+    );
+    yield* events.publish(decoded);
+  });

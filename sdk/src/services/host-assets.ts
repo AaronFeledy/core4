@@ -1,10 +1,10 @@
 import { Context, type Effect } from "effect";
 
-export interface LogFileHelperAssetsShape {
-  readonly payloads: Effect.Effect<Readonly<Record<string, Uint8Array>>, never>;
-}
-
-export class LogFileHelperAssets extends Context.Tag("@lando/core/LogFileHelperAssets")<
+export class LogFileHelperAssets extends Context.Service<
   LogFileHelperAssets,
-  LogFileHelperAssetsShape
->() {}
+  {
+    readonly payloads: Effect.Effect<Readonly<Record<string, Uint8Array>>, never>;
+  }
+>()("@lando/core/LogFileHelperAssets") {}
+
+export type LogFileHelperAssetsShape = LogFileHelperAssets["Service"];

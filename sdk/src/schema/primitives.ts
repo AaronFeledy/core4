@@ -19,7 +19,10 @@ export const PortablePath = Schema.String.pipe(Schema.brand("PortablePath"));
 export type PortablePath = typeof PortablePath.Type;
 
 /** Integer TCP/UDP port in the inclusive IANA range. */
-export const PortNumber = Schema.Number.pipe(Schema.int(), Schema.between(1, 65535));
+export const PortNumber = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+);
 export type PortNumber = typeof PortNumber.Type;
 
 /**
@@ -31,7 +34,9 @@ export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-
 
 export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
 
-export const ContainerUser = Schema.String.pipe(Schema.pattern(CONTAINER_USER_PATTERN)).annotations({
+export const ContainerUser = Schema.String.pipe(
+  Schema.check(Schema.isPattern(CONTAINER_USER_PATTERN)),
+).annotate({
   description:
     'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
 });
@@ -49,17 +54,17 @@ export const isAbsoluteContainerPath = (value: string): boolean =>
   ABSOLUTE_CONTAINER_PATH_PATTERN.test(value);
 
 export const AbsoluteContainerPath = Schema.String.pipe(
-  Schema.pattern(ABSOLUTE_CONTAINER_PATH_PATTERN),
-).annotations({
+  Schema.check(Schema.isPattern(ABSOLUTE_CONTAINER_PATH_PATTERN)),
+).annotate({
   description:
     "Absolute path inside a container. Must start with '/' and must not contain NUL or backslash characters.",
 });
 export type AbsoluteContainerPath = typeof AbsoluteContainerPath.Type;
 
-export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
+export const HostPlatform = Schema.Literals(["darwin", "linux", "win32", "wsl"]);
 export type HostPlatform = typeof HostPlatform.Type;
 
-export const HostPlatformFamily = Schema.Literal("darwin", "linux", "win32");
+export const HostPlatformFamily = Schema.Literals(["darwin", "linux", "win32"]);
 export type HostPlatformFamily = typeof HostPlatformFamily.Type;
 
 const HOST_PLATFORM_FAMILY = {
@@ -72,10 +77,10 @@ const HOST_PLATFORM_FAMILY = {
 export const hostPlatformFamily = (platform: HostPlatform): HostPlatformFamily =>
   HOST_PLATFORM_FAMILY[platform];
 
-export const HostArchitecture = Schema.Literal("x64", "arm64");
+export const HostArchitecture = Schema.Literals(["x64", "arm64"]);
 export type HostArchitecture = typeof HostArchitecture.Type;
 
-export const BootstrapLevel = Schema.Literal(
+export const BootstrapLevel = Schema.Literals([
   "none",
   "minimal",
   "plugins",
@@ -85,7 +90,7 @@ export const BootstrapLevel = Schema.Literal(
   "global",
   "scratch",
   "app",
-);
+]);
 export type BootstrapLevel = typeof BootstrapLevel.Type;
 
 export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
@@ -105,7 +110,7 @@ export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
  */
 export const PlanMetadata = Schema.Struct({
   /** Resolution timestamp (UTC). */
-  resolvedAt: Schema.DateTimeUtc,
+  resolvedAt: Schema.DateTimeUtcFromString,
   /** Source Landofile path (or virtual id for recipe-rendered apps). */
   source: Schema.String,
   /** Lando runtime/format major version this plan was rendered for. */
@@ -117,14 +122,11 @@ export type PlanMetadata = typeof PlanMetadata.Type;
  * Provider extension config — non-portable, opt-in provider-specific config
  * preserved in the schema. Keys are provider ids; values are arbitrary.
  */
-export const ProviderExtensionConfig = Schema.Record({
-  key: Schema.String,
-  value: Schema.Unknown,
-});
+export const ProviderExtensionConfig = Schema.Record(Schema.String, Schema.Unknown);
 export type ProviderExtensionConfig = typeof ProviderExtensionConfig.Type;
 
 /**
  * `command` / `entrypoint` accept either a single string or an argv array.
  */
-export const CommandSpec = Schema.Union(Schema.String, Schema.Array(Schema.String));
+export const CommandSpec = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 export type CommandSpec = typeof CommandSpec.Type;

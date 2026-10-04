@@ -1,5 +1,5 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
-import { Data, Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -12,9 +12,9 @@ import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 export type SubsystemRecovery = "automatic" | "manual";
 
 export const SshAgentPostureDetails = Schema.Struct({
-  mode: Schema.Literal("sidecar", "host"),
+  mode: Schema.Literals(["sidecar", "host"]),
   upstream: Schema.Struct({
-    source: Schema.Literal(
+    source: Schema.Literals([
       "sidecar",
       "explicit",
       "env",
@@ -23,18 +23,18 @@ export const SshAgentPostureDetails = Schema.Struct({
       "yubikey-agent",
       "windows-openssh",
       "none",
-    ),
+    ]),
     reachable: Schema.Boolean,
-    identities: Schema.optional(Schema.NonNegativeInt),
+    identities: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   }),
-  delivery: Schema.Union(AgentSocketDelivery, Schema.Literal("none", "runtime-volume")),
-  runtimeVolume: Schema.optional(Schema.String),
+  delivery: Schema.Union([AgentSocketDelivery, Schema.Literals(["none", "runtime-volume"])]),
+  runtimeVolume: Schema.optionalKey(Schema.String),
   security: Schema.String,
-  gpg: Schema.optional(
+  gpg: Schema.optionalKey(
     Schema.Struct({
       forward: Schema.Literal(true),
       upstream: Schema.Struct({
-        source: Schema.Literal("explicit", "gpgconf", "none"),
+        source: Schema.Literals(["explicit", "gpgconf", "none"]),
         reachable: Schema.Boolean,
       }),
       keyringExported: Schema.Boolean,
@@ -59,12 +59,19 @@ export interface DoctorSubsystemCheck {
  * failure (e.g. `ProxyError`, `CaError`) without modifying the
  * compatibility-locked SDK error classes.
  */
-export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFailure")<{
-  readonly subsystem: string;
-  readonly severity: DoctorSeverity;
-  readonly solution: DoctorSolution;
-  readonly cause?: unknown;
-}> {}
+export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFailure>()(
+  "DoctorSubsystemFailure",
+  {
+    subsystem: Schema.String,
+    severity: Schema.Literals(["info", "warn", "error"]),
+    solution: Schema.Struct({
+      kind: Schema.Literals(["automatic", "manual"]),
+      description: Schema.String,
+      command: Schema.optionalKey(Schema.String),
+    }),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
 
 /**
  * Service identities that indicate the subsystem is not yet wired to a real
@@ -222,70 +229,69 @@ export const passCheck = (spec: SubsystemSpec, context: Record<string, string>):
 const withoutPreFixState = (context: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(context).filter(([key]) => key !== "state"));
 
-export const buildDegradedCheck = (
+export const buildDegradedCheck = Effect.fnUntraced(function* (
   spec: SubsystemSpec,
   baseContext: Record<string, string>,
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
   cause?: unknown,
   refreshContext?: () => Effect.Effect<Record<string, string>, never>,
-): Effect.Effect<DoctorSubsystemCheck, never> =>
-  Effect.gen(function* () {
-    const serviceId = baseContext.subsystemId ?? "unknown";
+): Effect.fn.Return<DoctorSubsystemCheck, never> {
+  const serviceId = baseContext.subsystemId ?? "unknown";
 
-    if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
-      const fixCommand = `${spec.name}.setup`;
-      const result = yield* Effect.either(runSetup());
-      if (Either.isRight(result)) {
-        const liveContext = refreshContext === undefined ? {} : yield* refreshContext();
-        return passCheck(spec, {
-          ...withoutPreFixState(baseContext),
-          ...(baseContext.ready === "false" ? { ready: "true" } : {}),
-          ...liveContext,
-          fixOutcome: "recovered",
-          fixCommand,
-          fixExitCode: "0",
-        });
-      }
-      const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.left);
-      return {
-        name: spec.name,
-        status: "warn",
-        severity: diagnostic.severity,
-        recovery: spec.recovery,
-        context: {
-          ...baseContext,
-          fixOutcome: "failed",
-          fixCommand,
-          fixExitCode: "1",
-          fixError: errorMessage(result.left),
-        },
-        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
-      };
+  if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
+    const fixCommand = `${spec.name}.setup`;
+    const result = yield* Effect.result(runSetup());
+    if (Result.isSuccess(result)) {
+      const liveContext = refreshContext === undefined ? {} : yield* refreshContext();
+      return passCheck(spec, {
+        ...withoutPreFixState(baseContext),
+        ...(baseContext.ready === "false" ? { ready: "true" } : {}),
+        ...liveContext,
+        fixOutcome: "recovered",
+        fixCommand,
+        fixExitCode: "0",
+      });
     }
-
-    if (fix) {
-      return {
-        name: spec.name,
-        status: "warn",
-        severity: "warn",
-        recovery: spec.recovery,
-        context: { ...baseContext, fixOutcome: "skipped-manual" },
-        solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
-      };
-    }
-
-    const diagnostic =
-      cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
+    const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.failure);
     return {
       name: spec.name,
       status: "warn",
-      severity: diagnostic?.severity ?? "warn",
+      severity: diagnostic.severity,
       recovery: spec.recovery,
-      context: baseContext,
-      solutions: [diagnostic?.solution ?? degradedSolution(spec)],
+      context: {
+        ...baseContext,
+        fixOutcome: "failed",
+        fixCommand,
+        fixExitCode: "1",
+        fixError: errorMessage(result.failure),
+      },
+      solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
     };
-  });
+  }
+
+  if (fix) {
+    return {
+      name: spec.name,
+      status: "warn",
+      severity: "warn",
+      recovery: spec.recovery,
+      context: { ...baseContext, fixOutcome: "skipped-manual" },
+      solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
+    };
+  }
+
+  const diagnostic =
+    cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
+  return {
+    name: spec.name,
+    status: "warn",
+    severity: diagnostic?.severity ?? "warn",
+    recovery: spec.recovery,
+    context: baseContext,
+    solutions: [diagnostic?.solution ?? degradedSolution(spec)],
+  };
+});
 
 /**
  * Probe an identity-based subsystem (ready iff its service id is not a

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Schema } from "effect";
 
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -35,7 +35,7 @@ const spec = (
 const directExecute = (): McpDispatchDeps["execute"] => (entry, runInput) =>
   entry.spec.run(runInput).pipe(
     Effect.map((value) => ({ _tag: "success", value }) satisfies CommandResultOutcome),
-    Effect.catchAll((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
+    Effect.catch((error) => Effect.succeed({ _tag: "failure", error } satisfies CommandResultOutcome)),
   ) as Effect.Effect<CommandResultOutcome, never>;
 
 interface Harness {
@@ -130,7 +130,7 @@ describe("dispatchTool", () => {
     const exit = await Effect.runPromiseExit(dispatchTool({ toolId: "app:info" }, deps));
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Cause.squash(exit.cause);
       expect(error).toBeInstanceOf(McpToolNotAllowedError);
     }
     expect(events.map((e) => e._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
@@ -141,7 +141,7 @@ describe("dispatchTool", () => {
     const exit = await Effect.runPromiseExit(dispatchTool({ toolId: "app:php" }, deps));
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Cause.squash(exit.cause);
       expect(error).toBeInstanceOf(McpTransportError);
       expect(error).toMatchObject({
         message: expect.stringContaining("is not available"),
@@ -162,9 +162,11 @@ describe("dispatchTool", () => {
       dispatchTool({ toolId: "app:logs", input: { flags: {} } }, deps),
     );
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-      expect((exit.cause.error as McpToolInputError).path).toBe("flags.format");
+    if (exit._tag === "Failure") {
+      const error = Cause.squash(exit.cause);
+      expect(error).toBeInstanceOf(McpToolInputError);
+      if (!(error instanceof McpToolInputError)) throw error;
+      expect(error.path).toBe("flags.format");
     }
   });
 
@@ -192,9 +194,11 @@ describe("dispatchTool", () => {
 
     expect(exit._tag).toBe("Failure");
     expect(executed).toBe(false);
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
-      expect((exit.cause.error as McpToolInputError).path).toBe("args.subcommand");
+    if (exit._tag === "Failure") {
+      const error = Cause.squash(exit.cause);
+      expect(error).toBeInstanceOf(McpToolInputError);
+      if (!(error instanceof McpToolInputError)) throw error;
+      expect(error.path).toBe("args.subcommand");
     }
   });
 
@@ -351,8 +355,8 @@ describe("dispatchTool", () => {
     // Then
     for (const exit of [accessorExit, proxyExit]) {
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(McpTransportError);
+      if (exit._tag === "Failure") {
+        expect(Cause.squash(exit.cause)).toBeInstanceOf(McpTransportError);
       }
     }
     expect(getterCalls).toBe(0);
@@ -556,8 +560,8 @@ describe("dispatchTool", () => {
     // Then
     for (const exit of [accessorExit, proxyExit]) {
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBeInstanceOf(McpTransportError);
+      if (exit._tag === "Failure") {
+        expect(Cause.squash(exit.cause)).toBeInstanceOf(McpTransportError);
       }
     }
     expect(getterCalls).toBe(0);

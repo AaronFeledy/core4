@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isPlainRecord, mergeLandofiles, validateConfigTranslateResult } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment, LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { defaultLando3Ports, makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
@@ -282,7 +282,7 @@ test("hoists a split secured route that a higher layer overrides and still order
   // When
   const result = await Effect.runPromise(makeLando3ConfigTranslator(defaultLando3Ports()).translate(input));
   // Then core accepts the result, including the unlocated relocation diagnostic.
-  expect(Either.isRight(validateConfigTranslateResult(input, result))).toBe(true);
+  expect(Result.isSuccess(validateConfigTranslateResult(input, result))).toBe(true);
   expect(result.diagnostics.some(({ kind }) => kind === "needs-review")).toBe(true);
   const merged = mergeLandofiles(
     result.outputs.map(({ fragment }) => (isPlainRecord(fragment) ? fragment : {})),

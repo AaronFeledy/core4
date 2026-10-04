@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { GlobalConfig } from "@lando/sdk/schema";
 
@@ -22,22 +22,22 @@ describe("GlobalConfig.events", () => {
   });
 
   test("rejects zero and fractional delivery queue capacities", () => {
-    const zero = Schema.decodeUnknownEither(GlobalConfig)({
+    const zero = Schema.decodeUnknownResult(GlobalConfig)({
       events: { deliveryQueueCapacity: 0 },
     });
-    const fractional = Schema.decodeUnknownEither(GlobalConfig)({
+    const fractional = Schema.decodeUnknownResult(GlobalConfig)({
       events: { deliveryQueueCapacity: 1.5 },
     });
 
-    expect(Either.isLeft(zero)).toBe(true);
-    expect(Either.isLeft(fractional)).toBe(true);
+    expect(Result.isFailure(zero)).toBe(true);
+    expect(Result.isFailure(fractional)).toBe(true);
   });
 
   test("rejects a delivery queue capacity above the maximum", () => {
-    const aboveMaximum = Schema.decodeUnknownEither(GlobalConfig)({
+    const aboveMaximum = Schema.decodeUnknownResult(GlobalConfig)({
       events: { deliveryQueueCapacity: 65_537 },
     });
 
-    expect(Either.isLeft(aboveMaximum)).toBe(true);
+    expect(Result.isFailure(aboveMaximum)).toBe(true);
   });
 });

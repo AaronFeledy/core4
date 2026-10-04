@@ -16,7 +16,7 @@ import type { ExecChunk } from "../services/index.ts";
 export class ContractFailure extends Schema.TaggedError<ContractFailure>()("ContractFailure", {
   message: Schema.String,
   assertion: Schema.String,
-  details: Schema.optional(Schema.Unknown),
+  details: Schema.optionalKey(Schema.Unknown),
 }) {}
 
 export const TEST_APP_ID = AppId.make("myapp");
@@ -122,7 +122,7 @@ export const testCapabilities: ProviderCapabilities = {
 };
 
 export const planMetadata: PlanMetadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-10T18:51:00Z"),
   source: "@lando/sdk/test",
   runtime: 4,
 };
@@ -188,7 +188,7 @@ export const mapProviderOrContractFailure =
   (details: unknown): ContractFailure =>
     details instanceof ContractFailure ? details : contractFailure(assertion, details);
 
-export const isStream = (value: unknown): boolean => Stream.StreamTypeId in Object(value);
+export const isStream = (value: unknown): boolean => Stream.TypeId in Object(value);
 
 export const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof typeof ProviderCapabilities.fields

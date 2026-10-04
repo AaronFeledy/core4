@@ -49,7 +49,7 @@ const parseOverlayValue = (raw: string, path: ReadonlyArray<string>): unknown =>
   }
 };
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+const isNonArrayObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const assignDeep = (target: Record<string, unknown>, path: ReadonlyArray<string>, value: unknown): void => {
@@ -57,7 +57,7 @@ const assignDeep = (target: Record<string, unknown>, path: ReadonlyArray<string>
   for (let index = 0; index < path.length - 1; index += 1) {
     const key = path[index] as string;
     const existing = cursor[key];
-    if (!isPlainObject(existing)) {
+    if (!isNonArrayObject(existing)) {
       const nested: Record<string, unknown> = {};
       cursor[key] = nested;
       cursor = nested;
@@ -75,7 +75,7 @@ export const deepMerge = (
   const result: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(overlay)) {
     const existing = result[key];
-    result[key] = isPlainObject(existing) && isPlainObject(value) ? deepMerge(existing, value) : value;
+    result[key] = isNonArrayObject(existing) && isNonArrayObject(value) ? deepMerge(existing, value) : value;
   }
   return result;
 };

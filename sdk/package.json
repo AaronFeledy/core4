@@ -24,6 +24,7 @@
     "./database-creds": "./src/database-creds/index.ts",
     "./digest": "./src/digest/index.ts",
     "./schema": "./src/schema/index.ts",
+    "./schema/standard": "./src/schema/standard.ts",
     "./schema/services": "./src/schema/services/index.ts",
     "./schema/services/localstack": "./src/schema/services/localstack.ts",
     "./schema/services/mailhog": "./src/schema/services/mailhog.ts",
@@ -61,7 +62,7 @@
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "lando-sdk", "effect"],
   "dependencies": {
-    "effect": "^3.21.2",
+    "effect": "catalog:",
     "semver": "^7.8.5"
   },
   "scripts": {

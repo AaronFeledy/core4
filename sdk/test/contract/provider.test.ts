@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Either, Schema, Stream } from "effect";
+import { Cause, Effect, Result, Schema, Stream } from "effect";
 
 import {
   NoProviderInstalledError,
@@ -32,11 +32,14 @@ const expectContractFailure = async (
 
   expect(result._tag).toBe("Failure");
   if (result._tag !== "Failure") return;
-  expect(result.cause._tag).toBe("Fail");
-  if (result.cause._tag !== "Fail") return;
-  expect(result.cause.error).toBeInstanceOf(ContractFailure);
-  expect(result.cause.error._tag).toBe("ContractFailure");
-  expect(result.cause.error.assertion).toBe(assertion);
+  expect(result.cause.reasons).toHaveLength(1);
+  const reason = result.cause.reasons[0];
+  if (reason === undefined) throw new Error("expected a failure reason");
+  expect(Cause.isFailReason(reason)).toBe(true);
+  if (!Cause.isFailReason(reason)) return;
+  expect(reason.error).toBeInstanceOf(ContractFailure);
+  expect(reason.error._tag).toBe("ContractFailure");
+  expect(reason.error.assertion).toBe(assertion);
 };
 
 describe("RuntimeProvider contract", () => {
@@ -147,7 +150,7 @@ describe("RuntimeProvider contract", () => {
       ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(
           TestRuntimeProvider.execStream(
             { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
@@ -156,12 +159,11 @@ describe("RuntimeProvider contract", () => {
         ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(TestRuntimeProvider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false })),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
-        Object(TestRuntimeProvider.runStream({ image: "alpine", command: ["tar", "c"] })),
+      Stream.TypeId in Object(TestRuntimeProvider.runStream({ image: "alpine", command: ["tar", "c"] })),
     ).toBe(true);
     expect(
       Effect.isEffect(TestRuntimeProvider.inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
@@ -202,7 +204,7 @@ describe("RuntimeProvider contract", () => {
       ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(
           TestRuntimeProvider.copyFromService(
             { app: TEST_APP_ID, service: TEST_SERVICE_NAME },
@@ -211,7 +213,7 @@ describe("RuntimeProvider contract", () => {
         ),
     ).toBe(true);
     expect(
-      Stream.StreamTypeId in
+      Stream.TypeId in
         Object(TestRuntimeProvider.exportArtifact({ providerId: TEST_PROVIDER_ID, ref: "web:test" })),
     ).toBe(true);
     expect(Effect.isEffect(TestRuntimeProvider.importArtifact(Stream.make(new Uint8Array([1, 2, 3]))))).toBe(
@@ -471,10 +473,13 @@ describe("RuntimeProvider contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("copyToService/copyFromService round-trips bytes");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("copyToService/copyFromService round-trips bytes");
   });
 
   test("data-plane contract fails when native volume snapshots do not restore bytes", async () => {
@@ -496,10 +501,13 @@ describe("RuntimeProvider contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("snapshot -> mutate -> restore restores volume bytes");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("snapshot -> mutate -> restore restores volume bytes");
   });
 
   test("data-plane contract fails with CapabilityError when ephemeral mounts are missing", async () => {
@@ -520,12 +528,13 @@ describe("RuntimeProvider contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe(
-      "data-plane contract without ephemeral mounts fails CapabilityError",
-    );
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("data-plane contract without ephemeral mounts fails CapabilityError");
   });
 
   test("data-plane contract fails when volume import run exits non-zero", async () => {
@@ -543,13 +552,14 @@ describe("RuntimeProvider contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe(
-      "volume import via EphemeralRunSpec.stdinStream exits successfully",
-    );
-    expect(exit.cause.error.details).toEqual({ exitCode: 1 });
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("volume import via EphemeralRunSpec.stdinStream exits successfully");
+    expect(reason.error.details).toEqual({ exitCode: 1 });
   });
 
   test("data-plane contract fails when runStream exits non-zero", async () => {
@@ -571,10 +581,13 @@ describe("RuntimeProvider contract", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("volume export via runStream succeeds");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("volume export via runStream succeeds");
   });
 });
 
@@ -633,7 +646,7 @@ describe("SDK provider error contract", () => {
   });
 
   test("decoding ProviderCapabilityError preserves redacted details", () => {
-    const decoded = Schema.decodeUnknownEither(ProviderCapabilityError)({
+    const decoded = Schema.decodeUnknownResult(ProviderCapabilityError)({
       _tag: "ProviderCapabilityError",
       providerId: "docker",
       operation: "info",
@@ -644,9 +657,9 @@ describe("SDK provider error contract", () => {
       actualValue: false,
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.details).toEqual({ auth: "REDACTED" });
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.details).toEqual({ auth: "REDACTED" });
     }
   });
 });
@@ -716,10 +729,13 @@ describe("runProviderContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("provider exposes a non-empty displayName");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("provider exposes a non-empty displayName");
   });
 
   test("fails with ContractFailure when a supported cell returns the wrong provider platform", async () => {
@@ -741,10 +757,13 @@ describe("runProviderContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("matrix cell provider platform matches cell platform");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("matrix cell provider platform matches cell platform");
   });
 
   test("requires every canonical host platform to be declared", async () => {
@@ -761,10 +780,13 @@ describe("runProviderContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("matrix declares every canonical host platform");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("matrix declares every canonical host platform");
   });
 
   test("requires a skipReason for unsupported cells", async () => {
@@ -793,10 +815,13 @@ describe("runProviderContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("unsupported matrix cell declares a skip reason");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("unsupported matrix cell declares a skip reason");
   });
 
   test("requires every cell with supported=true to provide a factory", async () => {
@@ -821,9 +846,12 @@ describe("runProviderContractMatrix", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
-    expect(exit.cause._tag).toBe("Fail");
-    if (exit.cause._tag !== "Fail") return;
-    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
-    expect(exit.cause.error.assertion).toBe("supported matrix cell declares a factory");
+    expect(exit.cause.reasons).toHaveLength(1);
+    const reason = exit.cause.reasons[0];
+    if (reason === undefined) throw new Error("expected a failure reason");
+    expect(Cause.isFailReason(reason)).toBe(true);
+    if (!Cause.isFailReason(reason)) return;
+    expect(reason.error).toBeInstanceOf(ContractFailure);
+    expect(reason.error.assertion).toBe("supported matrix cell declares a factory");
   });
 });

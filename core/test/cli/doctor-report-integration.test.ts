@@ -21,7 +21,7 @@ import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -38,20 +38,21 @@ const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSy
 const configService = (
   load: Effect.Effect<GlobalConfig, ConfigError>,
   fallback: GlobalConfig,
-): Context.Tag.Service<typeof ConfigService> => ({
-  load,
-  get: (key) => Effect.succeed(fallback[key]),
-});
+): Context.Service.Shape<typeof ConfigService> =>
+  ConfigService.of({
+    load,
+    get: (key) => Effect.succeed(fallback[key]),
+  });
 
-const registryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
+const registryService: Context.Service.Shape<typeof RuntimeProviderRegistry> = RuntimeProviderRegistry.of({
   list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),
-};
+});
 
 const runtimeLayer = (config: GlobalConfig) =>
   Layer.mergeAll(
-    PluginRegistryLive,
+    PluginRegistryLayer.layer,
     Layer.succeed(ConfigService, configService(Effect.succeed(config), config)),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
     Layer.succeed(RuntimeProviderRegistry, registryService),
@@ -64,7 +65,10 @@ describe("combined doctor certificate and network-trust wiring", () => {
     const authority = { ...makeTestCertificateAuthority(), id: "mkcert-selected" };
     const layer = Layer.mergeAll(
       runtimeLayer(config),
-      Layer.succeed(CertificateAuthorityResolver, { resolve: Effect.succeed(authority) }),
+      Layer.succeed(
+        CertificateAuthorityResolver,
+        CertificateAuthorityResolver.of({ resolve: Effect.succeed(authority) }),
+      ),
     );
 
     // When
@@ -224,22 +228,28 @@ describe("runtime-wired subsystem doctor", () => {
         server.listen(socketPath, resolve);
       });
       const config = makeConfig({});
-      const proxy = { ...makeTestRouterService(), id: "traefik" };
+      const proxy = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
       await Effect.runPromise(Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })));
       const wired = Layer.mergeAll(
         Layer.succeed(RouterService, proxy),
-        Layer.succeed(SshService, {
-          ...makeTestSshService(),
-          id: "sidecar",
-          getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(socketPath) }),
-        }),
-        Layer.succeed(RuntimeProviderRegistry, {
-          ...registryService,
-          capabilities: Effect.succeed({
-            ...TestRuntimeProvider.capabilities,
-            agentSocket: { delivery: "bind-directory" as const },
+        Layer.succeed(
+          SshService,
+          SshService.of({
+            ...makeTestSshService(),
+            id: "sidecar",
+            getAgentSocket: (appId) => Effect.succeed({ appId, socketPath: AbsolutePath.make(socketPath) }),
           }),
-        }),
+        ),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            ...registryService,
+            capabilities: Effect.succeed({
+              ...TestRuntimeProvider.capabilities,
+              agentSocket: { delivery: "bind-directory" as const },
+            }),
+          }),
+        ),
       );
 
       // When
@@ -271,12 +281,12 @@ describe("runtime-wired subsystem doctor", () => {
     }
   });
 
-  test("--fix invokes the injected stopped Traefik setup, not RouterServiceUnavailableLive", async () => {
+  test("--fix invokes the injected stopped Traefik setup, not RouterServiceLayer.layerUnavailable", async () => {
     // Given
     const config = makeConfig({});
     let setupCalls = 0;
     const proxyService = makeTestRouterService();
-    const stoppedTraefik = {
+    const stoppedTraefik = RouterService.of({
       ...proxyService,
       id: "traefik",
       setup: (setupConfig: ProxyConfig) =>
@@ -285,10 +295,10 @@ describe("runtime-wired subsystem doctor", () => {
             setupCalls += 1;
           }),
         ),
-    };
+    });
     const wired = Layer.mergeAll(
       Layer.succeed(RouterService, stoppedTraefik),
-      Layer.succeed(SshService, { ...makeTestSshService(), id: "sidecar" }),
+      Layer.succeed(SshService, SshService.of({ ...makeTestSshService(), id: "sidecar" })),
     );
 
     // When

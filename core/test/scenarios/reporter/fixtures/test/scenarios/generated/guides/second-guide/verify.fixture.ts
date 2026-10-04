@@ -4,12 +4,12 @@
 // @variant:
 
 import { test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { withScenarioContext } from "@lando/core/testing";
 
 test("second-guide:verifies", async () => {
-  await Effect.runPromise(
+  const exit = await Effect.runPromiseExit(
     withScenarioContext({ guideId: "second-guide", scenarioId: "verifies" }, () =>
       Effect.gen(function* () {
         // @source: docs/guides/second-guide.mdx:10
@@ -20,4 +20,5 @@ test("second-guide:verifies", async () => {
       }),
     ),
   );
+  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
 });

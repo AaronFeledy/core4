@@ -37,7 +37,7 @@ const plan = (provider: string): AppPlan => ({
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("1970-01-01T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00.000Z"),
     source: "test",
     runtime: 4,
   },

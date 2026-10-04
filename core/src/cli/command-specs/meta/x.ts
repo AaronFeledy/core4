@@ -29,21 +29,20 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
   args: {
     spec: Args.string({ description: "Package spec (e.g. prettier@latest, @astrojs/cli)", required: true }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const argv = extractSpecParsedArgv(input);
-      const { spec, args } = splitSpecAndArgs(argv);
-      if (spec === undefined) {
-        return yield* Effect.fail(
-          new NotImplementedError({
-            message: "meta:x requires a package spec as the first positional argument.",
-            commandId: "meta:x",
-            remediation: "Example: lando x prettier",
-          }),
-        );
-      }
-      return yield* metaX({ spec, argv: args });
-    }),
+  run: Effect.fn("XCommand.run")(function* (input: unknown) {
+    const argv = extractSpecParsedArgv(input);
+    const { spec, args } = splitSpecAndArgs(argv);
+    if (spec === undefined) {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: "meta:x requires a package spec as the first positional argument.",
+          commandId: "meta:x",
+          remediation: "Example: lando x prettier",
+        }),
+      );
+    }
+    return yield* metaX({ spec, argv: args });
+  }),
   successExitCode: (result) => result.exitCode,
   render: (result) => renderMetaXResult(result as MetaXResult),
 };

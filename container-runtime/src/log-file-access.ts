@@ -131,7 +131,7 @@ export const makeDockerLogFileAccess = (
     Effect.sync(makeLogFileHelperPaths).pipe(
       Effect.flatMap((paths) =>
         install(paths.directoryName).pipe(
-          Effect.zipRight(
+          Effect.andThen(
             request({
               method: "POST",
               path: `/containers/${encodeURIComponent(options.container)}/exec`,
@@ -162,11 +162,11 @@ export const makeDockerLogFileAccess = (
             const close = Effect.suspend(() => {
               if (closed) return Effect.void;
               closed = true;
-              return session.close().pipe(Effect.zipRight(cleanup(paths)));
+              return session.close().pipe(Effect.andThen(cleanup(paths)));
             });
             return { session, close };
           }),
-          Effect.catchAll((cause) => cleanup(paths).pipe(Effect.zipRight(Effect.fail(cause)))),
+          Effect.catch((cause) => cleanup(paths).pipe(Effect.andThen(Effect.fail(cause)))),
         ),
       ),
     );
@@ -238,7 +238,7 @@ export const makeDockerLogFileAccess = (
                 close: lease.close,
               }),
             ),
-            Effect.catchAll((cause) => lease.close.pipe(Effect.zipRight(Effect.fail(cause)))),
+            Effect.catch((cause) => lease.close.pipe(Effect.andThen(Effect.fail(cause)))),
           ),
         ),
       ),

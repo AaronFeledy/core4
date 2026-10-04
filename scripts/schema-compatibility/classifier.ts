@@ -9,6 +9,7 @@ import {
   jsonEquals,
   stringArray,
 } from "./model.ts";
+import { normalizeJsonSchema } from "./normalize.ts";
 
 export type {
   CompatibilityException,
@@ -247,7 +248,8 @@ export const classifySchemaChange = (
   before: JsonSchema,
   after: JsonSchema,
   polarity: SchemaPolarity,
-): ReadonlyArray<CompatibilityFinding> => compareNode(before, after, { polarity, path: "$" });
+): ReadonlyArray<CompatibilityFinding> =>
+  compareNode(normalizeJsonSchema(before), normalizeJsonSchema(after), { polarity, path: "$" });
 
 export const acceptCompatibilityExceptions = (
   surface: string,

@@ -6,11 +6,11 @@ export type BuiltInCommandCatalogService = {
   readonly entries: ReadonlyArray<BuiltInCommandEntry>;
 };
 
-export class BuiltInCommandCatalog extends Context.Tag("@lando/core/BuiltInCommandCatalog")<
+export class BuiltInCommandCatalog extends Context.Service<
   BuiltInCommandCatalog,
   BuiltInCommandCatalogService
->() {}
-
-export const makeBuiltInCommandCatalogLive = (
-  entries: ReadonlyArray<BuiltInCommandEntry>,
-): Layer.Layer<BuiltInCommandCatalog> => Layer.succeed(BuiltInCommandCatalog, { entries });
+>()("@lando/core/BuiltInCommandCatalog") {
+  static readonly layerWith = (
+    entries: ReadonlyArray<BuiltInCommandEntry>,
+  ): Layer.Layer<BuiltInCommandCatalog> => Layer.succeed(this, this.of({ entries }));
+}

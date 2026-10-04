@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ValidationIssue } from "../schema/validation-issue.ts";
+
 import {
   choicesUnavailableFields,
   interactionRequiredFields,
@@ -15,7 +17,7 @@ export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError"
 export class RecipeExtendsError extends Schema.TaggedError<RecipeExtendsError>()("RecipeExtendsError", {
   message: Schema.String,
   chain: Schema.Array(Schema.String),
-  kind: Schema.Literal("cycle", "depth", "parent-not-found"),
+  kind: Schema.Literals(["cycle", "depth", "parent-not-found"]),
   remediation: Schema.String,
 }) {}
 
@@ -39,7 +41,7 @@ export class RecipeManifestNotFoundError extends Schema.TaggedError<RecipeManife
 export class RecipeSourceError extends Schema.TaggedError<RecipeSourceError>()("RecipeSourceError", {
   message: Schema.String,
   source: Schema.String,
-  kind: Schema.Literal(
+  kind: Schema.Literals([
     "clone-failed",
     "auth",
     "subpath-invalid",
@@ -59,7 +61,7 @@ export class RecipeSourceError extends Schema.TaggedError<RecipeSourceError>()("
     "missing-id",
     "recipe-not-found",
     "registry-invalid",
-  ),
+  ]),
   remediation: Schema.String,
 }) {}
 
@@ -79,7 +81,7 @@ export class RecipeManifestValidationError extends Schema.TaggedError<RecipeMani
   {
     message: Schema.String,
     source: Schema.String,
-    issues: Schema.Array(Schema.String),
+    issues: Schema.Array(ValidationIssue),
   },
 ) {}
 
@@ -135,7 +137,7 @@ export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>
   actionIndex: Schema.Number,
   actionType: Schema.String,
   actionVerb: Schema.optional(Schema.String),
-  kind: Schema.Literal(
+  kind: Schema.Literals([
     "outside-destination",
     "outside-recipe",
     "missing-package-json",
@@ -143,7 +145,7 @@ export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>
     "invalid-argv",
     "exit",
     "when-not-supported",
-  ),
+  ]),
   remediation: Schema.String,
   exitCode: Schema.optional(Schema.Number),
   cause: Schema.optional(Schema.Unknown),
@@ -157,13 +159,13 @@ export class RecipeDecomposeError extends Schema.TaggedError<RecipeDecomposeErro
   message: Schema.String,
   remediation: Schema.String,
   recipeId: Schema.String,
-  reason: Schema.Literal(
+  reason: Schema.Literals([
     "option-type",
     "missing-recipe",
     "unsupported-option",
     "invalid-secret-reference",
     "fragment-invalid",
-  ),
+  ]),
   path: Schema.optional(Schema.String),
 }) {}
 
@@ -179,7 +181,7 @@ export class Lando3UnsupportedRecipeError extends Schema.TaggedError<Lando3Unsup
     remediation: Schema.String,
     recipeId: Schema.String,
     sourceLayer: Schema.String,
-    reason: Schema.Literal("hoster", "unknown", "non-string", "no-v4-version", "invalid-option"),
+    reason: Schema.Literals(["hoster", "unknown", "non-string", "no-v4-version", "invalid-option"]),
     keyPath: Schema.Array(Schema.String),
   },
 ) {}
@@ -193,7 +195,12 @@ export class RecipeProvenanceError extends Schema.TaggedError<RecipeProvenanceEr
   {
     message: Schema.String,
     remediation: Schema.String,
-    reason: Schema.Literal("identity-mismatch", "version-mismatch", "service-map-not-injective", "malformed"),
+    reason: Schema.Literals([
+      "identity-mismatch",
+      "version-mismatch",
+      "service-map-not-injective",
+      "malformed",
+    ]),
     path: Schema.optional(Schema.String),
   },
 ) {}
@@ -206,7 +213,7 @@ export class RecipeSnapshotError extends Schema.TaggedError<RecipeSnapshotError>
   message: Schema.String,
   remediation: Schema.String,
   recipeId: Schema.String,
-  reason: Schema.Literal(
+  reason: Schema.Literals([
     "template-scope",
     "helper-forbidden",
     "budget-exceeded",
@@ -215,7 +222,7 @@ export class RecipeSnapshotError extends Schema.TaggedError<RecipeSnapshotError>
     "missing-snapshot",
     "asset-invalid",
     "render-output-invalid",
-  ),
+  ]),
   path: Schema.optional(Schema.String),
 }) {}
 
@@ -229,7 +236,7 @@ export class RecipeMigrationChainError extends Schema.TaggedError<RecipeMigratio
     message: Schema.String,
     remediation: Schema.String,
     family: Schema.String,
-    reason: Schema.Literal(
+    reason: Schema.Literals([
       "family-mismatch",
       "reverse",
       "gap",
@@ -242,7 +249,7 @@ export class RecipeMigrationChainError extends Schema.TaggedError<RecipeMigratio
       "hunk-id-mismatch",
       "hunk-id-collision",
       "callable-apply",
-    ),
+    ]),
     from: Schema.optional(Schema.String),
     to: Schema.optional(Schema.String),
   },
@@ -259,7 +266,7 @@ export class RecipeSecretDispositionError extends Schema.TaggedError<RecipeSecre
     remediation: Schema.String,
     recipeId: Schema.String,
     promptName: Schema.String,
-    reason: Schema.Literal("missing", "multiple", "default-value", "sink-unresolved", "sink-ambiguous"),
+    reason: Schema.Literals(["missing", "multiple", "default-value", "sink-unresolved", "sink-ambiguous"]),
   },
 ) {}
 
@@ -275,8 +282,8 @@ export class RecipeSecretSinkError extends Schema.TaggedError<RecipeSecretSinkEr
     remediation: Schema.String,
     recipeId: Schema.String,
     promptName: Schema.String,
-    sink: Schema.Literal("postInit.stdin", "postInit.secretEnv"),
+    sink: Schema.Literals(["postInit.stdin", "postInit.secretEnv"]),
     sinkName: Schema.optional(Schema.String),
-    stage: Schema.Literal("deliver", "consume"),
+    stage: Schema.Literals(["deliver", "consume"]),
   },
 ) {}

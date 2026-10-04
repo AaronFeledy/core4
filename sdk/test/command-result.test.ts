@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import {
   buildCommandResultEnvelope,
@@ -15,21 +15,20 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 class ExampleTaggedError extends Schema.TaggedError<ExampleTaggedError>()("ExampleTaggedError", {
   message: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.optionalKey(Schema.String),
 }) {}
 
 const plainRedactor = createRedactor("secrets", { values: [] });
 const EmptyResultSchema = Schema.Struct({});
 const PersonResultSchema = Schema.Struct({
   name: Schema.String,
-  age: Schema.optional(Schema.Number),
+  age: Schema.optionalKey(Schema.Number),
 });
 
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object";
+const isRecord = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const findProjectionError = (
   value: unknown,

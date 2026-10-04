@@ -4,9 +4,9 @@ export const HOST_PROXY_WORKER_PROTOCOL_VERSION = 1 as const;
 
 export const HostProxyControlRecord = Schema.Struct({
   appId: Schema.String,
-  transport: Schema.Literal("unix-socket", "tcp-host-gateway"),
-  socketPath: Schema.optional(Schema.String),
-  url: Schema.optional(Schema.String),
+  transport: Schema.Literals(["unix-socket", "tcp-host-gateway"]),
+  socketPath: Schema.optionalKey(Schema.String),
+  url: Schema.optionalKey(Schema.String),
   shimPath: Schema.String,
   protocolVersion: Schema.Literal(HOST_PROXY_WORKER_PROTOCOL_VERSION),
   startedAt: Schema.String,
@@ -18,9 +18,9 @@ export type HostProxyControlRecord = typeof HostProxyControlRecord.Type;
 export const HostProxyWorkerRecord = Schema.Struct({
   ...HostProxyControlRecord.fields,
   appRoot: Schema.String,
-  providerId: Schema.optional(Schema.String),
-  containerUrl: Schema.optional(Schema.String),
-  probeServices: Schema.optional(Schema.Array(Schema.String)),
+  providerId: Schema.optionalKey(Schema.String),
+  containerUrl: Schema.optionalKey(Schema.String),
+  probeServices: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type HostProxyWorkerRecord = typeof HostProxyWorkerRecord.Type;
 
@@ -30,7 +30,7 @@ export type LegacyHostProxyWorkerRecord = typeof LegacyHostProxyWorkerRecord.Typ
 export const HostProxyWorkerIdentity = Schema.Struct({
   appId: Schema.String,
   sessionId: Schema.String,
-  transport: Schema.Literal("unix-socket", "tcp-host-gateway"),
+  transport: Schema.Literals(["unix-socket", "tcp-host-gateway"]),
   protocolVersion: Schema.Literal(HOST_PROXY_WORKER_PROTOCOL_VERSION),
   pid: Schema.Number,
 });

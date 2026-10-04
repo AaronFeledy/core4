@@ -6,7 +6,7 @@
  * `task.tree.complete`. This subpath is the same additive utility tier as
  * `@lando/sdk/probe`: it constructs no `LandoRuntime`, pulls no service
  * `Layer`, and imports only effect plus type-only sibling events/schema/services.
- * It is **not** a `Context.Tag` service and **not** a pluggable abstraction.
+ * It is **not** a `Context.Service` and **not** a pluggable abstraction.
  *
  * Helpers serialize the existing task event schemas. They register no JSON
  * Schema and widen no frozen `@lando/sdk/errors` union.

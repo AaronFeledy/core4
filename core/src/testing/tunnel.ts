@@ -1,4 +1,4 @@
-import { DateTime, Effect, Either, Schema } from "effect";
+import { DateTime, Effect, Result, Schema } from "effect";
 
 import { TunnelTargetUnresolvedError } from "@lando/sdk/errors";
 import { type DownloadRequest, type TunnelSession, TunnelTarget } from "@lando/sdk/schema";
@@ -14,7 +14,7 @@ import type {
 } from "@lando/sdk/test";
 
 const TUNNEL_SECRET = "TUNNEL-CONTRACT-SECRET-7f2e";
-const TIMESTAMP = DateTime.unsafeMake("2026-06-01T00:00:00.000Z");
+const TIMESTAMP = DateTime.makeUnsafe("2026-06-01T00:00:00.000Z");
 
 const redactor = createSecretRedactor([TUNNEL_SECRET]);
 
@@ -46,7 +46,7 @@ const targetKey = (target: TunnelTarget): string => {
 const sameTarget = (left: TunnelTarget, right: TunnelTarget): boolean => targetKey(left) === targetKey(right);
 
 const supportedTarget = (target: TunnelTarget): boolean =>
-  Either.isRight(Schema.decodeUnknownEither(TunnelTarget)(target));
+  Result.isSuccess(Schema.decodeUnknownResult(TunnelTarget)(target));
 
 export interface TestTunnelServiceHandle {
   readonly service: TunnelServiceShape;
@@ -87,7 +87,7 @@ export const makeTestTunnelService = () =>
           );
         }
 
-        return Effect.gen(function* () {
+        return Effect.fnUntraced(function* () {
           const sessionId = `tun_${nextId++}`;
           const detachedMode = request.detached === true;
           const publicUrl = `https://${TUNNEL_SECRET}.public.example.test/${sessionId}`;
@@ -163,7 +163,7 @@ export const makeTestTunnelService = () =>
             }),
           );
           return session;
-        });
+        })();
       },
       stop: (request) =>
         Effect.sync(() => {

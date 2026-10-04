@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Schema } from "effect";
 import { type ConfigOptions, ConfigResultSchema, config } from "../../src/operations/config.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
+import * as LandoConfigService from "../../src/services/config.ts";
 
 let root = "";
 const previous = new Map<string, string>();
@@ -27,7 +27,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 const run = (options: ConfigOptions) =>
-  Effect.runPromise(config(options).pipe(Effect.provide(ConfigServiceLive)));
+  Effect.runPromise(config(options).pipe(Effect.provide(LandoConfigService.layer)));
 
 for (const [key, value] of [
   ["appEnv", { TEAM: "platform", MODE: "development" }],

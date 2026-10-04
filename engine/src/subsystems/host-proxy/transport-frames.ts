@@ -12,7 +12,7 @@ import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
 import type { WireResponse } from "./transport-wire.ts";
 
-const NdjsonFrame = Schema.Union(
+const NdjsonFrame = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("stdout"), chunk: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("stderr"), chunk: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("exit"), code: Schema.Number }),
@@ -20,10 +20,10 @@ const NdjsonFrame = Schema.Union(
     kind: Schema.Literal("error"),
     code: Schema.String,
     message: Schema.String,
-    reason: Schema.optional(Schema.String),
-    remediation: Schema.optional(Schema.String),
+    reason: Schema.optionalKey(Schema.String),
+    remediation: Schema.optionalKey(Schema.String),
   }),
-);
+]);
 type NdjsonErrorFrame = Extract<typeof NdjsonFrame.Type, { kind: "error" }>;
 
 export const encodeNdjsonFrame = (response: WireResponse): string => {
@@ -80,13 +80,13 @@ export const decodeNdjsonResponse = (raw: string): HostProxyRunLandoResult | und
   const lines = raw.trim().length === 0 ? [] : raw.trim().split("\n");
   let envelope: CommandResultEnvelope | undefined;
   for (const line of lines) {
-    const decoded = Schema.decodeUnknownEither(NdjsonFrame)(JSON.parse(line));
-    if (decoded._tag === "Left") continue;
-    const frame = decoded.right;
+    const decoded = Schema.decodeUnknownResult(NdjsonFrame)(JSON.parse(line));
+    if (decoded._tag === "Failure") continue;
+    const frame = decoded.success;
     switch (frame.kind) {
       case "stdout": {
-        const parsed = Schema.decodeUnknownEither(CommandResultEnvelope)(JSON.parse(frame.chunk));
-        if (parsed._tag === "Right") envelope = parsed.right;
+        const parsed = Schema.decodeUnknownResult(CommandResultEnvelope)(JSON.parse(frame.chunk));
+        if (parsed._tag === "Success") envelope = parsed.success;
         break;
       }
       case "stderr":

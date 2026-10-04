@@ -21,7 +21,7 @@ const SHOP_HOSTNAME = "web.shop.lndo.site";
 const SHOP_BACKEND = `web.shop.internal:${SHOP_BACKEND_PORT}`;
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-30T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-30T00:00:00Z"),
   source: "global-traefik-live.integration.test",
   runtime: 4 as const,
 };
@@ -168,8 +168,8 @@ describe("global Traefik routing — live integration", () => {
       const shopPlan = appPlan("shop", nginxService());
       const globalPlan = appPlan("global", traefikService());
 
-      await Effect.runPromise(Effect.either(bringDown(globalPlan, { api })));
-      await Effect.runPromise(Effect.either(bringDown(shopPlan, { api })));
+      await Effect.runPromise(Effect.result(bringDown(globalPlan, { api })));
+      await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
 
       try {
         const shopApplied = await Effect.runPromise(bringUp(shopPlan, { api }));
@@ -182,8 +182,8 @@ describe("global Traefik routing — live integration", () => {
         expect(response.status).toBe(200);
         expect(await response.text()).toContain("nginx");
       } finally {
-        await Effect.runPromise(Effect.either(bringDown(globalPlan, { api })));
-        await Effect.runPromise(Effect.either(bringDown(shopPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(globalPlan, { api })));
+        await Effect.runPromise(Effect.result(bringDown(shopPlan, { api })));
       }
     },
     240_000,

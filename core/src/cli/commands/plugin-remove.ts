@@ -205,143 +205,142 @@ const activeLandofileRefusal = async (
   });
 };
 
-export const pluginRemove = (
+export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
   options: PluginRemoveOptions,
-): Effect.Effect<
+): Effect.fn.Return<
   PluginRemoveResult,
   ConfigError | LandoCommandError | NotImplementedError | PluginManifestError,
   ConfigService
-> =>
-  Effect.gen(function* () {
-    if (options.name === "") {
+> {
+  if (options.name === "") {
+    return yield* Effect.fail(
+      new NotImplementedError({
+        message: "Plugin name is required.",
+        commandId: "meta:plugin:remove",
+        remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+      }),
+    );
+  }
+  if (!REGISTRY_NAME_RE.test(options.name)) {
+    return yield* Effect.fail(
+      new PluginManifestError({
+        message: `Invalid plugin name: ${options.name}`,
+        issues: [
+          "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
+        ],
+      }),
+    );
+  }
+
+  let userDataRoot = options.userDataRoot;
+  if (userDataRoot === undefined) {
+    const configService = yield* ConfigService;
+    userDataRoot = yield* configService.get("userDataRoot");
+    if (userDataRoot === undefined) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: "Plugin name is required.",
+          message: "userDataRoot is not configured.",
           commandId: "meta:plugin:remove",
-          remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+          remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
         }),
       );
     }
-    if (!REGISTRY_NAME_RE.test(options.name)) {
-      return yield* Effect.fail(
-        new PluginManifestError({
-          message: `Invalid plugin name: ${options.name}`,
-          issues: [
-            "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
-          ],
-        }),
-      );
-    }
-
-    let userDataRoot = options.userDataRoot;
-    if (userDataRoot === undefined) {
-      const configService = yield* ConfigService;
-      userDataRoot = yield* configService.get("userDataRoot");
-      if (userDataRoot === undefined) {
-        return yield* Effect.fail(
-          new NotImplementedError({
-            message: "userDataRoot is not configured.",
-            commandId: "meta:plugin:remove",
-            remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
-          }),
-        );
-      }
-    }
-    const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
-    const modulesRoot = resolve(pluginsRoot, "node_modules");
-    const moduleDir = resolve(modulesRoot, options.name);
-    const moduleRel = relative(modulesRoot, moduleDir);
-    if (moduleRel === "" || moduleRel.startsWith("..") || resolve(modulesRoot, moduleRel) !== moduleDir) {
-      return yield* Effect.fail(
-        new PluginManifestError({
-          message: `Plugin name resolves outside ${modulesRoot}.`,
-          pluginName: options.name,
-          issues: [`refusing to recursively remove ${moduleDir}`],
-        }),
-      );
-    }
-    const versionedDir = resolve(pluginsRoot, options.name);
-    const versionedRel = relative(pluginsRoot, versionedDir);
-    if (
-      versionedRel === "" ||
-      versionedRel.startsWith("..") ||
-      resolve(pluginsRoot, versionedRel) !== versionedDir
-    ) {
-      return yield* Effect.fail(
-        new PluginManifestError({
-          message: `Plugin name resolves outside ${pluginsRoot}.`,
-          pluginName: options.name,
-          issues: [`refusing to recursively remove ${versionedDir}`],
-        }),
-      );
-    }
-    if (RESERVED_PLUGIN_ROOT_NAMES.has(options.name)) {
-      return yield* Effect.fail(
-        new PluginManifestError({
-          message: `Plugin name "${options.name}" is reserved; refusing to remove shared/managed plugins root entries.`,
-          pluginName: options.name,
-          issues: [`refusing to recursively remove managed plugins root entry ${versionedDir}`],
-        }),
-      );
-    }
-
-    const activeRefusal = yield* Effect.promise(() =>
-      activeLandofileRefusal(options.name, options.cwd ?? process.cwd()),
+  }
+  const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
+  const modulesRoot = resolve(pluginsRoot, "node_modules");
+  const moduleDir = resolve(modulesRoot, options.name);
+  const moduleRel = relative(modulesRoot, moduleDir);
+  if (moduleRel === "" || moduleRel.startsWith("..") || resolve(modulesRoot, moduleRel) !== moduleDir) {
+    return yield* Effect.fail(
+      new PluginManifestError({
+        message: `Plugin name resolves outside ${modulesRoot}.`,
+        pluginName: options.name,
+        issues: [`refusing to recursively remove ${moduleDir}`],
+      }),
     );
-    if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
+  }
+  const versionedDir = resolve(pluginsRoot, options.name);
+  const versionedRel = relative(pluginsRoot, versionedDir);
+  if (
+    versionedRel === "" ||
+    versionedRel.startsWith("..") ||
+    resolve(pluginsRoot, versionedRel) !== versionedDir
+  ) {
+    return yield* Effect.fail(
+      new PluginManifestError({
+        message: `Plugin name resolves outside ${pluginsRoot}.`,
+        pluginName: options.name,
+        issues: [`refusing to recursively remove ${versionedDir}`],
+      }),
+    );
+  }
+  if (RESERVED_PLUGIN_ROOT_NAMES.has(options.name)) {
+    return yield* Effect.fail(
+      new PluginManifestError({
+        message: `Plugin name "${options.name}" is reserved; refusing to remove shared/managed plugins root entries.`,
+        pluginName: options.name,
+        issues: [`refusing to recursively remove managed plugins root entry ${versionedDir}`],
+      }),
+    );
+  }
 
-    if (!existsSync(pluginsRoot)) return { pluginName: options.name, removed: false };
+  const activeRefusal = yield* Effect.promise(() =>
+    activeLandofileRefusal(options.name, options.cwd ?? process.cwd()),
+  );
+  if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
 
-    return yield* withPluginMutationLock(
-      pluginsRoot,
-      "meta:plugin:remove",
-      Effect.gen(function* () {
-        const hasModuleDir = existsSync(moduleDir);
-        const hasVersionedDir = existsSync(versionedDir);
-        if (!hasModuleDir && !hasVersionedDir) {
-          yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
-          yield* invalidatePluginCommandCache({
-            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-          });
-          return { pluginName: options.name, removed: false };
-        }
+  if (!existsSync(pluginsRoot)) return { pluginName: options.name, removed: false };
 
-        if (hasModuleDir) {
-          const spawner = options.spawner ?? defaultSpawner;
-          const { exitCode, stderr } = yield* Effect.promise(() =>
-            spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
-          );
-          if (exitCode !== 0) {
-            return yield* Effect.fail(removeFailure(options.name, stderr));
-          }
-          yield* Effect.tryPromise({
-            try: () => updateManagedRootManifest(pluginsRoot, options.name),
-            catch: (cause) =>
-              cause instanceof NotImplementedError
-                ? cause
-                : new NotImplementedError({
-                    message: `Failed to update managed plugin root package.json: ${String(cause)}`,
-                    commandId: "meta:plugin:remove",
-                    remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
-                  }),
-          });
-          yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
-        }
-        if (hasVersionedDir) {
-          yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
-        }
-
+  return yield* withPluginMutationLock(
+    pluginsRoot,
+    "meta:plugin:remove",
+    Effect.gen(function* () {
+      const hasModuleDir = existsSync(moduleDir);
+      const hasVersionedDir = existsSync(versionedDir);
+      if (!hasModuleDir && !hasVersionedDir) {
         yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
-
-        const trustStore = options.trustStore;
-        if (trustStore !== undefined) trustStore.delete(options.name);
         yield* invalidatePluginCommandCache({
           ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
         });
-        return { pluginName: options.name, removed: true };
-      }),
-    );
-  });
+        return { pluginName: options.name, removed: false };
+      }
+
+      if (hasModuleDir) {
+        const spawner = options.spawner ?? defaultSpawner;
+        const { exitCode, stderr } = yield* Effect.promise(() =>
+          spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
+        );
+        if (exitCode !== 0) {
+          return yield* Effect.fail(removeFailure(options.name, stderr));
+        }
+        yield* Effect.tryPromise({
+          try: () => updateManagedRootManifest(pluginsRoot, options.name),
+          catch: (cause) =>
+            cause instanceof NotImplementedError
+              ? cause
+              : new NotImplementedError({
+                  message: `Failed to update managed plugin root package.json: ${String(cause)}`,
+                  commandId: "meta:plugin:remove",
+                  remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
+                }),
+        });
+        yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+      }
+      if (hasVersionedDir) {
+        yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
+      }
+
+      yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+
+      const trustStore = options.trustStore;
+      if (trustStore !== undefined) trustStore.delete(options.name);
+      yield* invalidatePluginCommandCache({
+        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+      });
+      return { pluginName: options.name, removed: true };
+    }),
+  );
+});
 
 export const renderPluginRemoveResult = (result: PluginRemoveResult): string =>
   result.removed ? `removed: ${result.pluginName}` : `not-installed: ${result.pluginName} (no-op)`;

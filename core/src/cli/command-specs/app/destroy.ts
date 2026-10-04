@@ -35,27 +35,25 @@ const destroyConfirmation = (
   return `Delete ${subject}?${deletes.volumes ? "" : " Data volumes are kept."}`;
 };
 
-export const runDestroyCommand = (input: unknown) => {
+export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (input: unknown) {
   const flags = extractSpecFlags(input);
   const volumes = flags.volumes === true || flags.purge === true;
-  return Effect.gen(function* () {
-    const root = typeof flags.root === "string" ? resolve(process.cwd(), flags.root) : undefined;
-    yield* requireConfirmation({
-      yes: flags.yes === true,
-      message: destroyConfirmation(root, {
-        volumes,
-        snapshots: flags.purge === true,
-        caches: flags["purge-caches"] === true,
-      }),
-    });
-    const options = {
+  const root = typeof flags.root === "string" ? resolve(process.cwd(), flags.root) : undefined;
+  yield* requireConfirmation({
+    yes: flags.yes === true,
+    message: destroyConfirmation(root, {
       volumes,
-      purgeCaches: flags["purge-caches"] === true,
-      yes: flags.yes === true,
-    };
-    return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
+      snapshots: flags.purge === true,
+      caches: flags["purge-caches"] === true,
+    }),
   });
-};
+  const options = {
+    volumes,
+    purgeCaches: flags["purge-caches"] === true,
+    yes: flags.yes === true,
+  };
+  return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
+});
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   resultSchema: DestroyAppResultSchema,

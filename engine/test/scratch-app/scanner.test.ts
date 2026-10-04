@@ -7,7 +7,8 @@ import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema"
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { ScratchResourceScanner, ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
+import * as ScratchResourceScannerLayer from "../../src/scratch-app/scanner.ts";
+import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 
 const scratchId = "scratch-demo-123456";
 const providerId = ProviderId.make("test");
@@ -29,13 +30,16 @@ const runScanner = <A>(
 ) =>
   Effect.runPromise(
     Effect.flatMap(ScratchResourceScanner, use).pipe(
-      Effect.provide(ScratchResourceScannerLive),
+      Effect.provide(ScratchResourceScannerLayer.ScratchResourceScanner.layer),
       Effect.provide(
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([providerId]),
+            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
       ),
     ),
   );
@@ -90,7 +94,7 @@ const provider: RuntimeProviderShape = {
   removeVolume: (ref) => Effect.sync(() => removedVolumes.push(ref.store)),
 };
 
-describe("ScratchResourceScannerLive", () => {
+describe("ScratchResourceScannerLayer.ScratchResourceScanner.layer", () => {
   test("lists unique scratch ids from provider labels", async () => {
     expect(await runScanner((scanner) => scanner.listScratchIds)).toEqual([scratchId]);
   });

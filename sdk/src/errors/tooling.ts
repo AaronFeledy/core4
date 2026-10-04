@@ -52,7 +52,7 @@ export class ToolingCommandLookupError extends Schema.TaggedError<ToolingCommand
     /** Canonical id that failed lookup. */
     target: Schema.String,
     /** Which registry family the lookup was attempting. */
-    targetKind: Schema.Literal("built-in", "plugin", "tooling"),
+    targetKind: Schema.Literals(["built-in", "plugin", "tooling"]),
     remediation: Schema.String,
     pluginId: Schema.optional(Schema.String),
     commandId: Schema.optional(Schema.String),

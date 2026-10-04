@@ -3,10 +3,10 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DateTime, Effect } from "effect";
+import { Cause, DateTime, Effect, Exit, Option } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
-import { StateStoreError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
@@ -21,7 +21,7 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const providerId = ProviderId.make("podman");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-29T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-29T00:00:00Z"),
   source: "provider-podman applied-state test",
   runtime: 4 as const,
 };
@@ -144,7 +144,13 @@ describe("provider-podman applied state", () => {
       const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingModify(state), plan.id));
 
       expect(exit._tag).toBe("Failure");
-      expect(String(exit)).toContain("applied-state.remove");
+      const failure = Exit.isFailure(exit)
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+        : undefined;
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure?.operation).toBe("applied-state.remove");
+      expect(failure?.cause).toBeInstanceOf(StateStoreError);
+      expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("modify");
       expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });

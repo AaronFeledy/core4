@@ -27,16 +27,15 @@ export interface BracketedInvocationsInput extends ExecuteToolingInput {
  * task result. Only top-level entry points bracket. An event `task:` step is an inline
  * invocation and calls `executeToolingInvocations` directly so it never re-brackets.
  */
-export const runBracketedInvocations = (
+export const runBracketedInvocations = Effect.fnUntraced(function* (
   input: BracketedInvocationsInput,
-): Effect.Effect<
+): Effect.fn.Return<
   ToolingEngineResult,
   ToolingExecutionError | EventRuntimeError,
   ToolingEngine | RuntimeProviderRegistry
-> =>
-  Effect.gen(function* () {
-    yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"));
-    const result = yield* executeToolingInvocations(input);
-    if (result.exitCode === 0) yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"));
-    return result;
-  });
+> {
+  yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"));
+  const result = yield* executeToolingInvocations(input);
+  if (result.exitCode === 0) yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"));
+  return result;
+});

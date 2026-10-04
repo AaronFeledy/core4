@@ -11,15 +11,15 @@
  * provide `DefaultGlobalAppDoctorLayer` which composes those services from
  * the ambient `ConfigService`.
  */
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 
 import type { ConfigService } from "@lando/sdk/services";
 import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
-import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
-import { LoggerLive } from "@lando/engine/logging/service";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
+import * as LandoLogger from "@lando/engine/logging/service";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
@@ -81,113 +81,113 @@ const parseServiceIds = (content: string): ReadonlyArray<string> => {
  *   - `services` — comma-separated list of materialized service ids
  *   - `contributingPlugins` — comma-separated plugin names with `globalServices:`
  */
-export const globalAppDoctor = (): Effect.Effect<
+export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
   GlobalAppDoctorResult,
   never,
   GlobalAppService | PluginRegistry | FileSystem
-> =>
-  Effect.gen(function* () {
-    const globalApp = yield* GlobalAppService;
-    const pluginRegistry = yield* PluginRegistry;
-    const fileSystem = yield* FileSystem;
+> {
+  const globalApp = yield* GlobalAppService;
+  const pluginRegistry = yield* PluginRegistry;
+  const fileSystem = yield* FileSystem;
 
-    const paths = yield* globalApp.paths.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  const paths = yield* globalApp.paths.pipe(Effect.catch(() => Effect.succeed(undefined)));
 
-    const manifests = yield* pluginRegistry.list.pipe(Effect.catchAll(() => Effect.succeed([])));
+  const manifests = yield* pluginRegistry.list.pipe(Effect.catch(() => Effect.succeed([])));
 
-    const contributingPlugins = manifests
-      .filter((manifest) => (manifest.contributes?.globalServices ?? []).length > 0)
-      .map((manifest) => manifest.name)
-      .sort()
-      .join(", ");
+  const contributingPlugins = manifests
+    .filter((manifest) => (manifest.contributes?.globalServices ?? []).length > 0)
+    .map((manifest) => manifest.name)
+    .sort()
+    .join(", ");
 
-    if (paths === undefined) {
-      const check: GlobalAppDoctorCheck = {
-        name: "global-app",
-        status: "warn",
-        severity: "warn",
-        context: { installed: "false" },
-        solutions: [NOT_INSTALLED_SOLUTION],
-      };
-      return { checks: [check] };
-    }
+  if (paths === undefined) {
+    const check: GlobalAppDoctorCheck = {
+      name: "global-app",
+      status: "warn",
+      severity: "warn",
+      context: { installed: "false" },
+      solutions: [NOT_INSTALLED_SOLUTION],
+    };
+    return { checks: [check] };
+  }
 
-    const exists = yield* fileSystem
-      .exists(paths.distLandofile)
-      .pipe(Effect.catchAll(() => Effect.succeed(false)));
+  const exists = yield* fileSystem
+    .exists(paths.distLandofile)
+    .pipe(Effect.catch(() => Effect.succeed(false)));
 
-    if (!exists) {
-      const context: Record<string, string> = {
-        installed: "false",
-        distLandofilePath: String(paths.distLandofile),
-        userLandofilePath: String(paths.userLandofile),
-      };
-      if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
-
-      const check: GlobalAppDoctorCheck = {
-        name: "global-app",
-        status: "warn",
-        severity: "warn",
-        context,
-        solutions: [NOT_INSTALLED_SOLUTION],
-      };
-      return { checks: [check] };
-    }
-
-    const stat = yield* fileSystem
-      .lstat(paths.distLandofile)
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-    const content = yield* Effect.either(fileSystem.readText(paths.distLandofile));
-    const lastInstallTimestamp = stat !== undefined ? new Date(stat.mtimeMs).toISOString() : undefined;
-
-    if (content._tag === "Left") {
-      const context: Record<string, string> = {
-        installed: "true",
-        distLandofilePath: String(paths.distLandofile),
-        userLandofilePath: String(paths.userLandofile),
-        readError: content.left.message,
-      };
-      if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
-      if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
-
-      const check: GlobalAppDoctorCheck = {
-        name: "global-app",
-        status: "fail",
-        severity: "error",
-        context,
-        solutions: [
-          {
-            kind: "manual",
-            description:
-              "The global app dist Landofile exists but could not be read. Check file permissions and rerun `lando global:install` if needed.",
-          },
-        ],
-      };
-      return { checks: [check] };
-    }
-
-    const serviceIds = parseServiceIds(content.right);
-
+  if (!exists) {
     const context: Record<string, string> = {
-      installed: "true",
+      installed: "false",
       distLandofilePath: String(paths.distLandofile),
       userLandofilePath: String(paths.userLandofile),
     };
-    if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
-    context.services = serviceIds.length === 0 ? "(none)" : serviceIds.join(", ");
     if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
 
     const check: GlobalAppDoctorCheck = {
       name: "global-app",
-      status: "pass",
-      severity: "info",
+      status: "warn",
+      severity: "warn",
       context,
-      solutions: [],
+      solutions: [NOT_INSTALLED_SOLUTION],
     };
-
     return { checks: [check] };
-  });
+  }
+
+  const stat = yield* fileSystem
+    .lstat(paths.distLandofile)
+    .pipe(Effect.catch(() => Effect.succeed(undefined)));
+
+  const content = yield* Effect.result(fileSystem.readText(paths.distLandofile));
+  const lastInstallTimestamp =
+    stat !== undefined ? DateTime.formatIso(DateTime.makeUnsafe(stat.mtimeMs)) : undefined;
+
+  if (content._tag === "Failure") {
+    const context: Record<string, string> = {
+      installed: "true",
+      distLandofilePath: String(paths.distLandofile),
+      userLandofilePath: String(paths.userLandofile),
+      readError: content.failure.message,
+    };
+    if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
+    if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
+
+    const check: GlobalAppDoctorCheck = {
+      name: "global-app",
+      status: "fail",
+      severity: "error",
+      context,
+      solutions: [
+        {
+          kind: "manual",
+          description:
+            "The global app dist Landofile exists but could not be read. Check file permissions and rerun `lando global:install` if needed.",
+        },
+      ],
+    };
+    return { checks: [check] };
+  }
+
+  const serviceIds = parseServiceIds(content.success);
+
+  const context: Record<string, string> = {
+    installed: "true",
+    distLandofilePath: String(paths.distLandofile),
+    userLandofilePath: String(paths.userLandofile),
+  };
+  if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
+  context.services = serviceIds.length === 0 ? "(none)" : serviceIds.join(", ");
+  if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
+
+  const check: GlobalAppDoctorCheck = {
+    name: "global-app",
+    status: "pass",
+    severity: "info",
+    context,
+    solutions: [],
+  };
+
+  return { checks: [check] };
+});
 
 /**
  * Default layer for `globalAppDoctor`.
@@ -204,9 +204,9 @@ export const DefaultGlobalAppDoctorLayer: Layer.Layer<
   never,
   ConfigService
 > = Layer.mergeAll(
-  GlobalAppServiceLive.pipe(Layer.provide(FileSystemLive)),
-  PluginRegistryLive.pipe(Layer.provideMerge(LoggerLive({ mode: "silent" }))),
-  FileSystemLive,
+  GlobalAppServiceLayer.layer.pipe(Layer.provide(BunFileSystem.layer)),
+  PluginRegistryLayer.layer.pipe(Layer.provideMerge(LandoLogger.layer({ mode: "silent" }))),
+  BunFileSystem.layer,
 );
 
 const renderCheck = (check: GlobalAppDoctorCheck): ReadonlyArray<string> => {

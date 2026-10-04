@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-export const ComposeProjectFieldKey = Schema.Literal("configs", "secrets").annotations({
+export const ComposeProjectFieldKey = Schema.Literals(["configs", "secrets"]).annotate({
   identifier: "ComposeProjectFieldKey",
   title: "Compose Project Field Key",
   description:
@@ -9,11 +9,11 @@ export const ComposeProjectFieldKey = Schema.Literal("configs", "secrets").annot
 export type ComposeProjectFieldKey = typeof ComposeProjectFieldKey.Type;
 
 export const ComposeProjectFieldCapabilities = Schema.Struct({
-  supported: Schema.Array(ComposeProjectFieldKey).annotations({
+  supported: Schema.Array(ComposeProjectFieldKey).annotate({
     title: "Supported Compose Project Fields",
     description: "Exact preserved Compose project-level fields realized by a native-tier provider.",
   }),
-}).annotations({
+}).annotate({
   identifier: "ComposeProjectFieldCapabilities",
   title: "Compose Project Field Capabilities",
   description:

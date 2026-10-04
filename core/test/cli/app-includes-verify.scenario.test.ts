@@ -9,7 +9,7 @@ import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@land
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
 import { appIncludesVerifySpec } from "../../src/cli/command-specs/app/includes/verify.ts";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
-import { TestStateStoreLive } from "../_support/landofile-layer.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -177,12 +177,12 @@ describe("lando app:includes:verify (source dispatch)", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
@@ -200,12 +200,12 @@ describe("lando app:includes:verify (source dispatch)", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           const value = failure.value;
@@ -213,6 +213,47 @@ describe("lando app:includes:verify (source dispatch)", () => {
           expect(value._tag).toBe("ComposeKeyRejectedError");
         }
       }
+    });
+  });
+
+  test("schema failures carry structured issues, including an unknown-key suggestion", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: config-lint-invalid",
+          "services:",
+          "  web:",
+          "    type: compose",
+          "    imgae: nginx:1.27-alpine",
+          '    home: "nope"',
+          "    ports:",
+          "      - target: 99999",
+          "        protocol: tcp",
+          "",
+        ].join("\n"),
+      );
+      const exit = await Effect.runPromiseExit(
+        appIncludesVerify({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) return;
+      const failure = Cause.findErrorOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag !== "Some") return;
+      const value = failure.value as {
+        readonly _tag: string;
+        readonly issues?: ReadonlyArray<{
+          readonly path: ReadonlyArray<string | number>;
+          readonly message: string;
+          readonly suggestion?: string;
+        }>;
+      };
+      expect(value._tag).toBe("LandofileValidationError");
+      const image = value.issues?.find((issue) => issue.path.at(-1) === "imgae");
+      expect(image?.suggestion).toBe('Did you mean "image"?');
+      expect(value.issues?.some((issue) => issue.path.includes("home"))).toBe(true);
+      expect(value.issues?.some((issue) => issue.path.includes("target"))).toBe(true);
     });
   });
 

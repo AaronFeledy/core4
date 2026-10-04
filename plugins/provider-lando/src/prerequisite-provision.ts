@@ -220,11 +220,11 @@ const findNextAvailableRange = (path: string, requestedStart: number): number =>
   return Math.max(requestedStart, maxEnd);
 };
 
-export const applyApprovedPrerequisitePlan = (
-  plan: ProviderSetupPlan,
-  input: PrerequisiteApply,
-): Effect.Effect<void, ProviderSetupPrivilegeUnavailableError | ProviderSetupProvisioningError> =>
-  Effect.gen(function* () {
+export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyApprovedPrerequisitePlan")(
+  function* (
+    plan: ProviderSetupPlan,
+    input: PrerequisiteApply,
+  ): Effect.fn.Return<void, ProviderSetupPrivilegeUnavailableError | ProviderSetupProvisioningError> {
     const user = input.user ?? process.env.USER ?? "";
 
     for (const change of plan.changes) {
@@ -395,7 +395,8 @@ export const applyApprovedPrerequisitePlan = (
         }
       }
     }
-  });
+  },
+);
 
 // Backward compatibility alias
 export const applyApprovedProviderSetupPlan = applyApprovedPrerequisitePlan;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
 import { LandofileValidationError, PluginManifestError } from "@lando/core/errors";
@@ -35,13 +35,13 @@ import {
   readAppPlanSourceFingerprint,
   writeCachedAppPlan,
 } from "@lando/engine/cache/app-plan";
-import { CacheServiceLive } from "@lando/engine/cache/service";
+import * as AppCacheService from "@lando/engine/cache/service";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -80,7 +80,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-18T00:00:00Z"),
   source: "tooling.scenario.test",
   runtime: 4 as const,
 };
@@ -91,19 +91,12 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   provider: providerId,
   primary,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: undefined,
-  entrypoint: undefined,
   environment: {},
-  user: undefined,
-  workingDirectory: undefined,
-  appMount: undefined,
   mounts: [],
   storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
-  healthcheck: undefined,
-  certs: undefined,
   hostAliases: [],
   metadata,
   extensions: {},
@@ -192,38 +185,52 @@ const makeLayer = (options: {
   readonly planCalls?: number[];
   readonly planCwds?: string[];
 }) => {
-  const landofileLayer = Layer.succeed(LandofileService, {
-    discover: Effect.succeed(options.landofile),
-  });
-  const plannerLayer = Layer.succeed(AppPlanner, {
-    plan: () => {
-      options.planCalls?.push(1);
-      options.planCwds?.push(process.cwd());
-      return options.planError === undefined ? Effect.succeed(options.plan) : Effect.fail(options.planError);
-    },
-  });
-  const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(options.provider),
-  });
+  const landofileLayer = Layer.succeed(
+    LandofileService,
+    LandofileService.of({
+      discover: Effect.succeed(options.landofile),
+    }),
+  );
+  const plannerLayer = Layer.succeed(
+    AppPlanner,
+    AppPlanner.of({
+      plan: () => {
+        options.planCalls?.push(1);
+        options.planCwds?.push(process.cwd());
+        return options.planError === undefined
+          ? Effect.succeed(options.plan)
+          : Effect.fail(options.planError);
+      },
+    }),
+  );
+  const registryLayer = Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () => Effect.succeed(options.provider),
+    }),
+  );
   return Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
     registryLayer,
-    ProviderExecToolingEngineLive,
+    ProviderExecToolingEngine.layer,
     emptyConfigServiceLayer,
   );
 };
 
-const emptyPluginRegistry = Layer.succeed(PluginRegistry, {
-  list: Effect.succeed([]),
-  load: () => Effect.die("not used"),
-  loadServiceType: () => Effect.die("not used"),
-  loadServiceFeature: () => Effect.die("not used"),
-  loadAppFeature: () => Effect.die("not used"),
-});
+const emptyPluginRegistry = Layer.succeed(
+  PluginRegistry,
+  PluginRegistry.of({
+    list: Effect.succeed([]),
+    load: () => Effect.die("not used"),
+    loadServiceType: () => Effect.die("not used"),
+    loadServiceFeature: () => Effect.die("not used"),
+    loadAppFeature: () => Effect.die("not used"),
+  }),
+);
 
 const withTempToolingApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-tooling-plan-cache-app-"));
@@ -258,7 +265,7 @@ const cacheAwareLayer = (options: {
   readonly provider: RuntimeProviderShape;
   readonly planCalls?: number[];
   readonly planCwds?: string[];
-}) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, CacheServiceLive);
+}) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, AppCacheService.layer);
 
 const configLayer = (defaultProviderId: string | null) =>
   configServiceLayer(Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId }));
@@ -269,11 +276,10 @@ const recordingEventLayer = (events: LandoEvent[]) =>
     Effect.gen(function* () {
       const queue = yield* Queue.unbounded<LandoEvent>();
       const service: EventServiceShape = {
-        publish: (event: LandoEvent) =>
-          Effect.gen(function* () {
-            events.push(event);
-            yield* Queue.offer(queue, event);
-          }),
+        publish: Effect.fnUntraced(function* (event: LandoEvent) {
+          events.push(event);
+          yield* Queue.offer(queue, event);
+        }),
         subscribe: <Name extends string>(name: Name) =>
           Stream.fromQueue(queue).pipe(
             Stream.filter((event): event is EventFor<Name> => name === "*" || event._tag === name),
@@ -445,8 +451,8 @@ describe("runTooling — CLI rendering", () => {
       const planCalls: number[] = [];
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan, provider, planCalls }),
-        PluginRegistryLive,
-        CacheServiceLive,
+        PluginRegistryLayer.layer,
+        AppCacheService.layer,
       );
 
       const result = await Effect.runPromise(
@@ -501,21 +507,24 @@ describe("runTooling — CLI rendering", () => {
           key: await cachedPlanKey(landofile, root, provider),
           plan: cachedPlan,
           now: () => 1,
-        }).pipe(Effect.provide(CacheServiceLive)),
+        }).pipe(Effect.provide(AppCacheService.layer)),
       );
       const planCalls: number[] = [];
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan: freshPlan, provider, planCalls }),
-        Layer.succeed(PluginRegistry, {
-          list: Effect.fail(
-            new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
-          ),
-          load: () => Effect.die("not used"),
-          loadServiceType: () => Effect.die("not used"),
-          loadServiceFeature: () => Effect.die("not used"),
-          loadAppFeature: () => Effect.die("not used"),
-        }),
-        CacheServiceLive,
+        Layer.succeed(
+          PluginRegistry,
+          PluginRegistry.of({
+            list: Effect.fail(
+              new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+            ),
+            load: () => Effect.die("not used"),
+            loadServiceType: () => Effect.die("not used"),
+            loadServiceFeature: () => Effect.die("not used"),
+            loadAppFeature: () => Effect.die("not used"),
+          }),
+        ),
+        AppCacheService.layer,
       );
 
       const result = await Effect.runPromise(
@@ -544,7 +553,7 @@ describe("runTooling — CLI rendering", () => {
       const layer = Layer.mergeAll(
         makeLayer({ landofile, plan: planned, provider }),
         configLayer("docker"),
-        CacheServiceLive,
+        AppCacheService.layer,
       );
 
       const result = await Effect.runPromise(
@@ -583,7 +592,7 @@ describe("runTooling — CLI rendering", () => {
           key: staleKey,
           plan: stalePlan,
           now: () => 1,
-        }).pipe(Effect.provide(CacheServiceLive)),
+        }).pipe(Effect.provide(AppCacheService.layer)),
       );
       const planCalls: number[] = [];
       const layer = cacheAwareLayer({ landofile, plan: freshPlan, provider, planCalls });
@@ -938,7 +947,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const planError = new LandofileValidationError({
         message: "planned failure",
         file: join(root, ".lando.yml"),
-        issues: ["service planning failed"],
+        issues: [{ path: [], message: "service planning failed" }],
       });
       const planCalls: number[] = [];
       const layer = makeLayer({ landofile, plan, provider, planError, planCalls });
@@ -965,7 +974,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const planError = new LandofileValidationError({
         message: "original planning failure",
         file: join(root, ".lando.yml"),
-        issues: ["service planning failed"],
+        issues: [{ path: [], message: "service planning failed" }],
       });
       const layer = makeLayer({ landofile, plan, provider, planError });
 
@@ -974,8 +983,8 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
 
       // Then
       expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-        expect(exit.cause.error).toBe(planError);
+      if (exit._tag === "Failure") {
+        expect(Cause.squash(exit.cause)).toBe(planError);
       }
     });
   });

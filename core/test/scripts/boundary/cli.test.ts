@@ -31,6 +31,7 @@ describe("check-boundaries CLI", () => {
   test("lists all registered rule ids", async () => {
     // Given
     const expected = [
+      "effect-idioms",
       "env-helper",
       "import-cycle",
       "machine-output",

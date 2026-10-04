@@ -92,7 +92,7 @@ describe("managed Windows host-proxy guest bridge", () => {
   test("fails closed and removes its own socket when forwarding cannot become ready", async () => {
     const fixture = await makeFixture(new Error("forward rejected"));
     const outcome = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         Effect.scoped(
           fixture.bridge({
             appId: AppId.make("my-app"),
@@ -102,8 +102,8 @@ describe("managed Windows host-proxy guest bridge", () => {
         ),
       ),
     );
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ProviderUnavailableError");
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("ProviderUnavailableError");
     expect(fixture.closes).toBe(1);
     expect(fixture.calls.some((call) => call.args.at(-1)?.includes("rmdir --"))).toBe(true);
   });

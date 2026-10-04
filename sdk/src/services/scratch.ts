@@ -144,7 +144,7 @@ export interface ScratchGcReport {
   readonly errors: ReadonlyArray<string>;
 }
 
-export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppService")<
+export class ScratchAppService extends Context.Service<
   ScratchAppService,
   {
     readonly kind: "scratch";
@@ -178,4 +178,4 @@ export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppServic
     ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
     readonly gc: (options?: ScratchGcOptions) => Effect.Effect<ScratchGcReport, ScratchAppError>;
   }
->() {}
+>()("@lando/core/ScratchAppService") {}

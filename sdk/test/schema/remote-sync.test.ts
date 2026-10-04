@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { LandoEvent } from "../../src/events/index.ts";
 import {
@@ -84,10 +84,10 @@ describe("remote-sync SDK schemas", () => {
   });
 
   test("rejects invalid dataset kinds and incomplete sync results", () => {
-    expect(Either.isLeft(Schema.decodeUnknownEither(DatasetKind)("code"))).toBe(true);
-    expect(Either.isLeft(Schema.decodeUnknownEither(DatasetArtifactFormat)({ endpoint: "artifact" }))).toBe(
-      true,
-    );
-    expect(Either.isLeft(Schema.decodeUnknownEither(SyncResult)({ direction: "pull" }))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(DatasetKind)("code"))).toBe(true);
+    expect(
+      Result.isFailure(Schema.decodeUnknownResult(DatasetArtifactFormat)({ endpoint: "artifact" })),
+    ).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(SyncResult)({ direction: "pull" }))).toBe(true);
   });
 });

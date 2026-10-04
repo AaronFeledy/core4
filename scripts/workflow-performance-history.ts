@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import {
   type WorkflowPerformanceReport,
@@ -64,17 +64,17 @@ const rowFor = (
     const status = candidate.conclusion === "success" ? "missing" : "failed";
     return { runId: candidate.runId, createdAt: candidate.createdAt, status, medians: {} };
   }
-  const decoded = Schema.decodeUnknownEither(WorkflowPerformanceReportSchema)(candidate.report);
-  if (Either.isLeft(decoded) || !sameSeries(current.series, decoded.right.series)) {
+  const decoded = Schema.decodeUnknownResult(WorkflowPerformanceReportSchema)(candidate.report);
+  if (Result.isFailure(decoded) || !sameSeries(current.series, decoded.success.series)) {
     return { runId: candidate.runId, createdAt: candidate.createdAt, status: "incompatible", medians: {} };
   }
-  const incomplete = decoded.right.status !== undefined && decoded.right.status !== "completed";
+  const incomplete = decoded.success.status !== undefined && decoded.success.status !== "completed";
   return {
     runId: candidate.runId,
     createdAt: candidate.createdAt,
     status:
-      incomplete || decoded.right.lanes.some((lane) => lane.outcome === "failed") ? "failed" : "available",
-    medians: mediansFor(decoded.right),
+      incomplete || decoded.success.lanes.some((lane) => lane.outcome === "failed") ? "failed" : "available",
+    medians: mediansFor(decoded.success),
   };
 };
 

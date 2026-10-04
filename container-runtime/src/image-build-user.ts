@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { CONTAINER_USER_PATTERN, isContainerUser } from "@lando/sdk/schema";
@@ -12,7 +12,7 @@ type InspectInheritedImageUserInput = {
 };
 
 const ImageInspect = Schema.Struct({
-  Config: Schema.Struct({ User: Schema.optional(Schema.String) }),
+  Config: Schema.Struct({ User: Schema.optionalKey(Schema.String) }),
 });
 
 export const validateDockerfileUser = (
@@ -77,14 +77,14 @@ export const inspectInheritedImageUser = (
       }),
     ),
     Effect.flatMap((value) => {
-      const decoded = Schema.decodeUnknownEither(ImageInspect)(value);
-      return Either.isRight(decoded)
-        ? Effect.succeed(decoded.right.Config.User)
+      const decoded = Schema.decodeUnknownResult(ImageInspect)(value);
+      return Result.isSuccess(decoded)
+        ? Effect.succeed(decoded.success.Config.User)
         : Effect.fail(
             inspectionError(
               input,
               "Inherited image user inspection returned malformed configuration.",
-              decoded.left,
+              decoded.failure,
             ),
           );
     }),

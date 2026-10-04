@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 import {
   deriveRecipeProducer,
   isBareRecipeReference,
@@ -30,7 +30,7 @@ test("versioned identity includes digest and rejects digest drift", () => {
   expect(sameRecipeVersion(left, deriveRecipeProducer(producer))).toBe(true);
 });
 test("bare-string provenance stays valid", () => {
-  expect(Either.getOrThrow(validateLandofileRecipeProvenance("php"))).toBe("php");
+  expect(Result.getOrThrow(validateLandofileRecipeProvenance("php"))).toBe("php");
   expect(isBareRecipeReference("php")).toBe(true);
   expect(isBareRecipeReference(provenance)).toBe(false);
 });
@@ -41,9 +41,9 @@ test.each([
   ["malformed", 42, undefined],
 ] as const)("provenance reason %s", (reason, value, path) => {
   const result = validateLandofileRecipeProvenance(value);
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    expect(result.left.reason).toBe(reason);
-    if (path) expect(result.left.path).toBe(path);
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    expect(result.failure.reason).toBe(reason);
+    if (path) expect(result.failure.path).toBe(path);
   }
 });

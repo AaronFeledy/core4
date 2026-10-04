@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Schema, Stream } from "effect";
 
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import { type DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
@@ -12,10 +12,10 @@ import {
   markDeprecated,
 } from "@lando/sdk/services";
 import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
-import { DeprecationPluginRegistryLive } from "../../src/deprecation/plugin-registry.ts";
-import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
-import { DeprecationTelemetryLive } from "../../src/deprecation/telemetry.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as DeprecationPluginRegistry from "../../src/deprecation/plugin-registry.ts";
+import * as DeprecationServiceLayer from "../../src/deprecation/service.ts";
+import * as DeprecationTelemetry from "../../src/deprecation/telemetry.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 const warningNotice: DeprecationNotice = {
   since: "4.1.0",
@@ -35,10 +35,12 @@ const eventUseId = (event: unknown): unknown => {
   return typeof use === "object" && use !== null && "id" in use ? use.id : undefined;
 };
 
-const timestamp = DateTime.unsafeMake("2026-06-11T16:00:00.000Z");
-const DeprecationServiceWithEventsLive = DeprecationServiceLive.pipe(Layer.provide(EventServiceLive));
+const timestamp = DateTime.makeUnsafe("2026-06-11T16:00:00.000Z");
+const deprecationServiceWithEventsLayer = DeprecationServiceLayer.layer.pipe(
+  Layer.provide(LandoEventService.layer),
+);
 
-describe("DeprecationServiceLive", () => {
+describe("DeprecationServiceLayer.layer", () => {
   test("markDeprecated records export usage and preserves callable behavior", async () => {
     const legacyAdd = markDeprecated(warningNotice, "legacyAdd", (left: number, right: number) =>
       Effect.succeed(left + right),
@@ -49,7 +51,7 @@ describe("DeprecationServiceLive", () => {
         const sum = yield* legacyAdd(2, 3);
         const deprecations = yield* DeprecationService;
         return { sum, summary: yield* deprecations.summary() };
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(result.sum).toBe(5);
@@ -69,7 +71,7 @@ describe("DeprecationServiceLive", () => {
         yield* olderApi();
         const deprecations = yield* DeprecationService;
         return yield* deprecations.summary();
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(summary.map((entry) => entry.id).sort()).toEqual(["oldApi", "olderApi"]);
@@ -89,7 +91,7 @@ describe("DeprecationServiceLive", () => {
             summary: yield* deprecations.summary(),
           };
         }),
-      ).pipe(Effect.provide(Layer.mergeAll(EventServiceLive, DeprecationServiceWithEventsLive))),
+      ).pipe(Effect.provide(Layer.mergeAll(LandoEventService.layer, deprecationServiceWithEventsLayer))),
     );
 
     expect(result.event._tag).toBe("deprecation-used");
@@ -108,14 +110,14 @@ describe("DeprecationServiceLive", () => {
           const exit = yield* Effect.exit(
             deprecations.use({ kind: "command", id: "app:legacy", notice: errorNotice, timestamp }),
           );
-          const eventsAfterFailure = yield* Queue.takeAll(queue);
+          const eventsAfterFailure = yield* Queue.clear(queue);
           return {
             exit,
             events: Array.from(eventsAfterFailure),
             summary: yield* deprecations.summary(),
           };
         }),
-      ).pipe(Effect.provide(Layer.mergeAll(EventServiceLive, DeprecationServiceWithEventsLive))),
+      ).pipe(Effect.provide(Layer.mergeAll(LandoEventService.layer, deprecationServiceWithEventsLayer))),
     );
 
     expect(Exit.isFailure(result.exit)).toBe(true);
@@ -133,12 +135,12 @@ describe("DeprecationServiceLive", () => {
           const events = yield* EventService;
           yield* events.subscribe("deprecation-used").pipe(
             Stream.runForEach(() => Effect.fail(new Error("subscriber failed"))),
-            Effect.fork,
+            Effect.forkChild,
           );
           yield* deprecations.use({ kind: "command", id: "app:start", notice: warningNotice, timestamp });
           return yield* deprecations.summary();
         }),
-      ).pipe(Effect.provide(Layer.mergeAll(EventServiceLive, DeprecationServiceWithEventsLive))),
+      ).pipe(Effect.provide(Layer.mergeAll(LandoEventService.layer, deprecationServiceWithEventsLayer))),
     );
 
     expect(summary[0]?.id).toBe("app:start");
@@ -153,9 +155,9 @@ describe("DeprecationServiceLive", () => {
       record: (event: string, data: Readonly<Record<string, unknown>>) =>
         Effect.sync(() => {
           recorded.push({ event, data });
-        }).pipe(Effect.zipRight(Deferred.succeed(recordedOnce, undefined))),
+        }).pipe(Effect.andThen(Deferred.succeed(recordedOnce, undefined))),
     };
-    const telemetryDeps = Layer.mergeAll(EventServiceLive, Layer.succeed(Telemetry, telemetry));
+    const telemetryDeps = Layer.mergeAll(LandoEventService.layer, Layer.succeed(Telemetry, telemetry));
 
     await Effect.runPromise(
       Effect.scoped(
@@ -168,8 +170,8 @@ describe("DeprecationServiceLive", () => {
         Effect.provide(
           Layer.mergeAll(
             telemetryDeps,
-            DeprecationServiceLive.pipe(Layer.provide(telemetryDeps)),
-            DeprecationTelemetryLive.pipe(Layer.provide(telemetryDeps)),
+            DeprecationServiceLayer.layer.pipe(Layer.provide(telemetryDeps)),
+            DeprecationTelemetry.layer.pipe(Layer.provide(telemetryDeps)),
           ),
         ),
       ),
@@ -196,7 +198,7 @@ describe("DeprecationServiceLive", () => {
           recorded.push({ event, data });
         }),
     };
-    const telemetryDeps = Layer.mergeAll(EventServiceLive, Layer.succeed(Telemetry, telemetry));
+    const telemetryDeps = Layer.mergeAll(LandoEventService.layer, Layer.succeed(Telemetry, telemetry));
 
     const summary = await Effect.runPromise(
       Effect.scoped(
@@ -209,8 +211,8 @@ describe("DeprecationServiceLive", () => {
         Effect.provide(
           Layer.mergeAll(
             telemetryDeps,
-            DeprecationServiceLive.pipe(Layer.provide(telemetryDeps)),
-            DeprecationTelemetryLive.pipe(Layer.provide(telemetryDeps)),
+            DeprecationServiceLayer.layer.pipe(Layer.provide(telemetryDeps)),
+            DeprecationTelemetry.layer.pipe(Layer.provide(telemetryDeps)),
           ),
         ),
       ),
@@ -232,7 +234,7 @@ describe("DeprecationServiceLive", () => {
           lookedUp,
           summary: yield* service.summary(),
         };
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(Option.isSome(summary.lookedUp)).toBe(true);
@@ -247,12 +249,12 @@ describe("DeprecationServiceLive", () => {
       Effect.gen(function* () {
         const service = yield* DeprecationService;
         yield* service.use({ kind: "command", id: "app:legacy", notice: errorNotice, timestamp });
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(DeprecatedSurfaceError);
     }
   });
@@ -263,12 +265,12 @@ describe("DeprecationServiceLive", () => {
         const service = yield* DeprecationService;
         yield* service.register("core", "command", "app:start", warningNotice);
         yield* service.registerAlias("core", "command", "app:start", "start");
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(failure).toBeInstanceOf(DeprecationContradictionError);
     }
   });
@@ -302,7 +304,7 @@ describe("DeprecationServiceLive", () => {
       loadServiceFeature: () => Effect.die("not used"),
       loadAppFeature: () => Effect.die("not used"),
     };
-    const deps = Layer.mergeAll(DeprecationServiceLive, Layer.succeed(PluginRegistry, pluginRegistry));
+    const deps = Layer.mergeAll(DeprecationServiceLayer.layer, Layer.succeed(PluginRegistry, pluginRegistry));
 
     const lookup = await Effect.runPromise(
       Effect.gen(function* () {
@@ -317,7 +319,9 @@ describe("DeprecationServiceLive", () => {
           ),
           setupFlag: yield* service.lookup("flag", "@lando/legacy-plugin:setup.legacy-setup"),
         };
-      }).pipe(Effect.provide(Layer.mergeAll(deps, DeprecationPluginRegistryLive.pipe(Layer.provide(deps))))),
+      }).pipe(
+        Effect.provide(Layer.mergeAll(deps, DeprecationPluginRegistry.layer.pipe(Layer.provide(deps)))),
+      ),
     );
 
     expect(Option.isSome(lookup.plugin)).toBe(true);
@@ -344,17 +348,17 @@ describe("DeprecationServiceLive", () => {
       loadServiceFeature: () => Effect.die("not used"),
       loadAppFeature: () => Effect.die("not used"),
     };
-    const deps = Layer.mergeAll(DeprecationServiceLive, Layer.succeed(PluginRegistry, pluginRegistry));
+    const deps = Layer.mergeAll(DeprecationServiceLayer.layer, Layer.succeed(PluginRegistry, pluginRegistry));
 
     const exit = await Effect.runPromiseExit(
       Effect.void.pipe(
-        Effect.provide(Layer.mergeAll(deps, DeprecationPluginRegistryLive.pipe(Layer.provide(deps)))),
+        Effect.provide(Layer.mergeAll(deps, DeprecationPluginRegistry.layer.pipe(Layer.provide(deps)))),
       ),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect((failure as { _tag?: string } | undefined)?._tag).toBe("SetupFlagCollisionError");
     }
   });
@@ -379,7 +383,7 @@ describe("DeprecationServiceLive", () => {
           ],
         });
         return yield* service.lookup("command", "legacy-start");
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(Option.isSome(lookup)).toBe(true);
@@ -432,7 +436,7 @@ describe("DeprecationServiceLive", () => {
           serviceFeature: yield* service.lookup("service-feature", "legacy-feature"),
           routeFilter: yield* service.lookup("route-filter", "legacy-filter"),
         };
-      }).pipe(Effect.provide(DeprecationServiceLive)),
+      }).pipe(Effect.provide(DeprecationServiceLayer.layer)),
     );
 
     expect(Option.isSome(lookup.command)).toBe(true);
@@ -452,7 +456,7 @@ describe("DeprecationServiceLive", () => {
         const deprecations = yield* DeprecationService;
         yield* registerBuiltInContractDeprecations(deprecations);
         return yield* deprecations.lookup("flag", "app:shell --host");
-      }).pipe(Effect.provide(DeprecationServiceWithEventsLive)),
+      }).pipe(Effect.provide(deprecationServiceWithEventsLayer)),
     );
 
     expect(Option.isSome(notice)).toBe(true);

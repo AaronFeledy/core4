@@ -32,7 +32,7 @@ const service: ServicePlan = {
   dependsOn: [],
   hostAliases: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-20T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-20T00:00:00Z"),
     source: "container-runtime/lifecycle-dialect.test.ts",
     runtime: 4,
   },

@@ -197,11 +197,11 @@ describe("advisory state lock", () => {
       await run(
         Effect.gen(function* () {
           const entered = yield* Deferred.make<void>();
-          const fiber = yield* Effect.fork(
+          const fiber = yield* Effect.forkChild(
             withAdvisoryLock(
               file,
               "test",
-              Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.never)),
+              Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
               { expireLiveOwner: false },
             ),
           );

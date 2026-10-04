@@ -3,7 +3,7 @@ import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
@@ -233,13 +233,13 @@ const validateFrontmatter = (
 
   const { diataxis: _diataxis, ...schemaFrontmatter } = frontmatter;
   const decoded = decodeGuideFrontmatterEither(schemaFrontmatter);
-  if (Either.isLeft(decoded)) {
+  if (Result.isFailure(decoded)) {
     diagnostics.push(
       diagnostic(
         sourcePath,
         yaml.node ?? root,
         "guide.frontmatter",
-        `Invalid frontmatter: ${formatErrorMessage(decoded.left)}`,
+        `Invalid frontmatter: ${formatErrorMessage(decoded.failure)}`,
       ),
     );
   }
@@ -296,13 +296,13 @@ const lintScenarioProps = (
     const props = propsOf(scenario);
     if (!Object.hasOwn(props, "layer")) continue;
     const decoded = decodeScenarioPropsEither(props);
-    if (Either.isRight(decoded)) continue;
+    if (Result.isSuccess(decoded)) continue;
     diagnostics.push(
       diagnostic(
         sourcePath,
         scenario,
         "guide.scenario.props",
-        `<Scenario> props are invalid: ${formatErrorMessage(decoded.left)}`,
+        `<Scenario> props are invalid: ${formatErrorMessage(decoded.failure)}`,
       ),
     );
   }
@@ -443,13 +443,13 @@ const lintVerifyMatchers = (
       return;
     }
     const decoded = decodeVerifyPropsEither(props);
-    if (Either.isLeft(decoded)) {
+    if (Result.isFailure(decoded)) {
       diagnostics.push(
         diagnostic(
           sourcePath,
           node,
           "guide.verify.matcher",
-          `Invalid <Verify> props: ${formatErrorMessage(decoded.left)}.`,
+          `Invalid <Verify> props: ${formatErrorMessage(decoded.failure)}.`,
         ),
       );
     }
@@ -478,13 +478,13 @@ const lintRunBindings = (
       return;
     }
     const decoded = decodeRunPropsEither(props);
-    if (Either.isLeft(decoded)) {
+    if (Result.isFailure(decoded)) {
       diagnostics.push(
         diagnostic(
           sourcePath,
           node,
           "guide.run.binding",
-          `<Run> requires an explicit display-vs-execute binding: ${formatErrorMessage(decoded.left)}.`,
+          `<Run> requires an explicit display-vs-execute binding: ${formatErrorMessage(decoded.failure)}.`,
         ),
       );
     }
@@ -492,7 +492,7 @@ const lintRunBindings = (
 };
 
 // Excludes components with a dedicated prop rule above to avoid double-reporting.
-const COMPONENT_PROP_DECODERS: Record<string, (input: unknown) => Either.Either<unknown, unknown>> = {
+const COMPONENT_PROP_DECODERS: Record<string, (input: unknown) => Result.Result<unknown, unknown>> = {
   Step: decodeStepPropsEither,
   Variable: decodeVariablePropsEither,
   UseFixture: decodeUseFixturePropsEither,
@@ -524,13 +524,13 @@ const lintComponentProps = (
       return;
     }
     const decoded = decode(props);
-    if (Either.isLeft(decoded)) {
+    if (Result.isFailure(decoded)) {
       diagnostics.push(
         diagnostic(
           sourcePath,
           node,
           "guide.component.props",
-          `Invalid <${node.name}> props: ${formatErrorMessage(decoded.left)}.`,
+          `Invalid <${node.name}> props: ${formatErrorMessage(decoded.failure)}.`,
         ),
       );
     }

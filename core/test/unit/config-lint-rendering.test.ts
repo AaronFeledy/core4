@@ -4,9 +4,9 @@ import { renderConfigLintViolation } from "../../src/cli/commands/config-lint-re
 
 test("config lint text visibly escapes terminal controls", () => {
   const rendered = renderConfigLintViolation({
-    path: "services.web\u001b[31m",
+    path: ["services", "web\u001b[31m"],
     message: "Rejected key\u0007",
-    suggestedFix: "Remove it\u009b",
+    suggestion: "Remove it\u009b",
   });
 
   expect(rendered).not.toContain("\u001b");

@@ -24,7 +24,7 @@ test.each(["prepared", "committing"] as const)(
     const before = await stat(join(appRoot, "target"));
     // When
     const result = await scoped(
-      Effect.either(
+      Effect.result(
         transactions.run({
           appRoot,
           readConditions: [
@@ -40,8 +40,8 @@ test.each(["prepared", "committing"] as const)(
     );
     // Then
     expect(result).toMatchObject({
-      _tag: "Left",
-      left: { phase: "commit", reason: "conflict", path: "source" },
+      _tag: "Failure",
+      failure: { phase: "commit", reason: "conflict", path: "source" },
     });
     expect(await Bun.file(join(appRoot, "target")).text()).toBe("before");
     expect(await stat(join(appRoot, "target"))).toMatchObject({ ino: before.ino, mtimeMs: before.mtimeMs });
@@ -69,13 +69,13 @@ test("rejects a readonly source removed between explicit prepare and commit", as
         operations: [{ kind: "write", path: "target", content: "translated" }],
       });
       yield* Effect.promise(() => unlink(source));
-      return yield* Effect.either(transactions.commit(prepared));
+      return yield* Effect.result(transactions.commit(prepared));
     }),
   );
   // Then
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { phase: "commit", reason: "conflict", path: "source" },
+    _tag: "Failure",
+    failure: { phase: "commit", reason: "conflict", path: "source" },
   });
   expect(await Bun.file(join(appRoot, "target")).exists()).toBe(false);
 });

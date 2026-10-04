@@ -100,6 +100,21 @@ native registry and dispatcher.
       <Verify errorTag="JsonJqConflictError" />
     </Step>
   </Scenario>
+
+  <Scenario id="read-validation-issues" render>
+    <Step name="scaffold-unknown-key">
+      <UseFixture name="unknown-service-key" />
+    </Step>
+    <Step name="read-issues">
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "ok\\W+false" }} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "issues\\W+path\\W+services\\W+web\\W+imgae\\W" }} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "suggestion\\W[^}]*\\bimage\\b" }} />
+    </Step>
+    <Step name="cleanup-unknown-key">
+      <Cleanup />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## List keys with --json
@@ -231,6 +246,28 @@ A failing command keeps its non-zero exit code alongside the envelope so
 scripts can branch on both. The tagged error exposes a machine `_tag` plus
 human remediation, so an agent can react to the failure class without
 scraping prose.
+
+## Read validation issues
+
+A Landofile that fails validation produces a `LandofileValidationError`
+envelope at exit `1`, and the error carries every problem under
+`error.issues`. Each issue is `{ path, message, suggestion? }`. `path` is an
+array of keys and indexes, never a dotted string, so a script indexes into
+the parsed Landofile with it directly. `suggestion` is present when Lando has
+a concrete fix, such as the closest allowed key for a typo:
+
+```sh
+lando app:config --format=json | jq ".error.issues[0]"
+```
+
+For a service that spells `image` as `imgae`, that first issue has `path`
+`["services", "web", "imgae"]` and a `suggestion` naming `image`.
+
+Three independent mistakes produce three issues in one run. Branch on
+`error._tag`, then loop `error.issues`; do not parse `error.message`, which
+is the human rendering of the same list. `lando app:config:lint
+--format=json` reports the same issues as `violations` inside a successful
+result, which suits editors that want the list without a failing exit.
 
 The generated command reference lists every public command and documents the
 universal `--format json` flag once in its machine-readable output section.

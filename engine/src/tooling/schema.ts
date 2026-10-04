@@ -19,7 +19,7 @@
 import { Schema } from "effect";
 
 /** Tooling spec literal "disabled" forms. */
-export const ToolingDisabled = Schema.Union(Schema.Literal(false), Schema.Literal("disabled"));
+export const ToolingDisabled = Schema.Union([Schema.Literal(false), Schema.Literal("disabled")]);
 
 /**
  * `ToolingSpec` — the parsed-and-validated input shape from a Landofile.
@@ -27,14 +27,14 @@ export const ToolingDisabled = Schema.Union(Schema.Literal(false), Schema.Litera
  * TODO: expand to the full schema.
  */
 export const ToolingSpec = Schema.Struct({
-  service: Schema.optional(Schema.String),
-  cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
-  description: Schema.optional(Schema.String),
-  bootstrap: Schema.optional(Schema.Literal("tooling", "provider", "app")),
-  engine: Schema.optional(Schema.String),
-  passThrough: Schema.optional(Schema.Boolean),
-  parallel: Schema.optional(Schema.Boolean),
-  interactive: Schema.optional(Schema.Boolean),
-  disabled: Schema.optional(Schema.Boolean),
+  service: Schema.optionalKey(Schema.String),
+  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  description: Schema.optionalKey(Schema.String),
+  bootstrap: Schema.optionalKey(Schema.Literals(["tooling", "provider", "app"])),
+  engine: Schema.optionalKey(Schema.String),
+  passThrough: Schema.optionalKey(Schema.Boolean),
+  parallel: Schema.optionalKey(Schema.Boolean),
+  interactive: Schema.optionalKey(Schema.Boolean),
+  disabled: Schema.optionalKey(Schema.Boolean),
 });
 export type ToolingSpec = typeof ToolingSpec.Type;

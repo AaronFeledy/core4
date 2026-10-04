@@ -11,40 +11,45 @@ const metadata = (identifier: string, description: string) => ({
 });
 
 const StringOptionType = Schema.Struct({
-  kind: Schema.Literal("string").annotations({ description: "String option discriminator." }),
-  pattern: Schema.optional(Schema.String.annotations({ description: "Anchored regular-expression source." })),
-  minLength: Schema.optional(Schema.Number.annotations({ description: "Minimum accepted length." })),
-  maxLength: Schema.optional(Schema.Number.annotations({ description: "Maximum accepted length." })),
+  kind: Schema.Literal("string").annotate({ description: "String option discriminator." }),
+  pattern: Schema.optionalKey(Schema.String.annotate({ description: "Anchored regular-expression source." })),
+  minLength: Schema.optionalKey(Schema.Number.annotate({ description: "Minimum accepted length." })),
+  maxLength: Schema.optionalKey(Schema.Number.annotate({ description: "Maximum accepted length." })),
 });
 
 const NumberOptionType = Schema.Struct({
-  kind: Schema.Literal("number").annotations({ description: "Number option discriminator." }),
-  min: Schema.optional(Schema.Number.annotations({ description: "Minimum accepted value." })),
-  max: Schema.optional(Schema.Number.annotations({ description: "Maximum accepted value." })),
-  integer: Schema.optional(Schema.Boolean.annotations({ description: "Require an integer value." })),
+  kind: Schema.Literal("number").annotate({ description: "Number option discriminator." }),
+  min: Schema.optionalKey(Schema.Number.annotate({ description: "Minimum accepted value." })),
+  max: Schema.optionalKey(Schema.Number.annotate({ description: "Maximum accepted value." })),
+  integer: Schema.optionalKey(Schema.Boolean.annotate({ description: "Require an integer value." })),
 });
 
 const BooleanOptionType = Schema.Struct({
-  kind: Schema.Literal("boolean").annotations({ description: "Boolean option discriminator." }),
+  kind: Schema.Literal("boolean").annotate({ description: "Boolean option discriminator." }),
 });
 
 const EnumOptionType = Schema.Struct({
-  kind: Schema.Literal("enum").annotations({ description: "Enumerated option discriminator." }),
-  values: Schema.NonEmptyArray(Schema.String).annotations({ description: "Closed set of accepted values." }),
+  kind: Schema.Literal("enum").annotate({ description: "Enumerated option discriminator." }),
+  values: Schema.NonEmptyArray(Schema.String).annotate({ description: "Closed set of accepted values." }),
 });
 
-const ScalarOptionType = Schema.Union(StringOptionType, NumberOptionType, BooleanOptionType, EnumOptionType);
+const ScalarOptionType = Schema.Union([
+  StringOptionType,
+  NumberOptionType,
+  BooleanOptionType,
+  EnumOptionType,
+]);
 
 const ArrayOptionType = Schema.Struct({
-  kind: Schema.Literal("array").annotations({ description: "Array option discriminator." }),
-  items: ScalarOptionType.annotations({ description: "Scalar descriptor every element must satisfy." }),
-  minItems: Schema.optional(Schema.Number.annotations({ description: "Minimum element count." })),
-  maxItems: Schema.optional(Schema.Number.annotations({ description: "Maximum element count." })),
+  kind: Schema.Literal("array").annotate({ description: "Array option discriminator." }),
+  items: ScalarOptionType.annotate({ description: "Scalar descriptor every element must satisfy." }),
+  minItems: Schema.optionalKey(Schema.Number.annotate({ description: "Minimum element count." })),
+  maxItems: Schema.optionalKey(Schema.Number.annotate({ description: "Maximum element count." })),
 });
 
 const OptionalOptionType = Schema.Struct({
-  kind: Schema.Literal("optional").annotations({ description: "Optional-wrapper discriminator." }),
-  inner: Schema.Union(ScalarOptionType, ArrayOptionType).annotations({
+  kind: Schema.Literal("optional").annotate({ description: "Optional-wrapper discriminator." }),
+  inner: Schema.Union([ScalarOptionType, ArrayOptionType]).annotate({
     description: "Descriptor applied when the option is present.",
   }),
 });
@@ -54,31 +59,29 @@ const OptionalOptionType = Schema.Struct({
  * deliberately closed: an option a recipe cannot express here makes that recipe
  * nonmigratable rather than licensing serialized code to describe it.
  */
-export const RecipeOptionType = Schema.Union(
+export const RecipeOptionType = Schema.Union([
   StringOptionType,
   NumberOptionType,
   BooleanOptionType,
   EnumOptionType,
   ArrayOptionType,
   OptionalOptionType,
-).annotations(metadata("RecipeOptionType", "Serializable descriptor for one persistable recipe option."));
+]).annotate(metadata("RecipeOptionType", "Serializable descriptor for one persistable recipe option."));
 export type RecipeOptionType = typeof RecipeOptionType.Type;
 
 /** Auxiliary file a recipe writes, recorded as metadata and digest only. */
 export const RecipeSnapshotAsset = Schema.Struct({
-  dest: Schema.String.pipe(Schema.minLength(1)).annotations({
+  dest: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
     description: "App-relative destination the recipe writes.",
   }),
-  digest: RecipeContentDigest.annotations({ description: "SHA-256 of the asset content." }),
-  mode: Schema.optional(
-    Schema.String.annotations({ description: "Recorded file mode, when the recipe sets one." }),
+  digest: RecipeContentDigest.annotate({ description: "SHA-256 of the asset content." }),
+  mode: Schema.optionalKey(
+    Schema.String.annotate({ description: "Recorded file mode, when the recipe sets one." }),
   ),
-  template: Schema.optional(
-    Schema.Boolean.annotations({ description: "Whether the asset is rendered from a template." }),
+  template: Schema.optionalKey(
+    Schema.Boolean.annotate({ description: "Whether the asset is rendered from a template." }),
   ),
-}).annotations(
-  metadata("RecipeSnapshotAsset", "Metadata and digest for one recipe-authored auxiliary file."),
-);
+}).annotate(metadata("RecipeSnapshotAsset", "Metadata and digest for one recipe-authored auxiliary file."));
 export type RecipeSnapshotAsset = typeof RecipeSnapshotAsset.Type;
 
 /**
@@ -87,12 +90,12 @@ export type RecipeSnapshotAsset = typeof RecipeSnapshotAsset.Type;
  * inlined into every schema that embeds a snapshot.
  */
 export const RecipeSnapshotTemplate = Schema.Struct({
-  expression: ExpressionNode.annotations({
+  expression: ExpressionNode.annotate({
     identifier: "ExpressionNode",
     title: "ExpressionNode",
     description: "Serialized expression tree whose only data scope is the merged options.",
   }),
-}).annotations(metadata("RecipeSnapshotTemplate", "Carrier for one snapshot's serialized expression tree."));
+}).annotate(metadata("RecipeSnapshotTemplate", "Carrier for one snapshot's serialized expression tree."));
 export type RecipeSnapshotTemplate = typeof RecipeSnapshotTemplate.Type;
 
 /**
@@ -101,102 +104,108 @@ export type RecipeSnapshotTemplate = typeof RecipeSnapshotTemplate.Type;
  * defaults, one serialized expression tree, and its asset inventory.
  */
 export const RecipeSnapshot = Schema.Struct({
-  identity: RecipeProducer.annotations({ description: "Exact versioned producer this snapshot describes." }),
-  optionTypes: Schema.Record({ key: Schema.String, value: RecipeOptionType }).annotations({
+  identity: RecipeProducer.annotate({ description: "Exact versioned producer this snapshot describes." }),
+  optionTypes: Schema.Record(Schema.String, RecipeOptionType).annotate({
     description: "Serializable descriptor for every persistable option.",
   }),
-  defaults: Schema.Record({ key: Schema.String, value: RecipeOptionValue }).annotations({
+  defaults: Schema.Record(Schema.String, RecipeOptionValue).annotate({
     description: "Default value for each option at this version.",
   }),
-  template: RecipeSnapshotTemplate.annotations({
+  template: RecipeSnapshotTemplate.annotate({
     description: "One serialized expression tree whose only data scope is the merged options.",
   }),
-  assets: Schema.Array(RecipeSnapshotAsset).annotations({
+  assets: Schema.Array(RecipeSnapshotAsset).annotate({
     description: "Auxiliary files this version writes, as metadata and digests.",
   }),
-}).annotations(
+}).annotate(
   metadata("RecipeSnapshot", "Inert declarative data that renders one recipe version's authoring output."),
 );
 export type RecipeSnapshot = typeof RecipeSnapshot.Type;
 
 /** The declarative operations a migration edge may declare. */
-export const RecipeHunkKind = Schema.Literal(
+export const RecipeHunkKind = Schema.Literals([
   "option-default",
   "add",
   "remove",
   "rename",
   "replace",
-).annotations(metadata("RecipeHunkKind", "Declarative migration operation kind."));
+]).annotate(metadata("RecipeHunkKind", "Declarative migration operation kind."));
 export type RecipeHunkKind = typeof RecipeHunkKind.Type;
 
 /** How analysis resolved one hunk against the current file. */
-export const RecipeHunkClassification = Schema.Literal(
+export const RecipeHunkClassification = Schema.Literals([
   "already-satisfied",
   "selected",
   "retained-option",
   "blocking",
-).annotations(metadata("RecipeHunkClassification", "Resolution class assigned to one migration hunk."));
+]).annotate(metadata("RecipeHunkClassification", "Resolution class assigned to one migration hunk."));
 export type RecipeHunkClassification = typeof RecipeHunkClassification.Type;
 
 const HUNK_ID_PATTERN = /^hunk-[0-9a-f]{24}$/;
 
-const hunkIdField = Schema.String.pipe(Schema.pattern(HUNK_ID_PATTERN)).annotations({
+const hunkIdField = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(HUNK_ID_PATTERN, {
+      toJsonSchema: () => ({ pattern: HUNK_ID_PATTERN.source }),
+    }),
+  ),
+).annotate({
   description: "Stable id derived from producer family, edge endpoints, layer, kind, and canonical path.",
 });
 
-const hunkLayerField = LandofileLayer.annotations({
+const hunkLayerField = LandofileLayer.annotate({
   description: "Layer that owns the target path; a lower layer never edits a higher-layer value.",
 });
 
-const hunkPathField = Schema.String.pipe(Schema.minLength(1)).annotations({
+const hunkPathField = Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
   description: "Canonical dotted path this hunk targets.",
 });
 
 const OptionDefaultHunk = Schema.Struct({
   id: hunkIdField,
-  kind: Schema.Literal("option-default").annotations({ description: "Option-default change discriminator." }),
+  kind: Schema.Literal("option-default").annotate({ description: "Option-default change discriminator." }),
   layer: hunkLayerField,
   path: hunkPathField,
-  old: RecipeOptionValue.annotations({ description: "Default this version replaced." }),
-  new: RecipeOptionValue.annotations({ description: "Default this version introduces." }),
+  old: RecipeOptionValue.annotate({ description: "Default this version replaced." }),
+  new: RecipeOptionValue.annotate({ description: "Default this version introduces." }),
 });
 
 const AddHunk = Schema.Struct({
   id: hunkIdField,
-  kind: Schema.Literal("add").annotations({ description: "Structural add discriminator." }),
+  kind: Schema.Literal("add").annotate({ description: "Structural add discriminator." }),
   layer: hunkLayerField,
   path: hunkPathField,
-  new: Schema.Unknown.annotations({ description: "Authoring value the target must hold after the edge." }),
+  new: Schema.Unknown.annotate({ description: "Authoring value the target must hold after the edge." }),
 });
 
 const RemoveHunk = Schema.Struct({
   id: hunkIdField,
-  kind: Schema.Literal("remove").annotations({ description: "Structural remove discriminator." }),
+  kind: Schema.Literal("remove").annotate({ description: "Structural remove discriminator." }),
   layer: hunkLayerField,
   path: hunkPathField,
-  old: Schema.Unknown.annotations({ description: "Authoring value the target must hold before the edge." }),
+  old: Schema.Unknown.annotate({ description: "Authoring value the target must hold before the edge." }),
 });
 
 const RenameHunk = Schema.Struct({
   id: hunkIdField,
-  kind: Schema.Literal("rename").annotations({ description: "Structural rename discriminator." }),
+  kind: Schema.Literal("rename").annotate({ description: "Structural rename discriminator." }),
   layer: hunkLayerField,
   path: hunkPathField,
-  old: Schema.String.pipe(Schema.minLength(1)).annotations({
+  old: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
     description: "Canonical path before the rename.",
   }),
-  new: Schema.String.pipe(Schema.minLength(1)).annotations({
+  new: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
     description: "Canonical path after the rename.",
   }),
 });
 
 const ReplaceHunk = Schema.Struct({
   id: hunkIdField,
-  kind: Schema.Literal("replace").annotations({ description: "Structural replace discriminator." }),
+  kind: Schema.Literal("replace").annotate({ description: "Structural replace discriminator." }),
   layer: hunkLayerField,
   path: hunkPathField,
-  old: Schema.Unknown.annotations({ description: "Authoring value the target must hold before the edge." }),
-  new: Schema.Unknown.annotations({ description: "Authoring value the target must hold after the edge." }),
+  old: Schema.Unknown.annotate({ description: "Authoring value the target must hold before the edge." }),
+  new: Schema.Unknown.annotate({ description: "Authoring value the target must hold after the edge." }),
 });
 
 /**
@@ -204,13 +213,13 @@ const ReplaceHunk = Schema.Struct({
  * and carries enough before/after context to render a deterministic diff and
  * decide whether the target is still untouched.
  */
-export const RecipeMigrationHunk = Schema.Union(
+export const RecipeMigrationHunk = Schema.Union([
   OptionDefaultHunk,
   AddHunk,
   RemoveHunk,
   RenameHunk,
   ReplaceHunk,
-).annotations(metadata("RecipeMigrationHunk", "One declarative edit inside a recipe migration edge."));
+]).annotate(metadata("RecipeMigrationHunk", "One declarative edit inside a recipe migration edge."));
 export type RecipeMigrationHunk = typeof RecipeMigrationHunk.Type;
 
 /**
@@ -219,16 +228,16 @@ export type RecipeMigrationHunk = typeof RecipeMigrationHunk.Type;
  * the user's current options instead of trusting a single frozen fragment.
  */
 export const RecipeMigration = Schema.Struct({
-  from: RecipeProducer.annotations({ description: "Exact versioned identity this edge migrates away from." }),
-  to: RecipeProducer.annotations({ description: "Exact versioned identity this edge migrates to." }),
-  fromSnapshot: RecipeSnapshot.annotations({
+  from: RecipeProducer.annotate({ description: "Exact versioned identity this edge migrates away from." }),
+  to: RecipeProducer.annotate({ description: "Exact versioned identity this edge migrates to." }),
+  fromSnapshot: RecipeSnapshot.annotate({
     description: "Renderable snapshot for the edge source version.",
   }),
-  toSnapshot: RecipeSnapshot.annotations({ description: "Renderable snapshot for the edge target version." }),
-  hunks: Schema.Array(RecipeMigrationHunk).annotations({
+  toSnapshot: RecipeSnapshot.annotate({ description: "Renderable snapshot for the edge target version." }),
+  hunks: Schema.Array(RecipeMigrationHunk).annotate({
     description: "Ordered declared edits, validated against the rendered snapshot diff.",
   }),
-}).annotations(metadata("RecipeMigration", "One declarative migration edge between two recipe versions."));
+}).annotate(metadata("RecipeMigration", "One declarative migration edge between two recipe versions."));
 export type RecipeMigration = typeof RecipeMigration.Type;
 
 /**

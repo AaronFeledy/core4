@@ -12,7 +12,7 @@ import { DateTime } from "effect";
 
 const overlayFixture = (): AppPlan => {
   const metadata = {
-    resolvedAt: DateTime.unsafeMake("2026-01-01T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
     source: "test",
     runtime: 4,
   } satisfies AppPlan["metadata"];

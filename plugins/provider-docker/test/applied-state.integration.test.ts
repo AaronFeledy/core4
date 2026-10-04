@@ -3,10 +3,10 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DateTime, Effect } from "effect";
+import { Cause, DateTime, Effect, Exit, Option } from "effect";
 
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
-import { StateStoreError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
@@ -49,7 +49,7 @@ import {
 const providerId = ProviderId.make("docker");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "applied-state.integration.test",
   runtime: 4 as const,
 };
@@ -227,7 +227,13 @@ describe("provider-docker applied state persistence", () => {
       const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingRemove(state), plan.id));
 
       expect(exit._tag).toBe("Failure");
-      expect(String(exit)).toContain("applied-state.remove");
+      const failure = Exit.isFailure(exit)
+        ? Option.getOrUndefined(Cause.findErrorOption(exit.cause))
+        : undefined;
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure?.operation).toBe("applied-state.remove");
+      expect(failure?.cause).toBeInstanceOf(StateStoreError);
+      expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("remove");
       expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });

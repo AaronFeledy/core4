@@ -219,9 +219,9 @@ describe("container plan helpers", () => {
   });
 
   test("emits option-bearing mounts as HostConfig Mounts without duplicate Binds", () => {
+    const { appMount: _appMount, ...withoutAppMount } = service;
     const serviceWithMountOptions: ServicePlan = {
-      ...service,
-      appMount: undefined,
+      ...withoutAppMount,
       mounts: [
         {
           type: "bind",

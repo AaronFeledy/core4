@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import {
   BunShellScriptFrontMatterError,
@@ -7,35 +7,28 @@ import {
   RecipeManifestValidationError,
   ScratchAppError,
 } from "@lando/sdk/errors";
-import { BunShellScriptFrontMatter, LandofileShape, RecipeManifest } from "@lando/sdk/schema";
+import {
+  BunShellScriptFrontMatter,
+  LandofileShape,
+  RecipeManifest,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 
 import { decodeOrFail } from "@lando/landofile/decode";
 
-const issuesWithMessages = (cause: unknown, fallback: string): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
-    );
-  }
-  return [cause instanceof Error ? cause.message : fallback];
-};
+const issuesWithMessages = (cause: unknown, fallback: string) =>
+  validationIssuesFromCause(cause, { fallback });
 
-const globalIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid Landofile."];
-};
+const globalIssues = (cause: unknown) => validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
 
 const legacyDecode = <A, I, E>(
-  schema: Schema.Schema<A, I, never>,
+  schema: Schema.Codec<A, I, never, never>,
   input: unknown,
-  onError: (cause: ParseResult.ParseError) => E,
+  onError: (cause: Schema.SchemaError) => E,
 ) => {
-  const result = Schema.decodeUnknownEither(schema)(input, { onExcessProperty: "error" });
-  return Either.isRight(result) ? Effect.succeed(result.right) : Effect.fail(onError(result.left));
+  const result = Schema.decodeUnknownResult(schema)(input, { onExcessProperty: "error" });
+  return Result.isSuccess(result) ? Effect.succeed(result.success) : Effect.fail(onError(result.failure));
 };
 
 const errorShape = async <A, E>(effect: Effect.Effect<A, E>) => {
@@ -47,10 +40,10 @@ const errorShape = async <A, E>(effect: Effect.Effect<A, E>) => {
 describe("decodeOrFail", () => {
   test("preserves LandofileService validation error bytes", async () => {
     const input = { name: "app", services: { web: { type: "apache", unsupported: true } } };
-    const onError = (cause: ParseResult.ParseError) => {
+    const onError = (cause: Schema.SchemaError) => {
       const issues = issuesWithMessages(cause, "Invalid Landofile.");
       return new LandofileValidationError({
-        message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
+        message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
         file: "/app/.lando.yml",
         issues,
       });
@@ -63,7 +56,7 @@ describe("decodeOrFail", () => {
 
   test("preserves Bun shell front-matter validation error bytes", async () => {
     const input = { service: 7, summary: false };
-    const onError = (cause: ParseResult.ParseError) =>
+    const onError = (cause: Schema.SchemaError) =>
       new BunShellScriptFrontMatterError({
         message: ".bun.sh front-matter at /app/.lando/scripts/build.bun.sh is malformed.",
         path: "/app/.lando/scripts/build.bun.sh",
@@ -80,7 +73,7 @@ describe("decodeOrFail", () => {
 
   test("preserves ScratchApp rendered Landofile validation error bytes", async () => {
     const input = { name: "scratch", services: { web: { type: "apache", extra: true } } };
-    const onError = (cause: ParseResult.ParseError) =>
+    const onError = (cause: Schema.SchemaError) =>
       new ScratchAppError({
         message: "The rendered scratch Landofile at /cache/scratch/app/root/.lando.yml is invalid.",
         operation: "materialize",
@@ -94,10 +87,10 @@ describe("decodeOrFail", () => {
 
   test("preserves RecipeManifest validation error bytes", async () => {
     const input = { name: "empty", services: "nope" };
-    const onError = (cause: ParseResult.ParseError) => {
+    const onError = (cause: Schema.SchemaError) => {
       const issues = issuesWithMessages(cause, "Invalid recipe.yml.");
       return new RecipeManifestValidationError({
-        message: `recipe.yml is invalid: ${issues.join(", ")}.`,
+        message: `recipe.yml is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
         source: "/recipes/empty/recipe.yml",
         issues,
       });
@@ -110,10 +103,10 @@ describe("decodeOrFail", () => {
 
   test("preserves global Landofile validation error bytes", async () => {
     const input = { name: "global", services: { proxy: { type: "compose", x: true } } };
-    const onError = (cause: ParseResult.ParseError) => {
+    const onError = (cause: Schema.SchemaError) => {
       const issues = globalIssues(cause);
       return new LandofileValidationError({
-        message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
+        message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
         file: "/data/global/.lando.dist.yml",
         issues,
       });

@@ -63,14 +63,14 @@ const MSMTP_FAMILY_PINS = {
 } as const;
 
 const MsmtpArtifact = Schema.Struct({
-  file: Schema.String.pipe(Schema.pattern(/^msmtp_[^/]+_(amd64|arm64)\.deb$/u)),
-  sha256: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u)),
-  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.positive()),
-  url: Schema.String.pipe(Schema.startsWith("https://snapshot.debian.org/archive/debian/")),
+  file: Schema.String.pipe(Schema.check(Schema.isPattern(/^msmtp_[^/]+_(amd64|arm64)\.deb$/u))),
+  sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
+  sizeBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  url: Schema.String.pipe(Schema.check(Schema.isStartingWith("https://snapshot.debian.org/archive/debian/"))),
 });
 const MsmtpFamily = Schema.Struct({
-  suite: Schema.Literal("bookworm", "bullseye"),
-  snapshot: Schema.String.pipe(Schema.pattern(/^\d{8}T\d{6}Z$/u)),
+  suite: Schema.Literals(["bookworm", "bullseye"]),
+  snapshot: Schema.String.pipe(Schema.check(Schema.isPattern(/^\d{8}T\d{6}Z$/u))),
   package: Schema.Literal("msmtp"),
   version: Schema.NonEmptyString,
   artifacts: Schema.Struct({ amd64: MsmtpArtifact, arm64: MsmtpArtifact }),

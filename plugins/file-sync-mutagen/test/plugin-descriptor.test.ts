@@ -14,7 +14,7 @@ import {
   ENGINE_ID,
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
-  engine,
+  layer as engine,
   makeFakeMutagenClient,
   makeFileSyncEngine,
   manifest,

@@ -8,7 +8,7 @@ import {
   ROUTE_PRIORITY_WILDCARD_BASE,
   RoutePlan,
 } from "@lando/sdk/schema";
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { makeRouteAccumulator, prioritizeRoutes } from "../../src/planner/route-identity.ts";
 
 const route = (overrides: Partial<RoutePlan> = {}): RoutePlan =>
@@ -30,7 +30,7 @@ test.each(["http", "https"] as const)(
     );
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         accumulator.add(route({ scheme, filters: [{ type: "addPrefix", prefix: "/v2" }] }), {
           key: "proxy.web[0]",
           file: "/app/local.yml",
@@ -38,11 +38,11 @@ test.each(["http", "https"] as const)(
       ),
     );
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) throw new Error("expected conflict");
-    expect(result.left).toBeInstanceOf(RouteInputError);
-    expect(result.left).toMatchObject({ file: "/app/local.yml", key: "proxy.web[0]" });
-    expect(result.left.message).toContain("/app/base.yml:services.web.routes[0]");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) throw new Error("expected conflict");
+    expect(result.failure).toBeInstanceOf(RouteInputError);
+    expect(result.failure).toMatchObject({ file: "/app/local.yml", key: "proxy.web[0]" });
+    expect(result.failure.message).toContain("/app/base.yml:services.web.routes[0]");
   },
 );
 
@@ -91,14 +91,14 @@ test("rejects a different selected backend port for the same listener match", as
   await Effect.runPromise(accumulator.add(first, { key: "routes[0]" }));
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       accumulator.add(route({ endpoint: 8080, backend: { ...first.backend, port: 8080 } }), {
         key: "routes[1]",
       }),
     ),
   );
   // Then
-  expect(Either.isLeft(result)).toBe(true);
+  expect(Result.isFailure(result)).toBe(true);
 });
 
 test("dedupes omitted filters and empty filters, and hostname case", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 
 import { ShellExecError } from "@lando/sdk/errors";
 import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
@@ -44,33 +44,42 @@ const record = (failOnCommand?: string) => ({
 
 const layers = (rec: ReturnType<typeof record>) =>
   Layer.mergeAll(
-    Layer.succeed(ShellRunner, {
-      exec: (command: string) => {
-        rec.commands.push(command);
-        if (rec.failOnCommand === command) {
-          return Effect.fail(new ShellExecError({ message: "open failed", command, exitCode: 1 }));
-        }
-        return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
-      },
-      run: () => Effect.die("nu"),
-      runScript: () => Effect.die("nu"),
-      interactive: () => Effect.die("nu"),
-    }),
-    Layer.succeed(EventService, {
-      publish: (event: { _tag: string; url?: string }) => {
-        rec.events.push({ tag: event._tag, url: event.url ?? "" });
-        return Effect.void;
-      },
-      subscribe: () => Effect.die("nu") as never,
-      subscribeQueue: Effect.die("nu") as never,
-      waitFor: () => Effect.die("nu") as never,
-      waitForAny: () => Effect.die("nu") as never,
-      query: () => Effect.die("nu") as never,
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
-    }),
+    Layer.succeed(
+      ShellRunner,
+      ShellRunner.of({
+        exec: (command: string) => {
+          rec.commands.push(command);
+          if (rec.failOnCommand === command) {
+            return Effect.fail(new ShellExecError({ message: "open failed", command, exitCode: 1 }));
+          }
+          return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
+        },
+        run: () => Effect.die("nu"),
+        runScript: () => Effect.die("nu"),
+        interactive: () => Effect.die("nu"),
+      }),
+    ),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event: { _tag: string; url?: string }) => {
+          rec.events.push({ tag: event._tag, url: event.url ?? "" });
+          return Effect.void;
+        },
+        subscribe: () => Effect.die("nu") as never,
+        subscribeQueue: Effect.die("nu") as never,
+        waitFor: () => Effect.die("nu") as never,
+        waitForAny: () => Effect.die("nu") as never,
+        query: () => Effect.die("nu") as never,
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
+      }),
+    ),
   );
 
 const run = (plan: AppPlan, options: OpenAppOptions, rec: ReturnType<typeof record>) =>
@@ -84,8 +93,8 @@ describe("openForPlan", () => {
     const rec = record();
     const exit = await run(makePlan([], ["web", "db"]), { platform: "linux", env: { DISPLAY: ":0" } }, rec);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         _tag: string;
         message: string;
         services?: string[];
@@ -109,8 +118,8 @@ describe("openForPlan", () => {
 
     // Then: the diagnostic names the real cause and the real way out.
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
         readonly remediation?: string;
@@ -148,8 +157,8 @@ describe("openForPlan", () => {
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
         readonly remediation?: string;
@@ -168,8 +177,8 @@ describe("openForPlan", () => {
     const rec = record();
     const exit = await run(httpsPlan(), { service: "api", platform: "linux", env: { DISPLAY: ":0" } }, rec);
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
         readonly remediation?: string;
@@ -190,8 +199,8 @@ describe("openForPlan", () => {
       rec,
     );
     expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      const err = exit.cause.error as {
+    if (Exit.isFailure(exit)) {
+      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
         readonly _tag: string;
         readonly message: string;
       };

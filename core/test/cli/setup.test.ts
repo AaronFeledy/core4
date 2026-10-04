@@ -22,9 +22,9 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
+import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
@@ -68,14 +68,14 @@ import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
-): Context.Tag.Service<typeof ConfigService> => {
+): Context.Service.Shape<typeof ConfigService> => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
     ...overrides,
   });
   const load = Effect.succeed(config);
-  return { load, get: (key) => Effect.map(load, (c) => c[key]) };
+  return ConfigService.of({ load, get: (key) => Effect.map(load, (c) => c[key]) });
 };
 
 const okProbeFetch = ((_input: string | URL | Request, init?: unknown) => {
@@ -87,16 +87,16 @@ const testDownloader = Effect.runSync(makeTestDownloader());
 const testInteraction = makeTestInteractionService({ answers: { provider: "lando" } });
 
 const buildSetupLayers = (
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
   httpFetch: typeof fetch = okProbeFetch,
 ) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, registry),
-    Layer.succeed(ConfigService, makeConfigService(configOverrides)),
-    Layer.succeed(Downloader, testDownloader.service),
-    Layer.succeed(InteractionService, testInteraction.service),
-    makeHttpClientLive(httpFetch),
+    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
+    Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
+    Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
+    Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
+    httpClientLayerWith({ fetch: httpFetch }),
   );
 
 const testRuntimeProviderRegistry = {
@@ -106,28 +106,32 @@ const testRuntimeProviderRegistry = {
 };
 
 const buildSetupLayersWithHostIntegrations = (
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   services: {
-    readonly ca: Context.Tag.Service<typeof CertificateAuthority>;
-    readonly proxy: Context.Tag.Service<typeof RouterService>;
-    readonly ssh: Context.Tag.Service<typeof SshService>;
-    readonly fileSync: Context.Tag.Service<typeof FileSyncEngine>;
+    readonly ca: Context.Service.Shape<typeof CertificateAuthority>;
+    readonly proxy: Context.Service.Shape<typeof RouterService>;
+    readonly ssh: Context.Service.Shape<typeof SshService>;
+    readonly fileSync: Context.Service.Shape<typeof FileSyncEngine>;
   },
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
 ) =>
   Layer.mergeAll(
     buildSetupLayers(registry, configOverrides),
-    Layer.succeed(CertificateAuthority, services.ca),
-    Layer.succeed(RouterService, services.proxy),
-    Layer.succeed(SshService, services.ssh),
-    Layer.succeed(FileSyncEngine, services.fileSync),
+    Layer.succeed(CertificateAuthority, CertificateAuthority.of(services.ca)),
+    Layer.succeed(RouterService, RouterService.of(services.proxy)),
+    Layer.succeed(SshService, SshService.of(services.ssh)),
+    Layer.succeed(FileSyncEngine, FileSyncEngine.of(services.fileSync)),
   );
 
 const buildSetupLayersWithPrivilege = (
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
-  privilege: Context.Tag.Service<typeof PrivilegeService>,
+  registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
+  privilege: Context.Service.Shape<typeof PrivilegeService>,
   configOverrides: Partial<typeof GlobalConfig.Encoded> = {},
-) => Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
+) =>
+  Layer.mergeAll(
+    buildSetupLayers(registry, configOverrides),
+    Layer.succeed(PrivilegeService, PrivilegeService.of(privilege)),
+  );
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
@@ -446,11 +450,10 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: () =>
-        Effect.gen(function* () {
-          const trust = yield* Effect.serviceOption(NetworkTrust);
-          observed.push(trust._tag === "Some" ? trust.value : undefined);
-        }),
+      setup: Effect.fnUntraced(function* () {
+        const trust = yield* Effect.serviceOption(NetworkTrust);
+        observed.push(trust._tag === "Some" ? trust.value : undefined);
+      }),
     };
     const registry = {
       list: Effect.succeed([ProviderId.make("lando")]),
@@ -992,7 +995,10 @@ describe("meta:setup command", () => {
                 },
                 { userDataRoot },
               ),
-              Layer.succeed(CertificateAuthorityResolver, { resolve: Effect.fail(ambiguous) }),
+              Layer.succeed(
+                CertificateAuthorityResolver,
+                CertificateAuthorityResolver.of({ resolve: Effect.fail(ambiguous) }),
+              ),
             ),
           ),
         ),
@@ -1000,7 +1006,7 @@ describe("meta:setup command", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected SetupStepFailedError");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected SetupStepFailedError");
       expect(failure.value).toBeInstanceOf(SetupStepFailedError);
@@ -1122,13 +1128,13 @@ describe("meta:setup command", () => {
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     };
-    const ca = {
+    const ca = CertificateAuthority.of({
       ...makeTestCertificateAuthority(),
       setup: (options: unknown) =>
         Effect.sync(() => {
           caSetupOptions.push(options);
         }),
-    };
+    });
 
     await Effect.runPromise(
       setupSpec.run({ installDir: "/opt/lando" }).pipe(
@@ -1262,7 +1268,7 @@ describe("meta:setup command", () => {
         expect(elevations).toBe(reason === "nonzero exit" ? 1 : 0);
         expect(Exit.isFailure(exit)).toBe(true);
         if (!Exit.isFailure(exit)) throw new Error("expected shell profile integration failure");
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         expect(failure._tag === "Some" ? (failure.value as { readonly _tag?: string })._tag : undefined).toBe(
           "ShellProfileIntegrationError",
@@ -1760,7 +1766,7 @@ describe("meta:setup command", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected setup network trust failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     const error = failure.value as {
@@ -1822,12 +1828,12 @@ describe("meta:setup command", () => {
       defaultSetupNetworkTrustProbe({
         proxy: { https: "http://proxy.example:8080", noProxy: [], injectIntoServices: false },
         ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
-      }).pipe(Effect.provide(makeHttpClientLive(probeFetch))),
+      }).pipe(Effect.provide(httpClientLayerWith({ fetch: probeFetch }))),
     );
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected proxy authentication failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     expect(failure.value.kind).toBe("proxy-authentication");
@@ -1844,7 +1850,7 @@ describe("meta:setup command", () => {
       defaultSetupNetworkTrustProbe({
         proxy: { noProxy: [], injectIntoServices: false },
         ca: { trustHost: false, certs: [], loadedCerts: [], injectIntoServices: true },
-      }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
+      }).pipe(Effect.provide(httpClientLayerWith({ fetch: probeFetch, systemCaPems: () => [] }))),
     );
 
     expect(probeCalls).toBe(1);
@@ -1861,7 +1867,7 @@ describe("meta:setup command", () => {
       defaultSetupNetworkTrustProbe({
         proxy: { noProxy: [], injectIntoServices: false },
         ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
-      }).pipe(Effect.provide(makeHttpClientLive(probeFetch, () => []))),
+      }).pipe(Effect.provide(httpClientLayerWith({ fetch: probeFetch, systemCaPems: () => [] }))),
     );
 
     expect(probeCalls).toBe(0);
@@ -1905,7 +1911,7 @@ describe("meta:setup command", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("expected proxy authentication failure");
-    const failure = Cause.failureOption(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
     expect(failure._tag).toBe("Some");
     if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
     const error = failure.value as {
@@ -1950,7 +1956,7 @@ describe("meta:setup command", () => {
 
       expect(exit._tag).toBe("Failure");
       if (exit._tag !== "Failure") throw new Error("expected failure");
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag !== "Some") throw new Error("expected a typed failure");
       const error = failure.value as {
@@ -2177,7 +2183,7 @@ describe("meta:setup command", () => {
 
         expect(exit._tag).toBe("Failure");
         if (exit._tag !== "Failure") throw new Error("expected failure");
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag !== "Some") throw new Error("expected a typed failure");
         const error = failure.value as {
@@ -2313,7 +2319,7 @@ describe("meta:setup command", () => {
         const hostProxy = yield* HostProxyService;
         yield* hostProxy.setup({ mode: "none" });
         return yield* hostProxy.status();
-      }).pipe(Effect.provide(HostProxyServiceDisabledLive)),
+      }).pipe(Effect.provide(HostProxyServiceLayer.layerDisabled)),
     );
 
     expect(setupCalls).toBe(1);
@@ -2429,7 +2435,7 @@ describe("meta:setup command", () => {
   describe("provider selection precedence", () => {
     const recordingPrompter = (chosen: string): { prompter: InteractionServiceShape; calls: number } => {
       const state = { calls: 0 };
-      const prompter: InteractionServiceShape = {
+      const prompter: InteractionServiceShape = InteractionService.of({
         id: "test",
         isInteractive: Effect.succeed(true),
         prompt: () => Effect.die("unused"),
@@ -2441,7 +2447,7 @@ describe("meta:setup command", () => {
             return chosen as never;
           }),
         secret: () => Effect.die("unused"),
-      };
+      });
       return {
         prompter,
         get calls() {
@@ -2495,7 +2501,7 @@ describe("meta:setup command", () => {
 
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBe(cancellation);
       }
@@ -2677,14 +2683,14 @@ describe("meta:setup command", () => {
             .pipe(
               Effect.provide(
                 Layer.mergeAll(
-                  Layer.succeed(RuntimeProviderRegistry, registry),
+                  Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
                   Layer.succeed(
                     ConfigService,
-                    makeConfigService({ defaultProviderId: ProviderId.make("docker") }),
+                    ConfigService.of(makeConfigService({ defaultProviderId: ProviderId.make("docker") })),
                   ),
-                  Layer.succeed(Downloader, testDownloader.service),
-                  Layer.succeed(InteractionService, recorder.prompter),
-                  makeHttpClientLive(okProbeFetch),
+                  Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
+                  Layer.succeed(InteractionService, InteractionService.of(recorder.prompter)),
+                  httpClientLayerWith({ fetch: okProbeFetch }),
                 ),
               ),
             ),

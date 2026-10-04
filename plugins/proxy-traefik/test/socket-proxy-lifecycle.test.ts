@@ -24,7 +24,7 @@ type RunCall = {
 const makeRunner = (
   handler: (input: ProcessSpawnOptions) => ProcessResult = () => ok(),
 ): {
-  readonly service: Context.Tag.Service<typeof ProcessRunner>;
+  readonly service: Context.Service.Shape<typeof ProcessRunner>;
   readonly calls: () => ReadonlyArray<RunCall>;
 } => {
   const calls: RunCall[] = [];
@@ -49,7 +49,7 @@ const makeRunner = (
 const makePrivilege = (
   result: ProcessResult = ok(),
 ): {
-  readonly service: Context.Tag.Service<typeof PrivilegeService>;
+  readonly service: Context.Service.Shape<typeof PrivilegeService>;
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
 } => {
   const calls: Array<ReadonlyArray<string>> = [];

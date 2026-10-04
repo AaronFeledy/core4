@@ -44,10 +44,10 @@ const FRAMEWORK_PRESETS: Record<SupportedGoFramework, FrameworkPreset> = {
 };
 
 const GoFeatureConfigSchema = Schema.Struct({
-  framework: Schema.Literal(...SUPPORTED_GO_FRAMEWORKS),
-  version: Schema.Literal(...SUPPORTED_GO_VERSIONS),
+  framework: Schema.Literals([...SUPPORTED_GO_FRAMEWORKS]),
+  version: Schema.Literals([...SUPPORTED_GO_VERSIONS]),
   port: Schema.Number,
-  defaultCommand: Schema.optional(Schema.Union(Schema.Null, Schema.Array(Schema.String))),
+  defaultCommand: Schema.optionalKey(Schema.Union([Schema.Null, Schema.Array(Schema.String)])),
 });
 type GoFeatureConfig = typeof GoFeatureConfigSchema.Type;
 
@@ -137,7 +137,7 @@ const applyGoFeature = (ctx: ServiceFeatureContext): void => {
 
 export const goServiceFeature: ServiceFeatureDefinition = {
   id: GO_FEATURE_ID,
-  schema: GoFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: GoFeatureConfigSchema as Schema.Codec<unknown>,
   priority: GO_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

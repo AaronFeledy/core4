@@ -32,12 +32,12 @@ import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const encoder = new TextEncoder();
 
-const noopTelemetry = {
+const noopTelemetry = Telemetry.of({
   enabled: false,
   record: () => Effect.void,
-} satisfies typeof Telemetry.Service;
+} satisfies typeof Telemetry.Service);
 
-const noopProcessRunner = {
+const noopProcessRunner = ProcessRunner.of({
   run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   stream: () => {
     throw new Error("stream is not used by update manifest tests");
@@ -45,7 +45,7 @@ const noopProcessRunner = {
   streamWithExit: () => {
     throw new Error("streamWithExit is not used by update manifest tests");
   },
-} satisfies typeof ProcessRunner.Service;
+} satisfies typeof ProcessRunner.Service);
 
 const hex = "a".repeat(64);
 let updateStateRoot = "";
@@ -223,7 +223,7 @@ const runUpdate = (options: Parameters<typeof update>[0]) =>
 const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<string | undefined> => {
   const exit = await Effect.runPromiseExit(effect);
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag !== "Some") return undefined;
   const value = failure.value;
   return typeof value === "object" && value !== null && "_tag" in value
@@ -234,7 +234,7 @@ const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<stri
 const failureValue = async (effect: Effect.Effect<unknown, unknown>): Promise<unknown> => {
   const exit = await Effect.runPromiseExit(effect);
   if (!Exit.isFailure(exit)) return undefined;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   return failure._tag === "Some" ? failure.value : undefined;
 };
 
@@ -447,7 +447,7 @@ describe("update signed manifest", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some" && failure.value instanceof UpdateMinimumVersionError) {
         const minimumFailure = failure.value;
@@ -674,7 +674,7 @@ describe("update signed manifest", () => {
       readonly argv: ReadonlyArray<string>;
       readonly env: Record<string, string>;
     }> = [];
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probeCommands.push(input.cmd);
@@ -682,7 +682,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
     const stateStore = makeTestStateStore();
     const handoff = makeUpdateHandoff(stateStore.service);
 
@@ -825,7 +825,7 @@ describe("update signed manifest", () => {
       readonly backupPath: string;
       readonly manualFallback: string;
     }> = [];
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probes.push(input.cmd);
@@ -833,7 +833,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
 
     const result = await Effect.runPromise(
       update({
@@ -1011,7 +1011,7 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
     const probeCommands: string[] = [];
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probeCommands.push(input.cmd);
@@ -1019,7 +1019,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
 
     const tag = await failureTag(
       update({
@@ -1058,7 +1058,7 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
     const probeCommands: string[] = [];
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probeCommands.push(input.cmd);
@@ -1066,7 +1066,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
 
     const tag = await failureTag(
       update({
@@ -1191,7 +1191,7 @@ describe("update signed manifest", () => {
     const probes: string[] = [];
     const execs: string[] = [];
     const updateStatePath = join(root, "state.json");
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: (input: Parameters<typeof ProcessRunner.Service.run>[0]) =>
         Effect.sync(() => {
           probes.push(input.cmd);
@@ -1205,7 +1205,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
 
     const failure = await failureValue(
       update({
@@ -1279,7 +1279,7 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
     let probeCount = 0;
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: () =>
         Effect.sync(() => {
           probeCount += 1;
@@ -1289,7 +1289,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
 
     const failure = await failureValue(
       update({
@@ -1340,7 +1340,7 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
     let probeCount = 0;
-    const processRunner = {
+    const processRunner = ProcessRunner.of({
       run: () =>
         Effect.sync(() => {
           probeCount += 1;
@@ -1350,7 +1350,7 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
       streamWithExit: noopProcessRunner.streamWithExit,
-    } satisfies typeof ProcessRunner.Service;
+    } satisfies typeof ProcessRunner.Service);
 
     const failure = await failureValue(
       update({

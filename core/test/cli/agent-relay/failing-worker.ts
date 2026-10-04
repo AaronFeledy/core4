@@ -16,11 +16,14 @@ const provider = {
     ),
 };
 void runAgentRelayWorkerProcess({
-  runtime: Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  }),
+  runtime: Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  ),
 }).catch(() => {
   process.exitCode = 1;
 });

@@ -22,7 +22,7 @@ import {
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("mailpit-app");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-10-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"),
   source: "provider-podman/image-pull-provider.test.ts",
   runtime: 4 as const,
 };

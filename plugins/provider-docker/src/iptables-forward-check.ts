@@ -36,7 +36,7 @@ const systemReaders: IptablesForwardReaders = {
 
 const optionalRead = (read: () => Promise<string | undefined>): Effect.Effect<string | undefined, never> =>
   Effect.tryPromise({ try: read, catch: () => undefined }).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.catch(() => Effect.succeed(undefined)),
   );
 
 const hasDropPolicy = (output: string | undefined): boolean => {
@@ -55,52 +55,51 @@ export const makeIptablesForwardCheck = (
   readers: IptablesForwardReaders = systemReaders,
 ): PluginDoctorCheckContribution => ({
   id: "docker-iptables-forward-mixed",
-  run: (input) =>
-    Effect.gen(function* () {
-      // Only check on Linux (not WSL, not macOS, not Windows)
-      if (input.platform === "wsl" || input.platform === "darwin" || input.platform === "win32") return [];
-      if (input.platform !== "linux") return [];
+  run: Effect.fn("DockerIptablesForwardCheck.run")(function* (input) {
+    // Only check on Linux (not WSL, not macOS, not Windows)
+    if (input.platform === "wsl" || input.platform === "darwin" || input.platform === "win32") return [];
+    if (input.platform !== "linux") return [];
 
-      const legacyOutput = yield* optionalRead(readers.readIptablesLegacyForward);
-      const nftOutput = yield* optionalRead(readers.readIptablesNftForward);
+    const legacyOutput = yield* optionalRead(readers.readIptablesLegacyForward);
+    const nftOutput = yield* optionalRead(readers.readIptablesNftForward);
 
-      // Check iptables configurations
-      const legacyHasDropPolicy = hasDropPolicy(legacyOutput);
-      const legacyHasLandoRules = hasLandoRules(legacyOutput);
-      const nftHasLandoRules = hasLandoRules(nftOutput);
+    // Check iptables configurations
+    const legacyHasDropPolicy = hasDropPolicy(legacyOutput);
+    const legacyHasLandoRules = hasLandoRules(legacyOutput);
+    const nftHasLandoRules = hasLandoRules(nftOutput);
 
-      // Problem: legacy has DROP policy, legacy doesn't have lando rules, but nft does
-      // This means Docker is programming nft but packets hit legacy first (including docker0-only case)
-      // The issue description specifically notes: "legacy FORWARD DROP with only docker0 rules"
-      if (legacyHasDropPolicy && !legacyHasLandoRules && nftHasLandoRules) {
-        const report = {
-          name: "docker-iptables-forward-mixed",
-          status: "warn",
-          severity: "warn",
-          runtimeStatus: "mixed iptables-legacy and iptables-nft detected",
-          context: {
-            platform: "linux",
-            legacyPolicy: "DROP",
-            issue: "iptables-legacy FORWARD policy blocks Docker networking (docker0-only or no Lando rules)",
+    // Problem: legacy has DROP policy, legacy doesn't have lando rules, but nft does
+    // This means Docker is programming nft but packets hit legacy first (including docker0-only case)
+    // The issue description specifically notes: "legacy FORWARD DROP with only docker0 rules"
+    if (legacyHasDropPolicy && !legacyHasLandoRules && nftHasLandoRules) {
+      const report = {
+        name: "docker-iptables-forward-mixed",
+        status: "warn",
+        severity: "warn",
+        runtimeStatus: "mixed iptables-legacy and iptables-nft detected",
+        context: {
+          platform: "linux",
+          legacyPolicy: "DROP",
+          issue: "iptables-legacy FORWARD policy blocks Docker networking (docker0-only or no Lando rules)",
+        },
+        solutions: [
+          {
+            kind: "manual",
+            description:
+              "Set iptables-legacy FORWARD policy to ACCEPT for the current session. This allows Docker container networking to work.",
+            command: "sudo iptables-legacy -P FORWARD ACCEPT",
           },
-          solutions: [
-            {
-              kind: "manual",
-              description:
-                "Set iptables-legacy FORWARD policy to ACCEPT for the current session. This allows Docker container networking to work.",
-              command: "sudo iptables-legacy -P FORWARD ACCEPT",
-            },
-            {
-              kind: "manual",
-              description:
-                "Persist the setting by adding iptables-legacy rules to your firewall configuration, or switch to using only iptables-nft across the system.",
-            },
-          ],
-        } satisfies PluginDoctorReport;
+          {
+            kind: "manual",
+            description:
+              "Persist the setting by adding iptables-legacy rules to your firewall configuration, or switch to using only iptables-nft across the system.",
+          },
+        ],
+      } satisfies PluginDoctorReport;
 
-        return [report];
-      }
+      return [report];
+    }
 
-      return [];
-    }),
+    return [];
+  }),
 });

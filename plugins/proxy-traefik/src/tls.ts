@@ -37,7 +37,7 @@ export const removeAppCertificates = (dependencies: TraefikProxyDependencies, ap
   });
 };
 
-export const ensureTlsFiles = (
+export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function* (
   dependencies: TraefikProxyDependencies,
   input: {
     readonly app: AppId;
@@ -46,61 +46,59 @@ export const ensureTlsFiles = (
     readonly refreshAppCertificate: boolean;
     readonly refreshDefaultCertificate: boolean;
   },
-): Effect.Effect<TraefikTlsFiles, unknown> =>
-  Effect.gen(function* () {
-    const defaultFiles = defaultCertificateFiles(dependencies.paths, input.defaultDomain);
-    const appFiles = appCertificateFiles(dependencies.paths, input.app);
-    yield* dependencies.fileSystem.mkdir(certificateDir(dependencies.paths));
+) {
+  const defaultFiles = defaultCertificateFiles(dependencies.paths, input.defaultDomain);
+  const appFiles = appCertificateFiles(dependencies.paths, input.app);
+  yield* dependencies.fileSystem.mkdir(certificateDir(dependencies.paths));
 
-    const hasDefaultCertificate =
-      (yield* dependencies.fileSystem.exists(defaultFiles.cert)) &&
-      (yield* dependencies.fileSystem.exists(defaultFiles.key));
-    if (input.refreshDefaultCertificate || !hasDefaultCertificate) {
-      const issued = yield* dependencies.certificateAuthority.issueCert({
-        cn: `*.${input.defaultDomain}`,
-        sans: [`*.${input.defaultDomain}`, input.defaultDomain, "traefik.lndo.site"],
-      });
-      yield* copyCertificate(dependencies, issued.certPath, defaultFiles.cert);
-      yield* copyPrivateKey(dependencies, issued.keyPath, defaultFiles.key);
-    }
+  const hasDefaultCertificate =
+    (yield* dependencies.fileSystem.exists(defaultFiles.cert)) &&
+    (yield* dependencies.fileSystem.exists(defaultFiles.key));
+  if (input.refreshDefaultCertificate || !hasDefaultCertificate) {
+    const issued = yield* dependencies.certificateAuthority.issueCert({
+      cn: `*.${input.defaultDomain}`,
+      sans: [`*.${input.defaultDomain}`, input.defaultDomain, "traefik.lndo.site"],
+    });
+    yield* copyCertificate(dependencies, issued.certPath, defaultFiles.cert);
+    yield* copyPrivateKey(dependencies, issued.keyPath, defaultFiles.key);
+  }
 
-    const defaultNames = defaultCertificateNames(input.defaultDomain);
-    yield* dependencies.fileSystem.writeAtomic(
-      defaultTlsFile(dependencies.paths),
-      renderTraefikDefaultTlsConfig({
-        certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
-        keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
-      }),
-    );
+  const defaultNames = defaultCertificateNames(input.defaultDomain);
+  yield* dependencies.fileSystem.writeAtomic(
+    defaultTlsFile(dependencies.paths),
+    renderTraefikDefaultTlsConfig({
+      certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
+      keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
+    }),
+  );
 
-    const hasAppCertificate =
-      (yield* dependencies.fileSystem.exists(appFiles.cert)) &&
-      (yield* dependencies.fileSystem.exists(appFiles.key));
-    if (input.refreshAppCertificate || !hasAppCertificate) {
-      const issued = yield* dependencies.certificateAuthority.issueCert({
-        cn: input.hostnames[0] ?? input.defaultDomain,
-        sans: input.hostnames,
-      });
-      yield* copyCertificate(dependencies, issued.certPath, appFiles.cert);
-      yield* copyPrivateKey(dependencies, issued.keyPath, appFiles.key);
-    }
+  const hasAppCertificate =
+    (yield* dependencies.fileSystem.exists(appFiles.cert)) &&
+    (yield* dependencies.fileSystem.exists(appFiles.key));
+  if (input.refreshAppCertificate || !hasAppCertificate) {
+    const issued = yield* dependencies.certificateAuthority.issueCert({
+      cn: input.hostnames[0] ?? input.defaultDomain,
+      sans: input.hostnames,
+    });
+    yield* copyCertificate(dependencies, issued.certPath, appFiles.cert);
+    yield* copyPrivateKey(dependencies, issued.keyPath, appFiles.key);
+  }
 
-    const encodedApp = encodeURIComponent(String(input.app));
-    return {
-      certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.crt`,
-      keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.key`,
-    };
-  });
+  const encodedApp = encodeURIComponent(String(input.app));
+  return {
+    certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.crt`,
+    keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.key`,
+  } satisfies TraefikTlsFiles;
+});
 
-export const removeAllCertificates = (dependencies: TraefikProxyDependencies) =>
-  Effect.gen(function* () {
-    const directory = certificateDir(dependencies.paths);
-    if (!(yield* dependencies.fileSystem.exists(directory))) return;
-    const files = yield* dependencies.fileSystem.readDir(directory);
-    yield* Effect.forEach(
-      files,
-      (file) => dependencies.fileSystem.remove(joinFor(dependencies.paths)(directory, file)),
-      { discard: true },
-    );
-    yield* dependencies.fileSystem.remove(directory);
-  });
+export const removeAllCertificates = Effect.fnUntraced(function* (dependencies: TraefikProxyDependencies) {
+  const directory = certificateDir(dependencies.paths);
+  if (!(yield* dependencies.fileSystem.exists(directory))) return;
+  const files = yield* dependencies.fileSystem.readDir(directory);
+  yield* Effect.forEach(
+    files,
+    (file) => dependencies.fileSystem.remove(joinFor(dependencies.paths)(directory, file)),
+    { discard: true },
+  );
+  yield* dependencies.fileSystem.remove(directory);
+});

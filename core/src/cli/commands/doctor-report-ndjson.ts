@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
@@ -52,7 +52,7 @@ const selfCheckLine = (check: DoctorSelfCheck): string =>
   });
 
 export interface DoctorReportNdjsonOptions {
-  readonly now?: Date;
+  readonly now?: Date | DateTime.DateTime;
 }
 
 const checkLinesFromNdjson = (ndjson: string): ReadonlyArray<string> =>
@@ -65,8 +65,9 @@ export const renderDoctorReportAsNdjson = (
   report: DoctorReport,
   options: DoctorReportNdjsonOptions = {},
 ): string => {
-  const timestamp = (options.now ?? new Date()).toISOString();
-  const now = new Date(timestamp);
+  const instant = options.now === undefined ? DateTime.nowUnsafe() : DateTime.makeUnsafe(options.now);
+  const timestamp = DateTime.formatIso(instant);
+  const now = DateTime.toDateUtc(instant);
   const lines: string[] = [];
   lines.push(
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),

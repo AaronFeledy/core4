@@ -6,6 +6,8 @@
  * `tooling.test.cmds[0]`. All mutations are immutable (return a new tree).
  */
 
+import { Predicate } from "effect";
+
 export type PathSegment =
   | { readonly kind: "key"; readonly key: string }
   | { readonly kind: "index"; readonly index: number };
@@ -39,9 +41,6 @@ export const parsePathSegments = (path: string): ReadonlyArray<PathSegment> | un
   return segments.length === 0 ? undefined : segments;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
 /** Read the value at a dot/bracket path, or `undefined` if any segment is absent. */
 export const getAtPath = (root: unknown, path: string): unknown => {
   const segments = parsePathSegments(path);
@@ -49,7 +48,7 @@ export const getAtPath = (root: unknown, path: string): unknown => {
   let cursor: unknown = root;
   for (const segment of segments) {
     if (segment.kind === "key") {
-      if (!isRecord(cursor)) return undefined;
+      if (!Predicate.isObject(cursor)) return undefined;
       cursor = cursor[segment.key];
     } else {
       if (!Array.isArray(cursor)) return undefined;
@@ -61,7 +60,7 @@ export const getAtPath = (root: unknown, path: string): unknown => {
 
 const cloneContainer = (value: unknown, wantArray: boolean): unknown[] | Record<string, unknown> => {
   if (wantArray) return Array.isArray(value) ? [...value] : [];
-  return isRecord(value) ? { ...value } : {};
+  return Predicate.isObject(value) ? { ...value } : {};
 };
 
 const setRecursive = (
@@ -99,7 +98,8 @@ const unsetRecursive = (
   if (segment === undefined) return { next: container, changed: false };
   const isLast = cursor === segments.length - 1;
   if (segment.kind === "key") {
-    if (!isRecord(container) || !(segment.key in container)) return { next: container, changed: false };
+    if (!Predicate.isObject(container) || !(segment.key in container))
+      return { next: container, changed: false };
     const clone = { ...container };
     if (isLast) {
       delete clone[segment.key];

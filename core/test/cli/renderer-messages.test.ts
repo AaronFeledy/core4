@@ -10,10 +10,10 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive } from "@lando/engine/services/event-service";
+import * as LandoEventService from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { makeJsonRendererLive, makePlainRendererLive } from "@lando/renderer/runtime";
+import * as RendererRuntime from "@lando/renderer/runtime";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
@@ -186,7 +186,7 @@ describe("lando renderer: routine image pull frames", () => {
       yield* events.publish(failure);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdoutLines()).toEqual([
@@ -205,7 +205,7 @@ describe("lando renderer: message events (currently plain-aliased)", () => {
       yield* events.publish(errorEventWithRemediation);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const lines = io.stdoutLines();
@@ -229,7 +229,7 @@ describe("plain renderer Layer: message events through EventService", () => {
       yield* events.publish(errorEventWithoutRemediation);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makePlainRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const lines = io.stdoutLines();
@@ -251,7 +251,7 @@ describe("json renderer Layer: message events through EventService", () => {
       yield* events.publish(errorEventWithRemediation);
       yield* Effect.sleep("20 millis");
     });
-    const layer = Layer.provideMerge(makeJsonRendererLive(io), EventServiceLive);
+    const layer = Layer.provideMerge(RendererRuntime.layerJson(io), LandoEventService.layer);
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     expect(io.stdout()).toBe("");
@@ -283,7 +283,7 @@ describe("exit-code contract: message events do not mutate process.exitCode", ()
         yield* Effect.sleep("20 millis");
         return 0;
       });
-      const layer = Layer.provideMerge(makePlainRendererLive(io), EventServiceLive);
+      const layer = Layer.provideMerge(RendererRuntime.layerPlain(io), LandoEventService.layer);
       const result = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
       expect(result).toBe(0);
       expect(process.exitCode).toBe(sentinel);

@@ -10,19 +10,19 @@ import { RendererActionId, RendererKeyChord } from "../schema/keymap.ts";
  * surface share a chord. Per-value chord failures remain ordinary ConfigError.
  */
 export class KeymapConflictError extends Schema.TaggedError<KeymapConflictError>()("KeymapConflictError", {
-  surface: Schema.Literal("task-tree", "prompt", "viewer", "keymap").annotations({
+  surface: Schema.Literals(["task-tree", "prompt", "viewer", "keymap"]).annotate({
     description: "Input surface where the chord collision occurred.",
   }),
-  chord: RendererKeyChord.annotations({
+  chord: RendererKeyChord.annotate({
     description: "Shared chord that collides for two actions on the same surface.",
   }),
-  actions: Schema.Tuple(RendererActionId, RendererActionId).annotations({
+  actions: Schema.Tuple([RendererActionId, RendererActionId]).annotate({
     description: "Deterministically sorted pair of colliding action ids.",
   }),
-  message: Schema.String.annotations({
+  message: Schema.String.annotate({
     description: "Human-readable description of the same-surface chord collision.",
   }),
-  remediation: Schema.String.annotations({
+  remediation: Schema.String.annotate({
     description: "Actionable guidance to remove or change one same-surface binding.",
   }),
 }) {}

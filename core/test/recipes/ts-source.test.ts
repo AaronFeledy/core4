@@ -30,7 +30,7 @@ const runResolve = async (ref: string, cwd: string) => Effect.runPromiseExit(res
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected tagged failure");
   return failure.value;
@@ -149,9 +149,11 @@ describe("resolveRecipeRef — programmatic recipe.ts", () => {
         expect(failure.source).toBe(join(recipeDir, "recipe.ts"));
         expect(failure.message).toContain("recipe.ts is invalid");
         expect(failure.message).not.toContain("recipe.yml is invalid");
-        expect(failure.issues.some((issue) => issue.includes("framework") && issue.includes("choices"))).toBe(
-          true,
-        );
+        expect(
+          failure.issues.some(
+            (issue) => issue.message.includes("framework") && issue.message.includes("choices"),
+          ),
+        ).toBe(true);
       }
     });
   });
@@ -175,7 +177,7 @@ describe("resolveRecipeRef — programmatic recipe.ts", () => {
       expect(failure).toBeInstanceOf(RecipeManifestValidationError);
       if (failure instanceof RecipeManifestValidationError) {
         expect(failure.message).toContain("one or the other");
-        expect(failure.issues.join(" ")).toContain("mutually exclusive");
+        expect(failure.issues.map((issue) => issue.message).join(" ")).toContain("mutually exclusive");
       }
     });
   });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { RouteInputError } from "@lando/sdk/errors";
 import type { RouteInput } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 import { normalizeRoute, normalizeRoutes, parseRouteShorthand } from "../src/route-normalize.ts";
 
 describe("route normalization", () => {
@@ -32,7 +32,7 @@ describe("route normalization", () => {
     // When
     const result = parseRouteShorthand(text);
     // Then
-    expect(result).toEqual(Either.right(expected));
+    expect(result).toEqual(Result.succeed(expected));
   });
 
   test.each(["*.app.lndo.site", "*-app.lndo.site", "wild.*.app.lndo.site", "a**b.*x*.site"])(
@@ -42,7 +42,7 @@ describe("route normalization", () => {
       // When
       const result = parseRouteShorthand(hostname);
       // Then
-      expect(result).toEqual(Either.right({ hostname, filters: [] }));
+      expect(result).toEqual(Result.succeed({ hostname, filters: [] }));
     },
   );
 
@@ -61,7 +61,7 @@ describe("route normalization", () => {
       const result = normalizeRoute(route, { keyPath: "services.web.routes[0]" });
       // Then
       expect(result).toEqual(
-        Either.right({ ...route, filters: route.filters ?? [], source: { key: "services.web.routes[0]" } }),
+        Result.succeed({ ...route, filters: route.filters ?? [], source: { key: "services.web.routes[0]" } }),
       );
     },
   );
@@ -72,8 +72,8 @@ describe("route normalization", () => {
     // When
     const result = parseRouteShorthand(text);
     // Then
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(Object.hasOwn(result.right, "scheme")).toBe(false);
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) expect(Object.hasOwn(result.success, "scheme")).toBe(false);
   });
 
   test.each([
@@ -107,12 +107,12 @@ describe("route normalization", () => {
       // When
       const result = normalizeRoute(route, ctx);
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(result.left).toBeInstanceOf(RouteInputError);
-        expect(result.left).toMatchObject({ key: ctx.keyPath, file: ctx.file });
-        expect(result.left.message.length).toBeGreaterThan(0);
-        expect(result.left.remediation.length).toBeGreaterThan(0);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure).toBeInstanceOf(RouteInputError);
+        expect(result.failure).toMatchObject({ key: ctx.keyPath, file: ctx.file });
+        expect(result.failure.message.length).toBeGreaterThan(0);
+        expect(result.failure.remediation.length).toBeGreaterThan(0);
       }
     },
   );
@@ -123,10 +123,10 @@ describe("route normalization", () => {
     // When
     const result = normalizeRoutes(routes, { keyPath: "proxy.web" });
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(result.left.key).toBe("proxy.web[1]");
-      expect(result.left.file).toBeUndefined();
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.key).toBe("proxy.web[1]");
+      expect(result.failure.file).toBeUndefined();
     }
   });
 
@@ -137,7 +137,7 @@ describe("route normalization", () => {
     const result = normalizeRoutes(routes, { keyPath: "services.web.routes" });
     // Then
     expect(result).toEqual(
-      Either.right([
+      Result.succeed([
         { hostname: "app", endpoint: 1, filters: [], source: { key: "services.web.routes[0]" } },
         { hostname: "app", endpoint: 65535, filters: [], source: { key: "services.web.routes[1]" } },
       ]),

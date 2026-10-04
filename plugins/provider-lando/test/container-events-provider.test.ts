@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 
 import { getContainerDiedEvents, makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
@@ -12,7 +12,7 @@ const diedEvent = {
   OOMKilled: true,
   Actor: { Attributes: { name: "lando-myapp-web", "dev.lando.app": "myapp" } },
 };
-const oomEventsLive = liveIntegrationEligibility([
+const oomEventsEligibility = liveIntegrationEligibility([
   {
     available: process.env.LANDO_TEST_OOM_EVENTS === "1",
     reason: "LANDO_TEST_OOM_EVENTS=1 is required",
@@ -40,10 +40,10 @@ describe("provider-lando container died event provider surface", () => {
     expect(payloads).toEqual([diedEvent]);
   });
 
-  test.skipIf(!oomEventsLive.available)(
+  test.skipIf(!oomEventsEligibility.available)(
     liveIntegrationTestName(
       "collects a live OOMKilled Podman died event for doctor when explicitly enabled",
-      oomEventsLive,
+      oomEventsEligibility,
     ),
     async () => {
       const socketPath = resolveLiveProviderSocket()?.socketPath;
@@ -51,7 +51,7 @@ describe("provider-lando container died event provider surface", () => {
       const api = makePodmanApiClient(socketPath ?? "");
       const request = api.request;
       if (request === undefined) throw new Error("missing request client");
-      const name = `lando-us436-oom-${Date.now()}`;
+      const name = `lando-us436-oom-${Effect.runSync(Clock.currentTimeMillis)}`;
 
       try {
         const created = await Effect.runPromise(
@@ -96,10 +96,10 @@ describe("provider-lando container died event provider surface", () => {
         expect(serialized).toMatch(/OOMKilled|oom/i);
       } finally {
         await Effect.runPromise(
-          Effect.either(request({ method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` })),
+          Effect.result(request({ method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` })),
         );
         await Effect.runPromise(
-          Effect.either(
+          Effect.result(
             request({ method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }),
           ),
         );

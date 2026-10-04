@@ -27,7 +27,7 @@ const serviceName = ServiceName.make("web");
 const containerName = "lando-exec-stdin-app-web";
 const createPath = `/containers/${containerName}/exec` as const;
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
   source: "provider-docker/exec-stdin.test.ts",
   runtime: 4 as const,
 };

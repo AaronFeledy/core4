@@ -22,7 +22,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("ca-build-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-30T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-30T00:00:00Z"),
   source: "image-build-ca.test.ts",
   runtime: 4 as const,
 };
@@ -65,7 +65,7 @@ const service = (
   type: "node",
   provider: providerId,
   primary: true,
-  artifact,
+  ...(artifact === undefined ? {} : { artifact }),
   environment: {},
   mounts: [],
   storage: [],

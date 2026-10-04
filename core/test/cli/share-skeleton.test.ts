@@ -57,15 +57,18 @@ const exists = async (path: string): Promise<boolean> => {
 };
 
 const providerLayers = [
-  Layer.succeed(RuntimeProvider, TestRuntimeProvider),
-  Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
-  }),
+  Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
+  Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+      select: () => Effect.succeed(TestRuntimeProvider),
+    }),
+  ),
 ];
 
-const tunnelLayer = Layer.succeed(TunnelService, TestTunnelService.service);
+const tunnelLayer = Layer.succeed(TunnelService, TunnelService.of(TestTunnelService.service));
 
 const isCommandSpec = (
   value: unknown,

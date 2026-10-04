@@ -3,7 +3,7 @@ import { Option, Schema } from "effect";
 
 export const SSH_AGENT_PLAN_EXTENSION_KEY = "@lando/core/ssh-agent";
 
-const SshAgentPlanExtension = Schema.Struct({ mode: Schema.Literal("sidecar", "host") });
+const SshAgentPlanExtension = Schema.Struct({ mode: Schema.Literals(["sidecar", "host"]) });
 export type SshAgentPlanExtension = typeof SshAgentPlanExtension.Type;
 export type SshAgentIntent = SshAgentPlanExtension & { readonly socket?: string };
 

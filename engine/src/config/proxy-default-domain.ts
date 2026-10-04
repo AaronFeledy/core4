@@ -22,6 +22,6 @@ export const resolveProxyDefaultDomain: Effect.Effect<string> = Effect.gen(funct
   if (configOpt._tag === "None") return DEFAULT_PROXY_DOMAIN;
   return yield* configOpt.value.load.pipe(
     Effect.map(readProxyDefaultDomain),
-    Effect.catchAll(() => Effect.succeed(DEFAULT_PROXY_DOMAIN)),
+    Effect.catch(() => Effect.succeed(DEFAULT_PROXY_DOMAIN)),
   );
 });

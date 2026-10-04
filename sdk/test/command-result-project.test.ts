@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import {
   encodeCommandResult,
@@ -9,8 +9,7 @@ import {
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object";
+const isRecord = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const projectionFailure = (run: () => unknown): Record<string, unknown> => {
   try {
@@ -44,7 +43,7 @@ const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultE
 describe("listSelectableResultKeys", () => {
   test("returns struct field names when the schema has fields", () => {
     const keys = listSelectableResultKeys(
-      Schema.Struct({ name: Schema.String, age: Schema.optional(Schema.Number) }),
+      Schema.Struct({ name: Schema.String, age: Schema.optionalKey(Schema.Number) }),
     );
 
     expect(keys).toEqual(["name", "age"]);

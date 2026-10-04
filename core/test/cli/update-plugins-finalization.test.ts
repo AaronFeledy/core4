@@ -43,10 +43,13 @@ async function fixture() {
   const bytes = new TextEncoder().encode("integrity-checked fixture archive");
   const layer = Layer.merge(
     Layer.succeed(PluginTrustStore, trust),
-    Layer.succeed(ConfigService, {
-      load: Effect.die("unused fixture config"),
-      get: () => Effect.die("unused fixture config"),
-    }),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.die("unused fixture config"),
+        get: () => Effect.die("unused fixture config"),
+      }),
+    ),
   );
   const run = async (lifecycle: (cwd: string) => Promise<void>) => {
     const runner = await Effect.runPromise(

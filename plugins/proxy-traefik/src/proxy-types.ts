@@ -59,9 +59,9 @@ export interface SocketProxyDependencies {
   readonly hasHostSystemd: () => boolean;
   readonly exists: (path: string) => Effect.Effect<boolean>;
   readonly readText: (path: string) => Effect.Effect<string, unknown>;
-  readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
-  readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
-  readonly interaction?: Pick<Context.Tag.Service<typeof InteractionService>, "confirm" | "isInteractive">;
+  readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
+  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
+  readonly interaction?: Pick<Context.Service.Shape<typeof InteractionService>, "confirm" | "isInteractive">;
   readonly autoApprove?: boolean;
   readonly serviceType?: SocketProxyServiceType;
   readonly probeForward?: (
@@ -113,5 +113,5 @@ export interface TraefikProxyDependencies {
     port: number,
     role: ForwardProbeRole,
   ) => Effect.Effect<ForwardOutcome>;
-  readonly events?: Pick<Context.Tag.Service<typeof EventService>, "publish">;
+  readonly events?: Pick<Context.Service.Shape<typeof EventService>, "publish">;
 }

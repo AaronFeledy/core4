@@ -13,7 +13,7 @@ import {
 import { LandofileService } from "@lando/core/services";
 import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
-import { TestStateStoreLive } from "../_support/landofile-layer.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -70,12 +70,15 @@ describe("lando app:config", () => {
       },
       [{ id: "user:corp.yml", sha256: "a".repeat(64) }],
     );
-    const layer = Layer.succeed(LandofileService, {
-      discover: Effect.succeed(landofile),
-    });
+    const layer = Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed(landofile),
+      }),
+    );
 
     const result = await Effect.runPromise(
-      appConfig().pipe(Effect.provide(Layer.merge(layer, TestStateStoreLive))),
+      appConfig().pipe(Effect.provide(Layer.merge(layer, testStateStoreLayer))),
     );
 
     expect(result.app).toBe("test-app-config");
@@ -95,17 +98,20 @@ describe("lando app:config", () => {
   });
 
   test("returns a single resolved value for get", async () => {
-    const layer = Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
-        name: "test-app-config-get",
-        recipe: "node",
-        services: { web: { type: "node" } },
+    const layer = Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({
+          name: "test-app-config-get",
+          recipe: "node",
+          services: { web: { type: "node" } },
+        }),
       }),
-    });
+    );
 
     const result = await Effect.runPromise(
       appConfig({ subcommand: "get", key: "services.web.type" }).pipe(
-        Effect.provide(Layer.merge(layer, TestStateStoreLive)),
+        Effect.provide(Layer.merge(layer, testStateStoreLayer)),
       ),
     );
 
@@ -143,13 +149,16 @@ describe("lando app:config", () => {
   });
 
   test("rejects an unrecognized subcommand instead of silently defaulting to view", async () => {
-    const layer = Layer.succeed(LandofileService, {
-      discover: Effect.succeed({ name: "test-app-config", recipe: "node", services: {} }),
-    });
+    const layer = Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({ name: "test-app-config", recipe: "node", services: {} }),
+      }),
+    );
 
     const exit = await Effect.runPromiseExit(
       appConfig({ subcommand: "bogus" as never }).pipe(
-        Effect.provide(Layer.merge(layer, TestStateStoreLive)),
+        Effect.provide(Layer.merge(layer, testStateStoreLayer)),
       ),
     );
 

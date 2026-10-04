@@ -12,7 +12,7 @@ import {
   lando3SourceLayerOrder,
   lando3TargetLayer,
 } from "./contract.ts";
-import { type V4Wire, asStringArray, isPlainObject } from "./lowering-contract.ts";
+import { type V4Wire, asStringArray, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { slugifyAppName } from "./naming.ts";
 
 const nameAssignments = (
@@ -173,7 +173,7 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
         break;
       case "volumes":
       case "networks":
-        if (isPlainObject(value) && Object.keys(value).length > 0) {
+        if (hasPlainObjectPrototype(value) && Object.keys(value).length > 0) {
           fragment[key] = Object.fromEntries(
             Object.entries(value).map(([name, config]) => [name, config ?? {}]),
           );

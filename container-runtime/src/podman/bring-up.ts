@@ -54,7 +54,7 @@ export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
     : {};
 };
 
-type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
+type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringUpError = ServiceStartError | ProviderUnavailableError | ProviderInternalError;
 
 /**
@@ -180,8 +180,6 @@ const appRef = (plan: AppPlan): AppRef => ({
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
-const now = () => DateTime.unsafeNow();
-
 const containerRunning = (body: object): boolean => {
   const state = Reflect.get(body, "State");
   if (typeof state !== "object" || state === null) return false;
@@ -222,62 +220,61 @@ const request = (
 ): Effect.Effect<EngineHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.options.ctx)) : deps.api.request(input);
 
-const inspectContainer = (
+const inspectContainer = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   name: string,
-): Effect.Effect<InspectResult, ProviderUnavailableError | ProviderInternalError> =>
-  Effect.gen(function* () {
-    const response = yield* request(deps, {
-      method: "GET",
-      path: `/containers/${encodeURIComponent(name)}/json`,
-    });
-    if (response.status === 404) {
-      return {
-        exists: false,
-        running: false,
-        publishFingerprint: "",
-        bindSources: undefined,
-        networkNames: undefined,
-      };
-    }
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: deps.options.ctx.providerId,
-          operation: "bringUp.inspect",
-          message: withApiReason(
-            `provider-${deps.options.ctx.providerId} inspect failed with HTTP ${response.status}.`,
-            {
-              status: response.status,
-              body: response.body,
-            },
-          ),
-          details: redactDetails({ name, status: response.status, body: response.body }),
-          remediation: APPLY_REMEDIATION,
-        }),
-      );
-    }
-    const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
-      details: redactDetails({ status: response.status, body: response.body }),
-      remediation: APPLY_REMEDIATION,
-    });
-    if (typeof body !== "object" || body === null || !("State" in body)) {
-      return {
-        exists: true,
-        running: false,
-        publishFingerprint: fingerprintInspectPublishPorts(body),
-        bindSources: inspectBindSources(body),
-        networkNames: inspectNetworkNames(body),
-      };
-    }
+): Effect.fn.Return<InspectResult, ProviderUnavailableError | ProviderInternalError> {
+  const response = yield* request(deps, {
+    method: "GET",
+    path: `/containers/${encodeURIComponent(name)}/json`,
+  });
+  if (response.status === 404) {
+    return {
+      exists: false,
+      running: false,
+      publishFingerprint: "",
+      bindSources: undefined,
+      networkNames: undefined,
+    };
+  }
+  if (response.status < 200 || response.status >= 300) {
+    yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: deps.options.ctx.providerId,
+        operation: "bringUp.inspect",
+        message: withApiReason(
+          `provider-${deps.options.ctx.providerId} inspect failed with HTTP ${response.status}.`,
+          {
+            status: response.status,
+            body: response.body,
+          },
+        ),
+        details: redactDetails({ name, status: response.status, body: response.body }),
+        remediation: APPLY_REMEDIATION,
+      }),
+    );
+  }
+  const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
+    details: redactDetails({ status: response.status, body: response.body }),
+    remediation: APPLY_REMEDIATION,
+  });
+  if (typeof body !== "object" || body === null || !("State" in body)) {
     return {
       exists: true,
-      running: containerRunning(body),
+      running: false,
       publishFingerprint: fingerprintInspectPublishPorts(body),
       bindSources: inspectBindSources(body),
       networkNames: inspectNetworkNames(body),
     };
-  });
+  }
+  return {
+    exists: true,
+    running: containerRunning(body),
+    publishFingerprint: fingerprintInspectPublishPorts(body),
+    bindSources: inspectBindSources(body),
+    networkNames: inspectNetworkNames(body),
+  };
+});
 
 const hostConfig = (deps: BringUpDeps, plan: AppPlan, service: ServicePlan) => {
   return containerHostConfigFragment(plan, service, {
@@ -470,62 +467,61 @@ const ensureVolume = (
 export const isMissingImageCreateResponse = (response: EngineHttpResponse): boolean =>
   response.status === 404 || /no such image/iu.test(response.body);
 
-const createContainer = (
+const createContainer = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
   name: string,
-): Effect.Effect<void, BringUpError> =>
-  Effect.gen(function* () {
-    if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
-      yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
-    }
-    const createRequest = yield* Effect.try({
-      try: () => createContainerRequest(deps, plan, service, name),
-      catch: (cause) =>
-        cause instanceof ServiceStartError
-          ? cause
-          : podmanFailure(deps, {
-              service,
-              operation: "bringUp.create",
-              message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
-              cause,
-            }),
-    });
-    const response = yield* request(deps, { method: "POST", ...createRequest });
-    if (response.status === 201 || response.status === 409) return;
-    if (
-      deps.options.retryCreateOnMissingImage === true &&
-      deps.options.ensureImage !== undefined &&
-      service.artifact?.kind === "ref" &&
-      isMissingImageCreateResponse(response)
-    ) {
-      yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
-      const retry = yield* request(deps, { method: "POST", ...createRequest });
-      if (retry.status === 201 || retry.status === 409) return;
-      return yield* Effect.fail(
-        podmanFailure(deps, {
-          service,
-          operation: "bringUp.create",
-          message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${retry.status}.`,
-          details: {
-            status: response.status,
-            body: response.body,
-            retryStatus: retry.status,
-            retryBody: retry.body,
-          },
-        }),
-      );
-    }
+): Effect.fn.Return<void, BringUpError> {
+  if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
+    yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
+  }
+  const createRequest = yield* Effect.try({
+    try: () => createContainerRequest(deps, plan, service, name),
+    catch: (cause) =>
+      cause instanceof ServiceStartError
+        ? cause
+        : podmanFailure(deps, {
+            service,
+            operation: "bringUp.create",
+            message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
+            cause,
+          }),
+  });
+  const response = yield* request(deps, { method: "POST", ...createRequest });
+  if (response.status === 201 || response.status === 409) return;
+  if (
+    deps.options.retryCreateOnMissingImage === true &&
+    deps.options.ensureImage !== undefined &&
+    service.artifact?.kind === "ref" &&
+    isMissingImageCreateResponse(response)
+  ) {
+    yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
+    const retry = yield* request(deps, { method: "POST", ...createRequest });
+    if (retry.status === 201 || retry.status === 409) return;
     return yield* Effect.fail(
       podmanFailure(deps, {
         service,
         operation: "bringUp.create",
-        message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${response.status}.`,
-        details: { status: response.status, body: response.body },
+        message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${retry.status}.`,
+        details: {
+          status: response.status,
+          body: response.body,
+          retryStatus: retry.status,
+          retryBody: retry.body,
+        },
       }),
     );
-  });
+  }
+  return yield* Effect.fail(
+    podmanFailure(deps, {
+      service,
+      operation: "bringUp.create",
+      message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${response.status}.`,
+      details: { status: response.status, body: response.body },
+    }),
+  );
+});
 
 const isAlreadyConnectedResponse = (response: EngineHttpResponse): boolean =>
   response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
@@ -585,12 +581,12 @@ const startContainer = (
 
 const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
   request(deps, { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
-    Effect.catchAll(() => Effect.void),
+    Effect.catch(() => Effect.void),
   );
 
 const removeContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
   request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.catchAll(() => Effect.void),
+    Effect.catch(() => Effect.void),
   );
 
 const removeContainer = (
@@ -617,7 +613,7 @@ const removeNetworkSilent = (deps: BringUpDeps, plan: AppPlan): Effect.Effect<vo
   request(deps, {
     method: "DELETE",
     path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 const removeCreatedNetworksSilent = (
   deps: BringUpDeps,
@@ -629,7 +625,7 @@ const removeCreatedNetworksSilent = (
       request(deps, {
         method: "DELETE",
         path: `/networks/${encodeURIComponent(name)}`,
-      }).pipe(Effect.catchAll(() => Effect.void)),
+      }).pipe(Effect.catch(() => Effect.void)),
     { discard: true },
   );
 
@@ -652,108 +648,107 @@ const publish = (
         ),
       );
 
-const startService = (
+const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
   recordTouched: (container: TouchedContainer) => void,
-): Effect.Effect<StartResult, BringUpError> => {
+): Effect.fn.Return<StartResult, BringUpError> {
   const name = containerName(plan, service);
   const providerId = ProviderId.make(deps.options.ctx.providerId);
-  return Effect.gen(function* () {
-    if (deps.options.signal?.aborted === true) {
-      yield* Effect.fail(
-        podmanFailure(deps, {
-          service,
-          operation: "bringUp",
-          message: `provider-${deps.options.ctx.providerId} bringUp was cancelled before service start.`,
-        }),
-      );
-    }
 
-    yield* publish(
-      deps,
-      PreServiceStartEvent.make({
-        eventName: "pre-service-start",
-        appRef: appRef(plan),
-        serviceName: service.name,
-        providerId,
-        timestamp: now(),
+  if (deps.options.signal?.aborted === true) {
+    yield* Effect.fail(
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp",
+        message: `provider-${deps.options.ctx.providerId} bringUp was cancelled before service start.`,
       }),
     );
+  }
 
-    const inspected = yield* inspectContainer(deps, name);
-    const published = service.endpoints.flatMap((endpoint) =>
-      endpoint._tag === "published" ? [endpoint] : [],
-    );
-    const plannedFingerprint = fingerprintPlannedPublishPorts(published);
-    let before = inspected;
-    if (
-      before.exists &&
-      (deps.options.reconcile === true ||
-        (plannedFingerprint.length > 0 &&
-          before.publishFingerprint.length > 0 &&
-          before.publishFingerprint !== plannedFingerprint) ||
-        bindSourceChanged(service, before) ||
-        plannedNetworkMissing(plan, before))
-    ) {
-      yield* stopContainerSilent(deps, name);
-      yield* removeContainer(deps, service, name);
-      before = {
-        exists: false,
-        running: false,
-        publishFingerprint: "",
-        bindSources: undefined,
-        networkNames: undefined,
-      };
-    }
-    recordTouched({
-      name,
-      created: !before.exists,
-      startedExisting: before.exists && !before.running,
-    });
-    let changed = false;
-    if (!before.exists) {
-      yield* createContainer(deps, plan, service, name);
-      changed = true;
-    }
-    const sharedNetwork = sharedNetworkName(plan);
-    if (
-      (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
-      sharedNetwork !== undefined
-    ) {
-      yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
-    }
-    if (!before.running) {
-      yield* startContainer(deps, service, name);
-      changed = true;
-    }
+  yield* publish(
+    deps,
+    PreServiceStartEvent.make({
+      eventName: "pre-service-start",
+      appRef: appRef(plan),
+      serviceName: service.name,
+      providerId,
+      timestamp: yield* DateTime.now,
+    }),
+  );
 
-    const after = yield* inspectContainer(deps, name);
-    if (!after.running) {
-      yield* Effect.fail(
-        podmanFailure(deps, {
-          service,
-          operation: "bringUp.start",
-          message: `provider-${deps.options.ctx.providerId} container did not reach running state.`,
-        }),
-      );
-    }
-
-    yield* publish(
-      deps,
-      PostServiceStartEvent.make({
-        eventName: "post-service-start",
-        appRef: appRef(plan),
-        serviceName: service.name,
-        providerId,
-        timestamp: now(),
-      }),
-    );
-
-    return { changed };
+  const inspected = yield* inspectContainer(deps, name);
+  const published = service.endpoints.flatMap((endpoint) =>
+    endpoint._tag === "published" ? [endpoint] : [],
+  );
+  const plannedFingerprint = fingerprintPlannedPublishPorts(published);
+  let before = inspected;
+  if (
+    before.exists &&
+    (deps.options.reconcile === true ||
+      (plannedFingerprint.length > 0 &&
+        before.publishFingerprint.length > 0 &&
+        before.publishFingerprint !== plannedFingerprint) ||
+      bindSourceChanged(service, before) ||
+      plannedNetworkMissing(plan, before))
+  ) {
+    yield* stopContainerSilent(deps, name);
+    yield* removeContainer(deps, service, name);
+    before = {
+      exists: false,
+      running: false,
+      publishFingerprint: "",
+      bindSources: undefined,
+      networkNames: undefined,
+    };
+  }
+  recordTouched({
+    name,
+    created: !before.exists,
+    startedExisting: before.exists && !before.running,
   });
-};
+  let changed = false;
+  if (!before.exists) {
+    yield* createContainer(deps, plan, service, name);
+    changed = true;
+  }
+  const sharedNetwork = sharedNetworkName(plan);
+  if (
+    (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
+    sharedNetwork !== undefined
+  ) {
+    yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+  }
+  if (!before.running) {
+    yield* startContainer(deps, service, name);
+    changed = true;
+  }
+
+  const after = yield* inspectContainer(deps, name);
+  if (!after.running) {
+    yield* Effect.fail(
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp.start",
+        message: `provider-${deps.options.ctx.providerId} container did not reach running state.`,
+      }),
+    );
+  }
+
+  yield* publish(
+    deps,
+    PostServiceStartEvent.make({
+      eventName: "post-service-start",
+      appRef: appRef(plan),
+      serviceName: service.name,
+      providerId,
+      timestamp: yield* DateTime.now,
+    }),
+  );
+
+  return { changed };
+});
 
 interface TouchedContainer {
   readonly name: string;
@@ -761,137 +756,133 @@ interface TouchedContainer {
   readonly startedExisting: boolean;
 }
 
-const cleanupTouchedContainers = (
+const cleanupTouchedContainers = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   touched: ReadonlyArray<TouchedContainer>,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    yield* Effect.forEach(
-      touched.filter((container) => container.created || container.startedExisting),
-      (container) => stopContainerSilent(deps, container.name),
-      { discard: true },
-    );
-    yield* Effect.forEach(
-      touched.filter((container) => container.created),
-      (container) => removeContainerSilent(deps, container.name),
-      { discard: true },
-    );
-  });
+): Effect.fn.Return<void> {
+  yield* Effect.forEach(
+    touched.filter((container) => container.created || container.startedExisting),
+    (container) => stopContainerSilent(deps, container.name),
+    { discard: true },
+  );
+  yield* Effect.forEach(
+    touched.filter((container) => container.created),
+    (container) => removeContainerSilent(deps, container.name),
+    { discard: true },
+  );
+});
 
-const rollbackPartialApply = (
+const rollbackPartialApply = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   touched: ReadonlyArray<TouchedContainer>,
   createdNetworks: ReadonlySet<string>,
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    // Volumes are preserved so rollback does not discard persistent data.
-    yield* cleanupTouchedContainers(deps, touched);
-    yield* removeNetworkSilent(deps, plan);
-    yield* removeCreatedNetworksSilent(deps, createdNetworks);
-  });
+): Effect.fn.Return<void> {
+  // Volumes are preserved so rollback does not discard persistent data.
+  yield* cleanupTouchedContainers(deps, touched);
+  yield* removeNetworkSilent(deps, plan);
+  yield* removeCreatedNetworksSilent(deps, createdNetworks);
+});
 
-export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<ApplyResult, BringUpError> =>
-  Effect.gen(function* () {
-    const api = options.api;
-    if (api?.request === undefined) {
-      return yield* Effect.fail(missingApi(options.ctx));
+export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
+  plan: AppPlan,
+  options: BringUpOptions,
+): Effect.fn.Return<ApplyResult, BringUpError> {
+  const api = options.api;
+  if (api?.request === undefined) {
+    return yield* Effect.fail(missingApi(options.ctx));
+  }
+  const deps: BringUpDeps = { api, options };
+
+  const createdNetworks = new Set<string>();
+  for (const name of networkNames(plan)) {
+    if (yield* ensureNetwork(deps, name)) {
+      createdNetworks.add(name);
     }
-    const deps: BringUpDeps = { api, options };
-
-    const createdNetworks = new Set<string>();
-    for (const name of networkNames(plan)) {
-      if (yield* ensureNetwork(deps, name)) {
-        createdNetworks.add(name);
+  }
+  const createdVolumes: VolumeCreationFact[] = [];
+  for (const store of plan.stores) {
+    createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
+  }
+  const touched: TouchedContainer[] = [];
+  const result = yield* runServiceStartSchedule(plan, {
+    startService: Effect.fnUntraced(function* (service) {
+      if (options.signal?.aborted === true) {
+        return yield* Effect.interrupt;
       }
-    }
-    const createdVolumes: VolumeCreationFact[] = [];
-    for (const store of plan.stores) {
-      createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
-    }
-    const touched: TouchedContainer[] = [];
-    const result = yield* runServiceStartSchedule(plan, {
-      startService: (service) =>
-        Effect.gen(function* () {
-          if (options.signal?.aborted === true) {
-            return yield* Effect.interrupt;
-          }
-          const started = yield* startService(deps, plan, service, (container) => {
-            touched.push(container);
-          }).pipe(
-            Effect.catchAll((error) =>
-              options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error),
-            ),
-          );
-          return { changed: started.changed };
-        }),
-      cleanupOptionalStartFailure: (service) =>
-        Effect.gen(function* () {
-          const name = containerName(plan, service);
-          const index = touched.findIndex((container) => container.name === name);
-          const container = touched[index];
-          if (container === undefined) return;
-          yield* cleanupTouchedContainers(deps, [container]);
-          touched.splice(index, 1);
-        }),
-      execHealthcheck: (service, command) =>
-        exec(
-          plan,
-          { app: plan.id, service: service.name },
-          { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
-          { api, ctx: options.ctx },
-        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
-      waitForExit: (service) =>
-        waitForExit(
-          plan,
-          { app: plan.id, service: service.name },
-          {
-            api,
-            ctx: options.ctx,
-            dialect: (options.dialect ?? libpodLifecycleDialect).wait,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-          },
-        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
-    }).pipe(
-      Effect.tapError(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
-      Effect.onInterrupt(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
-    );
+      const started = yield* startService(deps, plan, service, (container) => {
+        touched.push(container);
+      }).pipe(
+        Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
+      );
+      return { changed: started.changed };
+    }),
+    cleanupOptionalStartFailure: Effect.fnUntraced(function* (service) {
+      const name = containerName(plan, service);
+      const index = touched.findIndex((container) => container.name === name);
+      const container = touched[index];
+      if (container === undefined) return;
+      yield* cleanupTouchedContainers(deps, [container]);
+      touched.splice(index, 1);
+    }),
+    execHealthcheck: (service, command) =>
+      exec(
+        plan,
+        { app: plan.id, service: service.name },
+        { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
+        { api, ctx: options.ctx },
+      ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+    waitForExit: (service) =>
+      waitForExit(
+        plan,
+        { app: plan.id, service: service.name },
+        {
+          api,
+          ctx: options.ctx,
+          dialect: (options.dialect ?? libpodLifecycleDialect).wait,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        },
+      ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+  }).pipe(
+    Effect.tapError(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
+    Effect.onInterrupt(() => rollbackPartialApply(deps, plan, touched, createdNetworks)),
+  );
 
-    if (result._tag === "Cycle") {
-      yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
+  if (result._tag === "Cycle") {
+    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
+    return yield* Effect.fail(
+      new ProviderInternalError({
+        providerId: options.ctx.providerId,
+        operation: "bringUp.schedule",
+        message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
+        remediation: APPLY_REMEDIATION,
+        details: redactDetails({ edges: result.edges }),
+      }),
+    );
+  }
+  const [blocked] = result.blocked;
+  if (blocked !== undefined) {
+    yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
+    const service = plan.services[ServiceName.make(blocked.service)];
+    if (service === undefined) {
       return yield* Effect.fail(
         new ProviderInternalError({
           providerId: options.ctx.providerId,
           operation: "bringUp.schedule",
-          message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
+          message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
           remediation: APPLY_REMEDIATION,
-          details: redactDetails({ edges: result.edges }),
+          details: redactDetails(blocked),
         }),
       );
     }
-    const [blocked] = result.blocked;
-    if (blocked !== undefined) {
-      yield* rollbackPartialApply(deps, plan, touched, createdNetworks);
-      const service = plan.services[ServiceName.make(blocked.service)];
-      if (service === undefined) {
-        return yield* Effect.fail(
-          new ProviderInternalError({
-            providerId: options.ctx.providerId,
-            operation: "bringUp.schedule",
-            message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
-            remediation: APPLY_REMEDIATION,
-            details: redactDetails(blocked),
-          }),
-        );
-      }
-      return yield* Effect.fail(
-        podmanFailure(deps, {
-          service,
-          operation: "bringUp.schedule",
-          message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-        }),
-      );
-    }
+    return yield* Effect.fail(
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp.schedule",
+        message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+      }),
+    );
+  }
 
-    return { changed: result.changed || createdVolumes.length > 0, createdVolumes };
-  });
+  return { changed: result.changed || createdVolumes.length > 0, createdVolumes };
+});

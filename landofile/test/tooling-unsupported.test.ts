@@ -6,7 +6,7 @@ import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "../sr
 const FILE = "/workspace/.lando.yml";
 
 const run = (parsed: unknown) =>
-  Effect.runPromise(Effect.either(rejectUnsupportedToolingFeatures(FILE, parsed)));
+  Effect.runPromise(Effect.result(rejectUnsupportedToolingFeatures(FILE, parsed)));
 
 describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => {
   test("accepts task-level user with cmd", async () => {
@@ -17,7 +17,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts task-level disabled with cmd", async () => {
@@ -28,7 +28,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts object cmds steps with cmd and supported overrides", async () => {
@@ -45,7 +45,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts full flag metadata keys", async () => {
@@ -70,7 +70,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 
   test("accepts full arg metadata keys including order", async () => {
@@ -89,7 +89,7 @@ describe("rejectUnsupportedToolingFeatures — supported authoring keys", () => 
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Right");
+    expect(outcome._tag).toBe("Success");
   });
 });
 
@@ -108,11 +108,11 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("defer");
-    expect(outcome.left).toMatchObject({
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("defer");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -132,11 +132,11 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("task");
-    expect(outcome.left).toMatchObject({
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("task");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -156,11 +156,11 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("bogus");
-    expect(outcome.left).toMatchObject({
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("bogus");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -182,11 +182,11 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("type");
-    expect(outcome.left).toMatchObject({
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("type");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });
@@ -206,11 +206,11 @@ describe("rejectUnsupportedToolingFeatures — still-rejected surfaces", () => {
     const outcome = await run(parsed);
 
     // Then
-    expect(outcome._tag).toBe("Left");
-    if (outcome._tag !== "Left") throw new Error("expected unsupported tooling failure");
-    expect(outcome.left._tag).toBe("NotImplementedError");
-    expect(outcome.left.message).toContain("deps");
-    expect(outcome.left).toMatchObject({
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag !== "Failure") throw new Error("expected unsupported tooling failure");
+    expect(outcome.failure._tag).toBe("NotImplementedError");
+    expect(outcome.failure.message).toContain("deps");
+    expect(outcome.failure).toMatchObject({
       commandId: "landofile.parse",
       remediation: UNSUPPORTED_REMEDIATION,
     });

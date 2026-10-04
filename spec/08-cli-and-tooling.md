@@ -792,6 +792,8 @@ Payloadless commands return an empty result object.
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
+Validation failures carry structured `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `suggestion`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, so one run reports every problem in the file.
+
 #### 8.11.2 The single serialization seam
 
 `encodeCommandResult` is the only JSON result serializer. It schema-encodes success or tagged failure, preserves exit status, wraps the envelope, and passes it through `RedactionService` before output. Per-command render helpers produce only human formats. §13.4 MUST reject any other command-result `JSON.stringify` path.

@@ -196,7 +196,7 @@ describe("Traefik RouterService TLS", () => {
     // Then: the proxy wrapper retains the exact tagged CA failure and setup remediation.
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof ProxyApplyError).toBe(true);
       if (Option.isSome(failure) && failure.value instanceof ProxyApplyError) {
         expect(failure.value.cause).toBe(caFailure);

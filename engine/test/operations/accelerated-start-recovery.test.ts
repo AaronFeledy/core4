@@ -26,7 +26,7 @@ test("start reseeds retained targets before creating planned sessions", async ()
   // When start retries the same plan.
   const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
   // Then old data never flows to the host, and the successful attempt unblocks other operations.
-  if (Exit.isFailure(result)) throw Option.getOrThrow(Cause.failureOption(result.cause));
+  if (Exit.isFailure(result)) throw Option.getOrThrow(Cause.findErrorOption(result.cause));
   expect(harness.calls).toEqual([
     "terminate:old",
     "prepare",
@@ -55,7 +55,7 @@ test.each([false, true])(
               Effect.sync(() => {
                 if (["pre-init", "post-init", "pre-start"].includes(event._tag))
                   harness.calls.push(event._tag);
-              }).pipe(Effect.zipRight(events.publish(event))),
+              }).pipe(Effect.andThen(events.publish(event))),
           }),
         );
       }).pipe(Effect.provide(harness.layer)),
@@ -86,13 +86,13 @@ test("destroy ends retained sessions before init and pre-destroy events", async 
             Effect.sync(() => {
               if (["pre-init", "post-init", "pre-destroy"].includes(event._tag))
                 harness.calls.push(event._tag);
-            }).pipe(Effect.zipRight(events.publish(event))),
+            }).pipe(Effect.andThen(events.publish(event))),
         }),
       );
     }).pipe(Effect.provide(harness.layer)),
   );
   // Then the recorded session ends before any hook can write through it.
-  if (Exit.isFailure(result)) throw Option.getOrThrow(Cause.failureOption(result.cause));
+  if (Exit.isFailure(result)) throw Option.getOrThrow(Cause.findErrorOption(result.cause));
   expect(harness.calls.slice(0, 4)).toEqual(["terminate:old", "pre-init", "post-init", "pre-destroy"]);
 });
 
@@ -110,7 +110,7 @@ test("start refuses a changed mount plan after stopping retained sessions", asyn
   // Then recovery explains the mismatch without preparing targets or starting new sessions.
   expect(Exit.isFailure(result)).toBe(true);
   if (Exit.isFailure(result))
-    expect(Option.getOrThrow(Cause.failureOption(result.cause)).message).toContain(
+    expect(Option.getOrThrow(Cause.findErrorOption(result.cause)).message).toContain(
       "mount plan digest changed",
     );
   expect(harness.calls).toEqual(["terminate:old"]);
@@ -126,7 +126,7 @@ test.each([{ replica: false }, { failFlush: true }, { changedVolume: true }])(
     // Then the retained-journal error leads the cause and no planned-mode session is created.
     expect(Exit.isFailure(result)).toBe(true);
     if (Exit.isFailure(result))
-      expect(Option.getOrThrow(Cause.failureOption(result.cause)).message).toContain(
+      expect(Option.getOrThrow(Cause.findErrorOption(result.cause)).message).toContain(
         "cannot roll back prepared accelerated sync targets",
       );
     expect(harness.calls).not.toContain("create:two-way-safe");
@@ -164,7 +164,7 @@ test.each([
   // Then it explains why recovery is impossible after safely stopping the recorded session.
   expect(Exit.isFailure(result)).toBe(true);
   if (Exit.isFailure(result))
-    expect(Option.getOrThrow(Cause.failureOption(result.cause)).message).toContain(reason);
+    expect(Option.getOrThrow(Cause.findErrorOption(result.cause)).message).toContain(reason);
   expect(harness.calls).toEqual(["terminate:old"]);
 });
 

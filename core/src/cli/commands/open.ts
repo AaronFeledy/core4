@@ -39,19 +39,19 @@ import { appendTerminalQr } from "../terminal-qr";
 export const OpenTargetSchema = Schema.Struct({
   service: Schema.String,
   hostname: Schema.String,
-  scheme: Schema.Literal("http", "https"),
+  scheme: Schema.Literals(["http", "https"]),
   url: Schema.String,
 });
 export type OpenTarget = typeof OpenTargetSchema.Type;
 
-export const OpenLaunchOutcome = Schema.Literal("opened", "printed", "headless-degraded");
+export const OpenLaunchOutcome = Schema.Literals(["opened", "printed", "headless-degraded"]);
 export type OpenLaunchOutcome = typeof OpenLaunchOutcome.Type;
 
 export const OpenAppResultSchema = Schema.Struct({
   app: Schema.String,
   targets: Schema.Array(OpenTargetSchema),
   launch: OpenLaunchOutcome,
-  note: Schema.optional(Schema.String),
+  note: Schema.optionalKey(Schema.String),
 });
 export type OpenAppResult = typeof OpenAppResultSchema.Type;
 
@@ -216,99 +216,98 @@ const HEADLESS_NOTE = "No display server detected; printing the URL instead of o
 
 const openAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-const openNow = () => DateTime.unsafeNow();
+const openNow = () => DateTime.nowUnsafe();
 
-export const openForPlan = (
+export const openForPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
   options: OpenAppOptions = {},
   authorities: ReadonlyArray<ProxyAuthority> = [],
-): Effect.Effect<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> =>
-  Effect.gen(function* () {
-    const targets = resolveOpenTargets(plan, options, authorities);
-    if (targets.length === 0) {
-      const knownServices = Object.values(plan.services).map((service) => String(service.name));
-      const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
-      const unpublishedRoutes = !routerEnabled(plan) && plan.routes.length > 0;
-      const askedForUnpublishedRoute =
-        unpublishedRoutes &&
-        options.route !== undefined &&
-        plan.routes.some((route) => route.hostname === options.route);
-      if (askedForUnpublishedRoute) {
-        return yield* Effect.fail(
-          new OpenTargetUnresolvedError({
-            message: `No openable URL matched --route ${options.route} for ${plan.name}: that hostname is declared but the router is disabled. Known services: ${knownServicesText}.`,
-            remediation:
-              "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or omit `--route` to open a published http host port.",
-          }),
-        );
-      }
-      if (
-        (options.service !== undefined || options.route !== undefined) &&
-        resolveOpenTargets(plan, { all: true }, authorities).length > 0
-      ) {
-        const selected =
-          options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
-        return yield* Effect.fail(
-          new OpenTargetUnresolvedError({
-            message: `No openable URL matched ${selected} for ${plan.name}. Known services: ${knownServicesText}.`,
-            remediation: "Choose one of the listed services or routes, then rerun `lando open`.",
-          }),
-        );
-      }
+): Effect.fn.Return<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> {
+  const targets = resolveOpenTargets(plan, options, authorities);
+  if (targets.length === 0) {
+    const knownServices = Object.values(plan.services).map((service) => String(service.name));
+    const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
+    const unpublishedRoutes = !routerEnabled(plan) && plan.routes.length > 0;
+    const askedForUnpublishedRoute =
+      unpublishedRoutes &&
+      options.route !== undefined &&
+      plan.routes.some((route) => route.hostname === options.route);
+    if (askedForUnpublishedRoute) {
       return yield* Effect.fail(
         new OpenTargetUnresolvedError({
-          message: unpublishedRoutes
-            ? `No openable URL for ${plan.name}: its routes are declared but the router is disabled, and no service publishes an http host port. Known services: ${knownServicesText}.`
-            : `No openable URL for ${plan.name}: the app declares no matching route. Known services: ${knownServicesText}.`,
-          app: plan.name,
-          services: knownServices,
-          remediation: unpublishedRoutes
-            ? "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or publish an http endpoint on a host port, then rerun `lando open`."
-            : "Declare a route under `proxy:` in your Landofile, then rerun `lando open`.",
+          message: `No openable URL matched --route ${options.route} for ${plan.name}: that hostname is declared but the router is disabled. Known services: ${knownServicesText}.`,
+          remediation:
+            "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or omit `--route` to open a published http host port.",
         }),
       );
     }
-
-    for (const target of targets) {
-      if (!isOpenableScheme(target.url)) {
-        return yield* Effect.fail(
-          new HostProxyOpenUrlSchemeError({
-            message: `Refusing to open ${target.url}: only http and https URLs can be opened.`,
-            scheme: target.scheme,
-            url: target.url,
-            remediation: "Open only http:// or https:// URLs.",
-          }),
-        );
-      }
+    if (
+      (options.service !== undefined || options.route !== undefined) &&
+      resolveOpenTargets(plan, { all: true }, authorities).length > 0
+    ) {
+      const selected =
+        options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
+      return yield* Effect.fail(
+        new OpenTargetUnresolvedError({
+          message: `No openable URL matched ${selected} for ${plan.name}. Known services: ${knownServicesText}.`,
+          remediation: "Choose one of the listed services or routes, then rerun `lando open`.",
+        }),
+      );
     }
+    return yield* Effect.fail(
+      new OpenTargetUnresolvedError({
+        message: unpublishedRoutes
+          ? `No openable URL for ${plan.name}: its routes are declared but the router is disabled, and no service publishes an http host port. Known services: ${knownServicesText}.`
+          : `No openable URL for ${plan.name}: the app declares no matching route. Known services: ${knownServicesText}.`,
+        app: plan.name,
+        services: knownServices,
+        remediation: unpublishedRoutes
+          ? "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or publish an http endpoint on a host port, then rerun `lando open`."
+          : "Declare a route under `proxy:` in your Landofile, then rerun `lando open`.",
+      }),
+    );
+  }
 
-    if (options.print === true || options.qr === true)
-      return { app: plan.name, targets, launch: "printed" as const };
-
-    const platform = options.platform ?? process.platform;
-    const env = options.env ?? process.env;
-    if (!canOpenHost({ platform, env })) {
-      return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
+  for (const target of targets) {
+    if (!isOpenableScheme(target.url)) {
+      return yield* Effect.fail(
+        new HostProxyOpenUrlSchemeError({
+          message: `Refusing to open ${target.url}: only http and https URLs can be opened.`,
+          scheme: target.scheme,
+          url: target.url,
+          remediation: "Open only http:// or https:// URLs.",
+        }),
+      );
     }
+  }
 
-    const explicitSelection = options.service !== undefined || options.route !== undefined;
-    if (options.json === true && !(explicitSelection && options.ttyPresent === true)) {
-      return { app: plan.name, targets, launch: "printed" as const };
-    }
+  if (options.print === true || options.qr === true)
+    return { app: plan.name, targets, launch: "printed" as const };
 
-    const events = yield* EventService;
-    const redaction = yield* RedactionService;
-    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-    const ref = openAppRef(plan);
-    for (const target of targets) {
-      const summary = redactor.redactString(target.url);
-      yield* events.publish(PreOpenUrlEvent.make({ app: ref, url: summary, timestamp: openNow() }));
-      const openExit = yield* Effect.exit(openUrl(target.url, { platform }));
-      yield* events.publish(PostOpenUrlEvent.make({ app: ref, url: summary, timestamp: openNow() }));
-      if (Exit.isFailure(openExit)) return yield* Effect.failCause(openExit.cause);
-    }
-    return { app: plan.name, targets, launch: "opened" as const };
-  });
+  const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
+  if (!canOpenHost({ platform, env })) {
+    return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
+  }
+
+  const explicitSelection = options.service !== undefined || options.route !== undefined;
+  if (options.json === true && !(explicitSelection && options.ttyPresent === true)) {
+    return { app: plan.name, targets, launch: "printed" as const };
+  }
+
+  const events = yield* EventService;
+  const redaction = yield* RedactionService;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const ref = openAppRef(plan);
+  for (const target of targets) {
+    const summary = redactor.redactString(target.url);
+    yield* events.publish(PreOpenUrlEvent.make({ app: ref, url: summary, timestamp: openNow() }));
+    const openExit = yield* Effect.exit(openUrl(target.url, { platform }));
+    yield* events.publish(PostOpenUrlEvent.make({ app: ref, url: summary, timestamp: openNow() }));
+    if (Exit.isFailure(openExit)) return yield* Effect.failCause(openExit.cause);
+  }
+  return { app: plan.name, targets, launch: "opened" as const };
+});
 
 type OpenAppServices =
   | AppPlanner
@@ -319,28 +318,27 @@ type OpenAppServices =
   | RedactionService
   | RouterService;
 
-export const openApp = (
+export const openApp = Effect.fn("OpenApp.open")(function* (
   options: OpenAppOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<OpenAppResult, OpenAppError | InfoAppError, OpenAppServices> =>
-  Effect.gen(function* () {
-    const landofileService = yield* LandofileService;
-    const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+): Effect.fn.Return<OpenAppResult, OpenAppError | InfoAppError, OpenAppServices> {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
 
-    const plan =
-      target?.plan ??
-      (yield* Effect.gen(function* () {
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
-      }));
+  const plan =
+    target?.plan ??
+    (yield* Effect.gen(function* () {
+      const landofile = yield* loadUserLandofile(landofileService);
+      const capabilities = yield* registry.capabilities;
+      return yield* planner.plan(landofile, capabilities);
+    }));
 
-    if (plan.routes.length === 0 || !routerEnabled(plan)) return yield* openForPlan(plan, options);
-    const router = yield* RouterService;
-    const status = yield* router.status;
-    return yield* openForPlan(plan, options, status.authorities);
-  });
+  if (plan.routes.length === 0 || !routerEnabled(plan)) return yield* openForPlan(plan, options);
+  const router = yield* RouterService;
+  const status = yield* router.status;
+  return yield* openForPlan(plan, options, status.authorities);
+});
 
 export const renderOpenAppResult = (
   result: OpenAppResult,

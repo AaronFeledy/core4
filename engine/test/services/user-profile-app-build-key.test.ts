@@ -8,10 +8,10 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import { landofileRuntimeInputs } from "../../src/composition.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { appSteps } from "../../src/services/build-app-plan.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 test.each([
   ["VALUE: first", "VALUE: second", false],
@@ -25,7 +25,9 @@ test.each([
   const stateStore = makeStateStore({
     privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
   });
-  const layer = AppPlannerLive.pipe(Layer.provide(Layer.merge(PluginRegistryLive, FileSystemLive)));
+  const layer = AppPlannerLayer.layer.pipe(
+    Layer.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
+  );
   const keyFor = async (env: string) => {
     await writeFile(
       join(includesRoot, "profile.yml"),

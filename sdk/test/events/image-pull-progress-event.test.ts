@@ -4,7 +4,7 @@ import { DateTime, Schema } from "effect";
 
 import { ImagePullProgressEvent, LandoEvent } from "@lando/sdk/events";
 
-const FIXED_TIMESTAMP = DateTime.unsafeMake("2026-07-08T03:30:00Z");
+const FIXED_TIMESTAMP = DateTime.makeUnsafe("2026-07-08T03:30:00Z");
 const timestamp = DateTime.formatIso(FIXED_TIMESTAMP);
 
 describe("image-pull-progress event", () => {
