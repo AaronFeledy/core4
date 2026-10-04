@@ -11,6 +11,7 @@ import {
   isSuccessStatus,
 } from "../engine-api.ts";
 import { engineApiFailure } from "../engine-errors.ts";
+import { tryParseJson } from "../engine-json.ts";
 import {
   type SocketHttpConnection,
   connectSocket,
@@ -94,9 +95,9 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
             ),
       ),
       Effect.flatMap((body) =>
-        Effect.try({
-          try: (): unknown => JSON.parse(body),
-          catch: (cause) =>
+        tryParseJson(
+          body,
+          (cause) =>
             new ProviderCapabilityError({
               providerId: ctx.providerId,
               operation: "capabilities",
@@ -107,7 +108,7 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
               remediation: ctx.remediation,
               cause,
             }),
-        }),
+        ),
       ),
     ),
     ping: request(pingRequest).pipe(
