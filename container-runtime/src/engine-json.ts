@@ -11,22 +11,21 @@ export const parseJsonOrUndefined = (text: string): unknown | undefined => {
 export const tryParseJson = <E>(text: string, onError: (cause: unknown) => E): Effect.Effect<unknown, E> =>
   Effect.try({ try: (): unknown => JSON.parse(text), catch: onError });
 
-export const parseNdjsonLines = (
+export function* parseNdjsonLines(
   body: string,
   options: { readonly separator: "\n" | RegExp; readonly onInvalidLine: "skip" | "rethrow-non-syntax" },
-): ReadonlyArray<unknown> => {
-  const values: unknown[] = [];
+): Generator<unknown, void, undefined> {
   for (const line of body.split(options.separator)) {
     if (line.trim().length === 0) continue;
     switch (options.onInvalidLine) {
       case "skip": {
         const value = parseJsonOrUndefined(line);
-        if (value !== undefined) values.push(value);
+        if (value !== undefined) yield value;
         break;
       }
       case "rethrow-non-syntax":
         try {
-          values.push(JSON.parse(line));
+          yield JSON.parse(line);
         } catch (cause) {
           if (!(cause instanceof SyntaxError)) throw cause;
         }
@@ -37,8 +36,7 @@ export const parseNdjsonLines = (
       }
     }
   }
-  return values;
-};
+}
 
 export const encodeEngineFilters = (filters: Readonly<Record<string, ReadonlyArray<string>>>): string =>
   encodeURIComponent(JSON.stringify(filters));

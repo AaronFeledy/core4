@@ -46,7 +46,7 @@ describe("engine JSON", () => {
       // Given
       const body = 'a\n\n  \n{"x":1}\r\n';
       // When
-      const result = parseNdjsonLines(body, { separator: /\r?\n/u, onInvalidLine });
+      const result = Array.from(parseNdjsonLines(body, { separator: /\r?\n/u, onInvalidLine }));
       // Then
       expect(result).toEqual([{ x: 1 }]);
     },
@@ -56,9 +56,45 @@ describe("engine JSON", () => {
     // Given
     const body = 'null\nfalse\n0\n"value"\n';
     // When
-    const result = parseNdjsonLines(body, { separator: "\n", onInvalidLine: "skip" });
+    const result = Array.from(parseNdjsonLines(body, { separator: "\n", onInvalidLine: "skip" }));
     // Then
     expect(result).toEqual([null, false, 0, "value"]);
+  });
+
+  test("yields frames lazily so early consumers never parse later lines", () => {
+    // Given: first frame is valid JSON; later lines must not be parsed if the consumer stops.
+    const nativeParse = JSON.parse.bind(JSON);
+    let parseCount = 0;
+    const parser = spyOn(JSON, "parse").mockImplementation((text: string) => {
+      parseCount += 1;
+      return nativeParse(text);
+    });
+    try {
+      const body = '{"error":"boom"}\n{"errorDetail":{"message":"later"}}\nnot-json';
+      // When
+      const iterator = parseNdjsonLines(body, { separator: "\n", onInvalidLine: "rethrow-non-syntax" });
+      // Then: structural laziness — return value is an iterator/generator
+      expect(typeof iterator.next).toBe("function");
+      expect(Symbol.iterator in iterator).toBe(true);
+
+      // buildStreamError-style consumption: take first matching frame and stop
+      let firstError: string | undefined;
+      for (const parsed of iterator) {
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          typeof (parsed as { error?: unknown }).error === "string"
+        ) {
+          firstError = (parsed as { error: string }).error;
+          break;
+        }
+      }
+      expect(firstError).toBe("boom");
+      // Only the first line was parsed; later frames were never advanced
+      expect(parseCount).toBe(1);
+    } finally {
+      parser.mockRestore();
+    }
   });
 
   test("rethrows the original non-syntax failure when the policy requires it", () => {
@@ -69,9 +105,9 @@ describe("engine JSON", () => {
     });
     try {
       // When / Then
-      expect(() => parseNdjsonLines("{}", { separator: "\n", onInvalidLine: "rethrow-non-syntax" })).toThrow(
-        cause,
-      );
+      expect(() =>
+        Array.from(parseNdjsonLines("{}", { separator: "\n", onInvalidLine: "rethrow-non-syntax" })),
+      ).toThrow(cause);
     } finally {
       parser.mockRestore();
     }
@@ -84,7 +120,7 @@ describe("engine JSON", () => {
     });
     try {
       // When
-      const result = parseNdjsonLines("{}", { separator: "\n", onInvalidLine: "skip" });
+      const result = Array.from(parseNdjsonLines("{}", { separator: "\n", onInvalidLine: "skip" }));
       // Then
       expect(result).toEqual([]);
     } finally {

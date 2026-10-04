@@ -45,7 +45,7 @@ export const parseContainerEventPayloads = (body: string): ReadonlyArray<unknown
   if (trimmed.length === 0) return [];
   const parsed = parseJsonOrUndefined(trimmed);
   if (Array.isArray(parsed)) return Array.from(parsed);
-  return parseNdjsonLines(trimmed, { separator: /\r?\n/u, onInvalidLine: "skip" });
+  return Array.from(parseNdjsonLines(trimmed, { separator: /\r?\n/u, onInvalidLine: "skip" }));
 };
 
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
