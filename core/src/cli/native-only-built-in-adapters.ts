@@ -9,6 +9,7 @@ import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { runSetup } from "./cli-adapters/app-lifecycle";
 import { runMetaShellenv, runMetaUninstall } from "./cli-adapters/meta-plugin";
 import { initOptionsFromInput } from "./command-specs/apps/init";
+import { renderAgentSkillsResult } from "./commands/agent-skills";
 import { initApp } from "./commands/init";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { emitDiagnosticLine, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
@@ -38,7 +39,12 @@ export const runNativeOnlyBuiltIn = async (
             });
           }),
           makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
-          (result) => `Created ${result.appName} at ${result.directory}`,
+          (result) => {
+            const created = `Created ${result.appName} at ${result.directory}`;
+            return result.agentSkills === undefined
+              ? created
+              : `${created}\n${renderAgentSkillsResult(result.agentSkills)}`;
+          },
         ),
       );
       return;
