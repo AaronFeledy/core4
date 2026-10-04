@@ -1,9 +1,14 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -211,14 +216,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   applyServingMode(ctx, via, webroot, allowOverride, listenPort);
   if (via !== "cli") {
     addServicePortEndpoints(ctx, { port, protocol: phpEndpointProtocol(via) });
-    ctx.setHealthcheck({
-      kind: "command",
-      command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 10,
-    });
+    ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
   }
 
   applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
@@ -235,16 +233,7 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
   id: PHP_FEATURE_ID,
   schema: PhpFeatureConfigSchema as Schema.Codec<unknown>,
   priority: PHP_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyPhpFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.php failed to apply",
-          feature: PHP_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(PHP_FEATURE_ID, "service-lando.php failed to apply", applyPhpFeature),
 };
 
 const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
@@ -253,46 +242,38 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: PhpServiceConfig,
   resolve: (input) =>
-    Effect.try({
-      try: () => {
-        const resolvedVersion = validateVersion(input.service.type, version);
-        resolvePhpComposer(input.service.composer);
-        resolvePhpComposerPackages(input.service.composer);
-        assertPhpComposerCompatible(resolvedVersion, input.service.composer);
-        const via = resolvePhpVia(input.service.via);
-        assertPhpViaKeys(via, input.service);
-        const xdebug = resolvePhpXdebug(input.service.xdebug);
-        assertPhpXdebugSupported(resolvedVersion, xdebug);
-        resolvePhpDbClient(input.service.db_client);
-        const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
-        const allowOverride = input.service.allowOverride ?? false;
+    serviceTypeResolve(`php:${version}`, `Failed to resolve php:${version}`, () => {
+      const resolvedVersion = validateVersion(input.service.type, version);
+      resolvePhpComposer(input.service.composer);
+      resolvePhpComposerPackages(input.service.composer);
+      assertPhpComposerCompatible(resolvedVersion, input.service.composer);
+      const via = resolvePhpVia(input.service.via);
+      assertPhpViaKeys(via, input.service);
+      const xdebug = resolvePhpXdebug(input.service.xdebug);
+      assertPhpXdebugSupported(resolvedVersion, xdebug);
+      resolvePhpDbClient(input.service.db_client);
+      const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
+      const allowOverride = input.service.allowOverride ?? false;
 
-        return {
-          base: "lando" as const,
-          normalizedConfig: {
-            ...input.service,
-            type: `php:${resolvedVersion}`,
-          } satisfies ServiceConfig,
-          logSources: phpLogSources(via),
-          features: [
-            { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },
-            {
-              id: "lando.env",
-              config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
-            },
-          ],
-          ...(xdebug === false ? {} : { tooling: phpXdebugTooling(input.name, via, xdebug.mode) }),
-        };
-      },
-      catch: (cause) =>
-        new ServiceTypeError({
-          message: cause instanceof Error ? cause.message : `Failed to resolve php:${version}`,
-          serviceType: `php:${version}`,
-          cause,
-        }),
+      return {
+        base: "lando" as const,
+        normalizedConfig: {
+          ...input.service,
+          type: `php:${resolvedVersion}`,
+        } satisfies ServiceConfig,
+        logSources: phpLogSources(via),
+        features: [
+          { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },
+          {
+            id: "lando.env",
+            config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
+          },
+        ],
+        ...(xdebug === false ? {} : { tooling: phpXdebugTooling(input.name, via, xdebug.mode) }),
+      };
     }),
 });
 

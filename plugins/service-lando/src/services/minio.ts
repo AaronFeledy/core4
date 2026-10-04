@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -95,23 +95,14 @@ export const minioServiceFeature: ServiceFeatureDefinition = {
   id: MINIO_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMinioFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "minio service feature failed to apply",
-          feature: MINIO_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(MINIO_FEATURE_ID, "minio service feature failed to apply", applyMinioFeature),
 };
 
 export const minioServiceType: ServiceType = {
   id: "minio",
   name: "minio",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: MinIOServiceConfig,
   resolve: (input) =>
     Effect.succeed({

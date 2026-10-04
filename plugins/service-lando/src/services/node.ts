@@ -1,7 +1,6 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 import { satisfies, subset, valid, validRange } from "semver";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
@@ -9,6 +8,7 @@ import type {
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -305,16 +305,7 @@ export const nodeServiceFeature: ServiceFeatureDefinition = {
   id: NODE_FEATURE_ID,
   schema: NodeFeatureConfigSchema as Schema.Codec<unknown>,
   priority: NODE_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyNodeFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.node failed to apply",
-          feature: NODE_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(NODE_FEATURE_ID, "service-lando.node failed to apply", applyNodeFeature),
 };
 
 const normalizedService = (service: ServiceConfig, resolvedVersion: string): ServiceConfig => ({
@@ -328,32 +319,24 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_NODE_VERSIONS,
   artifacts: NODE_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
+  identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.try({
-      try: () => {
-        const resolvedVersion = validateVersion(input.service.type, version);
-        normalizeNpmGlobals(input.service.globals);
+    serviceTypeResolve(`node:${version}`, `Failed to resolve node:${version}`, () => {
+      const resolvedVersion = validateVersion(input.service.type, version);
+      normalizeNpmGlobals(input.service.globals);
 
-        return {
-          base: "lando" as const,
-          normalizedConfig: normalizedService(input.service, resolvedVersion),
-          features: [
-            { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-            {
-              id: "lando.env",
-              config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
-            },
-          ],
-        };
-      },
-      catch: (cause) =>
-        new ServiceTypeError({
-          message: cause instanceof Error ? cause.message : `Failed to resolve node:${version}`,
-          serviceType: `node:${version}`,
-          cause,
-        }),
+      return {
+        base: "lando" as const,
+        normalizedConfig: normalizedService(input.service, resolvedVersion),
+        features: [
+          { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
+          {
+            id: "lando.env",
+            config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+          },
+        ],
+      };
     }),
 });
 
@@ -364,7 +347,7 @@ export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
+  identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,
   projectFiles: (service) => {
     const packageRoot = service.packageRoot ?? ".";
@@ -375,38 +358,30 @@ export const nodeServiceType: ServiceType = {
     ];
   },
   resolve: (input) =>
-    Effect.try({
-      try: () => {
-        const inference = resolveNodeInference(input.projectFiles ?? []);
-        const resolvedVersion = inference.artifact.slice("node:".length);
-        normalizeNpmGlobals(input.service.globals);
-        const files = (input.projectFiles ?? []).map((file) => ({
-          path: file.path,
-          present: file.present,
-          ...(file.present ? { sha256: file.sha256 } : {}),
-        }));
-        return {
-          base: "lando" as const,
-          normalizedConfig: normalizedService(input.service, resolvedVersion),
-          features: [
-            { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-            { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" } } },
-          ],
-          metadata: {
-            node: {
-              sourcePath: inference.sourcePath,
-              normalizedConstraint: inference.normalizedConstraint,
-              artifact: inference.artifact,
-              files,
-            },
+    serviceTypeResolve("node", "Failed to infer a Node version.", () => {
+      const inference = resolveNodeInference(input.projectFiles ?? []);
+      const resolvedVersion = inference.artifact.slice("node:".length);
+      normalizeNpmGlobals(input.service.globals);
+      const files = (input.projectFiles ?? []).map((file) => ({
+        path: file.path,
+        present: file.present,
+        ...(file.present ? { sha256: file.sha256 } : {}),
+      }));
+      return {
+        base: "lando" as const,
+        normalizedConfig: normalizedService(input.service, resolvedVersion),
+        features: [
+          { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
+          { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" } } },
+        ],
+        metadata: {
+          node: {
+            sourcePath: inference.sourcePath,
+            normalizedConstraint: inference.normalizedConstraint,
+            artifact: inference.artifact,
+            files,
           },
-        };
-      },
-      catch: (cause) =>
-        new ServiceTypeError({
-          message: cause instanceof Error ? cause.message : "Failed to infer a Node version.",
-          serviceType: "node",
-          cause,
-        }),
+        },
+      };
     }),
 };

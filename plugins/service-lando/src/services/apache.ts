@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, type LogSource, LogSourceId, PortNumber, PortablePath } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
@@ -8,6 +7,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -189,16 +189,7 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   id: APACHE_FEATURE_ID,
   schema: Schema.Unknown,
   priority: APACHE_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyApacheFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.apache failed to apply",
-          feature: APACHE_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
 };
 
 export const apacheServiceType: ServiceType = {
@@ -209,7 +200,7 @@ export const apacheServiceType: ServiceType = {
   // sha256:7ed5668e2fb31c738bcd291847fbb313073998e561ac6d8dc63cfd061dd0fb4d
   // www-data:x:82:82::/home/www-data:/sbin/nologin
   // Image config User was empty and HOME was absent, so neither was used as the home source.
-  identity: { defaultUser: "root", homes: { root: "/root", "www-data": "/home/www-data" } },
+  identity: rootIdentity({ "www-data": "/home/www-data" }),
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.sync(() => {

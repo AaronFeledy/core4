@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -63,16 +63,7 @@ export const dotnetServiceFeature: ServiceFeatureDefinition = {
   id: DOTNET_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyDotnetFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "dotnet service feature failed to apply",
-          feature: DOTNET_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(DOTNET_FEATURE_ID, "dotnet service feature failed to apply", applyDotnetFeature),
 };
 
 const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
@@ -81,7 +72,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: DotnetServiceConfig,
   resolve: (input) => {
     const appName = appNameFor(input);

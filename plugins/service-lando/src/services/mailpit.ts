@@ -1,9 +1,10 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
@@ -46,23 +47,18 @@ export const mailpitServiceFeature: ServiceFeatureDefinition = {
   id: MAILPIT_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMailpitFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "mailpit service feature failed to apply",
-          feature: MAILPIT_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    MAILPIT_FEATURE_ID,
+    "mailpit service feature failed to apply",
+    applyMailpitFeature,
+  ),
 };
 
 export const mailpitServiceType: ServiceType = {
   id: "mailpit",
   name: "mailpit",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: MailpitServiceConfig,
   resolve: (input) =>
     Schema.decodeUnknownEffect(MailpitServiceName)(input.name).pipe(

@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type LogSource,
@@ -17,6 +16,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -148,16 +148,7 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
   id: NGINX_FEATURE_ID,
   schema: Schema.Unknown,
   priority: NGINX_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyNginxFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.nginx failed to apply",
-          feature: NGINX_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(NGINX_FEATURE_ID, "service-lando.nginx failed to apply", applyNginxFeature),
 };
 
 const isPhpFpm = (view: AppFeatureServiceView): boolean =>
@@ -202,7 +193,7 @@ export const nginxServiceType: ServiceType = {
   id: "nginx",
   name: "nginx",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({

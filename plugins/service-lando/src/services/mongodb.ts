@@ -1,8 +1,8 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -80,30 +80,18 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 };
 
 export const mongodbServiceFeature: ServiceFeatureDefinition = {
   id: MONGODB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMongodbFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "mongodb service feature failed to apply",
-          feature: MONGODB_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    MONGODB_FEATURE_ID,
+    "mongodb service feature failed to apply",
+    applyMongodbFeature,
+  ),
 };
 
 export const mongodbServiceType: ServiceType = {
@@ -112,7 +100,7 @@ export const mongodbServiceType: ServiceType = {
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input, input.service);

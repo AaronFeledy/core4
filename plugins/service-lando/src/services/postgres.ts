@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -99,16 +99,11 @@ export const postgresServiceFeature: ServiceFeatureDefinition = {
   id: POSTGRES_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyPostgresFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "postgres service feature failed to apply",
-          feature: POSTGRES_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    POSTGRES_FEATURE_ID,
+    "postgres service feature failed to apply",
+    applyPostgresFeature,
+  ),
 };
 
 export const postgresServiceType: ServiceType = {
@@ -117,7 +112,7 @@ export const postgresServiceType: ServiceType = {
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input);
