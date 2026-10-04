@@ -20,6 +20,8 @@
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
+import { findArgvFlag } from "./argv-walk";
+
 interface DeferredRendererSurface {
   readonly feature: string;
   readonly remediation: string;
@@ -127,29 +129,19 @@ export const deferredRendererFlagError = (flag: string): NotImplementedError => 
  * for finite log snapshots, so only bare boolean `--tail` is treated as the
  * deferred renderer task-detail tail surface.
  */
-export const findDeferredRendererFlag = (argv: ReadonlyArray<string>): string | undefined => {
-  let afterDoubleDash = false;
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-    if (afterDoubleDash) continue;
-    if (arg === "--") {
-      afterDoubleDash = true;
-      continue;
-    }
+export const findDeferredRendererFlag = (argv: ReadonlyArray<string>): string | undefined =>
+  findArgvFlag(argv, (arg, next) => {
     if (arg === "--tail") {
-      const next = argv[index + 1];
-      if (next !== undefined && !next.startsWith("-")) continue;
+      if (next !== undefined && !next.startsWith("-")) return undefined;
     }
     if (DEFERRED_RENDERER_FLAGS.has(arg)) return arg;
     const eqIndex = arg.indexOf("=");
     if (eqIndex > 0) {
       const head = arg.slice(0, eqIndex);
-      if (head === "--tail") continue;
+      if (head === "--tail") return undefined;
       if (DEFERRED_RENDERER_FLAGS.has(head)) return head;
     }
-  }
-  return undefined;
-};
+    return undefined;
+  });
 
 export const isDeferredRendererMode = (value: string): boolean => DEFERRED_RENDERER_MODES.has(value);
