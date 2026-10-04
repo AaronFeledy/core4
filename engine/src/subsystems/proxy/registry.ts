@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { ProxyError } from "@lando/sdk/errors";
@@ -21,8 +21,8 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { bundledPluginModules } from "../../composition.ts";
 import { makePublishRender } from "../../lifecycle/publish-render.ts";
+import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";
 import { makeLandoPluginContext } from "../../plugins/context.ts";
-import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import * as UnavailableRouterService from "./api.ts";
 import * as DeferredCertificateAuthority from "./deferred-certificate-authority.ts";
 
@@ -109,12 +109,12 @@ export const makeRouterServiceRegistry = (
   options: MakeRouterServiceRegistryOptions,
 ): RouterServiceRegistryShape => {
   const byId = new Map(options.registrations.map((registration) => [registration.id, registration]));
-  const selectId = (id: string): Effect.Effect<RouterServiceRegistration, ProxyError> => {
-    const registration = byId.get(id);
-    return registration === undefined
-      ? Effect.fail(selectionError(`Router service ${id} is not installed.`, id))
-      : Effect.succeed(registration);
-  };
+  const selectId = (id: string): Effect.Effect<RouterServiceRegistration, ProxyError> =>
+    selectRegistration({
+      registrations: byId,
+      id,
+      onMissing: (missingId) => selectionError(`Router service ${missingId} is not installed.`, missingId),
+    }).pipe(Effect.map((selected) => selected.registration));
 
   return {
     list: Effect.succeed([...byId.keys()]),
@@ -160,14 +160,12 @@ const registrationsFromModules = Effect.fnUntraced(function* (
     readonly redaction?: Context.Service.Shape<typeof RedactionService>;
   },
 ): Effect.fn.Return<ReadonlyArray<RouterServiceRegistration>, ProxyError> {
-  const indexResult = makePluginCapabilityIndex(modules);
-  if (Result.isFailure(indexResult)) return yield* Effect.fail(descriptorError(indexResult.failure));
-  const index = indexResult.success;
-  const contributions = index.manifests.flatMap((manifest) =>
+  const indexed = yield* indexContributions(modules, "routerServices", descriptorError);
+  const contributions = modules.flatMap(({ manifest }) =>
     (manifest.contributes?.routerServices ?? []).map((contribution) => ({ contribution, manifest })),
   );
   return yield* Effect.forEach(contributions, ({ contribution, manifest }) => {
-    const provided = index.routerServices.get(contribution.id);
+    const provided = indexed.get(contribution.id);
     const module = modules.find((candidate) => String(candidate.manifest.name) === String(manifest.name));
     if (
       provided === undefined ||
