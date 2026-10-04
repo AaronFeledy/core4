@@ -3,6 +3,7 @@ import { DateTime, Effect, Predicate } from "effect";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
+import { parseJsonOrUndefined, parseNdjsonLines } from "../engine-json.ts";
 import { redactDetails, redactString, withApiReason } from "../redact.ts";
 
 export interface ContainerDiedEventsOptions {
@@ -42,20 +43,9 @@ const eventsFailure = (ctx: ProviderErrorContext, status: number, body: string):
 export const parseContainerEventPayloads = (body: string): ReadonlyArray<unknown> => {
   const trimmed = body.trim();
   if (trimmed.length === 0) return [];
-  const parsed = parseJson(trimmed);
+  const parsed = parseJsonOrUndefined(trimmed);
   if (Array.isArray(parsed)) return Array.from(parsed);
-  return trimmed.split(/\r?\n/u).flatMap((line) => {
-    const parsedLine = parseJson(line);
-    return parsedLine === undefined ? [] : [parsedLine];
-  });
-};
-
-const parseJson = (value: string): unknown | undefined => {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
+  return parseNdjsonLines(trimmed, { separator: /\r?\n/u, onInvalidLine: "skip" });
 };
 
 const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
@@ -81,7 +71,7 @@ const enrichOomKilled = (
   return request({ method: "GET", path: `/containers/${encodeURIComponent(containerId)}/json` }).pipe(
     Effect.map((response) => {
       if (response.status < 200 || response.status >= 300) return payload;
-      const inspect = asRecord(parseJson(response.body));
+      const inspect = asRecord(parseJsonOrUndefined(response.body));
       const state = asRecord(inspect?.State);
       return state?.OOMKilled === true ? { ...event, OOMKilled: true } : payload;
     }),
