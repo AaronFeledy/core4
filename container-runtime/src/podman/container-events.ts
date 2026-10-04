@@ -3,7 +3,7 @@ import { DateTime, Effect, Predicate } from "effect";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
-import { parseJsonOrUndefined, parseNdjsonLines } from "../engine-json.ts";
+import { encodeEngineFilters, parseJsonOrUndefined, parseNdjsonLines } from "../engine-json.ts";
 import { redactDetails, redactString, withApiReason } from "../redact.ts";
 
 export interface ContainerDiedEventsOptions {
@@ -16,7 +16,7 @@ const eventWindowSeconds = 10 * 60;
 const buildContainerDiedEventsRequest = (now: Date): EngineHttpRequest => {
   const until = Math.floor(now.getTime() / 1000);
   const since = until - eventWindowSeconds;
-  const filters = encodeURIComponent(JSON.stringify({ type: ["container"], event: ["die"] }));
+  const filters = encodeEngineFilters({ type: ["container"], event: ["die"] });
   return {
     method: "GET",
     path: `/libpod/events?since=${since}&until=${until}&stream=false&filters=${filters}`,
