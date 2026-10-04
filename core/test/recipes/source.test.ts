@@ -122,7 +122,7 @@ version: 0.0.1
         expect(failure.message).toContain('"wrong-id"');
         expect(failure.message).toContain('"expected-id"');
         expect(failure.issues.length).toBeGreaterThan(0);
-        expect(failure.issues[0]).toContain("directory basename");
+        expect(failure.issues[0]?.message).toContain("directory basename");
       }
     });
   });

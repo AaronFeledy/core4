@@ -7,7 +7,7 @@ import { Schema } from "effect";
 
 import { renderConfigLintResult } from "@lando/core/cli/operations";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
-import { ConfigLintResult } from "@lando/sdk/schema";
+import { ConfigLintResult, formatValidationIssuePath } from "@lando/sdk/schema";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -77,7 +77,7 @@ describe("renderConfigLintResult", () => {
       app: "bad",
       file: "/x/.lando.yml",
       valid: false,
-      violations: [{ path: "bogus", message: "is unexpected", suggestedFix: "Remove the unsupported key" }],
+      violations: [{ path: ["bogus"], message: "is unexpected", suggestion: "Remove the unsupported key" }],
     };
     restoreExitCode(() => {
       process.exitCode = 37;
@@ -93,7 +93,7 @@ describe("renderConfigLintResult", () => {
       app: "bad",
       file: "/x/.lando.yml",
       valid: false,
-      violations: [{ path: "bogus", message: "is unexpected" }],
+      violations: [{ path: ["bogus"], message: "is unexpected" }],
     };
     restoreExitCode(() => {
       const encoded = Schema.encodeSync(ConfigLintResult)(result);
@@ -171,10 +171,12 @@ describe("lando app:config:lint (source dispatch)", () => {
         )(format === "yaml" ? Bun.YAML.parse(result.stdout) : JSON.parse(result.stdout));
         const parsed = envelope.result;
         expect(parsed.valid).toBe(false);
-        const violation = parsed.violations.find((entry) => entry.path.includes("bogusKey"));
+        const violation = parsed.violations.find((entry) =>
+          formatValidationIssuePath(entry.path).includes("bogusKey"),
+        );
         expect(violation).toBeDefined();
         expect(typeof violation?.message).toBe("string");
-        expect(violation?.suggestedFix).toBeDefined();
+        expect(violation?.suggestion).toBeDefined();
       });
     },
   );
@@ -185,11 +187,13 @@ describe("lando app:config:lint (source dispatch)", () => {
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       expect(result.exitCode).toBe(0);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
-      const violation = parsed.violations.find((entry) => entry.path === "profiles");
-      expect(violation?.suggestedFix).toContain(
+      const violation = parsed.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "profiles",
+      );
+      expect(violation?.suggestion).toContain(
         'The top-level key "profiles" is not a Compose top-level key; profiles is a service-level key',
       );
-      expect(violation?.suggestedFix).toContain("includes:");
+      expect(violation?.suggestion).toContain("includes:");
     });
   });
 
@@ -202,11 +206,13 @@ describe("lando app:config:lint (source dispatch)", () => {
 
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
-      const violation = parsed.violations.find((entry) => entry.path === "services.web.deploy.replicas");
+      const violation = parsed.violations.find(
+        (entry) => formatValidationIssuePath(entry.path) === "services.web.deploy.replicas",
+      );
 
       expect(result.exitCode).toBe(0);
       expect(parsed.valid).toBe(false);
-      expect(violation?.suggestedFix).toBe(deployReplicasRemediation);
+      expect(violation?.suggestion).toBe(deployReplicasRemediation);
     });
   });
 
@@ -217,7 +223,7 @@ describe("lando app:config:lint (source dispatch)", () => {
       expect(result.exitCode).toBe(0);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       const violation = parsed.violations[0];
-      expect(violation?.path).toBe("");
+      expect(formatValidationIssuePath(violation?.path ?? [])).toBe("");
       expect(violation?.line).toBe(1);
       expect(violation?.column).toBe(1);
     });

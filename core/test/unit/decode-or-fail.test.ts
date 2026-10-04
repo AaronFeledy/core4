@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SchemaIssue } from "effect";
 import { Effect, Result, Schema } from "effect";
 
 import {
@@ -8,27 +7,20 @@ import {
   RecipeManifestValidationError,
   ScratchAppError,
 } from "@lando/sdk/errors";
-import { BunShellScriptFrontMatter, LandofileShape, RecipeManifest } from "@lando/sdk/schema";
+import {
+  BunShellScriptFrontMatter,
+  LandofileShape,
+  RecipeManifest,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 
 import { decodeOrFail } from "@lando/landofile/decode";
 
-const issuesWithMessages = (cause: unknown, fallback: string): ReadonlyArray<string> => {
-  if (Schema.isSchemaError(cause)) {
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
-    );
-  }
-  return [cause instanceof Error ? cause.message : fallback];
-};
+const issuesWithMessages = (cause: unknown, fallback: string) =>
+  validationIssuesFromCause(cause, { fallback });
 
-const globalIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (Schema.isSchemaError(cause)) {
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      (issue.path ?? []).length === 0 ? issue.message : (issue.path ?? []).join("."),
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid Landofile."];
-};
+const globalIssues = (cause: unknown) => validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
 
 const legacyDecode = <A, I, E>(
   schema: Schema.Codec<A, I, never, never>,
@@ -51,7 +43,7 @@ describe("decodeOrFail", () => {
     const onError = (cause: Schema.SchemaError) => {
       const issues = issuesWithMessages(cause, "Invalid Landofile.");
       return new LandofileValidationError({
-        message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
+        message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
         file: "/app/.lando.yml",
         issues,
       });
@@ -98,7 +90,7 @@ describe("decodeOrFail", () => {
     const onError = (cause: Schema.SchemaError) => {
       const issues = issuesWithMessages(cause, "Invalid recipe.yml.");
       return new RecipeManifestValidationError({
-        message: `recipe.yml is invalid: ${issues.join(", ")}.`,
+        message: `recipe.yml is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
         source: "/recipes/empty/recipe.yml",
         issues,
       });
@@ -114,7 +106,7 @@ describe("decodeOrFail", () => {
     const onError = (cause: Schema.SchemaError) => {
       const issues = globalIssues(cause);
       return new LandofileValidationError({
-        message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
+        message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
         file: "/data/global/.lando.dist.yml",
         issues,
       });

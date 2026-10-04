@@ -206,7 +206,7 @@ describe("AppPlanner home persistence and host reachability", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       expect(failure).toMatchObject({
         _tag: "LandofileValidationError",
-        issues: ["services.web.home.path"],
+        issues: [{ path: ["services", "web", "home", "path"] }],
       });
       expect(String((failure as LandofileValidationError).message)).toContain(
         "cannot mount over the filesystem root",
@@ -225,7 +225,7 @@ describe("AppPlanner home persistence and host reachability", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       expect(failure).toMatchObject({
         _tag: "LandofileValidationError",
-        issues: ["services.web.home.path"],
+        issues: [{ path: ["services", "web", "home", "path"] }],
       });
     });
   });

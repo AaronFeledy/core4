@@ -14,6 +14,7 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
@@ -358,7 +359,9 @@ describe("LandofileService layer", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.unsupported");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.unsupported",
+            );
             expect(error.message).toContain("unsupported Compose-subset keys");
             expect(error.message).toContain("providers.<provider-id>");
           }
@@ -393,7 +396,9 @@ describe("LandofileService layer", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.unsupported");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.unsupported",
+            );
             expect(error.message).toContain("unsupported MVP keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
@@ -433,7 +438,10 @@ describe("LandofileService layer", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toEqual(["services.web.unsupported"]);
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path)).sort()).toEqual([
+              "services.appserver.unsupported",
+              "services.web.unsupported",
+            ]);
             expect(error.message).toContain("unsupported service keys");
             expect(error.message).toContain("For type: compose services");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
@@ -461,7 +469,9 @@ describe("LandofileService layer", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.image");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.image",
+            );
             expect(error.message).toContain("unsupported MVP keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
@@ -489,7 +499,9 @@ describe("LandofileService layer", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.certs.key");
+            expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+              "services.web.certs.key",
+            );
             expect(error.message).toContain(
               "Remove unsupported keys or update the documented Landofile service schema.",
             );

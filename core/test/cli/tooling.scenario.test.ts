@@ -947,7 +947,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const planError = new LandofileValidationError({
         message: "planned failure",
         file: join(root, ".lando.yml"),
-        issues: ["service planning failed"],
+        issues: [{ path: [], message: "service planning failed" }],
       });
       const planCalls: number[] = [];
       const layer = makeLayer({ landofile, plan, provider, planError, planCalls });
@@ -974,7 +974,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const planError = new LandofileValidationError({
         message: "original planning failure",
         file: join(root, ".lando.yml"),
-        issues: ["service planning failed"],
+        issues: [{ path: [], message: "service planning failed" }],
       });
       const layer = makeLayer({ landofile, plan, provider, planError });
 

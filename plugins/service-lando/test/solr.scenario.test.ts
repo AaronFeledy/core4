@@ -23,6 +23,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
@@ -227,7 +228,9 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
         expect(outcome.failure._tag).toBe("LandofileValidationError");
         const failure = outcome.failure as LandofileValidationError;
         expect(failure.file.endsWith("/.lando.yml")).toBe(true);
-        expect(failure.issues).toEqual(["services.search"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.search",
+        ]);
         expect(failure.message).toContain(`services.search.cores[0] ${JSON.stringify(core)}`);
         expect(failure.message).toContain("Rename the core to a plain directory name.");
       }

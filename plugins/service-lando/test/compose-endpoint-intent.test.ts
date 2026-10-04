@@ -87,7 +87,7 @@ describe("compose endpoint intent", () => {
     const failure = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
-      issues: ["services.worker.endpoints"],
+      issues: [{ path: ["services", "worker", "endpoints"] }],
     });
   });
 

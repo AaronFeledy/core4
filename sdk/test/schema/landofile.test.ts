@@ -17,6 +17,7 @@ import {
   ServiceName,
   ToolingTaskShape,
   ToolingVar,
+  formatValidationIssuePath,
   getJsonSchema,
 } from "@lando/sdk/schema";
 
@@ -546,11 +547,16 @@ describe("LandofileShape (MVP)", () => {
     const err = new LandofileValidationError({
       message: `Landofile rejected ${rejectedKeys.length} unknown key(s): ${rejectedKeys.join(", ")}`,
       file: "/srv/apps/myapp/.lando.yml",
-      issues: rejectedKeys,
+      issues: rejectedKeys.map((key) => ({
+        path: key.length === 0 ? [] : key.split("."),
+        message: "Expected no excess property",
+      })),
     });
     expect(err._tag).toBe("LandofileValidationError");
     expect(err.message).toContain("unsupported");
-    expect(err.issues).toContain("services.web.unsupported");
+    expect(err.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+      "services.web.unsupported",
+    );
   });
 
   test("non-strict decoding strips unknown keys by default", () => {

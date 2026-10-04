@@ -10,8 +10,8 @@ const serviceSchemaRoot = (name: "ServiceConfig" | "ServiceConfigInput"): JsonOb
   const generated = getJsonSchema(name);
   if (!isJsonObject(generated)) throw new Error(`${name} JSON Schema root is not an object`);
   if (typeof generated.$ref !== "string") return generated;
-  const definitions = generated.definitions;
-  const definitionName = generated.$ref.replace(/^#\/definitions\//, "");
+  const definitions = generated.$defs;
+  const definitionName = generated.$ref.replace(/^#\/\$defs\//, "");
   if (!isJsonObject(definitions) || !isJsonObject(definitions[definitionName])) {
     throw new Error(`${name} JSON Schema definition is missing`);
   }

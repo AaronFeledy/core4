@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ValidationIssue } from "../schema/validation-issue.ts";
+
 import {
   choicesUnavailableFields,
   interactionRequiredFields,
@@ -79,7 +81,7 @@ export class RecipeManifestValidationError extends Schema.TaggedError<RecipeMani
   {
     message: Schema.String,
     source: Schema.String,
-    issues: Schema.Array(Schema.String),
+    issues: Schema.Array(ValidationIssue),
   },
 ) {}
 

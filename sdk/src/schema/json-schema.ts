@@ -202,6 +202,10 @@ import {
 import { HostTerminal } from "./host-terminal.ts";
 import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
+  repairLandofileExtensions,
+  repairTemplateLiteralExtensionRecords,
+} from "./json-schema-extensions.ts";
+import {
   KeymapConfig,
   RendererActionId,
   RendererKeyBinding,
@@ -1644,7 +1648,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "VolumeSnapshotSpec.labels",
   "VolumeSnapshotSpec.snapshotId",
   "VolumeSnapshotSpec.volume",
-  "ConfigLintViolation.suggestedFix",
+  "ConfigLintViolation.suggestion",
   "DataStoreMountPlan.readOnly",
   "DataStoreMountPlan.store",
   "DataStoreMountPlan.subpath",
@@ -2723,41 +2727,10 @@ export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaRe
     }),
   }));
 
-const landofileJsonSchema = (): JsonObject => {
-  const schema = getJsonSchemaWithDeprecations(LandofileShape, { onExcessProperty: "error" }) as JsonObject;
-  const definitions = schema.definitions;
-  const root =
-    isJsonObject(definitions) && isJsonObject(definitions.LandofileShape)
-      ? definitions.LandofileShape
-      : schema;
-  root.additionalProperties = false;
-  root.patternProperties = {
-    "^x-": {
-      $id: "/schemas/unknown",
-      title: "unknown",
-    },
-  };
-  root.propertyNames = undefined;
+const landofileJsonSchema = () => {
+  const schema = getJsonSchemaWithDeprecations(LandofileShape, { onExcessProperty: "error" });
+  repairLandofileExtensions(schema);
   return schema;
-};
-
-const isJsonObject = (value: unknown): value is JsonObject =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const repairTemplateLiteralExtensionRecords = (value: unknown): void => {
-  if (Array.isArray(value)) {
-    for (const entry of value) repairTemplateLiteralExtensionRecords(entry);
-    return;
-  }
-  if (!isJsonObject(value)) return;
-
-  const patternProperties = value.patternProperties;
-  if (isJsonObject(patternProperties) && Object.hasOwn(patternProperties, "^x-[\\s\\S]*?$")) {
-    const { "^x-[\\s\\S]*?$": extension, ...patterns } = patternProperties;
-    value.patternProperties = { ...patterns, "^x-": extension };
-  }
-
-  for (const nested of Object.values(value)) repairTemplateLiteralExtensionRecords(nested);
 };
 
 const expressionJsonSchema = (

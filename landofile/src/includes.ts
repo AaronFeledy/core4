@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { Effect, Predicate, Schema, SchemaIssue } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import { hasIncludeCycle } from "./include-graph.ts";
 
 import {
@@ -9,11 +9,18 @@ import {
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileParseError,
+  LandofileValidationError,
   type NotImplementedError,
   RecipeSourceError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type IncludeEntry,
+  LandofileShape,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
 import { mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
@@ -176,6 +183,7 @@ export type ResolveIncludesError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | LandofileParseError
+  | LandofileValidationError
   | ResolveLandofileLoadExpressionError
   | NotImplementedError
   | ToolingIncludeCycleError;
@@ -659,26 +667,21 @@ const parseFragment = (
     }),
   );
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> =>
-  Schema.isSchemaError(cause)
-    ? SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-        (issue.path ?? []).length === 0 ? issue.message : `${(issue.path ?? []).join(".")}: ${issue.message}`,
-      )
-    : [causeMessage(cause)];
-
 const decodeMerged = (
   value: Record<string, unknown>,
   filePath: string,
-): Effect.Effect<LandofileShape, LandofileParseError> => {
-  const decoded = Schema.decodeUnknownResult(LandofileShape)(value, { onExcessProperty: "error" });
+): Effect.Effect<LandofileShape, LandofileValidationError> => {
+  const decoded = Schema.decodeUnknownResult(LandofileShape)(value, {
+    onExcessProperty: "error",
+    errors: "all",
+  });
   if (decoded._tag === "Success") return Effect.succeed(decoded.success);
+  const issues = validationIssuesFromCause(decoded.failure, { fallback: causeMessage(decoded.failure) });
   return Effect.fail(
-    new LandofileParseError({
-      message: `Merged Landofile is invalid: ${validationIssues(decoded.failure).join(", ")}`,
-      filePath,
-      line: undefined,
-      column: undefined,
-      cause: decoded.failure,
+    new LandofileValidationError({
+      message: `Merged Landofile is invalid: ${issues.map(formatValidationIssueLine).join(", ")}`,
+      file: filePath,
+      issues,
     }),
   );
 };

@@ -341,7 +341,7 @@ describe("Landofile authoring schemas", () => {
 
     // Then the JSON projection keeps the notice contract and the fragment stays partial.
     expect(shape).toMatchObject({
-      definitions: {
+      $defs: {
         DeprecationNotice: {
           required: ["since", "note"],
           properties: {
@@ -352,7 +352,7 @@ describe("Landofile authoring schemas", () => {
         },
       },
     });
-    expect(fragment).toMatchObject({ definitions: { DeprecationNotice: { required: ["since", "note"] } } });
+    expect(fragment).toMatchObject({ $defs: { DeprecationNotice: { required: ["since", "note"] } } });
     expect(shape).toHaveProperty(
       [
         "properties",
@@ -366,7 +366,7 @@ describe("Landofile authoring schemas", () => {
         "deprecated",
         "anyOf",
       ],
-      [{ $ref: "#/definitions/DeprecationNotice" }, { type: "string" }],
+      [{ $ref: "#/$defs/DeprecationNotice" }, { type: "string" }],
     );
     expect(decoded._tag).toBe("Success");
   });

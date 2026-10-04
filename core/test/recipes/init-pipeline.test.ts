@@ -5,7 +5,11 @@ import { join } from "node:path";
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { plugin } from "@lando/lando4";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
+import {
+  type ConfigTranslateDiagnostic,
+  ConfigTranslateSourceId,
+  LANDOFILE_EDITOR_SCHEMA_URL,
+} from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, ProcessRunner } from "@lando/sdk/services";
 import { Effect, Result, Schema, Stream } from "effect";
 import {
@@ -99,6 +103,7 @@ test("S1 commits expression-bearing provenance before auxiliary files and postIn
   const result = await Effect.runPromise(runRecipeInitPipeline(request));
   expect(calls).toEqual(["commit", "postInit"]);
   const text = await Bun.file(landofile).text();
+  expect(text.startsWith(`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}\n`)).toBe(true);
   expect(text).toContain("{{ recipe.php }}");
   expect(text).toMatch(/recipe:\n\s+id: isolated-init/);
   expect(text).toMatch(/\n\s+producer:\n/);

@@ -52,9 +52,9 @@ test.each([
       if (valid) expect(envelope.result.violations).toEqual([]);
       else {
         expect(envelope.result.violations).toHaveLength(1);
-        expect(envelope.result.violations[0]).toMatchObject({ path: "", line: 7, column: 17 });
+        expect(envelope.result.violations[0]).toMatchObject({ path: [], line: 7, column: 17 });
         expect(envelope.result.violations[0]?.message).toMatch(/block/i);
-        expect(envelope.result.violations[0]?.suggestedFix).toMatch(/block mapping/i);
+        expect(envelope.result.violations[0]?.suggestion).toMatch(/block mapping/i);
       }
     } finally {
       await rm(dir, { recursive: true, force: true });

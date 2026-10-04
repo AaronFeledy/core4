@@ -243,6 +243,14 @@ Local sources MUST remain contained by default. Git and npm sources MUST be pinn
 
 Public Effect Schemas, including `Landofile`, `GlobalConfig`, service/tooling/route/healthcheck configuration, expression AST and errors, plugin manifest, events, prompts, and command result contracts, are published from `@lando/sdk`, registered in `@lando/sdk/schema`, and re-exported by `@lando/core/schema`. Build publication emits JSON Schema, generated reference MDX, and a metadata index. Annotations MUST support validation, editor integration, generated docs, and deprecation (§13.2, §17.2, §18.5).
 
+Published JSON Schema artifacts (`dist/schemas/**`, `dist/command-schemas/**`) are draft 2020-12 documents (`$defs`). Editors get two draft-07 artifacts, `landofile.schema.json` and `global-config.schema.json`, emitted through `JsonSchema.toDocumentDraft07` with `onExcessProperty: "error"` (closed objects) and generated descriptions. `LANDOFILE_EDITOR_SCHEMA_URL` in `@lando/sdk/schema` is the one URL for the editor Landofile artifact; the docs build publishes the artifact at exactly that URL. New Landofiles written by `lando init` and `lando app:config:translate` start with `# yaml-language-server: $schema=<url>`; existing files are never rewritten to add it.
+
+`@lando/sdk/schema/standard` exports Standard Schema V1 and Standard JSON Schema V1 views of the Landofile input, global config, plugin manifest, and recipe manifest schemas, importing only those schemas.
+
+**Parity contract.** Lando's decoder is the definition of a valid Landofile. A parity test holds the published JSON Schema document (loaded with `SchemaRepresentation.fromJsonSchemaDocument`) and the Standard Schema view to that decoder over every valid guide and recipe Landofile fixture plus a curated invalid set (unknown keys, wrong types, out-of-range ports, `null` for an optional key). Accept/reject must agree, Standard Schema issue paths and messages must equal Lando's, and every check JSON Schema cannot express is listed in the test with its reason.
+
+**Validation issues.** Authored-file decoders run with `errors: "all"`. `LandofileValidationError`, `RecipeManifestValidationError`, and config-lint violations carry `issues` as `{ path: Array<string | number>, message, suggestion? }` (`ValidationIssue`). An unknown key's `suggestion` names the closest allowed key within edit distance 2.
+
 #### 7.8.1 Canonical Landofile serializer
 
 `@lando/sdk/landofile`, re-exported by `@lando/core/landofile`, owns `emitLandofileYaml`, `emitLandofileYamlEither`, and `parseLandofile`. The emitter accepts encoded `LandofileAuthoringShape` or context-validated `LandofileAuthoringFragment`, preserves expression text, emits tag-free block YAML, and raises `LandofileEmitError` for unsupported keys or values. The parser returns plain authoring data or `LandofileParseError`.

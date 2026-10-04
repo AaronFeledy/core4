@@ -75,7 +75,7 @@ const appliedPlanMismatches: ReadonlyArray<readonly [string, (plan: AppPlan) => 
 const invalidDesiredConfig = new LandofileValidationError({
   message: "The current Landofile is invalid.",
   file: ".lando.yml",
-  issues: ["invalid test fixture"],
+  issues: [{ path: [], message: "invalid test fixture" }],
 });
 
 const withTempRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> => {

@@ -74,7 +74,10 @@ export const assertToolingFragment = (
       }
       if (
         Result.isFailure(
-          Schema.decodeUnknownResult(ToolingIncludeShape)(entry, { onExcessProperty: "error" }),
+          Schema.decodeUnknownResult(ToolingIncludeShape)(entry, {
+            onExcessProperty: "error",
+            errors: "all",
+          }),
         )
       ) {
         return Effect.fail(

@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { Effect, Result } from "effect";
 
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { resolveServiceConfigSources } from "../../src/planner/service-config-files.ts";
 
 const sha256 = (bytes: string | Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -87,9 +88,12 @@ describe("service config file sources", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure._tag).toBe("LandofileValidationError");
-      expect(result.failure.issues).toContain(`services.database.config.${key}`);
+      expect(result.failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+        `services.database.config.${key}`,
+      );
       expect(result.failure.file).toBe(`${appRoot}/.lando.yml`);
       expect(result.failure.message).toContain(`services.database.config.${key}`);
+      expect(result.failure.issues.every((issue) => !issue.message.startsWith("services."))).toBe(true);
     }
   });
 
@@ -102,7 +106,9 @@ describe("service config file sources", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure._tag).toBe("LandofileValidationError");
-      expect(result.failure.issues).toContain("services.database.config.server");
+      expect(result.failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+        "services.database.config.server",
+      );
     }
   });
 
@@ -124,7 +130,9 @@ describe("service config file sources", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure._tag).toBe("LandofileValidationError");
-      expect(result.failure.issues).toContain("services.database.config.dir");
+      expect(result.failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+        "services.database.config.dir",
+      );
       expect(result.failure.message).toContain("nested/bad-link");
     }
   });

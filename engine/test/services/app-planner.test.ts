@@ -34,6 +34,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
@@ -1172,7 +1173,9 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
-        expect(failure.issues).toEqual(["services.worker.build"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.worker.build",
+        ]);
       }
     });
   });
@@ -2107,7 +2110,9 @@ describe("AppPlannerLayer.layer", () => {
       const failure = expectSomeFailure(exit);
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
-        expect(failure.issues).toEqual(["services.web.endpoints"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.web.endpoints",
+        ]);
       }
     });
   });
@@ -3001,7 +3006,9 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       expect(failure._tag).toBe("LandofileValidationError");
       if (failure instanceof LandofileValidationError) {
-        expect(failure.issues).toEqual(["services.cache.type"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.cache.type",
+        ]);
       }
     });
   });
@@ -3020,7 +3027,9 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
-        expect(failure.issues).toEqual(["services.worker"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.worker",
+        ]);
         expect(failure.message).toContain('requires either "image:" or "build:"');
       }
     });
@@ -3354,7 +3363,9 @@ describe("AppPlannerLayer.layer", () => {
       if (failure instanceof LandofileValidationError) {
         expect(failure.message).toContain("kind: cache");
         expect(failure.message).toContain("scope: service");
-        expect(failure.issues).toContain("services.web.storage[0].scope");
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toContain(
+          "services.web.storage[0].scope",
+        );
       }
     });
   });
@@ -4337,7 +4348,9 @@ describe("AppPlannerLayer.layer", () => {
         expect(failure).toBeInstanceOf(LandofileValidationError);
         if (failure instanceof LandofileValidationError) {
           expect(failure._tag).toBe("LandofileValidationError");
-          expect(failure.issues).toEqual(["services.db.type"]);
+          expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+            "services.db.type",
+          ]);
           expect(failure.message).toContain("Supported versions: 11.4");
         }
       });
@@ -4364,7 +4377,9 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
-        expect(failure.issues).toEqual(["services.db.type"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.db.type",
+        ]);
         expect(failure.message).toContain("does not publish any supported versions");
       }
     });
@@ -4382,7 +4397,9 @@ describe("AppPlannerLayer.layer", () => {
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
-        expect(failure.issues).toEqual(["services.db.type"]);
+        expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+          "services.db.type",
+        ]);
         expect(failure.message).toContain("does not publish an artifact for supported version 1.0");
       }
     });
@@ -4637,7 +4654,9 @@ describe("AppPlannerLayer.layer", () => {
     expect(failure).toBeInstanceOf(LandofileValidationError);
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
-      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+        "services.web.dependsOn",
+      ]);
       expect(failure.message).toContain(
         "Service web depends on missing service db with condition service_started.",
       );
@@ -4701,7 +4720,9 @@ describe("AppPlannerLayer.layer", () => {
     expect(failure).toBeInstanceOf(LandofileValidationError);
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
-      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+        "services.web.dependsOn",
+      ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
       );
@@ -4734,7 +4755,9 @@ describe("AppPlannerLayer.layer", () => {
     expect(failure).toBeInstanceOf(LandofileValidationError);
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
-      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+        "services.web.dependsOn",
+      ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
       );
@@ -4777,7 +4800,9 @@ describe("AppPlannerLayer.layer", () => {
     expect(failure).toBeInstanceOf(LandofileValidationError);
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
-      expect(failure.issues).toEqual(["services.db.dependsOn"]);
+      expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+        "services.db.dependsOn",
+      ]);
       expect(failure.message).toContain(
         "web --[service_started]--> db --[service_completed_successfully]--> web",
       );
@@ -4809,7 +4834,9 @@ describe("AppPlannerLayer.layer", () => {
     expect(failure).toBeInstanceOf(LandofileValidationError);
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
-      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+        "services.web.dependsOn",
+      ]);
       expect(failure.message).toContain("web --[service_started]--> web");
       expect(failure.message).toContain(
         "Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
@@ -4885,7 +4912,9 @@ describe("AppPlannerLayer.layer", () => {
         expect(failure).toBeInstanceOf(LandofileValidationError);
         if (failure instanceof LandofileValidationError) {
           expect(failure._tag).toBe("LandofileValidationError");
-          expect(failure.issues).toEqual(["services.web.dependsOn"]);
+          expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+            "services.web.dependsOn",
+          ]);
           expect(failure.message).toContain(
             "Service web depends on missing service db with condition service_started.",
           );

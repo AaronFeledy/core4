@@ -175,7 +175,7 @@ const loadRemoteLandofile = Effect.fnUntraced(function* (
       }),
   });
   const parsed = yield* parseLandofile({ file, content, cwd: root });
-  const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
+  const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
   if (decoded._tag === "Failure") {
     return yield* Effect.fail(
       new LandofileParseError({

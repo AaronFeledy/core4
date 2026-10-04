@@ -5,7 +5,8 @@ import { type Context, Effect } from "effect";
 
 import { parseEnvFile } from "@lando/landofile/env-file";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import type { ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceConfig, ValidationIssuePath } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
 
 type EnvFileInput = {
@@ -14,7 +15,7 @@ type EnvFileInput = {
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly owner: string;
   readonly readContext: string;
-  readonly issuePath: string;
+  readonly issuePath: ValidationIssuePath;
 };
 
 type LoadedEnvFiles = {
@@ -31,7 +32,12 @@ const loadEnvFiles = Effect.fnUntraced(function* (
       new LandofileValidationError({
         message: `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
         file: `${input.appRoot}/.lando.yml`,
-        issues: [input.issuePath],
+        issues: [
+          validationIssue(
+            input.issuePath,
+            `${input.owner} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
+          ),
+        ],
       }),
     );
   }
@@ -46,7 +52,12 @@ const loadEnvFiles = Effect.fnUntraced(function* (
           new LandofileValidationError({
             message: `Unable to read env file ${source} ${input.readContext}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
             file: source,
-            issues: [`${input.issuePath}[${index}]`],
+            issues: [
+              validationIssue(
+                [...input.issuePath, index],
+                `Unable to read env file ${source} ${input.readContext}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
+              ),
+            ],
           }),
       ),
     );
@@ -56,7 +67,12 @@ const loadEnvFiles = Effect.fnUntraced(function* (
         new LandofileValidationError({
           message: `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
           file: parsed.issue.source,
-          issues: [`line ${parsed.issue.line}`],
+          issues: [
+            validationIssue(
+              [...input.issuePath, index],
+              `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
+            ),
+          ],
         }),
       );
     }
@@ -75,7 +91,7 @@ export const loadTopLevelEnvFiles = (input: {
     ...input,
     owner: "The Landofile",
     readContext: "declared by the Landofile",
-    issuePath: "env_file",
+    issuePath: ["env_file"],
   });
 
 export const loadServiceEnvFiles = (input: {
@@ -96,7 +112,7 @@ export const loadServiceEnvFiles = (input: {
     fileSystem: input.fileSystem,
     owner: `Service ${input.serviceName}`,
     readContext: `for service ${input.serviceName}`,
-    issuePath: `services.${input.serviceName}.envFile`,
+    issuePath: ["services", input.serviceName, "envFile"],
   }).pipe(
     Effect.map(({ environment, inputs }) => ({
       environment: { ...environment, ...(input.service.environment ?? {}) },

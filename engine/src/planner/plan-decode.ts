@@ -1,6 +1,6 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { AppPlan } from "@lando/sdk/schema";
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { AppPlan, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 
 export const decodeAppPlan = (
   appRoot: string,
@@ -8,12 +8,10 @@ export const decodeAppPlan = (
 ): Effect.Effect<AppPlan, LandofileValidationError> => {
   const decoded = Schema.decodeUnknownResult(AppPlan)(plan);
   if (Result.isSuccess(decoded)) return Effect.succeed(decoded.success);
-  const issues = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues.map((issue) =>
-    (issue.path ?? []).length === 0 ? issue.message : `${issue.path?.join(".")}: ${issue.message}`,
-  );
+  const issues = validationIssuesFromCause(decoded.failure, { fallback: "Invalid AppPlan." });
   return Effect.fail(
     new LandofileValidationError({
-      message: `Planned AppPlan is invalid: ${issues.join(", ")}.`,
+      message: `Planned AppPlan is invalid: ${issues.map(formatValidationIssueLine).join(", ")}.`,
       file: `${appRoot}/.lando.yml`,
       issues,
     }),

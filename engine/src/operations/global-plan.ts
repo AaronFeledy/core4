@@ -1,9 +1,13 @@
-import { SchemaIssue } from "effect";
-import { Schema } from "effect";
 import { Effect } from "effect";
 
 import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
-import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type LandofileShape,
+  LandofileShape as LandofileShapeSchema,
+  formatValidationIssueLine,
+  validationIssuesFromCause,
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   type AppPlannerError,
@@ -43,14 +47,8 @@ export type LoadGlobalPlanError =
 
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (Schema.isSchemaError(cause)) {
-    return SchemaIssue.makeFormatterStandardSchemaV1()(cause.issue).issues.map((issue) =>
-      (issue.path ?? []).length === 0 ? issue.message : (issue.path ?? []).join("."),
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid Landofile."];
-};
+const validationIssues = (cause: unknown) =>
+  validationIssuesFromCause(cause, { fallback: "Invalid Landofile." });
 
 const validateGlobalLandofile = (
   filePath: string,
@@ -59,11 +57,11 @@ const validateGlobalLandofile = (
   decodeOrFail(LandofileShapeSchema, (cause) => {
     const issues = validationIssues(cause);
     return new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
+      message: `Landofile contains unsupported MVP keys: ${issues.map(formatValidationIssueLine).join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
       file: filePath,
       issues,
     });
-  })(parsed, { onExcessProperty: "error" });
+  })(parsed, { onExcessProperty: "error", errors: "all" });
 
 export const decodeGlobalLandofile = (input: {
   readonly file: string;

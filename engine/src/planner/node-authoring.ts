@@ -4,6 +4,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { FileSystem, ServiceType, ServiceTypeProjectFileInput } from "@lando/sdk/services";
 
+import { validationIssue } from "@lando/sdk/schema";
 import { loadServiceTypeProjectFiles } from "./project-files.ts";
 import { unsupportedServiceType } from "./service-types.ts";
 
@@ -32,7 +33,12 @@ export const loadAuthorizedServiceProjectFiles = (
       new LandofileValidationError({
         message: `Service ${input.name} may use packageRoot only with bare type: node. Remove packageRoot or set type to node.`,
         file: `${input.appRoot}/.lando.yml`,
-        issues: [`services.${input.name}.packageRoot`],
+        issues: [
+          validationIssue(
+            ["services", input.name, "packageRoot"],
+            `Service ${input.name} may use packageRoot only with bare type: node. Remove packageRoot or set type to node.`,
+          ),
+        ],
       }),
     );
   }
@@ -41,7 +47,12 @@ export const loadAuthorizedServiceProjectFiles = (
       new LandofileValidationError({
         message: `Service ${input.name} cannot combine bare type: node inference with image. Remove image or use an explicit Node type.`,
         file: `${input.appRoot}/.lando.yml`,
-        issues: [`services.${input.name}.image`],
+        issues: [
+          validationIssue(
+            ["services", input.name, "image"],
+            `Service ${input.name} cannot combine bare type: node inference with image. Remove image or use an explicit Node type.`,
+          ),
+        ],
       }),
     );
   }

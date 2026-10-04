@@ -6,6 +6,7 @@ import { Effect } from "effect";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
 import { LandofileValidationError } from "@lando/sdk/errors";
+import { validationIssue } from "@lando/sdk/schema";
 
 export interface ServiceConfigSource {
   readonly key: "server" | "dir";
@@ -28,7 +29,7 @@ export const resolveServiceConfigSources = Effect.fnUntraced(function* (input: {
       new LandofileValidationError({
         message: `${issue} ${message}`,
         file: `${input.appRoot}/.lando.yml`,
-        issues: [issue],
+        issues: [validationIssue(["services", input.serviceName, "config", key], message)],
       });
     const io = <A>(path: string, operation: () => Promise<A>): Effect.Effect<A, LandofileValidationError> =>
       Effect.tryPromise({

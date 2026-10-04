@@ -7,6 +7,8 @@ import {
 } from "@lando/sdk/expressions";
 import { Predicate, Result } from "effect";
 
+import type { ValidationIssuePath } from "@lando/sdk/schema";
+
 /**
  * Expression scopes a loaded Landofile may still carry after the load walk.
  *
@@ -67,8 +69,8 @@ const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean
 
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
-  /** Dotted path of the value site holding the expression. */
-  readonly path: string;
+  /** Location of the value site holding the expression. */
+  readonly path: ValidationIssuePath;
   readonly reason: string;
 }
 
@@ -136,7 +138,7 @@ export const materializeLoadScopeExpressions = (
       if (!resolvableAtLoad(value, parsed.success)) return value;
       const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.success, ["env"]);
       if (needsOptions && options === undefined) {
-        unresolved.push({ path: path.join("."), reason: "the Landofile records no recipe options" });
+        unresolved.push({ path, reason: "the Landofile records no recipe options" });
         return value;
       }
       const evaluated = evaluateTemplateEither(
@@ -153,7 +155,7 @@ export const materializeLoadScopeExpressions = (
         } else {
           reason = "it references an environment variable that is not set and declares no default";
         }
-        unresolved.push({ path: path.join("."), reason });
+        unresolved.push({ path, reason });
         return value;
       }
       return evaluated.success;

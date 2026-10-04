@@ -3,18 +3,17 @@ import { dirname } from "node:path";
 import { Effect, Schema } from "effect";
 
 import {
+  type ComposeKeyRejectedError,
+  type LandofileIncludeError,
   type LandofileLoadExpressionError,
+  type LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileValidationError,
   type NotImplementedError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import type {
-  ComposeKeyRejectedError,
-  LandofileIncludeError,
-  LandofileLockMismatchError,
-  ToolingIncludeCycleError,
-} from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
 
 import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
@@ -76,6 +75,7 @@ export interface AppIncludesVerifyOptions {
 export type AppIncludesVerifyError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileValidationError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -120,15 +120,14 @@ export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function*
   const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
   const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
   yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
+  const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error", errors: "all" });
   if (decoded._tag === "Failure") {
+    const issues = validationIssuesFromCause(decoded.failure);
     return yield* Effect.fail(
-      new LandofileParseError({
-        message: `Landofile ${filePath} is not valid: ${String(decoded.failure)}`,
-        filePath,
-        line: undefined,
-        column: undefined,
-        cause: decoded.failure,
+      new LandofileValidationError({
+        message: `Landofile ${filePath} is not valid: ${issues.map(formatValidationIssueLine).join(", ")}`,
+        file: filePath,
+        issues,
       }),
     );
   }

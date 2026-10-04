@@ -1,5 +1,6 @@
 import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities, ServiceConfig } from "@lando/sdk/schema";
+import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem, PluginRegistry, ServiceTypeInput } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import { isComposeBuild } from "../services/compose-build-artifact.ts";
@@ -65,7 +66,12 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
           new LandofileValidationError({
             message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
             file: `${appRoot}/.lando.yml`,
-            issues: [`services.${name}.build`],
+            issues: [
+              validationIssue(
+                ["services", name, "build"],
+                `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
+              ),
+            ],
           }),
         );
       }

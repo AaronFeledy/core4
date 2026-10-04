@@ -42,7 +42,7 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     ...(options.templates === undefined ? {} : { templates: options.templates }),
   }).pipe(Effect.result);
   if (Result.isFailure(loaded)) {
-    return { ...result, valid: false, violations: [{ path: "", message: loaded.failure.message }] };
+    return { ...result, valid: false, violations: [{ path: [], message: loaded.failure.message }] };
   }
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));

@@ -72,7 +72,7 @@ test("rejects an escaping config source before provider action", () =>
       expect(Result.isFailure(result)).toBe(true);
       if (Result.isFailure(result)) {
         expect(result.failure).toBeInstanceOf(LandofileValidationError);
-        expect(result.failure).toMatchObject({ issues: ["services.db.config.server"] });
+        expect(result.failure).toMatchObject({ issues: [{ path: ["services", "db", "config", "server"] }] });
       }
       expect(start).not.toHaveBeenCalled();
     } finally {

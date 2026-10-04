@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { type Context, Effect } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppIdentity, appIdentityKey } from "@lando/sdk/schema";
+import { AbsolutePath, type AppIdentity, appIdentityKey, validationIssue } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 
 const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationError> =>
@@ -14,7 +14,7 @@ const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationE
       new LandofileValidationError({
         message: "Cannot establish canonical app ownership.",
         file: path,
-        issues: ["Ensure the root exists and is accessible before planning the app."],
+        issues: [validationIssue([], "Ensure the root exists and is accessible before planning the app.")],
       }),
   });
 

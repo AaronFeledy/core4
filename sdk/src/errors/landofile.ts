@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ValidationIssue } from "../schema/validation-issue.ts";
+
 export class RouteInputError extends Schema.TaggedError<RouteInputError>()("RouteInputError", {
   message: Schema.String.annotate({ description: "Human-readable route input failure." }),
   key: Schema.String.annotate({ description: "Authored route key path, including its array index." }),
@@ -159,7 +161,7 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   {
     message: Schema.String,
     file: Schema.String,
-    issues: Schema.Array(Schema.String),
+    issues: Schema.Array(ValidationIssue),
   },
 ) {}
 
@@ -223,7 +225,7 @@ export class LandofileWriteValidationError extends Schema.TaggedError<LandofileW
     message: Schema.String,
     file: Schema.String,
     path: Schema.optional(Schema.String),
-    issues: Schema.Array(Schema.String),
+    issues: Schema.Array(ValidationIssue),
     remediation: Schema.String,
   },
 ) {}
