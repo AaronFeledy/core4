@@ -476,3 +476,10 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck and lint pass. Spot checks pass (108 tests: parity, issue helpers, recipe source and manifest, issue rendering, home planner).
 ---
+
+## 2026-10-03 19:28 CDT - US-668 Verify
+- Compiled-binary setup, lamp init, and start succeeded. Init and `app:config:translate --write` both start the new Landofile with the editor schema modeline; an existing invalid Landofile was not rewritten. Lint reported all three problems (`imgae` suggests `image`, bad `home`, port 99999) in one JSON result; `app:config` and `app:includes:verify` returned `LandofileValidationError` with the same structured issues. Text lint printed one line per issue. A valid app linted clean, `php` printed `us668-ok`, and HTTP :8080 and HTTPS :8443 both returned the PHP body. Destroy and poweroff exited 0.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us668v-appserver`, `lando-us668v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-667 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-668 acceptance failure.
+- **Learnings for future iterations:**
+  - A reset `lando4-dev` still sees host ports 80 and 443 through WSL mirrored networking, so setup and start hop to 8080/8443. Doctor warns `preferred-host-ports` and router `occupied-hop`. The alternate URLs still serve the app.
+---
