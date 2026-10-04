@@ -1,14 +1,12 @@
 import { Effect } from "effect";
 
 import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
-import { type AbsolutePath, type AppPlan, type AppRef, appIdentityKey } from "@lando/sdk/schema";
+import { type AbsolutePath, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
-import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, userAppRef } from "../landofile/app-resolution.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
-
-const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 const mismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -53,7 +51,7 @@ const appliedStateTarget = (plan: AppPlan) =>
     : validateResolvedAppTarget({
         plan,
         root: plan.root,
-        app: appRef(plan),
+        app: userAppRef(plan),
       } satisfies ResolvedAppTarget);
 
 export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPlan, root: AbsolutePath) {
@@ -67,7 +65,7 @@ export const missingRootAppliedTarget = Effect.fnUntraced(function* (plan: AppPl
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
   if (provider.id !== String(plan.provider)) return yield* Effect.fail(mismatch("provider"));
-  return { plan, root: plan.root, app: appRef(plan) } satisfies ResolvedAppTarget;
+  return { plan, root: plan.root, app: userAppRef(plan) } satisfies ResolvedAppTarget;
 });
 
 export const resolveAppliedStateTarget = Effect.gen(function* () {
