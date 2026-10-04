@@ -177,10 +177,15 @@ test("redacts defect causes before OTLP serializes error events", async () => {
 });
 
 test("bounds a stalled exporter without delaying completion or changing status", async () => {
+  // Bun's stop(true) waits on unsettled handlers even after the client aborts, so teardown releases the stall.
+  let release = () => {};
   const receiver = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
-    fetch: () => new Promise<Response>(() => {}),
+    fetch: () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(new Response(null));
+      }),
   });
   const started = performance.now();
   let resultAt = Number.POSITIVE_INFINITY;
@@ -196,6 +201,7 @@ test("bounds a stalled exporter without delaying completion or changing status",
     expect(resultAt).toBeLessThan(500);
     expect(performance.now() - started).toBeLessThan(1_300);
   } finally {
+    release();
     await receiver.stop(true);
   }
 });
