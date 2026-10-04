@@ -624,3 +624,12 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - Install order and AST identity are the contract. Regenerate after editing any listed schema or the Effect version, and keep the target list free of imports from the generated module, so the generator still runs on a clean checkout.
   - Sandbox bench noise is about 20 ms on p95 and drifts across a session. Compare binaries in interleaved ABBA rounds, never back to back.
 ---
+## 2026-10-04 04:06 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-10-04 04:14 CDT - US-670 Verify
+- Compiled-binary setup, lamp init/start, and a second start succeeded on a reset sandbox. HTTP and HTTPS returned the PHP body. `php` tooling, logs, info (database passwords `[redacted]`), `app:config`, and doctor exited 0. A Landofile with `imgae` returned tagged `LandofileValidationError` (`services.web.imgae`, suggestion `image`) and exit 1. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
+- **Out-of-scope finding:** setup and start warned that ports 80 and 443 are occupied and hopped the router to 8000/4443. The app still returned HTTP 200 on the hopped URLs. Same class as the US-664 note. Suspected area: WSL mirrored networking, not compiled decoders.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us670v-appserver`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-663/US-664 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-670 acceptance failure. The sandbox was reset afterward.
+---
