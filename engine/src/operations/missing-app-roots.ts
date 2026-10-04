@@ -101,7 +101,7 @@ export const findMissingAppRoots: Effect.Effect<
     [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)),
     ([root, group]) =>
       fs.exists(root).pipe(
-        Effect.catchAll(() => Effect.succeed(true)),
+        Effect.catch(() => Effect.succeed(true)),
         Effect.map(
           (exists): ReadonlyArray<MissingAppRoot> =>
             exists

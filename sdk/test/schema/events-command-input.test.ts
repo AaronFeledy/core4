@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { EventStep } from "@lando/sdk/schema";
 
@@ -27,10 +27,10 @@ describe("EventCommandStep flags/args input values", () => {
 
     // When / Then
     for (const options of decodeOptions) {
-      const decoded = Schema.decodeUnknownEither(EventStep)(step, options);
-      expect(Either.isRight(decoded)).toBe(true);
-      if (Either.isRight(decoded)) {
-        expect(decoded.right).toEqual(step);
+      const decoded = Schema.decodeUnknownResult(EventStep)(step, options);
+      expect(Result.isSuccess(decoded)).toBe(true);
+      if (Result.isSuccess(decoded)) {
+        expect(decoded.success).toEqual(step);
       }
     }
   });
@@ -50,7 +50,7 @@ describe("EventCommandStep flags/args input values", () => {
     // When / Then
     for (const options of decodeOptions) {
       for (const step of steps) {
-        expect(Either.isRight(Schema.decodeUnknownEither(EventStep)(step, options))).toBe(true);
+        expect(Result.isSuccess(Schema.decodeUnknownResult(EventStep)(step, options))).toBe(true);
       }
     }
   });
@@ -67,7 +67,7 @@ describe("EventCommandStep flags/args input values", () => {
     // When / Then
     for (const options of decodeOptions) {
       for (const step of steps) {
-        expect(Either.isRight(Schema.decodeUnknownEither(EventStep)(step, options))).toBe(true);
+        expect(Result.isSuccess(Schema.decodeUnknownResult(EventStep)(step, options))).toBe(true);
       }
     }
   });
@@ -79,8 +79,8 @@ describe("EventCommandStep flags/args input values", () => {
 
     // When / Then
     for (const options of decodeOptions) {
-      expect(Either.isRight(Schema.decodeUnknownEither(EventStep)(stringStep, options))).toBe(true);
-      expect(Either.isRight(Schema.decodeUnknownEither(EventStep)(rawOnly, options))).toBe(true);
+      expect(Result.isSuccess(Schema.decodeUnknownResult(EventStep)(stringStep, options))).toBe(true);
+      expect(Result.isSuccess(Schema.decodeUnknownResult(EventStep)(rawOnly, options))).toBe(true);
     }
   });
 
@@ -97,7 +97,7 @@ describe("EventCommandStep flags/args input values", () => {
     // When / Then
     for (const options of decodeOptions) {
       for (const step of invalid) {
-        expect(Either.isLeft(Schema.decodeUnknownEither(EventStep)(step, options))).toBe(true);
+        expect(Result.isFailure(Schema.decodeUnknownResult(EventStep)(step, options))).toBe(true);
       }
     }
   });

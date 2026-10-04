@@ -27,16 +27,16 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import { runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-12T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
   source: "tooling-events.test",
   runtime: 4 as const,
 } as const;
@@ -96,71 +96,89 @@ const harness = (input: {
   const provider = {
     ...TestRuntimeProvider,
     execStream: (_target: ExecTarget, spec: CommandSpec) =>
-      Effect.succeed({ exitCode: record(executedLabel(spec.command, "exec")) }),
+      Stream.make({ exitCode: record(executedLabel(spec.command, "exec")) }),
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const eventRuntime =
     input.omitEventRuntime === true
       ? Layer.empty
       : Layer.mergeAll(
-          EventServiceLive,
-          Layer.succeed(RedactionService, {
-            registerValues: registerRedactionValues,
-            forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-          }),
+          LandoEventService.layer,
+          Layer.succeed(
+            RedactionService,
+            RedactionService.of({
+              registerValues: registerRedactionValues,
+              forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+            }),
+          ),
         );
   const layer = Layer.mergeAll(
     eventRuntime,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.sync(() => {
-          const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
-          return {
-            tool: invocation.tool,
-            service: invocation.service ?? String(service.name),
-            exitCode,
-            stdout: exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join(""),
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
-        name: "tooling-events",
-        tooling: input.tooling,
-        ...(input.events === undefined ? {} : { events: input.events }),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "recording",
+        run: (invocation) =>
+          Effect.sync(() => {
+            const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
+            return {
+              tool: invocation.tool,
+              service: invocation.service ?? String(service.name),
+              exitCode,
+              stdout: exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join(""),
+              stderr: "",
+            };
+          }),
       }),
-    }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(ConfigService, { load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([service.provider]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () =>
-        Effect.sync(() => {
-          selections.push("select");
-          return provider;
+    ),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({
+        discover: Effect.succeed({
+          name: "tooling-events",
+          tooling: input.tooling,
+          ...(input.events === undefined ? {} : { events: input.events }),
         }),
-    }),
-    Layer.succeed(ShellRunner, {
-      exec: (source, options) =>
-        Effect.sync(() => ({
-          exitCode: record([source, ...(options?.argv ?? [])][2] ?? source),
-          stdout: "",
-          stderr: "",
-        })),
-      runScript: () => Effect.die("unused script"),
-      run: () => Effect.die("unused run"),
-      interactive: () => Effect.die("unused interactive"),
-    }),
+      }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([service.provider]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () =>
+          Effect.sync(() => {
+            selections.push("select");
+            return provider;
+          }),
+      }),
+    ),
+    Layer.succeed(
+      ShellRunner,
+      ShellRunner.of({
+        exec: (source, options) =>
+          Effect.sync(() => ({
+            exitCode: record([source, ...(options?.argv ?? [])][2] ?? source),
+            stdout: "",
+            stderr: "",
+          })),
+        runScript: () => Effect.die("unused script"),
+        run: () => Effect.die("unused run"),
+        interactive: () => Effect.die("unused interactive"),
+      }),
+    ),
   );
   return {
     executed,
     selections,
     plan,
-    run: (name: string) => Effect.runPromise(runTooling({ name }).pipe(Effect.provide(layer), Effect.either)),
+    run: (name: string) => Effect.runPromise(runTooling({ name }).pipe(Effect.provide(layer), Effect.result)),
   };
 };
 
@@ -176,7 +194,7 @@ test("brackets a top-level tooling run with its pre and post task events", async
   // When the task runs from the top level
   const result = await h.run("build");
   // Then the pre bracket, both authored steps, and the post bracket run in that order
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(h.executed).toEqual(["echo before", "echo body-one", "echo body-two", "echo after"]);
 });
 
@@ -207,7 +225,7 @@ test("skips the post bracket when the task body exits non-zero", async () => {
   // Then the remaining steps and the post bracket never run
   expect(h.executed).toEqual(["echo before", "echo body-one"]);
   // And the non-zero exit stays the task result rather than becoming a failure
-  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 7 } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 7 } });
 });
 
 test("a failing pre bracket prevents the task body", async () => {
@@ -222,8 +240,8 @@ test("a failing pre bracket prevents the task body", async () => {
   // Then the body never runs and the failure is tagged with the event identity
   expect(h.executed).toEqual(["echo before"]);
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "LandofileEventStepFailedError", event: "pre-build", exitCode: 7 },
+    _tag: "Failure",
+    failure: { _tag: "LandofileEventStepFailedError", event: "pre-build", exitCode: 7 },
   });
 });
 
@@ -239,17 +257,17 @@ test("a failing post bracket is fatal and carries the redacted output tail", asy
   const result = await h.run("build");
   // Then the whole run fails rather than reporting the body's success
   expect(h.executed).toEqual(["echo body", "echo after"]);
-  expect(result._tag).toBe("Left");
-  if (result._tag !== "Left") throw new Error("expected post-build failure");
-  if (result.left._tag !== "LandofileEventStepFailedError") {
-    throw new Error(`expected LandofileEventStepFailedError, got ${result.left._tag}`);
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") throw new Error("expected post-build failure");
+  if (result.failure._tag !== "LandofileEventStepFailedError") {
+    throw new Error(`expected LandofileEventStepFailedError, got ${result.failure._tag}`);
   }
-  expect(result.left).toMatchObject({
+  expect(result.failure).toMatchObject({
     event: "post-build",
     exitCode: 7,
   });
-  expect(result.left.outputTail).toContain("[redacted]");
-  expect(result.left.outputTail).not.toContain(secret);
+  expect(result.failure.outputTail).toContain("[redacted]");
+  expect(result.failure.outputTail).not.toContain(secret);
 });
 
 test("runs an unbracketed task without requiring the event runtime", async () => {
@@ -261,7 +279,7 @@ test("runs an unbracketed task without requiring the event runtime", async () =>
   // When the task runs
   const result = await h.run("build");
   // Then the empty-event fast path keeps the run green
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(h.executed).toEqual(["echo body"]);
 });
 
@@ -277,8 +295,8 @@ test("fails a configured bracket when the event runtime is unavailable", async (
   // Then the bracket refuses loudly instead of being silently dropped
   expect(h.executed).toEqual([]);
   expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "LandofileEventStepFailedError", event: "pre-build" },
+    _tag: "Failure",
+    failure: { _tag: "LandofileEventStepFailedError", event: "pre-build" },
   });
 });
 
@@ -291,7 +309,7 @@ test("never selects a provider for a host-only task and its host-only brackets",
   // When the task runs
   const result = await h.run("build");
   // Then no provider is ever initialized
-  expect(result._tag).toBe("Right");
+  expect(result._tag).toBe("Success");
   expect(h.executed).toEqual(["echo before", "echo body"]);
   expect(h.selections).toEqual([]);
 });

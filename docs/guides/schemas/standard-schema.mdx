@@ -1,0 +1,100 @@
+---
+id: standard-schema
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, schemas, library]
+---
+
+# Validate a Landofile with Standard Schema
+
+```ts
+import { LandofileStandardSchema } from "@lando/sdk/schema/standard";
+
+const result = await LandofileStandardSchema["~standard"].validate(input);
+if (result.issues) {
+  for (const issue of result.issues) console.error(issue.path, issue.message);
+} else {
+  start(result.value);
+}
+```
+
+[Standard Schema](https://standardschema.dev) is the interface form
+libraries, routers, and AI SDKs accept instead of asking you which validator
+you use. `@lando/sdk/schema/standard` exports Lando's input contracts in that
+form, so any tool that takes a Standard Schema can validate a Landofile with
+Lando's own decoder, not a copy of it.
+
+## What the subpath exports
+
+| Export | Validates |
+| --- | --- |
+| `LandofileStandardSchema` | a parsed `.lando.yml` object |
+| `GlobalConfigStandardSchema` | the global Lando config object |
+| `PluginManifestStandardSchema` | a plugin manifest |
+| `RecipeManifestStandardSchema` | a recipe manifest |
+
+Each has a `*StandardJSONSchema` sibling (`LandofileStandardJSONSchema` and
+so on) implementing Standard JSON Schema V1, for tools that want a JSON
+Schema document rather than a validator. Call its `~standard.jsonSchema.input()`
+to get the document; the conversion is deferred until you ask.
+
+The subpath is tree-shakeable and imports nothing from the CLI. Unknown keys
+are errors and every problem is reported in one pass, the same settings
+`lando app:config:lint` runs with.
+
+## Read the result
+
+`validate` resolves to either `{ value }` or `{ issues }`. Each issue has a
+`path` array and a `message`, and the paths match the `issues` Lando's own
+`LandofileValidationError` reports, so a tool can show the user the same
+line whichever side caught it.
+
+## One decoder, three surfaces
+
+The Standard Schema views, the [published JSON Schema
+artifacts](./json-schema-artifacts.mdx), and the editor schema all project the
+same Effect Schema. A parity test runs every valid guide and recipe fixture
+plus a curated invalid set through all three and requires the same answer.
+
+<Guide>
+  <Scenario id="validate-with-standard-schema" render>
+    <Step name="accept-valid-reject-unknown-key">
+      <Run
+        runtime="library"
+        code={`const { LandofileStandardSchema } = yield* Effect.promise(() => import("@lando/sdk/schema/standard"));
+const valid = yield* Effect.promise(async () =>
+  LandofileStandardSchema["~standard"].validate({
+    name: "standard-demo",
+    services: { web: { type: "compose", image: "nginx:1.27-alpine", home: false } },
+  }),
+);
+expect("issues" in valid && valid.issues).toBeFalsy();
+expect("value" in valid && valid.value.name).toBe("standard-demo");
+const invalid = yield* Effect.promise(async () =>
+  LandofileStandardSchema["~standard"].validate({
+    name: "standard-demo",
+    services: { web: { type: "compose", imgae: "nginx:1.27-alpine", home: false } },
+  }),
+);
+expect("issues" in invalid && invalid.issues).toBeTruthy();
+const firstIssue = ("issues" in invalid && invalid.issues ? invalid.issues : [])[0];
+const firstPath = (firstIssue?.path ?? []).map((segment) => (typeof segment === "object" ? segment.key : segment));
+expect(firstPath).toEqual(["services", "web", "imgae"]);`}
+        displayCode={`import { LandofileStandardSchema } from "@lando/sdk/schema/standard";
+
+const valid = await LandofileStandardSchema["~standard"].validate({
+  name: "standard-demo",
+  services: { web: { type: "compose", image: "nginx:1.27-alpine", home: false } },
+});
+// valid.value is the decoded Landofile
+
+const invalid = await LandofileStandardSchema["~standard"].validate({
+  name: "standard-demo",
+  services: { web: { type: "compose", imgae: "nginx:1.27-alpine", home: false } },
+});
+// invalid.issues[0].path is ["services", "web", "imgae"]`}
+      />
+    </Step>
+  </Scenario>
+</Guide>

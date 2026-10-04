@@ -23,7 +23,7 @@ export const choicesUnavailableFields = {
   message: Schema.String,
   promptName: Schema.String,
   command: Schema.String,
-  kind: Schema.Literal("command-failed", "unparseable", "empty"),
+  kind: Schema.Literals(["command-failed", "unparseable", "empty"]),
   remediation: Schema.String,
   exitCode: Schema.optional(Schema.Number),
 } as const;

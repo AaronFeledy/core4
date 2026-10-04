@@ -54,14 +54,17 @@ describe("agent relay worker runtime", () => {
                 }),
             ),
         };
-        const registry = Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: (plan) => {
-            selected.push(plan);
-            return Effect.succeed(provider);
-          },
-        });
+        const registry = Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: (plan) => {
+              selected.push(plan);
+              return Effect.succeed(provider);
+            },
+          }),
+        );
         try {
           // When the scoped worker starts and authenticates its control identity.
           const ready = await Effect.runPromise(
@@ -164,17 +167,16 @@ describe("agent relay worker runtime", () => {
     });
     const provider = {
       ...runtimeProviderService,
-      openAgentSocketBridge: () =>
-        Effect.gen(function* () {
-          yield* Effect.addFinalizer(() =>
-            Effect.sync(() => {
-              closed.push("bridge");
-            }),
-          );
-          return yield* Effect.fail(
-            new ProviderInternalError({ providerId: "docker", operation: "bridge", message: "failed" }),
-          );
-        }),
+      openAgentSocketBridge: Effect.fnUntraced(function* () {
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            closed.push("bridge");
+          }),
+        );
+        return yield* Effect.fail(
+          new ProviderInternalError({ providerId: "docker", operation: "bridge", message: "failed" }),
+        );
+      }),
     };
     try {
       // When bridge acquisition fails.
@@ -190,17 +192,20 @@ describe("agent relay worker runtime", () => {
             }),
           }),
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
         ),
       );
       // Then no ready value exists and both acquired resources are released.
       expect(exit._tag).toBe("Failure");
       if (exit._tag === "Failure") {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect(failure.value).toMatchObject({
@@ -241,11 +246,14 @@ describe("agent relay worker runtime", () => {
         until: until.promise,
         loadRuntime: () => {
           constructed.push("runtime");
-          return Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(runtimeProviderService.capabilities),
-            select: () => Effect.succeed(runtimeProviderService),
-          });
+          return Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([]),
+              capabilities: Effect.succeed(runtimeProviderService.capabilities),
+              select: () => Effect.succeed(runtimeProviderService),
+            }),
+          );
         },
         createRelay: async (options) => {
           started.resolve();
@@ -298,11 +306,14 @@ describe("agent relay worker runtime", () => {
         until: Promise.resolve(),
         loadRuntime: () => {
           constructed.push("runtime");
-          return Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(runtimeProviderService.capabilities),
-            select: () => Effect.succeed(runtimeProviderService),
-          });
+          return Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([]),
+              capabilities: Effect.succeed(runtimeProviderService.capabilities),
+              select: () => Effect.succeed(runtimeProviderService),
+            }),
+          );
         },
         createRelay: async () => ({
           address: { _tag: "unix" as const, path: join(root, "agent.sock") },

@@ -32,7 +32,7 @@ const key = (configSources: ReadonlyArray<ServiceConfigSource>) => {
     dependsOn: [],
     hostAliases: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-07-30T00:00:00.000Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-07-30T00:00:00.000Z"),
       source: "config-sources.test",
       runtime: 4,
     },

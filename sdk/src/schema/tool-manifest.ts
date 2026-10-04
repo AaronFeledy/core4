@@ -12,11 +12,11 @@ import { Schema } from "effect";
 export const ToolArtifactEntry = Schema.Struct({
   url: Schema.String,
   sha256: Schema.String,
-  sizeBytes: Schema.optional(Schema.Number),
-  archive: Schema.optional(Schema.Literal("tar.gz", "zip")),
-  member: Schema.optional(Schema.String),
+  sizeBytes: Schema.optionalKey(Schema.Number),
+  archive: Schema.optionalKey(Schema.Literals(["tar.gz", "zip"])),
+  member: Schema.optionalKey(Schema.String),
   installName: Schema.String,
-  mode: Schema.optional(Schema.String),
+  mode: Schema.optionalKey(Schema.String),
 });
 export type ToolArtifactEntry = typeof ToolArtifactEntry.Type;
 
@@ -30,6 +30,6 @@ export type ToolArtifactEntry = typeof ToolArtifactEntry.Type;
 export const ToolManifest = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   toolVersion: Schema.String,
-  artifacts: Schema.Record({ key: Schema.String, value: ToolArtifactEntry }),
+  artifacts: Schema.Record(Schema.String, ToolArtifactEntry),
 });
 export type ToolManifest = typeof ToolManifest.Type;

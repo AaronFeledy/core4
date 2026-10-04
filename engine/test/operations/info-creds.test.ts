@@ -19,7 +19,7 @@ const SECRET_VALUE = "supersecret-canary-value";
 const providerId = ProviderId.make("test");
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-22T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-22T00:00:00Z"),
   source: "info-creds-test",
   runtime: 4 as const,
 };
@@ -72,11 +72,14 @@ const provide = (plan: AppPlan) => {
         state: "running",
       }),
   };
-  return Layer.succeed(RuntimeProviderRegistry, {
-    list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(provider.capabilities),
-    select: () => Effect.succeed(provider),
-  });
+  return Layer.succeed(
+    RuntimeProviderRegistry,
+    RuntimeProviderRegistry.of({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+  );
 };
 
 const infoForEnvironment = (environment: Readonly<Record<string, string>>) => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as landofile from "@lando/sdk/landofile";
 import * as schema from "@lando/sdk/schema";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 // ==== Translation validation fixtures
 const sourceId = (id: string) => Schema.decodeUnknownSync(schema.ConfigTranslateSourceId)(id);
@@ -58,7 +58,7 @@ describe("config translation validators", () => {
       deletions: [],
     };
     // When / Then
-    expect(landofile.validateConfigTranslateResult(input(), result)).toEqual(Either.right(result));
+    expect(landofile.validateConfigTranslateResult(input(), result)).toEqual(Result.succeed(result));
   });
   test.each([
     ["foreign output", { outputs: [output("foreign")], diagnostics: [], deletions: [] }],
@@ -96,10 +96,10 @@ describe("config translation validators", () => {
     // Given / When
     const validated = landofile.validateConfigTranslateResult(input(), result);
     // Then
-    expect(Either.isLeft(validated)).toBe(true);
-    if (Either.isLeft(validated)) {
-      expect(validated.left._tag).toBe("ConfigTranslateError");
-      expect(validated.left.remediation).toBeTruthy();
+    expect(Result.isFailure(validated)).toBe(true);
+    if (Result.isFailure(validated)) {
+      expect(validated.failure._tag).toBe("ConfigTranslateError");
+      expect(validated.failure.remediation).toBeTruthy();
     }
   });
   test.each([{ appId: "x" }, { router: { httpPort: "v{{ env.P }}" } }])(
@@ -110,7 +110,7 @@ describe("config translation validators", () => {
       // When
       const validated = landofile.validateConfigTranslateResult(input(), result);
       // Then
-      expect(Either.isLeft(validated)).toBe(true);
+      expect(Result.isFailure(validated)).toBe(true);
     },
   );
   test("accepts a valid two-output result", () => {
@@ -121,7 +121,7 @@ describe("config translation validators", () => {
       deletions: [{ sourceId: sourceId("a") }],
     };
     // When / Then
-    expect(landofile.validateConfigTranslateResult(input(), result)).toEqual(Either.right(result));
+    expect(landofile.validateConfigTranslateResult(input(), result)).toEqual(Result.succeed(result));
   });
   test("forbids recipe deletions", () => {
     // Given / When
@@ -131,7 +131,7 @@ describe("config translation validators", () => {
       deletions: [{ sourceId: sourceId("recipe") }],
     });
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
   test("accepts one recipe output with synthetic-source diagnostics", () => {
     // Given
@@ -141,7 +141,7 @@ describe("config translation validators", () => {
       deletions: [],
     };
     // When / Then
-    expect(landofile.validateConfigTranslateResult(recipe(), result)).toEqual(Either.right(result));
+    expect(landofile.validateConfigTranslateResult(recipe(), result)).toEqual(Result.succeed(result));
   });
   test("forbids multiple recipe target layers", () => {
     // Given / When
@@ -151,7 +151,7 @@ describe("config translation validators", () => {
       deletions: [],
     });
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
   test.each([
     { ...input(), mode: "single-layer" as const, selectedSourceIds: [] },
@@ -160,11 +160,11 @@ describe("config translation validators", () => {
     { ...input(), writableLayerIds: [] },
   ])("rejects invalid input constraints %j", (value) => {
     // Given / When / Then
-    expect(Either.isLeft(landofile.validateConfigTranslateInput(value))).toBe(true);
+    expect(Result.isFailure(landofile.validateConfigTranslateInput(value))).toBe(true);
   });
   test.each([input(), recipe()])("accepts valid input %j", (value) => {
     // Given / When / Then
-    expect(landofile.validateConfigTranslateInput(value)).toEqual(Either.right(value));
+    expect(landofile.validateConfigTranslateInput(value)).toEqual(Result.succeed(value));
   });
   test.each([
     [input(), ["a", "b"]],

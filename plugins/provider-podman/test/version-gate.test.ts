@@ -3,7 +3,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { MINIMUM_PODMAN_VERSION } from "@lando/container-runtime/podman/version-floor";
-import { makeProviderLayer } from "@lando/provider-podman";
+import { layer as makeProviderLayer } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { withPing } from "./podman-api-fixtures.ts";
@@ -32,7 +32,7 @@ const expectServerVersionRejection = (
 ) => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (Exit.isSuccess(exit)) return;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag === "None") return;
   const error = failure.value;

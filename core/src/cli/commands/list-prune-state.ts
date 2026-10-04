@@ -14,14 +14,14 @@ const AppliedPlanIdentity = Schema.Struct({
   id: AppId,
   root: AbsolutePath,
 });
-const AppliedPlans = Schema.Record({ key: AppId, value: AppPlan });
+const AppliedPlans = Schema.Record(AppId, AppPlan);
 const LegacyAppliedPlan = Schema.Struct({
   version: Schema.Literal(1),
-  providerId: Schema.optional(Schema.String),
+  providerId: Schema.optionalKey(Schema.String),
   plan: Schema.Struct({
     id: AppId,
     root: AbsolutePath,
-    provider: Schema.optional(Schema.String),
+    provider: Schema.optionalKey(Schema.String),
   }),
 });
 
@@ -36,19 +36,19 @@ const pluginIdForProvider = (providerId: string): string | undefined => {
   }
 };
 
-export const pruneAppliedPlanState = (
+export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   paths: LandoPaths,
   stateStore: StateStoreShape,
   entry: AppsListEntry,
-): Effect.Effect<boolean, StateStoreError, FileSystem> => {
+): Effect.fn.Return<boolean, StateStoreError, FileSystem> {
   const { appId, providerId } = entry;
   const pluginId = pluginIdForProvider(providerId);
-  if (pluginId === undefined) return Effect.succeed(false);
+  if (pluginId === undefined) return false;
   const root = { path: AbsolutePath.make(paths.pluginStateDir(pluginId)) };
   const id = AppId.make(appId);
 
   if (providerId === "podman") {
-    return stateStore
+    return yield* stateStore
       .open({
         root,
         key: "applied-plans.json",
@@ -81,74 +81,72 @@ export const pruneAppliedPlanState = (
       );
   }
 
-  return Effect.gen(function* () {
-    const fs = yield* FileSystem;
-    const namespace = `providers/provider-${providerId}/apps`;
-    const directory = join(paths.roots.userDataRoot, namespace);
-    const names = yield* fs.readDir(directory).pipe(
-      Effect.catchTag("FileNotFoundError", () => Effect.succeed([])),
-      Effect.mapError(
-        (cause) => new StateStoreError({ reason: "io", operation: "readDir", path: directory, cause }),
+  const fs = yield* FileSystem;
+  const namespace = `providers/provider-${providerId}/apps`;
+  const directory = join(paths.roots.userDataRoot, namespace);
+  const names = yield* fs.readDir(directory).pipe(
+    Effect.catchTag("FileNotFoundError", () => Effect.succeed([])),
+    Effect.mapError(
+      (cause) => new StateStoreError({ reason: "io", operation: "readDir", path: directory, cause }),
+    ),
+  );
+  let removedLegacy = false;
+  for (const name of names) {
+    if (!name.endsWith(".json")) continue;
+    const bucket = yield* stateStore.open({
+      root: { path: AbsolutePath.make(directory) },
+      key: name,
+      schema: LegacyAppliedPlan,
+      version: APPLIED_STATE_VERSION,
+      codec: {
+        encode: JSON.stringify,
+        decode: (raw) =>
+          Schema.decodeUnknownSync(Schema.fromJsonString(LegacyAppliedPlan))(new TextDecoder().decode(raw)),
+      },
+      lock: "advisory",
+      onCorrupt: "fail",
+    });
+    const record = yield* bucket.get;
+    if (record === null || record.plan.id !== id) continue;
+    if (
+      record.plan.root !== entry.appRoot ||
+      (record.providerId !== undefined && record.providerId.replace(/^provider-/u, "") !== providerId) ||
+      (record.plan.provider !== undefined && record.plan.provider.replace(/^provider-/u, "") !== providerId)
+    ) {
+      return yield* Effect.fail(
+        new StateStoreError({
+          reason: "decode",
+          operation: "prune",
+          path: bucket.path,
+          remediation: "Resolve the conflicting app root or provider in legacy inventory before pruning.",
+        }),
+      );
+    }
+    yield* bucket.remove;
+    removedLegacy = true;
+  }
+  const removedModern = yield* stateStore
+    .open({
+      root,
+      namespace: APPLIED_PLAN_NAMESPACE,
+      key: `${id}.json`,
+      schema: AppliedPlanIdentity,
+      version: APPLIED_STATE_VERSION,
+      codec: "json",
+      mode: 0o600,
+      lock: "advisory",
+      onCorrupt: "discard",
+      onVersionMismatch: "discard",
+    })
+    .pipe(
+      Effect.flatMap((bucket) =>
+        bucket.get.pipe(
+          Effect.flatMap((plan) => {
+            if (plan === null || plan.root !== entry.appRoot) return Effect.succeed(false);
+            return bucket.remove.pipe(Effect.as(true));
+          }),
+        ),
       ),
     );
-    let removedLegacy = false;
-    for (const name of names) {
-      if (!name.endsWith(".json")) continue;
-      const bucket = yield* stateStore.open({
-        root: { path: AbsolutePath.make(directory) },
-        key: name,
-        schema: LegacyAppliedPlan,
-        version: APPLIED_STATE_VERSION,
-        codec: {
-          encode: JSON.stringify,
-          decode: (raw) =>
-            Schema.decodeUnknownSync(Schema.parseJson(LegacyAppliedPlan))(new TextDecoder().decode(raw)),
-        },
-        lock: "advisory",
-        onCorrupt: "fail",
-      });
-      const record = yield* bucket.get;
-      if (record === null || record.plan.id !== id) continue;
-      if (
-        record.plan.root !== entry.appRoot ||
-        (record.providerId !== undefined && record.providerId.replace(/^provider-/u, "") !== providerId) ||
-        (record.plan.provider !== undefined && record.plan.provider.replace(/^provider-/u, "") !== providerId)
-      ) {
-        return yield* Effect.fail(
-          new StateStoreError({
-            reason: "decode",
-            operation: "prune",
-            path: bucket.path,
-            remediation: "Resolve the conflicting app root or provider in legacy inventory before pruning.",
-          }),
-        );
-      }
-      yield* bucket.remove;
-      removedLegacy = true;
-    }
-    const removedModern = yield* stateStore
-      .open({
-        root,
-        namespace: APPLIED_PLAN_NAMESPACE,
-        key: `${id}.json`,
-        schema: AppliedPlanIdentity,
-        version: APPLIED_STATE_VERSION,
-        codec: "json",
-        mode: 0o600,
-        lock: "advisory",
-        onCorrupt: "discard",
-        onVersionMismatch: "discard",
-      })
-      .pipe(
-        Effect.flatMap((bucket) =>
-          bucket.get.pipe(
-            Effect.flatMap((plan) => {
-              if (plan === null || plan.root !== entry.appRoot) return Effect.succeed(false);
-              return bucket.remove.pipe(Effect.as(true));
-            }),
-          ),
-        ),
-      );
-    return removedModern || removedLegacy;
-  });
-};
+  return removedModern || removedLegacy;
+});

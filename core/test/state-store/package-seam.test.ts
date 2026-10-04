@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Predicate } from "effect";
 
 import { Effect, Schema } from "effect";
 
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
@@ -15,22 +16,19 @@ const ValueSchema = Schema.Struct({ value: Schema.String });
 const PackageManifestSchema = Schema.Struct({
   name: Schema.String,
   private: Schema.Boolean,
-  workspaces: Schema.optional(Schema.Array(Schema.String)),
-  dependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  devDependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  peerDependencies: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  workspaces: Schema.optionalKey(Schema.Struct({ packages: Schema.Array(Schema.String) })),
+  dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  devDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  peerDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 
 type StateStoreServiceModule = typeof import("@lando/state-store/service");
 
-const isRuntimeModule = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null;
-
 const isStateStoreServiceModule = (value: unknown): value is StateStoreServiceModule =>
-  isRuntimeModule(value) &&
+  Predicate.isObjectOrArray(value) &&
   "makeStateStore" in value &&
   typeof value.makeStateStore === "function" &&
-  "StateStoreLive" in value;
+  "layer" in value;
 
 const repositoryRoot = new URL("../../../", import.meta.url);
 const pluginDirectory = new URL("../../../plugins/provider-lando/", import.meta.url).pathname;
@@ -70,13 +68,13 @@ describe("StateStore package seam", () => {
     );
 
     // When the dynamically resolved package implementation writes and reads the bucket
-    const value = await Effect.runPromise(bucket.set({ value: "package" }).pipe(Effect.zipRight(bucket.get)));
+    const value = await Effect.runPromise(bucket.set({ value: "package" }).pipe(Effect.andThen(bucket.get)));
 
     // Then package metadata, plugin resolution, and the durable round trip satisfy the private seam
     expect(artifactExists).toBe(true);
     expect(packageManifest.name).toBe("@lando/state-store");
     expect(packageManifest.private).toBe(true);
-    expect(rootManifest.workspaces).toContain("state-store");
+    expect(rootManifest.workspaces?.packages).toContain("state-store");
     expect(coreManifest.dependencies?.["@lando/state-store"]).toBe("workspace:*");
     expect(servicePath).toContain("state-store/src/service.ts");
     expect(value).toEqual({ value: "package" });
@@ -92,7 +90,7 @@ describe("StateStore package seam", () => {
     const service = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* StateStore;
-      }).pipe(Effect.provide(serviceModule.StateStoreLive), Effect.provide(ProcessRunnerLive)),
+      }).pipe(Effect.provide(serviceModule.layer), Effect.provide(BunProcessRunner.layer)),
     );
 
     // When a bucket key attempts to escape its assigned root

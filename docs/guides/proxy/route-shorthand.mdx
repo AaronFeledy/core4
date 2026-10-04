@@ -270,7 +270,7 @@ lando app:config --format=json
 lando app:config:lint --format=json
 ```
 
-A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of `services.app.routes[0]`, and a `suggestedFix` that repeats the grammar. Fix the entry, lint again, then `lando start`.
+A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of `["services", "app", "routes", 0]`, and a `suggestion` that repeats the grammar. Fix the entry, lint again, then `lando start`.
 
 <Guide>
   <Scenario id="catalog-endpoints" render>
@@ -325,7 +325,7 @@ A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of 
     <Step name="lint-invalid-route">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.app\\.routes\\[0\\]\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0\\s*\\]" } }} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "hostname\\[:port\\]\\[/pathPrefix\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">

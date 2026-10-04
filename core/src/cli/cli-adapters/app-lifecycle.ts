@@ -115,7 +115,7 @@ interface RunDestroyOptions {
 export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      Effect.zipRight(refreshAppCache(), startApp({ signal })),
+      Effect.andThen(refreshAppCache(), startApp({ signal })),
       appRuntimeLayer(),
       renderStartAppResult,
     ),
@@ -133,10 +133,10 @@ export const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
 
 export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:open", argv)) return Promise.resolve();
-  return runCompiledCommand(
-    openApp(openOptionsFromInput(compiledCommandInputFromArgv("app:open", argv))),
-    appRuntimeLayer(),
-    renderOpenAppResult,
+  const input = compiledCommandInputFromArgv("app:open", argv);
+  const options = openOptionsFromInput(input);
+  return runCompiledCommand(openApp(options), appRuntimeLayer(), (value, ctx) =>
+    renderOpenAppResult(value, ctx, options),
   );
 };
 
@@ -212,7 +212,7 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
 export const runRestart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      Effect.zipRight(refreshAppCache(), restartApp({ signal })),
+      Effect.andThen(refreshAppCache(), restartApp({ signal })),
       appRuntimeLayer(),
       renderRestartAppResult,
     ),

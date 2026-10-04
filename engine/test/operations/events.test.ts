@@ -37,8 +37,8 @@ import {
   EventCommandExecutor,
   type EventCommandExecutorInput,
 } from "../../src/services/event-command-executor.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
-import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
+import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const eventPlan = (): AppPlan => ({
@@ -52,7 +52,7 @@ const eventPlan = (): AppPlan => ({
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 });
 
@@ -63,28 +63,40 @@ const runWithFakes = (
   shellRuns: { count: number },
 ) => {
   const services = Layer.mergeAll(
-    EventServiceLive,
+    LandoEventService.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-    Layer.succeed(ToolingEngine, {
-      id: "test",
-      run: (invocation) =>
-        Effect.sync(() => {
-          shellRuns.count += 1;
-          return { tool: invocation.tool, service: ":lando", exitCode: 0, stdout: "", stderr: "" };
-        }),
-    }),
-    Layer.succeed(EventCommandExecutor, {
-      run: () => runAppEvent(plan, enterEvent).pipe(Effect.as({ exitCode: 0, stdout: "", stderr: "" })),
-    }),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "test",
+        run: (invocation) =>
+          Effect.sync(() => {
+            shellRuns.count += 1;
+            return { tool: invocation.tool, service: ":lando", exitCode: 0, stdout: "", stderr: "" };
+          }),
+      }),
+    ),
+    Layer.succeed(
+      EventCommandExecutor,
+      EventCommandExecutor.of({
+        run: () => runAppEvent(plan, enterEvent).pipe(Effect.as({ exitCode: 0, stdout: "", stderr: "" })),
+      }),
+    ),
   );
 
   return runAppEvent(plan, event).pipe(Effect.provide(services));
@@ -149,45 +161,57 @@ const eventRuntime = (
   canonicalFailure?: ToolingCompileError | ToolingCommandLookupError,
 ) =>
   Layer.mergeAll(
-    EventServiceLive,
+    LandoEventService.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-    Layer.succeed(ToolingEngine, {
-      id: "test",
-      run: (invocation) =>
-        Effect.sync(() => {
-          invocations.push(invocation);
-          const label = invocation.commands[0]?.[2] ?? invocation.tool;
-          return {
-            tool: invocation.tool,
-            service: invocation.service ?? ":lando",
-            exitCode: failures.has(label) ? 7 : 0,
-            stdout: failures.has(label) ? `secret-output${"x".repeat(3_988)}` : label,
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(EventCommandExecutor, {
-      validate: () => (canonicalFailure === undefined ? Effect.void : Effect.fail(canonicalFailure)),
-      run: (input) =>
-        canonicalFailure !== undefined
-          ? Effect.fail(canonicalFailure)
-          : Effect.sync(() => {
-              canonical.push(input);
-              return { exitCode: failures.has(input.command) ? 9 : 0, stdout: input.command, stderr: "" };
-            }),
-    }),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "test",
+        run: (invocation) =>
+          Effect.sync(() => {
+            invocations.push(invocation);
+            const label = invocation.commands[0]?.[2] ?? invocation.tool;
+            return {
+              tool: invocation.tool,
+              service: invocation.service ?? ":lando",
+              exitCode: failures.has(label) ? 7 : 0,
+              stdout: failures.has(label) ? `secret-output${"x".repeat(3_988)}` : label,
+              stderr: "",
+            };
+          }),
+      }),
+    ),
+    Layer.succeed(
+      EventCommandExecutor,
+      EventCommandExecutor.of({
+        validate: () => (canonicalFailure === undefined ? Effect.void : Effect.fail(canonicalFailure)),
+        run: (input) =>
+          canonicalFailure !== undefined
+            ? Effect.fail(canonicalFailure)
+            : Effect.sync(() => {
+                canonical.push(input);
+                return { exitCode: failures.has(input.command) ? 9 : 0, stdout: input.command, stderr: "" };
+              }),
+      }),
+    ),
   );
 
-const hostShellRunnerLive = makeShellRunnerLive(() => {
+const hostShellRunnerLayer = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO was not expected in this test.");
 });
 
@@ -218,7 +242,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected depth failure");
-    expect(Cause.failureOption(exit.cause)).toMatchObject({
+    expect(Cause.findErrorOption(exit.cause)).toMatchObject({
       _tag: "Some",
       value: {
         _tag: "LandofileEventInvocationDepthError",
@@ -270,7 +294,7 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected cycle failure");
-    expect(Cause.failureOption(exit.cause)).toMatchObject({
+    expect(Cause.findErrorOption(exit.cause)).toMatchObject({
       _tag: "Some",
       value: { _tag: "LandofileEventLifecycleReentryError" },
     });
@@ -287,12 +311,11 @@ describe("runAppEvent tooling-step kernel", () => {
     await Effect.runPromise(
       runAppEvent(plan, "pre-start").pipe(
         Effect.provideService(EventCommandExecutor, {
-          run: (input) =>
-            Effect.gen(function* () {
-              commands.push(input.command);
-              if (commands.length === 1) yield* runAppEvent(plan, "pre-build");
-              return { exitCode: 0, stdout: "", stderr: "" };
-            }),
+          run: Effect.fnUntraced(function* (input) {
+            commands.push(input.command);
+            if (commands.length === 1) yield* runAppEvent(plan, "pre-build");
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }),
         }),
         Effect.provide(eventRuntime([])),
       ),
@@ -410,7 +433,7 @@ describe("runAppEvent tooling-step kernel", () => {
           post: yield* events.query("post-shell-exec"),
           details: yield* events.query("task.detail"),
         };
-      }).pipe(Effect.provide(Layer.mergeAll(eventRuntime(invocations), hostShellRunnerLive))),
+      }).pipe(Effect.provide(Layer.mergeAll(eventRuntime(invocations), hostShellRunnerLayer))),
     );
 
     // Then
@@ -444,7 +467,7 @@ describe("runAppEvent tooling-step kernel", () => {
       run: (command: string) => Effect.succeed({ exitCode: 0, stdout: command, stderr: "" }),
       runScript: (path: string) => Effect.succeed({ exitCode: 0, stdout: path, stderr: "" }),
       interactive: () => Effect.die("unused"),
-    } satisfies Context.Tag.Service<typeof ShellRunner>;
+    } satisfies Context.Service.Shape<typeof ShellRunner>;
 
     // When
     await Effect.runPromise(
@@ -475,7 +498,7 @@ describe("runAppEvent tooling-step kernel", () => {
       run: (command: string) => Effect.succeed({ exitCode: 0, stdout: command, stderr: "" }),
       runScript: (path: string) => Effect.succeed({ exitCode: 0, stdout: path, stderr: "" }),
       interactive: () => Effect.die("unused"),
-    } satisfies Context.Tag.Service<typeof ShellRunner>;
+    } satisfies Context.Service.Shape<typeof ShellRunner>;
 
     // When
     const error = await Effect.runPromise(

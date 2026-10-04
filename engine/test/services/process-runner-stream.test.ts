@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Stream } from "effect";
-import { ProcessRunnerLive } from "../../src/services/process-runner";
+import * as BunProcessRunner from "../../src/services/process-runner";
 
 for (const mode of ["take", "interrupt", "timeout"] as const) {
   test(`kills and reaps a streaming child after ${mode}`, async () => {
@@ -29,7 +29,7 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
           ),
         );
       return (mode === "take" ? stream.pipe(Stream.take(1)) : stream).pipe(Stream.runDrain);
-    }).pipe(Effect.provide(ProcessRunnerLive));
+    }).pipe(Effect.provide(BunProcessRunner.layer));
     const completion = Effect.runPromiseExit(program, { signal: controller.signal });
     let pid: number | undefined;
     try {
@@ -43,7 +43,7 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
       // Then termination has reaped the child, not merely stopped the stream fiber.
       expect(Exit.isSuccess(exit)).toBe(mode === "take");
       if (Exit.isFailure(exit) && mode === "timeout") {
-        const failure = Cause.failureOption(exit.cause);
+        const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag === "Some" && failure.value instanceof ProcessTimeoutError).toBe(true);
       }
       expect(() => process.kill(childPid, 0)).toThrow();
@@ -75,7 +75,7 @@ test("streaming concurrently drains both pipes and feeds stdin", async () => {
           timeoutMs: 2000,
         })
         .pipe(Stream.runCollect),
-    ).pipe(Effect.provide(ProcessRunnerLive)),
+    ).pipe(Effect.provide(BunProcessRunner.layer)),
   );
   const stdout = [...chunks]
     .filter(({ kind }) => kind === "stdout")

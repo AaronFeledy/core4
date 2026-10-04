@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { DateTime, Schema } from "effect";
 
 import { type LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from "@lando/sdk/events";
 
@@ -80,7 +80,7 @@ export class TaskTreeInputController {
   constructor(viewModel: TaskTreeInteractionModel, options: TaskTreeInputControllerOptions = {}) {
     this.#viewModel = viewModel;
     this.#keymap = options.keymap ?? DEFAULT_KEYMAP;
-    this.#now = options.now ?? (() => new Date().toISOString());
+    this.#now = options.now ?? (() => DateTime.formatIso(DateTime.nowUnsafe()));
   }
 
   get focusedTaskId(): string | undefined {

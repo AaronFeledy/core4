@@ -13,14 +13,17 @@ import { listTree } from "./_util/fs-tree.ts";
 let root: string;
 
 const recordingEventLayer = (events: LandoEvent[]) =>
-  Layer.succeed(EventService, {
-    publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: () => Effect.fail(new Error("not implemented")),
-    waitForAny: () => Effect.fail(new Error("not implemented")),
-    query: () => Effect.succeed([]),
-  } as never);
+  Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.fail(new Error("not implemented")),
+      waitForAny: () => Effect.fail(new Error("not implemented")),
+      query: () => Effect.succeed([]),
+    } as never),
+  );
 
 const writePlugin = async (dir: string, name = "@acme/lando-plugin-test") => {
   await mkdir(join(dir, "src"), { recursive: true });

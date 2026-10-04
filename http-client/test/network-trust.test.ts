@@ -75,16 +75,16 @@ describe("core network trust", () => {
     const missingPath = join(directory, "missing.pem");
 
     try {
-      const result = await Effect.runPromise(Effect.either(loadCaPems([missingPath])));
+      const result = await Effect.runPromise(Effect.result(loadCaPems([missingPath])));
 
-      expect(result._tag).toBe("Left");
-      if (result._tag !== "Left") throw new Error("expected CA PEM loading to fail");
-      expect(result.left._tag).toBe("CaPemLoadError");
-      expect(result.left.path).toBe(missingPath);
-      expect(result.left.message).toContain(missingPath);
-      expect(result.left.remediation).toContain("network.ca.certs");
-      expect(result.left.remediation).toContain("LANDO_NETWORK_CA_CERTS");
-      expect(result.left.remediation).toContain("security.ca");
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("expected CA PEM loading to fail");
+      expect(result.failure._tag).toBe("CaPemLoadError");
+      expect(result.failure.path).toBe(missingPath);
+      expect(result.failure.message).toContain(missingPath);
+      expect(result.failure.remediation).toContain("network.ca.certs");
+      expect(result.failure.remediation).toContain("LANDO_NETWORK_CA_CERTS");
+      expect(result.failure.remediation).toContain("security.ca");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

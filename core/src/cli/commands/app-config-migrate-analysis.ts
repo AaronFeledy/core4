@@ -13,7 +13,7 @@ import type {
   RecipeProducer,
   RecipeSnapshot,
 } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 import type { MigrateHunkBlockReason, MigrateHunkResult } from "./app-config-migrate-output.ts";
 import {
   matchesGenerated,
@@ -53,8 +53,8 @@ const block = (hunk: MigrateHunkResult, reason: MigrateHunkBlockReason): Migrate
 export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): RecipeMigrationAnalysis => {
   const original = structuredClone(input.document);
   const chain = validateMigrationChain(input.target.identity, input.migrations);
-  if (Either.isLeft(chain)) return { status: "blocking", document: original, edges: [] };
-  const selection = selectMigrationPath(chain.right, input.provenance.producer, input.target.identity);
+  if (Result.isFailure(chain)) return { status: "blocking", document: original, edges: [] };
+  const selection = selectMigrationPath(chain.success, input.provenance.producer, input.target.identity);
   switch (selection.kind) {
     case "no-mutation":
       return { status: "no-mutation", document: original, edges: [], noMutation: selection.reason };
@@ -75,8 +75,8 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
     const hunks: MigrateHunkResult[] = [];
     const renderedOld = blocked ? undefined : renderRecipeSnapshot(edge.fromSnapshot, options);
     const sites =
-      renderedOld !== undefined && Either.isRight(renderedOld)
-        ? new Map(collectRecipeSites(renderedOld.right, ".lando.yml").map((site) => [site.path, site]))
+      renderedOld !== undefined && Result.isSuccess(renderedOld)
+        ? new Map(collectRecipeSites(renderedOld.success, ".lando.yml").map((site) => [site.path, site]))
         : new Map();
     for (const hunk of edge.hunks) {
       const mappedPath = applyServiceMap(hunk.path, serviceMap);
@@ -92,7 +92,7 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
         hunks.push(analyzed);
         continue;
       }
-      if (renderedOld === undefined || Either.isLeft(renderedOld)) {
+      if (renderedOld === undefined || Result.isFailure(renderedOld)) {
         hunks.push(block(analyzed, "render-failed"));
         continue;
       }
@@ -101,7 +101,7 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
         continue;
       }
       const raw = getAtPath(candidate, mappedPath);
-      const generated = getAtPath(renderedOld.right, hunk.path);
+      const generated = getAtPath(renderedOld.success, hunk.path);
       // Snapshot output is authoring data. Normalize intact expression trees to
       // that output before classification, never to an evaluated option literal.
       const managed = matchesGenerated(raw, generated);
@@ -141,9 +141,9 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
       }
       hunks.push(analyzed);
     }
-    if (!blocked && renderedOld !== undefined && Either.isRight(renderedOld)) {
+    if (!blocked && renderedOld !== undefined && Result.isSuccess(renderedOld)) {
       const renderedNew = renderRecipeSnapshot(edge.toSnapshot, candidateOptions);
-      if (Either.isLeft(renderedNew)) {
+      if (Result.isFailure(renderedNew)) {
         for (const [index, hunk] of hunks.entries()) hunks[index] = block(hunk, "render-failed");
       } else {
         for (const [index, hunk] of edge.hunks.entries()) {
@@ -152,7 +152,7 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
           switch (hunk.kind) {
             case "add":
             case "replace": {
-              const next = getAtPath(renderedNew.right, hunk.path);
+              const next = getAtPath(renderedNew.success, hunk.path);
               if (!isDeepStrictEqual(next, hunk.new))
                 hunks[index] = block(analyzed, "hunk-snapshot-mismatch");
               else if (analyzed.classification === "selected")
@@ -160,19 +160,19 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
               break;
             }
             case "remove":
-              if (getAtPath(renderedNew.right, hunk.path) !== undefined)
+              if (getAtPath(renderedNew.success, hunk.path) !== undefined)
                 hunks[index] = block(analyzed, "hunk-snapshot-mismatch");
               else if (analyzed.classification === "selected")
                 candidate = unsetAtPath(candidate, analyzed.mappedPath).next;
               break;
             case "rename":
               if (analyzed.classification === "already-satisfied") {
-                const expected = getAtPath(renderedNew.right, hunk.new);
+                const expected = getAtPath(renderedNew.success, hunk.new);
                 const actual = getAtPath(candidate, applyServiceMap(hunk.new, serviceMap));
                 const refsMatch = renameAfterStateMatches(hunk, {
                   document: candidate,
-                  renderedOld: renderedOld.right,
-                  renderedNew: renderedNew.right,
+                  renderedOld: renderedOld.success,
+                  renderedNew: renderedNew.success,
                   serviceMap,
                 });
                 if (
@@ -183,8 +183,8 @@ export const analyzeRecipeMigration = (input: RecipeMigrationAnalysisInput): Rec
               } else if (analyzed.classification === "selected") {
                 const renamed = renameMigrationService(hunk, {
                   document: candidate,
-                  renderedOld: renderedOld.right,
-                  renderedNew: renderedNew.right,
+                  renderedOld: renderedOld.success,
+                  renderedNew: renderedNew.success,
                   serviceMap,
                 });
                 switch (renamed.kind) {

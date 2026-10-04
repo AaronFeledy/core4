@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Option, Schema } from "effect";
 
 import { MailpitMsmtpBaseFamilyError } from "@lando/sdk/errors";
 import { ServiceConfig } from "@lando/sdk/schema";
@@ -85,9 +85,7 @@ describe("Mailpit msmtp base family", () => {
     // Then
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") return;
-    expect(result.cause._tag).toBe("Fail");
-    if (result.cause._tag !== "Fail") return;
-    const error = result.cause.error;
+    const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
     expect(error).toBeInstanceOf(MailpitMsmtpBaseFamilyError);
     if (!(error instanceof MailpitMsmtpBaseFamilyError)) return;
     expect(error._tag).toBe("MailpitMsmtpBaseFamilyError");

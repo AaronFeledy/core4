@@ -20,7 +20,7 @@ export class MalformedCliFlagValueError extends Schema.TaggedError<MalformedCliF
   {
     message: Schema.String,
     flag: Schema.String,
-    issue: Schema.Literal(...FLAG_VALUE_ISSUES),
+    issue: Schema.Literals([...FLAG_VALUE_ISSUES]),
     remediation: Schema.String,
   },
 ) {}

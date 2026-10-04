@@ -151,18 +151,17 @@ export const classifyOrFail = (input: ClassifyAcquisitionInput) =>
     catch: (error) => error,
   });
 
-const probeTryList = (
+const probeTryList = Effect.fnUntraced(function* (
   host: string,
   tryList: readonly number[],
   probe: (host: string, port: number) => Effect.Effect<BindOutcome>,
-): Effect.Effect<Readonly<Record<number, BindOutcome>>> =>
-  Effect.gen(function* () {
-    const binds: Record<number, BindOutcome> = {};
-    for (const port of tryList) {
-      binds[port] = yield* probe(host, port);
-    }
-    return binds;
-  });
+) {
+  const binds: Record<number, BindOutcome> = {};
+  for (const port of tryList) {
+    binds[port] = yield* probe(host, port);
+  }
+  return binds;
+});
 
 const completeOverrideBinds = (input: {
   readonly tryList: readonly number[];
@@ -186,13 +185,13 @@ const completeOverrideBinds = (input: {
   return completed;
 };
 
-export const probeCurrent = (
+export const probeCurrent = Effect.fn("TraefikRouter.probeCurrent")(function* (
   dependencies: TraefikProxyDependencies,
   lists: ResolvedTryLists,
-): Effect.Effect<ProbedAcquisition, unknown> => {
+): Effect.fn.Return<ProbedAcquisition, unknown> {
   const override = dependencies.socketProxy?.classifyOverride;
   if (override !== undefined) {
-    return Effect.succeed({
+    return {
       http: override.http,
       https: override.https,
       httpBinds: completeOverrideBinds({
@@ -207,76 +206,74 @@ export const probeCurrent = (
         scheme: override.https,
         binds: override.httpsBinds,
       }),
-    });
+    };
   }
-  return Effect.gen(function* () {
-    const probe = dependencies.probeBind ?? probeBind;
-    const httpBinds = {
-      ...(yield* probeTryList(
-        lists.bindAddress,
-        uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
-        probe,
-      )),
-    };
-    const httpsBinds = {
-      ...(yield* probeTryList(
-        lists.bindAddress,
-        uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
-        probe,
-      )),
-    };
-    const guestOccupied = new Set(
-      dependencies.paths.platform === "win32"
-        ? yield* dependencies.globalApp.occupiedPublishPorts?.(
-            uniquePorts(
-              uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
-              uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
-            ),
-          ) ?? Effect.succeed([])
-        : [],
-    );
-    for (const port of guestOccupied) {
-      if (httpBinds[port]?.kind === "success") httpBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
-      if (httpsBinds[port]?.kind === "success") httpsBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
-    }
-    const preferredHttp = lists.httpTryList[0] ?? DESIRED_HTTP_PORT;
-    const preferredHttps = lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT;
-    const httpBind = httpBinds[preferredHttp] ?? { kind: "other-error" as const };
-    const httpsBind = httpsBinds[preferredHttps] ?? { kind: "other-error" as const };
-    const httpHolder = yield* holderFieldsFor(preferredHttp, httpBind);
-    const httpsHolder = yield* holderFieldsFor(preferredHttps, httpsBind);
-    const httpHolders: Record<number, string> = {};
-    const httpsHolders: Record<number, string> = {};
-    for (const port of DEFAULT_BACKEND_HTTP_TRY_LIST) {
-      const bind = httpBinds[port];
-      if (bind === undefined) continue;
-      const fields = yield* holderFieldsFor(port, bind);
-      if (fields !== undefined) httpHolders[port] = fields.holder;
-    }
-    for (const port of DEFAULT_BACKEND_HTTPS_TRY_LIST) {
-      const bind = httpsBinds[port];
-      if (bind === undefined) continue;
-      const fields = yield* holderFieldsFor(port, bind);
-      if (fields !== undefined) httpsHolders[port] = fields.holder;
-    }
-    return {
-      http: {
-        bind: httpBind,
-        forward: { kind: "failure" as const },
-        ...(httpHolder === undefined ? {} : httpHolder),
-      },
-      https: {
-        bind: httpsBind,
-        forward: { kind: "failure" as const },
-        ...(httpsHolder === undefined ? {} : httpsHolder),
-      },
-      httpBinds,
-      httpsBinds,
-      ...(Object.keys(httpHolders).length > 0 ? { httpHolders } : {}),
-      ...(Object.keys(httpsHolders).length > 0 ? { httpsHolders } : {}),
-    };
-  });
-};
+  const probe = dependencies.probeBind ?? probeBind;
+  const httpBinds = {
+    ...(yield* probeTryList(
+      lists.bindAddress,
+      uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
+      probe,
+    )),
+  };
+  const httpsBinds = {
+    ...(yield* probeTryList(
+      lists.bindAddress,
+      uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
+      probe,
+    )),
+  };
+  const guestOccupied = new Set(
+    dependencies.paths.platform === "win32"
+      ? yield* dependencies.globalApp.occupiedPublishPorts?.(
+          uniquePorts(
+            uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
+            uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
+          ),
+        ) ?? Effect.succeed([])
+      : [],
+  );
+  for (const port of guestOccupied) {
+    if (httpBinds[port]?.kind === "success") httpBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
+    if (httpsBinds[port]?.kind === "success") httpsBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
+  }
+  const preferredHttp = lists.httpTryList[0] ?? DESIRED_HTTP_PORT;
+  const preferredHttps = lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT;
+  const httpBind = httpBinds[preferredHttp] ?? { kind: "other-error" as const };
+  const httpsBind = httpsBinds[preferredHttps] ?? { kind: "other-error" as const };
+  const httpHolder = yield* holderFieldsFor(preferredHttp, httpBind);
+  const httpsHolder = yield* holderFieldsFor(preferredHttps, httpsBind);
+  const httpHolders: Record<number, string> = {};
+  const httpsHolders: Record<number, string> = {};
+  for (const port of DEFAULT_BACKEND_HTTP_TRY_LIST) {
+    const bind = httpBinds[port];
+    if (bind === undefined) continue;
+    const fields = yield* holderFieldsFor(port, bind);
+    if (fields !== undefined) httpHolders[port] = fields.holder;
+  }
+  for (const port of DEFAULT_BACKEND_HTTPS_TRY_LIST) {
+    const bind = httpsBinds[port];
+    if (bind === undefined) continue;
+    const fields = yield* holderFieldsFor(port, bind);
+    if (fields !== undefined) httpsHolders[port] = fields.holder;
+  }
+  return {
+    http: {
+      bind: httpBind,
+      forward: { kind: "failure" as const },
+      ...(httpHolder === undefined ? {} : httpHolder),
+    },
+    https: {
+      bind: httpsBind,
+      forward: { kind: "failure" as const },
+      ...(httpsHolder === undefined ? {} : httpsHolder),
+    },
+    httpBinds,
+    httpsBinds,
+    ...(Object.keys(httpHolders).length > 0 ? { httpHolders } : {}),
+    ...(Object.keys(httpsHolders).length > 0 ? { httpsHolders } : {}),
+  };
+});
 
 const stillOwnPort = (input: {
   readonly bind: BindOutcome | undefined;
@@ -298,61 +295,60 @@ const overrideOwned = (scheme: ClassifyAcquisitionInput["http"], bind: BindOutco
         : false,
   });
 
-export const stillOwnPersisted = (
+export const stillOwnPersisted = Effect.fn("TraefikRouter.stillOwnPersisted")(function* (
   dependencies: TraefikProxyDependencies,
   previous: PersistedPair,
   probed: ProbedAcquisition,
   bindAddress: string,
-): Effect.Effect<boolean, unknown> =>
-  Effect.gen(function* () {
-    const override = dependencies.socketProxy?.classifyOverride;
-    if (override !== undefined) {
-      return (
-        overrideOwned(override.http, probed.httpBinds[previous.httpPort]) &&
-        overrideOwned(override.https, probed.httpsBinds[previous.httpsPort])
-      );
+) {
+  const override = dependencies.socketProxy?.classifyOverride;
+  if (override !== undefined) {
+    return (
+      overrideOwned(override.http, probed.httpBinds[previous.httpPort]) &&
+      overrideOwned(override.https, probed.httpsBinds[previous.httpsPort])
+    );
+  }
+  if (dependencies.paths.platform === "win32" && dependencies.globalApp.ownedPublishPorts !== undefined) {
+    const owned = new Set(
+      yield* dependencies.globalApp.ownedPublishPorts(ServiceName.make("traefik"), [
+        previous.httpPort,
+        previous.httpsPort,
+      ]),
+    );
+    return owned.has(previous.httpPort) && owned.has(previous.httpsPort);
+  }
+  const probe = dependencies.probeBind ?? probeBind;
+  const httpBind = yield* probe(bindAddress, previous.httpPort);
+  const httpsBind = yield* probe(bindAddress, previous.httpsPort);
+  const httpFields = yield* holderFieldsFor(previous.httpPort, httpBind);
+  const httpsFields = yield* holderFieldsFor(previous.httpsPort, httpsBind);
+  const httpHolder = httpFields?.holder;
+  const httpsHolder = httpsFields?.holder;
+  const helperOpen = previous.helperInstalled || previous.socketsActive;
+  const publicOwned =
+    stillOwnPort({
+      bind: httpBind,
+      holder: httpHolder,
+      helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpPort)),
+    }) &&
+    stillOwnPort({
+      bind: httpsBind,
+      holder: httpsHolder,
+      helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpsPort)),
+    });
+  if (!publicOwned) return false;
+  for (const hop of [previous.bindHttpPort, previous.bindHttpsPort]) {
+    if (hop === undefined) continue;
+    const hopBind = yield* probe(bindAddress, hop);
+    const hopFields = yield* holderFieldsFor(hop, hopBind);
+    const hopHolder = hopFields?.holder;
+    if (hopBind.kind === "success") continue;
+    if (!stillOwnPort({ bind: hopBind, holder: hopHolder, helperTcpOpen: false })) {
+      return false;
     }
-    if (dependencies.paths.platform === "win32" && dependencies.globalApp.ownedPublishPorts !== undefined) {
-      const owned = new Set(
-        yield* dependencies.globalApp.ownedPublishPorts(ServiceName.make("traefik"), [
-          previous.httpPort,
-          previous.httpsPort,
-        ]),
-      );
-      return owned.has(previous.httpPort) && owned.has(previous.httpsPort);
-    }
-    const probe = dependencies.probeBind ?? probeBind;
-    const httpBind = yield* probe(bindAddress, previous.httpPort);
-    const httpsBind = yield* probe(bindAddress, previous.httpsPort);
-    const httpFields = yield* holderFieldsFor(previous.httpPort, httpBind);
-    const httpsFields = yield* holderFieldsFor(previous.httpsPort, httpsBind);
-    const httpHolder = httpFields?.holder;
-    const httpsHolder = httpsFields?.holder;
-    const helperOpen = previous.helperInstalled || previous.socketsActive;
-    const publicOwned =
-      stillOwnPort({
-        bind: httpBind,
-        holder: httpHolder,
-        helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpPort)),
-      }) &&
-      stillOwnPort({
-        bind: httpsBind,
-        holder: httpsHolder,
-        helperTcpOpen: helperOpen && (yield* probeTcpOpen(bindAddress, previous.httpsPort)),
-      });
-    if (!publicOwned) return false;
-    for (const hop of [previous.bindHttpPort, previous.bindHttpsPort]) {
-      if (hop === undefined) continue;
-      const hopBind = yield* probe(bindAddress, hop);
-      const hopFields = yield* holderFieldsFor(hop, hopBind);
-      const hopHolder = hopFields?.holder;
-      if (hopBind.kind === "success") continue;
-      if (!stillOwnPort({ bind: hopBind, holder: hopHolder, helperTcpOpen: false })) {
-        return false;
-      }
-    }
-    return true;
-  });
+  }
+  return true;
+});
 
 export const pinMismatch = (
   previous: PersistedPair,

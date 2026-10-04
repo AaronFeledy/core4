@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Option } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -158,11 +158,9 @@ describe("composeService", () => {
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Failure") {
-      expect(exit.cause._tag).toBe("Fail");
-      if (exit.cause._tag === "Fail") {
-        expect(exit.cause.error._tag).toBe("ServiceFeatureError");
-        expect(exit.cause.error.feature).toBe("feature.fail");
-      }
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error._tag).toBe("ServiceFeatureError");
+      expect(error.feature).toBe("feature.fail");
     }
   });
 });

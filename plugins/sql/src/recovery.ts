@@ -53,41 +53,40 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
     ...(input.format === undefined ? {} : { format: input.format }),
     ...(input.preflight === undefined ? {} : { preflight: input.preflight }),
     adoptLegacy: true,
-    body: (context) =>
-      Effect.gen(function* () {
-        if (input.preflight !== undefined) yield* input.preflight(context);
-        if (context.running) yield* context.suspend;
-        yield* context.verifyVolume;
-        const recovery = yield* Effect.uninterruptibleMask((restore) =>
-          Effect.gen(function* () {
-            const captured = yield* restore(
-              input.deps.snapshot(context.volume, {
-                format: input.format ?? "tar.gz",
-                ...(input.label === undefined ? {} : { label: input.label }),
-                metadata: { ...context.metadata, recoveryReason: input.reason },
+    body: Effect.fn("Sql.snapshot")(function* (context: SqlRecoveryContext) {
+      if (input.preflight !== undefined) yield* input.preflight(context);
+      if (context.running) yield* context.suspend;
+      yield* context.verifyVolume;
+      const recovery = yield* Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const captured = yield* restore(
+            input.deps.snapshot(context.volume, {
+              format: input.format ?? "tar.gz",
+              ...(input.label === undefined ? {} : { label: input.label }),
+              metadata: { ...context.metadata, recoveryReason: input.reason },
+            }),
+          ).pipe(Effect.exit);
+          if (Exit.isFailure(captured)) {
+            if (context.running) yield* context.resume;
+            return yield* Effect.failCause(captured.cause);
+          }
+          return captured.value;
+        }),
+      );
+      if (input.resumeAfterSnapshot && context.running) yield* context.resume;
+      return yield* input.body(context, recovery.id).pipe(
+        Effect.mapError((cause) =>
+          input.reason === "manual"
+            ? cause
+            : new SqlRecoveryOperationError({
+                message: `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
+                service: input.serviceName,
+                operation: input.reason,
+                recoverySnapshotId: recovery.id,
+                cause,
+                remediation: `Restore recovery snapshot ${recovery.id} after resolving the failure.`,
               }),
-            ).pipe(Effect.exit);
-            if (Exit.isFailure(captured)) {
-              if (context.running) yield* context.resume;
-              return yield* Effect.failCause(captured.cause);
-            }
-            return captured.value;
-          }),
-        );
-        if (input.resumeAfterSnapshot && context.running) yield* context.resume;
-        return yield* input.body(context, recovery.id).pipe(
-          Effect.mapError((cause) =>
-            input.reason === "manual"
-              ? cause
-              : new SqlRecoveryOperationError({
-                  message: `${input.reason} failed after recovery snapshot ${recovery.id} was created.`,
-                  service: input.serviceName,
-                  operation: input.reason,
-                  recoverySnapshotId: recovery.id,
-                  cause,
-                  remediation: `Restore recovery snapshot ${recovery.id} after resolving the failure.`,
-                }),
-          ),
-        );
-      }),
+        ),
+      );
+    }),
   });

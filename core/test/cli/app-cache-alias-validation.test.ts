@@ -73,7 +73,7 @@ const withRefreshFixture = async <T>(
       stores: [],
       fileSync: [],
       metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-08-15T00:00:00Z"),
+        resolvedAt: DateTime.makeUnsafe("2026-08-15T00:00:00Z"),
         source: "app-cache-alias-validation.test",
         runtime: 4,
       },
@@ -82,20 +82,26 @@ const withRefreshFixture = async <T>(
     landofile.tooling,
   );
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-    Layer.succeed(PluginRegistry, {
-      list: Effect.succeed([]),
-      load: () => Effect.die("plugin load must not run"),
-      loadServiceType: () => Effect.die("service type load must not run"),
-      loadServiceFeature: () => Effect.die("service feature load must not run"),
-      loadAppFeature: () => Effect.die("app feature load must not run"),
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.die("provider must not be selected"),
-    }),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed([]),
+        load: () => Effect.die("plugin load must not run"),
+        loadServiceType: () => Effect.die("service type load must not run"),
+        loadServiceFeature: () => Effect.die("service feature load must not run"),
+        loadAppFeature: () => Effect.die("app feature load must not run"),
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.die("provider must not be selected"),
+      }),
+    ),
   );
 
   try {

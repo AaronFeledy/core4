@@ -12,6 +12,7 @@ The renderer rule is classified `keep` after the `@lando/renderer` extraction co
 
 | Rule | Kind | What it bans | Package edge carrying ownership | Verdict | Justification |
 | --- | --- | --- | --- | --- | --- |
+| `effect-idioms` | `behavioral` | Data errors, wall-clock Date in Effect-importing modules, named generator-only wrappers, local record guard definitions, exported `*Live` names, and `@effect/*` imports | None; source idioms apply inside any allowed package | `keep` | Package edges govern dependency direction; they cannot reject retired Effect idioms (Data errors, wall-clock Date in Effect modules, generator-only wrappers, hand-rolled record guards, *Live layer names, @effect/* imports) written inside an allowed package. |
 | `env-helper` | `behavioral` | Service implementations importing the `lando.env` feature helpers directly | None; producer and consumers share `@lando/service-lando` | `keep` | A workspace edge cannot express an intra-package feature-ordering constraint. |
 | `import-cycle` | `structural` | Runtime module cycles across first-party source trees | None; package edges do not model module-level cycles | `keep` | Package-DAG controls allowed package direction, not cycles among modules inside an allowed edge. |
 | `machine-output` | `behavioral` | Direct command-envelope serialization in the shared shipped-runtime tier and command specs without result schemas | `@lando/sdk/command-result` owns encoding; package-DAG owns direction | `keep` | Canonical serialization moved behind @lando/sdk/command-result, eliminating the machine-output rule's final carve-out (one to zero); the strengthened rule scans every runtime consumer, including @lando/mcp, for direct serialization and missing command result schemas that package edges cannot express. |
@@ -34,6 +35,7 @@ The update, uninstall, config, and plugin extractions moved operation ownership 
 
 | Rule | Verdict | Evidence command and finding |
 | --- | --- | --- |
+| **effect-idioms** | keep | `bun run scripts/check-boundaries.ts effect-idioms` scans the shared runtime tier with no carve-outs. Source-level Effect API and naming choices remain behavioral constraints inside allowed packages; local, unexported `*Live` names are allowed. |
 | **env-helper** | keep | `grep -R -n -m 3 -e landoEnvFeature -e applyEnv plugins/service-lando/src/features plugins/service-lando/src/services --include='*.ts'` found the live feature helpers in the same package as the scanned services, so the intra-package ordering ban remains behavioral. |
 | **import-cycle** | keep | `grep -R -n -m 3 'from "\.' engine/src/operations core/src/cli/command-specs --include='*.ts'` found live module edges on both sides of the extraction; package-DAG still cannot detect module-level strongly connected components. |
 | **machine-output** | keep | `bun run scripts/check-boundaries.ts machine-output` scans the full shared runtime tier, including `mcp/src`, with no carve-outs. Canonical serialization lives behind `@lando/sdk/command-result`; the strengthened rule rejects direct serialization throughout the tier and missing `resultSchema` on core command specs. |

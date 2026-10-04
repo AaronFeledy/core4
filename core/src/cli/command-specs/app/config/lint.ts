@@ -14,7 +14,7 @@ const usesEnvelopeFormat = (input: unknown): boolean =>
 
 export const appConfigLintSpec: LandoCommandSpec<
   ConfigLintResult,
-  Effect.Effect.Error<ReturnType<typeof appConfigLint>>,
+  Effect.Error<ReturnType<typeof appConfigLint>>,
   PluginRegistry
 > = {
   resultSchema: ConfigLintResult,

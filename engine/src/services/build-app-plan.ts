@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Graph, Result, Schema } from "effect";
 
 import type { AppPlan, BuildStep, ServicePlan } from "@lando/sdk/schema";
 
@@ -6,18 +6,18 @@ import { appBuildKeyForStep } from "./build-key.ts";
 
 const ProviderCommandSpec = Schema.Struct({
   command: Schema.Array(Schema.String),
-  cwd: Schema.optional(Schema.String),
-  env: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  stdin: Schema.optional(Schema.Literal("inherit", "ignore")),
-  tty: Schema.optional(Schema.Boolean),
+  cwd: Schema.optionalKey(Schema.String),
+  env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  stdin: Schema.optionalKey(Schema.Literals(["inherit", "ignore"])),
+  tty: Schema.optionalKey(Schema.Boolean),
 });
 
 const AppBuildStepIntent = Schema.Struct({
-  id: Schema.optional(Schema.String),
+  id: Schema.optionalKey(Schema.String),
   phase: Schema.String,
   command: ProviderCommandSpec,
-  dependsOn: Schema.optional(Schema.Array(Schema.String)),
-  user: Schema.optional(Schema.String),
+  dependsOn: Schema.optionalKey(Schema.Array(Schema.String)),
+  user: Schema.optionalKey(Schema.String),
 });
 type AppBuildStepIntent = typeof AppBuildStepIntent.Type;
 
@@ -38,8 +38,8 @@ const appBuildIntents = (service: ServicePlan): ReadonlyArray<AppBuildStepIntent
     if (typeof entry !== "object" || entry === null || !("phase" in entry) || entry.phase !== "app") {
       return [];
     }
-    const decoded = Schema.decodeUnknownEither(AppBuildStepIntent)(entry);
-    return Either.isRight(decoded) ? [decoded.right] : [];
+    const decoded = Schema.decodeUnknownResult(AppBuildStepIntent)(entry);
+    return Result.isSuccess(decoded) ? [decoded.success] : [];
   });
 };
 
@@ -83,29 +83,35 @@ const stepFor = (
 };
 
 export const appStepBatches = (steps: ReadonlyArray<AppStep>): AppStepBatchPlan => {
-  const internalIds = new Set(steps.map(({ step }) => step.id));
-  const completed = new Set<string>();
-  let pending = [...steps];
+  const indices = new Map<string, Graph.NodeIndex>();
+  const pending = Graph.beginMutation(
+    Graph.directed<AppStep, string>((mutable) => {
+      for (const entry of steps) indices.set(entry.step.id, Graph.addNode(mutable, entry));
+      for (const { step } of steps) {
+        const dependent = indices.get(step.id);
+        if (dependent === undefined) continue;
+        for (const dependency of step.dependsOn) {
+          const predecessor = indices.get(dependency);
+          if (predecessor !== undefined) {
+            Graph.addEdge(mutable, predecessor, dependent, `${step.id} -> ${dependency}`);
+          }
+        }
+      }
+    }),
+  );
   const batches: Array<ReadonlyArray<AppStep>> = [];
-  while (pending.length > 0) {
-    const ready = pending.filter(({ step }) =>
-      step.dependsOn.every((dependency) => !internalIds.has(dependency) || completed.has(dependency)),
+  while (Graph.nodeCount(pending) > 0) {
+    const ready = [...Graph.entries(Graph.nodes(pending))].filter(
+      ([index]) => Graph.inDegree(pending, index) === 0,
     );
     if (ready.length === 0) {
-      const pendingIds = new Set(pending.map(({ step }) => step.id));
       return {
         _tag: "Cycle",
-        edges: pending.flatMap(({ step }) =>
-          step.dependsOn
-            .filter((dependency) => pendingIds.has(dependency))
-            .map((dependency) => `${step.id} -> ${dependency}`),
-        ),
+        edges: [...Graph.values(Graph.edges(pending))].map((edge) => edge.data),
       };
     }
-    batches.push(ready);
-    const readyIds = new Set(ready.map(({ step }) => step.id));
-    for (const id of readyIds) completed.add(id);
-    pending = pending.filter(({ step }) => !readyIds.has(step.id));
+    batches.push(ready.map(([, entry]) => entry));
+    for (const [index] of ready) Graph.removeNode(pending, index);
   }
   return { _tag: "Batches", batches };
 };

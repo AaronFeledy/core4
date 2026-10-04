@@ -9,11 +9,11 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "../../src/cache/service";
-import { PluginRegistryLive } from "../../src/plugins/registry";
-import { FileSystemLive } from "../../src/services/file-system";
-import { AppPlannerLive } from "../../src/services/planner";
-import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
+import * as AppCacheService from "../../src/cache/service";
+import * as PluginRegistryLayer from "../../src/plugins/registry";
+import * as BunFileSystem from "../../src/services/file-system";
+import * as AppPlannerLayer from "../../src/services/planner";
+import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 export const PEM = "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n";
 export const IMPORTED_PEM = "-----BEGIN CERTIFICATE-----\nimported\n-----END CERTIFICATE-----\n";
@@ -31,7 +31,7 @@ export const withApp = async <A>(run: (appRoot: string) => Promise<A>): Promise<
 };
 
 const discoverEffect = Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-  Effect.provide(LandofileServiceLive),
+  Effect.provide(TestLandofileServiceLayer.layer),
 );
 
 export const discover = () => Effect.runPromise(discoverEffect);
@@ -39,20 +39,23 @@ export const discover = () => Effect.runPromise(discoverEffect);
 export const discoverFailure = async () => {
   const exit = await Effect.runPromiseExit(discoverEffect);
   if (Exit.isSuccess(exit)) throw new Error("expected discovery failure");
-  return Option.getOrThrow(Cause.failureOption(exit.cause));
+  return Option.getOrThrow(Cause.findErrorOption(exit.cause));
 };
 
 export const planDiscoveredEffect = (input: { readonly appRoot: string; readonly cacheRoot: string }) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ userCacheRoot: input.cacheRoot });
   const dependencies = Layer.mergeAll(
-    LandofileServiceLive,
-    CacheServiceLive,
-    PluginRegistryLive,
-    FileSystemLive,
-    Layer.succeed(ConfigService, {
-      load: Effect.succeed(config),
-      get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
-    }),
+    TestLandofileServiceLayer.layer,
+    AppCacheService.layer,
+    PluginRegistryLayer.layer,
+    BunFileSystem.layer,
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.succeed(config),
+        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+      }),
+    ),
     Layer.succeed(
       PathsService,
       makeLandoPaths({
@@ -63,7 +66,7 @@ export const planDiscoveredEffect = (input: { readonly appRoot: string; readonly
       }),
     ),
   );
-  const planner = AppPlannerLive.pipe(Layer.provide(dependencies));
+  const planner = AppPlannerLayer.layer.pipe(Layer.provide(dependencies));
   return Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const appPlanner = yield* AppPlanner;

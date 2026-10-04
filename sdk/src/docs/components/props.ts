@@ -1,10 +1,11 @@
-import { Either, type ParseResult, Schema } from "effect";
+import { Effect } from "effect";
+import { Result, Schema } from "effect";
 
 import { NotImplementedError } from "../../errors/index.ts";
 import { GuideId } from "../guide-frontmatter.ts";
 
 /** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
-export const ComponentId = GuideId.annotations({ identifier: "ComponentId" });
+export const ComponentId = GuideId.annotate({ identifier: "ComponentId" });
 export type ComponentId = typeof ComponentId.Type;
 
 const unsupportedComponentPropsError = (component: string, key: string): NotImplementedError =>
@@ -47,49 +48,51 @@ const asRecord = (input: unknown): Record<string, unknown> | undefined => {
   return input as Record<string, unknown>;
 };
 
-export const MatcherScalar = Schema.Union(
+export const MatcherScalar = Schema.Union([
   Schema.String,
   Schema.Number,
   Schema.Boolean,
   Schema.Null,
-).annotations({
+]).annotate({
   identifier: "MatcherScalar",
 });
 export type MatcherScalar = typeof MatcherScalar.Type;
 
-export const MatcherRegex = Schema.Struct({ regex: Schema.String }).annotations({
+export const MatcherRegex = Schema.Struct({ regex: Schema.String }).annotate({
   identifier: "MatcherRegex",
 });
 export type MatcherRegex = typeof MatcherRegex.Type;
 
-export const MatcherSchemaRef = Schema.Struct({ schema: Schema.String }).annotations({
+export const MatcherSchemaRef = Schema.Struct({ schema: Schema.String }).annotate({
   identifier: "MatcherSchemaRef",
 });
 export type MatcherSchemaRef = typeof MatcherSchemaRef.Type;
 
-export const MatcherAnyOf = Schema.Struct({ anyOf: Schema.Array(Schema.Unknown) }).annotations({
+export const MatcherAnyOf = Schema.Struct({ anyOf: Schema.Array(Schema.Unknown) }).annotate({
   identifier: "MatcherAnyOf",
 });
 export type MatcherAnyOf = typeof MatcherAnyOf.Type;
 
-export const MatcherNot = Schema.Struct({ not: Schema.Unknown }).annotations({ identifier: "MatcherNot" });
+export const MatcherNot = Schema.Struct({ not: Schema.Unknown }).annotate({ identifier: "MatcherNot" });
 export type MatcherNot = typeof MatcherNot.Type;
 
 const MATCHER_OPERATOR_KEYS = ["regex", "schema", "anyOf", "not", "exact", "allOf", "oneOf"] as const;
 
-export const MatcherPartialObject = Schema.Record({ key: Schema.String, value: Schema.Unknown })
+export const MatcherPartialObject = Schema.Record(Schema.String, Schema.Unknown)
   .pipe(
-    Schema.filter((input) => MATCHER_OPERATOR_KEYS.every((key) => !Object.hasOwn(input, key)), {
-      message: () => "Matcher partial objects cannot use reserved matcher operator keys.",
-      jsonSchema: {},
-    }),
+    Schema.check(
+      Schema.makeFilter((input) => MATCHER_OPERATOR_KEYS.every((key) => !Object.hasOwn(input, key)), {
+        message: "Matcher partial objects cannot use reserved matcher operator keys.",
+        toJsonSchema: () => [{}, true],
+      }),
+    ),
   )
-  .annotations({
+  .annotate({
     identifier: "MatcherPartialObject",
   });
 export type MatcherPartialObject = typeof MatcherPartialObject.Type;
 
-export const MatcherSchema = Schema.Union(
+export const MatcherSchema = Schema.Union([
   MatcherScalar,
   Schema.Array(Schema.Unknown),
   MatcherRegex,
@@ -97,14 +100,14 @@ export const MatcherSchema = Schema.Union(
   MatcherAnyOf,
   MatcherNot,
   MatcherPartialObject,
-).annotations({
+]).annotate({
   identifier: "MatcherSchema",
   title: "Matcher Schema",
   description: "Declarative matcher subset for executable-guide verification.",
 });
 export type MatcherSchema = typeof MatcherSchema.Type;
 
-export const GuideProps = Schema.Struct({}).annotations({
+export const GuideProps = Schema.ObjectKeyword.annotate({
   identifier: "GuideProps",
   title: "Guide Props",
   description: "<Guide> component props.",
@@ -113,21 +116,23 @@ export type GuideProps = typeof GuideProps.Type;
 
 export const ScenarioProps = Schema.Struct({
   id: ComponentId,
-  render: Schema.optionalWith(Schema.Boolean, { default: () => true }),
-  reason: Schema.optional(Schema.String),
-  tags: Schema.optional(Schema.Array(Schema.String)),
-  layer: Schema.optional(Schema.Literal("scenario", "e2e")),
+  render: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  reason: Schema.optionalKey(Schema.String),
+  tags: Schema.optionalKey(Schema.Array(Schema.String)),
+  layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
 })
   .pipe(
-    Schema.filter(
-      (input) => input.render !== false || (input.reason !== undefined && input.reason.length >= 8),
-      {
-        message: () => "<Scenario render={false}> requires a `reason` of at least 8 characters.",
-        jsonSchema: {},
-      },
+    Schema.check(
+      Schema.makeFilter(
+        (input) => input.render !== false || (input.reason !== undefined && input.reason.length >= 8),
+        {
+          message: "<Scenario render={false}> requires a `reason` of at least 8 characters.",
+          toJsonSchema: () => [{}, true],
+        },
+      ),
     ),
   )
-  .annotations({
+  .annotate({
     identifier: "ScenarioProps",
     title: "Scenario Props",
     description: "<Scenario> component props.",
@@ -136,30 +141,30 @@ export type ScenarioProps = typeof ScenarioProps.Type;
 
 export const StepProps = Schema.Struct({
   name: ComponentId,
-}).annotations({
+}).annotate({
   identifier: "StepProps",
   title: "Step Props",
   description: "<Step> component props.",
 });
 export type StepProps = typeof StepProps.Type;
 
-export const RunProps = Schema.Union(
+export const RunProps = Schema.Union([
   Schema.Struct({
     command: Schema.String,
-    answers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-    expectExit: Schema.optional(Schema.Number.pipe(Schema.int())),
+    answers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))),
   }),
   Schema.Struct({
     shell: Schema.String,
-    answers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-    expectExit: Schema.optional(Schema.Number.pipe(Schema.int())),
+    answers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))),
   }),
   Schema.Struct({
     runtime: Schema.Literal("library"),
     code: Schema.String,
     displayCode: Schema.String,
   }),
-).annotations({
+]).annotate({
   identifier: "RunProps",
   title: "Run Props",
   description: "<Run> component props.",
@@ -167,28 +172,30 @@ export const RunProps = Schema.Union(
 export type RunProps = typeof RunProps.Type;
 
 export const VerifyProps = Schema.Struct({
-  event: Schema.optional(Schema.String),
-  command: Schema.optional(Schema.String),
-  file: Schema.optional(Schema.String),
-  errorTag: Schema.optional(Schema.String),
-  expect: Schema.optional(MatcherSchema),
+  event: Schema.optionalKey(Schema.String),
+  command: Schema.optionalKey(Schema.String),
+  file: Schema.optionalKey(Schema.String),
+  errorTag: Schema.optionalKey(Schema.String),
+  expect: Schema.optionalKey(MatcherSchema),
 })
   .pipe(
-    Schema.filter(
-      (input) =>
-        [input.event, input.command, input.file, input.errorTag].filter((value) => value !== undefined)
-          .length === 1,
-      { message: () => "<Verify> requires exactly one target.", jsonSchema: {} },
+    Schema.check(
+      Schema.makeFilter(
+        (input) =>
+          [input.event, input.command, input.file, input.errorTag].filter((value) => value !== undefined)
+            .length === 1,
+        { message: "<Verify> requires exactly one target.", toJsonSchema: () => [{}, true] },
+      ),
     ),
   )
-  .annotations({
+  .annotate({
     identifier: "VerifyProps",
     title: "Verify Props",
     description: "<Verify> component props.",
   });
 export type VerifyProps = typeof VerifyProps.Type;
 
-export const CleanupProps = Schema.Struct({}).annotations({
+export const CleanupProps = Schema.ObjectKeyword.annotate({
   identifier: "CleanupProps",
   title: "Cleanup Props",
   description: "<Cleanup> component props.",
@@ -198,17 +205,22 @@ export type CleanupProps = typeof CleanupProps.Type;
 export const VariableProps = Schema.Struct({
   name: Schema.String,
   value: Schema.String,
-  display: Schema.optional(Schema.String),
-}).annotations({
+  display: Schema.optionalKey(Schema.String),
+}).annotate({
   identifier: "VariableProps",
   title: "Variable Props",
   description: "<Variable> component props.",
 });
 export type VariableProps = typeof VariableProps.Type;
 
+const explanationMinimum = 8;
+const explanationText = Schema.String.check(
+  Schema.isMinLength(explanationMinimum, { toJsonSchema: () => ({ minLength: explanationMinimum }) }),
+);
+
 export const HiddenProps = Schema.Struct({
-  reason: Schema.String.pipe(Schema.minLength(8)),
-}).annotations({
+  reason: explanationText,
+}).annotate({
   identifier: "HiddenProps",
   title: "Hidden Props",
   description: "<Hidden> component props.",
@@ -217,7 +229,7 @@ export type HiddenProps = typeof HiddenProps.Type;
 
 export const UseFixtureProps = Schema.Struct({
   name: Schema.String,
-}).annotations({
+}).annotate({
   identifier: "UseFixtureProps",
   title: "Use Fixture Props",
   description: "<UseFixture> component props.",
@@ -225,24 +237,26 @@ export const UseFixtureProps = Schema.Struct({
 export type UseFixtureProps = typeof UseFixtureProps.Type;
 
 export const InspectProps = Schema.Struct({
-  file: Schema.optional(Schema.String),
-  json: Schema.optional(Schema.String),
+  file: Schema.optionalKey(Schema.String),
+  json: Schema.optionalKey(Schema.String),
   // Literal `true` only: consumers act on `=== true`, so `false` must not decode.
-  events: Schema.optional(Schema.Literal(true)),
-  output: Schema.optional(Schema.Literal(true)),
+  events: Schema.optionalKey(Schema.Literal(true)),
+  output: Schema.optionalKey(Schema.Literal(true)),
 })
   .pipe(
-    Schema.filter(
-      (input) =>
-        [input.file, input.json, input.events, input.output].filter((value) => value !== undefined).length ===
-        1,
-      {
-        message: () => "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
-        jsonSchema: {},
-      },
+    Schema.check(
+      Schema.makeFilter(
+        (input) =>
+          [input.file, input.json, input.events, input.output].filter((value) => value !== undefined)
+            .length === 1,
+        {
+          message: "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
+          toJsonSchema: () => [{}, true],
+        },
+      ),
     ),
   )
-  .annotations({
+  .annotate({
     identifier: "InspectProps",
     title: "Inspect Props",
     description: "<Inspect> component props.",
@@ -250,16 +264,20 @@ export const InspectProps = Schema.Struct({
 export type InspectProps = typeof InspectProps.Type;
 
 /** Tab axis names and values — lowercase kebab-case (a-z, 0-9, hyphen). */
+const axisTokenPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export const AxisToken = Schema.String.pipe(
-  Schema.pattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, {
-    message: () => "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
-  }),
-).annotations({ identifier: "AxisToken" });
+  Schema.check(
+    Schema.isPattern(axisTokenPattern, {
+      message: "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+      toJsonSchema: () => ({ pattern: axisTokenPattern.source }),
+    }),
+  ),
+).annotate({ identifier: "AxisToken" });
 export type AxisToken = typeof AxisToken.Type;
 
 export const TabsProps = Schema.Struct({
-  axis: Schema.optional(AxisToken),
-}).annotations({
+  axis: Schema.optionalKey(AxisToken),
+}).annotate({
   identifier: "TabsProps",
   title: "Tabs Props",
   description: "<Tabs> component props.",
@@ -268,7 +286,7 @@ export type TabsProps = typeof TabsProps.Type;
 
 export const TabProps = Schema.Struct({
   name: AxisToken,
-}).annotations({
+}).annotate({
   identifier: "TabProps",
   title: "Tab Props",
   description: "<Tab> component props.",
@@ -277,9 +295,9 @@ export type TabProps = typeof TabProps.Type;
 
 export const InlineProps = Schema.Struct({
   code: Schema.String,
-  lang: Schema.optionalWith(Schema.String, { default: () => "ts" }),
-  justification: Schema.String.pipe(Schema.minLength(8)),
-}).annotations({
+  lang: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "ts"))),
+  justification: explanationText,
+}).annotate({
   identifier: "InlineProps",
   title: "Inline Props",
   description: "<Inline> component props.",
@@ -287,31 +305,31 @@ export const InlineProps = Schema.Struct({
 export type InlineProps = typeof InlineProps.Type;
 
 export const SkipProps = Schema.Struct({
-  reason: Schema.String.pipe(Schema.minLength(8)),
-  until: Schema.optional(Schema.String),
-}).annotations({
+  reason: explanationText,
+  until: Schema.optionalKey(Schema.String),
+}).annotate({
   identifier: "SkipProps",
   title: "Skip Props",
   description: "<Skip> component props.",
 });
 export type SkipProps = typeof SkipProps.Type;
 
-type DecodeError = NotImplementedError | ParseResult.ParseError;
+type DecodeError = NotImplementedError | Schema.SchemaError;
 
-const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either.Either<A, DecodeError> =>
-  Schema.decodeUnknownEither(schema)(input, { onExcessProperty: "error" });
+const decodeEither = <A, I>(schema: Schema.Codec<A, I>, input: unknown): Result.Result<A, DecodeError> =>
+  Schema.decodeUnknownResult(schema)(input, { onExcessProperty: "error" });
 
-export const decodeScenarioPropsEither = (input: unknown): Either.Either<ScenarioProps, DecodeError> => {
+export const decodeScenarioPropsEither = (input: unknown): Result.Result<ScenarioProps, DecodeError> => {
   return decodeEither(ScenarioProps, input);
 };
 
-export const decodeStepPropsEither = (input: unknown): Either.Either<StepProps, DecodeError> =>
+export const decodeStepPropsEither = (input: unknown): Result.Result<StepProps, DecodeError> =>
   decodeEither(StepProps, input);
 
-export const decodeRunPropsEither = (input: unknown): Either.Either<RunProps, DecodeError> => {
+export const decodeRunPropsEither = (input: unknown): Result.Result<RunProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined && Object.hasOwn(record, "tooling")) {
-    return Either.left(unsupportedComponentPropsError("Run", "tooling"));
+    return Result.fail(unsupportedComponentPropsError("Run", "tooling"));
   }
   return decodeEither(RunProps, input);
 };
@@ -336,43 +354,43 @@ const findUnsupportedMatcherKey = (input: unknown): "exact" | "allOf" | "oneOf" 
   return undefined;
 };
 
-export const decodeVerifyPropsEither = (input: unknown): Either.Either<VerifyProps, DecodeError> => {
+export const decodeVerifyPropsEither = (input: unknown): Result.Result<VerifyProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined) {
     if (Object.hasOwn(record, "runtime"))
-      return Either.left(unsupportedComponentPropsError("Verify", "runtime"));
+      return Result.fail(unsupportedComponentPropsError("Verify", "runtime"));
     if (Object.hasOwn(record, "tooling"))
-      return Either.left(unsupportedComponentPropsError("Verify", "tooling"));
+      return Result.fail(unsupportedComponentPropsError("Verify", "tooling"));
     const unsupportedMatcherKey = findUnsupportedMatcherKey(record.expect);
     if (unsupportedMatcherKey !== undefined)
-      return Either.left(unsupportedComponentPropsError("Verify", unsupportedMatcherKey));
+      return Result.fail(unsupportedComponentPropsError("Verify", unsupportedMatcherKey));
   }
   return decodeEither(VerifyProps, input);
 };
 
-export const decodeCleanupPropsEither = (input: unknown): Either.Either<CleanupProps, DecodeError> =>
+export const decodeCleanupPropsEither = (input: unknown): Result.Result<CleanupProps, DecodeError> =>
   decodeEither(CleanupProps, input);
 
-export const decodeVariablePropsEither = (input: unknown): Either.Either<VariableProps, DecodeError> =>
+export const decodeVariablePropsEither = (input: unknown): Result.Result<VariableProps, DecodeError> =>
   decodeEither(VariableProps, input);
 
-export const decodeUseFixturePropsEither = (input: unknown): Either.Either<UseFixtureProps, DecodeError> =>
+export const decodeUseFixturePropsEither = (input: unknown): Result.Result<UseFixtureProps, DecodeError> =>
   decodeEither(UseFixtureProps, input);
 
-export const decodeHiddenPropsEither = (input: unknown): Either.Either<HiddenProps, DecodeError> =>
+export const decodeHiddenPropsEither = (input: unknown): Result.Result<HiddenProps, DecodeError> =>
   decodeEither(HiddenProps, input);
 
-export const decodeInspectPropsEither = (input: unknown): Either.Either<InspectProps, DecodeError> =>
+export const decodeInspectPropsEither = (input: unknown): Result.Result<InspectProps, DecodeError> =>
   decodeEither(InspectProps, input);
 
-export const decodeTabsPropsEither = (input: unknown): Either.Either<TabsProps, DecodeError> =>
+export const decodeTabsPropsEither = (input: unknown): Result.Result<TabsProps, DecodeError> =>
   decodeEither(TabsProps, input);
 
-export const decodeTabPropsEither = (input: unknown): Either.Either<TabProps, DecodeError> =>
+export const decodeTabPropsEither = (input: unknown): Result.Result<TabProps, DecodeError> =>
   decodeEither(TabProps, input);
 
-export const decodeInlinePropsEither = (input: unknown): Either.Either<InlineProps, DecodeError> =>
+export const decodeInlinePropsEither = (input: unknown): Result.Result<InlineProps, DecodeError> =>
   decodeEither(InlineProps, input);
 
-export const decodeSkipPropsEither = (input: unknown): Either.Either<SkipProps, DecodeError> =>
+export const decodeSkipPropsEither = (input: unknown): Result.Result<SkipProps, DecodeError> =>
   decodeEither(SkipProps, input);

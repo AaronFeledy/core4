@@ -7,7 +7,7 @@
  * have honored and reports it.
  */
 import type { Lando3Path } from "./contract.ts";
-import { type V4Wire, asStringArray, isPlainObject } from "./lowering-contract.ts";
+import { type V4Wire, asStringArray, hasPlainObjectPrototype } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
 
 const POSITIONAL_TOKEN = /\[([^\]\s]+)\]|<([^>\s]+)>/gu;
@@ -108,7 +108,7 @@ export const lowerFlags = (
   const flags: Record<string, unknown> = {};
   for (const [name, spec] of Object.entries(options)) {
     const flagPath = [...path, name];
-    if (!isPlainObject(spec)) {
+    if (!hasPlainObjectPrototype(spec)) {
       report(
         "dropped",
         flagPath,
@@ -210,7 +210,7 @@ export const lowerPositionals = (
     required: token[2] !== undefined,
     variadic: /\.\.\.?$/u.test(token[1] ?? token[2] ?? ""),
   }));
-  const specs = isPlainObject(positionals) ? positionals : {};
+  const specs = hasPlainObjectPrototype(positionals) ? positionals : {};
   const names = [...new Set([...tokens.map(({ name }) => name), ...Object.keys(specs)])];
   if (names.length === 0) return undefined;
   const args: Record<string, unknown> = {};
@@ -240,7 +240,7 @@ export const lowerPositionals = (
     }
     const spec = specs[name];
     const specPath = [...taskPath, "positionals", name];
-    if (isPlainObject(spec)) {
+    if (hasPlainObjectPrototype(spec)) {
       for (const [key, value] of Object.entries(spec)) {
         if (!lowerCommonInput(key, value, out, specPath, report)) {
           report(

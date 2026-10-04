@@ -5,7 +5,7 @@ import {
   type ServiceLoweringContext,
   type V4Wire,
   containerWebroot,
-  isPlainObject,
+  hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import {
   droppedServiceKey,
@@ -96,7 +96,7 @@ export const lowerPhpOptions = (
     patch.composer = false;
   } else {
     const version = typeof service.composer_version === "string" ? service.composer_version : undefined;
-    const packages = isPlainObject(service.composer)
+    const packages = hasPlainObjectPrototype(service.composer)
       ? Object.fromEntries(
           Object.entries(service.composer).map(([name, constraint]) => [name, String(constraint)]),
         )
@@ -122,7 +122,7 @@ export const lowerPhpOptions = (
   const xdebug = service.xdebug;
   if (typeof xdebug === "boolean" || typeof xdebug === "string") {
     patch.xdebug = xdebug;
-  } else if (isPlainObject(xdebug)) {
+  } else if (hasPlainObjectPrototype(xdebug)) {
     const lowered = lowerXdebugObject(service, xdebug, ctx);
     Object.assign(patch, lowered.patch);
     diagnostics.push(...lowered.diagnostics);

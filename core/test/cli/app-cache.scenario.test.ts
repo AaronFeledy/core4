@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Layer, Result } from "effect";
 
 import { refreshAppCache, renderAppCacheRefreshResult } from "@lando/core/cli/operations";
 import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
@@ -55,7 +55,7 @@ const capabilities: ProviderCapabilities = {
 };
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "app-cache.scenario.test",
   runtime: 4 as const,
 };
@@ -119,29 +119,38 @@ describe("lando app:cache:refresh", () => {
 
         let selectCalls = 0;
         const layer = Layer.mergeAll(
-          Layer.succeed(LandofileService, {
-            discover: Effect.succeed({
-              name: "test-app-cache",
-              services: {},
-              tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
+          Layer.succeed(
+            LandofileService,
+            LandofileService.of({
+              discover: Effect.succeed({
+                name: "test-app-cache",
+                services: {},
+                tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
+              }),
             }),
-          }),
-          Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-          Layer.succeed(PluginRegistry, {
-            list: Effect.succeed([]),
-            load: () => Effect.die("plugin load must not run"),
-            loadServiceType: () => Effect.die("service type load must not run"),
-            loadServiceFeature: () => Effect.die("service feature load must not run"),
-            loadAppFeature: () => Effect.die("service feature load must not run"),
-          }),
-          Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([providerId]),
-            capabilities: Effect.succeed(capabilities),
-            select: () => {
-              selectCalls += 1;
-              return Effect.die("provider must not be selected");
-            },
-          }),
+          ),
+          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+          Layer.succeed(
+            PluginRegistry,
+            PluginRegistry.of({
+              list: Effect.succeed([]),
+              load: () => Effect.die("plugin load must not run"),
+              loadServiceType: () => Effect.die("service type load must not run"),
+              loadServiceFeature: () => Effect.die("service feature load must not run"),
+              loadAppFeature: () => Effect.die("service feature load must not run"),
+            }),
+          ),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([providerId]),
+              capabilities: Effect.succeed(capabilities),
+              select: () => {
+                selectCalls += 1;
+                return Effect.die("provider must not be selected");
+              },
+            }),
+          ),
         );
 
         const result = await Effect.runPromise(
@@ -189,26 +198,35 @@ describe("lando app:cache:refresh", () => {
           extensions: {},
         };
         const layer = Layer.mergeAll(
-          Layer.succeed(LandofileService, {
-            discover: Effect.succeed({
-              name: "strict-app-cache",
-              services: {},
-              tooling: { hello: { cmds: ["echo hi"] } },
+          Layer.succeed(
+            LandofileService,
+            LandofileService.of({
+              discover: Effect.succeed({
+                name: "strict-app-cache",
+                services: {},
+                tooling: { hello: { cmds: ["echo hi"] } },
+              }),
             }),
-          }),
-          Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
-          Layer.succeed(PluginRegistry, {
-            list: Effect.succeed([]),
-            load: () => Effect.die("plugin load must not run"),
-            loadServiceType: () => Effect.die("service type load must not run"),
-            loadServiceFeature: () => Effect.die("service feature load must not run"),
-            loadAppFeature: () => Effect.die("service feature load must not run"),
-          }),
-          Layer.succeed(RuntimeProviderRegistry, {
-            list: Effect.succeed([providerId]),
-            capabilities: Effect.succeed(capabilities),
-            select: () => Effect.die("provider must not be selected"),
-          }),
+          ),
+          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+          Layer.succeed(
+            PluginRegistry,
+            PluginRegistry.of({
+              list: Effect.succeed([]),
+              load: () => Effect.die("plugin load must not run"),
+              loadServiceType: () => Effect.die("service type load must not run"),
+              loadServiceFeature: () => Effect.die("service feature load must not run"),
+              loadAppFeature: () => Effect.die("service feature load must not run"),
+            }),
+          ),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            RuntimeProviderRegistry.of({
+              list: Effect.succeed([providerId]),
+              capabilities: Effect.succeed(capabilities),
+              select: () => Effect.die("provider must not be selected"),
+            }),
+          ),
         );
 
         const blockedPath = dirname(appCommandCachePath(cacheRoot, "strict-app-cache", dir));
@@ -221,7 +239,7 @@ describe("lando app:cache:refresh", () => {
 
         expect(exit._tag).toBe("Failure");
         if (exit._tag !== "Failure") return;
-        const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+        const failure = Result.getOrThrow(Cause.findError(exit.cause));
         expect(failure).toBeInstanceOf(CacheError);
         expect(failure?.message).toBe("Failed to write app-command cache.");
       } finally {

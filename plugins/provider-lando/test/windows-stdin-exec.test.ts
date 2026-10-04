@@ -75,7 +75,7 @@ describe("managed Windows stdin exec", () => {
             ]),
           ),
         ),
-    } as unknown as Context.Tag.Service<typeof ProcessRunner>;
+    } as unknown as Context.Service.Shape<typeof ProcessRunner>;
     const command = { command: ["cat"], stdinStream: stdinStream(), env: { SQL_PASSWORD: "secret value" } };
     const options = {
       podmanBin: "C:/runtime/podman.exe",

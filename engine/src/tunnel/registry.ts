@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { type TunnelSession, TunnelSession as TunnelSessionSchema } from "@lando/sdk/schema";
@@ -11,7 +11,7 @@ import { makeLandoPaths } from "@lando/paths";
 
 const TunnelRegistryEntry = Schema.Struct({
   session: TunnelSessionSchema,
-  pid: Schema.Number.pipe(Schema.int()),
+  pid: Schema.Number.pipe(Schema.check(Schema.isInt())),
   updatedAt: Schema.String,
 });
 
@@ -87,39 +87,38 @@ const removeRunArtifacts = (sessionId: string): Effect.Effect<void, StateStoreEr
 
 const bucket = Effect.flatMap(StateStore, (store) => store.open(registrySpec));
 
-export const recordTunnelSession = (
+export const recordTunnelSession = Effect.fn("TunnelRegistry.recordTunnelSession")(function* (
   session: TunnelSession,
-): Effect.Effect<void, StateStoreError, StateStore> =>
-  Effect.gen(function* () {
-    const registry = yield* bucket;
-    const now = new Date().toISOString();
-    yield* registry.update((current) => {
-      const next = partitionEntries(current ?? [], new Set()).live.filter(
-        (entry) => entry.session.id !== session.id,
-      );
-      return [...next, { session, pid: process.pid, updatedAt: now }];
-    });
-    yield* writeRunArtifacts(session);
-  });
-
-export const reconcileTunnelRegistry = (
-  activeSessionIds: ReadonlySet<string> = new Set(),
-): Effect.Effect<ReadonlyArray<TunnelSession>, StateStoreError, StateStore> =>
-  Effect.gen(function* () {
-    const registry = yield* bucket;
-    const reconciled = yield* registry.modify((current) => {
-      const { live, staleIds } = partitionEntries(current ?? [], activeSessionIds);
-      return [{ sessions: live.map((entry) => entry.session), staleIds }, live];
-    });
-    for (const staleId of reconciled.staleIds) yield* removeRunArtifacts(staleId);
-    return reconciled.sessions;
-  });
-
-export const removeTunnelSession = (sessionId: string): Effect.Effect<void, StateStoreError, StateStore> =>
-  Effect.gen(function* () {
-    const registry = yield* bucket;
-    yield* registry.update((current) =>
-      partitionEntries(current ?? [], new Set()).live.filter((entry) => entry.session.id !== sessionId),
+): Effect.fn.Return<void, StateStoreError, StateStore> {
+  const registry = yield* bucket;
+  const now = DateTime.formatIso(yield* DateTime.now);
+  yield* registry.update((current) => {
+    const next = partitionEntries(current ?? [], new Set()).live.filter(
+      (entry) => entry.session.id !== session.id,
     );
-    yield* removeRunArtifacts(sessionId);
+    return [...next, { session, pid: process.pid, updatedAt: now }];
   });
+  yield* writeRunArtifacts(session);
+});
+
+export const reconcileTunnelRegistry = Effect.fn("TunnelRegistry.reconcileTunnelRegistry")(function* (
+  activeSessionIds: ReadonlySet<string> = new Set(),
+): Effect.fn.Return<ReadonlyArray<TunnelSession>, StateStoreError, StateStore> {
+  const registry = yield* bucket;
+  const reconciled = yield* registry.modify((current) => {
+    const { live, staleIds } = partitionEntries(current ?? [], activeSessionIds);
+    return [{ sessions: live.map((entry) => entry.session), staleIds }, live];
+  });
+  for (const staleId of reconciled.staleIds) yield* removeRunArtifacts(staleId);
+  return reconciled.sessions;
+});
+
+export const removeTunnelSession = Effect.fn("TunnelRegistry.removeTunnelSession")(function* (
+  sessionId: string,
+): Effect.fn.Return<void, StateStoreError, StateStore> {
+  const registry = yield* bucket;
+  yield* registry.update((current) =>
+    partitionEntries(current ?? [], new Set()).live.filter((entry) => entry.session.id !== sessionId),
+  );
+  yield* removeRunArtifacts(sessionId);
+});

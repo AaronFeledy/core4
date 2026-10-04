@@ -1,6 +1,6 @@
-type JsonRecord = Record<string, unknown>;
-const record = (value: unknown): value is JsonRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+import { Predicate } from "effect";
+
+const record = Predicate.isObject;
 
 export const validIpv4Address = (value: string): boolean => {
   const parts = value.split(".");

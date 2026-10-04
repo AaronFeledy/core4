@@ -36,23 +36,22 @@ const parseScheme = (url: string): string | undefined => {
   }
 };
 
-export const openUrl = (
+export const openUrl = Effect.fn("HostOpener.openUrl")(function* (
   url: string,
   options?: OpenUrlOptions,
-): Effect.Effect<void, HostProxyOpenUrlSchemeError | ShellExecError, ShellRunner> =>
-  Effect.gen(function* () {
-    const protocol = parseScheme(url);
-    if (protocol === undefined || !OPENABLE_SCHEMES.has(protocol)) {
-      return yield* Effect.fail(
-        new HostProxyOpenUrlSchemeError({
-          message: `Refusing to open ${url}: only http and https URLs can be opened.`,
-          ...(protocol === undefined ? {} : { scheme: protocol.replace(/:$/u, "") }),
-          url,
-          remediation: "Open only http:// or https:// URLs.",
-        }),
-      );
-    }
-    const shell = yield* ShellRunner;
-    const platform = options?.platform ?? process.platform;
-    yield* shell.exec(openerCommandFor(platform, url));
-  });
+): Effect.fn.Return<void, HostProxyOpenUrlSchemeError | ShellExecError, ShellRunner> {
+  const protocol = parseScheme(url);
+  if (protocol === undefined || !OPENABLE_SCHEMES.has(protocol)) {
+    return yield* Effect.fail(
+      new HostProxyOpenUrlSchemeError({
+        message: `Refusing to open ${url}: only http and https URLs can be opened.`,
+        ...(protocol === undefined ? {} : { scheme: protocol.replace(/:$/u, "") }),
+        url,
+        remediation: "Open only http:// or https:// URLs.",
+      }),
+    );
+  }
+  const shell = yield* ShellRunner;
+  const platform = options?.platform ?? process.platform;
+  yield* shell.exec(openerCommandFor(platform, url));
+});

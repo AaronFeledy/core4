@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { CommandInputValidationError, ToolingCommandLookupError } from "@lando/sdk/errors";
 
@@ -50,7 +50,7 @@ describe("ToolingCommandLookupError", () => {
   });
 
   test("decodes through schema preserving documented fields", () => {
-    const decoded = Schema.decodeUnknownEither(ToolingCommandLookupError)({
+    const decoded = Schema.decodeUnknownResult(ToolingCommandLookupError)({
       _tag: "ToolingCommandLookupError",
       message: "Unknown command.",
       target: "meta:plugin:ad",
@@ -59,11 +59,11 @@ describe("ToolingCommandLookupError", () => {
       pluginId: "@lando/example",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.target).toBe("meta:plugin:ad");
-      expect(decoded.right.targetKind).toBe("plugin");
-      expect(decoded.right.pluginId).toBe("@lando/example");
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.target).toBe("meta:plugin:ad");
+      expect(decoded.success.targetKind).toBe("plugin");
+      expect(decoded.success.pluginId).toBe("@lando/example");
     }
   });
 });
@@ -123,7 +123,7 @@ describe("CommandInputValidationError", () => {
   });
 
   test("decodes through schema preserving documented fields", () => {
-    const decoded = Schema.decodeUnknownEither(CommandInputValidationError)({
+    const decoded = Schema.decodeUnknownResult(CommandInputValidationError)({
       _tag: "CommandInputValidationError",
       message: "Invalid argument value.",
       target: "app:exec",
@@ -133,12 +133,12 @@ describe("CommandInputValidationError", () => {
       remediation: "Pass a string for command.",
     });
 
-    expect(Either.isRight(decoded)).toBe(true);
-    if (Either.isRight(decoded)) {
-      expect(decoded.right.target).toBe("app:exec");
-      expect(decoded.right.field).toBe("command");
-      expect(decoded.right.kind).toBe("arg");
-      expect(decoded.right.reason).toBe("type");
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success.target).toBe("app:exec");
+      expect(decoded.success.field).toBe("command");
+      expect(decoded.success.kind).toBe("arg");
+      expect(decoded.success.reason).toBe("type");
     }
   });
 });

@@ -28,7 +28,7 @@ const plan: AppPlan = {
   stores: [],
   fileSync: [],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-09-22T00:00:00Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-09-22T00:00:00Z"),
     source: "global-routes.test",
     runtime: 4,
   },

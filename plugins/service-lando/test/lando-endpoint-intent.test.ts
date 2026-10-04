@@ -51,7 +51,7 @@ describe("lando endpoint intent", () => {
     // Grammar moved into the service schema, so this now fails at decode, not feature-apply.
     const result = planService({ type: "lando", image: "alpine:3", ports: ["8080:80/sctp"] });
 
-    await expect(result).rejects.toHaveProperty("name", "ParseError");
+    await expect(result).rejects.toHaveProperty("name", "SchemaError");
     await expect(result).rejects.toHaveProperty("message", expect.stringContaining("tcp"));
   });
 

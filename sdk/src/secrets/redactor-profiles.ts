@@ -30,6 +30,7 @@
  */
 
 import { replacePatternsBounded } from "./bounded-redaction.ts";
+import { redactedInspection } from "./inspection.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
 import {
   TRANSCRIPT_PATTERN_CLASSES,
@@ -176,7 +177,10 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
  * Build a {@link Redactor} for the given profile. The value layer (known secret
  * values) is always applied before the profile's pattern layer.
  */
-export const createRedactor = (profile: RedactionProfile, options: CreateRedactorOptions = {}): Redactor => {
+export const createRedactor = (
+  profile: RedactionProfile,
+  options: CreateRedactorOptions = {},
+): Redactor & typeof redactedInspection => {
   const valueLayer = createSecretRedactor(options.values ?? [], options.authoritativeValues);
   const env = options.env ?? {};
 
@@ -206,6 +210,7 @@ export const createRedactor = (profile: RedactionProfile, options: CreateRedacto
       : undefined;
 
   return {
+    ...redactedInspection,
     redactString,
     ...(redactStringBounded === undefined ? {} : { redactStringBounded }),
     redactValue: (value) => redactValueWith(redactString, (key) => SECRET_KEY_PATTERN.test(key), value),

@@ -53,22 +53,25 @@ export type SelectInteractionOptions<A extends PromptScalar = PromptScalar> = Om
 >;
 export type SecretInteractionOptions = Omit<SecretSpec, "message">;
 
-export interface InteractionServiceShape {
-  readonly id: string;
-  readonly isInteractive: Effect.Effect<boolean>;
-  readonly prompt: (spec: PromptSpec) => Effect.Effect<PromptAnswer, InteractionError, Scope.Scope>;
-  readonly promptAll: (
-    specs: ReadonlyArray<PromptSpec>,
-    options?: PromptBatchOptions,
-  ) => Effect.Effect<PromptAnswers, InteractionError, Scope.Scope>;
-  readonly confirm: (spec: ConfirmSpec) => Effect.Effect<boolean, InteractionError, Scope.Scope>;
-  readonly select: <A extends PromptScalar>(
-    spec: SelectSpec<A>,
-  ) => Effect.Effect<A, InteractionError, Scope.Scope>;
-  readonly secret: (
-    spec: SecretSpec,
-  ) => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
-}
+export class InteractionService extends Context.Service<
+  InteractionService,
+  {
+    readonly id: string;
+    readonly isInteractive: Effect.Effect<boolean>;
+    readonly prompt: (spec: PromptSpec) => Effect.Effect<PromptAnswer, InteractionError, Scope.Scope>;
+    readonly promptAll: (
+      specs: ReadonlyArray<PromptSpec>,
+      options?: PromptBatchOptions,
+    ) => Effect.Effect<PromptAnswers, InteractionError, Scope.Scope>;
+    readonly confirm: (spec: ConfirmSpec) => Effect.Effect<boolean, InteractionError, Scope.Scope>;
+    readonly select: <A extends PromptScalar>(
+      spec: SelectSpec<A>,
+    ) => Effect.Effect<A, InteractionError, Scope.Scope>;
+    readonly secret: (
+      spec: SecretSpec,
+    ) => Effect.Effect<Redacted.Redacted<string>, InteractionError, Scope.Scope>;
+  }
+>()("@lando/core/InteractionService") {}
 
 /**
  * The single prompting chokepoint. Resolves the published {@link PromptSpec}
@@ -76,7 +79,4 @@ export interface InteractionServiceShape {
  * detection, and secret masking. Available at bootstrap level `minimal`,
  * host/test-overridable, and a plugin manifest contribution surface.
  */
-export class InteractionService extends Context.Tag("@lando/core/InteractionService")<
-  InteractionService,
-  InteractionServiceShape
->() {}
+export type InteractionServiceShape = InteractionService["Service"];

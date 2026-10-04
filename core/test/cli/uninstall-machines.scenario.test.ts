@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { classifyManagedProviderMachine } from "@lando/engine/runtime/managed-provider-machine";
 import { Effect } from "effect";
 
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { metaUninstallSpec as declarativeUninstallSpec } from "../../src/cli/command-specs/meta/uninstall.ts";
 
 const metaUninstallSpec = {
   ...declarativeUninstallSpec,
   run: (input: Parameters<typeof declarativeUninstallSpec.run>[0]) =>
-    declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessLive)),
+    declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessService.layer)),
 };
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 

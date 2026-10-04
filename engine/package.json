@@ -65,6 +65,7 @@
     "./operations/applied-state-target": "./src/operations/applied-state-target.ts",
     "./operations/authority-url": "./src/operations/authority-url.ts",
     "./operations/config": "./src/operations/config.ts",
+    "./operations/confirmation-prompt": "./src/operations/confirmation-prompt.ts",
     "./operations/destroy": "./src/operations/destroy.ts",
     "./operations/ensure-global-services": "./src/operations/ensure-global-services.ts",
     "./operations/event-tooling-command": "./src/operations/event-tooling-command.ts",
@@ -214,7 +215,7 @@
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",
     "@lando/telemetry": "workspace:*",
-    "effect": "^3.21.2",
+    "effect": "catalog:",
     "semver": "^7.8.5"
   },
   "devDependencies": {

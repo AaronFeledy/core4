@@ -57,7 +57,7 @@ type RecordingHarness = {
 const makeRecordingHarness = (ordering?: Array<string>, failPublish = false): RecordingHarness => {
   const events: Array<LandoEvent> = [];
   const exitCodes: Array<number> = [];
-  const service: EventServiceShape = {
+  const service: EventServiceShape = EventService.of({
     publish: (event) =>
       failPublish
         ? Effect.die("event subscriber failed")
@@ -74,7 +74,7 @@ const makeRecordingHarness = (ordering?: Array<string>, failPublish = false): Re
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
-  };
+  });
   return {
     events,
     exitCodes,
@@ -229,7 +229,7 @@ describe("generic CLI command lifecycle", () => {
   test("publishes the terminal lifecycle event before scope finalizers", async () => {
     const ordering: Array<string> = [];
     const harness = makeRecordingHarness(ordering);
-    const finalizerLayer = Layer.scopedDiscard(
+    const finalizerLayer = Layer.effectDiscard(
       Effect.addFinalizer(() => Effect.sync(() => ordering.push("finalizer"))),
     );
     const options = {
@@ -322,12 +322,12 @@ describe("generic CLI command lifecycle", () => {
   test("logs lifecycle publication failures at debug without changing command success", async () => {
     const harness = makeRecordingHarness(undefined, true);
     const debugMessages: string[] = [];
-    const logger = {
+    const logger = Logger.of({
       debug: (message: string) => Effect.sync(() => debugMessages.push(message)),
       info: () => Effect.void,
       warn: () => Effect.void,
       error: () => Effect.void,
-    };
+    });
 
     await runWithRendererHandling(Effect.succeed("started"), {
       ...optionsFor<string>(harness),

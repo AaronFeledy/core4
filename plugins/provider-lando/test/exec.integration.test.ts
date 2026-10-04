@@ -25,7 +25,7 @@ const appRoot = AbsolutePath.make("/tmp/lando-exec-app");
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "exec.integration.test",
   runtime: 4 as const,
 };
@@ -215,7 +215,7 @@ describe("provider-lando exec", () => {
             { app: appId, service: node.name },
             { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
             { api: fake.api },
-          ).pipe(Stream.runCollect, Effect.fork);
+          ).pipe(Stream.runCollect, Effect.forkChild);
           yield* Effect.sleep("10 millis");
           controller.abort();
           return yield* Fiber.join(fiber);

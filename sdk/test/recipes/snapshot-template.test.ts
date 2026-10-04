@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 import type { ExpressionNode } from "../../src/expressions/ast.ts";
 import {
   SNAPSHOT_HELPER_ALLOWLIST,
@@ -53,7 +53,7 @@ test("a non-options path head is template-scope", () => {
 });
 test("load is helper-forbidden", () => {
   const result = validateSnapshotTemplate("php", { expression: { kind: "Call", callee: "load", args: [] } });
-  expect(Either.isLeft(result) && result.left.reason).toBe("helper-forbidden");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("helper-forbidden");
 });
 test("forbidden helper inside a dynamic path segment is caught", () => {
   expect(
@@ -71,12 +71,12 @@ test("over-deep template is depth-exceeded", () => {
 });
 test("rendered literal {{ recipe.php }} is not re-evaluated", () => {
   expect(
-    Either.getOrThrow(renderRecipeSnapshot(snapshot({ kind: "Literal", value: "{{ recipe.php }}" }), {})),
+    Result.getOrThrow(renderRecipeSnapshot(snapshot({ kind: "Literal", value: "{{ recipe.php }}" }), {})),
   ).toBe("{{ recipe.php }}");
 });
 test("options override snapshot defaults", () => {
   expect(
-    Either.getOrThrow(
+    Result.getOrThrow(
       renderRecipeSnapshot(
         snapshot({ kind: "Path", head: "options", segments: [{ type: "prop", name: "php" }] }),
         { php: "8.4" },
@@ -86,7 +86,7 @@ test("options override snapshot defaults", () => {
 });
 test("oversized inputs fail the pre-evaluation budget", () => {
   const result = renderRecipeSnapshot(snapshot({ kind: "Literal", value: "x".repeat(1_048_577) }), {});
-  expect(Either.isLeft(result) && result.left.reason).toBe("budget-exceeded");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("budget-exceeded");
 });
 test("helper output observes collection budgets", () => {
   const result = renderRecipeSnapshot(
@@ -100,7 +100,7 @@ test("helper output observes collection budgets", () => {
     }),
     {},
   );
-  expect(Either.isLeft(result) && result.left.reason).toBe("budget-exceeded");
+  expect(Result.isFailure(result) && result.failure.reason).toBe("budget-exceeded");
 });
 test("walks Access, Conditional, ObjectLiteral, ArrayLiteral and static segments", () => {
   const node: ExpressionNode = {

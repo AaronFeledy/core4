@@ -112,7 +112,7 @@ export const listenHostProxyServer = (
   options: Pick<HostProxyRunLandoSessionOptions, "hostGatewayName">,
   chmodSocket: typeof chmod = chmod,
 ): Effect.Effect<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError> =>
-  Effect.async<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError>(
+  Effect.callback<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError>(
     (resume) => {
       let settled = false;
       const previousUmask = process.umask(0o177);
@@ -136,7 +136,7 @@ export const listenHostProxyServer = (
           paths.transport === "tcp-host-gateway"
             ? tcpListenResult(server, paths, options)
             : Effect.succeed({ socketOwned: true });
-        resume(listenResult.pipe(Effect.zipLeft(secureSocket(server, paths, chmodSocket))));
+        resume(listenResult.pipe(Effect.tap(secureSocket(server, paths, chmodSocket))));
       };
       if (paths.transport === "tcp-host-gateway") {
         server.listen(0, "127.0.0.1", completeListen);

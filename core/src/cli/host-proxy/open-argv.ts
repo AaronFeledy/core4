@@ -43,6 +43,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
   let route: string | undefined;
   let all = false;
   let print = false;
+  let qr = false;
   let json = false;
   let formatSeen = false;
   let index = 0;
@@ -76,6 +77,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
       route = value;
     } else if (token === "--all") all = true;
     else if (token === "--print") print = true;
+    else if (token === "--qr") qr = true;
     else if (token === "--json" || token === "-j") {
       if (!formatSeen) json = true;
     } else if (token === "--format") {
@@ -96,6 +98,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
       ...(route === undefined ? {} : { route }),
       ...(all ? { all } : {}),
       ...(print ? { print } : {}),
+      ...(qr ? { qr } : {}),
       json,
       ttyPresent: context.tty,
     },

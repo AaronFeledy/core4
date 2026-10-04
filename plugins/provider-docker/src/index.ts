@@ -27,6 +27,7 @@ import {
 } from "@lando/container-runtime/dialect";
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
@@ -64,7 +65,7 @@ import {
 import { makeLogDecoder as makeRuntimeLogDecoder } from "@lando/container-runtime/streams";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
@@ -190,12 +191,14 @@ const parseJson = (
     catch: (cause) => internal(operation, "Docker API returned malformed JSON.", response, cause),
   });
 
-const request = (
-  api: DockerApiClient,
-  operation: string,
-  input: DockerHttpRequest,
-): Effect.Effect<DockerHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
-  api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input);
+const request = Effect.fn("DockerApi.request")(
+  (
+    api: DockerApiClient,
+    operation: string,
+    input: DockerHttpRequest,
+  ): Effect.Effect<DockerHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
+    api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input),
+);
 
 const stream = (
   api: DockerApiClient,
@@ -260,7 +263,7 @@ export const macosDockerCapabilities = dockerCapabilitiesForHost("darwin", "/var
 export const windowsDockerCapabilities = dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine");
 
 export const decodeProviderCapabilities = (input: unknown) =>
-  Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
+  Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
     Effect.mapError(
       (cause) =>
         new ProviderCapabilityError({
@@ -334,31 +337,8 @@ export const emitCompose = (
 export const composePath = (plan: AppPlan, options: EmitComposeOptions): string =>
   runtimeComposePath(plan, { ...options, ctx: DOCKER_CTX });
 
-const dockerEnsureImage =
-  (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
-  ({ ref, force }) =>
-    force
-      ? pullImage(api, ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect }).pipe(Effect.asVoid)
-      : Effect.gen(function* () {
-          const inspectResponse = yield* request(api, "apply", {
-            method: "GET",
-            path: `/images/${encodeURIComponent(ref)}/json`,
-          });
-          if (inspectResponse.status === 200) return;
-          if (inspectResponse.status === 404) {
-            yield* pullImage(api, ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
-            return;
-          }
-          yield* Effect.fail(
-            unavailable(
-              "apply",
-              `Docker image inspect failed with HTTP ${inspectResponse.status}.`,
-              inspectResponse,
-              undefined,
-              DOCKER_CTX.remediation,
-            ),
-          );
-        });
+const dockerEnsureImage = (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
+  makeEnsureImage(api, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
 
 const isMissingImageDetails = (details: unknown): boolean => {
   if (typeof details !== "object" || details === null) return false;
@@ -389,76 +369,81 @@ interface DiscoveredContainer {
   readonly startedAt?: string;
 }
 
-const discoverContainers = (api: DockerApiClient, labelFilter?: string) =>
-  Effect.gen(function* () {
-    const filters = labelFilter === undefined ? {} : { label: [labelFilter] };
-    const params = new URLSearchParams({
-      all: "true",
-      filters: JSON.stringify(filters),
-    });
-
-    const response = yield* request(api, "list", {
-      method: "GET",
-      path: `/containers/json?${params}` as `/${string}`,
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable("list", `Docker container list failed with HTTP ${response.status}.`, response),
-      );
-    }
-
-    const body = yield* parseJson(response, "list");
-    const containers = Array.isArray(body) ? body : [];
-
-    return containers
-      .map((container: unknown): DiscoveredContainer | undefined => {
-        if (typeof container !== "object" || container === null) return undefined;
-        const obj = container as {
-          Id?: unknown;
-          Names?: unknown;
-          Labels?: unknown;
-          State?: unknown;
-          Status?: unknown;
-        };
-
-        if (typeof obj.Id !== "string" || !Array.isArray(obj.Names)) return undefined;
-        const name = obj.Names[0];
-        if (typeof name !== "string") return undefined;
-
-        const labels =
-          typeof obj.Labels === "object" && obj.Labels !== null
-            ? (obj.Labels as Record<string, unknown>)
-            : {};
-
-        // In /containers/json, State is a string like "running" or "exited"
-        const state = typeof obj.State === "string" ? obj.State : "unknown";
-
-        // Status contains more info like "Up 5 minutes"
-        const status = typeof obj.Status === "string" ? obj.Status : undefined;
-
-        return {
-          id: obj.Id,
-          name: name.startsWith("/") ? name.slice(1) : name,
-          labels: Object.fromEntries(
-            Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-          ),
-          state,
-          ...(status === undefined ? {} : { startedAt: status }),
-        };
-      })
-      .filter((container): container is DiscoveredContainer => container !== undefined);
+const discoverContainers = Effect.fn("DockerApi.discoverContainers")(function* (
+  api: DockerApiClient,
+  labelFilter?: string,
+) {
+  const filters = labelFilter === undefined ? {} : { label: [labelFilter] };
+  const params = new URLSearchParams({
+    all: "true",
+    filters: JSON.stringify(filters),
   });
+
+  const response = yield* request(api, "list", {
+    method: "GET",
+    path: `/containers/json?${params}` as `/${string}`,
+  });
+
+  if (response.status < 200 || response.status >= 300) {
+    yield* Effect.fail(
+      unavailable("list", `Docker container list failed with HTTP ${response.status}.`, response),
+    );
+  }
+
+  const body = yield* parseJson(response, "list");
+  const containers = Array.isArray(body) ? body : [];
+
+  return containers
+    .map((container: unknown): DiscoveredContainer | undefined => {
+      if (typeof container !== "object" || container === null) return undefined;
+      const obj = container as {
+        Id?: unknown;
+        Names?: unknown;
+        Labels?: unknown;
+        State?: unknown;
+        Status?: unknown;
+      };
+
+      if (typeof obj.Id !== "string" || !Array.isArray(obj.Names)) return undefined;
+      const name = obj.Names[0];
+      if (typeof name !== "string") return undefined;
+
+      const labels =
+        typeof obj.Labels === "object" && obj.Labels !== null ? (obj.Labels as Record<string, unknown>) : {};
+
+      // In /containers/json, State is a string like "running" or "exited"
+      const state = typeof obj.State === "string" ? obj.State : "unknown";
+
+      // Status contains more info like "Up 5 minutes"
+      const status = typeof obj.Status === "string" ? obj.Status : undefined;
+
+      return {
+        id: obj.Id,
+        name: name.startsWith("/") ? name.slice(1) : name,
+        labels: Object.fromEntries(
+          Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        ),
+        state,
+        ...(status === undefined ? {} : { startedAt: status }),
+      };
+    })
+    .filter((container): container is DiscoveredContainer => container !== undefined);
+});
 
 const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: string): LogChunk => {
   const match = /^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)$/u.exec(line);
   if (match === null) {
     return { service: service.name, stream: streamName, line };
   }
-  const timestamp = new Date(match[1] ?? "");
-  return Number.isNaN(timestamp.getTime())
+  const timestamp = DateTime.make(match[1] ?? "");
+  return Option.isNone(timestamp)
     ? { service: service.name, stream: streamName, line }
-    : { service: service.name, stream: streamName, line: match[2] ?? "", timestamp };
+    : {
+        service: service.name,
+        stream: streamName,
+        line: match[2] ?? "",
+        timestamp: DateTime.toDate(timestamp.value),
+      };
 };
 
 interface LogsRuntime {
@@ -519,7 +504,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const defaultFactoryConstruction =
     options.dockerApi === undefined && options.dockerApiFactory === undefined;
   const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost).pipe(
-    Effect.catchAll((failure) =>
+    Effect.catch((failure) =>
       defaultFactoryConstruction
         ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
         : Effect.fail(failure),
@@ -605,7 +590,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     Effect.map(
       ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
-        inspectResourceNames: (query) => inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
+        inspectResourceNames: Effect.fn("RuntimeProvider.inspectResourceNames")((query) =>
+          inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
+        ),
         displayName: "Docker Runtime Provider",
         version: "0.0.0",
         platform,
@@ -621,18 +608,22 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           : {}),
         isAvailable: dockerApi.info.pipe(
           Effect.as(true),
-          Effect.catchAll(() => Effect.succeed(false)),
+          Effect.catch(() => Effect.succeed(false)),
         ),
         appliedPlans:
           options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
             ? Effect.succeed([])
             : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
-        planSetup: () => Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
-        setup: () => Effect.void,
+        planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
+          Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
+        ),
+        setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0" }),
-        buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
-        pullArtifact: (spec) =>
+        buildArtifact: Effect.fn("RuntimeProvider.buildArtifact")((spec) =>
+          buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
+        ),
+        pullArtifact: Effect.fn("RuntimeProvider.pullArtifact")((spec) =>
           pullImage(dockerApi, spec.ref, { ctx: DOCKER_CTX, dialect: dockerPullDialect }).pipe(
             Effect.map((result) => ({
               providerId: ProviderId.make(PROVIDER_ID),
@@ -640,9 +631,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               ...(result.digest === undefined ? {} : { digest: result.digest }),
             })),
           ),
-        removeArtifact: () => Effect.void,
-        apply: (plan, applyOptions) =>
-          bringUp(plan, {
+        ),
+        removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
+        apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+          return yield* bringUp(plan, {
             api: dockerApi,
             ctx: DOCKER_CTX,
             dialect: dockerLifecycleDialect,
@@ -655,10 +647,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile)));
+        }),
         ...resolvedOps,
-        destroy: (target, destroyOptions) =>
-          resolvePlan(target).pipe(
+        destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+          return yield* resolvePlan(target).pipe(
             Effect.flatMap((plan) =>
               plan === undefined
                 ? Effect.succeed(DESTROY_NO_OP)
@@ -677,11 +670,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     Effect.as(DESTROYED),
                   ),
             ),
-          ),
-        removeObservedService: (observed) =>
+          );
+        }),
+        removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
           removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }).pipe(
             Effect.map(observedRemoval),
           ),
+        ),
         logs: (target, logOptions) =>
           Stream.unwrap(
             resolvePlan(target).pipe(
@@ -731,7 +726,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               }),
             ),
           ),
-        list: (filter) =>
+        list: Effect.fn("RuntimeProvider.list")((filter) =>
           discoverContainers(dockerApi, APP_LABEL).pipe(
             Effect.flatMap((containers) =>
               Effect.forEach(
@@ -779,21 +774,31 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                       endpoints,
                       ...(container.startedAt === undefined
                         ? {}
-                        : { lastStartedAt: new Date(container.startedAt) }),
+                        : {
+                            lastStartedAt: Option.match(DateTime.make(container.startedAt), {
+                              onSome: DateTime.toDate,
+                              // Preserve the invalid Date returned for Docker's relative Status text.
+                              onNone: () =>
+                                DateTime.toDate(
+                                  DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => Number.NaN),
+                                ),
+                            }),
+                          }),
                     };
                   }),
               ),
             ),
           ),
+        ),
       }),
     ),
   );
 };
 
-export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
+export const layer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
 
-export const provider = makeProviderLayer();
+export const layerDefault = layer();
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -820,22 +825,21 @@ export const plugin = definePlugin({
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
-        make: (ctx) =>
-          Effect.gen(function* () {
-            const paths = yield* PathsService;
-            const assets = yield* LogFileHelperAssets;
-            const appPlanSanitizer = yield* AppPlanSanitizer;
-            const eventService = yield* Effect.serviceOption(EventService);
-            const logFileHelperPayloads = yield* assets.payloads;
-            return yield* makeRuntimeProvider({
-              platform: paths.platform,
-              ...(eventService._tag === "None" ? {} : { eventService: eventService.value }),
-              logFileHelperPayloads,
-              appliedPlanState: ctx.stateStore,
-              appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
-              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
-            });
-          }),
+        make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
+          const paths = yield* PathsService;
+          const assets = yield* LogFileHelperAssets;
+          const appPlanSanitizer = yield* AppPlanSanitizer;
+          const eventService = yield* Effect.serviceOption(EventService);
+          const logFileHelperPayloads = yield* assets.payloads;
+          return yield* makeRuntimeProvider({
+            platform: paths.platform,
+            ...(eventService._tag === "None" ? {} : { eventService: eventService.value }),
+            logFileHelperPayloads,
+            appliedPlanState: ctx.stateStore,
+            appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
+            sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+          });
+        }),
       },
     ],
   ]),

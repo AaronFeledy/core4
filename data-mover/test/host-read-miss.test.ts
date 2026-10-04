@@ -4,36 +4,42 @@ import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Schema, Stream } from "effect";
 
-import { DataMoverLive } from "@lando/data-mover/service";
-import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import * as BunDataMover from "@lando/data-mover/service";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { DataTransferError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import * as StateStoreLayer from "@lando/state-store/service";
+const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const absolute = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);
 
-const silentEvents = Layer.succeed(EventService, {
-  publish: () => Effect.void,
-  subscribe: () => Stream.empty,
-  subscribeQueue: Effect.never,
-  waitFor: () => Effect.never,
-  waitForAny: () => Effect.never,
-  query: () => Effect.succeed([]),
-});
+const silentEvents = Layer.succeed(
+  EventService,
+  EventService.of({
+    publish: () => Effect.void,
+    subscribe: () => Stream.empty,
+    subscribeQueue: Effect.never,
+    waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
+  }),
+);
 
-const passthroughRedaction = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  forProfile: () =>
-    Effect.succeed({
-      redactString: (input: string) => input,
-      redactValue: (input: unknown) => input,
-    }),
-});
+const passthroughRedaction = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    registerValues: registerRedactionValues,
+    forProfile: () =>
+      Effect.succeed({
+        redactString: (input: string) => input,
+        redactValue: (input: unknown) => input,
+      }),
+  }),
+);
 
 describe("byteStreamFromHost missing files", () => {
   test("fails with a host-file-not-found DataTransferError on ENOENT", async () => {
@@ -54,11 +60,11 @@ describe("byteStreamFromHost missing files", () => {
         ).pipe(
           Effect.provideService(RuntimeProvider, TestRuntimeProvider),
           Effect.provide(
-            DataMoverLive.pipe(
+            BunDataMover.layer.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  StateStoreLive,
-                  Layer.succeed(PathsService, makeLandoPaths()),
+                  stateStoreLayer,
+                  Layer.succeed(PathsService, PathsService.of(makeLandoPaths())),
                   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
                   silentEvents,
                   passthroughRedaction,
@@ -71,7 +77,7 @@ describe("byteStreamFromHost missing files", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit)) throw new Error("expected failure");
-      const error = Cause.failureOption(exit.cause);
+      const error = Cause.findErrorOption(exit.cause);
       const value = error._tag === "Some" ? error.value : undefined;
       expect(value).toBeInstanceOf(DataTransferError);
       if (value instanceof DataTransferError) {

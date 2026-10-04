@@ -1,6 +1,6 @@
 import { ToolingCompileError } from "@lando/sdk/errors";
 import type { ToolingTaskShape } from "@lando/sdk/schema";
-import { Either } from "effect";
+import { Result } from "effect";
 
 export type ToolingServiceRef =
   | { readonly kind: "service"; readonly name: string }
@@ -56,10 +56,10 @@ export const normalizeToolingTask = (
   name: string,
   task: ToolingTaskShape,
   source?: { readonly path: string },
-): Either.Either<NormalizedToolingTask, ToolingCompileError> => {
+): Result.Result<NormalizedToolingTask, ToolingCompileError> => {
   const provenance = source === undefined ? {} : { source: { path: source.path, task: name } };
   const fail = (message: string) =>
-    Either.left(
+    Result.fail(
       new ToolingCompileError({
         message,
         tool: name,
@@ -153,18 +153,18 @@ export const normalizeToolingTask = (
   }
   const serviceRef = (
     value: string | undefined,
-  ): Either.Either<ToolingServiceRef | undefined, ToolingCompileError> => {
-    if (value === undefined) return Either.right(undefined);
-    if (value === ":host") return Either.right({ kind: "host" });
-    if (!value.startsWith(":")) return Either.right({ kind: "service", name: value });
+  ): Result.Result<ToolingServiceRef | undefined, ToolingCompileError> => {
+    if (value === undefined) return Result.succeed(undefined);
+    if (value === ":host") return Result.succeed({ kind: "host" });
+    if (!value.startsWith(":")) return Result.succeed({ kind: "service", name: value });
     const key = value.slice(1);
     const flag = flags.find((candidate) => candidate.name === key);
     if (flag === undefined || flag.boolean)
       return fail(`Service reference ${value} requires a declared non-boolean flag.`);
-    return Either.right({ kind: "flag", flag: key });
+    return Result.succeed({ kind: "flag", flag: key });
   };
   const service = serviceRef(task.service);
-  if (Either.isLeft(service)) return Either.left(service.left);
+  if (Result.isFailure(service)) return Result.fail(service.failure);
   const env = Object.fromEntries(Object.entries(task.env ?? {}).map(([key, value]) => [key, String(value)]));
   if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
   const steps: NormalizedToolingStep[] = [];
@@ -172,7 +172,7 @@ export const normalizeToolingTask = (
     steps.push({
       cmd: typeof task.cmd === "string" ? task.cmd : task.cmd.join(" "),
       ...(typeof task.cmd === "string" ? {} : { argv: [...task.cmd] }),
-      ...(service.right === undefined ? {} : { service: service.right }),
+      ...(service.success === undefined ? {} : { service: service.success }),
       ...(task.dir === undefined ? {} : { dir: task.dir }),
       ...(task.user === undefined ? {} : { user: task.user }),
       env: { ...env },
@@ -183,12 +183,12 @@ export const normalizeToolingTask = (
     if (typeof step.cmd !== "string" || step.cmd.trim().length === 0)
       return fail("Each command step needs a non-empty cmd.");
     const target = serviceRef(step.service ?? task.service);
-    if (Either.isLeft(target)) return Either.left(target.left);
+    if (Result.isFailure(target)) return Result.fail(target.failure);
     const dir = step.dir ?? task.dir;
     const user = step.user ?? task.user;
     steps.push({
       cmd: step.cmd,
-      ...(target.right === undefined ? {} : { service: target.right }),
+      ...(target.success === undefined ? {} : { service: target.success }),
       ...(dir === undefined ? {} : { dir }),
       ...(user === undefined ? {} : { user }),
       env: {
@@ -198,10 +198,10 @@ export const normalizeToolingTask = (
     });
   }
   const summary = task.description ?? task.summary;
-  return Either.right({
+  return Result.succeed({
     name,
     ...(summary === undefined ? {} : { summary }),
-    ...(service.right === undefined ? {} : { service: service.right }),
+    ...(service.success === undefined ? {} : { service: service.success }),
     ...(task.user === undefined ? {} : { user: task.user }),
     ...(task.dir === undefined ? {} : { dir: task.dir }),
     env,

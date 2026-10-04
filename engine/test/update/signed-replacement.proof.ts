@@ -14,9 +14,9 @@ import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
-import { Effect, Either } from "effect";
-import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+import * as StateStoreLayer from "@lando/state-store/service";
+import { Effect, Result } from "effect";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeUpdateHandoff } from "../../src/update/handoff.ts";
 import { resolveUpdateManifestUrl } from "../../src/update/manifest.ts";
 import { update } from "../../src/update/operation.ts";
@@ -118,25 +118,24 @@ for (const scenario of cases) {
         assert.ok(initial.stdout.includes(oldVersion));
         const observed: typeof ProcessRunner.Service = {
           ...live,
-          run: (input) =>
-            Effect.gen(function* () {
-              // Fault injection changes the real target's permissions, not a fabricated process result.
-              if (scenario.name === "post-swap-launch-failure" && input.cmd === installed) {
-                yield* Effect.promise(() => chmod(installed, 0o644));
-              }
-              return yield* live.run(input).pipe(
-                Effect.tap((result) =>
-                  Effect.sync(() => {
-                    probes.push({ cmd: input.cmd, ...result });
-                  }),
-                ),
-                Effect.tapError(() =>
-                  Effect.sync(() => {
-                    probes.push({ cmd: input.cmd, stdout: "exec failed", exitCode: -1 });
-                  }),
-                ),
-              );
-            }),
+          run: Effect.fnUntraced(function* (input) {
+            // Fault injection changes the real target's permissions, not a fabricated process result.
+            if (scenario.name === "post-swap-launch-failure" && input.cmd === installed) {
+              yield* Effect.promise(() => chmod(installed, 0o644));
+            }
+            return yield* live.run(input).pipe(
+              Effect.tap((result) =>
+                Effect.sync(() => {
+                  probes.push({ cmd: input.cmd, ...result });
+                }),
+              ),
+              Effect.tapError(() =>
+                Effect.sync(() => {
+                  probes.push({ cmd: input.cmd, stdout: "exec failed", exitCode: -1 });
+                }),
+              ),
+            );
+          }),
         };
         // When: production update handles every trust/checksum/replace/handoff decision.
         const outcome = yield* update({
@@ -160,12 +159,12 @@ for (const scenario of cases) {
                 execCalls.push(input);
               }),
           },
-        }).pipe(Effect.provideService(ProcessRunner, observed), Effect.either);
+        }).pipe(Effect.provideService(ProcessRunner, observed), Effect.result);
         // Then: actual bytes and executed process observations, not just planned assertions.
         const targetHash = sha256(yield* Effect.promise(() => Bun.file(installed).bytes()));
         if (scenario.tag === undefined) {
-          assert.ok(Either.isRight(outcome));
-          assert.equal(outcome.right.updatedCore, true);
+          assert.ok(Result.isSuccess(outcome));
+          assert.equal(outcome.success.updatedCore, true);
           assert.equal(targetHash, candidateHash);
           const backupHash = sha256(yield* Effect.promise(() => Bun.file(`${installed}.bak`).bytes()));
           assert.equal(backupHash, oldHash);
@@ -188,18 +187,18 @@ for (const scenario of cases) {
           assert.deepEqual(receipt.updatedPlugins, []);
           return { targetHash, backupHash, receipt, reexecArgv: exec.argv, probes };
         }
-        assert.ok(Either.isLeft(outcome));
-        assert.equal(outcome.left._tag, scenario.tag);
+        assert.ok(Result.isFailure(outcome));
+        assert.equal(outcome.failure._tag, scenario.tag);
         assert.equal(targetHash, oldHash);
         assert.equal(execCalls.length, 0);
         assert.equal(probes.length, scenario.name === "post-swap-launch-failure" ? 2 : 0);
         const restored = yield* live.run({ cmd: installed, args: ["--version"], timeoutMs: 15_000 });
         assert.equal(restored.exitCode, 0);
         assert.ok(restored.stdout.includes(oldVersion));
-        return { targetHash, tag: outcome.left._tag, probes, restored: restored.stdout.trim() };
+        return { targetHash, tag: outcome.failure._tag, probes, restored: restored.stdout.trim() };
       }).pipe(
-        Effect.provide(ProcessRunnerLive),
-        Effect.provide(StateStoreLive),
+        Effect.provide(BunProcessRunner.layer),
+        Effect.provide(StateStoreLayer.layer),
         Effect.provideService(Telemetry, { enabled: false, record: () => Effect.void }),
       ),
     );

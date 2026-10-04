@@ -17,36 +17,41 @@ export interface HostProxyDoctorFileSystemShape {
   ) => Effect.Effect<{ readonly type: "socket" | "other"; readonly mode: number } | undefined>;
 }
 
-export class HostProxyDoctorFileSystem extends Context.Tag("@lando/core/HostProxyDoctorFileSystem")<
+export class HostProxyDoctorFileSystem extends Context.Service<
   HostProxyDoctorFileSystem,
   HostProxyDoctorFileSystemShape
->() {}
-
-export const HostProxyDoctorFileSystemLive = Layer.succeed(HostProxyDoctorFileSystem, {
-  readRoot: (path) =>
-    Effect.promise(async () => {
-      try {
-        const entries = await readdir(path, { withFileTypes: true });
-        return {
-          _tag: "entries",
-          entries: entries.map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory() })),
-        } as const;
-      } catch (error) {
-        if (!(error instanceof Error)) throw error;
-        const code = "code" in error && typeof error.code === "string" ? error.code : "UNKNOWN";
-        return code === "ENOENT"
-          ? ({ _tag: "absent" } as const)
-          : ({ _tag: "unreadable", errorCode: code } as const);
-      }
+>()("@lando/core/HostProxyDoctorFileSystem") {
+  static readonly layer = Layer.succeed(
+    this,
+    this.of({
+      readRoot: Effect.fn("HostProxyDoctorFileSystem.readRoot")((path: string) =>
+        Effect.promise(async () => {
+          try {
+            const entries = await readdir(path, { withFileTypes: true });
+            return {
+              _tag: "entries",
+              entries: entries.map((entry) => ({ name: entry.name, isDirectory: entry.isDirectory() })),
+            } as const;
+          } catch (error) {
+            if (!(error instanceof Error)) throw error;
+            const code = "code" in error && typeof error.code === "string" ? error.code : "UNKNOWN";
+            return code === "ENOENT"
+              ? ({ _tag: "absent" } as const)
+              : ({ _tag: "unreadable", errorCode: code } as const);
+          }
+        }),
+      ),
+      socketMetadata: Effect.fn("HostProxyDoctorFileSystem.socketMetadata")((path: string) =>
+        Effect.promise(async () => {
+          try {
+            const metadata = await lstat(path);
+            return { type: metadata.isSocket() ? "socket" : "other", mode: metadata.mode & 0o777 } as const;
+          } catch (error) {
+            if (error instanceof Error) return undefined;
+            throw error;
+          }
+        }),
+      ),
     }),
-  socketMetadata: (path) =>
-    Effect.promise(async () => {
-      try {
-        const metadata = await lstat(path);
-        return { type: metadata.isSocket() ? "socket" : "other", mode: metadata.mode & 0o777 } as const;
-      } catch (error) {
-        if (error instanceof Error) return undefined;
-        throw error;
-      }
-    }),
-});
+  );
+}

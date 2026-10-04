@@ -9,7 +9,7 @@ import { StreamFrame } from "@lando/sdk/schema";
 import { HostProxyService, PathsService, RouterService } from "@lando/sdk/services";
 import { makeTestHostProxyService, makeTestRouterService } from "@lando/sdk/test";
 
-import { FileSystemLive } from "@lando/engine/services/file-system";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
@@ -26,7 +26,7 @@ const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.n
 const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy"] as const;
 
 const dnsLayer = (addresses: ReadonlyArray<string>) =>
-  Layer.succeed(HostDnsResolver, { lookup: () => Effect.succeed(addresses) });
+  Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.succeed(addresses) }));
 
 const runDefault = (): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(
@@ -167,7 +167,7 @@ describe("meta:doctor subsystem checks", () => {
   test("warns when an active DNS integration no longer resolves the expected hostname", async () => {
     const service = makeTestHostProxyService();
     await Effect.runPromise(service.setup({ mode: "auto" }));
-    const layer = Layer.mergeAll(Layer.succeed(HostProxyService, service), dnsLayer([]));
+    const layer = Layer.mergeAll(Layer.succeed(HostProxyService, HostProxyService.of(service)), dnsLayer([]));
     const result = await Effect.runPromise(
       subsystemDoctor().pipe(Effect.provide(layer), Effect.provide(DefaultSubsystemDoctorLayer)),
     );
@@ -182,9 +182,12 @@ describe("meta:doctor subsystem checks", () => {
     const result = await Effect.runPromise(
       subsystemDoctor().pipe(
         Effect.provide(
-          Layer.succeed(HostDnsResolver, {
-            lookup: () => Effect.fail(new Error("sensitive resolver detail")),
-          }),
+          Layer.succeed(
+            HostDnsResolver,
+            HostDnsResolver.of({
+              lookup: () => Effect.fail(new Error("sensitive resolver detail")),
+            }),
+          ),
         ),
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
@@ -199,7 +202,7 @@ describe("meta:doctor subsystem checks", () => {
     const started = performance.now();
     const result = await Effect.runPromise(
       subsystemDoctor().pipe(
-        Effect.provide(Layer.succeed(HostDnsResolver, { lookup: () => Effect.never })),
+        Effect.provide(Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.never }))),
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
@@ -282,7 +285,7 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("reports a ready subsystem as pass with no remediation when a real implementation is wired", async () => {
-    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const readyProxy = Layer.succeed(RouterService, proxyService);
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, readyProxy);
@@ -298,10 +301,13 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("reports a selected-but-stopped proxy as warn with automatic doctor --fix", async () => {
-    const stoppedProxy = Layer.succeed(RouterService, {
-      ...makeTestRouterService(),
-      id: "traefik",
-    });
+    const stoppedProxy = Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...makeTestRouterService(),
+        id: "traefik",
+      }),
+    );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedProxy);
     const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
     const proxy = result.checks.find((check) => check.name === "router");
@@ -319,13 +325,13 @@ describe("meta:doctor subsystem checks", () => {
   test("surfaces needs-helper remediation from persisted acquisition state", async () => {
     // Given
     const acquisition = writeAcquisitionState("needs-helper");
-    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
 
     try {
@@ -347,13 +353,13 @@ describe("meta:doctor subsystem checks", () => {
   test("does not report proxy --fix recovered while acquisition stays needs-helper", async () => {
     // Given
     const acquisition = writeAcquisitionState("needs-helper");
-    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
 
     try {
@@ -372,13 +378,13 @@ describe("meta:doctor subsystem checks", () => {
 
   test("does not report proxy --fix recovered while acquisition stays occupied-hop", async () => {
     const acquisition = writeAcquisitionState("occupied-hop");
-    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
     try {
       const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
@@ -393,13 +399,13 @@ describe("meta:doctor subsystem checks", () => {
   test("surfaces occupied-hop remediation from persisted acquisition state", async () => {
     // Given
     const acquisition = writeAcquisitionState("occupied-hop");
-    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     await Effect.runPromise(Effect.scoped(proxyService.setup({ defaultDomain: "lndo.site" })));
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
 
     try {
@@ -424,12 +430,12 @@ describe("meta:doctor subsystem checks", () => {
 
   test("uses restart advice when occupied-hop router is stopped", async () => {
     const acquisition = writeAcquisitionState("occupied-hop");
-    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const proxyService = RouterService.of({ ...makeTestRouterService(), id: "traefik" });
     const layer = Layer.mergeAll(
       DefaultSubsystemDoctorLayer,
       Layer.succeed(RouterService, proxyService),
       acquisition.layer,
-      FileSystemLive,
+      BunFileSystem.layer,
     );
     try {
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));

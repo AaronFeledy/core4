@@ -30,7 +30,7 @@ const runResolve = async (ref: string, cwd: string) => Effect.runPromiseExit(res
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag).toBe("Some");
   if (failure._tag !== "Some") throw new Error("expected tagged failure");
   return failure.value;
@@ -122,7 +122,7 @@ version: 0.0.1
         expect(failure.message).toContain('"wrong-id"');
         expect(failure.message).toContain('"expected-id"');
         expect(failure.issues.length).toBeGreaterThan(0);
-        expect(failure.issues[0]).toContain("directory basename");
+        expect(failure.issues[0]?.message).toContain("directory basename");
       }
     });
   });

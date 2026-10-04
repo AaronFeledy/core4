@@ -3,13 +3,13 @@ import { access, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Deferred, Effect, Exit, Fiber, Layer, Schema } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppLockTimeoutError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { EventService, PathsService } from "@lando/sdk/services";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   APP_LOCK_HOLDERS_ENV,
@@ -41,21 +41,24 @@ const isolate = async () => {
   const appRoot = await mkdtemp(join(tmpdir(), "lando-app-root-"));
   const events: LandoEvent[] = [];
   const layer = Layer.mergeAll(
-    PrivateFileAccessLive,
+    PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Schema.is(LandoEventSchema)(event)
-          ? Effect.sync(() => {
-              events.push(event);
-            })
-          : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
+    Layer.succeed(
+      EventService,
+      EventService.of({
+        publish: (event) =>
+          Schema.is(LandoEventSchema)(event)
+            ? Effect.sync(() => {
+                events.push(event);
+              })
+            : Effect.die(new TypeError(`Unexpected event in app mutation lock test: ${String(event)}`)),
+        subscribe: () => Stream.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+        waitForAny: () => Effect.die("not used"),
+        query: () => Effect.succeed([]),
+      }),
+    ),
   );
   return { userDataRoot, appRoot, events, layer };
 };
@@ -86,7 +89,7 @@ describe("per-app mutation lock", () => {
     const release = await Deferred.make<void>().pipe(Effect.runPromise);
     const harness = makeHarness({
       applyEffect: Deferred.succeed(held, undefined).pipe(
-        Effect.zipRight(Deferred.await(release)),
+        Effect.andThen(Deferred.await(release)),
         Effect.as({ changed: true }),
       ),
     });
@@ -216,7 +219,7 @@ describe("per-app mutation lock", () => {
       const first = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(held, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+          Deferred.succeed(held, undefined).pipe(Effect.andThen(Deferred.await(release))),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(held));
@@ -272,7 +275,7 @@ describe("per-app mutation lock", () => {
               import { Effect, Layer } from ${JSON.stringify(import.meta.resolve("effect"))};
               import { PathsService } from ${JSON.stringify(import.meta.resolve("@lando/sdk/services"))};
               import { makeLandoPaths } from ${JSON.stringify(import.meta.resolve("@lando/paths"))};
-              import { PrivateFileAccessLive } from ${JSON.stringify(import.meta.resolve("@lando/state-store/private-file-access"))};
+              import { PrivateFileAccessService } from ${JSON.stringify(import.meta.resolve("@lando/state-store/private-file-access"))};
               import { withAppMutationLock } from ${JSON.stringify(import.meta.resolve("../../src/operations/app-mutation-lock.ts"))};
               const userDataRoot = ${JSON.stringify(isolated.userDataRoot)};
               const app = { id: "child-reentry", root: ${JSON.stringify(isolated.appRoot)} };
@@ -280,7 +283,7 @@ describe("per-app mutation lock", () => {
               await Effect.runPromise(
                 withAppMutationLock(app, Effect.succeed("ok")).pipe(
                   Effect.provide(Layer.mergeAll(
-                    PrivateFileAccessLive,
+                    PrivateFileAccessService.layer,
                     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
                   )),
                 ),
@@ -315,14 +318,14 @@ describe("per-app mutation lock", () => {
       const fiber = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(acquired, undefined).pipe(Effect.zipRight(Effect.never)),
+          Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const path = lockPathFor(isolated.userDataRoot, app.id, app.root);
       expect(await exists(path)).toBe(true);
-      const exit = await Effect.runPromise(Fiber.interrupt(fiber));
-      expect(Exit.isInterrupted(exit)).toBe(true);
+      const exit = await Effect.runPromise(Fiber.interrupt(fiber).pipe(Effect.andThen(Fiber.await(fiber))));
+      expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(await exists(path)).toBe(false);
     } finally {
       await rm(isolated.userDataRoot, { recursive: true, force: true });
@@ -340,21 +343,21 @@ describe("per-app mutation lock", () => {
       const holder = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(acquired, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+          Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Deferred.await(release))),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const started = Date.now();
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           withAppMutationLock(app, Effect.succeed("should-not-run")).pipe(Effect.provide(isolated.layer)),
         ),
       );
       expect(Date.now() - started).toBeGreaterThanOrEqual(300);
-      expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left).toBeInstanceOf(AppLockTimeoutError);
-        expect(result.left.message).toBe(APP_LOCK_WAIT_MESSAGE);
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure).toBeInstanceOf(AppLockTimeoutError);
+        expect(result.failure.message).toBe(APP_LOCK_WAIT_MESSAGE);
       }
       expect(
         isolated.events.some(
@@ -388,15 +391,15 @@ describe("per-app mutation lock", () => {
         withAppMutationLock(
           app,
           enter.pipe(
-            Effect.zipRight(Deferred.succeed(acquired, undefined)),
-            Effect.zipRight(Deferred.await(release)),
-            Effect.zipRight(leave),
+            Effect.andThen(Deferred.succeed(acquired, undefined)),
+            Effect.andThen(Deferred.await(release)),
+            Effect.andThen(leave),
           ),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const waiter = Effect.runFork(
-        withAppMutationLock(app, enter.pipe(Effect.as("second"), Effect.zipLeft(leave))).pipe(
+        withAppMutationLock(app, enter.pipe(Effect.as("second"), Effect.tap(leave))).pipe(
           Effect.provide(isolated.layer),
         ),
       );

@@ -10,8 +10,8 @@ import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/c
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 
 const supportedCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -35,15 +35,15 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
+      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(PluginRegistryLayer.layer),
     ),
   );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected planning to fail");
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   expect(Option.isSome(failure)).toBe(true);
   if (!Option.isSome(failure)) throw new Error("Expected a typed planning failure");
   return failure.value;

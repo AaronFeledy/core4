@@ -123,7 +123,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   if (tmpfsEntries.length > 0) {
     const existing = service.providers?.compose;
     ctx.addExtension("compose", {
-      ...(Predicate.isRecord(existing) ? existing : {}),
+      ...(Predicate.isObject(existing) ? existing : {}),
       tmpfs: tmpfsEntries,
     });
   }

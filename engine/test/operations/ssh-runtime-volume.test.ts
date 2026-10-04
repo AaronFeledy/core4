@@ -3,14 +3,14 @@ import { makeLandoPaths } from "@lando/paths";
 import { AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { EventService, PathsService, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Schema } from "effect";
 import {
   resolveSshAgentUpstream,
   startSshAgentSession,
   withStartedSshAgent,
 } from "../../src/operations/start-ssh-agent.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
+import * as LandoEventService from "../../src/services/event-service.ts";
 
 const metadata = { resolvedAt: "2026-01-01T00:00:00Z", source: "test", runtime: 4 };
 const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -81,8 +81,8 @@ test("managed sidecar uses the plugin volume without host probing or worker serv
       Effect.provideService(SshService, ssh),
       Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "darwin" })),
-      Effect.provide(EventServiceLive),
-      Effect.provide(PrivateFileAccessLive),
+      Effect.provide(LandoEventService.layer),
+      Effect.provide(PrivateFileAccessService.layer),
     ),
   );
   // Then
@@ -112,8 +112,8 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
       Effect.provideService(SshService, ssh),
       Effect.provideService(RuntimeProviderRegistry, registry("exited", [])),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
-      Effect.provide(EventServiceLive),
-      Effect.provide(PrivateFileAccessLive),
+      Effect.provide(LandoEventService.layer),
+      Effect.provide(PrivateFileAccessService.layer),
     ),
   );
   // Then
@@ -134,7 +134,7 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
       : ssh;
   // When
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       resolveSshAgentUpstream({
         appId: plan.id,
         provider: ProviderId.make(provider === "missing-volume" ? "lando" : provider),
@@ -146,6 +146,6 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
     ),
   );
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: { reason: "sidecar-not-running" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "sidecar-not-running" } });
   expect(selected).toEqual([]);
 });

@@ -1,5 +1,5 @@
 import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
@@ -54,10 +54,7 @@ export const supportsWindowsPublishedRecovery = (input: {
       (endpoint) => endpoint.protocol !== "udp" && endpoint.publication?.bindAddress === "127.0.0.1",
     ) &&
     (input.networks === undefined ||
-      (typeof input.networks === "object" &&
-        input.networks !== null &&
-        !Array.isArray(input.networks) &&
-        Object.keys(input.networks).length <= 1))
+      (Predicate.isObject(input.networks) && Object.keys(input.networks).length <= 1))
   );
 };
 export const publishedFactsFromCompatResponses = (input: {
@@ -87,7 +84,7 @@ export interface WindowsPublishedFacts extends PublishedOwnerSnapshot {
 
 type JsonRecord = Record<string, unknown>;
 const jsonRecord = (value: unknown): JsonRecord | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value) ? (value as JsonRecord) : undefined;
+  Predicate.isObject(value) ? value : undefined;
 
 export const publishedFactsFromPodman = (input: {
   readonly container: unknown;
@@ -252,25 +249,23 @@ const sameIdentity = (receipt: PublishedContainerReceipt, facts: WindowsPublishe
   receiptMatchesOwner(receipt, facts);
 
 export const makeWindowsPublishedRecovery = (deps: WindowsPublishedRecoveryDeps) => {
-  const readFacts = (containerId: string) =>
-    Effect.gen(function* () {
-      const [facts, created, guest] = yield* Effect.all([
-        deps.facts(containerId),
-        deps.machineCreated,
-        deps.guestSnapshot,
-      ]);
-      if (facts.machineCreated !== created || facts.kernelBootId !== guest.kernelBootId)
-        return yield* Effect.fail(new Error("Machine generation changed during port verification."));
-      return yield* Effect.try({
-        try: () => {
-          ensureUniqueChain(facts);
-          const chain = dnatChainForNetwork(facts.networkId, facts.subnet);
-          return { facts, guest, chain, rules: parseExactPublishedRules(guest.nftJson, chain) };
-        },
-        catch: (cause) =>
-          failure("publishedPortFacts", "Published-port ownership metadata is invalid.", cause),
-      });
+  const readFacts = Effect.fnUntraced(function* (containerId: string) {
+    const [facts, created, guest] = yield* Effect.all([
+      deps.facts(containerId),
+      deps.machineCreated,
+      deps.guestSnapshot,
+    ]);
+    if (facts.machineCreated !== created || facts.kernelBootId !== guest.kernelBootId)
+      return yield* Effect.fail(new Error("Machine generation changed during port verification."));
+    return yield* Effect.try({
+      try: () => {
+        ensureUniqueChain(facts);
+        const chain = dnatChainForNetwork(facts.networkId, facts.subnet);
+        return { facts, guest, chain, rules: parseExactPublishedRules(guest.nftJson, chain) };
+      },
+      catch: (cause) => failure("publishedPortFacts", "Published-port ownership metadata is invalid.", cause),
     });
+  });
 
   const validate = <A>(operation: string, evaluate: () => A) =>
     Effect.try({

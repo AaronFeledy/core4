@@ -1,3 +1,4 @@
+import { Struct } from "effect";
 import { Schema } from "effect";
 
 import { ServiceConfig } from "../landofile.ts";
@@ -6,8 +7,8 @@ import { ServiceConfig } from "../landofile.ts";
 // PHP catalog service authoring contract
 // ============================================================================
 
-export const PhpServiceConfig = Schema.extend(
-  ServiceConfig.pick(
+export const PhpServiceConfig = Schema.Struct(
+  Struct.pick(ServiceConfig.fields, [
     "image",
     "port",
     "user",
@@ -35,22 +36,27 @@ export const PhpServiceConfig = Schema.extend(
     "networks",
     "security",
     "providers",
-  ),
-  Schema.Struct({
-    type: Schema.optional(
-      Schema.String.pipe(
-        Schema.pattern(/^php:[^:\s]+$/u, {
-          message: () => "PHP service types use php:<version> syntax.",
+  ]),
+)
+  .pipe(
+    Schema.fieldsAssign({
+      type: Schema.optionalKey(
+        Schema.String.pipe(
+          Schema.check(
+            Schema.isPattern(/^php:[^:\s]+$/u, {
+              message: "PHP service types use php:<version> syntax.",
+            }),
+          ),
+        ).annotate({
+          description:
+            "PHP catalog service type. PHP has no bare type: php alias; the planner validates the requested version against shipped ServiceType metadata.",
         }),
-      ).annotations({
-        description:
-          "PHP catalog service type. PHP has no bare type: php alias; the planner validates the requested version against shipped ServiceType metadata.",
-      }),
-    ),
-  }),
-).annotations({
-  identifier: "PhpServiceConfig",
-  title: "Php Service Config",
-  description: "Landofile configuration accepted by the PHP catalog service.",
-});
+      ),
+    }),
+  )
+  .annotate({
+    identifier: "PhpServiceConfig",
+    title: "Php Service Config",
+    description: "Landofile configuration accepted by the PHP catalog service.",
+  });
 export type PhpServiceConfig = typeof PhpServiceConfig.Type;

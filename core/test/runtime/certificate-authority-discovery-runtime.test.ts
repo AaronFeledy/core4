@@ -25,7 +25,9 @@ const resolveAuthority = (
 ) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const context = yield* Layer.build(makeLandoRuntime({ bootstrap: "provider", plugins, config }));
+      const context = yield* Layer.build(
+        makeLandoRuntime({ bootstrap: "provider", plugins, ...(config === undefined ? {} : { config }) }),
+      );
       return yield* Context.get(context, CertificateAuthorityResolver).resolve;
     }),
   );
@@ -37,20 +39,18 @@ const writeDiscoveredAuthority = async (root: string): Promise<string> => {
   await mkdir(registryRoot, { recursive: true });
   await mkdir(packageRoot, { recursive: true });
 
-  const effectUrl = pathToFileURL(
-    resolve(import.meta.dirname, "../../../node_modules/effect/dist/esm/index.js"),
-  );
+  const effectUrl = import.meta.resolve("effect");
   const servicesUrl = pathToFileURL(resolve(import.meta.dirname, "../../../sdk/src/services/index.ts"));
   await writeFile(
     join(packageRoot, "ca.mjs"),
     [
-      `import { Effect, Layer } from ${JSON.stringify(effectUrl.href)};`,
+      `import { Effect, Layer } from ${JSON.stringify(effectUrl)};`,
       `import { CertificateAuthority } from ${JSON.stringify(servicesUrl.href)};`,
-      "export const ca = Layer.succeed(CertificateAuthority, {",
+      "export const ca = Layer.succeed(CertificateAuthority, CertificateAuthority.of({",
       '  id: "custom-ca",',
       "  setup: () => Effect.void,",
       '  issueCert: () => Effect.succeed({ certPath: "/tmp/cert", keyPath: "/tmp/key", caPath: "/tmp/ca" }),',
-      "});",
+      "}));",
       "",
     ].join("\n"),
   );
@@ -115,7 +115,7 @@ describe("runtime certificate authority discovery", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
+      const failure = Cause.findErrorOption(exit.cause);
       expect(Option.isSome(failure) && failure.value instanceof NoCertificateAuthorityError).toBe(true);
     }
   });

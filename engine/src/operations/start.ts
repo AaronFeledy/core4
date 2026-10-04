@@ -22,7 +22,7 @@ export type { StartManagedScope } from "./start-file-sync.ts";
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const startAppForTarget = (
+export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
@@ -33,12 +33,11 @@ export const startAppForTarget = (
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
-) =>
-  withAppMutationLock(
+) {
+  return yield* withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
-      const context =
-        yield* Effect.context<Effect.Effect.Context<ReturnType<typeof startAppForTargetUnlocked>>>();
+      const context = yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
@@ -51,14 +50,14 @@ export const startAppForTarget = (
         body: () =>
           preflightStartAppDrain(resolvedTarget, undefined, true)
             .pipe(
-              Effect.zipRight(
+              Effect.andThen(
                 execution.transactionPreflightDone === true
                   ? Effect.void
                   : ensureStartTransactionConsistent(resolvedTarget),
               ),
-              Effect.zipRight(execution.skipInitEvents === true ? Effect.void : runAppInitEvents(plan)),
-              Effect.zipRight((execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible)),
-              Effect.zipRight(startAppForTargetUnlocked(options, resolvedTarget, managed, execution)),
+              Effect.andThen(execution.skipInitEvents === true ? Effect.void : runAppInitEvents(plan)),
+              Effect.andThen((execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible)),
+              Effect.andThen(startAppForTargetUnlocked(options, resolvedTarget, managed, execution)),
               Effect.onExit((exit) =>
                 Exit.isFailure(exit)
                   ? (execution.onFailedStart ?? Effect.void).pipe(Effect.uninterruptible)
@@ -69,8 +68,9 @@ export const startAppForTarget = (
       });
     }),
   );
+});
 
-export const startApp = (
+export const startApp = Effect.fn("AppOperation.start")(function* (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
@@ -81,8 +81,8 @@ export const startApp = (
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
   } = {},
-) =>
-  target === undefined
+) {
+  return yield* target === undefined
     ? Effect.gen(function* () {
         const landofileService = yield* LandofileService;
         const registry = yield* RuntimeProviderRegistry;
@@ -98,3 +98,4 @@ export const startApp = (
         );
       })
     : startAppForTarget(options, target, managed, execution);
+});

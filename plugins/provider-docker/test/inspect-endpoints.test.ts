@@ -13,7 +13,7 @@ import { DateTime, Effect } from "effect";
 const name = ServiceName.make("web");
 const providerId = ProviderId.make("docker");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-27T00:00:00Z"),
   source: "test",
   runtime: 4,
 } as const;

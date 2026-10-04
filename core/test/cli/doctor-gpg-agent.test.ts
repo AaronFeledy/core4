@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { AbsolutePath, type AppId } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { makeTestSshService } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 
 const SECURITY =
   "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
 
-const recordingRunner = (calls: string[][]): Pick<ProcessRunner["Type"], "run"> => ({
+const recordingRunner = (calls: string[][]): Pick<Context.Service.Shape<typeof ProcessRunner>, "run"> => ({
   run: ({ cmd, args }) => {
     calls.push([cmd, ...args]);
     return Effect.succeed({

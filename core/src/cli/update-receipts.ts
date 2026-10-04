@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { UpdateResultSchema, makeUpdateHandoff } from "@lando/engine/operations/update";
 import { resolveLandoRoots } from "@lando/paths";
 import { StateStore } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import { renderUpdateResult } from "./command-specs/meta/update.ts";
 import { extractFormatFlags, resolveResultFormat, supportsResultFormat } from "./format-flags.ts";
@@ -35,7 +35,7 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
         if (result !== undefined) return result;
       }
       return undefined;
-    }).pipe(Effect.provide(StateStoreLive)),
+    }).pipe(Effect.provide(StateStoreLayer.layer)),
   );
   await rmdir(join(resolveLandoRoots().userCacheRoot, "update-handoff")).catch((cause: unknown) => {
     if (cause instanceof Error && "code" in cause && (cause.code === "ENOTEMPTY" || cause.code === "ENOENT"))

@@ -1,7 +1,50 @@
 import { describe, expect, test } from "bun:test";
-import { Either, ParseResult, Schema } from "effect";
+import { SchemaIssue } from "effect";
+import { Result, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
+
+describe("Compose map input contracts", () => {
+  test.each([
+    ["sysctls", { a: "text", b: 1, c: true, d: null }],
+    ["extra_hosts", { db: "127.0.0.1", cache: ["127.0.0.2", "::1"] }],
+  ])("preserves valid %s maps", (field, value) => {
+    // Given a map exercising every supported value type.
+    const input = { [field]: value };
+    // When decoded through the service contract.
+    const result = Schema.decodeUnknownSync(ServiceConfig)(input);
+    // Then canonical map values remain unchanged.
+    expect(result).toMatchObject(input);
+  });
+
+  test.each([
+    ["sysctls", { invalid: {} }],
+    ["sysctls", { invalid: [] }],
+    ["extra_hosts", { invalid: 42 }],
+    ["extra_hosts", { invalid: true }],
+    ["extra_hosts", { invalid: null }],
+    ["extra_hosts", { invalid: [42] }],
+    ["sysctls", false],
+    ["extra_hosts", "127.0.0.1"],
+  ])("rejects invalid %s map values", (field, value) => {
+    // Given a value outside the existing map and list input forms.
+    const input = { [field]: value };
+    // When decoded at the public service boundary.
+    const result = Schema.decodeUnknownResult(ServiceConfig)(input);
+    // Then the native projection has not widened runtime acceptance.
+    expect(Result.isFailure(result)).toBe(true);
+  });
+
+  test.each(["sysctls", "extra_hosts"] as const)("rejects JSON-owned reserved keys in %s", (field) => {
+    // Given an own property, not object-literal prototype mutation.
+    const value: unknown = JSON.parse('{"__proto__":"127.0.0.1"}');
+    // When decoded through the service field.
+    const result = Schema.decodeUnknownResult(ServiceConfig)({ [field]: value });
+    // Then the reserved-key guard and its remediation remain in effect.
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure.message).toContain('The key "__proto__" is reserved');
+  });
+});
 
 const COMPOSE_SERVICE_KNOB_KEYS = [
   "restart",
@@ -201,7 +244,7 @@ describe("Compose service runtime knobs", () => {
     "Given invalid %s, when decoded, then ParseError reports its issue path",
     (key, invalid) => {
       // Given / When
-      const result = Schema.decodeUnknownEither(ServiceConfig)(
+      const result = Schema.decodeUnknownResult(ServiceConfig)(
         { [key]: invalid },
         {
           onExcessProperty: "error",
@@ -209,10 +252,10 @@ describe("Compose service runtime knobs", () => {
       );
 
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-        expect(issues.some((issue) => issue.path[0] === key)).toBe(true);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+        expect(issues.some((issue) => (issue.path ?? [])[0] === key)).toBe(true);
       }
     },
   );
@@ -224,13 +267,13 @@ describe("Compose service runtime knobs", () => {
       const input = { [key]: Object.fromEntries([["__proto__", "polluted"]]) };
 
       // When
-      const defaultResult = Schema.decodeUnknownEither(ServiceConfig)(input);
-      const strictResult = Schema.decodeUnknownEither(ServiceConfig)(input, { onExcessProperty: "error" });
+      const defaultResult = Schema.decodeUnknownResult(ServiceConfig)(input);
+      const strictResult = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
 
       // Then
       for (const result of [defaultResult, strictResult]) {
-        expect(Either.isLeft(result)).toBe(true);
-        if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
+        expect(Result.isFailure(result)).toBe(true);
+        if (Result.isFailure(result)) expect(String(result.failure)).toContain("__proto__");
       }
     },
   );
@@ -245,12 +288,12 @@ describe("Compose service runtime knobs", () => {
       const input = { [key]: ["\u001b]2;CONTROL-INJECTED\u0007"] };
 
       // When
-      const result = Schema.decodeUnknownEither(ServiceConfig)(input);
+      const result = Schema.decodeUnknownResult(ServiceConfig)(input);
 
       // Then
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        const failure = String(result.left);
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        const failure = String(result.failure);
         expect(failure).toContain(remediation);
         expect(failure).not.toContain("\u001b");
         expect(failure).not.toContain("\u0007");
@@ -277,16 +320,16 @@ describe("Compose service runtime knobs", () => {
     };
 
     // When
-    const defaultResult = Schema.decodeUnknownEither(ServiceConfig)(input);
-    const strictResult = Schema.decodeUnknownEither(ServiceConfig)(input, { onExcessProperty: "error" });
+    const defaultResult = Schema.decodeUnknownResult(ServiceConfig)(input);
+    const strictResult = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isRight(defaultResult)).toBe(true);
-    if (Either.isRight(defaultResult)) {
-      expect(defaultResult.right.deploy).toEqual({
+    expect(Result.isSuccess(defaultResult)).toBe(true);
+    if (Result.isSuccess(defaultResult)) {
+      expect(defaultResult.success.deploy).toEqual({
         resources: { limits: { memory: 1_048_576 } },
       });
     }
-    expect(Either.isLeft(strictResult)).toBe(true);
+    expect(Result.isFailure(strictResult)).toBe(true);
   });
 });

@@ -56,7 +56,7 @@ const expectBytes = (actual: Uint8Array<ArrayBufferLike>, expected: Uint8Array<A
 
 const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const opt = Cause.failureOption(exit.cause);
+  const opt = Cause.findErrorOption(exit.cause);
   if (opt._tag !== "Some") throw new Error("expected a tagged failure");
   return opt.value;
 };

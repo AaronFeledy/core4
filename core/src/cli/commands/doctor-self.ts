@@ -1,3 +1,4 @@
+import { Result } from "effect";
 /**
  * Doctor self-resilience substrate.
  *
@@ -116,7 +117,7 @@ export const describeDoctorFailure = (value: unknown): { readonly tag?: string; 
  */
 export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause => {
   // Defects outrank typed failures: a mixed cause is the more severe of the two.
-  const defect = Cause.dieOption(cause);
+  const defect = Result.getSuccess(Cause.findDefect(cause));
   if (Option.isSome(defect)) {
     const described = inspectFailure(defect.value);
     return {
@@ -125,7 +126,7 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
       message: described.message,
     };
   }
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (Option.isSome(failure)) {
     const described = inspectFailure(failure.value);
     return {
@@ -194,57 +195,56 @@ export const doctorSelfCheck = (input: {
  * interrupted by a deadline. Section programs must stay `Effect`-shaped and
  * interruptible for the budget to bite.
  */
-export const isolateDoctorSection = <A, E, R>(
+export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
   options: IsolateDoctorSectionOptions<A, E, R>,
-): Effect.Effect<IsolatedDoctorSection<A>, never, R> =>
-  Effect.gen(function* () {
-    const budgetMs = options.budgetMs ?? doctorSectionBudgetMs();
-    const redact = options.redact ?? ((value: string) => value);
-    // Forked so a section that interrupts *itself* cannot masquerade as user
-    // cancellation: if the parent were interrupted, `Fiber.await` would itself be
-    // interrupted and never reach the classification below.
-    const fiber = yield* Effect.fork(options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))));
-    const outcome = yield* Fiber.await(fiber);
+): Effect.fn.Return<IsolatedDoctorSection<A>, never, R> {
+  const budgetMs = options.budgetMs ?? doctorSectionBudgetMs();
+  const redact = options.redact ?? ((value: string) => value);
+  // Forked so a section that interrupts *itself* cannot masquerade as user
+  // cancellation: if the parent were interrupted, `Fiber.await` would itself be
+  // interrupted and never reach the classification below.
+  const fiber = yield* Effect.forkChild(options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))));
+  const outcome = yield* Fiber.await(fiber);
 
-    if (Exit.isSuccess(outcome)) {
-      if (Option.isSome(outcome.value)) return { value: outcome.value.value };
-      return {
-        value: options.fallback,
-        self: doctorSelfCheck({
-          section: options.section,
-          reason: "timeout",
-          message: `Section did not complete within ${budgetMs}ms and was abandoned.`,
-          context: { budgetMs: String(budgetMs), ...options.context },
-          ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
-        }),
-      };
-    }
-
-    // Reaching here with an interrupt means the section aborted itself, which is
-    // a section defect rather than the user asking to stop.
-    if (Cause.isInterruptedOnly(outcome.cause)) {
-      return {
-        value: options.fallback,
-        self: doctorSelfCheck({
-          section: options.section,
-          reason: "defect",
-          message: "Section interrupted itself before producing a result.",
-          ...(options.context === undefined ? {} : { context: options.context }),
-          ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
-        }),
-      };
-    }
-
-    const described = describeDoctorCause(outcome.cause);
+  if (Exit.isSuccess(outcome)) {
+    if (Option.isSome(outcome.value)) return { value: outcome.value.value };
     return {
       value: options.fallback,
       self: doctorSelfCheck({
         section: options.section,
-        reason: described.reason,
-        message: redactDoctorMessage(described.message, redact),
-        ...(described.tag === undefined ? {} : { tag: described.tag }),
+        reason: "timeout",
+        message: `Section did not complete within ${budgetMs}ms and was abandoned.`,
+        context: { budgetMs: String(budgetMs), ...options.context },
+        ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
+      }),
+    };
+  }
+
+  // Reaching here with an interrupt means the section aborted itself, which is
+  // a section defect rather than the user asking to stop.
+  if (Cause.hasInterruptsOnly(outcome.cause)) {
+    return {
+      value: options.fallback,
+      self: doctorSelfCheck({
+        section: options.section,
+        reason: "defect",
+        message: "Section interrupted itself before producing a result.",
         ...(options.context === undefined ? {} : { context: options.context }),
         ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
       }),
     };
-  });
+  }
+
+  const described = describeDoctorCause(outcome.cause);
+  return {
+    value: options.fallback,
+    self: doctorSelfCheck({
+      section: options.section,
+      reason: described.reason,
+      message: redactDoctorMessage(described.message, redact),
+      ...(described.tag === undefined ? {} : { tag: described.tag }),
+      ...(options.context === undefined ? {} : { context: options.context }),
+      ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
+    }),
+  };
+});

@@ -1,4 +1,4 @@
-import { type Context, Effect, Either } from "effect";
+import { type Context, Effect, Result } from "effect";
 
 import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
 import { LandofileValidationError, type RouteInputError } from "@lando/sdk/errors";
@@ -37,11 +37,12 @@ export const applyAuthoredAppMount = (
   if (authored === undefined || authored === false) return servicePlan;
   const existingMount = servicePlan.appMount;
   if (existingMount === undefined) return servicePlan;
-  const target = plannedContainerDestination(
-    authored.target,
-    appRoot,
-    `services.${serviceName}.appMount.target`,
-  );
+  const target = plannedContainerDestination(authored.target, appRoot, [
+    "services",
+    serviceName,
+    "appMount",
+    "target",
+  ]);
   if (target instanceof LandofileValidationError) return target;
   const merged = {
     ...existingMount,
@@ -113,155 +114,157 @@ export const normalizeAuthoredRoutes = (input: {
   const serviceRoutes = normalizeRoutes(input.service.routes ?? [], {
     keyPath: `services.${input.name}.routes`,
   });
-  if (Either.isLeft(serviceRoutes)) return Effect.fail(serviceRoutes.left);
+  if (Result.isFailure(serviceRoutes)) return Effect.fail(serviceRoutes.failure);
   const proxyRoutes = normalizeRoutes(input.landofile.proxy?.[ServiceName.make(input.name)] ?? [], {
     keyPath: `proxy.${input.name}`,
   });
-  if (Either.isLeft(proxyRoutes)) return Effect.fail(proxyRoutes.left);
-  return Effect.succeed([...serviceRoutes.right, ...proxyRoutes.right]);
+  if (Result.isFailure(proxyRoutes)) return Effect.fail(proxyRoutes.failure);
+  return Effect.succeed([...serviceRoutes.success, ...proxyRoutes.success]);
 };
 
-export const planServiceDrafts = (input: {
-  readonly pluginRegistry: Context.Tag.Service<typeof PluginRegistry>;
+export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* (input: {
+  readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
   readonly provider: ProviderId;
   readonly appName: string;
   readonly appRoot: string;
   readonly host: ServiceTypeHostFacts | undefined;
-}): Effect.Effect<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> =>
-  Effect.gen(function* () {
-    const plannedServiceDrafts: PlannedServiceDraft[] = [];
-    for (const {
-      name,
-      service,
-      authored,
-      serviceType,
-      resolution,
-      logSources,
-      baseDefaultIds,
-      featureRefs,
-      routes,
-      resolvedArtifactTag,
-      configSourceInputs,
-    } of input.resolvedServices) {
-      const rawPlan = yield* Effect.gen(function* () {
-        const configuredFeatureRefs = featureRefs.filter(
-          (featureRef) => !baseDefaultIds.includes(featureRef.id) || featureRef.config !== undefined,
-        );
-        const configuredFeatureIds = new Set(configuredFeatureRefs.map((featureRef) => featureRef.id));
-        const features = yield* Effect.forEach(configuredFeatureRefs, (featureRef) =>
-          input.pluginRegistry.loadServiceFeature(featureRef.id).pipe(
-            Effect.map(
-              (definition): ComposeServiceFeature => ({
-                id: featureRef.id,
-                ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
-                definition,
-              }),
-            ),
-            Effect.mapError((error) => servicePlanError(input.appRoot, name, error)),
+}): Effect.fn.Return<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> {
+  const plannedServiceDrafts: PlannedServiceDraft[] = [];
+  for (const {
+    name,
+    service,
+    authored,
+    serviceType,
+    resolution,
+    logSources,
+    baseDefaultIds,
+    featureRefs,
+    routes,
+    resolvedArtifactTag,
+    configSourceInputs,
+  } of input.resolvedServices) {
+    const rawPlan = yield* Effect.gen(function* () {
+      const configuredFeatureRefs = featureRefs.filter(
+        (featureRef) => !baseDefaultIds.includes(featureRef.id) || featureRef.config !== undefined,
+      );
+      const configuredFeatureIds = new Set(configuredFeatureRefs.map((featureRef) => featureRef.id));
+      const features = yield* Effect.forEach(configuredFeatureRefs, (featureRef) =>
+        input.pluginRegistry.loadServiceFeature(featureRef.id).pipe(
+          Effect.map(
+            (definition): ComposeServiceFeature => ({
+              id: featureRef.id,
+              ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
+              definition,
+            }),
           ),
-        );
-        const defaultFeatures = yield* Effect.forEach(
-          baseDefaultIds.filter((id) => !configuredFeatureIds.has(id)),
-          (id) =>
-            input.pluginRegistry
-              .loadServiceFeature(id)
-              .pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error))),
-        );
-        return yield* composeService({
-          base: {
-            name: ServiceName.make(name),
-            type: resolution.normalizedConfig.type ?? serviceType.id,
-            provider: input.provider,
-            primary: resolution.normalizedConfig.primary ?? name === "web",
-            ...(resolution.normalizedConfig.environment === undefined
-              ? {}
-              : { environment: resolution.normalizedConfig.environment }),
-            defaultFeatures,
-          },
-          baseKind: resolution.base,
-          appName: input.appName,
-          appRoot: input.appRoot,
-          host: input.host,
-          normalizedConfig: resolution.normalizedConfig,
-          features,
-        }).pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error)));
-      });
-      const withAppMount = applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service, input.appRoot, name);
-      if (withAppMount instanceof LandofileValidationError) return yield* Effect.fail(withAppMount);
-      const withStorage = applyAuthoredStorage(
-        applyAuthoredHealthcheck(withAppMount, service),
-        service,
-        input.appRoot,
-        name,
+          Effect.mapError((error) => servicePlanError(input.appRoot, name, error)),
+        ),
       );
-      if (withStorage instanceof LandofileValidationError) return yield* Effect.fail(withStorage);
-      const authoredServicePlanWithoutLabels = applyAuthoredDependencies(withStorage, service);
-      const authoredServicePlan = mergeComposeKnobs(
-        mergeComposeExtension(authoredServicePlanWithoutLabels, service),
-        service,
+      const defaultFeatures = yield* Effect.forEach(
+        baseDefaultIds.filter((id) => !configuredFeatureIds.has(id)),
+        (id) =>
+          input.pluginRegistry
+            .loadServiceFeature(id)
+            .pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error))),
       );
-      const build = service.build;
-      const authoredArtifact =
-        build !== undefined && isComposeBuild(build)
-          ? composeBuildToArtifact(build, input.appRoot)
-          : undefined;
-      const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
-      const appScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
-      const servicePlan: ServicePlan =
-        artifactScripts.length === 0 && appScripts.length === 0
-          ? authoredServicePlan
+      return yield* composeService({
+        base: {
+          name: ServiceName.make(name),
+          type: resolution.normalizedConfig.type ?? serviceType.id,
+          provider: input.provider,
+          primary: resolution.normalizedConfig.primary ?? name === "web",
+          ...(resolution.normalizedConfig.environment === undefined
+            ? {}
+            : { environment: resolution.normalizedConfig.environment }),
+          defaultFeatures,
+        },
+        baseKind: resolution.base,
+        appName: input.appName,
+        appRoot: input.appRoot,
+        host: input.host,
+        normalizedConfig: resolution.normalizedConfig,
+        features,
+      }).pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error)));
+    });
+    const withAppMount = applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service, input.appRoot, name);
+    if (withAppMount instanceof LandofileValidationError) return yield* Effect.fail(withAppMount);
+    const withStorage = applyAuthoredStorage(
+      applyAuthoredHealthcheck(withAppMount, service),
+      service,
+      input.appRoot,
+      name,
+    );
+    if (withStorage instanceof LandofileValidationError) return yield* Effect.fail(withStorage);
+    const authoredServicePlanWithoutLabels = applyAuthoredDependencies(withStorage, service);
+    const authoredServicePlan = mergeComposeKnobs(
+      mergeComposeExtension(authoredServicePlanWithoutLabels, service),
+      service,
+    );
+    const build = service.build;
+    const authoredArtifact =
+      build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, input.appRoot) : undefined;
+    const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
+    const appScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
+    const servicePlan: ServicePlan =
+      artifactScripts.length === 0 && appScripts.length === 0
+        ? authoredServicePlan
+        : {
+            ...authoredServicePlan,
+            extensions: {
+              ...authoredServicePlan.extensions,
+              [SERVICE_FEATURES_EXTENSION_KEY]: {
+                ...serviceFeatureExtension(authoredServicePlan.extensions),
+                buildSteps: [
+                  ...serviceFeatureBuildSteps(authoredServicePlan.extensions),
+                  ...artifactScripts.map((script, index) => ({
+                    id: `authored-artifact:${index + 1}`,
+                    phase: "build" as const,
+                    command: ["sh", "-lc", script.run],
+                    ...(script.user === undefined ? {} : { user: script.user }),
+                  })),
+                  ...appScripts.map((script, index) => ({
+                    id: `authored-app:${index + 1}`,
+                    phase: "app" as const,
+                    command: { command: ["sh", "-lc", script.run] },
+                    ...(script.user === undefined ? {} : { user: script.user }),
+                  })),
+                ],
+              },
+            },
+          };
+    plannedServiceDrafts.push({
+      name,
+      hostnames: service.hostnames ?? [],
+      authoredArtifact,
+      authored,
+      homeIntent: serviceHomeIntent({
+        service: {
+          ...service,
+          ...(resolution.normalizedConfig.home === undefined
+            ? {}
+            : { home: resolution.normalizedConfig.home }),
+        },
+        serviceTypeId: serviceType.id,
+        identity: serviceType.identity,
+        pinnedArtifactTag: resolvedArtifactTag,
+      }),
+      draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
+      logSources,
+      routes,
+      extensions:
+        configSourceInputs.length === 0
+          ? servicePlan.extensions
           : {
-              ...authoredServicePlan,
-              extensions: {
-                ...authoredServicePlan.extensions,
-                [SERVICE_FEATURES_EXTENSION_KEY]: {
-                  ...serviceFeatureExtension(authoredServicePlan.extensions),
-                  buildSteps: [
-                    ...serviceFeatureBuildSteps(authoredServicePlan.extensions),
-                    ...artifactScripts.map((script, index) => ({
-                      id: `authored-artifact:${index + 1}`,
-                      phase: "build" as const,
-                      command: ["sh", "-lc", script.run],
-                      ...(script.user === undefined ? {} : { user: script.user }),
-                    })),
-                    ...appScripts.map((script, index) => ({
-                      id: `authored-app:${index + 1}`,
-                      phase: "app" as const,
-                      command: { command: ["sh", "-lc", script.run] },
-                      ...(script.user === undefined ? {} : { user: script.user }),
-                    })),
-                  ],
-                },
+              ...servicePlan.extensions,
+              [SERVICE_FEATURES_EXTENSION_KEY]: {
+                ...serviceFeatureExtension(servicePlan.extensions),
+                configSources: [...configSourceInputs].sort((left, right) =>
+                  left.key.localeCompare(right.key),
+                ),
               },
-            };
-      plannedServiceDrafts.push({
-        name,
-        hostnames: service.hostnames ?? [],
-        authoredArtifact,
-        authored,
-        homeIntent: serviceHomeIntent({
-          service: { ...service, home: resolution.normalizedConfig.home ?? service.home },
-          serviceTypeId: serviceType.id,
-          identity: serviceType.identity,
-          pinnedArtifactTag: resolvedArtifactTag,
-        }),
-        draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
-        logSources,
-        routes,
-        extensions:
-          configSourceInputs.length === 0
-            ? servicePlan.extensions
-            : {
-                ...servicePlan.extensions,
-                [SERVICE_FEATURES_EXTENSION_KEY]: {
-                  ...serviceFeatureExtension(servicePlan.extensions),
-                  configSources: [...configSourceInputs].sort((left, right) =>
-                    left.key.localeCompare(right.key),
-                  ),
-                },
-              },
-      });
-    }
-    return plannedServiceDrafts;
-  });
+            },
+    });
+  }
+  return plannedServiceDrafts;
+});

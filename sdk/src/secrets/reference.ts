@@ -1,10 +1,10 @@
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { SecretReferenceInvalidError } from "../errors/secret.ts";
 
 const ParsedSecretReference = Schema.Struct({
   raw: Schema.String,
-  scheme: Schema.optional(Schema.String),
+  scheme: Schema.optionalKey(Schema.String),
   key: Schema.String,
 });
 
@@ -12,9 +12,9 @@ export type ParsedSecretReference = typeof ParsedSecretReference.Type;
 
 export const parseSecretReference = (
   raw: string,
-): Either.Either<ParsedSecretReference, SecretReferenceInvalidError> => {
+): Result.Result<ParsedSecretReference, SecretReferenceInvalidError> => {
   const invalid = () =>
-    Either.left(
+    Result.fail(
       new SecretReferenceInvalidError({
         message: "Invalid secret reference.",
         reference: raw,
@@ -23,7 +23,7 @@ export const parseSecretReference = (
       }),
     );
   if (raw.trim() !== raw || raw === "..") return invalid();
-  if (/^[A-Za-z0-9_.-]+$/.test(raw)) return Either.right({ raw, key: raw });
+  if (/^[A-Za-z0-9_.-]+$/.test(raw)) return Result.succeed({ raw, key: raw });
 
   const separator = raw.indexOf("://");
   if (separator < 0) return invalid();
@@ -45,5 +45,5 @@ export const parseSecretReference = (
   )
     return invalid();
 
-  return Either.right({ raw, scheme, key });
+  return Result.succeed({ raw, scheme, key });
 };

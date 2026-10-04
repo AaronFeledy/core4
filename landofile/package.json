@@ -64,7 +64,7 @@
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",
-    "effect": "^3.21.2",
+    "effect": "catalog:",
     "semver": "^7.8.5"
   },
   "devDependencies": {

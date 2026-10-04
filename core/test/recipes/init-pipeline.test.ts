@@ -2,12 +2,16 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
+import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { plugin } from "@lando/lando4";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
+import {
+  type ConfigTranslateDiagnostic,
+  ConfigTranslateSourceId,
+  LANDOFILE_EDITOR_SCHEMA_URL,
+} from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, ProcessRunner } from "@lando/sdk/services";
-import { Effect, Either, Schema, Stream } from "effect";
+import { Effect, Result, Schema, Stream } from "effect";
 import {
   RecipeInitBlockedError,
   RecipeInitCommitError,
@@ -89,9 +93,9 @@ const fixture = async () => {
   return { request, calls, landofile, auxiliary };
 };
 const failure = async (request: TestRecipeInitPipelineRequest) => {
-  const result = await Effect.runPromise(Effect.either(runRecipeInitPipeline(request)));
-  if (Either.isRight(result)) throw new Error("Expected pipeline failure");
-  return result.left;
+  const result = await Effect.runPromise(Effect.result(runRecipeInitPipeline(request)));
+  if (Result.isSuccess(result)) throw new Error("Expected pipeline failure");
+  return result.failure;
 };
 
 test("S1 commits expression-bearing provenance before auxiliary files and postInit", async () => {
@@ -99,6 +103,7 @@ test("S1 commits expression-bearing provenance before auxiliary files and postIn
   const result = await Effect.runPromise(runRecipeInitPipeline(request));
   expect(calls).toEqual(["commit", "postInit"]);
   const text = await Bun.file(landofile).text();
+  expect(text.startsWith(`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}\n`)).toBe(true);
   expect(text).toContain("{{ recipe.php }}");
   expect(text).toMatch(/recipe:\n\s+id: isolated-init/);
   expect(text).toMatch(/\n\s+producer:\n/);
@@ -165,7 +170,7 @@ test("preview fails closed on the same blocking diagnostics as the write path", 
   const encode = request.encoder.encode;
   if (encode === undefined) throw new Error("Missing encoder");
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       previewRecipeLandofile({
         ...request,
         encoder: {
@@ -179,9 +184,9 @@ test("preview fails closed on the same blocking diagnostics as the write path", 
       }),
     ),
   );
-  if (Either.isRight(result)) throw new Error("Expected preview failure");
-  expect(result.left).toBeInstanceOf(RecipeInitBlockedError);
-  expect(result.left).toMatchObject({ stage: "diagnostics" });
+  if (Result.isSuccess(result)) throw new Error("Expected preview failure");
+  expect(result.failure).toBeInstanceOf(RecipeInitBlockedError);
+  expect(result.failure).toMatchObject({ stage: "diagnostics" });
   expect(await Bun.file(landofile).exists()).toBe(false);
 });
 test("user appName wins over the translated fragment name", async () => {
@@ -320,7 +325,7 @@ test("S6 the in-process recipe module lists through ConfigTranslatorRegistry", a
   });
   const translators = await Effect.runPromise(
     Effect.flatMap(ConfigTranslatorRegistry, (registry) => registry.list).pipe(
-      Effect.provide(makeConfigTranslatorRegistryLive([module])),
+      Effect.provide(ConfigTranslatorRegistryLayer.layerWith([module])),
     ),
   );
   expect(translators.map(({ id }) => id)).toEqual(["recipe"]);
@@ -374,15 +379,18 @@ test("stdin is bound through the action runner, never answers, env, or argv", as
       return { executed: [] };
     },
   }).pipe(
-    Effect.provideService(ProcessRunner, {
-      run: (input) =>
-        Effect.sync(() => {
-          inputs.push(input);
-          return { exitCode: 0, stdout: "", stderr: "" };
-        }),
-      stream: () => Stream.empty,
-      streamWithExit: () => Stream.empty,
-    }),
+    Effect.provideService(
+      ProcessRunner,
+      ProcessRunner.of({
+        run: (input) =>
+          Effect.sync(() => {
+            inputs.push(input);
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }),
+        stream: () => Stream.empty,
+        streamWithExit: () => Stream.empty,
+      }),
+    ),
   );
   await Effect.runPromise(program);
   expect(inputs).toHaveLength(1);
@@ -485,14 +493,14 @@ test("stored-secret prompt names receive references that the decomposer may pers
             received = input.secrets;
             const stored = input.secrets.apiToken;
             return Effect.map(base.decompose(input), (output) => {
-              const fragment = Schema.decodeUnknownEither(
-                Schema.Record({ key: Schema.String, value: Schema.Unknown }),
-              )(output.fragment);
+              const fragment = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Unknown))(
+                output.fragment,
+              );
               return {
                 ...output,
                 fragment:
-                  Either.isRight(fragment) && stored?.disposition === "secret-store"
-                    ? { ...fragment.right, "x-secret-reference": stored.reference }
+                  Result.isSuccess(fragment) && stored?.disposition === "secret-store"
+                    ? { ...fragment.success, "x-secret-reference": stored.reference }
                     : output.fragment,
               };
             });

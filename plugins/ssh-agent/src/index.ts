@@ -11,11 +11,11 @@ import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
 import sshAgentGlobalService from "./global-service.ts";
-import { sshService } from "./ssh-service.ts";
+import { layer } from "./ssh-service.ts";
 
 export const PLUGIN_NAME = "@lando/ssh-agent" as const;
 
-export const sshServices = new Map([["sidecar", sshService]]);
+export const sshServices = new Map([["sidecar", layer]]);
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["ssh-agent", sshAgentGlobalService],
@@ -52,7 +52,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  layer: sshService,
+  layer,
   sshServices,
   globalServices,
 });

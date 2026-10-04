@@ -119,101 +119,101 @@ export interface ExpressionTemplate {
   readonly segments: ReadonlyArray<ExpressionSegment>;
 }
 
-export const LiteralExpressionNode: Schema.Schema<LiteralExpressionNode> = Schema.Struct({
+export const LiteralExpressionNode: Schema.Codec<LiteralExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Literal"),
-  value: Schema.Union(Schema.String, Schema.Number, Schema.Boolean, Schema.Null),
+  value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
 });
 
-export const PropPathSegment: Schema.Schema<PropPathSegment> = Schema.Struct({
+export const PropPathSegment: Schema.Codec<PropPathSegment> = Schema.Struct({
   type: Schema.Literal("prop"),
   name: Schema.String,
 });
 
-export const IndexPathSegment: Schema.Schema<IndexPathSegment> = Schema.Struct({
+export const IndexPathSegment: Schema.Codec<IndexPathSegment> = Schema.Struct({
   type: Schema.Literal("index"),
   index: Schema.Number,
 });
 
-export const KeyPathSegment: Schema.Schema<KeyPathSegment> = Schema.Struct({
+export const KeyPathSegment: Schema.Codec<KeyPathSegment> = Schema.Struct({
   type: Schema.Literal("key"),
   key: Schema.String,
 });
 
-export const DynamicPathSegment: Schema.Schema<DynamicPathSegment> = Schema.Struct({
+export const DynamicPathSegment: Schema.Codec<DynamicPathSegment> = Schema.Struct({
   type: Schema.Literal("dynamic"),
-  expr: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  expr: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
 });
 
-export const PathSegment: Schema.Schema<PathSegment> = Schema.Union(
+export const PathSegment: Schema.Codec<PathSegment> = Schema.Union([
   PropPathSegment,
   IndexPathSegment,
   KeyPathSegment,
   DynamicPathSegment,
-);
+]);
 
-export const ArrayLiteralExpressionNode: Schema.Schema<ArrayLiteralExpressionNode> = Schema.Struct({
+export const ArrayLiteralExpressionNode: Schema.Codec<ArrayLiteralExpressionNode> = Schema.Struct({
   kind: Schema.Literal("ArrayLiteral"),
   elements: Schema.Array(
-    Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
       identifier: "ExpressionNode",
     }),
   ),
 });
 
-export const ObjectLiteralEntry: Schema.Schema<ObjectLiteralEntry> = Schema.Struct({
+export const ObjectLiteralEntry: Schema.Codec<ObjectLiteralEntry> = Schema.Struct({
   key: Schema.String,
-  value: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  value: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
 });
 
-export const ObjectLiteralExpressionNode: Schema.Schema<ObjectLiteralExpressionNode> = Schema.Struct({
+export const ObjectLiteralExpressionNode: Schema.Codec<ObjectLiteralExpressionNode> = Schema.Struct({
   kind: Schema.Literal("ObjectLiteral"),
   entries: Schema.Array(ObjectLiteralEntry),
 });
 
-export const PathExpressionNode: Schema.Schema<PathExpressionNode> = Schema.Struct({
+export const PathExpressionNode: Schema.Codec<PathExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Path"),
   head: Schema.String,
   segments: Schema.Array(PathSegment),
 });
 
-export const AccessExpressionNode: Schema.Schema<AccessExpressionNode> = Schema.Struct({
+export const AccessExpressionNode: Schema.Codec<AccessExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Access"),
-  target: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  target: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
   segments: Schema.Array(PathSegment),
 });
 
-export const CallExpressionNode: Schema.Schema<CallExpressionNode> = Schema.Struct({
+export const CallExpressionNode: Schema.Codec<CallExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Call"),
   callee: Schema.String,
   args: Schema.Array(
-    Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
       identifier: "ExpressionNode",
     }),
   ),
 });
 
-export const ConditionalExpressionNode: Schema.Schema<ConditionalExpressionNode> = Schema.Struct({
+export const ConditionalExpressionNode: Schema.Codec<ConditionalExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Conditional"),
-  test: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  test: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
-  consequent: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  consequent: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
-  alternate: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  alternate: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
 });
 
-export const ExpressionNode: Schema.Schema<ExpressionNode> = Schema.suspend(
-  (): Schema.Schema<ExpressionNode> =>
-    Schema.Union(
+export const ExpressionNode: Schema.Codec<ExpressionNode> = Schema.suspend(
+  (): Schema.Codec<ExpressionNode> =>
+    Schema.Union([
       LiteralExpressionNode,
       ArrayLiteralExpressionNode,
       ObjectLiteralExpressionNode,
@@ -221,50 +221,56 @@ export const ExpressionNode: Schema.Schema<ExpressionNode> = Schema.suspend(
       AccessExpressionNode,
       CallExpressionNode,
       ConditionalExpressionNode,
-    ),
-).annotations({ identifier: "ExpressionNode" });
+    ]),
+).annotate({ identifier: "ExpressionNode" });
 
-export const LiteralSegment: Schema.Schema<LiteralSegment> = Schema.Struct({
+export const LiteralSegment: Schema.Codec<LiteralSegment> = Schema.Struct({
   kind: Schema.Literal("LiteralSegment"),
   text: Schema.String,
 });
 
-export const InterpolationSegment: Schema.Schema<InterpolationSegment> = Schema.Struct({
+export const InterpolationSegment: Schema.Codec<InterpolationSegment> = Schema.Struct({
   kind: Schema.Literal("InterpolationSegment"),
-  expression: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+  expression: Schema.suspend((): Schema.Codec<ExpressionNode> => ExpressionNode).annotate({
     identifier: "ExpressionNode",
   }),
   trimLeft: Schema.Boolean,
   trimRight: Schema.Boolean,
 });
 
-export const CommentSegment: Schema.Schema<CommentSegment> = Schema.Struct({
+export const CommentSegment: Schema.Codec<CommentSegment> = Schema.Struct({
   kind: Schema.Literal("CommentSegment"),
   text: Schema.String,
 });
 
-export const ShellParamOperator = Schema.Literal("plain", "default-empty", "default-unset", "error", "alt");
-export const ShellParamSegment: Schema.Schema<ShellParamSegment> = Schema.Struct({
+export const ShellParamOperator = Schema.Literals([
+  "plain",
+  "default-empty",
+  "default-unset",
+  "error",
+  "alt",
+]);
+export const ShellParamSegment: Schema.Codec<ShellParamSegment> = Schema.Struct({
   kind: Schema.Literal("ShellParamSegment"),
   name: Schema.String,
   operator: ShellParamOperator,
-  word: Schema.optional(Schema.String),
+  word: Schema.optionalKey(Schema.String),
 });
 
-export const SecretRefSegment: Schema.Schema<SecretRefSegment> = Schema.Struct({
+export const SecretRefSegment: Schema.Codec<SecretRefSegment> = Schema.Struct({
   kind: Schema.Literal("SecretRefSegment"),
   name: Schema.String,
 });
 
-export const ExpressionSegment: Schema.Schema<ExpressionSegment> = Schema.Union(
+export const ExpressionSegment: Schema.Codec<ExpressionSegment> = Schema.Union([
   LiteralSegment,
   InterpolationSegment,
   CommentSegment,
   ShellParamSegment,
   SecretRefSegment,
-);
+]);
 
-export const ExpressionTemplate: Schema.Schema<ExpressionTemplate> = Schema.Struct({
+export const ExpressionTemplate: Schema.Codec<ExpressionTemplate> = Schema.Struct({
   whole: Schema.Boolean,
   segments: Schema.Array(ExpressionSegment),
 });

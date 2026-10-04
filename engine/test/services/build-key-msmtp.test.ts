@@ -33,7 +33,7 @@ const key = (buildSteps: ReadonlyArray<MsmtpStep>) => {
     dependsOn: [],
     hostAliases: [],
     metadata: {
-      resolvedAt: DateTime.unsafeMake("2026-09-18T00:00:00.000Z"),
+      resolvedAt: DateTime.makeUnsafe("2026-09-18T00:00:00.000Z"),
       source: "build-key-msmtp.test",
       runtime: 4,
     },

@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
-import { Effect, Schema } from "effect";
+import { Clock, Effect, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 
@@ -92,54 +92,54 @@ const normalizeEntries = (
   return deduped.sort((a, b) => b.lastUsedAt - a.lastUsedAt).slice(0, maxEntries);
 };
 
-export const readCwdAppMap = (cacheRoot: string): Effect.Effect<CwdAppMapCache | null, CacheError> =>
-  Effect.gen(function* () {
-    const path = cachePath(cacheRoot);
-    const bytes = yield* Effect.tryPromise({
-      try: () => readFile(path),
-      catch: (cause) => cacheError(path, `Failed to read cwd-app-map cache at ${path}.`, cause),
-    }).pipe(
-      Effect.catchIf(
-        (error) =>
-          typeof error.cause === "object" &&
-          error.cause !== null &&
-          (error.cause as { code?: unknown }).code === "ENOENT",
-        () => Effect.succeed(null),
-      ),
-    );
-    if (bytes === null) return null;
-    const cache = yield* decode(path, bytes);
-    if (cache === null) return null;
-    if (cache.landoVersion !== CORE_VERSION) return null;
-    return cache;
-  });
+export const readCwdAppMap = Effect.fnUntraced(function* (
+  cacheRoot: string,
+): Effect.fn.Return<CwdAppMapCache | null, CacheError> {
+  const path = cachePath(cacheRoot);
+  const bytes = yield* Effect.tryPromise({
+    try: () => readFile(path),
+    catch: (cause) => cacheError(path, `Failed to read cwd-app-map cache at ${path}.`, cause),
+  }).pipe(
+    Effect.catchIf(
+      (error) =>
+        typeof error.cause === "object" &&
+        error.cause !== null &&
+        (error.cause as { code?: unknown }).code === "ENOENT",
+      () => Effect.succeed(null),
+    ),
+  );
+  if (bytes === null) return null;
+  const cache = yield* decode(path, bytes);
+  if (cache === null) return null;
+  if (cache.landoVersion !== CORE_VERSION) return null;
+  return cache;
+});
 
 export const listCwdAppMapEntries = (
   cacheRoot: string,
 ): Effect.Effect<ReadonlyArray<CwdAppMapEntry>, CacheError> =>
   Effect.map(readCwdAppMap(cacheRoot), (cache) => cache?.entries ?? []);
 
-export const writeCwdAppMapEntry = (input: {
+export const writeCwdAppMapEntry = Effect.fnUntraced(function* (input: {
   readonly cacheRoot: string;
   readonly entry: Omit<CwdAppMapEntry, "lastUsedAt"> & { readonly lastUsedAt?: number };
   readonly maxEntries?: number;
-}): Effect.Effect<void, CacheError> =>
-  Effect.gen(function* () {
-    const existing = yield* readCwdAppMap(input.cacheRoot).pipe(Effect.catchAll(() => Effect.succeed(null)));
-    const entry: CwdAppMapEntry = {
-      ...input.entry,
-      lastUsedAt: input.entry.lastUsedAt ?? Date.now(),
-    };
-    const entries = normalizeEntries(
-      [entry, ...(existing?.entries ?? [])],
-      input.maxEntries ?? DEFAULT_MAX_ENTRIES,
-    );
-    const path = cachePath(input.cacheRoot);
-    yield* Effect.tryPromise({
-      try: () => writeFileAtomicViaRename(path, encode({ landoVersion: CORE_VERSION, entries })),
-      catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
-    });
+}): Effect.fn.Return<void, CacheError> {
+  const existing = yield* readCwdAppMap(input.cacheRoot).pipe(Effect.catch(() => Effect.succeed(null)));
+  const entry: CwdAppMapEntry = {
+    ...input.entry,
+    lastUsedAt: input.entry.lastUsedAt ?? (yield* Clock.currentTimeMillis),
+  };
+  const entries = normalizeEntries(
+    [entry, ...(existing?.entries ?? [])],
+    input.maxEntries ?? DEFAULT_MAX_ENTRIES,
+  );
+  const path = cachePath(input.cacheRoot);
+  yield* Effect.tryPromise({
+    try: () => writeFileAtomicViaRename(path, encode({ landoVersion: CORE_VERSION, entries })),
+    catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
   });
+});
 
 export const readCwdAppMapEntry = (input: {
   readonly cacheRoot: string;
@@ -150,51 +150,49 @@ export const readCwdAppMapEntry = (input: {
     (cache) => cache?.entries.find((entry) => entry.cwd === input.cwd) ?? null,
   );
 
-export const deleteCwdAppMapEntry = (input: {
+export const deleteCwdAppMapEntry = Effect.fnUntraced(function* (input: {
   readonly cacheRoot: string;
   readonly cwd: string;
-}): Effect.Effect<void, CacheError> =>
-  Effect.gen(function* () {
-    const existing = yield* readCwdAppMap(input.cacheRoot);
-    if (existing === null) return;
-    const entries = existing.entries.filter((entry) => entry.cwd !== input.cwd);
-    const path = cachePath(input.cacheRoot);
-    if (entries.length === 0) {
-      yield* Effect.tryPromise({
-        try: () => rm(path, { force: true }),
-        catch: (cause) => cacheError(path, `Failed to delete cwd-app-map cache at ${path}.`, cause),
-      });
-      return;
-    }
+}): Effect.fn.Return<void, CacheError> {
+  const existing = yield* readCwdAppMap(input.cacheRoot);
+  if (existing === null) return;
+  const entries = existing.entries.filter((entry) => entry.cwd !== input.cwd);
+  const path = cachePath(input.cacheRoot);
+  if (entries.length === 0) {
     yield* Effect.tryPromise({
-      try: () => writeFileAtomicViaRename(path, encode({ ...existing, entries })),
-      catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
+      try: () => rm(path, { force: true }),
+      catch: (cause) => cacheError(path, `Failed to delete cwd-app-map cache at ${path}.`, cause),
     });
+    return;
+  }
+  yield* Effect.tryPromise({
+    try: () => writeFileAtomicViaRename(path, encode({ ...existing, entries })),
+    catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
   });
+});
 
-export const deleteCwdAppMapEntriesForRoot = (input: {
+export const deleteCwdAppMapEntriesForRoot = Effect.fnUntraced(function* (input: {
   readonly cacheRoot: string;
   readonly appRoot: string;
-}): Effect.Effect<ReadonlyArray<string>, CacheError> =>
-  Effect.gen(function* () {
-    const existing = yield* readCwdAppMap(input.cacheRoot);
-    if (existing === null) return [];
-    const removed = existing.entries
-      .filter((entry) => entry.appRoot === input.appRoot)
-      .map((entry) => entry.cwd);
-    if (removed.length === 0) return [];
-    const entries = existing.entries.filter((entry) => entry.appRoot !== input.appRoot);
-    const path = cachePath(input.cacheRoot);
-    if (entries.length === 0) {
-      yield* Effect.tryPromise({
-        try: () => rm(path, { force: true }),
-        catch: (cause) => cacheError(path, `Failed to delete cwd-app-map cache at ${path}.`, cause),
-      });
-      return removed;
-    }
+}): Effect.fn.Return<ReadonlyArray<string>, CacheError> {
+  const existing = yield* readCwdAppMap(input.cacheRoot);
+  if (existing === null) return [];
+  const removed = existing.entries
+    .filter((entry) => entry.appRoot === input.appRoot)
+    .map((entry) => entry.cwd);
+  if (removed.length === 0) return [];
+  const entries = existing.entries.filter((entry) => entry.appRoot !== input.appRoot);
+  const path = cachePath(input.cacheRoot);
+  if (entries.length === 0) {
     yield* Effect.tryPromise({
-      try: () => writeFileAtomicViaRename(path, encode({ ...existing, entries })),
-      catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
+      try: () => rm(path, { force: true }),
+      catch: (cause) => cacheError(path, `Failed to delete cwd-app-map cache at ${path}.`, cause),
     });
     return removed;
+  }
+  yield* Effect.tryPromise({
+    try: () => writeFileAtomicViaRename(path, encode({ ...existing, entries })),
+    catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
   });
+  return removed;
+});

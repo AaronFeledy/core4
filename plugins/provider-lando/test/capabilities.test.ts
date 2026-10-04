@@ -7,7 +7,7 @@ import {
   introspectProviderCapabilities,
   linuxMvpCapabilities,
   macosMvpCapabilities,
-  makeProviderLayer,
+  layer as makeProviderLayer,
   mvpProviderCapabilities,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -130,7 +130,7 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.artifactPull).toBe(true);
   });
 
-  test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
+  test("declares the Linux ProviderCapabilities through the provider layer", async () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
       podmanApi: podmanApiForArch("x64"),

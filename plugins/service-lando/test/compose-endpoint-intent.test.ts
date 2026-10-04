@@ -4,8 +4,8 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
-import { AppPlannerLive } from "@lando/engine/services/planner";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { linuxMvpCapabilities } from "@lando/provider-lando";
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -76,18 +76,18 @@ describe("compose endpoint intent", () => {
     // When
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, linuxMvpCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(PluginRegistryLive),
+        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(PluginRegistryLayer.layer),
       ),
     );
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isSuccess(exit)) return;
-    const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
+    const failure = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
-      issues: ["services.worker.endpoints"],
+      issues: [{ path: ["services", "worker", "endpoints"] }],
     });
   });
 

@@ -12,25 +12,25 @@ import type {
 
 export type * from "../schema/config-translate.ts";
 
-export interface ConfigTranslatorShape {
-  readonly id: string;
-  readonly summary: string;
-  readonly inputKinds: ReadonlyArray<string>;
-  readonly detect: (
-    input: ConfigTranslateDetectInput,
-  ) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never>;
-  readonly translate: (
-    input: ConfigTranslateInput,
-  ) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never>;
-  readonly encode?: (
-    input: ConfigTranslateEncodeInput,
-  ) => Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never>;
-}
-
-export class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
+export class ConfigTranslator extends Context.Service<
   ConfigTranslator,
-  ConfigTranslatorShape
->() {}
+  {
+    readonly id: string;
+    readonly summary: string;
+    readonly inputKinds: ReadonlyArray<string>;
+    readonly detect: (
+      input: ConfigTranslateDetectInput,
+    ) => Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError, never>;
+    readonly translate: (
+      input: ConfigTranslateInput,
+    ) => Effect.Effect<ConfigTranslateResult, ConfigTranslateError, never>;
+    readonly encode?: (
+      input: ConfigTranslateEncodeInput,
+    ) => Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never>;
+  }
+>()("@lando/core/ConfigTranslator") {}
+
+export type ConfigTranslatorShape = ConfigTranslator["Service"];
 
 /**
  * Registry of plugin-contributed config translators. `list` resolves every
@@ -42,15 +42,15 @@ export class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator"
  * loads until `list` runs, so help, version, ordinary loading, and tooling
  * paths never construct translator factories.
  */
-export interface ConfigTranslatorRegistryShape {
-  readonly list: Effect.Effect<
-    ReadonlyArray<ConfigTranslatorShape>,
-    ConfigTranslatorConflictError | PluginDescriptorMismatchError | PluginLoadError,
-    never
-  >;
-}
-
-export class ConfigTranslatorRegistry extends Context.Tag("@lando/core/ConfigTranslatorRegistry")<
+export class ConfigTranslatorRegistry extends Context.Service<
   ConfigTranslatorRegistry,
-  ConfigTranslatorRegistryShape
->() {}
+  {
+    readonly list: Effect.Effect<
+      ReadonlyArray<ConfigTranslatorShape>,
+      ConfigTranslatorConflictError | PluginDescriptorMismatchError | PluginLoadError,
+      never
+    >;
+  }
+>()("@lando/core/ConfigTranslatorRegistry") {}
+
+export type ConfigTranslatorRegistryShape = ConfigTranslatorRegistry["Service"];

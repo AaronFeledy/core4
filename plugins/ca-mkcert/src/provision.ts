@@ -93,26 +93,25 @@ export const readInstalledMkcertStatus = async (
   };
 };
 
-export const provisionMkcert = (
+export const provisionMkcert = Effect.fn("Mkcert.provision")(function* (
   input: ProvisionMkcertInput,
-): Effect.Effect<void, ToolError, Downloader | Scope.Scope> =>
-  Effect.gen(function* () {
-    const platform = input.platform ?? process.platform;
-    const arch = input.arch ?? process.arch;
+): Effect.fn.Return<void, ToolError, Downloader | Scope.Scope> {
+  const platform = input.platform ?? process.platform;
+  const arch = input.arch ?? process.arch;
 
-    if (input.force !== true) {
-      const installed = yield* Effect.promise(() => readInstalledMkcertStatus(input.binDir, platform, arch));
-      if (installed.isCurrent) return;
-    }
+  if (input.force !== true) {
+    const installed = yield* Effect.promise(() => readInstalledMkcertStatus(input.binDir, platform, arch));
+    if (installed.isCurrent) return;
+  }
 
-    yield* provisionTool({
-      manifest: MKCERT_TOOL_MANIFEST,
-      key: resolveHostKey(platform, arch),
-      toolId: TOOL_ID,
-      binDir: input.binDir,
-      toolDownloadsDir: input.toolDownloadsDir,
-      platform,
-      ...(input.force === undefined ? {} : { force: input.force }),
-      ...(input.offline === undefined ? {} : { offline: input.offline }),
-    });
+  yield* provisionTool({
+    manifest: MKCERT_TOOL_MANIFEST,
+    key: resolveHostKey(platform, arch),
+    toolId: TOOL_ID,
+    binDir: input.binDir,
+    toolDownloadsDir: input.toolDownloadsDir,
+    platform,
+    ...(input.force === undefined ? {} : { force: input.force }),
+    ...(input.offline === undefined ? {} : { offline: input.offline }),
   });
+});

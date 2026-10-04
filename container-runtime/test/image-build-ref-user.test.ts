@@ -18,7 +18,7 @@ const tag = "lando-build-docker-web-user-key";
 const baseTag = `${tag}-base`;
 const runtimeUser = "runtime-only";
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-08-01T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00Z"),
   source: "image-build-ref-user.test.ts",
   runtime: 4 as const,
 };

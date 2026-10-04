@@ -25,7 +25,8 @@ import * as templateMustache from "@lando/template-mustache";
 import { ConfigTranslateInput } from "@lando/sdk/schema";
 import { ConfigService, Logger } from "@lando/sdk/services";
 
-import { PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
+import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
+import { PluginRegistry } from "@lando/engine/plugins/registry";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
 import { loadLando3TranslatorPorts } from "../../src/recipes/lando3-ports.ts";
@@ -196,23 +197,29 @@ describe("bundled plugin descriptor tables", () => {
     expect(hasLiteralPromptDriverImport).toBe(true);
   });
 
-  test("PluginRegistryLive lists and loads bundled manifests when external registries are empty", async () => {
+  test("PluginRegistryLayer.layer lists and loads bundled manifests when external registries are empty", async () => {
     const userDataRoot = await mkdtemp(resolve(tmpdir(), "lando-bundled-registry-"));
     try {
-      const registryLayer = PluginRegistryLive.pipe(
+      const registryLayer = PluginRegistryLayer.layer.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(ConfigService, {
-              load: Effect.succeed({ userDataRoot } as never),
-              get: (key) =>
-                Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
-            }),
-            Layer.succeed(Logger, {
-              debug: () => Effect.void,
-              info: () => Effect.void,
-              warn: () => Effect.void,
-              error: () => Effect.void,
-            }),
+            Layer.succeed(
+              ConfigService,
+              ConfigService.of({
+                load: Effect.succeed({ userDataRoot } as never),
+                get: (key) =>
+                  Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
+              }),
+            ),
+            Layer.succeed(
+              Logger,
+              Logger.of({
+                debug: () => Effect.void,
+                info: () => Effect.void,
+                warn: () => Effect.void,
+                error: () => Effect.void,
+              }),
+            ),
           ),
         ),
       );

@@ -74,12 +74,12 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
     if (!ts.isClassDeclaration(statement) || statement.name === undefined) continue;
     if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
 
-    const contextTagHeritage = statement.heritageClauses
+    const contextServiceHeritage = statement.heritageClauses
       ?.flatMap((clause) => clause.types)
-      .find((heritage) => heritage.getText(sourceFile).includes("Context.Tag"));
-    if (contextTagHeritage === undefined) continue;
+      .find((heritage) => heritage.getText(sourceFile).includes("Context.Service"));
+    if (contextServiceHeritage === undefined) continue;
 
-    const shapeType = tagTypeArguments(contextTagHeritage.expression)?.[1];
+    const shapeType = tagTypeArguments(contextServiceHeritage.expression)?.[1];
     if (shapeType === undefined) continue;
 
     tags[statement.name.text] = serviceShapeMembers(shapeType);

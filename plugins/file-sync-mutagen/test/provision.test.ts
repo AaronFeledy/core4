@@ -72,7 +72,7 @@ const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<Exit.Exit<A, E>>
 
 const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const opt = Cause.failureOption(exit.cause);
+  const opt = Cause.findErrorOption(exit.cause);
   if (opt._tag !== "Some") throw new Error("expected a tagged failure");
   return opt.value;
 };

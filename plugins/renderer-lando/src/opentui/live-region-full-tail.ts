@@ -81,12 +81,12 @@ export const paintFullTailFooter = <TRenderer extends LiveRegionRendererLike>(
   session.footer = footer;
 };
 
-export const requestFullTailLive = (renderer: LiveRegionRendererLike): void => {
+export const requestFullTailRegion = (renderer: LiveRegionRendererLike): void => {
   capFps(renderer);
   renderer.requestLive();
 };
 
-export const dropFullTailLive = (renderer: LiveRegionRendererLike): void => {
+export const dropFullTailRegion = (renderer: LiveRegionRendererLike): void => {
   capFps(renderer);
   renderer.dropLive();
 };

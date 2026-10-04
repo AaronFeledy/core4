@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { GlobalConfig, LandofileShape, ProxyConfig, RouterConfig } from "@lando/sdk/schema";
 
@@ -66,26 +66,26 @@ describe("RouterConfig", () => {
 
   it("rejects httpPort when it is below the PortNumber lower bound", () => {
     // Given / When
-    const result = Schema.decodeUnknownEither(RouterConfig)({ httpPort: 0 });
+    const result = Schema.decodeUnknownResult(RouterConfig)({ httpPort: 0 });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   it("rejects httpsPort when it is above the PortNumber upper bound", () => {
     // Given / When
-    const result = Schema.decodeUnknownEither(RouterConfig)({ httpsPort: 65_536 });
+    const result = Schema.decodeUnknownResult(RouterConfig)({ httpsPort: 65_536 });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   it("rejects httpFallbacks when an entry is outside PortNumber bounds", () => {
     // Given / When
-    const result = Schema.decodeUnknownEither(RouterConfig)({ httpFallbacks: [80, 0] });
+    const result = Schema.decodeUnknownResult(RouterConfig)({ httpFallbacks: [80, 0] });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Result.isFailure(result)).toBe(true);
   });
 
   it("preserves empty httpFallbacks when the array is authored empty", () => {

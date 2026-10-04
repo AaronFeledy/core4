@@ -10,7 +10,7 @@ import { ManagedFileService } from "@lando/sdk/services";
 
 import {
   ManagedFileServiceFactory,
-  ManagedFileServiceFactoryLive,
+  layerFactory,
   makeDiskBackend,
   makeManagedFileService,
 } from "@lando/managed-file/service";
@@ -159,7 +159,7 @@ describe("agent skill pack ownership", () => {
           const factory = yield* ManagedFileServiceFactory;
           const managed = yield* factory.forBase(dir);
           return yield* effect.pipe(Effect.provideService(ManagedFileService, managed));
-        }).pipe(Effect.provide(ManagedFileServiceFactoryLive));
+        }).pipe(Effect.provide(layerFactory));
 
       await runScoped(legacy.apply([prior]));
       const updated = await runScoped(againstApp(updateAgentSkills({ appRoot: dir })));

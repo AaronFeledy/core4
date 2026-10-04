@@ -14,13 +14,13 @@ export const LANDO_ENV_FEATURE_ID = "lando.env" as const;
 export const LANDO_ENV_FEATURE_PRIORITY = 700;
 
 const LandoEnvFeatureConfigSchema = Schema.Struct({
-  appPaths: Schema.optional(
+  appPaths: Schema.optionalKey(
     Schema.Struct({
       appRoot: Schema.String,
       projectMount: Schema.String,
     }),
   ),
-  webroot: Schema.optional(Schema.String),
+  webroot: Schema.optionalKey(Schema.String),
 });
 type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
 
@@ -81,7 +81,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
 
 export const landoEnvFeature: ServiceFeatureDefinition = {
   id: LANDO_ENV_FEATURE_ID,
-  schema: LandoEnvFeatureConfigSchema as unknown as Schema.Schema<unknown>,
+  schema: LandoEnvFeatureConfigSchema as unknown as Schema.Codec<unknown>,
   priority: LANDO_ENV_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

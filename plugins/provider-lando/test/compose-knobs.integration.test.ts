@@ -11,7 +11,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-// Live counterpart to `compose-knobs-bringup.test.ts`. That suite pins the
+// Runtime counterpart to `compose-knobs-bringup.test.ts`. That suite pins the
 // create-request body this provider sends; this one pins that Podman actually
 // applied it to the resulting container.
 
@@ -21,7 +21,7 @@ const appRoot = AbsolutePath.make("/tmp/lando-compose-knobs-app");
 const containerName = "lando-composeknobsapp-web";
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
   source: "compose-knobs.integration.test",
   runtime: 4 as const,
 };
@@ -106,10 +106,10 @@ describe("provider-lando Compose runtime knobs (live)", () => {
         );
       } finally {
         await Effect.runPromise(
-          Effect.either(liveRequest({ method: "POST", path: `/containers/${containerName}/stop` })),
+          Effect.result(liveRequest({ method: "POST", path: `/containers/${containerName}/stop` })),
         );
         await Effect.runPromise(
-          Effect.either(liveRequest({ method: "DELETE", path: `/containers/${containerName}?force=true` })),
+          Effect.result(liveRequest({ method: "DELETE", path: `/containers/${containerName}?force=true` })),
         );
       }
     },

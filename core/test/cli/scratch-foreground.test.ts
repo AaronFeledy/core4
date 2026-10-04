@@ -26,7 +26,9 @@ describe("scratch start foreground signal handling", () => {
     const controller = new AbortController();
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(waitForAbortSignal(controller.signal).pipe(Effect.as("aborted")));
+        const fiber = yield* Effect.forkChild(
+          waitForAbortSignal(controller.signal).pipe(Effect.as("aborted")),
+        );
         yield* Effect.sync(() => controller.abort());
         return yield* Fiber.join(fiber);
       }),

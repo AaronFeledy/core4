@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Ref } from "effect";
+import { Cause, Effect, Exit, Option, Ref } from "effect";
 
 import { ToolingCompileError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import type { EventStep } from "@lando/sdk/schema";
@@ -80,12 +80,10 @@ describe("compileEventStepProgram", () => {
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
-        expect(exit.cause._tag).toBe("Fail");
-        if (exit.cause._tag === "Fail") {
-          expect(exit.cause.error.cause).toBeInstanceOf(ToolingStepSelectorUnavailableError);
-          if (exit.cause.error.cause instanceof ToolingStepSelectorUnavailableError) {
-            expect(exit.cause.error.cause.selector).toBe(selector);
-          }
+        const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+        expect(error.cause).toBeInstanceOf(ToolingStepSelectorUnavailableError);
+        if (error.cause instanceof ToolingStepSelectorUnavailableError) {
+          expect(error.cause.selector).toBe(selector);
         }
       }
     });
@@ -110,13 +108,12 @@ describe("compileEventStepProgram", () => {
   test("validates literal canonical command inputs at compile time", async () => {
     // Given
     const validated = await Effect.runPromise(Ref.make(0));
-    const validateCommand = (leaf: ToolingCommandStepLeaf) =>
-      Effect.gen(function* () {
-        yield* Ref.update(validated, (count) => count + 1);
-        expect(leaf.command).toBe("info");
-        expect(leaf.args).toEqual({ target: "app" });
-        expect(leaf.flags).toEqual({ format: "json" });
-      });
+    const validateCommand = Effect.fnUntraced(function* (leaf: ToolingCommandStepLeaf) {
+      yield* Ref.update(validated, (count) => count + 1);
+      expect(leaf.command).toBe("info");
+      expect(leaf.args).toEqual({ target: "app" });
+      expect(leaf.flags).toEqual({ format: "json" });
+    });
 
     // When
     await Effect.runPromise(
@@ -141,10 +138,9 @@ describe("compileEventStepProgram", () => {
 
     for (const step of cases) {
       const validated = await Effect.runPromise(Ref.make(0));
-      const validateCommand = () =>
-        Effect.gen(function* () {
-          yield* Ref.update(validated, (count) => count + 1);
-        });
+      const validateCommand = Effect.fnUntraced(function* () {
+        yield* Ref.update(validated, (count) => count + 1);
+      });
 
       // When
       const program = await Effect.runPromise(compileEventStepProgram([step], validateCommand));
@@ -179,10 +175,9 @@ describe("compileEventStepProgram", () => {
   test("treats escaped shell forms as compile-time literals", async () => {
     // Given
     const validated = await Effect.runPromise(Ref.make(0));
-    const validateCommand = () =>
-      Effect.gen(function* () {
-        yield* Ref.update(validated, (count) => count + 1);
-      });
+    const validateCommand = Effect.fnUntraced(function* () {
+      yield* Ref.update(validated, (count) => count + 1);
+    });
 
     // When — `$${VAR}` escapes to a literal `${VAR}` segment
     await Effect.runPromise(
@@ -196,10 +191,9 @@ describe("compileEventStepProgram", () => {
   test("treats non-string command inputs as compile-time literals", async () => {
     // Given
     const validated = await Effect.runPromise(Ref.make(0));
-    const validateCommand = () =>
-      Effect.gen(function* () {
-        yield* Ref.update(validated, (count) => count + 1);
-      });
+    const validateCommand = Effect.fnUntraced(function* () {
+      yield* Ref.update(validated, (count) => count + 1);
+    });
 
     // When
     await Effect.runPromise(

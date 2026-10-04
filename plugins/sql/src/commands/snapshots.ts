@@ -1,17 +1,10 @@
-import { DateTime, Effect } from "effect";
+import { ByteSize, Clock, DateTime, Effect } from "effect";
 
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Renderer } from "@lando/sdk/services";
 
 import { dbCommandRedactionTokens, dbInputFromCommand, runDbCommand } from "../run.ts";
 import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "../schemas.ts";
-
-const formatSnapshotSize = (sizeBytes: number): string => {
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  if (sizeBytes < 1024 ** 2) return `${(sizeBytes / 1024).toFixed(1)} KiB`;
-  if (sizeBytes < 1024 ** 3) return `${(sizeBytes / 1024 ** 2).toFixed(1)} MiB`;
-  return `${(sizeBytes / 1024 ** 3).toFixed(1)} GiB`;
-};
 
 const formatSnapshotAge = (createdAtMs: number, nowMs: number): string => {
   const seconds = Math.max(0, Math.floor((nowMs - createdAtMs) / 1000));
@@ -23,7 +16,7 @@ const formatSnapshotAge = (createdAtMs: number, nowMs: number): string => {
   return `${Math.floor(hours / 24)}d`;
 };
 
-export const renderDbSnapshots = (result: DbCommandResult, nowMs = Date.now()): string => {
+export const renderDbSnapshots = (result: DbCommandResult, nowMs: number): string => {
   const snapshots = result.snapshots ?? [];
   if (snapshots.length === 0) return `No snapshots found for ${result.service}.`;
   return [
@@ -35,8 +28,8 @@ export const renderDbSnapshots = (result: DbCommandResult, nowMs = Date.now()): 
         .join(" | ");
       return [
         snapshot.id,
-        `  size: ${formatSnapshotSize(snapshot.sizeBytes)}`,
-        `  age: ${formatSnapshotAge(Date.parse(DateTime.formatIso(snapshot.createdAt)), nowMs)}`,
+        `  size: ${ByteSize.format(ByteSize.bytes(snapshot.sizeBytes))}`,
+        `  age: ${formatSnapshotAge(DateTime.toEpochMillis(snapshot.createdAt), nowMs)}`,
         `  version: ${metadata === undefined ? "unknown" : `${metadata.family} ${metadata.version}`}`,
         `  label: ${snapshot.label ?? "-"}`,
         `  recovery reason: ${metadata?.recoveryReason ?? "unknown"}`,
@@ -45,6 +38,14 @@ export const renderDbSnapshots = (result: DbCommandResult, nowMs = Date.now()): 
     }),
   ].join("\n");
 };
+
+const render: NonNullable<ExecutableCommandSpec<DbCommandResult>["render"]> = Effect.fnUntraced(function* ({
+  result,
+}) {
+  const renderer = yield* Renderer;
+  const nowMs = yield* Clock.currentTimeMillis;
+  yield* renderer.output.stdout(`${renderDbSnapshots(result, nowMs)}\n`);
+});
 
 export const spec = {
   id: "db:snapshots",
@@ -59,6 +60,5 @@ export const spec = {
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("snapshots", input)),
-  render: ({ result }) =>
-    Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(`${renderDbSnapshots(result)}\n`))),
+  render,
 } as const satisfies ExecutableCommandSpec<DbCommandResult>;

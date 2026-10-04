@@ -1,4 +1,4 @@
-import { Chunk, Effect, Stream } from "effect";
+import { Effect, Queue, Stream } from "effect";
 
 import type { ExecAppOptions } from "@lando/sdk/app";
 import type { HostTerminal } from "@lando/sdk/schema";
@@ -54,7 +54,7 @@ export const attachedHostTerminal = (
 const stdoutResizeStream = (
   output: TerminalOutput,
 ): Stream.Stream<{ readonly columns: number; readonly rows: number }> =>
-  Stream.async((emit) => {
+  Stream.callback((emit) => {
     const onResize = (): void => {
       const columns = output.columns;
       const rows = output.rows;
@@ -66,11 +66,11 @@ const stdoutResizeStream = (
         Number.isInteger(rows) &&
         rows > 0
       ) {
-        emit(Effect.succeed(Chunk.of({ columns, rows })));
+        Queue.offerUnsafe(emit, { columns, rows });
       }
     };
     output.on?.("resize", onResize);
-    return Effect.sync(() => output.off?.("resize", onResize));
+    return Effect.addFinalizer(() => Effect.sync(() => output.off?.("resize", onResize)));
   });
 
 export const withInheritedStdinRawMode = <A, E, R>(

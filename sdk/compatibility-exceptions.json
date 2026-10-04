@@ -1,5 +1,53 @@
 [
   {
+    "surface": "schema:ConfigTranslateDocumentSetInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.currentLowerV4Fragments.items.fragment.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.context.services.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.fragment.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateLayerFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.fragment.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateOutput",
+    "changeKind": "unsupported-construct",
+    "path": "$.fragment.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.outputs.items.fragment.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:RecipeDecomposeResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.fragment.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
@@ -1900,5 +1948,461 @@
     "changeKind": "property-removed",
     "path": "$.$defs.ServiceConfigInput.root",
     "justification": "Pre-release static service document root is unified under webroot, the absolute container-path key every other web service uses. The root service key is removed before ship."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.context.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.context.patternProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.context.propertyNames",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.networks.anyOf",
+    "justification": "Base JSON Schema artifacts for a closed x-* extension object emitted propertyNames /^x-[\\s\\S]*?$/ beside declared properties, so every declared name fails that pattern. Embedded codegen bypassed the getJsonSchema repair. The current closed StructWithRest artifact is the intended contract: additionalProperties false, patternProperties of that same pattern, and no propertyNames. This records that artifact correction, not wire equivalence. Declared names stay accepted, x- extensions including newlines stay accepted, and other unknown keys stay rejected."
+  },
+  {
+    "surface": "schema:HttpClientCapabilities",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpRequest",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpResponse",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpStreamResponse",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpUploadRequest",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release SDK-owned HttpClient contract removed in favor of Effect's effect/http HttpClient. No shipped consumer contract exists; @lando/http-client implements the standard client and HttpTrustError remains as the transport trust cause."
+  },
+  {
+    "surface": "schema:HttpClientContribution",
+    "changeKind": "property-removed",
+    "path": "$.capabilities",
+    "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "property-removed",
+    "path": "$.httpClients.items.capabilities",
+    "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "property-removed",
+    "path": "$.contributes.httpClients.items.capabilities",
+    "justification": "HttpClientContribution.capabilities referenced the removed HttpClientCapabilities schema. With the SDK HttpClient contract retired for Effect's standard client, plugin httpClients contributions no longer declare a parallel capabilities object; no shipped consumer exists."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "type-changed",
+    "path": "$.violations.items.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "command:app:config:lint",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "type-changed",
+    "path": "$.appConfig.violations.items.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "property-removed",
+    "path": "$.appConfig.violations.items.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "type-changed",
+    "path": "$.violations.items.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintResult",
+    "changeKind": "property-removed",
+    "path": "$.violations.items.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "type-changed",
+    "path": "$.path",
+    "justification": "Config-lint violations address their node with the shared validation-issue path: an array of object keys and array indexes instead of a dot-joined string, so editors, Standard Schema consumers, and Lando report the same location. Pre-release contract change with no persisted artifact."
+  },
+  {
+    "surface": "schema:ConfigLintViolation",
+    "changeKind": "property-removed",
+    "path": "$.suggestedFix",
+    "justification": "Config-lint violations use the shared validation-issue field name suggestion for the likely fix (for example the closest allowed key), replacing suggestedFix. Pre-release contract change with no persisted artifact."
   }
 ]

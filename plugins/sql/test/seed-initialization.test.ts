@@ -76,11 +76,11 @@ test("interruption after claim persists failed quarantine", async () => {
   await Effect.runPromise(
     Effect.gen(function* () {
       const entered = yield* Deferred.make<void>();
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkChild(
         executeDbCommand(
           {
             ...harness.deps,
-            transfer: () => Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.never)),
+            transfer: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
           },
           input,
         ),

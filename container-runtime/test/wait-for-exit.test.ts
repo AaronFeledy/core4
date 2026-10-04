@@ -20,7 +20,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("wait-for-exit-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-26T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-26T00:00:00Z"),
   source: "container-runtime/wait-for-exit.test.ts",
   runtime: 4 as const,
 };

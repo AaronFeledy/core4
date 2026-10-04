@@ -1,25 +1,41 @@
-import { describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
+import { Effect, Schema } from "effect";
+import { serverLayer, startServer } from "./server";
 
-import {
-  MAX_RETAINED_COMPLETED_REQUEST_IDS,
-  emptyCompletedRequestIds,
-  rememberCompletedRequestId,
-} from "@lando/mcp/cancellation";
-
-describe("MCP completed request history", () => {
-  test("evicts the oldest request id at the retained-history limit", () => {
-    // Given
-    const requestIds = Array.from(
-      { length: MAX_RETAINED_COMPLETED_REQUEST_IDS + 1 },
-      (_, index) => `request-${index}`,
-    );
-
-    // When
-    const completed = requestIds.reduce(rememberCompletedRequestId, emptyCompletedRequestIds());
-
-    // Then
-    expect(completed.size).toBe(MAX_RETAINED_COMPLETED_REQUEST_IDS);
-    expect(completed.has("request-0")).toBe(false);
-    expect(completed.has(`request-${MAX_RETAINED_COMPLETED_REQUEST_IDS}`)).toBe(true);
+test("completed request cancellation state remains harmless after 512 requests and id reuse", async () => {
+  let calls = 0;
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const client = yield* startServer();
+        for (let id = 10; id < 522; id++) {
+          yield* (yield* client.sendRequest("tools/call", { name: "app:info" }, id)).response;
+        }
+        yield* client.cancel(10);
+        yield* client.request("ping");
+        return yield* (yield* client.sendRequest("tools/call", { name: "app:info" }, 10)).response;
+      }),
+    ).pipe(
+      Effect.provide(
+        serverLayer({
+          commandEntries: [
+            {
+              spec: {
+                id: "app:info",
+                summary: "Info",
+                resultSchema: Schema.Struct({ calls: Schema.Number }),
+                run: () => Effect.sync(() => ({ calls: ++calls })),
+              },
+            },
+          ],
+          defaultAllowlist: ["app:info"],
+        }),
+      ),
+    ),
+  );
+  expect(calls).toBe(513);
+  expect(observed).toMatchObject({
+    id: 10,
+    result: { isError: false, structuredContent: { result: { calls: 513 } } },
   });
 });

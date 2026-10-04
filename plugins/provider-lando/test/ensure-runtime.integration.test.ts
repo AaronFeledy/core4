@@ -38,7 +38,7 @@ const appId = AppId.make("ensureapp");
 const appRoot = AbsolutePath.make("/tmp/lando-ensure-runtime-app");
 const serviceName = ServiceName.make("node");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "ensure-runtime.integration.test",
   runtime: 4 as const,
 };
@@ -135,6 +135,16 @@ const makeFakePodmanApi = (
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
 
+        if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Os: "linux",
+              Architecture: "amd64",
+              RepoDigests: ["img@sha256:test"],
+            }),
+          };
+        }
         if (request.path === "/networks/create") {
           networks.add((request.body as { Name?: string }).Name ?? "");
           return { status: 201, body: "{}" };

@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ValidationIssue } from "../schema/validation-issue.ts";
+
 export class ShellExecError extends Schema.TaggedError<ShellExecError>()("ShellExecError", {
   message: Schema.String,
   command: Schema.String,
@@ -36,7 +38,7 @@ export class BunShellScriptFrontMatterError extends Schema.TaggedError<BunShellS
   {
     message: Schema.String,
     path: Schema.String,
-    issues: Schema.optional(Schema.Array(Schema.String)),
+    issues: Schema.optional(Schema.Array(ValidationIssue)),
     remediation: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Unknown),
   },

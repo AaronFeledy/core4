@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
 
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -9,8 +9,8 @@ import {
   handleMemoryPressure,
 } from "@lando/mcp/memory-pressure";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
-import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
-import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
+import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
+import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { TestMcpCommandExecutor } from "./executor";
 
@@ -27,7 +27,7 @@ const redactionLayer = Layer.succeed(RedactionService, {
 });
 
 const serviceLayer = (config: McpRuntimeConfigShape) =>
-  McpServiceLive.pipe(
+  McpService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(Layer.succeed(McpRuntimeConfig, config), redactionLayer, TestMcpCommandExecutor),
     ),
@@ -107,11 +107,11 @@ describe("McpService.handleMemoryPressure", () => {
 
     const before = process.listenerCount("memoryPressure");
     const program = Effect.gen(function* () {
-      const inmem = yield* makeInMemoryTransport();
+      const inmem = yield* makeStdioClient();
       const service = yield* McpService;
       const fiber = yield* service
         .serve({ transport: "stdio" })
-        .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
       const id = yield* inmem.push({ toolId: "app:exec" });
       yield* Effect.promise(() => started.promise);
       const during = process.listenerCount("memoryPressure");

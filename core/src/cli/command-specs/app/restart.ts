@@ -16,7 +16,7 @@ export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   bootstrap: "app",
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
-    return Effect.zipRight(refreshAppCache(), restartApp(signal === undefined ? {} : { signal }));
+    return Effect.andThen(refreshAppCache(), restartApp(signal === undefined ? {} : { signal }));
   },
   render: (result) => renderRestartAppResult(result as RestartAppResult),
 };

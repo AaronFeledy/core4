@@ -5,7 +5,7 @@ import { AppId, CommandSpec, ContainerUser, PlanMetadata, ServiceName } from "./
 
 // BuildPlan — DAG over BuildSteps for artifact and app work.
 
-export const BuildPhase = Schema.Literal("artifact", "app");
+export const BuildPhase = Schema.Literals(["artifact", "app"]);
 export type BuildPhase = typeof BuildPhase.Type;
 
 export const BuildStep = Schema.Struct({
@@ -16,15 +16,15 @@ export const BuildStep = Schema.Struct({
   /** Which phase this step belongs to. */
   phase: BuildPhase,
   /** Operation kind: pull/build artifact, or run a build script. */
-  kind: Schema.Literal("buildArtifact", "pullArtifact", "execStream"),
+  kind: Schema.Literals(["buildArtifact", "pullArtifact", "execStream"]),
   /** Build script (kind = execStream) — argv form. */
-  command: Schema.optional(CommandSpec),
+  command: Schema.optionalKey(CommandSpec),
   /** Artifact spec (kind = buildArtifact / pullArtifact). */
-  artifact: Schema.optional(Schema.Union(ArtifactRef, ArtifactBuildSpec)),
+  artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   /** Step ids this step depends on. */
   dependsOn: Schema.Array(Schema.String),
   /** Resolved container identity the step runs as (kind = execStream). */
-  user: Schema.optional(ContainerUser),
+  user: Schema.optionalKey(ContainerUser),
   /** Content-hash key for the up-to-date check. */
   buildKey: Schema.String,
 });

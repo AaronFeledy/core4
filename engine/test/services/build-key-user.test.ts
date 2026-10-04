@@ -23,7 +23,7 @@ const baseServiceFields = {
   dependsOn: [] as ServicePlan["dependsOn"],
   hostAliases: [] as ServicePlan["hostAliases"],
   metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-08-01T00:00:00.000Z"),
+    resolvedAt: DateTime.makeUnsafe("2026-08-01T00:00:00.000Z"),
     source: "build-key-user.test",
     runtime: 4 as const,
   },

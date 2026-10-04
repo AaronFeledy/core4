@@ -86,7 +86,7 @@ export class GlobalDistConflictError extends Schema.TaggedError<GlobalDistConfli
   {
     message: Schema.String,
     path: Schema.String,
-    reason: Schema.Literal("foreign-file", "manual-edit"),
+    reason: Schema.Literals(["foreign-file", "manual-edit"]),
     remediation: Schema.String,
   },
 ) {}
@@ -96,7 +96,7 @@ export class GlobalLandofilePathConflictError extends Schema.TaggedError<GlobalL
   {
     message: Schema.String,
     path: Schema.String,
-    expected: Schema.Literal("file", "directory"),
+    expected: Schema.Literals(["file", "directory"]),
     actual: Schema.String,
     remediation: Schema.String,
   },

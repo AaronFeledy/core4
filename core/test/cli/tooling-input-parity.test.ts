@@ -17,7 +17,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Context, DateTime, Effect, Either, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Result, Schema } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
@@ -38,7 +38,7 @@ const planFor = (landofile: LandofileShape): AppPlan =>
       fileSync: [],
       extensions: {},
       metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-09-15T00:00:00Z"),
+        resolvedAt: DateTime.makeUnsafe("2026-09-15T00:00:00Z"),
         source: "/app/.lando.yml",
         runtime: 4,
       },
@@ -53,39 +53,54 @@ const harnessLayer = (input: {
   readonly exitCode: number;
 }) =>
   Layer.mergeAll(
-    Layer.succeed(Context.GenericTag<unknown>("parity-runtime"), {}),
-    Layer.succeed(LandofileService, { discover: Effect.succeed(input.landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(input.plan) }),
-    Layer.succeed(Renderer, {
-      id: "plain",
-      capabilities: RENDERER_CAPABILITIES_NONE,
-      message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
-      output: { stdout: () => Effect.void, stderr: () => Effect.void },
-    }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("test")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
-    Layer.succeed(ToolingEngine, {
-      id: "capture",
-      run: (invocation) =>
-        Effect.sync(() => {
-          input.invocations.push(invocation);
-          return {
-            tool: invocation.tool,
-            service: ":lando",
-            exitCode: input.exitCode,
-            stdout: "",
-            stderr: "",
-          };
-        }),
-    }),
-    Layer.succeed(RedactionService, {
-      registerValues: registerRedactionValues,
-      forProfile: () => Effect.succeed(createRedactor("secrets")),
-    }),
-    Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
+    Layer.succeed(
+      Context.Service<unknown>("parity-runtime"),
+      Context.Service<unknown>("parity-runtime").of({}),
+    ),
+    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(input.landofile) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(input.plan) })),
+    Layer.succeed(
+      Renderer,
+      Renderer.of({
+        id: "plain",
+        capabilities: RENDERER_CAPABILITIES_NONE,
+        message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
+        output: { stdout: () => Effect.void, stderr: () => Effect.void },
+      }),
+    ),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      RuntimeProviderRegistry.of({
+        list: Effect.succeed([ProviderId.make("test")]),
+        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+        select: () => Effect.succeed(TestRuntimeProvider),
+      }),
+    ),
+    Layer.succeed(
+      ToolingEngine,
+      ToolingEngine.of({
+        id: "capture",
+        run: (invocation) =>
+          Effect.sync(() => {
+            input.invocations.push(invocation);
+            return {
+              tool: invocation.tool,
+              service: ":lando",
+              exitCode: input.exitCode,
+              stdout: "",
+              stderr: "",
+            };
+          }),
+      }),
+    ),
+    Layer.succeed(
+      RedactionService,
+      RedactionService.of({
+        registerValues: registerRedactionValues,
+        forProfile: () => Effect.succeed(createRedactor("secrets")),
+      }),
+    ),
+    Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),
     emptyConfigServiceLayer,
   );
 
@@ -135,7 +150,7 @@ test.each([0, 7])("keeps CLI, event and MCP tooling argv and exit %i equal", asy
               target.spec.run(input).pipe(
                 Effect.provide(context),
                 Effect.map((value) => ({ _tag: "success", value }) as const),
-                Effect.catchAll((error) => Effect.succeed({ _tag: "failure", error } as const)),
+                Effect.catch((error) => Effect.succeed({ _tag: "failure", error } as const)),
               ),
           },
         );
@@ -173,10 +188,10 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
     Effect.scoped(
       Effect.gen(function* () {
         const context = yield* Layer.build(layer);
-        const cli = yield* Effect.either(
+        const cli = yield* Effect.result(
           runTooling({ name: "inspect", args: [] }).pipe(Effect.provide(context)),
         );
-        const event = yield* Effect.either(
+        const event = yield* Effect.result(
           makeEventCommandExecutor(context).run({
             command: "app:inspect",
             flags: {},
@@ -186,7 +201,7 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
             plan,
           }),
         );
-        const mcp = yield* Effect.either(
+        const mcp = yield* Effect.result(
           entry.spec
             .run({ argv: [], flags: {}, args: { second: "b" }, interaction: "non-interactive" })
             .pipe(Effect.provide(context)),
@@ -196,8 +211,8 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
     ),
   );
   // Then all three refuse with the identical tagged failure and nothing reaches the engine
-  const identity = (result: Either.Either<unknown, unknown>) => {
-    const error = Either.isLeft(result) ? (result.left as Record<string, unknown>) : undefined;
+  const identity = (result: Result.Result<unknown, unknown>) => {
+    const error = Result.isFailure(result) ? (result.failure as Record<string, unknown>) : undefined;
     if (error === undefined) return undefined;
     const { _tag, tool, field, message, remediation } = error;
     return { _tag, tool, field, message, remediation };

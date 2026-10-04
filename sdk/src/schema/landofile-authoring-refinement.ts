@@ -1,17 +1,13 @@
-import { type SchemaAST as AST, Option, ParseResult } from "effect";
+import { SchemaAST as AST, SchemaIssue } from "effect";
 import { RecipeServiceMap } from "./recipe-identity.ts";
 
-const recipeServiceMapFilter =
-  RecipeServiceMap.ast._tag === "Refinement" ? RecipeServiceMap.ast.filter : undefined;
+const recipeServiceMapFilter = RecipeServiceMap.ast.checks?.[0];
 
 export const containerKind = (ast: AST.AST): "array" | "object" | undefined => {
   switch (ast._tag) {
-    case "Refinement":
-    case "Transformation":
-      return containerKind(ast.from);
-    case "TupleType":
+    case "Arrays":
       return "array";
-    case "TypeLiteral":
+    case "Objects":
       return "object";
     default:
       return undefined;
@@ -60,20 +56,17 @@ const projectExpressions = (value: unknown): unknown => {
 
 const hasRequiredShape = (ast: AST.AST, value: unknown): boolean => {
   switch (ast._tag) {
-    case "Refinement":
-    case "Transformation":
-      return hasRequiredShape(ast.from, value);
-    case "TypeLiteral":
+    case "Objects":
       return (
         typeof value === "object" &&
         value !== null &&
         !Array.isArray(value) &&
-        ast.propertySignatures.every((property) => property.isOptional || property.name in value)
+        ast.propertySignatures.every((property) => AST.isOptional(property.type) || property.name in value)
       );
-    case "TupleType":
+    case "Arrays":
       return (
         Array.isArray(value) &&
-        ast.elements.every((element, index) => element.isOptional || index < value.length)
+        ast.elements.every((element, index) => AST.isOptional(element) || index < value.length)
       );
     default:
       return true;
@@ -89,31 +82,61 @@ const valueAtPath = (value: unknown, path: ReadonlyArray<PropertyKey>): unknown 
   return current;
 };
 
-export const authoringContainerFilter =
-  (refinement: AST.Refinement, partial: boolean): AST.Refinement["filter"] =>
-  (input, parseOptions, self) => {
-    if (partial && !hasRequiredShape(refinement.from, input)) return Option.none();
-    const sources = expressionSources(input);
-    if (sources.size === 0) return refinement.filter(input, parseOptions, self);
-    if (
-      refinement.filter === recipeServiceMapFilter &&
-      typeof input === "object" &&
-      input !== null &&
-      !Array.isArray(input)
-    ) {
-      const literals = Object.fromEntries(
-        Object.entries(input).filter(([, value]) => !containsExpression(value)),
-      );
-      const literalResult = refinement.filter(literals, parseOptions, self);
-      if (Option.isSome(literalResult)) return literalResult;
+export const authoringContainerFilter = (refinement: AST.AST, partial: boolean): AST.Filter<unknown> => {
+  const run = (
+    check: AST.Check<unknown>,
+    input: unknown,
+    self: AST.AST,
+    parseOptions: AST.ParseOptions,
+  ): SchemaIssue.Issue | undefined => {
+    if (check._tag === "Filter") {
+      const issue = check.run(input, self, parseOptions);
+      return issue === undefined ? undefined : new SchemaIssue.Filter(check, issue, input, parseOptions);
     }
-    const result = refinement.filter(projectExpressions(input), parseOptions, self);
-    if (Option.isNone(result)) return result;
-    const dependsOnExpression = ParseResult.ArrayFormatter.formatIssueSync(result.value).some(
-      (issue) =>
-        issue.path.length === 0 ||
-        containsExpression(valueAtPath(input, issue.path)) ||
-        [...sources].some((source) => issue.message.includes(source)),
-    );
-    return dependsOnExpression ? Option.none() : result;
+    for (const nested of check.checks) {
+      const issue = run(nested, input, self, parseOptions);
+      if (issue !== undefined) return issue;
+    }
+    return undefined;
   };
+  return new AST.Filter((input, self, parseOptions) => {
+    if (partial && !hasRequiredShape(refinement, input)) return undefined;
+    const sources = expressionSources(input);
+    for (const check of refinement.checks ?? []) {
+      if (sources.size === 0) {
+        const result = run(check, input, self, parseOptions);
+        if (result !== undefined) return result;
+        continue;
+      }
+      if (
+        check._tag === "Filter" &&
+        recipeServiceMapFilter?._tag === "Filter" &&
+        check.run === recipeServiceMapFilter.run &&
+        typeof input === "object" &&
+        input !== null &&
+        !Array.isArray(input)
+      ) {
+        const literals = Object.fromEntries(
+          Object.entries(input).filter(([, value]) => !containsExpression(value)),
+        );
+        const literalResult = run(check, literals, self, parseOptions);
+        if (literalResult !== undefined) return literalResult;
+      }
+      const result = run(check, projectExpressions(input), self, parseOptions);
+      if (result === undefined) continue;
+      const dependsOnExpression = SchemaIssue.makeFormatterStandardSchemaV1()(result).issues.some(
+        (issue) =>
+          (issue.path ?? []).length === 0 ||
+          containsExpression(
+            valueAtPath(
+              input,
+              (issue.path ?? []).map((key) => (typeof key === "object" ? key.key : key)),
+            ),
+          ) ||
+          [...sources].some((source) => issue.message.includes(source)),
+      );
+      if (!dependsOnExpression) return result;
+    }
+    return undefined;
+  });
+};

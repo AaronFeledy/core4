@@ -67,11 +67,14 @@ describe("definePlugin", () => {
         certificateAuthorities: [{ id: "test-ca", module: "./src/ca.ts" }],
       },
     });
-    const caLayer = Layer.succeed(CertificateAuthority, {
-      id: "test-ca",
-      setup: () => Effect.void,
-      issueCert: () => Effect.die("not exercised"),
-    });
+    const caLayer = Layer.succeed(
+      CertificateAuthority,
+      CertificateAuthority.of({
+        id: "test-ca",
+        setup: () => Effect.void,
+        issueCert: () => Effect.die("not exercised"),
+      }),
+    );
 
     const descriptor = definePlugin({
       name: caManifest.name,

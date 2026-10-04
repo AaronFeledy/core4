@@ -13,18 +13,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Data, Effect, Ref, type Scope, Stream } from "effect";
+import { Effect, Ref, Schema, type Scope, Stream } from "effect";
 
 /** Failure raised while persisting/verifying a streamed artifact. */
-export class VerifiedStreamError extends Data.TaggedError("VerifiedStreamError")<{
-  readonly reason: "checksum" | "size" | "persist";
-  readonly message: string;
-  readonly expectedSha256?: string;
-  readonly actualSha256?: string;
-  readonly expectedSizeBytes?: number;
-  readonly actualSizeBytes?: number;
-  readonly cause?: unknown;
-}> {}
+export class VerifiedStreamError extends Schema.TaggedError<VerifiedStreamError>()("VerifiedStreamError", {
+  reason: Schema.Literals(["checksum", "size", "persist"]),
+  message: Schema.String,
+  expectedSha256: Schema.optionalKey(Schema.String),
+  actualSha256: Schema.optionalKey(Schema.String),
+  expectedSizeBytes: Schema.optionalKey(Schema.Number),
+  actualSizeBytes: Schema.optionalKey(Schema.Number),
+  cause: Schema.optionalKey(Schema.Unknown),
+}) {}
 
 export interface VerifiedStreamResult {
   readonly sha256: string;
@@ -82,111 +82,109 @@ const verify = (
  * verification. Requires an ambient `Scope`: a finalizer removes the temp file
  * unless the verified rename committed.
  */
-export const persistVerifiedStream = <E, R>(
+export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(function* <E, R>(
   params: PersistVerifiedStreamParams<E, R>,
-): Effect.Effect<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> =>
-  Effect.gen(function* () {
-    const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
-    const committed = yield* Ref.make(false);
+): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
+  const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
+  const committed = yield* Ref.make(false);
 
-    yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        if (!(yield* Ref.get(committed))) {
-          yield* Effect.promise(() => removeIfPresent(tempPath));
-        }
+  yield* Effect.addFinalizer(() =>
+    Effect.gen(function* () {
+      if (!(yield* Ref.get(committed))) {
+        yield* Effect.promise(() => removeIfPresent(tempPath));
+      }
+    }),
+  );
+
+  yield* Effect.tryPromise({
+    try: () => mkdir(dirname(params.destinationPath), { recursive: true }),
+    catch: (cause) =>
+      new VerifiedStreamError({
+        reason: "persist",
+        message: "Failed to create destination directory.",
+        cause,
       }),
-    );
-
-    yield* Effect.tryPromise({
-      try: () => mkdir(dirname(params.destinationPath), { recursive: true }),
-      catch: (cause) =>
-        new VerifiedStreamError({
-          reason: "persist",
-          message: "Failed to create destination directory.",
-          cause,
-        }),
-    });
-
-    const handle = yield* Effect.acquireRelease(
-      Effect.tryPromise({
-        try: () => open(tempPath, "w", params.mode),
-        catch: (cause) =>
-          new VerifiedStreamError({ reason: "persist", message: "Failed to open temp file.", cause }),
-      }),
-      (h) => Effect.promise(() => h.close().catch(() => undefined)),
-    );
-
-    const hash = createHash("sha256");
-    const size = yield* Ref.make(0);
-
-    yield* Stream.runForEach(params.body, (chunk) =>
-      Effect.tryPromise({
-        try: async () => {
-          await handle.write(chunk);
-          hash.update(chunk);
-        },
-        catch: (cause) =>
-          new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
-      }).pipe(Effect.zipRight(Ref.update(size, (n) => n + chunk.length))),
-    );
-
-    const sizeBytes = yield* Ref.get(size);
-    const sha256 = hash.digest("hex");
-
-    const mismatch = verify(sha256, sizeBytes, params.expectedSha256, params.expectedSizeBytes);
-    if (mismatch !== undefined) {
-      return yield* Effect.fail(mismatch);
-    }
-
-    if (params.mode !== undefined) {
-      yield* Effect.tryPromise({
-        try: () => chmod(tempPath, params.mode as number),
-        catch: (cause) =>
-          new VerifiedStreamError({ reason: "persist", message: "Failed to set file mode.", cause }),
-      });
-    }
-
-    yield* Effect.uninterruptible(
-      Effect.tryPromise({
-        try: async () => {
-          await handle.sync().catch(() => undefined);
-          await handle.close();
-          await rename(tempPath, params.destinationPath);
-        },
-        catch: (cause) =>
-          new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
-      }),
-    );
-    yield* Ref.set(committed, true);
-
-    return { sha256, sizeBytes } satisfies VerifiedStreamResult;
   });
+
+  const handle = yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      try: () => open(tempPath, "w", params.mode),
+      catch: (cause) =>
+        new VerifiedStreamError({ reason: "persist", message: "Failed to open temp file.", cause }),
+    }),
+    (h) => Effect.promise(() => h.close().catch(() => undefined)),
+  );
+
+  const hash = createHash("sha256");
+  const size = yield* Ref.make(0);
+
+  yield* Stream.runForEach(params.body, (chunk) =>
+    Effect.tryPromise({
+      try: async () => {
+        await handle.write(chunk);
+        hash.update(chunk);
+      },
+      catch: (cause) =>
+        new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
+    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+  );
+
+  const sizeBytes = yield* Ref.get(size);
+  const sha256 = hash.digest("hex");
+
+  const mismatch = verify(sha256, sizeBytes, params.expectedSha256, params.expectedSizeBytes);
+  if (mismatch !== undefined) {
+    return yield* Effect.fail(mismatch);
+  }
+
+  if (params.mode !== undefined) {
+    yield* Effect.tryPromise({
+      try: () => chmod(tempPath, params.mode as number),
+      catch: (cause) =>
+        new VerifiedStreamError({ reason: "persist", message: "Failed to set file mode.", cause }),
+    });
+  }
+
+  yield* Effect.uninterruptible(
+    Effect.tryPromise({
+      try: async () => {
+        await handle.sync().catch(() => undefined);
+        await handle.close();
+        await rename(tempPath, params.destinationPath);
+      },
+      catch: (cause) =>
+        new VerifiedStreamError({ reason: "persist", message: "Failed to persist artifact.", cause }),
+    }),
+  );
+  yield* Ref.set(committed, true);
+
+  return { sha256, sizeBytes } satisfies VerifiedStreamResult;
+});
 
 /**
  * Buffer `body` in memory, hashing and counting bytes, and verify the expected
  * checksum/size. No disk is touched. Use only when the caller explicitly wants
  * an in-memory download.
  */
-export const collectVerifiedStream = <E, R>(
+export const collectVerifiedStream = Effect.fn("VerifiedStream.collect")(function* <E, R>(
   params: CollectVerifiedStreamParams<E, R>,
-): Effect.Effect<VerifiedStreamResult, E | VerifiedStreamError, R> =>
-  Effect.gen(function* () {
-    const hash = createHash("sha256");
-    const size = yield* Ref.make(0);
+): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, R> {
+  const hash = createHash("sha256");
+  const size = yield* Ref.make(0);
 
-    yield* Stream.runForEach(params.body, (chunk) =>
-      Effect.sync(() => {
-        hash.update(chunk);
-      }).pipe(Effect.zipRight(Ref.update(size, (n) => n + chunk.length))),
-    );
+  yield* Stream.runForEach(params.body, (chunk) =>
+    Effect.sync(() => {
+      hash.update(chunk);
+    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+  );
 
-    const sizeBytes = yield* Ref.get(size);
-    const sha256 = hash.digest("hex");
+  const sizeBytes = yield* Ref.get(size);
+  const sha256 = hash.digest("hex");
 
-    const mismatch = verify(sha256, sizeBytes, params.expectedSha256, params.expectedSizeBytes);
-    if (mismatch !== undefined) {
-      return yield* Effect.fail(mismatch);
-    }
+  const mismatch = verify(sha256, sizeBytes, params.expectedSha256, params.expectedSizeBytes);
+  if (mismatch !== undefined) {
+    return yield* Effect.fail(mismatch);
+  }
 
-    return { sha256, sizeBytes } satisfies VerifiedStreamResult;
-  });
+  return { sha256, sizeBytes } satisfies VerifiedStreamResult;
+});

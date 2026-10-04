@@ -14,7 +14,7 @@ import {
   resolveAgentSkillsAppRoot,
   updateAgentSkills as updateAgentSkillsOperation,
 } from "@lando/engine/operations/agent-skills";
-import { ManagedFileServiceFactory, ManagedFileServiceFactoryLive } from "@lando/managed-file/service";
+import { ManagedFileServiceFactory, layerFactory } from "@lando/managed-file/service";
 
 export type {
   AgentSkillsError,
@@ -31,21 +31,23 @@ export const AgentSkillsFileResultSchema = Schema.Struct({
 });
 
 export const AgentSkillsResultSchema = Schema.Struct({
-  verb: Schema.Literal("install", "update", "remove"),
+  verb: Schema.Literals(["install", "update", "remove"]),
   appRoot: Schema.String,
   entries: Schema.Array(AgentSkillsFileResultSchema),
 });
 
-const withAppManagedFiles = (
-  options: AgentSkillsOptions,
-  run: (appRoot: string) => Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService>,
-): Effect.Effect<AgentSkillsResult, AgentSkillsError> =>
-  Effect.gen(function* () {
-    const appRoot = yield* resolveAgentSkillsAppRoot(options);
-    const factory = yield* ManagedFileServiceFactory;
-    const managed = yield* factory.forBase(appRoot);
-    return yield* run(appRoot).pipe(Effect.provideService(ManagedFileService, managed));
-  }).pipe(Effect.provide(ManagedFileServiceFactoryLive));
+const withAppManagedFiles = Effect.fn("withAppManagedFiles")(
+  (
+    options: AgentSkillsOptions,
+    run: (appRoot: string) => Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService>,
+  ): Effect.Effect<AgentSkillsResult, AgentSkillsError> =>
+    Effect.gen(function* () {
+      const appRoot = yield* resolveAgentSkillsAppRoot(options);
+      const factory = yield* ManagedFileServiceFactory;
+      const managed = yield* factory.forBase(appRoot);
+      return yield* run(appRoot).pipe(Effect.provideService(ManagedFileService, managed));
+    }).pipe(Effect.provide(layerFactory)),
+);
 
 export const installAgentSkills = (
   options: AgentSkillsOptions = {},

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { Effect, Either } from "effect";
+import { Effect, Result } from "effect";
 
 import {
   type InstallOwnershipError,
@@ -79,9 +79,9 @@ const seed = async (
 const refusal = async (
   effect: Effect.Effect<unknown, InstallOwnershipError>,
 ): Promise<InstallOwnershipError> => {
-  const outcome = await Effect.runPromise(Effect.either(effect));
-  if (Either.isRight(outcome)) throw new Error("expected an ownership refusal");
-  return outcome.left;
+  const outcome = await Effect.runPromise(Effect.result(effect));
+  if (Result.isSuccess(outcome)) throw new Error("expected an ownership refusal");
+  return outcome.failure;
 };
 
 describe("lando4 executable name rule", () => {

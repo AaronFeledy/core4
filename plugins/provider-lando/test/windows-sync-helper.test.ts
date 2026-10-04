@@ -25,6 +25,9 @@ const spec: WindowsSyncHelperSpec = {
   image: `example.invalid/lando-sync@sha256:${"a".repeat(64)}`,
 };
 
+const imageInspectPath = `/images/${encodeURIComponent(spec.image)}/json`;
+const platformImageId = `sha256:${"b".repeat(64)}`;
+
 type JsonRecord = Record<string, unknown>;
 const clone = <T>(value: T): T => structuredClone(value);
 
@@ -38,6 +41,8 @@ const makeFakeApi = () => {
     helperCreateResponse: "valid" as "valid" | "malformed" | "lost",
     failContainerInspectAfterDelete: false,
     failDelete: false,
+    imageId: platformImageId,
+    repoDigests: [spec.image],
   };
   const stateStore = makePluginStateStore(
     makeTestStateStore().service,
@@ -68,6 +73,9 @@ const makeFakeApi = () => {
           };
           return response(201, volume);
         }
+        if (method === "GET" && path === imageInspectPath) {
+          return response(200, { Id: controls.imageId, RepoDigests: controls.repoDigests });
+        }
         if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
           if (container !== undefined && controls.failContainerInspectAfterCreate) return response(500);
           if (container === undefined && controls.failContainerInspectAfterDelete) return response(500);
@@ -81,8 +89,10 @@ const makeFakeApi = () => {
           container = {
             Id: "helper-container-id",
             Name: `/${name}`,
+            Image: platformImageId,
+            ImageName: body.Image,
             Config: {
-              Image: body.Image,
+              Image: "example.invalid/lando-sync:latest",
               Entrypoint: clone(body.Entrypoint),
               Cmd: clone(body.Cmd),
               User: body.User,
@@ -146,9 +156,9 @@ const makeFakeApi = () => {
 };
 
 const failureOf = async (effect: ReturnType<typeof ensureWindowsSyncHelper>) => {
-  const result = await Effect.runPromise(Effect.either(effect));
-  if (result._tag !== "Left") throw new Error("Expected owned sync helper operation to fail");
-  return result.left;
+  const result = await Effect.runPromise(Effect.result(effect));
+  if (result._tag !== "Failure") throw new Error("Expected owned sync helper operation to fail");
+  return result.failure;
 };
 
 describe("Windows named-volume sync helper", () => {
@@ -162,7 +172,11 @@ describe("Windows named-volume sync helper", () => {
       volumeName: "demo-web-app-mount",
       path: "/sync",
     });
-    expect(fake.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
+    expect(
+      fake.calls
+        .filter((call) => call.path !== imageInspectPath)
+        .map(({ method, path }) => `${method} ${path}`),
+    ).toEqual([
       "GET /volumes/demo-web-app-mount",
       `GET /containers/${endpoint.containerName}/json`,
       "POST /volumes/create",
@@ -207,7 +221,7 @@ describe("Windows named-volume sync helper", () => {
     expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
       endpoint,
     );
-    expect(fake.calls.slice(count).map(({ method }) => method)).toEqual(["GET", "GET"]);
+    expect(fake.calls.slice(count).map(({ method }) => method)).toEqual(["GET", "GET", "GET"]);
   });
 
   test("refuses an existing foreign or unlabelled volume before container creation", async () => {
@@ -230,9 +244,9 @@ describe("Windows named-volume sync helper", () => {
     expect(error.message).toContain("different specification");
     expect(fake.calls.slice(count).some((call) => call.path.startsWith("/containers/"))).toBe(false);
     const cleanup = await Effect.runPromise(
-      Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
+      Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
     );
-    expect(cleanup._tag).toBe("Left");
+    expect(cleanup._tag).toBe("Failure");
     expect(fake.volume).toBeDefined();
     expect(fake.container).toBeDefined();
     expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
@@ -267,9 +281,9 @@ describe("Windows named-volume sync helper", () => {
       expect(error.message).toContain("different specification");
       expect(fake.calls.slice(count).some((call) => call.path.endsWith("/start"))).toBe(false);
       const cleanup = await Effect.runPromise(
-        Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
+        Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
       );
-      expect(cleanup._tag).toBe("Left");
+      expect(cleanup._tag).toBe("Failure");
       expect(fake.container).toBeDefined();
       expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
     }
@@ -292,9 +306,9 @@ describe("Windows named-volume sync helper", () => {
       expect(error.message).toContain("different specification");
       expect(fake.calls.slice(count).some((call) => call.path.endsWith("/start"))).toBe(false);
       const cleanup = await Effect.runPromise(
-        Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
+        Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
       );
-      expect(cleanup._tag).toBe("Left");
+      expect(cleanup._tag).toBe("Failure");
       expect(fake.container).toBeDefined();
       expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
     }
@@ -336,7 +350,12 @@ describe("Windows named-volume sync helper", () => {
     expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
       endpoint,
     );
-    expect(fake.calls.slice(count).map(({ method, path }) => `${method} ${path}`)).toEqual([
+    expect(
+      fake.calls
+        .slice(count)
+        .filter((call) => call.path !== imageInspectPath)
+        .map(({ method, path }) => `${method} ${path}`),
+    ).toEqual([
       "GET /volumes/demo-web-app-mount",
       `GET /containers/${endpoint.containerName}/json`,
       "POST /containers/helper-container-id/start",
@@ -352,9 +371,9 @@ describe("Windows named-volume sync helper", () => {
     expect(fake.volume).toBeDefined();
     expect(await Effect.runPromise(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))).toBe(false);
     const removal = await Effect.runPromise(
-      Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
+      Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec, { removeVolume: true })),
     );
-    expect(removal._tag).toBe("Left");
+    expect(removal._tag).toBe("Failure");
     expect(fake.volume).toBeDefined();
   });
 
@@ -384,8 +403,8 @@ describe("Windows named-volume sync helper", () => {
     await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
     fake.controls.failContainerInspectAfterDelete = true;
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     expect(fake.container).toBeUndefined();
     const count = fake.calls.length;
     expect((await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).message).toContain(
@@ -405,14 +424,14 @@ describe("Windows named-volume sync helper", () => {
     const original = clone(fake.container);
     fake.controls.failContainerInspectAfterDelete = true;
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     fake.controls.failContainerInspectAfterDelete = false;
     fake.container = { ...(original as JsonRecord), Id: "foreign-replacement-id" };
     const count = fake.calls.length;
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     expect((await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).message).toContain(
       "ownership receipt",
     );
@@ -427,9 +446,9 @@ describe("Windows named-volume sync helper", () => {
     const labels = volume.Labels as JsonRecord;
     labels["dev.lando.app"] = "other-app";
     const result = await Effect.runPromise(
-      Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
+      Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec)),
     );
-    expect(result._tag).toBe("Left");
+    expect(result._tag).toBe("Failure");
     expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
     expect(fake.container).toBeDefined();
     expect(fake.volume).toBeDefined();
@@ -454,8 +473,8 @@ describe("Windows named-volume sync helper", () => {
       "different specification",
     );
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     fake.volume = originalVolume;
     const container = fake.container;
     if (container === undefined) throw new Error("Expected container");
@@ -464,8 +483,8 @@ describe("Windows named-volume sync helper", () => {
       "different specification",
     );
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     fake.container = originalContainer;
   });
 
@@ -487,8 +506,8 @@ describe("Windows named-volume sync helper", () => {
     const fake = makeFakeApi();
     fake.controls.failContainerInspectAfterCreate = true;
     expect(
-      (await Effect.runPromise(Effect.either(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     fake.controls.failContainerInspectAfterCreate = false;
     fake.container = { ...(fake.container as JsonRecord), Id: "foreign-replacement-id" };
     const count = fake.calls.length;
@@ -496,8 +515,8 @@ describe("Windows named-volume sync helper", () => {
       "foreign ownership",
     );
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     expect(fake.calls.slice(count).some((call) => call.method === "DELETE")).toBe(false);
     expect(fake.container?.Id).toBe("foreign-replacement-id");
   });
@@ -508,10 +527,10 @@ describe("Windows named-volume sync helper", () => {
     expect(
       (
         await Effect.runPromise(
-          Effect.either(ensureWindowsSyncHelper(volumeCrash.api, volumeCrash.stateStore, spec)),
+          Effect.result(ensureWindowsSyncHelper(volumeCrash.api, volumeCrash.stateStore, spec)),
         )
       )._tag,
-    ).toBe("Left");
+    ).toBe("Failure");
     volumeCrash.controls.failVolumeInspectAfterCreate = false;
     expect(
       (await failureOf(ensureWindowsSyncHelper(volumeCrash.api, volumeCrash.stateStore, spec))).message,
@@ -523,10 +542,10 @@ describe("Windows named-volume sync helper", () => {
       expect(
         (
           await Effect.runPromise(
-            Effect.either(ensureWindowsSyncHelper(helperCrash.api, helperCrash.stateStore, spec)),
+            Effect.result(ensureWindowsSyncHelper(helperCrash.api, helperCrash.stateStore, spec)),
           )
         )._tag,
-      ).toBe("Left");
+      ).toBe("Failure");
       helperCrash.controls.helperCreateResponse = "valid";
       const count = helperCrash.calls.length;
       expect(
@@ -542,8 +561,8 @@ describe("Windows named-volume sync helper", () => {
     await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
     fake.controls.failDelete = true;
     expect(
-      (await Effect.runPromise(Effect.either(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
-    ).toBe("Left");
+      (await Effect.runPromise(Effect.result(removeWindowsSyncHelper(fake.api, fake.stateStore, spec))))._tag,
+    ).toBe("Failure");
     expect(fake.container).toBeDefined();
     expect(fake.volume).toBeDefined();
     const count = fake.calls.length;
@@ -577,6 +596,70 @@ describe("Windows named-volume sync helper", () => {
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error.message).toContain("unknown version");
     expect(fake.calls).toEqual([]);
+  });
+
+  test("accepts Podman canonicalizing Config.Image to a tag when the pinned image resolves to the container ID", async () => {
+    const fake = makeFakeApi();
+    const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    expect((fake.container?.Config as JsonRecord).Image).toBe("example.invalid/lando-sync:latest");
+    expect(fake.container?.Image).toBe(platformImageId);
+    expect(fake.calls.some((call) => call.path === imageInspectPath)).toBe(true);
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
+      endpoint,
+    );
+  });
+
+  test("uses the pinned repository digest and image ID when optional container digest fields differ", async () => {
+    const fake = makeFakeApi();
+    const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const container = fake.container;
+    if (container === undefined) throw new Error("Expected helper container");
+    container.ImageName = undefined;
+    container.ImageDigest = `sha256:${"d".repeat(64)}`;
+    fake.controls.repoDigests = [spec.image];
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
+      endpoint,
+    );
+  });
+
+  test("rejects an image ID or repository digest that contradicts the pinned ref", async () => {
+    for (const drift of ["id", "digest"] as const) {
+      const fake = makeFakeApi();
+      await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+      const container = fake.container;
+      if (container === undefined) throw new Error("Expected helper container");
+      if (drift === "id") container.Image = `sha256:${"c".repeat(64)}`;
+      if (drift === "digest") fake.controls.repoDigests = [];
+      container.State = { Running: false };
+      const count = fake.calls.length;
+      const error = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+      expect(error.message).toContain("different specification");
+      expect(fake.calls.slice(count).some((call) => call.method === "POST" || call.method === "DELETE")).toBe(
+        false,
+      );
+      expect(fake.container).toBe(container);
+    }
+  });
+
+  test("a changed pinned image preserves the existing helper and volume", async () => {
+    const fake = makeFakeApi();
+    const endpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const originalContainer = fake.container;
+    const originalVolume = fake.volume;
+    const count = fake.calls.length;
+    const changed = { ...spec, image: `example.invalid/lando-sync@sha256:${"c".repeat(64)}` };
+    const error = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, changed));
+    expect(error.operation).toBe("syncHelper.specification");
+    expect(error.message).toContain("specification changed");
+    expect(error.remediation).toContain("planned migration");
+    expect(fake.calls.slice(count).some((call) => call.method === "POST" || call.method === "DELETE")).toBe(
+      false,
+    );
+    expect(fake.container).toBe(originalContainer);
+    expect(fake.volume).toBe(originalVolume);
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec))).toEqual(
+      endpoint,
+    );
   });
 
   test("rejects a mutable helper image before making any API request", async () => {

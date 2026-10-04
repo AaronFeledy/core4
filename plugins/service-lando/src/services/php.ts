@@ -64,17 +64,19 @@ export const PHP_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const PhpWebroot = Schema.String.pipe(
-  Schema.pattern(/^\/[A-Za-z0-9._/-]*$/u, {
-    message: () =>
-      "PHP webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
-  }),
+  Schema.check(
+    Schema.isPattern(/^\/[A-Za-z0-9._/-]*$/u, {
+      message:
+        "PHP webroot must be an absolute container path using only letters, digits, '.', '_', '-', and '/'.",
+    }),
+  ),
   Schema.brand("PhpWebroot"),
 );
 
 const PhpFeatureConfigSchema = Schema.Struct({
   allowOverride: Schema.Boolean,
-  version: Schema.Literal(...SUPPORTED_PHP_VERSIONS),
-  via: Schema.Literal("apache", "fpm", "cli"),
+  version: Schema.Literals([...SUPPORTED_PHP_VERSIONS]),
+  via: Schema.Literals(["apache", "fpm", "cli"]),
   webroot: PhpWebroot,
 });
 type PhpFeatureConfig = typeof PhpFeatureConfigSchema.Type;
@@ -232,7 +234,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
 
 export const phpServiceFeature: ServiceFeatureDefinition = {
   id: PHP_FEATURE_ID,
-  schema: PhpFeatureConfigSchema as Schema.Schema<unknown>,
+  schema: PhpFeatureConfigSchema as Schema.Codec<unknown>,
   priority: PHP_FEATURE_PRIORITY,
   apply: (ctx) =>
     Effect.try({

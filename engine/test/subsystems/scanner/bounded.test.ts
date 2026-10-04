@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Deferred, Effect, Exit, Fiber, Stream } from "effect";
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Scope } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 
-import type { HttpClientShape } from "@lando/http-client/service";
 import { ServiceName } from "@lando/sdk/schema";
 import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
 import { appId, endpointsOf, publishedEndpoint, runExitUnderClock, successOf } from "./support.ts";
@@ -9,34 +10,53 @@ import { appId, endpointsOf, publishedEndpoint, runExitUnderClock, successOf } f
 const web = ServiceName.make("web");
 const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
 
-const transport = (stream: HttpClientShape["stream"]) => ({
-  stream,
+const transport = (http: HttpClient.HttpClient) => ({
+  http,
   listEndpoints: source.listEndpoints,
 });
 
+const scriptedHttp = (
+  run: (
+    request: Parameters<Parameters<typeof HttpClient.make>[0]>[0],
+  ) => Effect.Effect<HttpClientResponse.HttpClientResponse, never, Scope.Scope>,
+): HttpClient.HttpClient =>
+  HttpClient.make((request, _url, _signal, fiber) =>
+    Effect.provideService(run(request), Scope.Scope, Context.getUnsafe(fiber.context, Scope.Scope)),
+  );
+
 describe("bounded scanner", () => {
   test("accepts headers without pulling an endless body", async () => {
-    // Given: headers arrive but the lazy body never completes.
-    let pulls = 0;
+    // Given: headers arrive; body is an open stream the scanner must not drain.
     let closed = 0;
+    let streamAccessed = 0;
     const scanner = makeUrlScanner(
-      transport(() =>
-        Effect.gen(function* () {
-          yield* Effect.addFinalizer(() =>
-            Effect.sync(() => {
-              closed += 1;
-            }),
-          );
-          return {
-            status: 200,
-            headers: [],
-            body: Stream.fromEffect(
+      transport(
+        scriptedHttp((request) =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() =>
               Effect.sync(() => {
-                pulls += 1;
-              }).pipe(Effect.zipRight(Effect.never)),
-            ),
-          };
-        }),
+                closed += 1;
+              }),
+            );
+            const response = HttpClientResponse.fromWeb(
+              request,
+              new Response(
+                new ReadableStream<Uint8Array>({
+                  start() {
+                    /* never closes */
+                  },
+                }),
+                { status: 200 },
+              ),
+            );
+            return new Proxy(response, {
+              get(target, prop, receiver) {
+                if (prop === "stream") streamAccessed += 1;
+                return Reflect.get(target, prop, receiver);
+              },
+            });
+          }),
+        ),
       ),
       { retry: 1, deadlineMs: 250 },
     );
@@ -44,7 +64,7 @@ describe("bounded scanner", () => {
     const timed = await runExitUnderClock(scanner.scan(appId), "1 second");
     // Then: status alone decides the verdict and scope cleanup still runs.
     expect(successOf(timed.exit).endpoints[0]?.outcome).toBe("green");
-    expect(pulls).toBe(0);
+    expect(streamAccessed).toBe(0);
     expect(closed).toBe(1);
     expect(timed.elapsedMs).toBe(0);
   });
@@ -54,28 +74,31 @@ describe("bounded scanner", () => {
     let closed = 0;
     const acquired = await Effect.runPromise(Deferred.make<void>());
     const scanner = makeUrlScanner(
-      transport(() =>
-        Effect.gen(function* () {
-          yield* Effect.addFinalizer(() =>
-            Effect.sync(() => {
-              closed += 1;
-            }),
-          );
-          yield* Deferred.succeed(acquired, undefined);
-          return yield* Effect.never;
-        }),
+      transport(
+        scriptedHttp(() =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                closed += 1;
+              }),
+            );
+            yield* Deferred.succeed(acquired, undefined);
+            return yield* Effect.never;
+          }),
+        ),
       ),
     );
     // When: interrupt only after the request has entered its scope.
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.fork(scanner.scan(appId));
+        const fiber = yield* Effect.forkChild(scanner.scan(appId));
         yield* Deferred.await(acquired);
-        return yield* Fiber.interrupt(fiber);
+        yield* Fiber.interrupt(fiber);
+        return yield* Fiber.await(fiber);
       }),
     );
     // Then: interruption is preserved and the request is released exactly once.
-    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(closed).toBe(1);
   });
 
@@ -84,21 +107,23 @@ describe("bounded scanner", () => {
     let active = 0;
     let peak = 0;
     const scanner = makeUrlScanner(
-      transport(() =>
-        Effect.gen(function* () {
-          yield* Effect.acquireRelease(
-            Effect.sync(() => {
-              active += 1;
-              peak = Math.max(peak, active);
-            }),
-            () =>
+      transport(
+        scriptedHttp((request) =>
+          Effect.gen(function* () {
+            yield* Effect.acquireRelease(
               Effect.sync(() => {
-                active -= 1;
+                active += 1;
+                peak = Math.max(peak, active);
               }),
-          );
-          yield* Effect.sleep("100 millis");
-          return { status: 204, headers: [], body: Stream.empty };
-        }),
+              () =>
+                Effect.sync(() => {
+                  active -= 1;
+                }),
+            );
+            yield* Effect.sleep("100 millis");
+            return HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }));
+          }),
+        ),
       ),
       { retry: 1 },
     );
@@ -121,13 +146,16 @@ describe("bounded scanner", () => {
       // Given: one rejected response followed by a request stuck before headers.
       let attempts = 0;
       const scanner = makeUrlScanner(
-        transport(() =>
-          Effect.gen(function* () {
-            attempts += 1;
-            if (attempts === 1) return { status: 503, headers: [], body: Stream.empty };
-            yield* Effect.addFinalizer(() => Effect.sleep(`${cleanupMs} millis`));
-            return yield* Effect.never;
-          }),
+        transport(
+          scriptedHttp((request) =>
+            Effect.gen(function* () {
+              attempts += 1;
+              if (attempts === 1)
+                return HttpClientResponse.fromWeb(request, new Response(null, { status: 503 }));
+              yield* Effect.addFinalizer(() => Effect.sleep(`${cleanupMs} millis`));
+              return yield* Effect.never;
+            }),
+          ),
         ),
         { retry: 3, delaySeconds: 0.1, timeoutSeconds: 5, deadlineMs: 250 },
       );
@@ -145,15 +173,12 @@ describe("bounded scanner", () => {
 
   test("reports elapsed attempt timeout when retries exhaust before the deadline", async () => {
     // Given: two requests stall, with a retry delay between them.
-    const scanner = makeUrlScanner(
-      transport(() => Effect.never),
-      {
-        retry: 2,
-        delaySeconds: 0.05,
-        timeoutSeconds: 0.1,
-        deadlineMs: 1000,
-      },
-    );
+    const scanner = makeUrlScanner(transport(scriptedHttp(() => Effect.never)), {
+      retry: 2,
+      delaySeconds: 0.05,
+      timeoutSeconds: 0.1,
+      deadlineMs: 1000,
+    });
     // When: both per-attempt timers expire before the overall deadline.
     const timed = await runExitUnderClock(scanner.scan(appId), "1 second");
     // Then: the diagnostic includes the entire wait, not just one attempt's limit.
@@ -166,10 +191,11 @@ describe("bounded scanner", () => {
 
   test("reports real elapsed deadline timing", async () => {
     // Given: a request that never produces headers, using the live Effect clock.
-    const scanner = makeUrlScanner(
-      transport(() => Effect.never),
-      { retry: 1, timeoutSeconds: 5, deadlineMs: 60 },
-    );
+    const scanner = makeUrlScanner(transport(scriptedHttp(() => Effect.never)), {
+      retry: 1,
+      timeoutSeconds: 5,
+      deadlineMs: 60,
+    });
     const started = performance.now();
     // When: the actual timer expires.
     const result = await Effect.runPromise(scanner.scan(appId));

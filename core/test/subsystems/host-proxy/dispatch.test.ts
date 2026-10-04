@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -27,20 +27,26 @@ const standaloneRedactionService: RedactionServiceShape = {
   forProfile: (_profile, options) => Effect.succeed(createStandaloneRedactor(_profile, options)),
 };
 
-const standaloneRedactionLayer = Layer.succeed(RedactionService, {
-  ...standaloneRedactionService,
-});
+const standaloneRedactionLayer = Layer.succeed(
+  RedactionService,
+  RedactionService.of({
+    ...standaloneRedactionService,
+  }),
+);
 
 const recordingEvents = () => {
   const events: LandoEvent[] = [];
-  const layer = Layer.succeed(EventService, {
-    publish: (event: LandoEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-    subscribe: () => Effect.die("unused"),
-    waitFor: () => Effect.die("unused"),
-  } as never);
+  const layer = Layer.succeed(
+    EventService,
+    EventService.of({
+      publish: (event: LandoEvent) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Effect.die("unused"),
+      waitFor: () => Effect.die("unused"),
+    } as never),
+  );
   return { events, layer };
 };
 
@@ -80,6 +86,16 @@ describe("openOptionsFromRunLandoArgv", () => {
       print: true,
       json: true,
       ttyPresent: false,
+    });
+  });
+
+  test("accepts --qr like --print so an in-container open does not launch a host browser", () => {
+    const options = openOptionsFromRunLandoArgv(["open", "--qr"], { tty: true });
+
+    expect(options).toEqual({
+      qr: true,
+      json: false,
+      ttyPresent: true,
     });
   });
 
@@ -190,7 +206,7 @@ describe("dispatchRunLando", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      const error = Cause.squash(exit.cause);
       expect(error).toBeInstanceOf(HostProxyCommandNotAllowedError);
     }
     const tags = events.map((event) => event._tag);

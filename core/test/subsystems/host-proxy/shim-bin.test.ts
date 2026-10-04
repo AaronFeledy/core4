@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Predicate } from "effect";
 
 const HOST_PROXY_SHIM_SOURCE = "core/src/cli/host-proxy/shim-bin.ts";
 
@@ -17,9 +18,6 @@ const tempRoot = async (): Promise<string> => {
   tempDirs.push(dir);
   return dir;
 };
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const compiledShimArtifact = async (): Promise<string> => {
   const output = join(await tempRoot(), "lando-shim");
@@ -45,7 +43,7 @@ describe("compiled host-proxy shim request serialization", () => {
         req.on("error", reject);
         req.on("end", () => {
           const parsed: unknown = JSON.parse(body);
-          if (!isRecord(parsed)) {
+          if (!Predicate.isObject(parsed)) {
             reject(new Error("Expected shim request body to be an object"));
             return;
           }

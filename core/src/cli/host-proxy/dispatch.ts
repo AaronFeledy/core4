@@ -20,50 +20,49 @@ const redactCommandEnvelope = (
 ): CommandResultEnvelope =>
   Schema.decodeUnknownSync(CommandResultEnvelopeSchema)(redactor.redactValue(envelope));
 
-export const runOpenForHostProxy = (
+export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
   plan: AppPlan,
   input: HostProxyRunLandoExecutorInput,
-): Effect.Effect<
+): Effect.fn.Return<
   HostProxyRunLandoResult,
   never,
   ShellRunner | EventService | RedactionService | RouterService
-> =>
-  Effect.gen(function* () {
-    const redaction = yield* RedactionService;
-    const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
-    const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
-    const encoded =
-      parsed._tag === "failure"
-        ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
-        : yield* Effect.gen(function* () {
-            const outcome = yield* Effect.exit(
-              Effect.gen(function* () {
-                if (plan.routes.length === 0 || !routerEnabled(plan))
-                  return yield* openForPlan(plan, parsed.options);
-                const router = yield* RouterService;
-                const status = yield* router.status;
-                return yield* openForPlan(plan, parsed.options, status.authorities);
-              }),
-            );
-            if (Exit.isSuccess(outcome)) {
-              return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
-            }
-            return {
-              outcome: {
-                _tag: "failure" as const,
-                error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
-                  _tag: "HostProxyDispatchError",
-                  message: Cause.pretty(outcome.cause),
-                })),
-              },
-              exitCode: 1,
-            };
-          });
-    const envelope = yield* buildCommandResultEnvelope({
-      command: "app:open",
-      resultSchema: OpenAppResultSchema,
-      outcome: encoded.outcome,
-      redactor,
-    });
-    return { envelope: redactCommandEnvelope(envelope, redactor), exitCode: encoded.exitCode };
+> {
+  const redaction = yield* RedactionService;
+  const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const parsed = parseOpenOptionsFromRunLandoArgv(input.argv, { tty: process.stdout.isTTY === true });
+  const encoded =
+    parsed._tag === "failure"
+      ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
+      : yield* Effect.gen(function* () {
+          const outcome = yield* Effect.exit(
+            Effect.gen(function* () {
+              if (plan.routes.length === 0 || !routerEnabled(plan))
+                return yield* openForPlan(plan, parsed.options);
+              const router = yield* RouterService;
+              const status = yield* router.status;
+              return yield* openForPlan(plan, parsed.options, status.authorities);
+            }),
+          );
+          if (Exit.isSuccess(outcome)) {
+            return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
+          }
+          return {
+            outcome: {
+              _tag: "failure" as const,
+              error: Option.getOrElse(Cause.findErrorOption(outcome.cause), () => ({
+                _tag: "HostProxyDispatchError",
+                message: Cause.pretty(outcome.cause),
+              })),
+            },
+            exitCode: 1,
+          };
+        });
+  const envelope = yield* buildCommandResultEnvelope({
+    command: "app:open",
+    resultSchema: OpenAppResultSchema,
+    outcome: encoded.outcome,
+    redactor,
   });
+  return { envelope: redactCommandEnvelope(envelope, redactor), exitCode: encoded.exitCode };
+});

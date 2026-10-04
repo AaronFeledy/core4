@@ -30,26 +30,24 @@ export type GlobalLogsError =
   | LandofileLoadExpressionError;
 export type GlobalLogsServices = LoadGlobalPlanServices | RuntimeProviderRegistry;
 
-export const globalLogs = (
+export const globalLogs = Effect.fn("GlobalLogs.logs")(function* (
   options: LogsAppOptions = {},
-): Effect.Effect<GlobalLogsResult, GlobalLogsError, GlobalLogsServices> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) {
-      yield* validateSince(options.since);
-      return { app: "global", lines: [] };
-    }
-    return yield* logsForPlan(loaded.plan, options);
-  });
+): Effect.fn.Return<GlobalLogsResult, GlobalLogsError, GlobalLogsServices> {
+  const loaded = yield* loadGlobalPlan();
+  if (!loaded.materialized) {
+    yield* validateSince(options.since);
+    return { app: "global", lines: [] };
+  }
+  return yield* logsForPlan(loaded.plan, options);
+});
 
-export const followGlobalLogs = (
+export const followGlobalLogs = Effect.fn("GlobalLogs.follow")(function* (
   options: FollowLogsAppOptions = {},
-): Effect.Effect<GlobalLogsResult, GlobalLogsError, GlobalLogsServices | StreamFrameSink> =>
-  Effect.gen(function* () {
-    const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) {
-      yield* validateSince(options.since);
-      return { app: "global", lines: [] };
-    }
-    return yield* followLogsForPlan(loaded.plan, options);
-  });
+): Effect.fn.Return<GlobalLogsResult, GlobalLogsError, GlobalLogsServices | StreamFrameSink> {
+  const loaded = yield* loadGlobalPlan();
+  if (!loaded.materialized) {
+    yield* validateSince(options.since);
+    return { app: "global", lines: [] };
+  }
+  return yield* followLogsForPlan(loaded.plan, options);
+});

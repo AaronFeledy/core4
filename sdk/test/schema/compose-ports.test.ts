@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import { ComposeExposeField, ComposePortsField } from "../../src/schema/compose-ports.ts";
 
@@ -35,13 +35,13 @@ const idempotentPortInputs: ReadonlyArray<readonly [label: string, input: unknow
 ];
 
 const expectPortFailure = (entry: unknown, expectedMessage?: string): void => {
-  const result = Schema.decodeUnknownEither(ComposePortsField)([entry], {
+  const result = Schema.decodeUnknownResult(ComposePortsField)([entry], {
     onExcessProperty: "error",
   });
 
-  expect(Either.isLeft(result)).toBe(true);
-  if (Either.isLeft(result)) {
-    const issue = String(result.left);
+  expect(Result.isFailure(result)).toBe(true);
+  if (Result.isFailure(result)) {
+    const issue = String(result.failure);
     expect(issue).toContain("[0]");
     if (expectedMessage !== undefined) expect(issue).toContain(expectedMessage);
   }
@@ -173,15 +173,15 @@ describe("ComposePortsField", () => {
     const input = [{ target: 80, mode: "host" }];
 
     // When
-    const defaultResult = Schema.decodeUnknownEither(ComposePortsField)(input);
-    const strictResult = Schema.decodeUnknownEither(ComposePortsField)(input, { onExcessProperty: "error" });
+    const defaultResult = Schema.decodeUnknownResult(ComposePortsField)(input);
+    const strictResult = Schema.decodeUnknownResult(ComposePortsField)(input, { onExcessProperty: "error" });
 
     // Then
     for (const result of [defaultResult, strictResult]) {
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(String(result.left)).toContain("[0]");
-        expect(String(result.left)).toContain("mode");
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(String(result.failure)).toContain("[0]");
+        expect(String(result.failure)).toContain("mode");
       }
     }
   });
@@ -217,15 +217,15 @@ describe("ComposePortsField", () => {
     const input = [{ target: 80, host_ip: "127.0.0.1", appProtocol: "http" }];
 
     // When
-    const defaultResult = Schema.decodeUnknownEither(ComposePortsField)(input);
-    const strictResult = Schema.decodeUnknownEither(ComposePortsField)(input, {
+    const defaultResult = Schema.decodeUnknownResult(ComposePortsField)(input);
+    const strictResult = Schema.decodeUnknownResult(ComposePortsField)(input, {
       onExcessProperty: "error",
     });
 
     // Then
     for (const result of [defaultResult, strictResult]) {
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) expect(String(result.left)).toContain("appProtocol");
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) expect(String(result.failure)).toContain("appProtocol");
     }
   });
 
@@ -270,10 +270,10 @@ describe("ComposeExposeField", () => {
     const input = ["8e1"];
 
     // When
-    const result = Schema.decodeUnknownEither(ComposeExposeField)(input);
+    const result = Schema.decodeUnknownResult(ComposeExposeField)(input);
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(String(result.left)).toContain("[0]");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(String(result.failure)).toContain("[0]");
   });
 });

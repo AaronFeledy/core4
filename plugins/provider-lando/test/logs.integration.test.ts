@@ -20,7 +20,7 @@ const appId = AppId.make("logsapp");
 const appRoot = AbsolutePath.make("/tmp/lando-logs-app");
 const textEncoder = new TextEncoder();
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
   source: "logs.integration.test",
   runtime: 4 as const,
 };

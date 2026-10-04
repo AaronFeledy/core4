@@ -68,7 +68,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute>): PlannedServiceDraf
 });
 
 const metadata: ServicePlan["metadata"] = {
-  resolvedAt: DateTime.unsafeMake("2026-08-25T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-08-25T00:00:00Z"),
   source: `${APP_ROOT}/.lando.yml`,
   runtime: 4,
 };
@@ -98,7 +98,7 @@ describe("resolveRoute hostname expressions", () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected ConfigExpressionError");
-    const failure = requireConfigExpressionError(Option.getOrThrow(Cause.failureOption(exit.cause)));
+    const failure = requireConfigExpressionError(Option.getOrThrow(Cause.findErrorOption(exit.cause)));
     expect(failure).toMatchObject({
       _tag: "ConfigExpressionError",
       expression: "{{ env.HOME }}",
@@ -119,7 +119,7 @@ describe("resolveRoute hostname expressions", () => {
 
     // Then
     if (Exit.isSuccess(exit)) throw new Error("expected ConfigExpressionError");
-    const failure = requireConfigExpressionError(Option.getOrThrow(Cause.failureOption(exit.cause)));
+    const failure = requireConfigExpressionError(Option.getOrThrow(Cause.findErrorOption(exit.cause)));
     expect(failure).not.toBeInstanceOf(LandofileValidationError);
     expect(failure.path).toBe("services.appserver.routes.0.hostname");
   });

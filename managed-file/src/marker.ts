@@ -9,6 +9,7 @@
 // map any structural failure into `ManagedFileError`.
 
 import type { FileFormat } from "@lando/sdk/schema";
+import { Predicate } from "effect";
 
 const MARKER_TAG = "lando-generated";
 const JSON_MARKER_KEY = "x-lando-generated";
@@ -46,9 +47,6 @@ const markerLineIndex = (format: FileFormat, lines: ReadonlyArray<string>): numb
   return lines.findIndex((line) => line.trim() !== "");
 };
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /**
  * Compose the full on-disk content for `file` mode: a first-line ownership
  * marker plus the rendered body. JSON injects an `x-lando-generated` key when
@@ -59,7 +57,7 @@ export const composeFileContent = (format: FileFormat, marker: string, body: str
   if (prefix === null) {
     try {
       const parsed = JSON.parse(body) as unknown;
-      if (isPlainObject(parsed)) {
+      if (Predicate.isObject(parsed)) {
         return `${JSON.stringify({ ...parsed, [JSON_MARKER_KEY]: marker }, null, 2)}\n`;
       }
     } catch {
@@ -82,7 +80,7 @@ export const canCarryFileMarker = (format: FileFormat, content: string): boolean
   const prefix = commentPrefix(format);
   if (prefix !== null) return true;
   try {
-    return isPlainObject(JSON.parse(content) as unknown);
+    return Predicate.isObject(JSON.parse(content));
   } catch {
     return false;
   }
@@ -94,7 +92,7 @@ export const hasFileMarker = (format: FileFormat, content: string, marker: strin
   if (prefix === null) {
     try {
       const parsed = JSON.parse(content) as unknown;
-      return isPlainObject(parsed) && parsed[JSON_MARKER_KEY] === marker;
+      return Predicate.isObject(parsed) && parsed[JSON_MARKER_KEY] === marker;
     } catch {
       return false;
     }
@@ -110,7 +108,7 @@ export const stripFileMarker = (format: FileFormat, content: string, marker: str
   if (prefix === null) {
     try {
       const parsed = JSON.parse(content) as unknown;
-      if (isPlainObject(parsed) && JSON_MARKER_KEY in parsed) {
+      if (Predicate.isObject(parsed) && JSON_MARKER_KEY in parsed) {
         const { [JSON_MARKER_KEY]: _removed, ...rest } = parsed;
         return `${JSON.stringify(rest, null, 2)}\n`;
       }

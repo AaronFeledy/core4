@@ -9,8 +9,8 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import { ProviderBundleChecksumError } from "@lando/provider-lando";
 import { Downloader } from "@lando/sdk/services";
 
-import { DownloaderLive } from "@lando/http-client/downloader";
-import { makeHttpClientLive } from "@lando/http-client/live";
+import * as LandoHttpClient from "@lando/http-client";
+import * as VerifiedDownloader from "@lando/http-client/downloader";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
@@ -43,8 +43,8 @@ const captureFetch = (
   return { fetchImpl, init: () => captured };
 };
 
-const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
-  Effect.gen(function* () {
+const artifactDownloadEffect = Effect.fnUntraced(
+  function* (_fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) {
     const downloader = yield* Downloader;
     const artifactDownload = makeArtifactDownload(downloader);
     const effect = artifactDownload({
@@ -54,8 +54,18 @@ const artifactDownloadEffect = (fetchImpl: typeof fetch, directory: string, trus
       filename: "bundle.zip",
       allowFileSource: false,
     });
-    return yield* trust === undefined ? effect : effect.pipe(Effect.provideService(NetworkTrust, trust));
-  }).pipe(Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(fetchImpl, () => [])))));
+    return yield* trust === undefined
+      ? effect
+      : effect.pipe(Effect.provideService(NetworkTrust, NetworkTrust.of(trust)));
+  },
+  (effect, fetchImpl) =>
+    Effect.provide(
+      effect,
+      VerifiedDownloader.layer.pipe(
+        Layer.provide(LandoHttpClient.layerWith({ fetch: fetchImpl, systemCaPems: () => [] })),
+      ),
+    ),
+);
 
 const runArtifactDownload = (fetchImpl: typeof fetch, directory: string, trust?: ResolvedNetworkTrust) =>
   Effect.runPromise(artifactDownloadEffect(fetchImpl, directory, trust));
@@ -64,7 +74,7 @@ const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) {
     throw new Error("expected effect to fail");
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag !== "Some") {
     throw new Error(`expected a typed failure, got ${JSON.stringify(exit.cause)}`);
   }

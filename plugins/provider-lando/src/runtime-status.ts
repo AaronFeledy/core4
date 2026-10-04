@@ -34,41 +34,40 @@ const readRecordedPid = (pidPath: string): Effect.Effect<number | undefined> =>
       return Number(raw);
     },
     catch: () => undefined,
-  }).pipe(Effect.catchAll((pid) => Effect.succeed(pid)));
+  }).pipe(Effect.catch((pid) => Effect.succeed(pid)));
 
 const safeBoolean = (effect: Effect.Effect<boolean, unknown>): Effect.Effect<boolean> =>
-  effect.pipe(Effect.catchAllCause(() => Effect.succeed(false)));
+  effect.pipe(Effect.catchCause(() => Effect.succeed(false)));
 
 const socketReachable = (podmanApi?: PodmanApiClient): Effect.Effect<boolean> => {
   if (podmanApi === undefined) return Effect.succeed(false);
   return podmanApi.info.pipe(
     Effect.as(true),
-    Effect.catchAllCause(() => Effect.succeed(false)),
+    Effect.catchCause(() => Effect.succeed(false)),
   );
 };
 
-const findAliveOrphanPids = (
+const findAliveOrphanPids = Effect.fnUntraced(function* (
   deps: RuntimeStatusDeps,
   recordedOwnedPid: number | undefined,
-): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const findMatchingServicePids = deps.serviceRunner.findMatchingServicePids;
-    if (findMatchingServicePids === undefined) return [];
+): Effect.fn.Return<ReadonlyArray<number>> {
+  const findMatchingServicePids = deps.serviceRunner.findMatchingServicePids;
+  if (findMatchingServicePids === undefined) return [];
 
-    const matchingPids = yield* findMatchingServicePids(deps.spec).pipe(
-      Effect.catchAllCause(() => Effect.succeed([] as ReadonlyArray<number>)),
-    );
-    const orphanPids: number[] = [];
-    for (const pid of matchingPids) {
-      if (pid === recordedOwnedPid) continue;
-      const alive = yield* safeBoolean(deps.serviceRunner.isAlive(pid));
-      if (alive) orphanPids.push(pid);
-    }
-    return orphanPids;
-  });
+  const matchingPids = yield* findMatchingServicePids(deps.spec).pipe(
+    Effect.catchCause(() => Effect.succeed([] as ReadonlyArray<number>)),
+  );
+  const orphanPids: number[] = [];
+  for (const pid of matchingPids) {
+    if (pid === recordedOwnedPid) continue;
+    const alive = yield* safeBoolean(deps.serviceRunner.isAlive(pid));
+    if (alive) orphanPids.push(pid);
+  }
+  return orphanPids;
+});
 
-export const probeRuntimeServiceStatus = (deps: RuntimeStatusDeps): Effect.Effect<RuntimeServiceStatus> =>
-  Effect.gen(function* () {
+export const probeRuntimeServiceStatus = Effect.fn("ProviderLando.probeRuntimeServiceStatus")(
+  function* (deps: RuntimeStatusDeps): Effect.fn.Return<RuntimeServiceStatus> {
     const reachable = yield* socketReachable(deps.podmanApi);
     const recordedPid = yield* readRecordedPid(deps.pidPath);
     const alive =
@@ -88,11 +87,15 @@ export const probeRuntimeServiceStatus = (deps: RuntimeStatusDeps): Effect.Effec
       ...(pid === undefined ? {} : { pid }),
       ...(orphanPids.length === 0 ? {} : { orphanPids }),
     };
-  }).pipe(
-    Effect.catchAllCause(() =>
-      Effect.succeed({ running: false, socketReachable: false, ownedServiceProcess: false }),
-    ),
-  );
+  },
+  Effect.catchCause(() =>
+    Effect.succeed<RuntimeServiceStatus>({
+      running: false,
+      socketReachable: false,
+      ownedServiceProcess: false,
+    }),
+  ),
+);
 
 export const teardownRuntimeService = (params: {
   readonly paths: ManagedRuntimeServicePaths;

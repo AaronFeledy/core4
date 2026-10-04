@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either } from "effect";
+import { Result } from "effect";
 
 import { SqlServiceAmbiguousError, SqlServiceNotFoundError } from "@lando/sdk/errors";
 
@@ -28,45 +28,45 @@ describe("resolveSqlTarget", () => {
   test("returns not-found with empty available when there are no candidates", () => {
     const result = resolveSqlTarget(planOf([{ name: "appserver", type: "php:8.3" }]));
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left).toBeInstanceOf(SqlServiceNotFoundError);
-    if (!(result.left instanceof SqlServiceNotFoundError)) return;
-    expect(result.left._tag).toBe("SqlServiceNotFoundError");
-    expect(result.left.available).toEqual([]);
-    expect(result.left.service).toBeUndefined();
-    expect(result.left.remediation).toBe("Add a mysql, mariadb, postgres, mongodb, or mssql service.");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure).toBeInstanceOf(SqlServiceNotFoundError);
+    if (!(result.failure instanceof SqlServiceNotFoundError)) return;
+    expect(result.failure._tag).toBe("SqlServiceNotFoundError");
+    expect(result.failure.available).toEqual([]);
+    expect(result.failure.service).toBeUndefined();
+    expect(result.failure.remediation).toBe("Add a mysql, mariadb, postgres, mongodb, or mssql service.");
   });
 
   test("includes the requested name on not-found when no candidates exist", () => {
     const result = resolveSqlTarget(planOf([]), "database");
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left).toBeInstanceOf(SqlServiceNotFoundError);
-    if (!(result.left instanceof SqlServiceNotFoundError)) return;
-    expect(result.left.service).toBe("database");
-    expect(result.left.available).toEqual([]);
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure).toBeInstanceOf(SqlServiceNotFoundError);
+    if (!(result.failure instanceof SqlServiceNotFoundError)) return;
+    expect(result.failure.service).toBe("database");
+    expect(result.failure.available).toEqual([]);
   });
 
   test("returns not-found with candidate names when the requested service is missing", () => {
     const result = resolveSqlTarget(planOf([{ name: "database", type: "mysql:8.0" }]), "cache");
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left).toBeInstanceOf(SqlServiceNotFoundError);
-    if (!(result.left instanceof SqlServiceNotFoundError)) return;
-    expect(result.left.service).toBe("cache");
-    expect(result.left.available).toEqual(["database"]);
-    expect(result.left.remediation).toBe("Add a mysql, mariadb, postgres, mongodb, or mssql service.");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure).toBeInstanceOf(SqlServiceNotFoundError);
+    if (!(result.failure instanceof SqlServiceNotFoundError)) return;
+    expect(result.failure.service).toBe("cache");
+    expect(result.failure.available).toEqual(["database"]);
+    expect(result.failure.remediation).toBe("Add a mysql, mariadb, postgres, mongodb, or mssql service.");
   });
 
   test("selects the only candidate when no service is requested", () => {
     const result = resolveSqlTarget(planOf([{ name: "database", type: "postgres:16" }]));
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isLeft(result)) return;
-    expect(result.right).toEqual({ name: "database", type: "postgres:16", family: "postgres" });
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isFailure(result)) return;
+    expect(result.success).toEqual({ name: "database", type: "postgres:16", family: "postgres" });
   });
 
   test("returns ambiguous when multiple candidates exist and none is requested", () => {
@@ -77,13 +77,13 @@ describe("resolveSqlTarget", () => {
       ]),
     );
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isRight(result)) return;
-    expect(result.left).toBeInstanceOf(SqlServiceAmbiguousError);
-    if (!(result.left instanceof SqlServiceAmbiguousError)) return;
-    expect(result.left._tag).toBe("SqlServiceAmbiguousError");
-    expect(result.left.available).toEqual(["database", "postgres"]);
-    expect(result.left.remediation).toBe("Pass --service <name>.");
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure).toBeInstanceOf(SqlServiceAmbiguousError);
+    if (!(result.failure instanceof SqlServiceAmbiguousError)) return;
+    expect(result.failure._tag).toBe("SqlServiceAmbiguousError");
+    expect(result.failure.available).toEqual(["database", "postgres"]);
+    expect(result.failure.remediation).toBe("Pass --service <name>.");
   });
 
   test("selects the requested candidate when several exist", () => {
@@ -95,8 +95,8 @@ describe("resolveSqlTarget", () => {
       "postgres",
     );
 
-    expect(Either.isRight(result)).toBe(true);
-    if (Either.isLeft(result)) return;
-    expect(result.right).toEqual({ name: "postgres", type: "postgres:16", family: "postgres" });
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isFailure(result)) return;
+    expect(result.success).toEqual({ name: "postgres", type: "postgres:16", family: "postgres" });
   });
 });

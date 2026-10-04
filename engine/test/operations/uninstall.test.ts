@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
   CGROUPS_DELEGATE_CONF_CONTENT,
   LANDO_SHELLENV_BEGIN,
@@ -34,7 +34,7 @@ import {
 } from "./uninstall-support.ts";
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
-  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
 
 describe("record-backed uninstall", () => {
   for (const scenario of [

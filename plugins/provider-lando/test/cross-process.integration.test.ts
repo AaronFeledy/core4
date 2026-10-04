@@ -18,7 +18,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { appliedPlanPath, loadAppliedPlan, makeProviderLayer } from "@lando/provider-lando";
+import { appliedPlanPath, loadAppliedPlan, layer as makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -43,7 +43,7 @@ const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
   volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00Z"),
   source: "cross-process.integration.test",
   runtime: 4 as const,
 };
@@ -241,6 +241,16 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
 
+        if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Os: "linux",
+              Architecture: "amd64",
+              RepoDigests: ["img@sha256:test"],
+            }),
+          };
+        }
         if (request.path === "/networks/create") {
           const requested = (request.body as { Name?: string }).Name ?? "";
           networks.add(requested);
@@ -601,8 +611,8 @@ describe("provider-lando cross-process state", () => {
       const providerA = await makeProvider();
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
-      const failed = await runOnce(Effect.either(providerA.destroy({ app: plan.id }, { volumes: true })));
-      expect(failed._tag).toBe("Left");
+      const failed = await runOnce(Effect.result(providerA.destroy({ app: plan.id }, { volumes: true })));
+      expect(failed._tag).toBe("Failure");
       expect(fake.existing.size).toBe(0);
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);

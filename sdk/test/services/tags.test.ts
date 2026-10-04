@@ -116,9 +116,9 @@ type TaggedFailure<E> = [E] extends [never] ? never : E extends { readonly _tag:
 const assertTaggedFailure = <T extends true>(value: T): T => value;
 
 describe("Effect service tags", () => {
-  test("exports the service tags as Context.Tag instances", () => {
+  test("exports the service tags as Context.Service instances", () => {
     for (const { tag, key } of EXPECTED_TAGS) {
-      expect(Context.isTag(tag)).toBe(true);
+      expect(Context.isKey(tag)).toBe(true);
       expect(tag.key).toBe(key);
     }
   });
@@ -187,43 +187,43 @@ describe("Effect service tags", () => {
   });
 
   test("service methods return Effect or Stream values", () => {
-    const logger: Context.Tag.Service<typeof Logger> = {
+    const logger: Context.Service.Shape<typeof Logger> = {
       debug: (_message: string) => Effect.void,
       info: (_message: string) => Effect.void,
       warn: (_message: string) => Effect.void,
       error: (_message: string) => Effect.void,
     };
 
-    const eventService: Context.Tag.Service<typeof EventService> = {
+    const eventService: Context.Service.Shape<typeof EventService> = {
       publish: (_event: { readonly _tag: string }) => Effect.void,
       subscribe: (_name: string) => Stream.empty,
-      subscribeQueue: Effect.never as Context.Tag.Service<typeof EventService>["subscribeQueue"],
+      subscribeQueue: Effect.never as Context.Service.Shape<typeof EventService>["subscribeQueue"],
       waitFor: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     };
 
-    const cacheService: Context.Tag.Service<typeof CacheService> = {
+    const cacheService: Context.Service.Shape<typeof CacheService> = {
       read: (_key: string) => Effect.succeed(null),
       write: (_key: string, _value: unknown) => Effect.void,
       writeAtomic: (_path: string, _content: string | Uint8Array) => Effect.void,
       invalidate: (_key: string) => Effect.void,
     };
 
-    const processRunner: Context.Tag.Service<typeof ProcessRunner> = {
+    const processRunner: Context.Service.Shape<typeof ProcessRunner> = {
       run: (_options) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       stream: (_options) => Stream.empty,
       streamWithExit: (_options) => Stream.empty,
     };
 
-    const shellRunner: Context.Tag.Service<typeof ShellRunner> = {
+    const shellRunner: Context.Service.Shape<typeof ShellRunner> = {
       exec: (_command: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       run: (_command: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       runScript: (_path: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       interactive: (_spec) => Effect.succeed({ exitCode: 0 }),
     };
 
-    const fileSystem: Context.Tag.Service<typeof FileSystem> = {
+    const fileSystem: Context.Service.Shape<typeof FileSystem> = {
       read: (_path: string) => Stream.empty,
       readText: (_path: string) => Effect.succeed(""),
       write: (_path: string, _content: string | Uint8Array) => Effect.void,
@@ -239,7 +239,7 @@ describe("Effect service tags", () => {
       writeFile: (_path: string, _content: string) => Effect.void,
     };
 
-    const buildOrchestrator: Context.Tag.Service<typeof BuildOrchestrator> = {
+    const buildOrchestrator: Context.Service.Shape<typeof BuildOrchestrator> = {
       build: (plan) => Effect.succeed(plan),
       buildApp: () => Effect.void,
     };
@@ -256,7 +256,7 @@ describe("Effect service tags", () => {
       stores: [],
       fileSync: [],
       metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+        resolvedAt: DateTime.makeUnsafe("2026-05-14T00:00:00Z"),
         source: "tags.test",
         runtime: 4,
       },
@@ -265,12 +265,12 @@ describe("Effect service tags", () => {
 
     expect(Effect.isEffect(logger.info("ready"))).toBe(true);
     expect(Effect.isEffect(eventService.publish({ _tag: "test-event" }))).toBe(true);
-    expect(Stream.StreamTypeId in Object(eventService.subscribe("test-event"))).toBe(true);
+    expect(Stream.TypeId in Object(eventService.subscribe("test-event"))).toBe(true);
     expect(Effect.isEffect(cacheService.read("key"))).toBe(true);
     expect(Effect.isEffect(fileSystem.readText("/tmp/file"))).toBe(true);
-    expect(Stream.StreamTypeId in Object(fileSystem.read("/tmp/file"))).toBe(true);
+    expect(Stream.TypeId in Object(fileSystem.read("/tmp/file"))).toBe(true);
     expect(Effect.isEffect(processRunner.run({ cmd: "true", args: [] }))).toBe(true);
-    expect(Stream.StreamTypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
+    expect(Stream.TypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
     expect(Effect.isEffect(shellRunner.exec("echo ok"))).toBe(true);
     expect(Effect.isEffect(buildOrchestrator.build(appPlan))).toBe(true);
     expect(Effect.isEffect(buildOrchestrator.buildApp(appPlan))).toBe(true);
@@ -278,46 +278,50 @@ describe("Effect service tags", () => {
 
   test("method failure channels use SDK tagged errors", () => {
     const assertions = [
-      assertTaggedFailure<TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof Logger>["info"]>>>>(
+      assertTaggedFailure<TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof Logger>["info"]>>>>(
         true,
       ),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof EventService>["publish"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof EventService>["publish"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof RuntimeProvider>["apply"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof RuntimeProvider>["apply"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof RuntimeProviderRegistry>["select"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof RuntimeProviderRegistry>["select"]>>>
       >(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof ConfigService>["load"]>>>(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof LandofileService>["discover"]>>>(
+      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof ConfigService>["load"]>>>(
         true,
       ),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof Downloader>["download"]>>>
+        TaggedFailure<FailureOf<Context.Service.Shape<typeof LandofileService>["discover"]>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof AppPlanner>["plan"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof Downloader>["download"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof BuildOrchestrator>["build"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof AppPlanner>["plan"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof BuildOrchestrator>["buildApp"]>>>
-      >(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof PluginRegistry>["list"]>>>(true),
-      assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof CacheService>["read"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof BuildOrchestrator>["build"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof FileSystem>["exists"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof BuildOrchestrator>["buildApp"]>>>
+      >(true),
+      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof PluginRegistry>["list"]>>>(
+        true,
+      ),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof CacheService>["read"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof ProcessRunner>["run"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof FileSystem>["exists"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof ShellRunner>["run"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof ProcessRunner>["run"]>>>
+      >(true),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof ShellRunner>["run"]>>>
       >(true),
     ];
 

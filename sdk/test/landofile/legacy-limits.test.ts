@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 import { parseLegacyLandofile } from "@lando/sdk/landofile";
 
@@ -24,11 +24,18 @@ const failureOf = (
   >,
 ) => {
   if (Exit.isSuccess(exit)) throw new Error("expected a parse failure");
-  const failure = Exit.causeOption(exit);
-  if (failure._tag === "None") throw new Error("expected a failure cause");
-  const error = failure.value;
-  if (error._tag !== "Fail") throw new Error(`expected a typed failure, got ${error._tag}`);
-  return error.error;
+  const causeOption = Exit.getCause(exit);
+  if (Option.isNone(causeOption)) throw new Error("expected a failure cause");
+  const cause = causeOption.value;
+  if (cause.reasons.length !== 1) {
+    throw new Error(`expected a single failure reason, got ${cause.reasons.length}`);
+  }
+  const reason = cause.reasons[0];
+  if (reason === undefined) throw new Error("expected a failure reason");
+  if (!Cause.isFailReason(reason)) {
+    throw new Error(`expected a typed failure, got ${reason?._tag ?? "undefined"}`);
+  }
+  return reason.error;
 };
 
 const aliasDocument = (count: number): string => {

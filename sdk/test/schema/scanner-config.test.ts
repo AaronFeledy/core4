@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Result, Schema } from "effect";
 
 import * as SDK from "@lando/sdk/schema";
 
@@ -25,7 +25,7 @@ describe("ScannerConfig", () => {
     { path: "healthz" },
   ])("rejects invalid scanner settings %j", (input) => {
     // Given invalid settings, when decoded, then report a schema failure.
-    expect(Either.isLeft(Schema.decodeUnknownEither(SDK.ScannerConfig)(input))).toBe(true);
+    expect(Result.isFailure(Schema.decodeUnknownResult(SDK.ScannerConfig)(input))).toBe(true);
   });
 
   test.each([false, {}, { path: "/", okCodes: [100, 599], retries: 20, timeout: 600000 }])(

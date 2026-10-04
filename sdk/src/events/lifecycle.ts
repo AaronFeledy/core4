@@ -48,19 +48,19 @@ export const PostStopEvent = Schema.TaggedStruct("post-stop", {
 export type PostStopEvent = typeof PostStopEvent.Type;
 
 export const PreRestartEvent = Schema.TaggedStruct("pre-restart", {
-  scope: Schema.Literal("app").annotations({ description: "App lifecycle scope." }),
-  app: AppRef.annotations({ description: "App being restarted." }),
-  plan: AppPlan.annotations({ description: "Resolved app plan." }),
-  triggeredBy: Schema.String.annotations({ description: "Command that triggered the restart." }),
-  timestamp: Timestamp.annotations({ description: "Time the restart bracket opened." }),
+  scope: Schema.Literal("app").annotate({ description: "App lifecycle scope." }),
+  app: AppRef.annotate({ description: "App being restarted." }),
+  plan: AppPlan.annotate({ description: "Resolved app plan." }),
+  triggeredBy: Schema.String.annotate({ description: "Command that triggered the restart." }),
+  timestamp: Timestamp.annotate({ description: "Time the restart bracket opened." }),
 });
 export type PreRestartEvent = typeof PreRestartEvent.Type;
 
 export const PostRestartEvent = Schema.TaggedStruct("post-restart", {
-  scope: Schema.Literal("app").annotations({ description: "App lifecycle scope." }),
-  app: AppRef.annotations({ description: "App being restarted." }),
-  plan: AppPlan.annotations({ description: "Resolved app plan." }),
-  timestamp: Timestamp.annotations({ description: "Time the restart bracket closed." }),
+  scope: Schema.Literal("app").annotate({ description: "App lifecycle scope." }),
+  app: AppRef.annotate({ description: "App being restarted." }),
+  plan: AppPlan.annotate({ description: "Resolved app plan." }),
+  timestamp: Timestamp.annotate({ description: "Time the restart bracket closed." }),
 });
 export type PostRestartEvent = typeof PostRestartEvent.Type;
 

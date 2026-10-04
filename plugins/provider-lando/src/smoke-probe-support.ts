@@ -109,27 +109,26 @@ export const smokeImageExists = (deps: SmokeProbeDeps, image: string, operation:
     path: `/images/${encodeURIComponent(image)}/json`,
   }).pipe(Effect.map((response) => response.status >= 200 && response.status < 300));
 
-export const ensureSmokeBaseImage = (
+export const ensureSmokeBaseImage = Effect.fn("ProviderLando.ensureSmokeBaseImage")(function* (
   deps: SmokeProbeDeps,
   image: string,
-): Effect.Effect<void, ProviderLandoSmokeError> =>
-  Effect.gen(function* () {
-    if (yield* smokeImageExists(deps, image, "base-image")) return;
-    const response = yield* smokeApiRequest(deps, "base-image", {
-      method: "POST",
-      path: `/libpod/images/pull?reference=${encodeURIComponent(image)}`,
-    });
-    yield* expectSmokeSuccess("base-image", response, `Could not obtain smoke probe base image ${image}.`);
-    if (yield* smokeImageExists(deps, image, "base-image")) return;
-    return yield* Effect.fail(
-      new ProviderLandoSmokeError({
-        smokeOperation: "base-image",
-        message: `Podman did not resolve smoke probe base image ${image} after pulling it.`,
-        remediation: smokeRemediation("base-image"),
-        details: { image },
-      }),
-    );
+): Effect.fn.Return<void, ProviderLandoSmokeError> {
+  if (yield* smokeImageExists(deps, image, "base-image")) return;
+  const response = yield* smokeApiRequest(deps, "base-image", {
+    method: "POST",
+    path: `/libpod/images/pull?reference=${encodeURIComponent(image)}`,
   });
+  yield* expectSmokeSuccess("base-image", response, `Could not obtain smoke probe base image ${image}.`);
+  if (yield* smokeImageExists(deps, image, "base-image")) return;
+  return yield* Effect.fail(
+    new ProviderLandoSmokeError({
+      smokeOperation: "base-image",
+      message: `Podman did not resolve smoke probe base image ${image} after pulling it.`,
+      remediation: smokeRemediation("base-image"),
+      details: { image },
+    }),
+  );
+});
 
 export const removeSmokeResource = (
   deps: SmokeProbeDeps,

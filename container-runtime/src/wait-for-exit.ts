@@ -20,14 +20,14 @@ export interface WaitForExitOptions {
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
   serviceContainerName(plan, service.name);
 
-export const waitForExit = (
+export const waitForExit = Effect.fn("RuntimeProvider.waitForExit")(function* (
   plan: AppPlan,
   target: ServiceSelector,
   options: WaitForExitOptions,
-): Effect.Effect<ServiceExitResult, ProviderError> => {
+): Effect.fn.Return<ServiceExitResult, ProviderError> {
   const service = plan.services[target.service];
   if (service === undefined) {
-    return Effect.fail(
+    return yield* Effect.fail(
       new ServiceNotFoundError({
         providerId: options.ctx.providerId,
         operation: "waitForExit",
@@ -38,7 +38,7 @@ export const waitForExit = (
   }
   const request = options.api?.request;
   if (request === undefined) {
-    return Effect.fail(
+    return yield* Effect.fail(
       missingApi(
         options.ctx,
         "waitForExit",
@@ -47,36 +47,34 @@ export const waitForExit = (
     );
   }
 
-  return Effect.gen(function* () {
-    const response = yield* request(options.dialect.request(containerName(plan, service), options.signal));
-    if (response.status < 200 || response.status >= 300) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: options.ctx.providerId,
-          operation: "waitForExit",
-          message: withApiReason(`Container wait failed with HTTP ${response.status}.`, response),
-          details: redactDetails({ service: service.name, body: response.body }),
-          remediation: options.ctx.remediation,
-        }),
-      );
-    }
+  const response = yield* request(options.dialect.request(containerName(plan, service), options.signal));
+  if (response.status < 200 || response.status >= 300) {
+    return yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: options.ctx.providerId,
+        operation: "waitForExit",
+        message: withApiReason(`Container wait failed with HTTP ${response.status}.`, response),
+        details: redactDetails({ service: service.name, body: response.body }),
+        remediation: options.ctx.remediation,
+      }),
+    );
+  }
 
-    const decoded = yield* parseEngineJson(response, options.ctx, "waitForExit", {
-      message: "Container engine API returned malformed JSON.",
-      details: redactDetails(response),
-    });
-    const exitCode = options.dialect.decodeExitCode(decoded);
-    if (exitCode === undefined) {
-      return yield* Effect.fail(
-        new ProviderInternalError({
-          providerId: options.ctx.providerId,
-          operation: "waitForExit",
-          message: "Container wait did not return a numeric container exit code.",
-          details: { service: service.name },
-          remediation: options.ctx.remediation,
-        }),
-      );
-    }
-    return { exitCode };
+  const decoded = yield* parseEngineJson(response, options.ctx, "waitForExit", {
+    message: "Container engine API returned malformed JSON.",
+    details: redactDetails(response),
   });
-};
+  const exitCode = options.dialect.decodeExitCode(decoded);
+  if (exitCode === undefined) {
+    return yield* Effect.fail(
+      new ProviderInternalError({
+        providerId: options.ctx.providerId,
+        operation: "waitForExit",
+        message: "Container wait did not return a numeric container exit code.",
+        details: { service: service.name },
+        remediation: options.ctx.remediation,
+      }),
+    );
+  }
+  return { exitCode };
+});

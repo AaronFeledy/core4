@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Predicate } from "effect";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
@@ -63,9 +64,6 @@ class ClosureModuleShapeError extends Error {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 const closureModuleKeys = [
   "evaluateClosureReviewInput",
   "renderClosureReviewMarkdown",
@@ -73,7 +71,8 @@ const closureModuleKeys = [
 ] as const satisfies readonly (keyof ClosureModule)[];
 
 const isClosureModule = (value: unknown): value is ClosureModule =>
-  isRecord(value) && closureModuleKeys.every((key) => typeof value[key] === "function");
+  Predicate.isObjectOrArray(value) &&
+  closureModuleKeys.every((key) => typeof Reflect.get(value, key) === "function");
 
 const loadClosureModule = async (): Promise<ClosureModule> => {
   const moduleUrl = new URL("../../../scripts/closure-review.ts", import.meta.url);

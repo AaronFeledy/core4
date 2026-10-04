@@ -193,16 +193,15 @@ const pruneFailure = (ctx: ProviderErrorContext, status: number, body: string): 
     remediation: ctx.remediation,
   });
 
-export const pruneVolumes = (
+export const pruneVolumes = Effect.fn("RuntimeProvider.pruneVolumes")(function* (
   api: EngineHttpApi,
   options: VolumePruneOptions,
-): Effect.Effect<VolumePruneReport, ProviderUnavailableError | ProviderInternalError> =>
-  Effect.gen(function* () {
-    const requestFn = api.request;
-    if (requestFn === undefined) return yield* Effect.fail(missingRequest(options.ctx));
-    const response = yield* requestFn(buildVolumePruneRequest(options));
-    if (response.status < 200 || response.status >= 300) {
-      return yield* Effect.fail(pruneFailure(options.ctx, response.status, response.body));
-    }
-    return { ...parseVolumePruneResult(response.body), dryRun: options.dryRun === true };
-  });
+): Effect.fn.Return<VolumePruneReport, ProviderUnavailableError | ProviderInternalError> {
+  const requestFn = api.request;
+  if (requestFn === undefined) return yield* Effect.fail(missingRequest(options.ctx));
+  const response = yield* requestFn(buildVolumePruneRequest(options));
+  if (response.status < 200 || response.status >= 300) {
+    return yield* Effect.fail(pruneFailure(options.ctx, response.status, response.body));
+  }
+  return { ...parseVolumePruneResult(response.body), dryRun: options.dryRun === true };
+});

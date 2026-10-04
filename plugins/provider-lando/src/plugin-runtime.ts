@@ -31,7 +31,7 @@ const isStringStateBucket = (value: unknown): value is StateBucket<string> =>
   typeof value.set === "function";
 
 export const makePluginArtifactDownload =
-  (downloader: Context.Tag.Service<typeof Downloader>): ArtifactDownload =>
+  (downloader: Context.Service.Shape<typeof Downloader>): ArtifactDownload =>
   (request) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -69,39 +69,36 @@ export const makePluginArtifactDownload =
       ),
     );
 
-export const makePluginRuntimeState = (
-  ctx: LandoPluginContext,
-): Effect.Effect<
+export const makePluginRuntimeState = Effect.fnUntraced(function* (ctx: LandoPluginContext): Effect.fn.Return<
   {
     readonly runtimeLock: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
     readonly runtimeGenerationStore: RuntimeGenerationStore;
   },
   ProviderUnavailableError
-> =>
-  Effect.gen(function* () {
-    const generationBucketSpec = {
-      id: "runtime-generation.json",
-      key: "runtime-generation.json",
-      schema: Schema.String,
-      version: 1,
-      lock: "advisory",
-      onCorrupt: "fail",
-      onVersionMismatch: "discard",
-    } as const;
-    const generationBucketValue = yield* ctx.stateStore
-      .open(generationBucketSpec)
-      .pipe(
-        Effect.mapError((cause) => providerStateError("Provider runtime state could not be opened.", cause)),
-      );
-    if (!isStringStateBucket(generationBucketValue)) {
-      return yield* Effect.fail(providerStateError("Provider runtime state returned an invalid bucket."));
-    }
+> {
+  const generationBucketSpec = {
+    id: "runtime-generation.json",
+    key: "runtime-generation.json",
+    schema: Schema.String,
+    version: 1,
+    lock: "advisory",
+    onCorrupt: "fail",
+    onVersionMismatch: "discard",
+  } as const;
+  const generationBucketValue = yield* ctx.stateStore
+    .open(generationBucketSpec)
+    .pipe(
+      Effect.mapError((cause) => providerStateError("Provider runtime state could not be opened.", cause)),
+    );
+  if (!isStringStateBucket(generationBucketValue)) {
+    return yield* Effect.fail(providerStateError("Provider runtime state returned an invalid bucket."));
+  }
 
-    return {
-      runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
-      runtimeGenerationStore: {
-        get: generationBucketValue.get,
-        set: (generation) => generationBucketValue.set(generation),
-      },
-    };
-  });
+  return {
+    runtimeLock: (body) => ctx.stateStore.withLock("runtime-launch", body),
+    runtimeGenerationStore: {
+      get: generationBucketValue.get,
+      set: (generation) => generationBucketValue.set(generation),
+    },
+  };
+});

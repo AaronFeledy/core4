@@ -9,7 +9,7 @@ import { AppId, AppPlan, type AppPlan as AppPlanShape } from "@lando/sdk/schema"
 const APPLIED_STATE_VERSION = 1;
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
 const APPLIED_PLANS_KEY = "applied-plans.json";
-const AppliedPlans = Schema.Record({ key: AppId, value: AppPlan });
+const AppliedPlans = Schema.Record(AppId, AppPlan);
 
 export const appliedPlansDir = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/${APPLIED_PLAN_NAMESPACE}`;
@@ -99,7 +99,7 @@ export function makeAppliedPlanStore(
         open(stateStore, appId).pipe(
           Effect.flatMap((bucket) => bucket.get),
           Effect.map((plan) => plan ?? undefined),
-          Effect.catchAll(() => Effect.succeed(undefined)),
+          Effect.catch(() => Effect.succeed(undefined)),
         ),
       removeAppliedPlan: (stateStore, appId) =>
         open(stateStore, appId).pipe(
@@ -152,7 +152,7 @@ export function makeAppliedPlanStore(
       open(stateStore).pipe(
         Effect.flatMap((bucket) => bucket.get),
         Effect.map((plans) => plans?.[appId]),
-        Effect.catchAll(() => Effect.succeed(undefined)),
+        Effect.catch(() => Effect.succeed(undefined)),
       ),
     listAppliedPlans: (stateStore: PluginStateStore) =>
       open(stateStore).pipe(

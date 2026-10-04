@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -94,10 +94,10 @@ describe("plugin contribution source merge", () => {
     const candidates = pluginCommandCandidates([{ source: "explicit", manifest, entry: module, module }]);
 
     // Then
-    expect(Either.isRight(candidates)).toBe(true);
-    if (Either.isRight(candidates)) {
-      expect(candidates.right.map(({ id }) => id)).toEqual(["meta:example:hello"]);
-      expect((await candidates.right[0]?.load())?.id).toBe("meta:example:hello");
+    expect(Result.isSuccess(candidates)).toBe(true);
+    if (Result.isSuccess(candidates)) {
+      expect(candidates.success.map(({ id }) => id)).toEqual(["meta:example:hello"]);
+      expect((await candidates.success[0]?.load())?.id).toBe("meta:example:hello");
     }
   });
 
@@ -114,8 +114,8 @@ describe("plugin contribution source merge", () => {
     const candidates = pluginCommandCandidates([{ source: "user", manifest }]);
 
     // Then
-    expect(Either.isRight(candidates)).toBe(true);
-    if (Either.isRight(candidates)) expect(candidates.right).toEqual([]);
+    expect(Result.isSuccess(candidates)).toBe(true);
+    if (Result.isSuccess(candidates)) expect(candidates.success).toEqual([]);
   });
 
   test("rejects executable command loaders absent from the manifest", () => {
@@ -148,10 +148,10 @@ describe("plugin contribution source merge", () => {
     const candidates = pluginCommandCandidates([{ source: "explicit", manifest, entry: module, module }]);
 
     // Then
-    expect(Either.isLeft(candidates)).toBe(true);
-    if (Either.isLeft(candidates)) {
-      expect(candidates.left.declared).toEqual([]);
-      expect(candidates.left.provided).toEqual(["example:undeclared"]);
+    expect(Result.isFailure(candidates)).toBe(true);
+    if (Result.isFailure(candidates)) {
+      expect(candidates.failure.declared).toEqual([]);
+      expect(candidates.failure.provided).toEqual(["example:undeclared"]);
     }
   });
 });

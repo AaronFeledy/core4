@@ -14,6 +14,8 @@ lando app:config:lint
 
 That validates the current app's Landofile against the canonical schema, then checks that every key under `events:` names an event Lando can actually run. No translators, no doctor checks, no provider probes, no container runtime. A clean Landofile exits `0`.
 
+Lint reports every problem in one run. A Landofile with three independent mistakes gets three violations, not one, so you fix the file once instead of playing whack-a-mole with the validator.
+
 ## Print JSON
 
 ```sh
@@ -23,18 +25,28 @@ lando app:config:lint --format=json
 JSON output is a stable `ConfigLintResult` for editor integrations:
 
 ```
-{ app, file, valid, violations: [{ path, message, suggestedFix?, line?, column? }] }
+{ app, file, valid, violations: [{ path, message, suggestion?, line?, column? }] }
 ```
+
+Each violation is a `ValidationIssue`, the same shape `LandofileValidationError.issues` and recipe-manifest errors carry. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it.
 
 This shape is frozen by the schema artifact-set gate. `--format` defaults to `text`. Pass `--format=json` for machine output.
 
 ## Read schema violations
 
-A schema violation exits non-zero. Each violation carries a dot-joined `path`, a `message`, and an optional `suggestedFix`. Unknown keys surface as excess-property violations (schema-only, never a `NotImplementedError`).
+Text output prints one line per issue, the dot-joined path first:
+
+```
+services.web.imgae: Expected no excess property
+services.web.home: Expected false | object
+services.web.ports[0].target: Expected a value between 1 and 65535
+```
+
+An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
 
 ## Read rejected Compose keys
 
-A rejected Compose key keeps its full authored path, for example `services.web.deploy.replicas`. The `suggestedFix` comes from the pinned Compose disposition matrix instead of a generic unknown-key message.
+A rejected Compose key keeps its full authored path, for example `["services", "web", "deploy", "replicas"]`. The `suggestion` comes from the pinned Compose disposition matrix instead of a generic unknown-key message.
 
 ## Read unknown event names
 
@@ -46,11 +58,33 @@ When Lando cannot resolve your services at all, lint reports that resolution fai
 
 `lando doctor --app` runs the same lint as part of the combined doctor report, under the `app-config-lint` check name. Both commands call the same pass, so they never disagree about which events exist.
 
+## Validate as you type
+
+Your editor can flag the same problems before you run anything. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
+
 <Guide>
   <Scenario id="clean-landofile" render>
     <Step name="lint">
       <UseFixture name="config-lint-demo" />
       <Run command="lando app:config:lint" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="three-problems-three-violations" render>
+    <Step name="scaffold-invalid">
+      <UseFixture name="config-lint-invalid" />
+    </Step>
+    <Step name="lint-invalid">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"violations\":\\s*\\[\\s*\\{\\s*\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"imgae\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^,}]*image" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"home\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"ports\",\\s*0,\\s*\"target\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { not: { regex: "suggestedFix" } } }} />
+    </Step>
+    <Step name="cleanup-invalid">
+      <Cleanup />
     </Step>
   </Scenario>
 </Guide>

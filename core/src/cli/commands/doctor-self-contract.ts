@@ -35,9 +35,9 @@ export interface DoctorSelfReport {
 }
 
 const DoctorSelfSolutionSchema = Schema.Struct({
-  kind: Schema.Literal("automatic", "manual"),
+  kind: Schema.Literals(["automatic", "manual"]),
   description: Schema.String,
-  command: Schema.optional(Schema.String),
+  command: Schema.optionalKey(Schema.String),
 });
 
 export const DoctorSelfCheckSchema = Schema.Struct({
@@ -45,8 +45,8 @@ export const DoctorSelfCheckSchema = Schema.Struct({
   section: Schema.String,
   status: Schema.Literal("fail"),
   severity: Schema.Literal("error"),
-  reason: Schema.Literal("failure", "defect", "timeout"),
-  context: Schema.Record({ key: Schema.String, value: Schema.String }),
+  reason: Schema.Literals(["failure", "defect", "timeout"]),
+  context: Schema.Record(Schema.String, Schema.String),
   solutions: Schema.Array(DoctorSelfSolutionSchema),
 });
 

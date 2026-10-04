@@ -31,11 +31,11 @@ export type EventFor<Name extends string> = Name extends "*"
 
 export interface EventWaitOptions<Name extends string> {
   readonly filter?: (event: EventFor<Name>) => boolean;
-  readonly timeout?: Duration.DurationInput;
+  readonly timeout?: Duration.Input;
 }
 
 export interface EventWaitAnyOptions {
-  readonly timeout?: Duration.DurationInput;
+  readonly timeout?: Duration.Input;
 }
 
 export interface EventWaitSpec<Name extends string = string> {
@@ -85,10 +85,9 @@ export interface EventServiceShape {
   ) => Effect.Effect<ReadonlyArray<EventFor<Name>>, never>;
 }
 
-export class EventService extends Context.Tag("@lando/core/EventService")<
-  EventService,
-  EventServiceShape
->() {}
+export class EventService extends Context.Service<EventService, EventServiceShape>()(
+  "@lando/core/EventService",
+) {}
 
 /**
  * Logger — structured logging through Effect.
@@ -99,7 +98,7 @@ export class EventService extends Context.Tag("@lando/core/EventService")<
  * This tag is the *Lando* logger service — a thin wrapper that selects which
  * Effect Logger configuration to install.
  */
-export class Logger extends Context.Tag("@lando/core/Logger")<
+export class Logger extends Context.Service<
   Logger,
   {
     readonly debug: (
@@ -119,4 +118,4 @@ export class Logger extends Context.Tag("@lando/core/Logger")<
       data?: Readonly<Record<string, unknown>>,
     ) => Effect.Effect<void, EventError>;
   }
->() {}
+>()("@lando/core/Logger") {}

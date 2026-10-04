@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { StateStoreLive } from "../src/service.ts";
+import * as StateStoreLayer from "../src/service.ts";
 import { volumeInitialization } from "../src/volume-initialization.ts";
 
 const identity: VolumeIdentity = {
@@ -18,7 +18,7 @@ const identity: VolumeIdentity = {
 const isolated = async (body: (store: StateStoreShape) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-initialization-"));
   try {
-    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLayer.layer)));
     const store: StateStoreShape = {
       ...live,
       open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),

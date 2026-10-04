@@ -22,7 +22,7 @@ import { infoForPlan } from "../../src/operations/info.ts";
 const providerId = ProviderId.make("test");
 const web = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00.000Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-05-15T00:00:00.000Z"),
   source: "info-router.test",
   runtime: 4 as const,
 };
@@ -100,11 +100,14 @@ const infoOf = (plan: AppPlan, endpoints: ServiceRuntimeInfo["endpoints"] = [pub
     infoForPlan(plan).pipe(
       Effect.provide(Layer.succeed(RouterService, proxy)),
       Effect.provide(
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        Layer.succeed(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({
+            list: Effect.succeed([providerId]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
       ),
     ),
   );

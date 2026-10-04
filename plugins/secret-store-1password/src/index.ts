@@ -1,10 +1,10 @@
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { ONEPASSWORD_SCHEME, ONEPASSWORD_STORE_ID, onePasswordSecretStore } from "./store.ts";
+import { ONEPASSWORD_SCHEME, ONEPASSWORD_STORE_ID, layer } from "./store.ts";
 
 export const PLUGIN_NAME = "@lando/secret-store-1password";
-export const secretStores = new Map([[ONEPASSWORD_STORE_ID, onePasswordSecretStore]]);
+export const secretStores = new Map([[ONEPASSWORD_STORE_ID, layer]]);
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -26,5 +26,5 @@ export {
   ONEPASSWORD_SCHEME,
   ONEPASSWORD_STORE_ID,
   makeOnePasswordSecretStore,
-  onePasswordSecretStore,
+  layer,
 } from "./store.ts";

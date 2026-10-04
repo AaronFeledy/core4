@@ -1,4 +1,4 @@
-// `ManagedFileServiceLive`: the single chokepoint for Lando-owned writes into
+// `ManagedFileService`: the single chokepoint for Lando-owned writes into
 // the user's working tree. It renders + encodes content, applies an ownership
 // marker (`file` mode) or a fenced region (`block` mode), records a durable
 // ledger, detects drift/adoption, and refuses to silently clobber a user edit.
@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
-import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
 import { ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import {
@@ -45,11 +45,7 @@ import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
-import {
-  type PrivateFileAccess,
-  PrivateFileAccessLive,
-  PrivateFileAccessService,
-} from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
@@ -71,14 +67,14 @@ const LedgerEntrySchema = Schema.Struct({
   id: Schema.String,
   owner: Schema.String,
   path: Schema.String,
-  mode: Schema.Literal("file", "block", "keys"),
+  mode: Schema.Literals(["file", "block", "keys"]),
   format: FileFormatSchema,
   marker: Schema.String,
   lastWrittenChecksum: Schema.String,
   sourceHash: Schema.String,
-  state: Schema.Literal("managed", "adopted"),
-  base: Schema.optional(Schema.String),
-  backup: Schema.optional(Schema.String),
+  state: Schema.Literals(["managed", "adopted"]),
+  base: Schema.optionalKey(Schema.String),
+  backup: Schema.optionalKey(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -223,9 +219,9 @@ interface PreparedDecision {
   readonly decision: Decision;
 }
 
-const nowIso = (): string => new Date().toISOString();
+const nowIso = DateTime.now.pipe(Effect.map(DateTime.formatIso));
 
-const buildEntry = (
+const buildEntry = Effect.fnUntraced(function* (
   mf: ManagedFile,
   relPath: string,
   marker: string,
@@ -234,20 +230,23 @@ const buildEntry = (
   state: "managed" | "adopted",
   existing: LedgerEntry | undefined,
   backup?: string,
-): LedgerEntry => ({
-  id: mf.id,
-  owner: mf.owner,
-  path: relPath,
-  mode: mf.mode,
-  format: mf.format,
-  marker,
-  lastWrittenChecksum,
-  sourceHash,
-  state,
-  base: mf.base,
-  backup,
-  createdAt: existing?.createdAt ?? nowIso(),
-  updatedAt: nowIso(),
+): Effect.fn.Return<LedgerEntry> {
+  const timestamp = yield* nowIso;
+  return {
+    id: mf.id,
+    owner: mf.owner,
+    path: relPath,
+    mode: mf.mode,
+    format: mf.format,
+    marker,
+    lastWrittenChecksum,
+    sourceHash,
+    state,
+    ...(mf.base === undefined ? {} : { base: mf.base }),
+    ...(backup === undefined ? {} : { backup }),
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
 });
 
 const resolveConflict = (mf: ManagedFile, force: boolean): "overwrite" | "skip" | "fail" => {
@@ -273,43 +272,102 @@ const decideFile = (
   force: boolean,
 ): Effect.Effect<Decision, ManagedFileError> =>
   renderBody(mf, operation).pipe(
-    Effect.map((body): Decision => {
-      const sourceHash = sha256(body);
-      const desiredFile = composeFileContent(mf.format, marker, body);
-      const desiredChecksum = sha256(desiredFile);
+    Effect.flatMap(
+      Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision> {
+        const sourceHash = sha256(body);
+        const desiredFile = composeFileContent(mf.format, marker, body);
+        const desiredChecksum = sha256(desiredFile);
 
-      if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
-      if (disk === null) {
-        return {
-          action: "create",
-          relPath,
-          abs,
-          write: desiredFile,
-          ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
-        };
-      }
+        if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
+        if (disk === null) {
+          return {
+            action: "create",
+            relPath,
+            abs,
+            write: desiredFile,
+            ledgerNext: yield* buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
+          };
+        }
 
-      const markerPresent = hasFileMarker(mf.format, disk, marker);
-      if (!markerPresent) {
-        if (entry?.state === "managed" && !canCarryFileMarker(mf.format, disk)) {
-          const currentChecksum = sha256(disk);
-          if (currentChecksum === entry.lastWrittenChecksum) {
-            if (desiredChecksum === currentChecksum) {
+        const markerPresent = hasFileMarker(mf.format, disk, marker);
+        if (!markerPresent) {
+          if (entry?.state === "managed" && !canCarryFileMarker(mf.format, disk)) {
+            const currentChecksum = sha256(disk);
+            if (currentChecksum === entry.lastWrittenChecksum) {
+              if (desiredChecksum === currentChecksum) {
+                return {
+                  action: "skip-unchanged",
+                  relPath,
+                  abs,
+                  ledgerNext: yield* buildEntry(
+                    mf,
+                    relPath,
+                    marker,
+                    currentChecksum,
+                    sourceHash,
+                    "managed",
+                    entry,
+                  ),
+                };
+              }
               return {
-                action: "skip-unchanged",
+                action: "update",
                 relPath,
                 abs,
-                ledgerNext: buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
+                write: desiredFile,
+                ledgerNext: yield* buildEntry(
+                  mf,
+                  relPath,
+                  marker,
+                  desiredChecksum,
+                  sourceHash,
+                  "managed",
+                  entry,
+                ),
               };
             }
-            return {
-              action: "update",
-              relPath,
-              abs,
-              write: desiredFile,
-              ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
-            };
+            const mode = resolveConflict(mf, force);
+            if (mode === "overwrite") {
+              return {
+                action: "update",
+                relPath,
+                abs,
+                write: desiredFile,
+                ledgerNext: yield* buildEntry(
+                  mf,
+                  relPath,
+                  marker,
+                  desiredChecksum,
+                  sourceHash,
+                  "managed",
+                  entry,
+                ),
+                backup: { content: disk, path: `${relPath}.lando-backup-${yield* Clock.currentTimeMillis}` },
+              };
+            }
+            return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
           }
+          // Pre-existing user file, or a previously managed file whose marker was removed.
+          const action: Decision["action"] = entry ? "adopt-detected" : "skip-adopted";
+          return {
+            action,
+            relPath,
+            abs,
+            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
+          };
+        }
+
+        const currentChecksum = sha256(disk);
+        const baseline = entry?.lastWrittenChecksum;
+        if (desiredChecksum === currentChecksum) {
+          return {
+            action: "skip-unchanged",
+            relPath,
+            abs,
+            ledgerNext: yield* buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
+          };
+        }
+        if (baseline === undefined || currentChecksum !== baseline) {
           const mode = resolveConflict(mf, force);
           if (mode === "overwrite") {
             return {
@@ -317,54 +375,29 @@ const decideFile = (
               relPath,
               abs,
               write: desiredFile,
-              ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
-              backup: { content: disk, path: `${relPath}.lando-backup-${Date.now()}` },
+              ledgerNext: yield* buildEntry(
+                mf,
+                relPath,
+                marker,
+                desiredChecksum,
+                sourceHash,
+                "managed",
+                entry,
+              ),
+              backup: { content: disk, path: `${relPath}.lando-backup-${yield* Clock.currentTimeMillis}` },
             };
           }
           return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
         }
-        // Pre-existing user file, or a previously managed file whose marker was removed.
-        const action: Decision["action"] = entry ? "adopt-detected" : "skip-adopted";
         return {
-          action,
+          action: "update",
           relPath,
           abs,
-          ledgerNext: buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
+          write: desiredFile,
+          ledgerNext: yield* buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
         };
-      }
-
-      const currentChecksum = sha256(disk);
-      const baseline = entry?.lastWrittenChecksum;
-      if (desiredChecksum === currentChecksum) {
-        return {
-          action: "skip-unchanged",
-          relPath,
-          abs,
-          ledgerNext: buildEntry(mf, relPath, marker, currentChecksum, sourceHash, "managed", entry),
-        };
-      }
-      if (baseline === undefined || currentChecksum !== baseline) {
-        const mode = resolveConflict(mf, force);
-        if (mode === "overwrite") {
-          return {
-            action: "update",
-            relPath,
-            abs,
-            write: desiredFile,
-            ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
-            backup: { content: disk, path: `${relPath}.lando-backup-${Date.now()}` },
-          };
-        }
-        return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
-      }
-      return {
-        action: "update",
-        relPath,
-        abs,
-        write: desiredFile,
-        ledgerNext: buildEntry(mf, relPath, marker, desiredChecksum, sourceHash, "managed", entry),
-      };
-    }),
+      }),
+    ),
   );
 
 const decideBlock = (
@@ -385,119 +418,146 @@ const decideBlock = (
     });
   }
   return renderBody(mf, operation).pipe(
-    Effect.map((body): Decision => {
-      const sourceHash = sha256(body);
-      const desiredBlock = composeBlock(prefix, marker, body);
-      const desiredSliceHash = sha256(desiredBlock);
-      const location =
-        disk === null ? { found: false, slice: "", before: "", after: "" } : findBlock(prefix, marker, disk);
+    Effect.flatMap(
+      Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision> {
+        const sourceHash = sha256(body);
+        const desiredBlock = composeBlock(prefix, marker, body);
+        const desiredSliceHash = sha256(desiredBlock);
+        const location =
+          disk === null
+            ? { found: false, slice: "", before: "", after: "" }
+            : findBlock(prefix, marker, disk);
 
-      if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
+        if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
 
-      if (disk === null) {
-        const newContent = insertBlock(disk, desiredBlock);
-        return {
-          action: "create",
-          relPath,
-          abs,
-          write: newContent,
-          ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
-        };
-      }
-
-      if (!location.found) {
-        if (entry) {
-          // Previously managed, fence removed by the user -> adopted.
+        if (disk === null) {
+          const newContent = insertBlock(disk, desiredBlock);
           return {
-            action: "adopt-detected",
+            action: "create",
             relPath,
             abs,
-            ledgerNext: buildEntry(
+            write: newContent,
+            ledgerNext: yield* buildEntry(
               mf,
               relPath,
               marker,
-              entry.lastWrittenChecksum,
+              desiredSliceHash,
               sourceHash,
-              "adopted",
+              "managed",
               entry,
             ),
           };
         }
-        return {
-          action: "skip-adopted",
-          relPath,
-          abs,
-          ledgerNext: buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
-        };
-      }
 
-      const currentSliceHash = sha256(location.slice);
-      const baseline = entry?.lastWrittenChecksum;
-      if (desiredSliceHash === currentSliceHash) {
-        return {
-          action: "skip-unchanged",
-          relPath,
-          abs,
-          ledgerNext: buildEntry(mf, relPath, marker, currentSliceHash, sourceHash, "managed", entry),
-        };
-      }
-      if (baseline === undefined || currentSliceHash !== baseline) {
-        const mode = resolveConflict(mf, force);
-        if (mode === "overwrite") {
+        if (!location.found) {
+          if (entry) {
+            // Previously managed, fence removed by the user -> adopted.
+            return {
+              action: "adopt-detected",
+              relPath,
+              abs,
+              ledgerNext: yield* buildEntry(
+                mf,
+                relPath,
+                marker,
+                entry.lastWrittenChecksum,
+                sourceHash,
+                "adopted",
+                entry,
+              ),
+            };
+          }
           return {
-            action: "update",
+            action: "skip-adopted",
             relPath,
             abs,
-            write: replaceBlock(location, desiredBlock),
-            ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
-            backup: { content: location.slice, path: `${relPath}.lando-backup-${Date.now()}` },
+            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
           };
         }
-        return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
-      }
-      return {
-        action: "update",
-        relPath,
-        abs,
-        write: replaceBlock(location, desiredBlock),
-        ledgerNext: buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
-      };
-    }),
+
+        const currentSliceHash = sha256(location.slice);
+        const baseline = entry?.lastWrittenChecksum;
+        if (desiredSliceHash === currentSliceHash) {
+          return {
+            action: "skip-unchanged",
+            relPath,
+            abs,
+            ledgerNext: yield* buildEntry(
+              mf,
+              relPath,
+              marker,
+              currentSliceHash,
+              sourceHash,
+              "managed",
+              entry,
+            ),
+          };
+        }
+        if (baseline === undefined || currentSliceHash !== baseline) {
+          const mode = resolveConflict(mf, force);
+          if (mode === "overwrite") {
+            return {
+              action: "update",
+              relPath,
+              abs,
+              write: replaceBlock(location, desiredBlock),
+              ledgerNext: yield* buildEntry(
+                mf,
+                relPath,
+                marker,
+                desiredSliceHash,
+                sourceHash,
+                "managed",
+                entry,
+              ),
+              backup: {
+                content: location.slice,
+                path: `${relPath}.lando-backup-${yield* Clock.currentTimeMillis}`,
+              },
+            };
+          }
+          return { action: "conflict", relPath, abs, failConflict: mode === "fail" };
+        }
+        return {
+          action: "update",
+          relPath,
+          abs,
+          write: replaceBlock(location, desiredBlock),
+          ledgerNext: yield* buildEntry(mf, relPath, marker, desiredSliceHash, sourceHash, "managed", entry),
+        };
+      }),
+    ),
   );
 };
 
-const decideOne = (
+const decideOne = Effect.fnUntraced(function* (
   backend: ManagedFileBackend,
   mf: ManagedFile,
   entries: ReadonlyArray<LedgerEntry>,
   operation: ManagedFileOperation,
   force: boolean,
-  defaultBase?: string,
   pendingDisk?: ReadonlyMap<string, string | null>,
-): Effect.Effect<Decision, ManagedFileError> => {
+  defaultBase?: string,
+): Effect.fn.Return<Decision, ManagedFileError> {
   if (mf.mode === "keys") {
-    return fail("format", operation, {
+    return yield* fail("format", operation, {
       path: mf.path,
       remediation: "`keys`-mode structured merge is not implemented yet; use `file` or `block`.",
     });
   }
   const marker = mf.marker ?? mf.id;
-  return Effect.gen(function* () {
-    const base = yield* backend.resolveBase(mf.base ?? defaultBase, operation);
-    const abs = yield* backend.resolveTarget(base, mf.path, operation);
-    const disk = pendingDisk?.has(abs)
-      ? (pendingDisk.get(abs) ?? null)
-      : yield* backend.readMaybe(abs, operation);
-    const entry = entries.find((candidate) =>
-      sameLedgerTarget(candidate, { path: mf.path, base: mf.base }, defaultBase),
-    );
-    const decision =
-      mf.mode === "file"
-        ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
-        : decideBlock(mf, mf.path, abs, marker, disk, entry, operation, force);
-    return yield* decision;
-  });
-};
+  const base = yield* backend.resolveBase(mf.base ?? defaultBase, operation);
+  const abs = yield* backend.resolveTarget(base, mf.path, operation);
+  const disk = pendingDisk?.has(abs)
+    ? (pendingDisk.get(abs) ?? null)
+    : yield* backend.readMaybe(abs, operation);
+  const entry = entries.find((candidate) => sameLedgerTarget(candidate, mf, defaultBase));
+  const decision =
+    mf.mode === "file"
+      ? decideFile(mf, mf.path, abs, marker, disk, entry, operation, force)
+      : decideBlock(mf, mf.path, abs, marker, disk, entry, operation, force);
+  return yield* decision;
+});
 
 // ----- Service factory ----------------------------------------------------
 
@@ -524,7 +584,10 @@ const matchesRemoveSelector = (
     : (entry.base ?? defaultBase) === selector.base);
 
 const eventSummary = (mf: ManagedFile, decision: Decision, kind: ManagedFileEventKind): string => {
-  const bytes = decision.write !== undefined ? ` (${Buffer.byteLength(decision.write, "utf8")}B)` : "";
+  const bytes =
+    decision.write !== undefined
+      ? ` (${ByteSize.format(ByteSize.bytes(Buffer.byteLength(decision.write, "utf8")))})`
+      : "";
   const backedUp = decision.backup
     ? kind === "post-managed-file-write"
       ? " [prior content backed up]"
@@ -541,8 +604,8 @@ const makeLifecycleEvent = (
     readonly action: ManagedFileAction;
     readonly summary: string;
   },
+  timestamp: DateTime.Utc,
 ): LandoEvent => {
-  const timestamp = DateTime.unsafeNow();
   const payload = { eventName: kind, ...fields, timestamp } as const;
   switch (kind) {
     case "pre-managed-file-write":
@@ -559,197 +622,204 @@ const makeLifecycleEvent = (
   }
 };
 
-interface ManagedFileServiceScope {
-  readonly defaultBase?: string;
-  readonly ledgerBase?: string;
-}
-
-type ManagedFileServiceImplementation = Context.Tag.Service<typeof ManagedFileService>;
-
-export class ManagedFileServiceFactory extends Context.Tag("@lando/managed-file/ManagedFileServiceFactory")<
+export class ManagedFileServiceFactory extends Context.Service<
   ManagedFileServiceFactory,
   {
-    readonly forBase: (base: string) => Effect.Effect<ManagedFileServiceImplementation, ManagedFileError>;
+    readonly forBase: (
+      base: string,
+    ) => Effect.Effect<Context.Service.Shape<typeof ManagedFileService>, ManagedFileError>;
   }
->() {}
+>()("@lando/managed-file/ManagedFileServiceFactory") {}
 
 export const makeManagedFileService = (
   backend: ManagedFileBackend,
   events: ManagedFileEvents = noopManagedFileEvents,
-  scope: ManagedFileServiceScope = {},
-): Effect.Effect<Context.Tag.Service<typeof ManagedFileService>> =>
+  scope: { readonly defaultBase?: string; readonly ledgerBase?: string } = {},
+): Effect.Effect<Context.Service.Shape<typeof ManagedFileService>> =>
   Effect.sync(() => {
     const publishLifecycle = (
       kind: ManagedFileEventKind,
       mf: ManagedFile,
       decision: Decision,
     ): Effect.Effect<void> =>
-      events.publish(
-        makeLifecycleEvent(kind, {
-          path: events.redactText(decision.relPath) as PortablePath,
-          owner: events.redactText(mf.owner),
-          action: decision.action,
-          summary: events.redactText(eventSummary(mf, decision, kind)),
-        }),
-      );
-    const plan = (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>
-      backend.peekLedger("plan", scope.ledgerBase).pipe(
-        Effect.flatMap((initial) =>
-          Effect.gen(function* () {
-            let entries = initial;
-            const pendingDisk = new Map<string, string | null>();
-            const results: Array<ManagedFilePlan["entries"][number]> = [];
-            for (const mf of files) {
-              const decision = yield* decideOne(
-                backend,
-                mf,
-                entries,
-                "plan",
-                false,
-                scope.defaultBase,
-                pendingDisk,
-              );
-              if (decision.ledgerNext) {
-                entries = upsertEntry(entries, decision.ledgerNext, scope.defaultBase);
-              }
-              if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
-              results.push({
-                id: mf.id,
-                path: decision.relPath as PortablePath,
+      DateTime.now.pipe(
+        Effect.flatMap((timestamp) =>
+          events.publish(
+            makeLifecycleEvent(
+              kind,
+              {
+                path: events.redactText(decision.relPath) as PortablePath,
+                owner: events.redactText(mf.owner),
                 action: decision.action,
-              });
-            }
-            return { entries: results };
-          }),
+                summary: events.redactText(eventSummary(mf, decision, kind)),
+              },
+              timestamp,
+            ),
+          ),
         ),
       );
-
-    const apply = (
-      files: ReadonlyArray<ManagedFile>,
-      opts?: ManagedFileApplyOptions,
-    ): Effect.Effect<ManagedFileResult, ManagedFileError> =>
-      backend.mutateLedger(
-        "apply",
-        (initial) =>
-          Effect.gen(function* () {
-            let entries = initial;
-            const pendingDisk = new Map<string, string | null>();
-            const prepared: Array<PreparedDecision> = [];
-            const results: Array<ManagedFileResult["entries"][number]> = [];
-            for (const mf of files) {
-              const decision = yield* decideOne(
-                backend,
-                mf,
-                entries,
-                "apply",
-                opts?.force ?? false,
-                scope.defaultBase,
-                pendingDisk,
-              );
-              if (decision.failConflict) {
-                yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
-                return yield* fail("conflict", "apply", {
-                  path: decision.relPath,
-                  remediation:
-                    "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
-                });
-              }
-              const backup = decision.backup?.path as PortablePath | undefined;
-              if (decision.ledgerNext) {
-                entries = upsertEntry(
+    const plan = Effect.fn("ManagedFileService.plan")(
+      (files: ReadonlyArray<ManagedFile>): Effect.Effect<ManagedFilePlan, ManagedFileError> =>
+        backend.peekLedger("plan", scope.ledgerBase).pipe(
+          Effect.flatMap((initial) =>
+            Effect.gen(function* () {
+              let entries = initial;
+              const pendingDisk = new Map<string, string | null>();
+              const results: Array<ManagedFilePlan["entries"][number]> = [];
+              for (const mf of files) {
+                const decision = yield* decideOne(
+                  backend,
+                  mf,
                   entries,
-                  decision.backup
-                    ? { ...decision.ledgerNext, backup: decision.backup.path }
-                    : decision.ledgerNext,
+                  "plan",
+                  false,
+                  pendingDisk,
                   scope.defaultBase,
                 );
+                if (decision.ledgerNext)
+                  entries = upsertEntry(entries, decision.ledgerNext, scope.defaultBase);
+                if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
+                results.push({
+                  id: mf.id,
+                  path: decision.relPath as PortablePath,
+                  action: decision.action,
+                });
               }
-              if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
-              prepared.push({ mf, decision });
-              results.push({
-                id: mf.id,
-                path: decision.relPath as PortablePath,
-                action: decision.action,
-                backup,
-              });
-            }
-            for (const { mf, decision } of prepared) {
-              if (decision.backup) {
-                yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+              return { entries: results };
+            }),
+          ),
+        ),
+    );
+
+    const apply = Effect.fn("ManagedFileService.apply")(
+      (
+        files: ReadonlyArray<ManagedFile>,
+        opts?: ManagedFileApplyOptions,
+      ): Effect.Effect<ManagedFileResult, ManagedFileError> =>
+        backend.mutateLedger(
+          "apply",
+          (initial) =>
+            Effect.gen(function* () {
+              let entries = initial;
+              const pendingDisk = new Map<string, string | null>();
+              const prepared: Array<PreparedDecision> = [];
+              const results: Array<ManagedFileResult["entries"][number]> = [];
+              for (const mf of files) {
+                const decision = yield* decideOne(
+                  backend,
+                  mf,
+                  entries,
+                  "apply",
+                  opts?.force ?? false,
+                  pendingDisk,
+                  scope.defaultBase,
+                );
+                if (decision.failConflict) {
+                  yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+                  return yield* fail("conflict", "apply", {
+                    path: decision.relPath,
+                    remediation:
+                      "The managed file was edited in place; resolve the conflict or pass `force` to overwrite.",
+                  });
+                }
+                const backup = decision.backup?.path as PortablePath | undefined;
+                if (decision.ledgerNext) {
+                  entries = upsertEntry(
+                    entries,
+                    decision.backup
+                      ? { ...decision.ledgerNext, backup: decision.backup.path }
+                      : decision.ledgerNext,
+                    scope.defaultBase,
+                  );
+                }
+                if (decision.write !== undefined) pendingDisk.set(decision.abs, decision.write);
+                prepared.push({ mf, decision });
+                results.push({
+                  id: mf.id,
+                  path: decision.relPath as PortablePath,
+                  action: decision.action,
+                  ...(backup === undefined ? {} : { backup }),
+                });
               }
-              if (decision.write === undefined) {
-                if (
-                  decision.action === "skip-unchanged" ||
-                  decision.action === "skip-adopted" ||
-                  decision.action === "adopt-detected"
-                ) {
-                  yield* publishLifecycle("managed-file-skipped", mf, decision);
-                } else if (decision.action === "conflict") {
+              for (const { mf, decision } of prepared) {
+                if (decision.backup) {
                   yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
                 }
-                continue;
-              }
-              yield* publishLifecycle("pre-managed-file-write", mf, decision);
-              if (decision.backup) {
-                const backupAbs = yield* backend.resolveTarget(
-                  yield* backend.resolveBase(mf.base ?? scope.defaultBase, "apply"),
-                  decision.backup.path,
-                  "apply",
-                );
-                yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply", 0o600);
-              }
-              yield* backend.writeAtomic(decision.abs, decision.write, "apply");
-              yield* publishLifecycle("post-managed-file-write", mf, decision);
-            }
-            return [{ entries: results }, entries] as const;
-          }),
-        scope.ledgerBase,
-      );
-
-    const remove = (selector: ManagedFileSelector): Effect.Effect<ManagedFileResult, ManagedFileError> =>
-      backend.mutateLedger(
-        "remove",
-        (entries) =>
-          Effect.gen(function* () {
-            const matches = entries.filter((entry) =>
-              matchesRemoveSelector(entry, selector, scope.defaultBase),
-            );
-            const results: Array<ManagedFileResult["entries"][number]> = [];
-            let next = entries;
-            for (const entry of matches) {
-              const base = yield* backend.resolveBase(entry.base ?? scope.defaultBase, "remove");
-              const abs = yield* backend.resolveTarget(base, entry.path, "remove");
-              const disk = yield* backend.readMaybe(abs, "remove");
-              let action: ManagedFileAction = "update";
-              if (entry.mode === "block") {
-                if (disk !== null) {
-                  const prefix = commentPrefix(entry.format) ?? "#";
-                  const location = findBlock(prefix, entry.marker, disk);
-                  if (!location.found) action = "adopt-detected";
-                  else if (sha256(location.slice) !== entry.lastWrittenChecksum) action = "conflict";
-                  else yield* backend.writeAtomic(abs, removeBlock(location), "remove");
+                if (decision.write === undefined) {
+                  if (
+                    decision.action === "skip-unchanged" ||
+                    decision.action === "skip-adopted" ||
+                    decision.action === "adopt-detected"
+                  ) {
+                    yield* publishLifecycle("managed-file-skipped", mf, decision);
+                  } else if (decision.action === "conflict") {
+                    yield* publishLifecycle("managed-file-conflict-detected", mf, decision);
+                  }
+                  continue;
                 }
-              } else if (disk === null) {
-                action = "update";
-              } else if (
-                canCarryFileMarker(entry.format, disk) &&
-                !hasFileMarker(entry.format, disk, entry.marker)
-              ) {
-                action = "adopt-detected";
-              } else if (sha256(disk) !== entry.lastWrittenChecksum) {
-                action = "conflict";
-              } else {
-                yield* backend.removeFile(abs, "remove");
+                yield* publishLifecycle("pre-managed-file-write", mf, decision);
+                if (decision.backup) {
+                  const backupAbs = yield* backend.resolveTarget(
+                    yield* backend.resolveBase(mf.base ?? scope.defaultBase, "apply"),
+                    decision.backup.path,
+                    "apply",
+                  );
+                  yield* backend.writeAtomic(backupAbs, decision.backup.content, "apply", 0o600);
+                }
+                yield* backend.writeAtomic(decision.abs, decision.write, "apply");
+                yield* publishLifecycle("post-managed-file-write", mf, decision);
               }
-              if (action !== "conflict") {
-                next = next.filter((candidate) => !sameLedgerTarget(candidate, entry, scope.defaultBase));
+              return [{ entries: results }, entries] as const;
+            }),
+          scope.ledgerBase,
+        ),
+    );
+
+    const remove = Effect.fn("ManagedFileService.remove")(
+      (selector: ManagedFileSelector): Effect.Effect<ManagedFileResult, ManagedFileError> =>
+        backend.mutateLedger(
+          "remove",
+          (entries) =>
+            Effect.gen(function* () {
+              const matches = entries.filter((entry) =>
+                matchesRemoveSelector(entry, selector, scope.defaultBase),
+              );
+              const results: Array<ManagedFileResult["entries"][number]> = [];
+              let next = entries;
+              for (const entry of matches) {
+                const base = yield* backend.resolveBase(entry.base ?? scope.defaultBase, "remove");
+                const abs = yield* backend.resolveTarget(base, entry.path, "remove");
+                const disk = yield* backend.readMaybe(abs, "remove");
+                let action: ManagedFileAction = "update";
+                if (entry.mode === "block") {
+                  if (disk !== null) {
+                    const prefix = commentPrefix(entry.format) ?? "#";
+                    const location = findBlock(prefix, entry.marker, disk);
+                    if (!location.found) action = "adopt-detected";
+                    else if (sha256(location.slice) !== entry.lastWrittenChecksum) action = "conflict";
+                    else yield* backend.writeAtomic(abs, removeBlock(location), "remove");
+                  }
+                } else if (disk === null) {
+                  action = "update";
+                } else if (
+                  canCarryFileMarker(entry.format, disk) &&
+                  !hasFileMarker(entry.format, disk, entry.marker)
+                ) {
+                  action = "adopt-detected";
+                } else if (sha256(disk) !== entry.lastWrittenChecksum) {
+                  action = "conflict";
+                } else {
+                  yield* backend.removeFile(abs, "remove");
+                }
+                if (action !== "conflict")
+                  next = next.filter((candidate) => !sameLedgerTarget(candidate, entry, scope.defaultBase));
+                results.push({ id: entry.id, path: entry.path as PortablePath, action });
               }
-              results.push({ id: entry.id, path: entry.path as PortablePath, action });
-            }
-            return [{ entries: results }, next] as const;
-          }),
-        scope.ledgerBase,
-      );
+              return [{ entries: results }, next] as const;
+            }),
+          scope.ledgerBase,
+        ),
+    );
 
     const status: Effect.Effect<ReadonlyArray<ManagedFileInfo>, ManagedFileError> = Effect.suspend(() =>
       backend.peekLedger("status", scope.ledgerBase).pipe(
@@ -772,64 +842,77 @@ export const makeManagedFileService = (
       ),
     );
 
-    const adopt = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
-      backend.mutateLedger(
-        "adopt",
-        (entries) =>
-          Effect.gen(function* () {
+    const adopt = Effect.fn("ManagedFileService.adopt")(
+      (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
+        backend.mutateLedger(
+          "adopt",
+          (entries) =>
+            Effect.gen(function* () {
+              const entry = entries.find((candidate) =>
+                sameLedgerTarget(candidate, { path }, scope.defaultBase),
+              );
+              const base = yield* backend.resolveBase(entry?.base ?? scope.defaultBase, "adopt");
+              const abs = yield* backend.resolveTarget(base, path, "adopt");
+              const disk = yield* backend.readMaybe(abs, "adopt");
+              if (disk !== null && entry) {
+                const stripped =
+                  entry.mode === "block"
+                    ? stripBlockFences(entry.format, entry.marker, disk)
+                    : stripFileMarker(entry.format, disk, entry.marker);
+                if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
+              }
+              const next = entry
+                ? upsertEntry(
+                    entries,
+                    { ...entry, state: "adopted", updatedAt: yield* nowIso },
+                    scope.defaultBase,
+                  )
+                : entries;
+              return [undefined, next] as const;
+            }),
+          scope.ledgerBase,
+        ),
+    );
+
+    const release = Effect.fn("ManagedFileService.release")(
+      (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
+        backend.mutateLedger(
+          "release",
+          Effect.fnUntraced(function* (entries: ReadonlyArray<LedgerEntry>) {
             const entry = entries.find((candidate) =>
-              sameLedgerTarget(candidate, { path, base: undefined }, scope.defaultBase),
+              sameLedgerTarget(candidate, { path }, scope.defaultBase),
             );
-            const base = yield* backend.resolveBase(entry?.base ?? scope.defaultBase, "adopt");
-            const abs = yield* backend.resolveTarget(base, path, "adopt");
-            const disk = yield* backend.readMaybe(abs, "adopt");
-            if (disk !== null && entry) {
-              const stripped =
-                entry.mode === "block"
-                  ? stripBlockFences(entry.format, entry.marker, disk)
-                  : stripFileMarker(entry.format, disk, entry.marker);
-              if (stripped !== disk) yield* backend.writeAtomic(abs, stripped, "adopt");
-            }
-            const next = entry
-              ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }, scope.defaultBase)
-              : entries;
-            return [undefined, next] as const;
+            return [
+              undefined,
+              entry
+                ? upsertEntry(
+                    entries,
+                    { ...entry, state: "adopted", updatedAt: yield* nowIso },
+                    scope.defaultBase,
+                  )
+                : entries,
+            ] as const;
           }),
-        scope.ledgerBase,
-      );
+          scope.ledgerBase,
+        ),
+    );
 
-    const release = (path: PortablePath): Effect.Effect<void, ManagedFileError> =>
-      backend.mutateLedger(
-        "release",
-        (entries) => {
-          const entry = entries.find((candidate) =>
-            sameLedgerTarget(candidate, { path, base: undefined }, scope.defaultBase),
-          );
-          return Effect.succeed([
-            undefined,
-            entry
-              ? upsertEntry(entries, { ...entry, state: "adopted", updatedAt: nowIso() }, scope.defaultBase)
-              : entries,
-          ] as const);
-        },
-        scope.ledgerBase,
-      );
-
-    return { plan, apply, remove, status, adopt, release } satisfies Context.Tag.Service<
-      typeof ManagedFileService
-    >;
+    return ManagedFileService.of({
+      plan,
+      apply,
+      remove,
+      status: status.pipe(Effect.withSpan("ManagedFileService.status")),
+      adopt,
+      release,
+    });
   });
 
 export const makeManagedFileServiceFactory = (
   backend: ManagedFileBackend,
   events: ManagedFileEvents = noopManagedFileEvents,
-): Effect.Effect<Context.Tag.Service<typeof ManagedFileServiceFactory>> =>
+): Effect.Effect<Context.Service.Shape<typeof ManagedFileServiceFactory>> =>
   Effect.succeed({
-    forBase: (base) =>
-      makeManagedFileService(backend, events, {
-        defaultBase: base,
-        ledgerBase: base,
-      }),
+    forBase: (base) => makeManagedFileService(backend, events, { defaultBase: base, ledgerBase: base }),
   });
 
 const stripBlockFences = (format: FileFormat, marker: string, content: string): string => {
@@ -908,136 +991,133 @@ const resolveMissingTargetRealPath = async (target: string): Promise<string> => 
 };
 
 /** Build the disk-backed backend rooted at `cwd` with the ledger under userData. */
-export const makeDiskBackend = (options: {
+export const makeDiskBackend = Effect.fnUntraced(function* (options: {
   readonly defaultBase: () => string;
   readonly ledgerRoot: () => string;
   readonly privateFileAccess: PrivateFileAccess;
-}): Effect.Effect<ManagedFileBackend> =>
-  Effect.gen(function* () {
-    const stateStore = makeStateStore({ privateFileAccess: options.privateFileAccess });
+}): Effect.fn.Return<ManagedFileBackend> {
+  const stateStore = makeStateStore({ privateFileAccess: options.privateFileAccess });
 
-    const ledgerLocation = (base: string): { readonly dir: string; readonly key: string } => {
-      const file = makeLandoPaths({ userDataRoot: options.ledgerRoot() }).managedFileLedger(
-        deriveAppId(base),
-      );
-      return { dir: dirname(file), key: basename(file) };
-    };
+  const ledgerLocation = (base: string): { readonly dir: string; readonly key: string } => {
+    const file = makeLandoPaths({ userDataRoot: options.ledgerRoot() }).managedFileLedger(deriveAppId(base));
+    return { dir: dirname(file), key: basename(file) };
+  };
 
-    const ledgerBucketFor = (base: string, onCorrupt: "quarantine" | "discard") => {
-      const { dir, key } = ledgerLocation(base);
-      // The `{ path }` root must exist before `open`: containment realpath-checks
-      // the deepest existing ancestor, which would sit above a missing root.
-      return Effect.tryPromise({
-        try: () => mkdir(dir, { recursive: true }),
-        catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
-      }).pipe(
-        Effect.zipRight(
-          stateStore.open({
-            root: { path: dir as AbsolutePath },
-            key,
-            version: LEDGER_VERSION,
-            schema: LedgerStateSchema,
-            onCorrupt,
-            default: { entries: [] },
-          }),
-        ),
-      );
-    };
-
-    const readonlyLedgerEntries = (
-      operation: ManagedFileOperation,
-      base = options.defaultBase(),
-    ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> => {
-      const { dir } = ledgerLocation(base);
-      return Effect.tryPromise({
-        try: async () => {
-          try {
-            return (await stat(dir)).isDirectory();
-          } catch (cause) {
-            if (isMissingPath(cause)) return false;
-            throw cause;
-          }
-        },
-        catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
-      }).pipe(
-        Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
-        Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
-        Effect.map((state) => state?.entries ?? []),
-        Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
-      );
-    };
-
-    return {
-      resolveBase: (base) => Effect.succeed(base ?? options.defaultBase()),
-      resolveTarget: (base, relPath, operation) =>
-        Effect.tryPromise({
-          try: () => resolveContained(base, relPath),
-          catch: (cause) => new ManagedFileError({ reason: "io", operation, path: relPath, cause }),
-        }).pipe(
-          Effect.flatMap((abs) =>
-            abs === null ? Effect.fail(containmentError(operation, relPath)) : Effect.succeed(abs),
-          ),
-        ),
-      readMaybe: (abs, operation) =>
-        Effect.tryPromise({
-          try: async () => {
-            const { readFile } = await import("node:fs/promises");
-            return (await readFile(abs, "utf8")) as string;
-          },
-          catch: (cause) =>
-            (cause as { code?: string }).code === "ENOENT"
-              ? new ManagedFileError({ reason: "io", operation, path: abs, cause: "ENOENT" })
-              : new ManagedFileError({ reason: "io", operation, path: abs, cause }),
-        }).pipe(
-          Effect.catchIf(
-            (error) => error.cause === "ENOENT",
-            () => Effect.succeed<string | null>(null),
-          ),
-        ),
-      writeAtomic: (abs, content, operation, mode) =>
-        writeFileAtomicScoped(abs, content, {
-          ...(mode === undefined ? {} : { mode }),
-          privateFileAccess: options.privateFileAccess.enforce,
-        }).pipe(
-          Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
-        ),
-      removeFile: (abs, operation) =>
-        Effect.tryPromise({
-          try: async () => {
-            const { unlink } = await import("node:fs/promises");
-            await unlink(abs).catch((cause: { code?: string }) => {
-              if (cause.code !== "ENOENT") throw cause;
-            });
-          },
-          catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+  const ledgerBucketFor = (base: string, onCorrupt: "quarantine" | "discard") => {
+    const { dir, key } = ledgerLocation(base);
+    // The `{ path }` root must exist before `open`: containment realpath-checks
+    // the deepest existing ancestor, which would sit above a missing root.
+    return Effect.tryPromise({
+      try: () => mkdir(dir, { recursive: true }),
+      catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
+    }).pipe(
+      Effect.andThen(
+        stateStore.open({
+          root: { path: dir as AbsolutePath },
+          key,
+          version: LEDGER_VERSION,
+          schema: LedgerStateSchema,
+          onCorrupt,
+          default: { entries: [] },
         }),
-      peekLedger: (operation, base) => readonlyLedgerEntries(operation, base),
-      mutateLedger: (operation, f, base) =>
-        ledgerBucketFor(base ?? options.defaultBase(), "quarantine").pipe(
-          Effect.flatMap((bucket) =>
-            withAdvisoryLockUsing(options.privateFileAccess)(
-              bucket.path,
-              operation,
-              bucket.get.pipe(
-                Effect.flatMap((state) => f(state?.entries ?? [])),
-                Effect.flatMap(([result, entries]) => bucket.set({ entries }).pipe(Effect.as(result))),
-              ),
+      ),
+    );
+  };
+
+  const readonlyLedgerEntries = (
+    operation: ManagedFileOperation,
+    base = options.defaultBase(),
+  ): Effect.Effect<ReadonlyArray<LedgerEntry>, ManagedFileError> => {
+    const { dir } = ledgerLocation(base);
+    return Effect.tryPromise({
+      try: async () => {
+        try {
+          return (await stat(dir)).isDirectory();
+        } catch (cause) {
+          if (isMissingPath(cause)) return false;
+          throw cause;
+        }
+      },
+      catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
+    }).pipe(
+      Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
+      Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
+      Effect.map((state) => state?.entries ?? []),
+      Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
+    );
+  };
+
+  return {
+    resolveBase: (base) => Effect.succeed(base ?? options.defaultBase()),
+    resolveTarget: (base, relPath, operation) =>
+      Effect.tryPromise({
+        try: () => resolveContained(base, relPath),
+        catch: (cause) => new ManagedFileError({ reason: "io", operation, path: relPath, cause }),
+      }).pipe(
+        Effect.flatMap((abs) =>
+          abs === null ? Effect.fail(containmentError(operation, relPath)) : Effect.succeed(abs),
+        ),
+      ),
+    readMaybe: (abs, operation) =>
+      Effect.tryPromise({
+        try: async () => {
+          const { readFile } = await import("node:fs/promises");
+          return (await readFile(abs, "utf8")) as string;
+        },
+        catch: (cause) =>
+          (cause as { code?: string }).code === "ENOENT"
+            ? new ManagedFileError({ reason: "io", operation, path: abs, cause: "ENOENT" })
+            : new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+      }).pipe(
+        Effect.catchIf(
+          (error) => error.cause === "ENOENT",
+          () => Effect.succeed<string | null>(null),
+        ),
+      ),
+    writeAtomic: (abs, content, operation, mode) =>
+      writeFileAtomicScoped(abs, content, {
+        ...(mode === undefined ? {} : { mode }),
+        privateFileAccess: options.privateFileAccess.enforce,
+      }).pipe(
+        Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
+      ),
+    removeFile: (abs, operation) =>
+      Effect.tryPromise({
+        try: async () => {
+          const { unlink } = await import("node:fs/promises");
+          await unlink(abs).catch((cause: { code?: string }) => {
+            if (cause.code !== "ENOENT") throw cause;
+          });
+        },
+        catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+      }),
+    peekLedger: (operation, base) => readonlyLedgerEntries(operation, base),
+    mutateLedger: (operation, f, base) =>
+      ledgerBucketFor(base ?? options.defaultBase(), "quarantine").pipe(
+        Effect.flatMap((bucket) =>
+          withAdvisoryLockUsing(options.privateFileAccess)(
+            bucket.path,
+            operation,
+            bucket.get.pipe(
+              Effect.flatMap((state) => f(state?.entries ?? [])),
+              Effect.flatMap(([result, entries]) => bucket.set({ entries }).pipe(Effect.as(result))),
             ),
           ),
-          Effect.mapError((cause) =>
-            isManagedFileError(cause) ? cause : new ManagedFileError({ reason: "io", operation, cause }),
-          ),
         ),
-    } satisfies ManagedFileBackend;
-  });
+        Effect.mapError((cause) =>
+          isManagedFileError(cause) ? cause : new ManagedFileError({ reason: "io", operation, cause }),
+        ),
+      ),
+  } satisfies ManagedFileBackend;
+});
 
 const deriveAppId = (base: string): string => {
   const name = (base.split(/[\\/]/u).filter(Boolean).pop() ?? "app").replace(/[^A-Za-z0-9._-]/gu, "-");
   return `${name}-${sha256(resolve(base)).slice(0, 12)}`;
 };
 
-const makeLiveManagedFileEvents = (
-  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
+const makeManagedFileEvents = (
+  eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
   redactText: (text: string) => string,
 ): ManagedFileEvents => ({
   redactText,
@@ -1046,7 +1126,7 @@ const makeLiveManagedFileEvents = (
     onSome:
       (service) =>
       (event): Effect.Effect<void> =>
-        service.publish(event).pipe(Effect.catchAllCause(() => Effect.void)),
+        service.publish(event).pipe(Effect.catchCause(() => Effect.void)),
   }),
 });
 
@@ -1058,70 +1138,57 @@ const makeLiveManagedFileEvents = (
  * still work; an absent `RedactionService` falls back to the standalone secrets
  * redactor so event payloads are never retained raw.
  */
-const makeLiveManagedFileDependencies = (privateFileAccess: PrivateFileAccess) =>
-  Effect.gen(function* () {
-    const backend = yield* makeDiskBackend({
-      defaultBase: () => process.cwd(),
-      ledgerRoot: () => resolveLandoRoots().userDataRoot,
-      privateFileAccess,
-    });
-    const eventService = yield* Effect.serviceOption(EventService);
-    const redaction = yield* Effect.serviceOption(RedactionService);
-    const redactorOptions = { sourceEnv: { ...process.env } };
-    const redactor =
-      redaction._tag === "None"
-        ? createStandaloneRedactor("secrets", redactorOptions)
-        : yield* redaction.value.forProfile("secrets", redactorOptions);
-    return {
-      backend,
-      events: makeLiveManagedFileEvents(eventService, redactor.redactString),
-    };
+const dependenciesForPrivateFileAccess = Effect.fnUntraced(function* (privateFileAccess: PrivateFileAccess) {
+  const backend = yield* makeDiskBackend({
+    defaultBase: () => process.cwd(),
+    ledgerRoot: () => resolveLandoRoots().userDataRoot,
+    privateFileAccess,
   });
+  const eventService = yield* Effect.serviceOption(EventService);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactorOptions = { sourceEnv: { ...process.env } };
+  const redactor =
+    redaction._tag === "None"
+      ? createStandaloneRedactor("secrets", redactorOptions)
+      : yield* redaction.value.forProfile("secrets", redactorOptions);
+  return { backend, events: makeManagedFileEvents(eventService, redactor.redactString) };
+});
 
-const makeManagedFileServiceLive = (privateFileAccess: PrivateFileAccess): Layer.Layer<ManagedFileService> =>
+const layerForPrivateFileAccess = (privateFileAccess: PrivateFileAccess): Layer.Layer<ManagedFileService> =>
   Layer.effect(
     ManagedFileService,
-    makeLiveManagedFileDependencies(privateFileAccess).pipe(
+    dependenciesForPrivateFileAccess(privateFileAccess).pipe(
       Effect.flatMap(({ backend, events }) => makeManagedFileService(backend, events)),
     ),
   );
 
-const makeManagedFileServiceFactoryLive = (
-  privateFileAccess: PrivateFileAccess,
-): Layer.Layer<ManagedFileServiceFactory> =>
-  Layer.effect(
-    ManagedFileServiceFactory,
-    makeLiveManagedFileDependencies(privateFileAccess).pipe(
-      Effect.flatMap(({ backend, events }) => makeManagedFileServiceFactory(backend, events)),
-    ),
-  );
+export const layerWithPrivateFileAccess: Layer.Layer<ManagedFileService, never, PrivateFileAccessService> =
+  Layer.unwrap(Effect.map(PrivateFileAccessService, layerForPrivateFileAccess));
 
-export const ManagedFileServiceWithPrivateFileAccessLive: Layer.Layer<
-  ManagedFileService,
-  never,
-  PrivateFileAccessService
-> = Layer.unwrapEffect(Effect.map(PrivateFileAccessService, makeManagedFileServiceLive));
+export const layer: Layer.Layer<ManagedFileService> = layerWithPrivateFileAccess.pipe(
+  Layer.provide(PrivateFileAccessService.layer),
+);
 
-export const ManagedFileServiceFactoryWithPrivateFileAccessLive: Layer.Layer<
+export const layerFactoryWithPrivateFileAccess: Layer.Layer<
   ManagedFileServiceFactory,
   never,
   PrivateFileAccessService
-> = Layer.unwrapEffect(Effect.map(PrivateFileAccessService, makeManagedFileServiceFactoryLive));
-
-export const ManagedFileServicesWithPrivateFileAccessLive: Layer.Layer<
-  ManagedFileService | ManagedFileServiceFactory,
-  never,
-  PrivateFileAccessService
-> = Layer.merge(
-  ManagedFileServiceWithPrivateFileAccessLive,
-  ManagedFileServiceFactoryWithPrivateFileAccessLive,
+> = Layer.unwrap(
+  Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+    Layer.effect(
+      ManagedFileServiceFactory,
+      dependenciesForPrivateFileAccess(privateFileAccess).pipe(
+        Effect.flatMap(({ backend, events }) => makeManagedFileServiceFactory(backend, events)),
+      ),
+    ),
+  ),
 );
 
-export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> =
-  ManagedFileServiceWithPrivateFileAccessLive.pipe(Layer.provide(PrivateFileAccessLive));
+export const layerServicesWithPrivateFileAccess = Layer.merge(
+  layerWithPrivateFileAccess,
+  layerFactoryWithPrivateFileAccess,
+);
 
-export const ManagedFileServiceFactoryLive: Layer.Layer<ManagedFileServiceFactory> =
-  ManagedFileServiceFactoryWithPrivateFileAccessLive.pipe(Layer.provide(PrivateFileAccessLive));
-
-export const ManagedFileServicesLive: Layer.Layer<ManagedFileService | ManagedFileServiceFactory> =
-  ManagedFileServicesWithPrivateFileAccessLive.pipe(Layer.provide(PrivateFileAccessLive));
+export const layerFactory = layerFactoryWithPrivateFileAccess.pipe(
+  Layer.provide(PrivateFileAccessService.layer),
+);

@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import {
   LandofileExpressionEvalError,
@@ -141,8 +141,7 @@ const BASE64_LOOKUP = new Map([...BASE64_ALPHABET].map((char, index) => [char, i
 
 const isMissing = (value: ResolvedValue): value is MissingValue => value === MISSING;
 const isUnavailable = (value: ResolvedValue): boolean => isMissing(value) || value === undefined;
-const isRecordLike = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const isRecordLike = (value: unknown): value is Record<string, unknown> => Predicate.isObjectOrArray(value);
 
 const optionalFilePath = (options: EvaluateExpressionOptions): { readonly filePath?: string } =>
   options.filePath === undefined ? {} : { filePath: options.filePath };
@@ -1371,11 +1370,11 @@ export const evaluateExpressionEither = (
   node: ExpressionNode,
   context: ExpressionContext,
   options: EvaluateExpressionOptions = {},
-): Either.Either<unknown, LandofileExpressionEvaluationError> => {
+): Result.Result<unknown, LandofileExpressionEvaluationError> => {
   try {
-    return Either.right(evaluateExpressionSync(node, context, options));
+    return Result.succeed(evaluateExpressionSync(node, context, options));
   } catch (cause) {
-    return Either.left(wrapUnknownEvaluationError(options, cause));
+    return Result.fail(wrapUnknownEvaluationError(options, cause));
   }
 };
 
@@ -1393,11 +1392,11 @@ export const evaluateTemplateEither = (
   template: ExpressionTemplate,
   context: ExpressionContext,
   options: EvaluateExpressionOptions = {},
-): Either.Either<unknown, LandofileExpressionEvaluationError> => {
+): Result.Result<unknown, LandofileExpressionEvaluationError> => {
   try {
-    return Either.right(evaluateTemplateSync(template, context, options));
+    return Result.succeed(evaluateTemplateSync(template, context, options));
   } catch (cause) {
-    return Either.left(wrapUnknownEvaluationError(options, cause));
+    return Result.fail(wrapUnknownEvaluationError(options, cause));
   }
 };
 

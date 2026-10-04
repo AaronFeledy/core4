@@ -3,7 +3,7 @@ import { type FileHandle, lstat, mkdir, open, rename, unlink } from "node:fs/pro
 import { dirname } from "node:path";
 
 import { isErrnoCode } from "@lando/sdk/errors";
-import { Effect } from "effect";
+import { Effect, type Scope } from "effect";
 import { type OwnerOnlyFileAccess, PrivateFileAccessError } from "./private-file-access.ts";
 
 export const syncDirectory = async (path: string): Promise<void> => {
@@ -116,7 +116,7 @@ export const writeFileAtomic = async (
  *
  * The error channel surfaces the raw filesystem cause for callers to map.
  */
-export const writeFileAtomicScoped = (
+export const writeFileAtomicScoped = Effect.fnUntraced(function* (
   path: string,
   content: string | Uint8Array,
   options: {
@@ -126,36 +126,33 @@ export const writeFileAtomicScoped = (
     readonly syncFile?: (handle: FileHandle) => Promise<void>;
     readonly syncDirectory?: (path: string) => Promise<void>;
   } = {},
-): Effect.Effect<void, unknown, never> =>
-  Effect.scoped(
+): Effect.fn.Return<void, unknown, Scope.Scope> {
+  const id = options.randomId?.() ?? randomUUID();
+  const tempPath = `${path}.tmp-${id}`;
+  let committed = false;
+  let identity: CreatedFileIdentity | undefined;
+
+  yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
-      const id = options.randomId?.() ?? randomUUID();
-      const tempPath = `${path}.tmp-${id}`;
-      let committed = false;
-      let identity: CreatedFileIdentity | undefined;
-
-      yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
-          if (!committed) {
-            yield* Effect.promise(() => removeCreatedFile(tempPath, identity));
-          }
-        }),
-      );
-
-      yield* Effect.uninterruptible(
-        Effect.tryPromise(() =>
-          writeFileAtomic(path, content, {
-            ...options,
-            randomId: () => id,
-            onTempCreated: (_path, createdIdentity) => {
-              identity = createdIdentity;
-            },
-            renameFile: async (from, to) => {
-              await rename(from, to);
-              committed = true;
-            },
-          }),
-        ),
-      );
+      if (!committed) {
+        yield* Effect.promise(() => removeCreatedFile(tempPath, identity));
+      }
     }),
   );
+
+  yield* Effect.uninterruptible(
+    Effect.tryPromise(() =>
+      writeFileAtomic(path, content, {
+        ...options,
+        randomId: () => id,
+        onTempCreated: (_path, createdIdentity) => {
+          identity = createdIdentity;
+        },
+        renameFile: async (from, to) => {
+          await rename(from, to);
+          committed = true;
+        },
+      }),
+    ),
+  );
+}, Effect.scoped);

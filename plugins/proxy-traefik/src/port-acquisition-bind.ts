@@ -51,31 +51,33 @@ const listenOnce = (host: string, port: number): Promise<BindOutcome> =>
     server.listen(port, host, () => finish({ kind: "success" }));
   });
 
-export const probeBind = (host: string, port: number): Effect.Effect<BindOutcome> =>
-  Effect.gen(function* () {
-    let last: BindOutcome = { kind: "other-error" };
-    yield* runProbe(
-      {
-        id: "proxy-traefik-bind",
-        policy: { maxAttempts: 3, delay: Duration.millis(25) },
-        classify: {
-          success: (value) => {
-            if (isBindOutcome(value)) last = value;
-            return last.kind === "other-error" ? "yellow" : "green";
-          },
-          failure: (error) => {
-            last = classifyBindError(secretsRedactor.redactValue(error));
-            return last.kind === "other-error" ? "yellow" : "green";
-          },
+export const probeBind = Effect.fn("TraefikRouter.probeBind")(function* (
+  host: string,
+  port: number,
+): Effect.fn.Return<BindOutcome> {
+  let last: BindOutcome = { kind: "other-error" };
+  yield* runProbe(
+    {
+      id: "proxy-traefik-bind",
+      policy: { maxAttempts: 3, delay: Duration.millis(25) },
+      classify: {
+        success: (value) => {
+          if (isBindOutcome(value)) last = value;
+          return last.kind === "other-error" ? "yellow" : "green";
+        },
+        failure: (error) => {
+          last = classifyBindError(secretsRedactor.redactValue(error));
+          return last.kind === "other-error" ? "yellow" : "green";
         },
       },
-      Effect.tryPromise({
-        try: () => listenOnce(host, port),
-        catch: (error) => error,
-      }),
-    ).pipe(Effect.catchAll(() => Effect.void));
-    return last;
-  });
+    },
+    Effect.tryPromise({
+      try: () => listenOnce(host, port),
+      catch: (error) => error,
+    }),
+  ).pipe(Effect.catch(() => Effect.void));
+  return last;
+});
 
 const probeTcp = (host: string, port: number): Promise<"open" | "closed"> =>
   new Promise((resolve) => {
@@ -115,36 +117,35 @@ const probeHttp = (host: string, port: number, role: ForwardProbeRole): Promise<
     request.end();
   });
 
-export const probeForward = (
+export const probeForward = Effect.fn("TraefikRouter.probeForward")(function* (
   host: string,
   port: number,
   role: ForwardProbeRole,
-): Effect.Effect<ForwardOutcome> =>
-  Effect.gen(function* () {
-    let last: ForwardOutcome = { kind: "failure" };
-    yield* runProbe(
-      {
-        id: "proxy-traefik-forward",
-        policy: { maxAttempts: 3, delay: Duration.millis(50), timeout: Duration.millis(1000) },
-        classify: {
-          success: (value) => {
-            if (isForwardOutcome(value)) last = value;
-            return last.kind === "success" ? "green" : "yellow";
-          },
-          failure: () => {
-            last = { kind: "failure" };
-            return "yellow";
-          },
+): Effect.fn.Return<ForwardOutcome> {
+  let last: ForwardOutcome = { kind: "failure" };
+  yield* runProbe(
+    {
+      id: "proxy-traefik-forward",
+      policy: { maxAttempts: 3, delay: Duration.millis(50), timeout: Duration.millis(1000) },
+      classify: {
+        success: (value) => {
+          if (isForwardOutcome(value)) last = value;
+          return last.kind === "success" ? "green" : "yellow";
+        },
+        failure: () => {
+          last = { kind: "failure" };
+          return "yellow";
         },
       },
-      Effect.tryPromise({
-        try: async () => {
-          const tcp = await probeTcp(host, port);
-          if (tcp !== "open") return { kind: "failure" as const };
-          return { kind: (await probeHttp(host, port, role)) ? ("success" as const) : ("failure" as const) };
-        },
-        catch: (error) => error,
-      }),
-    ).pipe(Effect.catchAll(() => Effect.void));
-    return last;
-  });
+    },
+    Effect.tryPromise({
+      try: async () => {
+        const tcp = await probeTcp(host, port);
+        if (tcp !== "open") return { kind: "failure" as const };
+        return { kind: (await probeHttp(host, port, role)) ? ("success" as const) : ("failure" as const) };
+      },
+      catch: (error) => error,
+    }),
+  ).pipe(Effect.catch(() => Effect.void));
+  return last;
+});

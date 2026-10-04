@@ -66,3 +66,24 @@ test("toSqlLandofile retains authored password environment for redaction provena
     MYSQL_DATABASE: "app",
   });
 });
+
+test("projections retain array-shaped objects while excluding null and functions", () => {
+  // Given
+  const input = {
+    services: [
+      { type: "mysql", environment: ["array-value"] },
+      null,
+      Object.assign(() => undefined, { type: "postgres" }),
+    ],
+  };
+
+  // When
+  const landofile = toSqlLandofile(input);
+  const plan = toSqlPlan(input);
+
+  // Then
+  expect(landofile.services).toEqual({ "0": { type: "mysql", environment: { "0": "array-value" } } });
+  expect(plan.services).toEqual({
+    "0": { name: "0", type: "mysql", environment: { "0": "array-value" }, storage: [] },
+  });
+});

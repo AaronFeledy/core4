@@ -1,11 +1,13 @@
-import { Either } from "effect";
+import { Predicate, Result } from "effect";
 
+import { LANDOFILE_EDITOR_SCHEMA_URL } from "../schema/editor.ts";
 import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
 
 const INDENT = "  ";
 
 export const LANDOFILE_LEADING_COMMENT_BLOCKS = {
+  "editor-schema": [`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}`],
   "recipe-provenance": [
     "# Recipe knobs. Change a value here to change every `{{ recipe.<option> }}` site below.",
     "# Replace a `{{ recipe.<option> }}` reference with a literal to take that site over.",
@@ -45,9 +47,9 @@ interface EmitState {
 // name always carries `/` and a scoped npm name leads with a reserved `@`.
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (!Predicate.isObject(value)) return false;
   const proto = Object.getPrototypeOf(value);
-  // Only literal records (and null-prototype records) are emittable maps. Dates,
+  // Predicate.isObject also accepts instances; only literal records (and null-prototype records) are emittable maps. Dates,
   // RegExps, Maps, class instances, and other exotic objects are rejected.
   return proto === Object.prototype || proto === null;
 };
@@ -160,7 +162,13 @@ const emitListItemMap = (
   enterObject(item, path, state);
   const pad = INDENT.repeat(itemIndent);
   const entries = entriesOf(item, path, state);
-  const [firstKey, firstValue] = entries[0] as [string, unknown];
+  const [firstEntry, ...remainingEntries] = entries;
+  if (firstEntry === undefined) {
+    lines.push(`${pad}- {}`);
+    state.seen.delete(item);
+    return;
+  }
+  const [firstKey, firstValue] = firstEntry;
   const firstPath = childPath(path, firstKey);
   const firstKeyText = yamlMappingKeyText(firstKey);
 
@@ -183,7 +191,7 @@ const emitListItemMap = (
     lines.push(`${pad}- ${firstKeyText}: ${emitScalar(firstValue, firstPath)}`);
   }
 
-  for (const [key, value] of entries.slice(1)) {
+  for (const [key, value] of remainingEntries) {
     emitMapEntries({ [key]: value }, itemIndent + 1, lines, path, state);
   }
   state.seen.delete(item);
@@ -205,11 +213,6 @@ const emitArrayItems = (
       });
     }
     if (isPlainObject(item)) {
-      if (Object.keys(item).length === 0) {
-        assertEmptyMapIsEmittable(item, itemPath, state);
-        lines.push(`${pad}- {}`);
-        continue;
-      }
       emitListItemMap(item, itemIndent, lines, itemPath, state);
       continue;
     }
@@ -253,9 +256,9 @@ export const emitLandofileYaml = (value: Record<string, unknown>, options?: Emit
 };
 
 /**
- * The same emit as {@link emitLandofileYaml}, returned as an `Either` for
+ * The same emit as {@link emitLandofileYaml}, returned as a `Result` for
  * callers that prefer typed handling over a throw. A non-emittable input yields
- * `Either.left(LandofileEmitError)`.
+ * `Result.fail(LandofileEmitError)`. The exported function name is retained.
  *
  * @param value - the encoded Landofile object to serialize.
  * @param options - optional emit controls; see {@link EmitLandofileOptions}.
@@ -263,12 +266,12 @@ export const emitLandofileYaml = (value: Record<string, unknown>, options?: Emit
 export const emitLandofileYamlEither = (
   value: Record<string, unknown>,
   options?: EmitLandofileOptions,
-): Either.Either<string, LandofileEmitError> => {
+): Result.Result<string, LandofileEmitError> => {
   try {
-    return Either.right(emitLandofileYaml(value, options));
+    return Result.succeed(emitLandofileYaml(value, options));
   } catch (cause) {
-    if (cause instanceof LandofileEmitError) return Either.left(cause);
-    return Either.left(
+    if (cause instanceof LandofileEmitError) return Result.fail(cause);
+    return Result.fail(
       new LandofileEmitError({
         message: cause instanceof Error ? cause.message : "Failed to emit Landofile YAML.",
         cause,

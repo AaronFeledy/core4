@@ -6,7 +6,6 @@ import type {
   ConfigTranslateDetectInput,
   ConfigTranslateInput,
   ConfigTranslateMatch,
-  ConfigTranslateResult,
   ConfigTranslatorShape,
 } from "@lando/sdk/services";
 
@@ -39,48 +38,50 @@ export const resolveConfigTranslators = (
   return Effect.succeed(translators);
 };
 
-export const detectConfigTranslators = (
+export const detectConfigTranslators = Effect.fnUntraced(function* (
   translators: ReadonlyArray<ConfigTranslatorShape>,
   input: ConfigTranslateDetectInput,
-): Effect.Effect<ReadonlyArray<ConfigTranslateMatch>, ConfigTranslateError | ConfigTranslatorConflictError> =>
-  Effect.gen(function* () {
-    const resolved = yield* resolveConfigTranslators(translators);
-    const matches: Array<ConfigTranslateMatch> = [];
-    const sourceIds = new Set(input.documents.map((document) => document.sourceId));
-    for (const translator of resolved) {
-      const detected = yield* translator.detect(input);
-      if (
-        detected.some(
-          (match) =>
-            match.translator !== translator.id ||
-            match.sourceIds.length === 0 ||
-            match.sourceIds.some((id) => !sourceIds.has(id)),
-        )
-      ) {
-        return yield* Effect.fail(
-          new ConfigTranslateError({
-            translator: translator.id,
-            message: "Detection returned a foreign translator or source identity.",
-            remediation:
-              "Attribute matches to the producing translator and at least one source in the input documents.",
-          }),
-        );
-      }
-      matches.push(...detected);
+): Effect.fn.Return<
+  ReadonlyArray<ConfigTranslateMatch>,
+  ConfigTranslateError | ConfigTranslatorConflictError
+> {
+  const resolved = yield* resolveConfigTranslators(translators);
+  const matches: Array<ConfigTranslateMatch> = [];
+  const sourceIds = new Set(input.documents.map((document) => document.sourceId));
+  for (const translator of resolved) {
+    const detected = yield* translator.detect(input);
+    if (
+      detected.some(
+        (match) =>
+          match.translator !== translator.id ||
+          match.sourceIds.length === 0 ||
+          match.sourceIds.some((id) => !sourceIds.has(id)),
+      )
+    ) {
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          translator: translator.id,
+          message: "Detection returned a foreign translator or source identity.",
+          remediation:
+            "Attribute matches to the producing translator and at least one source in the input documents.",
+        }),
+      );
     }
-    return matches;
-  });
+    matches.push(...detected);
+  }
+  return matches;
+});
 
-export const runConfigTranslator = (
-  translator: ConfigTranslatorShape,
-  input: ConfigTranslateInput,
-): Effect.Effect<ConfigTranslateResult, ConfigTranslateError> =>
-  Effect.gen(function* () {
-    const validated = yield* validateConfigTranslateInput(input);
+export const runConfigTranslator = Effect.fnUntraced(
+  function* (translator: ConfigTranslatorShape, input: ConfigTranslateInput) {
+    const validated = yield* Effect.fromResult(validateConfigTranslateInput(input));
     const result = yield* translator.translate(validated);
-    return yield* validateConfigTranslateResult(validated, result);
-  }).pipe(
-    Effect.mapError(
-      (error) => new ConfigTranslateError({ ...error, message: error.message, translator: translator.id }),
+    return yield* Effect.fromResult(validateConfigTranslateResult(validated, result));
+  },
+  (effect, translator) =>
+    effect.pipe(
+      Effect.mapError(
+        (error) => new ConfigTranslateError({ ...error, message: error.message, translator: translator.id }),
+      ),
     ),
-  );
+);

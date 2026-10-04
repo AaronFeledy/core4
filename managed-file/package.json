@@ -21,6 +21,7 @@
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
     "./transaction": "./src/transaction.ts",
+    "./transaction-guard": "./src/transaction-guard.ts",
     "./marker": "./src/marker.ts",
     "./codecs": "./src/codecs.ts",
     "./testing": "./src/testing.ts"
@@ -32,7 +33,7 @@
     "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",
-    "effect": "^3.21.2"
+    "effect": "catalog:"
   },
   "scripts": {
     "build": "tsc -b",

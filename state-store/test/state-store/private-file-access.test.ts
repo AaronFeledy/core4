@@ -6,9 +6,8 @@ import { Effect } from "effect";
 import { writeFileAtomicScoped } from "../../src/atomic.ts";
 import {
   PrivateFileAccessError,
-  type PrivateFileAccessLiveOptions,
+  type PrivateFileAccessOptions,
   PrivateFileAccessService,
-  makePrivateFileAccessLive,
 } from "../../src/private-file-access.ts";
 
 import {
@@ -20,7 +19,7 @@ import { nativeProcessRunner } from "../private-file-access.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
 
 const runWithAccess = <A>(
-  options: PrivateFileAccessLiveOptions,
+  options: PrivateFileAccessOptions,
   use: (access: typeof PrivateFileAccessService.Service) => Promise<A>,
 ): Promise<A> =>
   Effect.runPromise(
@@ -28,7 +27,7 @@ const runWithAccess = <A>(
       Effect.gen(function* () {
         const access = yield* PrivateFileAccessService;
         return yield* Effect.promise(() => use(access));
-      }).pipe(Effect.provide(makePrivateFileAccessLive(options))),
+      }).pipe(Effect.provide(PrivateFileAccessService.layerWithOptions(options))),
     ),
   );
 

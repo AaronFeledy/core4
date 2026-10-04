@@ -43,7 +43,7 @@ export const PostHostProxyCallEvent = Schema.TaggedStruct("post-host-proxy-call"
   request: HostProxyRequestRedacted,
   callerService: Schema.String,
   depth: Schema.Number,
-  outcome: Schema.Literal("success", "failure"),
+  outcome: Schema.Literals(["success", "failure"]),
   durationMs: Schema.optional(Schema.Number),
   /** Redacted one-line result summary. */
   resultSummary: Schema.optional(Schema.String),

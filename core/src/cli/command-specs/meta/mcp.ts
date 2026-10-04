@@ -31,13 +31,12 @@ export const metaMcpSpec: LandoCommandSpec<McpListResult, unknown, BuiltInComman
       description: "Print the effective MCP tool catalog instead of serving stdio MCP.",
     }),
   },
-  run: (input) =>
-    Effect.gen(function* () {
-      const catalog = yield* BuiltInCommandCatalog;
-      return yield* mcpListResult(
-        mcpRegistryFromBuiltIns(catalog.entries),
-        mcpFlagsFromParsed(extractSpecFlags(input)),
-      );
-    }),
+  run: Effect.fn("McpCommand.run")(function* (input: unknown) {
+    const catalog = yield* BuiltInCommandCatalog;
+    return yield* mcpListResult(
+      mcpRegistryFromBuiltIns(catalog.entries),
+      mcpFlagsFromParsed(extractSpecFlags(input)),
+    );
+  }),
   render: (result, _input, ctx) => renderMcpListResult(result as McpListResult, ctx),
 };
