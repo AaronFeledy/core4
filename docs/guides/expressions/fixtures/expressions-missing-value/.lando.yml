@@ -1,0 +1,10 @@
+name: expressions-missing-value
+services:
+  app:
+    type: "node:22"
+    primary: true
+tooling:
+  probe:
+    service: app
+    cmds:
+      - "echo {{ app.nope }}"
