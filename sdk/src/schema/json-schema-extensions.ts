@@ -24,5 +24,4 @@ export const repairLandofileExtensions = (schema: unknown): void => {
   root.additionalProperties = false;
   root.patternProperties = { "^x-": { $id: "/schemas/unknown", title: "unknown" } };
   Reflect.deleteProperty(root, "propertyNames");
-  repairTemplateLiteralExtensionRecords(schema);
 };
