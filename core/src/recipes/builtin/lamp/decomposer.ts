@@ -1,4 +1,5 @@
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
+import { composerAndPhpTooling } from "../php-stack.ts";
 import { lampProducer, lampSnapshot } from "./snapshot.ts";
 
 export const lampDecomposer = makeOptionBearingDecomposer({
@@ -21,22 +22,7 @@ export const lampDecomposer = makeOptionBearingDecomposer({
         },
         database: { type: "{{ recipe.database }}" },
       },
-      tooling: {
-        ...(composerEnabled
-          ? {
-              composer: {
-                service: "appserver",
-                description: "Run Composer inside the appserver service.",
-                cmds: ["composer"],
-              },
-            }
-          : {}),
-        php: {
-          service: "appserver",
-          description: "Run the PHP CLI inside the appserver service.",
-          cmds: ["php"],
-        },
-      },
+      tooling: composerAndPhpTooling(composerEnabled, { service: "appserver" }),
     };
   },
 });

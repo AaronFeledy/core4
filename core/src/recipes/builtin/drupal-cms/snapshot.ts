@@ -1,18 +1,10 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
+import { phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
 import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { recipeAssetDigest } from "../snapshot-asset.ts";
-import {
-  arr,
-  call,
-  cond,
-  defaultRoute,
-  encodedStringNode,
-  lit,
-  obj,
-  toolNode,
-} from "../snapshot-expression.ts";
+import { arr, call, cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
 import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config";
@@ -39,73 +31,24 @@ export const DRUPAL_CMS_POSTGRES_DATABASE = "postgres:16";
 /** Install commands defer the app name to the Landofile app scope. */
 export const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand("mysql", "{{ app.name }}");
 export const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand("pgsql", "{{ app.name }}");
-const usesNginx = (): ExpressionNode =>
-  call(
-    "eq",
-    { kind: "Path", head: "options", segments: [{ type: "prop", name: "webserver" }] },
-    lit("nginx"),
-  );
 const usesPostgres = (): ExpressionNode =>
   call(
     "eq",
     { kind: "Path", head: "options", segments: [{ type: "prop", name: "database" }] },
     lit(DRUPAL_CMS_POSTGRES_DATABASE),
   );
-const primaryRoutes = (): ExpressionNode => arr(defaultRoute());
-const databaseService = (): ExpressionNode =>
-  obj([
-    ["type", lit("{{ recipe.database }}")],
-    ["database", lit("{{ app.name }}")],
-  ]);
-const apacheAppserver = (): ExpressionNode =>
-  obj([
-    ["type", lit("php:{{ recipe.php }}")],
-    ["primary", lit(true)],
-    ["framework", lit("drupal")],
-    ["webroot", lit("{{ recipe.webroot }}")],
-    ["composer", lit("{{ recipe.composer }}")],
-    ["allowOverride", lit(true)],
-    ["port", lit(80)],
-    ["dependsOn", arr(lit("database"))],
-    [
-      "mounts",
-      arr(
-        obj([
-          ["source", lit(`./${DRUPAL_CMS_PHP_INI_PATH}`)],
-          ["target", lit(DRUPAL_CMS_PHP_INI_TARGET)],
-          ["readOnly", lit(true)],
-        ]),
-      ),
-    ],
-    ["routes", primaryRoutes()],
-  ]);
-const fpmAppserver = (): ExpressionNode =>
-  obj([
-    ["type", lit("php:{{ recipe.php }}")],
-    ["primary", lit(true)],
-    ["framework", lit("drupal")],
-    ["via", lit("fpm")],
-    ["webroot", lit("{{ recipe.webroot }}")],
-    ["composer", lit("{{ recipe.composer }}")],
-    ["dependsOn", arr(lit("database"))],
-    [
-      "mounts",
-      arr(
-        obj([
-          ["source", lit(`./${DRUPAL_CMS_PHP_INI_PATH}`)],
-          ["target", lit(DRUPAL_CMS_PHP_INI_TARGET)],
-          ["readOnly", lit(true)],
-        ]),
-      ),
-    ],
-  ]);
-const edgeService = (): ExpressionNode =>
-  obj([
-    ["type", lit("nginx")],
-    ["backend", lit("appserver")],
-    ["webroot", lit("{{ recipe.webroot }}")],
-    ["routes", primaryRoutes()],
-  ]);
+const { usesNginx, databaseService, apacheAppserver, fpmAppserver, edgeService } = phpSiteSnapshotBuilders({
+  framework: "drupal",
+  databaseFields: [["database", lit("{{ app.name }}")]],
+  appserverMounts: () =>
+    arr(
+      obj([
+        ["source", lit(`./${DRUPAL_CMS_PHP_INI_PATH}`)],
+        ["target", lit(DRUPAL_CMS_PHP_INI_TARGET)],
+        ["readOnly", lit(true)],
+      ]),
+    ),
+});
 export const drupalCmsSnapshot: RecipeSnapshot = {
   identity: drupalCmsProducer,
   optionTypes: {
