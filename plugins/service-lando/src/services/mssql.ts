@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -8,8 +7,10 @@ import { PortablePath } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = 1433;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");
@@ -24,11 +25,6 @@ const ARCH_REMEDIATION =
   "upstream SQL Server images are amd64-only; use an amd64 host or a provider with architecture emulation";
 
 export const MSSQL_FEATURE_ID = "service-lando.mssql";
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const defaultRootPassword = (appName: string, serviceName: string): string =>
   `Lando!${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
@@ -93,10 +89,7 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 30,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const mssqlServiceFeature: ServiceFeatureDefinition = {

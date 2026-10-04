@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { DateTime, Effect, Option, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
@@ -8,18 +6,12 @@ import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/sch
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { DeprecationService } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const MAILHOG_FEATURE_ID = "service-lando.mailhog";
 export const MAILHOG_IMAGE = "mailhog/mailhog:v1.0.1";
-
-const appNameFor = (input: {
-  readonly appName?: string | undefined;
-  readonly appRoot: string;
-}): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const applyMailhogFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -40,10 +32,7 @@ const applyMailhogFeature = (ctx: ServiceFeatureContext): void => {
     name: "ui",
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const mailhogServiceFeature: ServiceFeatureDefinition = {

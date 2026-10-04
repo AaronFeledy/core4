@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
@@ -11,7 +9,9 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "opensearchproject/opensearch:2";
 const VERSIONS = ["2"] as const;
@@ -27,11 +27,6 @@ export const OPENSEARCH_SERVICE_DESCRIPTION =
   "v2 (ELv2/SSPL) that Elasticsearch adopted after 7.10. Default local-dev " +
   "configuration is single-node with the security plugin disabled and is not " +
   "production-suitable.";
-
-const appNameFor = (ctx: ServiceFeatureContext): string => {
-  if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
-  return basename(ctx.appRoot) || "app";
-};
 
 const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -59,10 +54,7 @@ const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 90,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 };
 
 export const opensearchServiceFeature: ServiceFeatureDefinition = {

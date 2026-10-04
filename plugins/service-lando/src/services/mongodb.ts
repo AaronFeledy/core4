@@ -1,13 +1,13 @@
-import { basename } from "node:path";
-
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
@@ -18,11 +18,6 @@ const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
 export const MONGODB_CONFIG_TARGET = PortablePath.make("/etc/lando/mongod.conf");
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
 
 const credsFor = (
   input: { readonly appName?: string | undefined; readonly appRoot: string },
@@ -83,10 +78,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 
   ctx.setHealthcheck({
     kind: "command",

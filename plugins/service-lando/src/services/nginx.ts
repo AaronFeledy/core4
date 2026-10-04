@@ -19,6 +19,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
@@ -98,7 +99,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["user"]);
   const passthrough = { realization: "passthrough" as const };
   const appMount = {
     source: AbsolutePath.make(ctx.appRoot),
@@ -140,8 +141,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
 };
 
 export const nginxServiceFeature: ServiceFeatureDefinition = {
