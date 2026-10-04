@@ -33,12 +33,6 @@ import {
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
-import {
-  type EmitComposeOptions,
-  composePath as runtimeComposePath,
-  emitCompose as runtimeEmitCompose,
-  renderCompose as runtimeRenderCompose,
-} from "@lando/container-runtime/podman/compose";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import {
   type ContainerDiedEventsOptions,
@@ -444,13 +438,7 @@ export const getContainerDiedEvents = (
   options: Omit<ContainerDiedEventsOptions, "ctx"> = {},
 ) => runtimeGetContainerDiedEvents(api, { ...options, ctx: LANDO_CTX });
 
-export const renderCompose = (plan: AppPlan): string => runtimeRenderCompose(plan, LANDO_CTX);
-
-export const emitCompose = (plan: AppPlan, options: Omit<EmitComposeOptions, "ctx">) =>
-  runtimeEmitCompose(plan, { ...options, ctx: LANDO_CTX });
-
-export const composePath = (plan: AppPlan, options: Omit<EmitComposeOptions, "ctx">): string =>
-  runtimeComposePath(plan, { ...options, ctx: LANDO_CTX });
+export { renderCompose, emitCompose, composePath } from "./provider-context.ts";
 
 export const pruneVolumes = (api: PodmanApiClient, options: Omit<VolumePruneOptions, "ctx">) =>
   runtimePruneVolumes(api, { ...options, ctx: LANDO_CTX });

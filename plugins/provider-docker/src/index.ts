@@ -38,18 +38,16 @@ import {
   bringUp,
   isMissingImageCreateResponse,
 } from "@lando/container-runtime/podman/bring-up";
-import {
-  type EmitComposeResult,
-  type EmitComposeOptions as RuntimeEmitComposeOptions,
-  composePath as runtimeComposePath,
-  emitCompose as runtimeEmitCompose,
-  renderCompose as runtimeRenderCompose,
+import type {
+  EmitComposeResult,
+  EmitComposeOptions as RuntimeEmitComposeOptions,
 } from "@lando/container-runtime/podman/compose";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import { logs } from "@lando/container-runtime/podman/logs";
 import {
   bindResolvedProviderOps,
+  composeAdaptersFor,
   forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
   notImplementedError,
@@ -86,7 +84,6 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
-  type FileSystem,
   type LogChunk,
   type LogOptions,
   type LogTarget,
@@ -312,16 +309,7 @@ export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): strin
   return "/var/run/docker.sock";
 };
 
-export const renderCompose = (plan: AppPlan): string => runtimeRenderCompose(plan, DOCKER_CTX);
-
-export const emitCompose = (
-  plan: AppPlan,
-  options: EmitComposeOptions,
-): Effect.Effect<EmitComposeResult, ProviderInternalError, FileSystem> =>
-  runtimeEmitCompose(plan, { ...options, ctx: DOCKER_CTX });
-
-export const composePath = (plan: AppPlan, options: EmitComposeOptions): string =>
-  runtimeComposePath(plan, { ...options, ctx: DOCKER_CTX });
+export const { renderCompose, emitCompose, composePath } = composeAdaptersFor(DOCKER_CTX);
 
 const dockerEnsureImage = (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
   makeEnsureImage(api, { ctx: DOCKER_CTX, dialect: dockerPullDialect });

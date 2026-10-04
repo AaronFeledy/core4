@@ -12,6 +12,7 @@ import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
 import type { ProviderErrorContext } from "./engine-api.ts";
+import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";
 import { type ResolvedProviderOpsInput, makeResolvedProviderOps } from "./runtime-provider.ts";
 
 export const providerHostInputs = Effect.gen(function* () {
@@ -100,3 +101,11 @@ export const notImplementedError = (providerId: string, operation: string) =>
     operation,
     message: `provider-${providerId} does not implement ${operation} yet.`,
   });
+
+export const composeAdaptersFor = (ctx: ProviderErrorContext) => ({
+  renderCompose: (plan: AppPlan) => renderCompose(plan, ctx),
+  emitCompose: (plan: AppPlan, options: Omit<EmitComposeOptions, "ctx">) =>
+    emitCompose(plan, { ...options, ctx }),
+  composePath: (plan: AppPlan, options: Omit<EmitComposeOptions, "ctx">) =>
+    composePath(plan, { ...options, ctx }),
+});
