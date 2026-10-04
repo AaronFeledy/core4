@@ -1,4 +1,5 @@
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import { serviceStateRow } from "../service-summary";
 import type { GlobalStartedService } from "./global-start";
 
 export const globalAppRef = (plan: Pick<AppPlan, "id" | "root">): AppRef => ({
@@ -7,7 +8,5 @@ export const globalAppRef = (plan: Pick<AppPlan, "id" | "root">): AppRef => ({
   root: plan.root,
 });
 
-export const renderGlobalServiceRow = (service: GlobalStartedService): string => {
-  const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
-  return `${service.name} (${service.state}) ${endpoints}`;
-};
+export const renderGlobalServiceRow = (service: GlobalStartedService): string =>
+  serviceStateRow(service.name, service.state, service.endpoints);

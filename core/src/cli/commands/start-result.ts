@@ -1,14 +1,15 @@
 /** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
 
-import {
-  type SummaryDocument,
-  type SummaryTone,
-  formatQuietSummary,
-  worstSummaryTone,
-} from "@lando/renderer/summary";
+import { type SummaryDocument, formatQuietSummary, worstSummaryTone } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
+import {
+  START_STATUS_TONES,
+  joinServiceRows,
+  serviceStateRow,
+  summaryToneFromTable,
+} from "./service-summary";
 
 const READY_STATES = new Set(["running", "ready"]);
 
@@ -17,23 +18,7 @@ const isReadyState = (state: string): boolean => READY_STATES.has(state);
 const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 && result.servicesStarted.every((service) => isReadyState(service.state));
 
-const startStatusTone = (state: string): SummaryTone => {
-  switch (state) {
-    case "running":
-    case "ready":
-      return "ok";
-    case "starting":
-      return "pending";
-    case "stopped":
-      return "skipped";
-    case "unhealthy":
-    case "error":
-    case "failed":
-      return "error";
-    default:
-      return "warn";
-  }
-};
+const startStatusTone = summaryToneFromTable(START_STATUS_TONES, "warn");
 
 const uniqueEndpoints = (services: StartAppResult["servicesStarted"]): ReadonlyArray<string> => {
   const seen = new Set<string>();
@@ -53,9 +38,6 @@ const uniqueEndpoints = (services: StartAppResult["servicesStarted"]): ReadonlyA
 };
 
 const isWebUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
-
-const endpointText = (endpoints: ReadonlyArray<string>): string =>
-  endpoints.length === 0 ? "no endpoints" : endpoints.join(", ");
 
 const serviceNoun = (count: number): string => (count === 1 ? "service" : "services");
 
@@ -108,9 +90,9 @@ export const buildStartSummary = (
 };
 
 const renderPlainStartAppResult = (result: StartAppResult): string => {
-  const services = result.servicesStarted
-    .map((service) => `${service.name} (${service.state}) ${endpointText(service.endpoints)}`)
-    .join("; ");
+  const services = joinServiceRows(
+    result.servicesStarted.map((service) => serviceStateRow(service.name, service.state, service.endpoints)),
+  );
   const prefix = isStartAppReady(result) ? "ready" : "starting";
   return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };

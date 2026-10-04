@@ -12,13 +12,9 @@ import {
 } from "@lando/sdk/services";
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
-import {
-  type SummaryDocument,
-  type SummaryTone,
-  formatSummary,
-  worstSummaryTone,
-} from "@lando/renderer/summary";
+import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
+import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "../service-summary";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;
@@ -116,22 +112,7 @@ const selectedServices = (
   return Effect.succeed(matched);
 };
 
-const globalStatusTone = (status: GlobalStatusService["status"]): SummaryTone => {
-  switch (status) {
-    case "running":
-    case "healthy":
-      return "ok";
-    case "starting":
-      return "pending";
-    case "stopped":
-      return "skipped";
-    case "unhealthy":
-    case "error":
-      return "error";
-    default:
-      return "info";
-  }
-};
+const globalStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
 export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDocument => {
   if (!result.materialized) {
@@ -151,7 +132,7 @@ export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDoc
       { label: "provider", value: service.provider },
       {
         label: "endpoints",
-        value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
+        value: endpointText(service.endpoints),
       },
     ],
   }));
@@ -181,7 +162,7 @@ export const renderGlobalStatusResult = (
   if (!result.materialized) return "Global app is not installed.\n(no services)";
   if (result.services.length === 0) return `${result.app}\n(no services)`;
   const rows = result.services.map((service) => {
-    const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
+    const endpoints = endpointText(service.endpoints);
     return `${service.service}\t${service.status}\t${endpoints}`;
   });
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows].join("\n");

@@ -38,6 +38,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { joinServiceRows } from "../service-summary";
 import { globalAppRef, renderGlobalServiceRow } from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
@@ -145,7 +146,7 @@ const isGlobalStartReady = (result: GlobalStartResult): boolean =>
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
 export const renderGlobalStartResult = (result: GlobalStartResult): string => {
-  const services = result.servicesStarted.map(renderGlobalServiceRow).join("; ");
+  const services = joinServiceRows(result.servicesStarted.map(renderGlobalServiceRow));
   const prefix = isGlobalStartReady(result) ? "ready" : "starting";
   return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };

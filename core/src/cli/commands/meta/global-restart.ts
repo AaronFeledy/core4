@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import type { ProxyError, RouterWatcherError } from "@lando/sdk/errors";
 import { RouterService } from "@lando/sdk/services";
+import { joinServiceRows, serviceStateRow } from "../service-summary";
 
 import {
   type GlobalStartError,
@@ -23,12 +24,9 @@ export type GlobalRestartError = GlobalStartError | GlobalStopError | ProxyError
 export type GlobalRestartServices = GlobalStartServices | GlobalStopServices | RouterService;
 
 export const renderGlobalRestartResult = (result: GlobalRestartResult): string => {
-  const services = result.servicesStarted
-    .map((service) => {
-      const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
-      return `${service.name} (${service.state}) ${endpoints}`;
-    })
-    .join("; ");
+  const services = joinServiceRows(
+    result.servicesStarted.map((service) => serviceStateRow(service.name, service.state, service.endpoints)),
+  );
   return `restarted: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };
 
