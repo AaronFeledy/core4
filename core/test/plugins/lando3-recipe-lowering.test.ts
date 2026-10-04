@@ -48,7 +48,7 @@ describe("bundled lando3 recipe lowering", () => {
     expect(services).not.toHaveProperty("cache");
     expect(asRecord(services.appserver).dependsOn).toEqual(["database"]);
     expect(asRecord(services.database).type).toBe("mariadb");
-    expect(asRecord(merged.recipe).options).toMatchObject({ redis: false, php: "8.3" });
+    expect(asRecord(merged.recipe).options).toMatchObject({ redis: false, php: "8.4" });
     expect(result.outputs.find(({ targetLayer }) => targetLayer === "dist")?.fragment).not.toHaveProperty(
       "services.cache",
     );

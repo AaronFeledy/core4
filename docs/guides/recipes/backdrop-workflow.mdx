@@ -13,7 +13,7 @@ cd backdrop-demo
 lando start
 ```
 
-The named init creates `backdrop-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Backdrop into the app root so `index.php` exists, then open the URL `lando info` prints.
+The named init creates `backdrop-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Backdrop into the app root so `index.php` exists, then open the URL `lando info` prints.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: backdrop`, Apache on port `80`, depends on `database` |
+| `appserver` | `php:8.4`, `framework: backdrop`, Apache on port `80`, depends on `database` |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando bee`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -43,7 +43,7 @@ Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the dat
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bee\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />

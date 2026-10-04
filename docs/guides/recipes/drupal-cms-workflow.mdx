@@ -13,7 +13,7 @@ cd drupal-cms-demo
 lando start
 ```
 
-The named init creates `drupal-cms-demo/` and writes `.lando.yml` plus `.lando/php/drupal-cms.ini` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The ini sets `memory_limit = 512M` and is mounted for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS, then confirm with the tooling below.
+The named init creates `drupal-cms-demo/` and writes `.lando.yml` plus `.lando/php/drupal-cms.ini` there. Change into it before app commands. `--yes` keeps PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The ini sets `memory_limit = 512M` and is mounted for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS, then confirm with the tooling below.
 
 If something else owns 80 or 443, Lando falls back to the next free port, starting with `:8080` / `:8443`. `lando info` shows the URL it picked.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando falls back to the next free port, starti
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M |
+| `appserver` | `php:8.4`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -181,7 +181,7 @@ lando exec appserver -- php -v
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"drupal\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />

@@ -1,11 +1,11 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { arr, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:d4a8158703f560045773afc9f212b0d39a3ec2246bf79c72d598123193f42773";
+  "sha256:9aff4c7a37411a7ce62888345ba4720d477fa8694d662909848eaf2a10a98b1d";
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-symfony",
@@ -14,7 +14,7 @@ export const symfonyProducer: RecipeProducer = {
   contentDigest: SYMFONY_CONTENT_DIGEST,
 };
 export const symfonyDefaults = {
-  php: "8.3",
+  php: PHP_DEFAULT,
   database: "postgres:16",
   composer: "2",
   webroot: "/app/public",

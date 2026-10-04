@@ -1,12 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:cad615b0881b6c614bb027104fc1980eef72f30aa6802e99207afee7928168b7";
+  "sha256:ec038aa2eceb103271c217eb3f943f4b3b584898e29304a02a19ae3c846fd4f8";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -81,7 +81,13 @@ export const laravelSnapshot: RecipeSnapshot = {
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
     worker: { kind: "boolean" },
   },
-  defaults: { php: "8.3", database: "mariadb:11.4", composer: "2", webroot: "/app/public", worker: false },
+  defaults: {
+    php: PHP_DEFAULT,
+    database: "mariadb:11.4",
+    composer: "2",
+    webroot: "/app/public",
+    worker: false,
+  },
   template: { expression },
   assets: [],
 };

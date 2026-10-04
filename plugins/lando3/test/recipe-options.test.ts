@@ -60,7 +60,7 @@ describe("published recipe option tables", () => {
       },
       defaults: {
         drupal: "11",
-        php: "8.3",
+        php: "8.4",
         webserver: "apache",
         database: "mariadb:11.4",
         composer: "2",
@@ -72,8 +72,8 @@ describe("published recipe option tables", () => {
   test("matches wordpress", () => {
     expect(BUNDLED_RECIPE_OPTION_MAPS.get("wordpress")).toEqual({
       recipeId: "wordpress",
-      options: { php: { kind: "enum", values: ["8.2", "8.3"] }, redis: { kind: "boolean" } },
-      defaults: { php: "8.3", redis: false },
+      options: { php: { kind: "enum", values: [...PHP_VERSIONS] }, redis: { kind: "boolean" } },
+      defaults: { php: "8.4", redis: false },
       renames: { composer_version: "composer" },
     });
   });
@@ -86,15 +86,15 @@ describe("published recipe option tables", () => {
         composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
         webroot: { kind: "string" },
       },
-      defaults: { php: "8.3", database: "mariadb:11.4", composer: "2", webroot: "/app" },
+      defaults: { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "/app" },
       renames: { composer_version: "composer" },
     });
   });
   test("matches lemp", () => {
     expect(BUNDLED_RECIPE_OPTION_MAPS.get("lemp")).toEqual({
       recipeId: "lemp",
-      options: { php: { kind: "enum", values: ["8.2", "8.3"] } },
-      defaults: { php: "8.3" },
+      options: { php: { kind: "enum", values: [...PHP_VERSIONS] } },
+      defaults: { php: "8.4" },
       renames: { composer_version: "composer" },
     });
   });
@@ -109,7 +109,7 @@ describe("published recipe option tables", () => {
         worker: { kind: "boolean" },
       },
       defaults: {
-        php: "8.3",
+        php: "8.4",
         database: "mariadb:11.4",
         composer: "2",
         webroot: "/app/public",
@@ -127,7 +127,7 @@ describe("published recipe option tables", () => {
         composer: { kind: "enum", values: ["2", "2.7.7"] },
         webroot: { kind: "string" },
       },
-      defaults: { php: "8.3", database: "postgres:16", composer: "2", webroot: "/app/public" },
+      defaults: { php: "8.4", database: "postgres:16", composer: "2", webroot: "/app/public" },
       renames: { composer_version: "composer" },
     });
   });
@@ -230,17 +230,17 @@ describe("config option mapping", () => {
         spec: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] },
       },
     ]);
-    expect(result.options.php).toBe("8.3");
+    expect(result.options.php).toBe("8.4");
   });
-  test("documents lost numeric 8.10 spelling: wordpress rejects 8.1 without further coercion", () => {
+  test("documents lost numeric 8.10 spelling: wordpress receives numeric 8.1", () => {
     const result = mapped("recipe: wordpress\nconfig: {php: 8.10}\n");
-    expect(result.invalid).toMatchObject([{ option: "php", value: "8.1" }]);
-    expect(result.options.php).toBe("8.3");
+    expect(result.invalid).toEqual([]);
+    expect(result.options.php).toBe("8.1");
   });
   test("retains quoted version spelling rather than treating 8.10 as 8.1", () => {
     const result = mapped('recipe: lamp\nconfig: {php: "8.10"}\n');
     expect(result.invalid).toMatchObject([{ option: "php", value: "8.10" }]);
-    expect(result.options.php).toBe("8.3");
+    expect(result.options.php).toBe("8.4");
   });
   test("accepts false as a composer enum member", () => {
     expect(mapped("recipe: lamp\nconfig: {composer: false}\n").options.composer).toBe("false");

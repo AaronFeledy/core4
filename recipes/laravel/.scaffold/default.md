@@ -9,7 +9,7 @@ lando start
 lando info
 ```
 
-The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe laravel --name=my-laravel-app --yes \
