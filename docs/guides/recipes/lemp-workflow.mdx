@@ -13,7 +13,7 @@ cd lemp-demo
 lando start
 ```
 
-The named init creates `lemp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3. Nginx fronts PHP-FPM on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open the URL `lando info` prints.
+The named init creates `lemp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4. Nginx fronts PHP-FPM on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open the URL `lando info` prints.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
 
@@ -22,7 +22,7 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 | Piece | What you get |
 | --- | --- |
 | `web` | `nginx`, `backend: appserver`, webroot `/app`, HTTP and HTTPS routes, not primary |
-| `appserver` | `php:8.3`, `framework: none`, `via: fpm`, webroot `/app`, primary, depends on `database` |
+| `appserver` | `php:8.4`, `framework: none`, `via: fpm`, webroot `/app`, primary, depends on `database` |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -108,7 +108,7 @@ The recipe has one database service, so neither command needs `--service`. A `.g
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"backend\":\\s*\"appserver\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
