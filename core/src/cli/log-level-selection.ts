@@ -1,6 +1,8 @@
 import { LogLevelSelectionError } from "@lando/sdk/errors";
 import { LOG_LEVELS, type LogLevel } from "@lando/sdk/schema";
 
+import { scanArgvFlags } from "./argv-walk";
+
 export const LOG_LEVEL_ENV_VAR = "LANDO_LOG_LEVEL" as const;
 export const DEFAULT_LOG_LEVEL: LogLevel = "none";
 
@@ -43,50 +45,32 @@ export const extractLogLevelFlags = (argv: ReadonlyArray<string>): ExtractLogLev
   let level: LogLevel | undefined;
   let debug = false;
   let verbose = false;
-  const remaining: string[] = [];
-  let afterDoubleDash = false;
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-
-    if (afterDoubleDash) {
-      remaining.push(arg);
-      continue;
-    }
-    if (arg === "--") {
-      afterDoubleDash = true;
-      remaining.push(arg);
-      continue;
-    }
-
+  const remaining = scanArgvFlags(argv, (arg, next) => {
     if (arg === DEBUG_LONG_FLAG) {
       debug = true;
-      continue;
+      return { consumed: 0 };
     }
 
     if (arg === VERBOSE_LONG_FLAG) {
       verbose = true;
-      continue;
+      return { consumed: 0 };
     }
 
     if (arg === LOG_LEVEL_LONG_FLAG) {
-      const next = argv[index + 1];
       if (next === undefined || next.startsWith("-")) throw missingLogLevelValueError();
       level = validate(next, "flag");
-      index += 1;
-      continue;
+      return { consumed: 1 };
     }
 
     if (arg.startsWith(LOG_LEVEL_EQ_PREFIX)) {
       const value = arg.slice(LOG_LEVEL_EQ_PREFIX.length);
       if (value === "") throw missingLogLevelValueError();
       level = validate(value, "flag");
-      continue;
+      return { consumed: 0 };
     }
 
-    remaining.push(arg);
-  }
+    return undefined;
+  });
 
   return level === undefined
     ? { debug, verbose, remainingArgv: remaining }
