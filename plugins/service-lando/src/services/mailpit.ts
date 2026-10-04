@@ -4,7 +4,7 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
@@ -58,7 +58,7 @@ export const mailpitServiceType: ServiceType = {
   id: "mailpit",
   name: "mailpit",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: MailpitServiceConfig,
   resolve: (input) =>
     Schema.decodeUnknownEffect(MailpitServiceName)(input.name).pipe(

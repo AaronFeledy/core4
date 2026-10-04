@@ -4,7 +4,7 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -121,7 +121,7 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: VarnishServiceConfig,
   resolve: (input) => {
     const backend = input.service.backend?.trim() ?? "";

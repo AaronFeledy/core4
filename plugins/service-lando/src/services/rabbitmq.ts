@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -74,7 +74,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: RabbitMQServiceConfig,
   resolve: (input) => {
     const appName = input.appName ?? (basename(input.appRoot) || "app");

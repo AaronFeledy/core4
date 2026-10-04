@@ -2,7 +2,12 @@ import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -161,7 +166,7 @@ export const makePythonServiceType = (version: SupportedPythonVersion): ServiceT
   base: "lando",
   versions: SUPPORTED_PYTHON_VERSIONS,
   artifacts: PYTHON_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve(`python:${version}`, `Failed to resolve python:${version}`, () => {

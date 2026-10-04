@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -42,7 +42,7 @@ export const valkeyServiceType: ServiceType = {
   id: "valkey",
   name: "valkey",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({

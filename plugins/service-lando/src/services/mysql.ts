@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -139,7 +139,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   base: "lando",
   versions: MYSQL_VERSIONS,
   artifacts: MYSQL_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: MysqlServiceConfig,
   resolve: (input) => {
     if (id !== "mysql" && input.service.image !== undefined && input.service.image !== image) {

@@ -8,7 +8,7 @@ import type {
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
-import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -319,7 +319,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_NODE_VERSIONS,
   artifacts: NODE_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
+  identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve(`node:${version}`, `Failed to resolve node:${version}`, () => {
@@ -347,7 +347,7 @@ export const nodeServiceType: ServiceType = {
   id: "node",
   name: "node",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
+  identity: rootIdentity({ node: "/home/node" }),
   schema: Schema.Unknown,
   projectFiles: (service) => {
     const packageRoot = service.packageRoot ?? ".";

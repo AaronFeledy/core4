@@ -8,7 +8,12 @@ import type {
   ServiceMountIntent,
   ServiceType,
 } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -147,7 +152,7 @@ const makeGoServiceType = (version: SupportedGoVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_GO_VERSIONS,
   artifacts: GO_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve(`go:${version}`, `Failed to resolve go:${version}`, () => {

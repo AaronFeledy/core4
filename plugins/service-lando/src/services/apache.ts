@@ -7,7 +7,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -200,7 +200,7 @@ export const apacheServiceType: ServiceType = {
   // sha256:7ed5668e2fb31c738bcd291847fbb313073998e561ac6d8dc63cfd061dd0fb4d
   // www-data:x:82:82::/home/www-data:/sbin/nologin
   // Image config User was empty and HOME was absent, so neither was used as the home source.
-  identity: { defaultUser: "root", homes: { root: "/root", "www-data": "/home/www-data" } },
+  identity: rootIdentity({ "www-data": "/home/www-data" }),
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.sync(() => {

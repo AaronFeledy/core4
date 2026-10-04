@@ -14,7 +14,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { appNameFor } from "../app-name.ts";
-import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
@@ -68,7 +68,7 @@ const makePhpMyAdminServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: PhpMyAdminServiceConfig,
   resolve: (input) => {
     const appName = appNameFor(input);

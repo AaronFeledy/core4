@@ -7,7 +7,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -74,7 +74,7 @@ export const meilisearchServiceFeature: ServiceFeatureDefinition = {
   ),
 };
 
-const IDENTITY: ServiceImageIdentity = { defaultUser: "root", homes: { root: "/root" } };
+const IDENTITY: ServiceImageIdentity = rootIdentity();
 
 const resolveMeilisearchService: ServiceType["resolve"] = (input) =>
   Effect.succeed({

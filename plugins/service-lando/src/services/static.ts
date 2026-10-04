@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -155,7 +155,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
-    identity: { defaultUser: "root", homes: { root: "/root" } },
+    identity: rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>
       serviceTypeResolve(id, `Failed to resolve ${id}`, () => {

@@ -3,7 +3,12 @@ import { Schema } from "effect";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -237,7 +242,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   base: "lando",
   versions: SUPPORTED_PHP_VERSIONS,
   artifacts: PHP_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: PhpServiceConfig,
   resolve: (input) =>
     serviceTypeResolve(`php:${version}`, `Failed to resolve php:${version}`, () => {

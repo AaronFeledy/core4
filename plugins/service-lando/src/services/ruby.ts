@@ -2,7 +2,12 @@ import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -149,7 +154,7 @@ export const makeRubyServiceType = (version: SupportedRubyVersion): ServiceType 
   base: "lando",
   versions: SUPPORTED_RUBY_VERSIONS,
   artifacts: RUBY_ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve(`ruby:${version}`, `Failed to resolve ruby:${version}`, () => {
