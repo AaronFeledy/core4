@@ -525,3 +525,111 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
 - Split/excise: none.
 - Verification: typecheck and lint pass. Spot checks pass (213 tests across tracing, retention, selection, host observability, schema, config redaction, command result, machine output, and exports).
 ---
+
+## 2026-10-03 22:28 CDT - US-669 Verify
+- Compiled-binary setup, a lamp init/start, and the advertised proxy URLs (HTTP :8080 and HTTPS :8443) returned the app's Apache page. PHP tooling printed `us669-ok`. Info, logs, app config, apps list, and doctor exited 0. `--trace` / `LANDO_TRACE=1` printed a stderr timing tree (47 of 67 info spans collapsed under 1%) and a JSON `trace` whose root is `lando meta:config`. A failed `--jq` exited 2 with the root and render spans marked error. A missing Landofile exited 1 with a tagged error and a trace. An OTLP receiver got `/v1/traces` with `service.name=lando`, `service.version`, `os.type=linux`, and `host.arch=x64`. Header values were redacted in config output and absent from span bodies, and were sent as the request header. An unreachable endpoint still exited 0 within about a second. With the endpoint unset, nothing was exported.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us669v-appserver`, `lando-us669v-database`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-668 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-669 acceptance failure.
+- **Learnings for future iterations:**
+  - A fresh lamp app answers its proxy URL with Apache `403 Access denied | Lando`. `curl -f` treats that as a failure and hides the body. The page is the app.
+---
+
+## 2026-10-04 01:21 CDT - Babysit
+- PR: #1149 https://github.com/AaronFeledy/core4/pull/1149
+- CI outcome: fail (unit-tests-linux-x64-shard (1, ubuntu-24.04) on 84eeeb01, after main was merged into the branch; runner queues kept CI pending for most of the step)
+- Review feedback: none (no Bugbot findings, no review)
+- Merge: deferred (unit shard 1 red; job logs not yet retrievable before step budget ran out)
+---
+## 2026-10-04 01:20 - Babysit
+- [looper] Babysit handed the story back at published: PR #1149 CI red: unit-tests-linux-x64-shard (1, ubuntu-24.04) failed on 84eeeb01 (main merged into branch); triage not started before step budget ran out
+---
+## 2026-10-04 01:20 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-10-04 01:20 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-10-04 01:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-10-04 01:20 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-10-04 01:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-10-04 01:20 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-10-04 02:35 CDT - Babysit
+- PR: #1149 https://github.com/AaronFeledy/core4/pull/1149
+- CI outcome: fail (unit-tests-linux-x64-shard 1 ubuntu-24.04: "bounds a stalled exporter" timed out at 20s)
+- Review feedback: fixed (test-only: release the stalled OTLP receiver's held response before `server.stop(true)`, because Bun waits on the aborted pending request; the production export bound already works). No Bugbot findings.
+- Merge: deferred (CI on e101354d1 still pending when the step budget ran out: guide-scenarios, provider-integration, some builds and perf-budget; nothing has failed so far)
+---
+## 2026-10-04 02:35 - Babysit
+- [looper] Babysit blocked: CI still pending at step budget: guide-scenarios, provider-integration, build-windows/darwin-x64, perf-budget, unit shard 2 (ubuntu-24.04) not finished on e101354d1 after flaky-test fix; no failures, no Bugbot findings
+---
+## 2026-10-04 02:35 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-10-04 02:35 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-10-04 02:35 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-10-04 02:35 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-10-04 02:35 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-10-04 02:35 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-10-04 03:05 CDT - Babysit
+- PR: #1149 https://github.com/AaronFeledy/core4/pull/1149
+- CI outcome: pass (after fixes; earlier unit-tests shard 1 and schema-snapshot failures)
+- Review feedback: fixed (stale help-footer assertion now expects --trace; merged origin/main to restore agent-skills schemas; stalled-exporter test releases its pending handler before Bun 1.4.0 server stop)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-10-04 04:12 CDT - US-670 (Build + Measure)
+- Decode cost by surface, measured in fresh `bun` processes (15 each, medians), interpreter vs `SchemaAOTCompiler` output:
+  - App-plan cache (real sandbox `plan.bin`: lamp app, bench app, global app): first decode 4.1 vs 13.0 ms; steady 0.043 vs 0.072 ms (lamp), 0.053 vs 0.076 ms (global). V8 envelope deserialize is 0.056 ms either way.
+  - Command cache: V8 `deserialize` with header checks and no Schema, so there is nothing to compile. First read 0.08 ms, steady under 0.001 ms.
+  - Landofile (`LandofileShape`, 167 guide and recipe files, 158 valid): first decode 3.0 vs 8.8 ms; first full pass 35.6 vs 48.5 ms; steady per file 0.049 vs 0.071 ms.
+  - Warm `lando bench` decodes no plan and no Landofile. A host `.bun.sh` alias routes from the V8 command index on a `minimal` bootstrap. Its decodes are GlobalConfig ×2, LandoRuntimeOptions, BunShellScriptFrontMatter, the CLI init and run events, and about 12 `LandoEvent`-union validations in `EventService.publish`. That sequence takes 14.9 ms interpreted vs 23.0 ms compiled in the first run, plus 12 ms to import the generated module and 4 ms to install it.
+  - Most generated operations delegate to the interpreter. Only a few Struct/Array orchestration paths are emitted statically.
+- In-process numbers did not predict the compiled binary, so the bar was judged end to end. `bench:tooling-hot-path` ran in the sandbox on compiled binaries built from the same tree, interleaved ABBA, with script-reported warm p95:
+  - Hot-path schemas only: four rounds improved p95 by 12.9, 7.8, 8.9, and 1.1 ms (mean of per-run p95). p50 ranged from unchanged to 5.6 ms better.
+  - Hot-path schemas plus LandofileShape and AppPlan (adopted): interp 185.0 vs 163.9 ms (8 runs × 50, pooled p95 190.3 vs 170.7, p50 151.7 vs 143.1). An earlier three-way round gave 172.3 vs 169.8, with p50 153.3 vs 145.6.
+  - `app:config --format=json` (decodes the Landofile): p95 528.0 vs 483.3 ms, p50 467.1 vs 447.0 ms.
+  - The binary grows 1.9 MB (+0.96%), and the generated module is 751,725 bytes.
+- **Decision:** adopted, because bench p95 improves by at least 5 ms.
+  - The compiled set is GlobalConfig, LandoRuntimeOptions, BunShellScriptFrontMatter, the CLI init and run events, the deliverable-event union, LandofileShape, and AppPlan, in a fixed AST order in `core/src/cli/compiled-decoder-targets.ts`.
+  - The `compiled-decoders` derived codegen entry writes the gitignored `core/src/cli/generated/compiled-decoders.mjs` plus a `.d.mts`.
+  - The CLI installs them at the top of `runCompiledCli`. Library embedders keep the interpreter.
+  - A parity test decodes the US-668 Landofile corpus (guide and recipe fixtures plus the curated valid and invalid inputs) in two child processes, interpreted and compiled. It requires identical verdicts, values, and issue paths and messages.
+- Verification:
+  - `gate:pr` passed: typecheck, lint, codegen and drift, all boundary rules, and guide drift.
+  - Spot checks passed: parity, codegen catalog and tracking policy, entry-point exports, and the event service.
+  - `build:compile` succeeded. In the sandbox, `app:config --format=json` returned the same envelope as the baseline binary, and a missing Landofile gave the same tagged `LandofileNotFoundError`.
+- **Out-of-scope finding:** running `lando bench` from a sandbox shell exits 1 with `ToolingExecError`/`ShellExecError` on both the baseline and the new binary. Under `bun run` (the bench harness) it exits 0. Likely cause: `.bun.sh` host tooling needs `bun` on PATH, and the clean sandbox has none.
+- **Learnings for future iterations:**
+  - `SchemaAOTCompiler.compile` output is machine-shaped JS of several hundred KB. `biome check --write` did not finish on it within 120 s, so the generator writes the `.mjs` raw and formats only the declaration.
+  - Install order and AST identity are the contract. Regenerate after editing any listed schema or the Effect version, and keep the target list free of imports from the generated module, so the generator still runs on a clean checkout.
+  - Sandbox bench noise is about 20 ms on p95 and drifts across a session. Compare binaries in interleaved ABBA rounds, never back to back.
+---
+## 2026-10-04 04:06 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-10-04 04:14 CDT - US-670 Verify
+- Compiled-binary setup, lamp init/start, and a second start succeeded on a reset sandbox. HTTP and HTTPS returned the PHP body. `php` tooling, logs, info (database passwords `[redacted]`), `app:config`, and doctor exited 0. A Landofile with `imgae` returned tagged `LandofileValidationError` (`services.web.imgae`, suggestion `image`) and exit 1. A missing Landofile returned tagged `LandofileNotFoundError` and exit 1. The scenario app was destroyed and the runtime powered off.
+- **Out-of-scope finding:** setup and start warned that ports 80 and 443 are occupied and hopped the router to 8000/4443. The app still returned HTTP 200 on the hopped URLs. Same class as the US-664 note. Suspected area: WSL mirrored networking, not compiled decoders.
+- **Out-of-scope finding:** `lando destroy --yes --purge` then `lando poweroff --yes` left conmon `--exec` processes named `lando-us670v-appserver`, `lando-global-ssh-agent`, and `lando-global-traefik-diagnostics` after poweroff reported the runtime stopped. Expected no processes for that app. Same class as the US-662/US-663/US-664 notes. Suspected area: runtime shutdown versus in-flight exec monitors. Not a US-670 acceptance failure. The sandbox was reset afterward.
+---

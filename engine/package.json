@@ -142,6 +142,7 @@
     "./services/draft": "./src/services/draft.ts",
     "./services/event-command-executor": "./src/services/event-command-executor.ts",
     "./services/event-service": "./src/services/event-service.ts",
+    "./services/event-validation": "./src/services/event-validation.ts",
     "./services/feature": "./src/services/feature.ts",
     "./services/file-system": "./src/services/file-system.ts",
     "./services/global-services": "./src/services/global-services.ts",
