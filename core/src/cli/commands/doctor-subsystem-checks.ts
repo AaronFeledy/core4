@@ -3,6 +3,7 @@ import { Effect, Result, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
+import { DoctorSeveritySchema, passCheckNamed, warnCheck } from "./doctor-check-builders";
 
 /**
  * Whether a degraded subsystem can be recovered automatically by re-running its
@@ -63,7 +64,7 @@ export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFa
   "DoctorSubsystemFailure",
   {
     subsystem: Schema.String,
-    severity: Schema.Literals(["info", "warn", "error"]),
+    severity: DoctorSeveritySchema,
     solution: Schema.Struct({
       kind: Schema.Literals(["automatic", "manual"]),
       description: Schema.String,
@@ -217,14 +218,8 @@ const errorMessage = (cause: unknown): string => {
   return redactString(String(cause));
 };
 
-export const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck => ({
-  name: spec.name,
-  status: "pass",
-  severity: "info",
-  recovery: spec.recovery,
-  context,
-  solutions: [],
-});
+export const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck =>
+  passCheckNamed({ name: spec.name, recovery: spec.recovery, context });
 
 const withoutPreFixState = (context: Record<string, string>): Record<string, string> =>
   Object.fromEntries(Object.entries(context).filter(([key]) => key !== "state"));
@@ -253,11 +248,8 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
         fixExitCode: "0",
       });
     }
-    const diagnostic = subsystemFailureDiagnostic(spec.name, serviceId, result.failure);
-    return {
+    return warnCheck({
       name: spec.name,
-      status: "warn",
-      severity: diagnostic.severity,
       recovery: spec.recovery,
       context: {
         ...baseContext,
@@ -267,30 +259,26 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
         fixError: errorMessage(result.failure),
       },
       solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
-    };
+    });
   }
 
   if (fix) {
-    return {
+    return warnCheck({
       name: spec.name,
-      status: "warn",
-      severity: "warn",
       recovery: spec.recovery,
       context: { ...baseContext, fixOutcome: "skipped-manual" },
       solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
-    };
+    });
   }
 
   const diagnostic =
     cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, serviceId, cause);
-  return {
+  return warnCheck({
     name: spec.name,
-    status: "warn",
-    severity: diagnostic?.severity ?? "warn",
     recovery: spec.recovery,
     context: baseContext,
     solutions: [diagnostic?.solution ?? degradedSolution(spec)],
-  };
+  });
 });
 
 /**

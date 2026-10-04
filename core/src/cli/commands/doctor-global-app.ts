@@ -22,6 +22,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
+import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 
 export interface GlobalAppDoctorCheck {
@@ -101,13 +102,11 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
     .join(", ");
 
   if (paths === undefined) {
-    const check: GlobalAppDoctorCheck = {
+    const check: GlobalAppDoctorCheck = warnCheck({
       name: "global-app",
-      status: "warn",
-      severity: "warn",
       context: { installed: "false" },
       solutions: [NOT_INSTALLED_SOLUTION],
-    };
+    });
     return { checks: [check] };
   }
 
@@ -123,13 +122,11 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
     };
     if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
 
-    const check: GlobalAppDoctorCheck = {
+    const check: GlobalAppDoctorCheck = warnCheck({
       name: "global-app",
-      status: "warn",
-      severity: "warn",
       context,
       solutions: [NOT_INSTALLED_SOLUTION],
-    };
+    });
     return { checks: [check] };
   }
 
@@ -151,10 +148,8 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
     if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
     if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
 
-    const check: GlobalAppDoctorCheck = {
+    const check: GlobalAppDoctorCheck = failCheck({
       name: "global-app",
-      status: "fail",
-      severity: "error",
       context,
       solutions: [
         {
@@ -163,7 +158,7 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
             "The global app dist Landofile exists but could not be read. Check file permissions and rerun `lando global:install` if needed.",
         },
       ],
-    };
+    });
     return { checks: [check] };
   }
 
@@ -178,13 +173,10 @@ export const globalAppDoctor = Effect.fnUntraced(function* (): Effect.fn.Return<
   context.services = serviceIds.length === 0 ? "(none)" : serviceIds.join(", ");
   if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
 
-  const check: GlobalAppDoctorCheck = {
+  const check: GlobalAppDoctorCheck = passCheckNamed({
     name: "global-app",
-    status: "pass",
-    severity: "info",
     context,
-    solutions: [],
-  };
+  });
 
   return { checks: [check] };
 });

@@ -15,11 +15,19 @@ import {
 } from "@lando/landofile/version-constraint";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import * as StateStoreLayer from "@lando/state-store/service";
+import {
+  DoctorSeveritySchema,
+  DoctorStatusSchema,
+  failCheck,
+  passCheckNamed,
+  warnCheck,
+} from "./doctor-check-builders";
+import type { DoctorSeverity, DoctorStatus } from "./doctor-contract";
 
 export interface AppVersionConstraintDoctorCheck {
   readonly name: "app-version-constraint";
-  readonly status: "pass" | "warn" | "fail";
-  readonly severity: "info" | "warn" | "error";
+  readonly status: DoctorStatus;
+  readonly severity: DoctorSeverity;
   readonly context: Readonly<Record<string, string>>;
   readonly solutions: ReadonlyArray<{
     readonly kind: "manual";
@@ -32,8 +40,6 @@ export interface AppVersionConstraintDoctorResult {
   readonly checks: ReadonlyArray<AppVersionConstraintDoctorCheck>;
 }
 
-const DoctorStatusSchema = Schema.Literals(["pass", "warn", "fail"]);
-const DoctorSeveritySchema = Schema.Literals(["info", "warn", "error"]);
 const DoctorSolutionSchema = Schema.Struct({
   kind: Schema.Literal("manual"),
   description: Schema.String,
@@ -73,17 +79,15 @@ const failedLoadResult = (
   solutions: AppVersionConstraintDoctorCheck["solutions"],
 ): AppVersionConstraintDoctorResult => ({
   checks: [
-    {
+    failCheck({
       name: "app-version-constraint",
-      status: "fail",
-      severity: "error",
       context: {
         runningVersion: CORE_VERSION,
         skipped: String(isVersionConstraintSkipped(process.env)),
         ...context,
       },
       solutions,
-    },
+    }),
   ],
 });
 
@@ -189,12 +193,12 @@ export const appVersionConstraintsForReport = Effect.fnUntraced(function* (): Ef
   return {
     checks: [
       {
-        name: "app-version-constraint",
-        status,
-        severity: status === "pass" ? "info" : status === "warn" ? "warn" : "error",
-        context,
-        solutions: status === "pass" ? [] : [VERSION_CONSTRAINT_SOLUTION],
-      },
+        pass: () => passCheckNamed({ name: "app-version-constraint", context }),
+        warn: () =>
+          warnCheck({ name: "app-version-constraint", context, solutions: [VERSION_CONSTRAINT_SOLUTION] }),
+        fail: () =>
+          failCheck({ name: "app-version-constraint", context, solutions: [VERSION_CONSTRAINT_SOLUTION] }),
+      }[status](),
     ],
   } satisfies AppVersionConstraintDoctorResult;
 });
