@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { makeRuntimeProvider } from "@lando/provider-podman";
+import * as PodmanProvider from "@lando/provider-podman";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { AbsolutePath, AppId, type AppPlan, LogSource, ProviderId, ServiceName } from "@lando/sdk/schema";
 
@@ -62,7 +62,7 @@ describe("provider-podman log source binding", () => {
     const memory = makeMemoryLogFileAccess();
     memory.writeFile(source.path, "override\n");
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({
+      PodmanProvider.makeRuntimeProvider({
         platform: "linux",
         env: {},
         podmanApi: api,
@@ -81,7 +81,7 @@ describe("provider-podman log source binding", () => {
   test("keeps the no-plan error even when file access is injected", async () => {
     // Given: no applied plan and injected file access.
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({
+      PodmanProvider.makeRuntimeProvider({
         platform: "linux",
         env: {},
         podmanApi: api,
@@ -103,7 +103,7 @@ describe("provider-podman log source binding", () => {
     // Given: a helper payload and an API that refuses uploads.
     const paths: string[] = [];
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({
+      PodmanProvider.makeRuntimeProvider({
         platform: "linux",
         env: {},
         podmanApi: {
