@@ -6,6 +6,7 @@ import { NotImplementedError, ToolingExecError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import { readBunShellScript } from "@lando/landofile/bun-sh-script";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
@@ -85,11 +86,15 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
     readonly renderProgress?: boolean;
+    readonly relativePath?: string;
   },
   appRoot: string,
 ) {
-  const scripts = yield* discoverBunShellScripts({ appRoot });
-  const script = findBunShellScriptForName(scripts, options.name);
+  const script = yield* options.relativePath === undefined
+    ? discoverBunShellScripts({ appRoot }).pipe(
+        Effect.map((scripts) => findBunShellScriptForName(scripts, options.name)),
+      )
+    : readBunShellScript(appRoot, options.relativePath);
   if (script === undefined) return undefined;
 
   const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;

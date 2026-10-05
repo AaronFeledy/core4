@@ -7,8 +7,10 @@ import {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 
-import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
+import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
+import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
+import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
 import { findAppRoot } from "@lando/landofile/discovery";
 import {
   type BuiltInCommandEntry,
@@ -56,9 +58,27 @@ export type ToolingRoute =
       readonly commandId: string;
       readonly name: string;
       readonly appRoot: string;
+      readonly relativePath?: string;
     };
 
 export type NormalizedToolingRoute = Extract<ToolingRoute, { readonly _tag: "tooling" }>;
+
+const bunScriptRoute = (
+  commandId: string,
+  appRoot: string,
+  cache: AppCommandIndexPayload,
+): Extract<ToolingRoute, { readonly _tag: "bun-script" }> => {
+  const relativePath = cache.sourceScripts?.find(
+    (script) => canonicalIdFromRelativePath(script.relativePath)?.id === commandId,
+  )?.relativePath;
+  return {
+    _tag: "bun-script",
+    commandId,
+    name: commandId.slice("app:".length),
+    appRoot,
+    ...(relativePath === undefined ? {} : { relativePath }),
+  };
+};
 
 const normalizedToolingRoute = (
   commandId: string,
@@ -160,12 +180,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   if (canonicalEntry !== undefined) {
     const canonicalName = token.startsWith("app:") ? token.slice("app:".length) : token;
     if (canonicalEntry.source === "bun-script") {
-      return {
-        _tag: "bun-script",
-        commandId: token,
-        name: canonicalName,
-        appRoot,
-      } as const;
+      return bunScriptRoute(token, appRoot, cache);
     }
     return normalizedToolingRoute(token, canonicalName, canonicalEntry);
   }
@@ -196,12 +211,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
         remediation: CACHE_REMEDIATION,
       } as const;
     if (customEntry.source === "bun-script") {
-      return {
-        _tag: "bun-script",
-        commandId: custom,
-        name: customName,
-        appRoot,
-      } as const;
+      return bunScriptRoute(custom, appRoot, cache);
     }
     return normalizedToolingRoute(custom, customName, customEntry);
   }
@@ -226,6 +236,11 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   const entry = cache.entries.find((candidate) => candidate.id === commandId);
   if (entry === undefined) {
     if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
+    const script = yield* resolveBunShellScript(appRoot, name).pipe(
+      Effect.catch(() => Effect.succeed(undefined)),
+    );
+    if (script !== undefined)
+      return { _tag: "bun-script", commandId, name, appRoot, relativePath: script.relativePath } as const;
     return {
       _tag: "unknown-tooling",
       commandId,
@@ -235,12 +250,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   }
 
   if (entry.source === "bun-script") {
-    return {
-      _tag: "bun-script",
-      commandId,
-      name,
-      appRoot,
-    } as const;
+    return bunScriptRoute(commandId, appRoot, cache);
   }
   return normalizedToolingRoute(commandId, name, entry);
 });

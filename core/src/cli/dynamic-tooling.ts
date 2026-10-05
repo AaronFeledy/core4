@@ -95,14 +95,22 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
 };
 
 const runDynamicBunShellTooling = (
-  name: string,
+  route: Extract<ToolingRoute, { readonly _tag: "bun-script" }>,
   argv: ReadonlyArray<string>,
-  appRoot: string,
 ): Promise<void> => {
+  const { name, appRoot, relativePath } = route;
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
-  const effect = runBunShellTooling({ name, args: commandArgv, renderProgress: true }, appRoot).pipe(
+  const effect = runBunShellTooling(
+    {
+      name,
+      args: commandArgv,
+      renderProgress: true,
+      relativePath: relativePath ?? `${name.split(":").join("/")}.bun.sh`,
+    },
+    appRoot,
+  ).pipe(
     Effect.flatMap((result) =>
       result === undefined
         ? Effect.fail(
@@ -182,7 +190,7 @@ export const routeResolvedTooling = async (
     case "bun-script":
       // A tooling task renders its own streams and declares no opt-in format.
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
-      await runDynamicBunShellTooling(route.name, argv, route.appRoot);
+      await runDynamicBunShellTooling(route, argv);
       return true;
     case "tooling":
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;

@@ -44,6 +44,7 @@ import {
   encodePluginCommandIndex,
   normalizeAppCommandAliasPolicy,
 } from "./command-index.ts";
+import { commandScriptFingerprints, commandScriptsFresh } from "./command-script-freshness.ts";
 import {
   appCommandCachePath,
   appToolingCompilationCachePath,
@@ -88,9 +89,6 @@ const referencedFilesFresh = async (
   return results.every(Boolean);
 };
 
-const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
-const SCRIPTS_DIRNAME = join(".lando", "scripts");
-
 export interface WriteAppCommandCacheOptions {
   readonly landofile: LandofileShape;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
@@ -107,7 +105,6 @@ interface AppCommandCacheSource {
   };
   readonly landofileSources: ReadonlyArray<{ readonly relativePath: string; readonly bytes: Uint8Array }>;
   readonly includeLockfileBytes: Uint8Array | null;
-  readonly scripts: ReadonlyArray<BunShellScriptSource>;
 }
 
 const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
@@ -118,11 +115,6 @@ const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
     throw cause;
   }
 };
-
-interface BunShellScriptSource {
-  readonly relativePath: string;
-  readonly bytes: Uint8Array;
-}
 
 interface LocalIncludeSource {
   readonly relativePath: string;
@@ -200,45 +192,10 @@ const localIncludeSourcesFor = async (
   return sources;
 };
 
-const readBunShellScriptSources = async (appRoot: string): Promise<ReadonlyArray<BunShellScriptSource>> => {
-  const scriptsRoot = join(appRoot, SCRIPTS_DIRNAME);
-  const exists = await stat(scriptsRoot).catch((cause) => {
-    if (isMissingFile(cause)) return undefined;
-    throw cause;
-  });
-  if (exists?.isDirectory() !== true) return [];
-
-  const files: string[] = [];
-  const visit = async (dir: string): Promise<void> => {
-    const entries = await readdir(dir, { withFileTypes: true });
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const absolutePath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await visit(absolutePath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      if (!entry.name.endsWith(BUN_SHELL_SCRIPT_EXTENSION)) continue;
-      files.push(absolutePath);
-    }
-  };
-  await visit(scriptsRoot);
-
-  return Promise.all(
-    files.map(async (absolutePath) => ({
-      relativePath: relative(scriptsRoot, absolutePath).split(sep).join("/"),
-      bytes: await readFile(absolutePath),
-    })),
-  );
-};
-
 const sourceHashFor = (
   landofileSources: ReadonlyArray<{ readonly relativePath: string; readonly bytes: Uint8Array }>,
   includeLockfileBytes: Uint8Array | null,
   localIncludes: ReadonlyArray<LocalIncludeSource>,
-  scripts: ReadonlyArray<BunShellScriptSource>,
 ): string => {
   const hash = createHash("sha256");
   hash.update("landofiles\0");
@@ -258,13 +215,6 @@ const sourceHashFor = (
     else hash.update(include.bytes);
     hash.update("\0");
   }
-  hash.update("\0bun-shell-scripts\0");
-  for (const script of scripts) {
-    hash.update(script.relativePath);
-    hash.update("\0");
-    hash.update(script.bytes);
-    hash.update("\0");
-  }
   return hash.digest("hex");
 };
 
@@ -274,7 +224,7 @@ const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCach
 
   const appRoot = dirname(filePath);
   const layers = await presentLandofileLayers(appRoot);
-  const [stats, landofileSources, includeLockfileBytes, scripts] = await Promise.all([
+  const [stats, landofileSources, includeLockfileBytes] = await Promise.all([
     stat(filePath),
     Promise.all(
       layers.map(async (layer) => ({
@@ -283,9 +233,8 @@ const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCach
       })),
     ),
     readOptionalFile(join(appRoot, ".lando.lock.yml")),
-    readBunShellScriptSources(appRoot),
   ]);
-  return { filePath, stats, landofileSources, includeLockfileBytes, scripts };
+  return { filePath, stats, landofileSources, includeLockfileBytes };
 };
 
 const sourceContentHash = async (
@@ -298,7 +247,6 @@ const sourceContentHash = async (
     source.landofileSources,
     source.includeLockfileBytes,
     await localIncludeSourcesFor(appRoot, localIncludePaths, allowOutsideRoot),
-    source.scripts,
   );
 
 const pathsEqual = (left: ReadonlyArray<string> | undefined, right: ReadonlyArray<string>): boolean =>
@@ -324,6 +272,7 @@ const writeAppCommandCacheTask = async (
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
   const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
+  const sourceScripts = await commandScriptFingerprints(appRoot);
   const contentHash = await sourceContentHash(
     source,
     appRoot,
@@ -344,6 +293,7 @@ const writeAppCommandCacheTask = async (
       sourceContentHash: contentHash,
       sourceLocalIncludePaths,
       sourceReferencedFiles,
+      sourceScripts,
       sourceMtimeMs: stats.mtimeMs,
       sourceSize: stats.size,
       versionConstraints,
@@ -363,6 +313,7 @@ const writeAppCommandCacheTask = async (
     sourceContentHash: contentHash,
     sourceLocalIncludePaths,
     sourceReferencedFiles,
+    sourceScripts,
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     versionConstraints,
@@ -501,6 +452,7 @@ const readAppCommandCacheTask = async (
 const readFreshAppCommandCacheForCwdTask = async (options: {
   readonly cwd?: string;
   readonly cacheRoot?: string;
+  readonly includeScriptInventory?: boolean;
 }): Promise<AppCommandIndexPayload | null> => {
   const cwd = options.cwd ?? process.cwd();
   const source = await resolveAppCommandCacheSource(cwd);
@@ -516,6 +468,8 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
     if (payload.sourceFile !== source.filePath) return null;
     if (!Array.isArray(payload.sourceLocalIncludePaths)) return null;
     if (!(await referencedFilesFresh(payload.sourceReferencedFiles))) return null;
+    if (!(await commandScriptsFresh(appRoot, payload.sourceScripts, options.includeScriptInventory)))
+      return null;
     if (
       payload.sourceContentHash !==
       (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths, true))
@@ -582,6 +536,7 @@ export const readFreshAppCommandCacheForCwd = (
   options: {
     readonly cwd?: string;
     readonly cacheRoot?: string;
+    readonly includeScriptInventory?: boolean;
   } = {},
 ): Effect.Effect<AppCommandIndexPayload | null, CacheError> =>
   Effect.tryPromise({

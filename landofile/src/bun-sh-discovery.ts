@@ -184,7 +184,7 @@ export const canonicalIdFromRelativePath = (relativePath: string): { name: strin
   return { name, id: `app:${name}` };
 };
 
-const parseScriptFile = Effect.fnUntraced(function* (
+export const parseScriptFile = Effect.fnUntraced(function* (
   scriptPath: string,
   relativePath: string,
 ): Effect.fn.Return<DiscoveredBunShellScript, BunShellScriptDiscoveryError> {

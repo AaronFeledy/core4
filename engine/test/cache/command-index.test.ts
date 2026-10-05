@@ -14,15 +14,15 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version four when encoding normalized command input", () => {
+  test("uses version five when encoding script routing fingerprints", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(4n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(5n);
   });
 
-  test.each([2n, 3n])("returns a cache miss for a v2 payload with header %s", (headerVersion) => {
+  test.each([2n, 3n, 4n])("returns a cache miss for an old payload with header %s", (headerVersion) => {
     // Given
     const bytes = encodeAppCommandIndex({
-      schemaVersion: 2,
+      schemaVersion: Number(headerVersion),
       landoVersion: "0.0.0",
       appName: "old",
       sourceFile: "/app/.lando.yml",
