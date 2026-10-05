@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { RecipeSourceError } from "@lando/sdk/errors";
 
@@ -156,7 +156,7 @@ export const resolveGitRecipeSource = async (
     });
   });
 
-  const pointer = join(cacheRoot, ".url", createHash("sha256").update(options.url).digest("hex"));
+  const pointer = join(cacheRoot, ".url", sha256Hex(options.url));
   const cachedSha = (await recipeFileExists(pointer)) ? (await Bun.file(pointer).text()).trim() : "";
   let commitSha =
     cachedSha !== "" && (await recipeFileExists(join(cacheRoot, cachedSha))) ? cachedSha : undefined;

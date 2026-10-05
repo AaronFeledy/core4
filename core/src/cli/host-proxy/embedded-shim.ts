@@ -6,6 +6,7 @@ import { gunzipSync } from "node:zlib";
 
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { makeLandoPaths } from "@lando/paths";
+import { sha256Hex } from "@lando/sdk/digest";
 import type { HostProxyContainerTarget } from "@lando/sdk/schema";
 
 export type EmbeddedShimFile = Blob & { readonly name: string };
@@ -63,7 +64,7 @@ export const extractEmbeddedHostProxyShim = async (input: {
   }
 
   const bytes = gunzipSync(new Uint8Array(await asset.arrayBuffer()));
-  const actualDigest = createHash("sha256").update(bytes).digest("hex");
+  const actualDigest = sha256Hex(bytes);
   if (actualDigest !== digest) throw new Error("Embedded host-proxy shim failed checksum verification.");
   await mkdir(targetDir, { recursive: true });
   const staging = `${artifact}.lando-stage.${process.pid}.${randomUUID()}`;
