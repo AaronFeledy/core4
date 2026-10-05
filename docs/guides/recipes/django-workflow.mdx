@@ -83,8 +83,8 @@ Then the day-to-day tools work:
 lando django --version
 lando django check
 lando pip --version
-lando exec cache -- redis-cli ping
-lando exec database -- psql -U lando -d django-demo -c 'SELECT 1'
+lando redis-cli ping
+lando psql -c 'SELECT 1'
 ```
 
 Add a Celery worker at init with `--answer=celery=true`:
