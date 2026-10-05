@@ -335,19 +335,24 @@ describe("Traefik RouterService", () => {
     expect(status.authorities.map(({ port }) => port)).toEqual([8443, 8080]);
   });
 
+  const routingStatePath = "/lando/global/proxy-traefik/dynamic/.lando-routing-state";
+  const routingState = "http://127.0.0.1:8080\nhttps://127.0.0.1:8443";
+
   test("reports running listen ports even before any app routes exist", async () => {
     const harness = makeHarness();
-    harness.files.set(
-      "/lando/global/proxy-traefik/dynamic/.lando-routing-state",
-      "http://127.0.0.1:8080\nhttps://127.0.0.1:8443",
-    );
+    harness.files.set(routingStatePath, routingState);
     expect(await Effect.runPromise(harness.makePersistedService().status)).toEqual({
       state: "running",
       ports: { http: 8080, https: 8443 },
       authorities: [],
       configuredApps: [],
     });
-    harness.files.delete("/lando/global/proxy-traefik/dynamic/.lando-routing-state");
+  });
+
+  test("omits listen ports once the routing state is removed", async () => {
+    const harness = makeHarness();
+    harness.files.set(routingStatePath, routingState);
+    harness.files.delete(routingStatePath);
     const stopped = await Effect.runPromise(harness.makePersistedService().status);
     expect(stopped.state).toBe("stopped");
     expect("ports" in stopped).toBe(false);

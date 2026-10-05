@@ -61,40 +61,43 @@ const plan = (
 };
 
 describe("buildOpenTarget", () => {
-  test("falls back to running ingress ports only without an exact authority", () => {
+  describe("listen-port fallback", () => {
     const ports = { http: 8080, https: 8443 };
     const selected = route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" });
-    const authorities = [
-      { hostname: selected.hostname, scheme: "http" as const, port: 8888 },
-      { hostname: "other.lndo.site", scheme: "https" as const, port: 4443 },
-    ];
-    expect(buildOpenTarget(selected, authorities, ports).url).toBe("https://web.myapp.lndo.site:8443");
-    expect(buildOpenTarget({ ...selected, scheme: "http" }, [], ports).url).toBe(
-      "http://web.myapp.lndo.site:8080",
-    );
-    expect(
-      buildOpenTarget(
-        selected,
-        [
-          ...authorities,
-          {
-            hostname: selected.hostname,
-            scheme: "https",
-            port: 4433,
-          },
-        ],
-        ports,
-      ).url,
-    ).toBe("https://web.myapp.lndo.site:4433");
-    expect(
-      buildOpenTarget(selected, [{ hostname: selected.hostname, scheme: "https", port: 443 }], ports).url,
-    ).toBe("https://web.myapp.lndo.site");
-    expect(buildOpenTarget(selected, authorities).url).toBe("https://web.myapp.lndo.site");
-    for (const scheme of ["http", "https"] as const) {
-      expect(buildOpenTarget({ ...selected, scheme }, [], { http: 80, https: 443 }).url).toBe(
-        `${scheme}://web.myapp.lndo.site`,
+    const httpAuthority = { hostname: selected.hostname, scheme: "http" as const, port: 8888 };
+    const otherHostAuthority = { hostname: "other.lndo.site", scheme: "https" as const, port: 4443 };
+
+    test("uses the https listen port when no authority matches the route", () => {
+      const target = buildOpenTarget(selected, [httpAuthority, otherHostAuthority], ports);
+      expect(target.url).toBe("https://web.myapp.lndo.site:8443");
+    });
+
+    test("uses the http listen port for an http route", () => {
+      const target = buildOpenTarget({ ...selected, scheme: "http" }, [], ports);
+      expect(target.url).toBe("http://web.myapp.lndo.site:8080");
+    });
+
+    test("prefers an exact hostname and scheme authority over the listen port", () => {
+      const httpsAuthority = { hostname: selected.hostname, scheme: "https" as const, port: 4433 };
+      const target = buildOpenTarget(selected, [httpAuthority, otherHostAuthority, httpsAuthority], ports);
+      expect(target.url).toBe("https://web.myapp.lndo.site:4433");
+    });
+
+    test("omits the port when the matching authority uses the scheme default", () => {
+      const defaultAuthority = { hostname: selected.hostname, scheme: "https" as const, port: 443 };
+      expect(buildOpenTarget(selected, [defaultAuthority], ports).url).toBe("https://web.myapp.lndo.site");
+    });
+
+    test("omits the port without listen ports or a matching authority", () => {
+      expect(buildOpenTarget(selected, [httpAuthority, otherHostAuthority]).url).toBe(
+        "https://web.myapp.lndo.site",
       );
-    }
+    });
+
+    test.each(["http", "https"] as const)("omits default listen ports for %s routes", (scheme) => {
+      const target = buildOpenTarget({ ...selected, scheme }, [], { http: 80, https: 443 });
+      expect(target.url).toBe(`${scheme}://web.myapp.lndo.site`);
+    });
   });
 
   test("collapses scheme both to https and builds the url", () => {
@@ -138,20 +141,18 @@ describe("resolveOpenTargets", () => {
   ];
   const p = plan(routes, ["api", "web"]);
 
-  test("threads fallback ports through every route selection", () => {
+  test.each([
+    {},
+    { service: "web" },
+    { route: "web-alt.myapp.lndo.site" },
+    { all: true },
+    { all: true, service: "web" },
+  ])("threads fallback ports through selection %j", (selection) => {
     const ports = { http: 8080, https: 8443 };
-    for (const selection of [
-      {},
-      { service: "web" },
-      { route: "web-alt.myapp.lndo.site" },
-      { all: true },
-      { all: true, service: "web" },
-    ]) {
-      const targets = resolveOpenTargets(p, selection, [], ports);
-      expect(targets.length).toBeGreaterThan(0);
-      for (const target of targets) {
-        expect(target.url).toBe(`${target.scheme}://${target.hostname}:${ports[target.scheme]}`);
-      }
+    const targets = resolveOpenTargets(p, selection, [], ports);
+    expect(targets.length).toBeGreaterThan(0);
+    for (const target of targets) {
+      expect(target.url).toBe(`${target.scheme}://${target.hostname}:${ports[target.scheme]}`);
     }
   });
 
