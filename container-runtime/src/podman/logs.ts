@@ -1,13 +1,12 @@
 import { DateTime, Option, Stream } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
-import { type ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, ProviderError } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
-import { missingApi } from "../engine-errors.ts";
+import { missingApi, missingService } from "../engine-errors.ts";
 import { makeLogDecoder as makeRuntimeLogDecoder } from "../streams.ts";
 
 export interface LogsOptions {
@@ -18,22 +17,11 @@ export interface LogsOptions {
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
-const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
-  missingApi(ctx, "logs", `provider-${ctx.providerId} logs requires an engine API client.`);
-
-const missingService = (ctx: ProviderErrorContext, target: LogTarget) =>
-  new ServiceNotFoundError({
-    providerId: ctx.providerId,
-    operation: "logs",
-    service: target.service,
-    message: `Service ${target.service} is not present in the app plan.`,
-  });
-
 const stream = (
   deps: { readonly api: EngineHttpApi; readonly ctx: ProviderErrorContext },
   input: EngineHttpRequest,
 ): Stream.Stream<Uint8Array, ProviderError> =>
-  deps.api.stream === undefined ? Stream.fail(apiRequired(deps.ctx)) : deps.api.stream(input);
+  deps.api.stream === undefined ? Stream.fail(missingApi(deps.ctx, "logs")) : deps.api.stream(input);
 
 const parseLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: string): LogChunk => {
   const match = /^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)$/u.exec(line);
@@ -75,10 +63,10 @@ export const logs = (
     const ctx = runtime.ctx;
     const service = plan.services[target.service];
     if (service === undefined) {
-      return Stream.fail(missingService(ctx, target));
+      return Stream.fail(missingService(ctx, target, "logs"));
     }
     if (runtime.api === undefined) {
-      return Stream.fail(apiRequired(ctx));
+      return Stream.fail(missingApi(ctx, "logs"));
     }
 
     const query = new URLSearchParams({
