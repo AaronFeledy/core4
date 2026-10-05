@@ -1,12 +1,11 @@
-import http from "node:http";
-import https from "node:https";
-import { Socket, createServer } from "node:net";
+import { createServer } from "node:net";
 
 import { Duration, Effect } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import type { BindOutcome, ForwardOutcome } from "./port-acquisition.ts";
 
 const secretsRedactor = createRedactor("secrets");
@@ -79,43 +78,10 @@ export const probeBind = Effect.fn("TraefikRouter.probeBind")(function* (
   return last;
 });
 
-const probeTcp = (host: string, port: number): Promise<"open" | "closed"> =>
-  new Promise((resolve) => {
-    const socket = new Socket();
-    const finish = (result: "open" | "closed") => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(result);
-    };
-    socket.setTimeout(200);
-    socket.once("connect", () => finish("open"));
-    socket.once("timeout", () => finish("closed"));
-    socket.once("error", () => finish("closed"));
-    socket.connect(port, host);
-  });
-
 export const probeTcpOpen = (host: string, port: number): Effect.Effect<boolean> =>
-  Effect.promise(() => probeTcp(host, port).then((result) => result === "open"));
+  Effect.promise(() => probeTcp({ host, port, timeoutMs: 200 }).then((result) => result === "open"));
 
 export type ForwardProbeRole = "http" | "https";
-
-const probeHttp = (host: string, port: number, role: ForwardProbeRole): Promise<boolean> =>
-  new Promise((resolve) => {
-    const transport = role === "https" ? https : http;
-    const request = transport.request(
-      { host, port, path: "/", method: "GET", timeout: 500, rejectUnauthorized: false },
-      (response) => {
-        response.resume();
-        resolve(response.statusCode !== undefined);
-      },
-    );
-    request.once("timeout", () => {
-      request.destroy();
-      resolve(false);
-    });
-    request.once("error", () => resolve(false));
-    request.end();
-  });
 
 export const probeForward = Effect.fn("TraefikRouter.probeForward")(function* (
   host: string,
@@ -140,9 +106,13 @@ export const probeForward = Effect.fn("TraefikRouter.probeForward")(function* (
     },
     Effect.tryPromise({
       try: async () => {
-        const tcp = await probeTcp(host, port);
+        const tcp = await probeTcp({ host, port, timeoutMs: 200 });
         if (tcp !== "open") return { kind: "failure" as const };
-        return { kind: (await probeHttp(host, port, role)) ? ("success" as const) : ("failure" as const) };
+        return {
+          kind: (await probeHttp({ host, port, role, timeoutMs: 500 }))
+            ? ("success" as const)
+            : ("failure" as const),
+        };
       },
       catch: (error) => error,
     }),
