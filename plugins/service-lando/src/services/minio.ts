@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -63,14 +63,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: "console",
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["mc", "ready", "local"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["mc", "ready", "local"], 30));
 
   if (service.command === undefined && service.entrypoint === undefined) {
     ctx.setEntrypoint(["/bin/sh", "-c"]);

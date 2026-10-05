@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import { PortablePath } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -49,14 +49,9 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["sh", "-c", `curl -sf http://localhost:${port}/_localstack/health`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(["sh", "-c", `curl -sf http://localhost:${port}/_localstack/health`], 30),
+  );
 
   applyAuthoredProcessFields(ctx);
 };
