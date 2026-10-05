@@ -1,12 +1,13 @@
 import { Effect, Schema } from "effect";
 
-import { AbsolutePath, PortNumber, PortablePath } from "@lando/sdk/schema";
+import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
 const DEFAULT_WEBROOT = PortablePath.make("/usr/local/tomcat/webapps/ROOT");
@@ -23,24 +24,9 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
   const webroot = service.webroot ?? DEFAULT_WEBROOT;
-  const passthrough = { realization: "passthrough" as const };
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  ctx.setAppMount({
-    source: AbsolutePath.make(ctx.appRoot),
-    target: webroot,
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    ...passthrough,
-  });
-  ctx.addMount({
-    type: "bind",
-    source: ctx.appRoot,
-    target: webroot,
-    readOnly: false,
-    ...passthrough,
-  });
+  mountAppRoot(ctx, { target: webroot, realization: "passthrough" });
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(port),
