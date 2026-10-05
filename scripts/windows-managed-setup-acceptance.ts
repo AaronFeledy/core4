@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+
+import { bounded, valueAfter, writeAcceptanceReport } from "./_acceptance-harness.ts";
 
 const WINDOWS_PREREQUISITE_MESSAGE =
   "Windows virtualization prerequisites are not available. Hyper-V, WSL2, and Virtual Machine Platform are required.";
-const EVIDENCE_LIMIT = 12_000;
 
 export interface WindowsManagedSetupCommandResult {
   readonly exitCode: number;
@@ -77,11 +77,6 @@ class WindowsManagedSetupArgumentError extends Error {
   }
 }
 
-const valueAfter = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  return index < 0 ? undefined : args[index + 1];
-};
-
 const parseCliOptions = (args: readonly string[]): CliOptions => {
   const binary = valueAfter(args, "--binary");
   const report = valueAfter(args, "--report");
@@ -92,9 +87,6 @@ const parseCliOptions = (args: readonly string[]): CliOptions => {
   }
   return { binary: resolve(binary), report: resolve(report) };
 };
-
-const bounded = (value: string): string =>
-  value.length <= EVIDENCE_LIMIT ? value : `${value.slice(value.length - EVIDENCE_LIMIT)}\n[truncated]`;
 
 const main = async (args: readonly string[]): Promise<void> => {
   const options = parseCliOptions(args);
@@ -115,10 +107,7 @@ const main = async (args: readonly string[]): Promise<void> => {
     evidence: { exitCode, stdout: bounded(stdout), stderr: bounded(stderr) },
   } as const;
 
-  await mkdir(dirname(options.report), { recursive: true });
-  await writeFile(options.report, `${JSON.stringify(report, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ report: options.report, ...classification })}\n`);
-  process.exitCode = classification.exitCode;
+  await writeAcceptanceReport(options.report, report, classification);
 };
 
 if (import.meta.main) await main(process.argv.slice(2));

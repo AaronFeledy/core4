@@ -2,6 +2,7 @@
 import type { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 
+import { valueAfter } from "./_acceptance-harness.ts";
 import { evaluateWorkflowPerformanceReport } from "./workflow-performance-report.ts";
 import { runWorkflowPerformance } from "./workflow-performance-runner.ts";
 
@@ -30,11 +31,6 @@ class WorkflowPerformanceArgumentError extends Error {
     this.name = "WorkflowPerformanceArgumentError";
   }
 }
-
-const valueAfter = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  return index < 0 ? undefined : args[index + 1];
-};
 
 const required = (args: readonly string[], flag: string): string => {
   const value = valueAfter(args, flag);
