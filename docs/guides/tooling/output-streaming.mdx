@@ -14,9 +14,19 @@ Run a tooling command from the app root:
 lando composer install
 ```
 
-That publishes a task tree: a parent task for the command, one child per target service, streamed stdout/stderr lines on each child, then a complete or fail close with the exit code.
+At a terminal, Lando hands the terminal to the command. Its own output and progress bars show as-is, your keystrokes reach it, resizing the window resizes its terminal, and Ctrl-C stops it. Prompts work: a bare `lando psql` is a live session, and `npx` can ask before it installs a package.
+
+Redirect stdin, or run it from a script or CI, and Lando publishes a task tree instead:
+
+```sh
+lando composer install < /dev/null
+```
+
+The tree has a parent task for the command, one child per target service, streamed stdout/stderr lines on each child, then a complete or fail close with the exit code.
 
 A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts.
+
+With stdout on a terminal but no keyboard attached, nobody can dismiss a pager, so tooling sets `PAGER=cat` for that run. Set `PAGER` in the service or task `env` to pick your own.
 
 ## Pick a renderer mode
 

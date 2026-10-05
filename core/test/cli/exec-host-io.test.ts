@@ -111,6 +111,26 @@ describe("attachExecHostIo", () => {
 });
 
 describe("withInheritedStdinRawMode", () => {
+  test("restores raw mode on failure", async () => {
+    // Given
+    let raw = false;
+    const stdin = {
+      isTTY: true,
+      readableFlowing: null,
+      setRawMode: (enabled: boolean) => {
+        raw = enabled;
+      },
+      resume: () => {},
+      pause: () => {},
+    };
+    // When
+    const result = await Effect.runPromise(
+      withInheritedStdinRawMode(true, Effect.fail("failed"), stdin).pipe(Effect.result),
+    );
+    // Then
+    expect(result._tag).toBe("Failure");
+    expect(raw).toBe(false);
+  });
   test("restores an initially non-flowing TTY after interactive exec completes", async () => {
     // Given
     let raw = false;

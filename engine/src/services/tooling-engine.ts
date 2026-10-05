@@ -91,17 +91,22 @@ const execSpec = (input: {
   readonly env: Readonly<Record<string, string>> | undefined;
   readonly tty: boolean;
   readonly hostTerminal: ToolingInvocation["hostTerminal"];
+  readonly stdinStream: ToolingInvocation["stdinStream"];
+  readonly terminalResize: ToolingInvocation["terminalResize"];
+  readonly signal: ToolingInvocation["signal"];
   readonly serviceEnv: ServicePlan["environment"];
 }): CommandSpec => {
-  // Tooling attaches idle stdin for TTY detection, not interactive input.
-  // Default to a non-interactive pager without overriding service or task env.
+  // A PTY without a forwarded keyboard cannot dismiss a pager. Default only
+  // that case to cat, without overriding service or task env.
   const merged = withTerminalEnv({
     tty: input.tty,
     hostEnv: process.env,
     ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
     serviceEnv: input.serviceEnv,
     env: {
-      ...(input.tty && input.serviceEnv.PAGER === undefined ? { PAGER: "cat" } : {}),
+      ...(input.tty && input.stdinStream === undefined && input.serviceEnv.PAGER === undefined
+        ? { PAGER: "cat" }
+        : {}),
       ...input.env,
     },
   });
@@ -115,7 +120,9 @@ const execSpec = (input: {
     command: input.command,
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(env === undefined || Object.keys(env).length === 0 ? {} : { env }),
-    ...(input.tty ? { tty: true, stdin: "inherit", stdinStream: idleStdin() } : {}),
+    ...(input.tty ? { tty: true, stdin: "inherit", stdinStream: input.stdinStream ?? idleStdin() } : {}),
+    ...(input.terminalResize === undefined ? {} : { terminalResize: input.terminalResize }),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
     ...(input.tty && input.hostTerminal?.columns !== undefined && input.hostTerminal.rows !== undefined
       ? { terminalSize: { columns: input.hostTerminal.columns, rows: input.hostTerminal.rows } }
       : {}),
@@ -157,6 +164,9 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
           env,
           tty,
           hostTerminal: invocation.hostTerminal,
+          stdinStream: invocation.stdinStream,
+          terminalResize: invocation.terminalResize,
+          signal: invocation.signal,
           serviceEnv: service.environment,
         }),
       ),
@@ -164,7 +174,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     );
     stdout += result.stdout;
     stderr += result.stderr;
-    exitCode = result.exitCode;
+    exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
     if (exitCode !== 0) break;
   }
   const out: ToolingEngineResult = {
