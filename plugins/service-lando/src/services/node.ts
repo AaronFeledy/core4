@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { satisfies, subset, valid, validRange } from "semver";
 
-import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -18,6 +18,7 @@ import {
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
@@ -257,29 +258,13 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const { version } = ctx.config as NodeFeatureConfig;
   const serviceType = `node:${version}`;
   const port = service.port ?? DEFAULT_PORT;
-  const appMount = {
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough" as const,
-  };
-  const bindMount = {
-    type: "bind" as const,
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    realization: "passthrough" as const,
-  };
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setAppMount(appMount);
-  ctx.addMount(bindMount);
+  mountAppRoot(ctx, { realization: "passthrough" });
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   if (service.command !== undefined) {

@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import { DotnetServiceConfig } from "@lando/sdk/schema/services/dotnet";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
@@ -8,6 +8,7 @@ import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_PORT = 5000;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -29,26 +30,11 @@ export const DOTNET_FEATURE_ID = "service-lando.dotnet";
 
 const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const passthrough = { realization: "passthrough" as const };
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["9.0"] });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  ctx.setAppMount({
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    ...passthrough,
-  });
-  ctx.addMount({
-    type: "bind",
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    ...passthrough,
-  });
+  mountAppRoot(ctx, { realization: "passthrough" });
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,
