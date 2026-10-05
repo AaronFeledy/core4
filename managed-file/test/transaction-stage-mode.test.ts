@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { chmod, lstat, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createStage, digestOf, mutateEntry, snapshot } from "../src/transaction-fs.ts";
+import { sha256Hex } from "@lando/sdk/digest";
+import { createStage, mutateEntry, snapshot } from "../src/transaction-fs.ts";
 import type { Stage } from "../src/transaction-journal.ts";
 import { fixture } from "./transaction-fixture.ts";
 
@@ -37,7 +38,7 @@ for (const platform of ["win32", "linux"] as const) {
     const entry = {
       path: ".lando.yml",
       before: { ...before.state, backup },
-      after: { present: true as const, digest: digestOf(bytes), mode: before.state.mode },
+      after: { present: true as const, digest: sha256Hex(bytes), mode: before.state.mode },
       stage,
     };
     const originalPlatform = process.platform;

@@ -5,7 +5,7 @@ import {
   ProviderInternalError,
   ProviderUnavailableError,
   ServiceExecError,
-  ServiceNotFoundError,
+  type ServiceNotFoundError,
 } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -17,7 +17,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi, parseEngineJson } from "../engine-errors.ts";
+import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 
 const textDecoder = new TextDecoder();
@@ -46,17 +46,6 @@ interface ExecSession {
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
-
-const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
-  missingApi(ctx, "exec", `provider-${ctx.providerId} exec requires an engine API client.`);
-
-const missingService = (ctx: ProviderErrorContext, target: ExecTarget) =>
-  new ServiceNotFoundError({
-    providerId: ctx.providerId,
-    operation: "exec",
-    service: target.service,
-    message: `Service ${target.service} is not present in the app plan.`,
-  });
 
 const execFailure = (
   session: ExecSession,
@@ -110,10 +99,12 @@ const request = (
   session: ExecSession,
   input: EngineHttpRequest,
 ): Effect.Effect<EngineHttpResponse, ExecError> =>
-  session.api.request === undefined ? Effect.fail(apiRequired(session.ctx)) : session.api.request(input);
+  session.api.request === undefined
+    ? Effect.fail(missingApi(session.ctx, "exec"))
+    : session.api.request(input);
 
 const stream = (session: ExecSession, input: EngineHttpRequest): Stream.Stream<Uint8Array, ExecError> =>
-  session.api.stream === undefined ? Stream.fail(apiRequired(session.ctx)) : session.api.stream(input);
+  session.api.stream === undefined ? Stream.fail(missingApi(session.ctx, "exec")) : session.api.stream(input);
 
 const createExec = Effect.fnUntraced(function* (
   session: ExecSession,
@@ -329,10 +320,10 @@ export const execStream = (
     const ctx = options.ctx;
     const service = plan.services[target.service];
     if (service === undefined) {
-      return Stream.fail(missingService(ctx, target));
+      return Stream.fail(missingService(ctx, target, "exec"));
     }
     if (options.api === undefined) {
-      return Stream.fail(apiRequired(ctx));
+      return Stream.fail(missingApi(ctx, "exec"));
     }
 
     const session: ExecSession = {

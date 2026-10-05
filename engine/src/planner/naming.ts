@@ -1,11 +1,10 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 
 export const APP_SLUG_MAX_LENGTH = 57;
 
-export const shortHash = (input: string): string =>
-  createHash("sha256").update(input).digest("hex").slice(0, 8);
+export const shortHash = (input: string): string => sha256Hex(input).slice(0, 8);
 
 export const normalizeAppSlug = (name: string, appRoot: string): string => {
   const normalized = name

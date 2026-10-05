@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { isAbsolute, join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect, Layer, Predicate } from "effect";
 
@@ -24,8 +24,6 @@ const userLandofileContent = [
 
 const globalAppError = (operation: string, message: string, cause: unknown): GlobalAppError =>
   new GlobalAppError({ message, operation, cause });
-
-const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
 
 const sortedEntries = <T>(record: Readonly<Record<string, T>>): ReadonlyArray<readonly [string, T]> =>
   Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
@@ -114,7 +112,7 @@ const buildDistBody = (services: Readonly<Record<string, ServiceConfig>>): strin
 
 const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): string => {
   const body = buildDistBody(services);
-  return [distMarker, distOverrideHint, `${distHashPrefix}${sha256(body)}`, body].join("\n");
+  return [distMarker, distOverrideHint, `${distHashPrefix}${sha256Hex(body)}`, body].join("\n");
 };
 
 // Windows drive-letter prefix ("C:\" or "C:/") whose ":" is a path char, not a mount separator.
@@ -321,7 +319,7 @@ const makeGlobalAppService = (
     }
 
     const currentHash = embeddedDistHash(currentContent);
-    const actualHash = sha256(currentDistBody(currentContent));
+    const actualHash = sha256Hex(currentDistBody(currentContent));
     if (currentHash !== actualHash) {
       return yield* Effect.fail(
         new GlobalDistConflictError({

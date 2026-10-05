@@ -4,6 +4,7 @@ import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/erro
 import type { ProviderError } from "@lando/sdk/services";
 
 import { AsyncQueue } from "./async-queue.ts";
+import { internal, unavailable } from "./log-file-errors.ts";
 import { makeHelperExecOutputDecoder } from "./log-file-exec-output.ts";
 
 const encoder = new TextEncoder();
@@ -13,24 +14,6 @@ type Command = Readonly<Record<string, string | number>>;
 type ResponseItem =
   | { readonly kind: "line"; readonly line: string }
   | { readonly kind: "error"; readonly error: ProviderError };
-
-const internal = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
-  new ProviderInternalError({
-    providerId,
-    operation: "logFileAccess",
-    message,
-    ...(details === undefined ? {} : { details }),
-    ...(cause === undefined ? {} : { cause }),
-  });
-
-const unavailable = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "logFileAccess",
-    message,
-    ...(details === undefined ? {} : { details }),
-    ...(cause === undefined ? {} : { cause }),
-  });
 
 const lineBytes = (value: Command): Uint8Array => encoder.encode(`${JSON.stringify(value)}\n`);
 

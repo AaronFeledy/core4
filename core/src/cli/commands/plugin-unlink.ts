@@ -8,12 +8,12 @@ import {
   NotImplementedError,
   PluginManifestError,
 } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
+import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
 import { isPluginUnlinkNotLinkedCause, revertPluginLink } from "@lando/engine/operations/plugin-link";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
-import { makeLandoPaths } from "@lando/paths";
+import { resolvePluginsRoot } from "./plugin-roots";
 
 export class PluginUnlinkNotLinkedError extends Schema.TaggedError<PluginUnlinkNotLinkedError>()(
   "PluginUnlinkNotLinkedError",
@@ -56,21 +56,7 @@ export const pluginUnlink = Effect.fn("PluginUnlink.unlink")(function* (
   ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | PluginUnlinkNotLinkedError,
   ConfigService
 > {
-  let userDataRoot = options.userDataRoot;
-  if (userDataRoot === undefined) {
-    const configService = yield* ConfigService;
-    userDataRoot = yield* configService.get("userDataRoot");
-    if (userDataRoot === undefined) {
-      return yield* Effect.fail(
-        new NotImplementedError({
-          message: "userDataRoot is not configured.",
-          commandId: "meta:plugin:unlink",
-          remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
-        }),
-      );
-    }
-  }
-  const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
+  const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:unlink");
   const pluginName = options.name;
 
   if (!existsSync(pluginsRoot)) {

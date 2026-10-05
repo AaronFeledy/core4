@@ -8,7 +8,7 @@ import {
   renderGlobalStatusResult,
 } from "../../../commands/meta/global-status";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { formatFlag, specFlagsOf, stringArrayFlag } from "../../../spec/input-coercion";
+import { formatFlag, serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
 
 export const globalStatusFormatFromInput = (input: unknown): "json" | "table" =>
   formatFlag(specFlagsOf(input), ["json", "table"], "table");
@@ -16,7 +16,7 @@ export const globalStatusFormatFromInput = (input: unknown): "json" | "table" =>
 export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = specFlagsOf(input);
-  const services = stringArrayFlag(flags, "service").filter((service) => service.length > 0);
+  const services = serviceNamesFlag(flags);
   return {
     ...(services.length === 0 ? {} : { services }),
     format: globalStatusFormatFromInput(input),

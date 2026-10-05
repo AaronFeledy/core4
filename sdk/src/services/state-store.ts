@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { Context, type Effect, type Schema } from "effect";
 
+import { sha256Hex } from "../digest/index.ts";
 import type { StateStoreError } from "../errors/index.ts";
 import type { AbsolutePath } from "../schema/index.ts";
 
@@ -87,8 +86,7 @@ export class StateStore extends Context.Service<
 >()("@lando/core/StateStore") {}
 
 /** Stable advisory-lock key shared by every writer of one physical volume. */
-export const physicalVolumeLockKey = (instanceId: string): string =>
-  createHash("sha256").update(instanceId).digest("hex");
+export const physicalVolumeLockKey = (instanceId: string): string => sha256Hex(instanceId);
 
 /**
  * The single core service for durable, atomic, schema-validated, versioned,

@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { Effect, Predicate, Schema } from "effect";
 import { hasIncludeCycle } from "./include-graph.ts";
 
@@ -187,8 +187,6 @@ export type ResolveIncludesError =
   | ResolveLandofileLoadExpressionError
   | NotImplementedError
   | ToolingIncludeCycleError;
-
-const sha256 = (content: string): string => createHash("sha256").update(content).digest("hex");
 
 const fileExists = (path: string): Promise<boolean> =>
   stat(path).then(
@@ -788,11 +786,11 @@ const resolveTree = Effect.fnUntraced(function* (
     localIncludePaths.push(...getLocalIncludePaths(nested));
     includeSources.push(...getLandofileIncludeSources(nested), {
       id: fragment.inventoryId,
-      sha256: sha256(fragment.content),
+      sha256: sha256Hex(fragment.content),
     });
     if (!fragment.locked) localIncludePaths.push(fragment.filePath);
     if (fragment.locked && fragment.resolved !== undefined) {
-      const actual = sha256(fragment.content);
+      const actual = sha256Hex(fragment.content);
       if (ctx.mode === "refresh") {
         ctx.stagedLocks.set(fragment.sourceId, {
           source: fragment.sourceId,

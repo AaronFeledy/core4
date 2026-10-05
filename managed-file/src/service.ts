@@ -9,9 +9,9 @@
 // a `StateStore` bucket (not a bespoke registry/lock/quarantine), and the paths
 // primitive owns the location of managed-files/ledger.json.
 
-import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { ByteSize, Clock, Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 
@@ -161,8 +161,6 @@ type ManagedFileEventKind =
   | "managed-file-conflict-detected"
   | "managed-file-skipped";
 
-const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
-
 const fail = (
   reason: ManagedFileError["reason"],
   operation: ManagedFileOperation,
@@ -275,9 +273,9 @@ const decideFile = (
   renderBody(mf, operation).pipe(
     Effect.flatMap(
       Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision> {
-        const sourceHash = sha256(body);
+        const sourceHash = sha256Hex(body);
         const desiredFile = composeFileContent(mf.format, marker, body);
-        const desiredChecksum = sha256(desiredFile);
+        const desiredChecksum = sha256Hex(desiredFile);
 
         if (entry?.state === "adopted") return { action: "skip-adopted", relPath, abs };
         if (disk === null) {
@@ -293,7 +291,7 @@ const decideFile = (
         const markerPresent = hasFileMarker(mf.format, disk, marker);
         if (!markerPresent) {
           if (entry?.state === "managed" && !canCarryFileMarker(mf.format, disk)) {
-            const currentChecksum = sha256(disk);
+            const currentChecksum = sha256Hex(disk);
             if (currentChecksum === entry.lastWrittenChecksum) {
               if (desiredChecksum === currentChecksum) {
                 return {
@@ -354,11 +352,11 @@ const decideFile = (
             action,
             relPath,
             abs,
-            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
+            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256Hex(disk), sourceHash, "adopted", entry),
           };
         }
 
-        const currentChecksum = sha256(disk);
+        const currentChecksum = sha256Hex(disk);
         const baseline = entry?.lastWrittenChecksum;
         if (desiredChecksum === currentChecksum) {
           return {
@@ -421,9 +419,9 @@ const decideBlock = (
   return renderBody(mf, operation).pipe(
     Effect.flatMap(
       Effect.fnUntraced(function* (body: string): Effect.fn.Return<Decision> {
-        const sourceHash = sha256(body);
+        const sourceHash = sha256Hex(body);
         const desiredBlock = composeBlock(prefix, marker, body);
-        const desiredSliceHash = sha256(desiredBlock);
+        const desiredSliceHash = sha256Hex(desiredBlock);
         const location =
           disk === null
             ? { found: false, slice: "", before: "", after: "" }
@@ -472,11 +470,11 @@ const decideBlock = (
             action: "skip-adopted",
             relPath,
             abs,
-            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256(disk), sourceHash, "adopted", entry),
+            ledgerNext: yield* buildEntry(mf, relPath, marker, sha256Hex(disk), sourceHash, "adopted", entry),
           };
         }
 
-        const currentSliceHash = sha256(location.slice);
+        const currentSliceHash = sha256Hex(location.slice);
         const baseline = entry?.lastWrittenChecksum;
         if (desiredSliceHash === currentSliceHash) {
           return {
@@ -797,7 +795,7 @@ export const makeManagedFileService = (
                     const prefix = commentPrefix(entry.format) ?? "#";
                     const location = findBlock(prefix, entry.marker, disk);
                     if (!location.found) action = "adopt-detected";
-                    else if (sha256(location.slice) !== entry.lastWrittenChecksum) action = "conflict";
+                    else if (sha256Hex(location.slice) !== entry.lastWrittenChecksum) action = "conflict";
                     else yield* backend.writeAtomic(abs, removeBlock(location), "remove");
                   }
                 } else if (disk === null) {
@@ -807,7 +805,7 @@ export const makeManagedFileService = (
                   !hasFileMarker(entry.format, disk, entry.marker)
                 ) {
                   action = "adopt-detected";
-                } else if (sha256(disk) !== entry.lastWrittenChecksum) {
+                } else if (sha256Hex(disk) !== entry.lastWrittenChecksum) {
                   action = "conflict";
                 } else {
                   yield* backend.removeFile(abs, "remove");
@@ -933,11 +931,11 @@ const computeState = (entry: LedgerEntry, disk: string | null): ManagedFileInfo[
     const prefix = commentPrefix(entry.format) ?? "#";
     const location = findBlock(prefix, entry.marker, disk);
     if (!location.found) return "adopted";
-    return sha256(location.slice) === entry.lastWrittenChecksum ? "managed" : "conflict";
+    return sha256Hex(location.slice) === entry.lastWrittenChecksum ? "managed" : "conflict";
   }
   if (!hasFileMarker(entry.format, disk, entry.marker) && canCarryFileMarker(entry.format, disk))
     return "adopted";
-  return sha256(disk) === entry.lastWrittenChecksum ? "managed" : "conflict";
+  return sha256Hex(disk) === entry.lastWrittenChecksum ? "managed" : "conflict";
 };
 
 // ----- Disk-backed Live backend + Layer -----------------------------------
@@ -1103,7 +1101,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
 
 const deriveAppId = (base: string): string => {
   const name = (base.split(/[\\/]/u).filter(Boolean).pop() ?? "app").replace(/[^A-Za-z0-9._-]/gu, "-");
-  return `${name}-${sha256(resolve(base)).slice(0, 12)}`;
+  return `${name}-${sha256Hex(resolve(base)).slice(0, 12)}`;
 };
 
 const makeManagedFileEvents = (

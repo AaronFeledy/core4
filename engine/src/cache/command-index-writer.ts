@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { DateTime, Effect } from "effect";
 
@@ -78,9 +79,7 @@ const referencedFilesFresh = async (
     files.map(async (file) => {
       try {
         const bytes = await readFile(file.absolutePath);
-        return (
-          bytes.byteLength === file.size && createHash("sha256").update(bytes).digest("hex") === file.sha256
-        );
+        return bytes.byteLength === file.size && sha256Hex(bytes) === file.sha256;
       } catch {
         return false;
       }
@@ -165,7 +164,7 @@ const localIncludePath = async (
     const realCandidate = await realpathIfPresent(candidate);
     return {
       filePath: realCandidate ?? candidate,
-      relativePath: `external:${createHash("sha256").update(candidate).digest("hex")}`,
+      relativePath: `external:${sha256Hex(candidate)}`,
     };
   }
 
