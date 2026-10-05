@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -15,7 +15,7 @@ type FrozenSdkSurface = {
 const repoRoot = new URL("../../..", import.meta.url).pathname;
 const fixturePath = join(repoRoot, "sdk/test/fixtures/sdk-mvp-surface.json");
 const compatibilityDocPath = join(repoRoot, "sdk/API_COMPATIBILITY.md");
-const servicesSourcePath = join(repoRoot, "sdk/src/services/index.ts");
+const servicesSourceDir = join(repoRoot, "sdk/src/services");
 
 const frozenSurface = JSON.parse(readFileSync(fixturePath, "utf8")) as FrozenSdkSurface;
 const compatibilityDoc = readFileSync(compatibilityDocPath, "utf8");
@@ -33,30 +33,39 @@ const normalizeSignature = (value: string): string =>
     .trim()
     .replace(/;$/, "");
 
-const sourceFile = ts.createSourceFile(
-  servicesSourcePath,
-  readFileSync(servicesSourcePath, "utf8"),
-  ts.ScriptTarget.Latest,
-  true,
-  ts.ScriptKind.TS,
-);
+// Every `Context.Service` contract lives in its own module under `sdk/src/services/`; `index.ts`
+// only re-exports them. Parse the whole directory so a shape extracted into a named interface in
+// one module still resolves when the class that references it sits in the same or another module.
+const serviceSourceFiles: ReadonlyArray<ts.SourceFile> = readdirSync(servicesSourceDir)
+  .filter((entry) => entry.endsWith(".ts") && entry !== "index.ts")
+  .sort()
+  .map((entry) => {
+    const path = join(servicesSourceDir, entry);
+    return ts.createSourceFile(
+      path,
+      readFileSync(path, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+  });
 
 const interfaces = new Map<string, ts.InterfaceDeclaration>();
-for (const statement of sourceFile.statements) {
-  if (ts.isInterfaceDeclaration(statement)) interfaces.set(statement.name.text, statement);
+for (const sourceFile of serviceSourceFiles) {
+  for (const statement of sourceFile.statements) {
+    if (ts.isInterfaceDeclaration(statement)) interfaces.set(statement.name.text, statement);
+  }
 }
 
 const serviceShapeMembers = (typeNode: ts.TypeNode): ReadonlyArray<string> => {
   if (ts.isTypeLiteralNode(typeNode)) {
-    return typeNode.members.map((member) => normalizeSignature(member.getText(sourceFile))).sort();
+    return typeNode.members.map((member) => normalizeSignature(member.getText())).sort();
   }
 
   if (ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName)) {
     const interfaceDeclaration = interfaces.get(typeNode.typeName.text);
     if (interfaceDeclaration === undefined) return [];
-    return interfaceDeclaration.members
-      .map((member) => normalizeSignature(member.getText(sourceFile)))
-      .sort();
+    return interfaceDeclaration.members.map((member) => normalizeSignature(member.getText())).sort();
   }
 
   return [];
@@ -70,19 +79,21 @@ const tagTypeArguments = (expression: ts.Expression): ts.NodeArray<ts.TypeNode> 
 const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> => {
   const tags: Record<string, ReadonlyArray<string>> = {};
 
-  for (const statement of sourceFile.statements) {
-    if (!ts.isClassDeclaration(statement) || statement.name === undefined) continue;
-    if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+  for (const sourceFile of serviceSourceFiles) {
+    for (const statement of sourceFile.statements) {
+      if (!ts.isClassDeclaration(statement) || statement.name === undefined) continue;
+      if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
 
-    const contextServiceHeritage = statement.heritageClauses
-      ?.flatMap((clause) => clause.types)
-      .find((heritage) => heritage.getText(sourceFile).includes("Context.Service"));
-    if (contextServiceHeritage === undefined) continue;
+      const contextServiceHeritage = statement.heritageClauses
+        ?.flatMap((clause) => clause.types)
+        .find((heritage) => heritage.getText().includes("Context.Service"));
+      if (contextServiceHeritage === undefined) continue;
 
-    const shapeType = tagTypeArguments(contextServiceHeritage.expression)?.[1];
-    if (shapeType === undefined) continue;
+      const shapeType = tagTypeArguments(contextServiceHeritage.expression)?.[1];
+      if (shapeType === undefined) continue;
 
-    tags[statement.name.text] = serviceShapeMembers(shapeType);
+      tags[statement.name.text] = serviceShapeMembers(shapeType);
+    }
   }
 
   return tags;
