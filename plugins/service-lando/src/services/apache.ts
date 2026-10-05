@@ -11,6 +11,7 @@ import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_featur
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
@@ -149,23 +150,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   applyAuthoredProcessFields(ctx, ["user"]);
-  const appMount = {
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough" as const,
-  };
-  const bindMount = {
-    type: "bind" as const,
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    realization: "passthrough" as const,
-  };
-  ctx.setAppMount(appMount);
-  ctx.addMount(bindMount);
+  mountAppRoot(ctx, { realization: "passthrough" });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 

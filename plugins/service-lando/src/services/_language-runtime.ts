@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import {
@@ -12,6 +12,7 @@ import {
 } from "./_feature-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 export interface LanguageFrameworkPreset {
   readonly port: number;
@@ -82,21 +83,9 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
     applyAuthoredProcessFields(ctx, ["user"]);
-    const realization = spec.mountRealization === undefined ? {} : { realization: spec.mountRealization };
-    ctx.setAppMount({
-      source: AbsolutePath.make(ctx.appRoot),
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-      excludes: [...spec.mountExcludes],
-      includes: [],
-      ...realization,
-    });
-    ctx.addMount({
-      type: "bind",
-      source: ctx.appRoot,
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-      ...realization,
+    mountAppRoot(ctx, {
+      excludes: spec.mountExcludes,
+      ...(spec.mountRealization === undefined ? {} : { realization: spec.mountRealization }),
     });
     addServicePortEndpoints(ctx, { port, protocol: "http" });
     ctx.setHealthcheck(loopbackTcpHealthcheck(port, 10));
