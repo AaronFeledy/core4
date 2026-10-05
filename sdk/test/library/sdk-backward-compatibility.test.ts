@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
 import * as sdkSchema from "@lando/sdk/schema";
+import * as sdkServices from "@lando/sdk/services";
 
 type FrozenSdkSurface = {
   readonly schemaNames: ReadonlyArray<string>;
@@ -114,6 +115,13 @@ describe("SDK backward-compatibility surface", () => {
 
     for (const schemaName of frozenSurface.schemaNames) {
       expect(exportedSchemaNames).toContain(schemaName);
+    }
+  });
+
+  test("re-exports every declared service tag through the public services barrel", () => {
+    const exportedServiceNames = Object.keys(sdkServices);
+    for (const tagName of Object.keys(currentServiceTagSignatures())) {
+      expect(exportedServiceNames).toContain(tagName);
     }
   });
 
