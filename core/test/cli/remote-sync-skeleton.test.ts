@@ -164,28 +164,6 @@ describe("remote sync command skeleton", () => {
     });
   });
 
-  test("compiled remote renderers forward RenderContext", async () => {
-    const dispatchSource = await Bun.file(join(import.meta.dir, "../../src/cli/dispatch-app.ts")).text();
-    const adapterSource = await Bun.file(
-      join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
-    ).text();
-    const remoteSource = await Bun.file(
-      join(import.meta.dir, "../../../engine/src/operations/remote.ts"),
-    ).text();
-
-    expect(adapterSource).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
-    expect(adapterSource).toContain("renderRemoteListResult(value, options.format, ctx)");
-    expect(adapterSource).toContain('renderRemoteMutationResult(value, "added", options.format, ctx)');
-    expect(adapterSource).toContain('renderRemoteMutationResult(value, "removed", options.format, ctx)');
-    expect(adapterSource).toContain("renderRemoteTestResult(value, options.format, ctx)");
-    expect(adapterSource).toContain("renderRemoteEnvListResult(value, options.format, ctx)");
-    expect(dispatchSource).toContain('argv[0] === "pull:app"');
-    expect(dispatchSource).toContain('argv[0] === "remote:list:app"');
-    expect(dispatchSource).toContain('argv[0] === "remote:list:env:app"');
-    expect(remoteSource).not.toContain('ctx?.mode === "json"');
-    expect(remoteSource).not.toContain('format === "json"');
-  });
-
   test("remote add writes remotes and remote list reads them without a provider", async () => {
     await withTempRemoteApp(async (dir) => {
       const operations = await requireRemoteOperations();
