@@ -1,20 +1,7 @@
 import type { Effect, Layer, Schema, Tracer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import type {
-  AppPlanner,
-  BuildOrchestrator,
-  ConfigService,
-  EventService,
-  FileSystem,
-  GlobalAppService,
-  PluginRegistry,
-  ProcessRunner,
-  Renderer,
-  RouterService,
-  RuntimeProviderRegistry,
-  ScratchAppService,
-} from "@lando/sdk/services";
+import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
@@ -23,11 +10,9 @@ import { makeLandoRuntime } from "../runtime/layer";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import type { RendererIO } from "@lando/renderer/io";
-import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withCommandTracing } from "./command-tracing";
 import { landoSpecForId } from "./compiled-argv";
 import {
-  type CompiledCommandInput,
   activeCommandId,
   activeDeprecationWarnings,
   activeJq,
@@ -205,52 +190,3 @@ export const runWithProcessAbortSignal = async (
     (process as NodeJS.EventEmitter).off("SIGTERM", abort);
   }
 };
-
-export const appRuntimeLayer = () =>
-  makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
-
-export const compiledFormat = (_input: CompiledCommandInput): "text" | "json" =>
-  activeResultFormat === "json" ? "json" : "text";
-
-export const activeTableJsonFormat = (): "json" | "table" =>
-  activeResultFormat === "json" ? "json" : "table";
-
-export const activeTextJsonFormat = (): "text" | "json" => (activeResultFormat === "json" ? "json" : "text");
-
-export const activeTextJsonYamlFormat = (): "text" | "json" | "yaml" => {
-  if (activeResultFormat === "json" || activeResultFormat === "yaml") return activeResultFormat;
-  return "text";
-};
-
-export const globalRuntimeLayer = () =>
-  makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "global", plugins: { policy: "discovery" } }),
-  ) as Layer.Layer<
-    | GlobalAppService
-    | PluginRegistry
-    | RuntimeProviderRegistry
-    | AppPlanner
-    | BuildOrchestrator
-    | FileSystem
-    | EventService
-    | RouterService,
-    ConfigError | LandoRuntimeBootstrapError
-  >;
-
-export const scratchRuntimeLayer = () =>
-  makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
-  ) as Layer.Layer<ScratchAppService, ConfigError | LandoRuntimeBootstrapError>;
-
-export const scratchRunRuntimeLayer = () =>
-  makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
-  ) as Layer.Layer<
-    | ScratchAppService
-    | ConfigService
-    | FileSystem
-    | PrivateFileAccessService
-    | ProcessRunner
-    | RuntimeProviderRegistry,
-    ConfigError | LandoRuntimeBootstrapError
-  >;
