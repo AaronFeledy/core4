@@ -73,6 +73,37 @@ lando info --format=json
 
 For the Landofile above, the database name comes back as `expressions-demo`.
 
+## Plan-time service credentials
+
+`{{ services.<name>.creds.* }}` reads another service's resolved database credentials: `.user`, `.password`, `.database`, and `.rootPassword`. Use it wherever plan-time sites already work: `environment:` values, service config, tooling `cmd` / `cmds`, and `x-` values.
+
+```yaml
+name: Creds Demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+  database:
+    type: "postgres:16"
+```
+
+`web` starts with a working `DATABASE_URL`. No copying the generated password out of `lando info`, no second place for it to go stale.
+
+Lando resolves `database` first and `web` after it, whatever order the Landofile lists them in, so the values are the ones the database actually uses, including an authored `creds:` block on `database`. That ordering is what lets a service's own `creds:` read another service: a replica can set `password: "{{ services.primary.creds.password }}"`. Mixed sites like `"{{ app.name }}:{{ services.database.creds.user }}"` are fine.
+
+Only services whose type publishes credentials have `creds`: `postgres`, `mariadb`, `mysql`, `mongodb`, and `redis` when it sets a `password:`. Reading `creds` from a service with none, or from a service name that is not in the Landofile, fails the plan with `ConfigExpressionError` and `Expression resolved to a missing value.` Lint names the site, for example `["services", "web", "environment", "DATABASE_URL"]`:
+
+```sh
+lando app:config:lint --format=json
+lando app:cache:refresh
+```
+
+Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so put the expression in `environment:`.
+
+The password still redacts in `lando info` and in logs, because the database service carries the same value under `POSTGRES_PASSWORD` / `LANDO_DB_PASSWORD`.
+
 ## Find a bad expression
 
 A plan-time expression that points at nothing, like `{{ app.nope }}`, fails with `ConfigExpressionError` and the message `Expression resolved to a missing value.` The `lando app:cache:refresh` error does not say where. Run lint to get the YAML path:
@@ -118,6 +149,40 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"probe\",\\s*\"cmds\",\\s*0\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-missing-value">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="service-creds-resolve" render>
+    <Step name="scaffold-service-creds">
+      <UseFixture name="expressions-service-creds" />
+    </Step>
+    <Step name="lint-service-creds">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="resolve-service-creds">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup-service-creds">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="missing-creds-service-fails" render>
+    <Step name="scaffold-missing-creds">
+      <UseFixture name="expressions-missing-creds" />
+    </Step>
+    <Step name="refresh-missing-creds">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "Expression resolved to a missing value" }} />
+    </Step>
+    <Step name="lint-missing-creds">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DATABASE_URL\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-missing-creds">
       <Cleanup />
     </Step>
   </Scenario>

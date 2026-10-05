@@ -8,10 +8,14 @@ Ruby on Rails scaffold with PostgreSQL and Redis.
 - `database` — `postgres`.
 - `cache` — `redis`.
 
+The `web` service receives `DATABASE_URL` for PostgreSQL and `REDIS_URL` for
+Redis. Database credentials resolve from the database service at plan time.
+
 ## Generated tooling
 
 - `lando rails …` — Rails CLI inside the web service.
 - `lando bundle …` — Bundler inside the web service.
+- `lando rake …` — Rake inside the web service.
 
 ## Alpha limitations
 

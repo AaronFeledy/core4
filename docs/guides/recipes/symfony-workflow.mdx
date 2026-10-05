@@ -21,7 +21,7 @@ Default PHP is 8.4, so `symfony new` / `symfony/skeleton` can install the curren
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: symfony`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
+| `appserver` | `php:8.4`, `framework: symfony`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache`, gets `DATABASE_URL` and `REDIS_URL` |
 | `database` | `type: postgres:16` |
 | `cache` | `type: redis` |
 | Tooling | `lando console` (`php bin/console`) and `lando composer` on `appserver` |
@@ -43,6 +43,8 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"console\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"REDIS_URL\":\\s*\"redis://cache:6379\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -80,17 +82,16 @@ lando psql
 
 ## Connect Doctrine and Redis
 
-Put host `database` and host `cache` in `.env` (`DATABASE_URL`, Redis DSN, or whatever your config reads):
+`appserver` already has the connection strings:
 
-| Setting | Postgres | Redis |
+| Variable | Postgres default | With `--answer=database=mariadb:11.4` |
 | --- | --- | --- |
-| Host | `database` | `cache` |
-| Database | app name (here `symfony-demo`) | n/a |
-| User | `lando` | n/a (no auth) |
-| Password | generated; `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
-| Port | `5432` | `6379` |
+| `DATABASE_URL` | `postgresql://lando:<password>@database:5432/symfony-demo?serverVersion=16&charset=utf8` | `mysql://lando:lando@database:3306/symfony-demo?serverVersion=11.4.0-MariaDB&charset=utf8mb4` |
+| `REDIS_URL` | `redis://cache:6379` | `redis://cache:6379` |
 
-Do not hardcode the Postgres password.
+Doctrine reads `DATABASE_URL`, so the skeleton's `config/packages/doctrine.yaml` needs no edits and `lando console doctrine:database:create` connects first try. Symfony's Dotenv never overrides a real environment variable, so the injected value wins over whatever `.env` ships with. Leave the `DATABASE_URL` line in `.env` alone or delete it; either way `appserver` uses Lando's.
+
+Do not paste the Postgres password into `.env.local`. The Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild. `lando info` shows the user and database name and redacts the password; `lando exec appserver -- printenv DATABASE_URL` prints the whole thing.
 
 ## Destroy the app
 

@@ -30,7 +30,12 @@ import {
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { materializeLandofileScopes } from "../planner/landofile-scopes.ts";
+import {
+  materializeLandofileScopes,
+  materializeServiceScopeSites,
+  serviceCredsScopeForPlan,
+  serviceScopeContext,
+} from "../planner/landofile-scopes.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
@@ -156,12 +161,29 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const config = yield* ConfigService;
   const globalConfig = yield* config.load;
   const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
-  const { landofile } = yield* materializeLandofileScopes({
+  const landofilePath = join(landofileRoot, LANDOFILE_NAME);
+  const identityScoped = yield* materializeLandofileScopes({
     landofile: loadedLandofile,
     appRoot: landofileRoot,
-    landofilePath: join(landofileRoot, LANDOFILE_NAME),
+    landofilePath,
     globalConfig,
   });
+  // services.<name>.creds.* reads the credentials the plan was resolved with.
+  const landofile =
+    identityScoped.deferredSites.size === 0
+      ? identityScoped.landofile
+      : yield* materializeServiceScopeSites({
+          value: identityScoped.landofile,
+          landofilePath,
+          pathPrefix: [],
+          deferredSites: identityScoped.deferredSites,
+          context: serviceScopeContext({
+            landofile: identityScoped.landofile,
+            appSlug: identityScoped.appSlug,
+            defaultDomain: identityScoped.defaultDomain,
+            services: serviceCredsScopeForPlan(plan) ?? {},
+          }),
+        });
   const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
   const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
   const task = tooling[toolingLookupKey];

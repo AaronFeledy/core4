@@ -68,6 +68,7 @@ import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
+import { attachServiceCredsScope } from "./landofile-scopes.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName } from "./naming.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
@@ -107,6 +108,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     provider,
     manifests,
     topLevelEnvFiles,
+    serviceCredsScope,
   } = yield* resolveKnownEventSet({
     pluginRegistry,
     configService,
@@ -356,7 +358,10 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
-      return attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEvents);
+      return attachServiceCredsScope(
+        attachEffectiveEvents(attachEffectiveTooling(cached, effectiveTooling), effectiveEvents),
+        serviceCredsScope,
+      );
     }
   }
 
@@ -465,6 +470,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     ),
     effectiveEvents,
   );
+  attachServiceCredsScope(plan, serviceCredsScope);
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
   yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);

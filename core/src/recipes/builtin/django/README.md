@@ -10,6 +10,10 @@ Django scaffold with PostgreSQL, Redis, and an optional Celery worker.
 - `worker` — additional `python:3.12` running `celery -A app worker` when
   prompt `celery` answers `true`.
 
+The `web` service and optional Celery `worker` receive `DATABASE_URL` for
+PostgreSQL and `REDIS_URL` for Redis. Database credentials resolve from the
+database service at plan time.
+
 ## Generated tooling
 
 - `lando django …` — Django management script through `python manage.py`.

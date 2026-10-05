@@ -8,6 +8,10 @@ Symfony scaffold with PHP 8.1-8.6, Composer, PostgreSQL or MariaDB, and Redis.
 - `database` — `postgres:16` or `mariadb:11.4` (prompt: `database`).
 - `cache` — `redis`.
 
+The `appserver` service receives `DATABASE_URL` for the selected PostgreSQL or
+MariaDB version and `REDIS_URL` for Redis. Database credentials resolve from
+the database service at plan time.
+
 ## Generated tooling
 
 - `lando console …` — Symfony console.

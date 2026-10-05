@@ -21,10 +21,10 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 | Piece | What you get |
 | --- | --- |
-| `web` | `python:3.12`, `framework: django`, port `8000`, depends on `database` and `cache` |
+| `web` | `python:3.12`, `framework: django`, port `8000`, depends on `database` and `cache`, gets `DATABASE_URL` and `REDIS_URL` |
 | `database` | `type: postgres` |
 | `cache` | `type: redis` |
-| `worker` (optional) | `python:3.12`, `framework: django`, `command: celery -A app worker --loglevel=info` with `--answer=celery=true` |
+| `worker` (optional) | `python:3.12`, `framework: django`, `command: celery -A app worker --loglevel=info` with `--answer=celery=true`; same `DATABASE_URL` and `REDIS_URL` |
 | Tooling | `lando django` (`python manage.py`) and `lando pip` on `web` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. `framework: django` sets `DJANGO_SETTINGS_MODULE=config.settings` on `web`.
@@ -45,6 +45,8 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. `framew
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"django\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"REDIS_URL\":\\s*\"redis://cache:6379\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -95,15 +97,30 @@ That service runs `celery -A app worker --loglevel=info`. Point Celery at your r
 
 ## Connect Django to Postgres and Redis
 
-| Setting | Postgres | Redis |
-| --- | --- | --- |
-| Host | `database` | `cache` |
-| Database | app name (here `django-demo`) | n/a |
-| User | `lando` | n/a (no auth) |
-| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
-| Port | `5432` | `6379` |
+`web` (and `worker`, when you asked for Celery) already has the connection strings:
 
-Put host `database` in `DATABASES`, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings.
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | `postgresql://lando:<password>@database:5432/django-demo` |
+| `REDIS_URL` | `redis://cache:6379` |
+
+Django does not read `DATABASE_URL` by itself. Install `dj-database-url` and let it parse the value:
+
+```sh
+lando pip install dj-database-url
+```
+
+```python
+import os
+import dj_database_url
+
+DATABASES = {"default": dj_database_url.config()}
+CELERY_BROKER_URL = os.environ["REDIS_URL"]
+```
+
+Prefer no extra dependency? Split `os.environ["DATABASE_URL"]` with `urllib.parse.urlparse` and fill `DATABASES["default"]` from the parts. Either way, nothing in `settings.py` names host, user, or password, and the Landofile fills them from the database service's resolved credentials, so an authored `creds:` block and a rebuild both just work.
+
+`lando info` lists the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` prints the whole thing when you want to see it.
 
 Also set `ALLOWED_HOSTS` so the proxy hostname is accepted (for a local demo, `ALLOWED_HOSTS = ['*']` is fine).
 

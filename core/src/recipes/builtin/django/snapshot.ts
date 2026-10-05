@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const DJANGO_RECIPE_VERSION = "0.1.0";
 export const DJANGO_CONTENT_DIGEST =
-  "sha256:a2e24faf940de5be6cf5d23d3e1e211beb6553e82837513f6c6b2840d69be395";
+  "sha256:46eac49a45db7bbf238b378c14360ab79ee06f0f7a98a84a320b7894f7ac27a7";
 export const djangoProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-django",
@@ -20,11 +20,22 @@ const celeryEnabled = (): ExpressionNode => ({
   segments: [{ type: "prop", name: "celery" }],
 });
 const backingDependencies = (): ExpressionNode => arr(lit("database"), lit("cache"));
+const environment = (): ExpressionNode =>
+  obj([
+    [
+      "DATABASE_URL",
+      lit(
+        "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+      ),
+    ],
+    ["REDIS_URL", lit("redis://cache:6379")],
+  ]);
 const web = (): ExpressionNode =>
   obj([
     ["type", lit("python:3.12")],
     ["framework", lit("django")],
     ["port", lit(8000)],
+    ["environment", environment()],
     ["dependsOn", backingDependencies()],
     ["routes", arr(defaultRoute())],
   ]);
@@ -33,6 +44,7 @@ const worker = (): ExpressionNode =>
     ["type", lit("python:3.12")],
     ["framework", lit("django")],
     ["command", lit("celery -A app worker --loglevel=info")],
+    ["environment", environment()],
     ["dependsOn", backingDependencies()],
   ]);
 const serviceOfType = (type: string): ExpressionNode => obj([["type", lit(type)]]);

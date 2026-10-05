@@ -65,7 +65,11 @@ describe("node-api decomposition", () => {
           type: "node:{{ recipe.node }}",
           primary: true,
           port: 3000,
-          environment: { API_FRAMEWORK: "{{ recipe.framework }}" },
+          environment: {
+            API_FRAMEWORK: "{{ recipe.framework }}",
+            DATABASE_URL:
+              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+          },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
           dependsOn: ["database"],
         },
@@ -92,6 +96,24 @@ describe("node-api decomposition", () => {
       authoring.services.api,
     );
     expect(api.dependsOn).toBeUndefined();
+    expect(authoring.services.api).toHaveProperty("environment", { API_FRAMEWORK: "{{ recipe.framework }}" });
+  });
+
+  test("injects the database URL alongside the framework hint when Postgres is enabled", () => {
+    // Given the default Postgres option, when the recipe is decomposed.
+    const result = decompose(defaults);
+    // Then API_FRAMEWORK is preserved and the database URL carries credential expressions.
+    expect(result.fragment).toMatchObject({
+      services: {
+        api: {
+          environment: {
+            API_FRAMEWORK: "{{ recipe.framework }}",
+            DATABASE_URL:
+              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+          },
+        },
+      },
+    });
   });
 
   test("preserves authoring data when only Node and framework tokens vary", () => {
@@ -128,7 +150,7 @@ describe("node-api decomposition", () => {
     expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NODE_API_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nodeApiSnapshot);
     expect(nodeApiSnapshot.identity.contentDigest).toBe(
-      "sha256:8f8d44bb5a545862ab890596e276df763554539f02259051853a3da3d7968227",
+      "sha256:5c74d22226cad678d271f9e1c9fe2a158fa1592da46a341f7bbcfc2f6cb51ef9",
     );
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

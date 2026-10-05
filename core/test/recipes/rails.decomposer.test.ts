@@ -68,6 +68,11 @@ describe("rails decomposition", () => {
           type: "ruby:3.3",
           framework: "rails",
           port: 3000,
+          environment: {
+            DATABASE_URL:
+              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+            REDIS_URL: "redis://cache:6379",
+          },
           build: {
             artifact: [
               "apt-get update && apt-get install -y --no-install-recommends build-essential",
@@ -83,12 +88,30 @@ describe("rails decomposition", () => {
       tooling: {
         rails: { service: "web", description: "Run the Rails CLI inside the web service.", cmds: ["rails"] },
         bundle: { service: "web", description: "Run Bundler inside the web service.", cmds: ["bundle"] },
+        rake: { service: "web", description: "Run Rake inside the web service.", cmds: ["rake"] },
       },
     });
     expect<unknown>(result.fragment).toEqual({
       runtime: 4,
       recipe: result.provenance,
       ...authoringOf(defaults),
+    });
+  });
+
+  test("injects datastore connection environment onto the web service", () => {
+    // Given the recipe's only option set, when it is decomposed.
+    const result = decompose(defaults);
+    // Then connection URLs retain plan-time credential expressions.
+    expect(result.fragment).toMatchObject({
+      services: {
+        web: {
+          environment: {
+            DATABASE_URL:
+              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+            REDIS_URL: "redis://cache:6379",
+          },
+        },
+      },
     });
   });
 

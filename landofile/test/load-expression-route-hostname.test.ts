@@ -66,6 +66,28 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
+  test("keeps a services.<name>.creds expression unevaluated for the planner", async () => {
+    await withApp(async (appRoot) => {
+      // Given
+      const value = {
+        services: {
+          web: {
+            environment: {
+              DATABASE_URL:
+                "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ app.name }}",
+            },
+          },
+        },
+      };
+
+      // When
+      const resolved = await Effect.runPromise(resolveValue(appRoot, value));
+
+      // Then
+      expect(resolved.value).toEqual(value);
+    });
+  });
+
   test("keeps an exact service environment secret reference for provider input resolution", async () => {
     await withApp(async (appRoot) => {
       // Given

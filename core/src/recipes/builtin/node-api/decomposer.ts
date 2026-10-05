@@ -13,7 +13,15 @@ export const nodeApiDecomposer = makeOptionBearingDecomposer({
           type: "node:{{ recipe.node }}",
           primary: true,
           port: 3000,
-          environment: { API_FRAMEWORK: "{{ recipe.framework }}" },
+          environment: {
+            API_FRAMEWORK: "{{ recipe.framework }}",
+            ...(hasDatabase
+              ? {
+                  DATABASE_URL:
+                    "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+                }
+              : {}),
+          },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
           ...(hasDatabase ? { dependsOn: ["database"] } : {}),
         },
