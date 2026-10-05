@@ -322,6 +322,8 @@ const scriptsDirExists = async (scriptsDir: string): Promise<boolean> => {
 
 export interface DiscoverBunShellScriptsOptions {
   readonly appRoot: string;
+  /** Fingerprints skip a script that cannot be parsed. Command discovery still fails. */
+  readonly skipInvalid?: boolean;
 }
 
 export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScripts")(function* (
@@ -347,7 +349,12 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
   const seen = new Map<string, string>();
   const out: DiscoveredBunShellScript[] = [];
   for (const entry of entries) {
-    const script = yield* parseScriptFile(entry.absolutePath, entry.relativePath);
+    const parsed = yield* Effect.result(parseScriptFile(entry.absolutePath, entry.relativePath));
+    if (parsed._tag === "Failure") {
+      if (options.skipInvalid === true) continue;
+      return yield* Effect.fail(parsed.failure);
+    }
+    const script = parsed.success;
     const previous = seen.get(script.id);
     if (previous !== undefined) {
       return yield* Effect.fail(
