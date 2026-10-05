@@ -149,3 +149,68 @@ export const expressionInterpolationsTouchOnlyScopes = (
   ast: ExpressionTemplate | ExpressionNode,
   allowed: ReadonlyArray<string>,
 ): boolean => satisfies(analyzeExpressionDependencies(ast, "inert"), allowed);
+
+/**
+ * The members a parsed template or expression reads under one scope, e.g. the
+ * service names behind `services.<name>.creds.*`.
+ *
+ * A member is the first path segment after the scope head when that segment is
+ * static (`services.database`, `services["database"]`). A read of the bare
+ * scope or through a computed segment (`services[name]`) cannot be attributed
+ * to one member, so `analyzable` turns false and the caller must not treat the
+ * set as complete.
+ */
+export const expressionScopeMembers = (
+  ast: ExpressionTemplate | ExpressionNode,
+  scope: string,
+): { readonly members: ReadonlySet<string>; readonly analyzable: boolean } => {
+  const members = new Set<string>();
+  let analyzable = true;
+  const visitPath = (head: string, segments: ReadonlyArray<PathSegment>): void => {
+    if (head !== scope) return;
+    const first = segments[0];
+    if (first?.type === "prop") members.add(first.name);
+    else if (first?.type === "key") members.add(first.key);
+    else analyzable = false;
+  };
+  const visit = (node: ExpressionNode): void => {
+    switch (node.kind) {
+      case "Literal":
+        return;
+      case "Path":
+        visitPath(node.head, node.segments);
+        for (const segment of node.segments) if (segment.type === "dynamic") visit(segment.expr);
+        return;
+      case "Access":
+        if (node.target.kind === "Path" && node.target.head === scope && node.target.segments.length === 0) {
+          visitPath(scope, node.segments);
+        } else {
+          visit(node.target);
+        }
+        for (const segment of node.segments) if (segment.type === "dynamic") visit(segment.expr);
+        return;
+      case "ArrayLiteral":
+        for (const element of node.elements) visit(element);
+        return;
+      case "ObjectLiteral":
+        for (const entry of node.entries) visit(entry.value);
+        return;
+      case "Conditional":
+        visit(node.test);
+        visit(node.consequent);
+        visit(node.alternate);
+        return;
+      case "Call":
+        for (const argument of node.args) visit(argument);
+        return;
+    }
+  };
+  if (isTemplate(ast)) {
+    for (const segment of ast.segments) {
+      if (segment.kind === "InterpolationSegment") visit(segment.expression);
+    }
+  } else {
+    visit(ast);
+  }
+  return { members, analyzable };
+};

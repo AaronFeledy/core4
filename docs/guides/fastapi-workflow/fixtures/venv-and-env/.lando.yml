@@ -5,10 +5,6 @@ services:
     type: redis
   database:
     type: postgres
-    creds:
-      user: lando
-      password: local-dev-only
-      database: fastapi-demo
   web:
     type: python:3.12
     port: 8000
@@ -24,7 +20,7 @@ services:
       - -c
       - "[ -x /app/.venv/bin/uvicorn ] || { python -m venv /app/.venv && /app/.venv/bin/pip install -r requirements.txt; }; exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
-      DATABASE_URL: postgresql://lando:local-dev-only@database:5432/fastapi-demo
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
       REDIS_URL: redis://cache:6379/0
 tooling:
   pip:

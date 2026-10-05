@@ -21,7 +21,7 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 | Piece | What you get |
 | --- | --- |
-| `api` | `node:lts` (or `node:22` with `--answer=node=22`), port `3000`, `API_FRAMEWORK` set to your framework pick |
+| `api` | `node:lts` (or `node:22` with `--answer=node=22`), port `3000`, `API_FRAMEWORK` set to your framework pick, `DATABASE_URL` when Postgres is present |
 | `database` | `type: postgres` by default; omitted with `--answer=database=none` |
 | Tooling | `lando npm` and `lando node` on `api`; `lando psql` on `database` when Postgres is present |
 
@@ -42,6 +42,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Framewo
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -151,7 +152,7 @@ That binds port `3000` inside `api` until you stop it.
 
 ## Talk to Postgres
 
-When you keep the default database, connect on the app network:
+When you keep the default database, `api` already has `DATABASE_URL` set to `postgresql://lando:<password>@database:5432/node-api-demo`:
 
 | Setting | Value |
 | --- | --- |
@@ -159,18 +160,27 @@ When you keep the default database, connect on the app network:
 | Port | `5432` |
 | Database | app name (here `node-api-demo`) |
 | User | `lando` |
-| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` |
+| Password | generated per app; filled into `DATABASE_URL` for you |
 
-Use host `database`, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings. Ping from tooling:
-
-```sh
-lando psql -c 'SELECT 1'
-```
-
-Install a client in the API when you need it from Node:
+Install a client and hand it the URL:
 
 ```sh
 lando npm install pg
+```
+
+```js
+import pg from "pg";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const { rows } = await pool.query("SELECT 1 AS ok");
+```
+
+Nothing in your code names the host or password. The Landofile fills `DATABASE_URL` from the database service's resolved credentials, so an authored `creds:` block and a rebuild both just work. With `--answer=database=none` there is no `database` service and no `DATABASE_URL`.
+
+`lando info` lists the user and database name and redacts the password. `lando exec api -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/node-api-demo`. Your code inside `api` still gets the real value. Ping from tooling, no password needed:
+
+```sh
+lando psql -c 'SELECT 1'
 ```
 
 ## Pick Fastify, or skip Postgres with Hono

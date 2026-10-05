@@ -43,7 +43,7 @@ services:
 
 ## Set credentials
 
-Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Read the resolved password from `lando info` instead of guessing it.
+Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
 
 ```yaml
 services:
@@ -54,6 +54,20 @@ services:
       rootPassword: secret
       database: LANDO_DB
 ```
+
+Another service reads the resolved `sa` password from its own environment:
+
+```yaml
+services:
+  web:
+    type: "node:22"
+    environment:
+      DB_HOST: database
+      DB_USER: sa
+      DB_PASSWORD: "{{ services.database.creds.rootPassword }}"
+```
+
+See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 The type ships the `sqlcmd` client task. After start:
 

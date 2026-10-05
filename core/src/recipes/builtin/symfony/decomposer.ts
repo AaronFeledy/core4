@@ -6,7 +6,7 @@ export const symfonyDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
   producer: symfonyProducer,
   displayName: "Symfony",
   optionTypes: symfonySnapshot.optionTypes,
-  fragment: () => {
+  fragment: (input) => {
     return {
       services: {
         appserver: {
@@ -17,6 +17,13 @@ export const symfonyDecomposer: RecipeDecomposerFactory = makeOptionBearingDecom
           composer: "{{ recipe.composer }}",
           allowOverride: true,
           port: 80,
+          environment: {
+            DATABASE_URL:
+              input.options.database === "mariadb:11.4"
+                ? "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4"
+                : "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+            REDIS_URL: "redis://cache:6379",
+          },
           dependsOn: ["database", "cache"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },

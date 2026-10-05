@@ -30,7 +30,7 @@ import {
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { materializeLandofileScopes } from "../planner/landofile-scopes.ts";
+import { materializeLandofileScopesForPlan } from "../planner/landofile-scopes.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
@@ -156,12 +156,15 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const config = yield* ConfigService;
   const globalConfig = yield* config.load;
   const landofileRoot = getLandofileAppRoot(loadedLandofile) ?? appRoot ?? target?.root ?? process.cwd();
-  const { landofile } = yield* materializeLandofileScopes({
-    landofile: loadedLandofile,
-    appRoot: landofileRoot,
-    landofilePath: join(landofileRoot, LANDOFILE_NAME),
-    globalConfig,
-  });
+  const landofile = yield* materializeLandofileScopesForPlan(
+    {
+      landofile: loadedLandofile,
+      appRoot: landofileRoot,
+      landofilePath: join(landofileRoot, LANDOFILE_NAME),
+      globalConfig,
+    },
+    plan,
+  );
   const authoredTooling = compileEffectiveTooling({ landofile, services: [] });
   const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
   const task = tooling[toolingLookupKey];

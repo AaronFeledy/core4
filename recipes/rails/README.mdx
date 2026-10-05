@@ -7,7 +7,7 @@ tags: [recipe, rails, ruby]
 
 # Rails
 
-`lando init --recipe rails` scaffolds Ruby on Rails, PostgreSQL, Redis, plus `rails` and `bundle` tooling.
+`lando init --recipe rails` scaffolds Ruby on Rails, PostgreSQL, Redis, plus `rails`, `bundle`, and `rake` tooling.
 
 ```sh
 lando init --recipe rails --name=my-rails-app --yes
@@ -23,7 +23,10 @@ After start, run app tooling inside the web service:
 ```sh
 lando rails
 lando bundle
+lando rake
 ```
+
+`web` starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. ActiveRecord reads `DATABASE_URL` on its own, so `lando rake db:create db:migrate` connects without a `database.yml` edit. The password comes from the database service's resolved credentials; `lando info` shows the user and database name and redacts the rest.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 

@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
 import {
   LOAD_DEFERRED_EXPRESSION_SCOPES,
+  PLAN_IDENTITY_EXPRESSION_SCOPES,
+  PLAN_SERVICE_EXPRESSION_SCOPES,
   materializeExpressionScopes,
   materializeLoadScopeExpressions,
 } from "@lando/landofile/recipe-expressions";
 
 const input = {
-  scopes: LOAD_DEFERRED_EXPRESSION_SCOPES,
+  scopes: PLAN_IDENTITY_EXPRESSION_SCOPES,
   context: {
     app: { name: "dcms-demo", slug: "dcms-demo" },
     proxy: { defaultDomain: "example.test" },
@@ -57,6 +59,53 @@ test("preserves identity when no eligible sites change", () => {
   const result = materializeExpressionScopes(source, "/app/.lando.yml", input);
   expect(result.value).toBe(source);
   expect(result.unresolved).toEqual([]);
+});
+
+test("defers services.* at load, reports the deferred sites, and resolves them with the service scopes", () => {
+  expect(LOAD_DEFERRED_EXPRESSION_SCOPES).toContain("services");
+  expect(PLAN_IDENTITY_EXPRESSION_SCOPES).not.toContain("services");
+  const source = {
+    env: { URL: "db://{{ services.database.creds.user }}@{{ app.name }}", HOST: "{{ app.name }}" },
+    cmds: ["{{ services.database.creds.database }}"],
+  };
+  const identity = materializeExpressionScopes(source, "/app/.lando.yml", input);
+  expect(identity.value).toEqual({ ...source, env: { ...source.env, HOST: "dcms-demo" } });
+  expect(identity.unresolved).toEqual([]);
+  expect(identity.deferred).toEqual([
+    { path: ["env", "URL"], expression: source.env.URL },
+    { path: ["cmds", 0], expression: "{{ services.database.creds.database }}" },
+  ]);
+  const resolved = materializeExpressionScopes(identity.value, "/app/.lando.yml", {
+    scopes: PLAN_SERVICE_EXPRESSION_SCOPES,
+    context: { ...input.context, services: { database: { creds: { user: "lando", database: "db" } } } },
+  });
+  expect(resolved.value).toEqual({ env: { URL: "db://lando@dcms-demo", HOST: "dcms-demo" }, cmds: ["db"] });
+  expect(resolved.deferred).toEqual([]);
+});
+
+test("evaluates only the sites the eligible predicate accepts, by value and path", () => {
+  // Given
+  const source = { authored: "{{ app.name }}", fromFile: "{{ app.name }}", nested: ["{{ app.slug }}"] };
+  const sites: Array<{ value: string; path: ReadonlyArray<string | number> }> = [];
+
+  // When
+  const result = materializeExpressionScopes(source, "/app/.lando.yml", {
+    ...input,
+    eligible: (value, path) => {
+      sites.push({ value, path });
+      return path.join(".") === "authored" || path.join(".") === "nested.0";
+    },
+  });
+
+  // Then
+  expect(result.value).toEqual({ authored: "dcms-demo", fromFile: "{{ app.name }}", nested: ["dcms-demo"] });
+  expect(result.unresolved).toEqual([]);
+  expect(result.deferred).toEqual([]);
+  expect(sites).toEqual([
+    { value: "{{ app.name }}", path: ["authored"] },
+    { value: "{{ app.name }}", path: ["fromFile"] },
+    { value: "{{ app.slug }}", path: ["nested", 0] },
+  ]);
 });
 
 test("reports evaluation failures with their exact value path", () => {

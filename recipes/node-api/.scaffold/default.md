@@ -33,11 +33,13 @@ lando npm install
 lando node --version
 ```
 
+When Postgres is present, `api` starts with `DATABASE_URL` set to `postgresql://lando:<password>@database:5432/<app-name>`. Hand it to your client, for example `new pg.Pool({ connectionString: process.env.DATABASE_URL })`. The password comes from the database service's resolved credentials; `lando info` shows the user and database name and redacts the rest. With `database=none` there is no `DATABASE_URL` either.
+
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
-For day-to-day tooling and Postgres hosts, see [Run the Node API recipe](/guides/recipes/node-api-workflow/).
+For day-to-day tooling and `DATABASE_URL` from Node, see [Run the Node API recipe](/guides/recipes/node-api-workflow/).
 
 ## 1. scaffold
 

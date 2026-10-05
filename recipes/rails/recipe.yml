@@ -32,7 +32,7 @@ snapshot:
     packageName: "@lando/recipe-rails"
     recipeId: "rails"
     manifestVersion: "0.1.0"
-    contentDigest: "sha256:1faa3a1a496dabcb300229d0db14e0e2d570506e785391f9332947d2b1febd65"
+    contentDigest: "sha256:40ea29207e5bc22ee5d67e1b83b0ed38682f7dc538aab8846954cafd73c4b504"
   optionTypes:
   defaults:
   template:
@@ -63,6 +63,18 @@ snapshot:
                       value:
                         kind: "Literal"
                         value: 3000
+                    - key: "environment"
+                      value:
+                        kind: "ObjectLiteral"
+                        entries:
+                          - key: "DATABASE_URL"
+                            value:
+                              kind: "Literal"
+                              value: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+                          - key: "REDIS_URL"
+                            value:
+                              kind: "Literal"
+                              value: "redis://cache:6379"
                     - key: "build"
                       value:
                         kind: "ObjectLiteral"
@@ -153,6 +165,24 @@ snapshot:
                         elements:
                           - kind: "Literal"
                             value: "bundle"
+              - key: "rake"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "service"
+                      value:
+                        kind: "Literal"
+                        value: "web"
+                    - key: "description"
+                      value:
+                        kind: "Literal"
+                        value: "Run Rake inside the web service."
+                    - key: "cmds"
+                      value:
+                        kind: "ArrayLiteral"
+                        elements:
+                          - kind: "Literal"
+                            value: "rake"
   assets:
     - dest: "Gemfile"
       digest: "sha256:2626800dfc7a9e4fdff7441d002834a4d510dc727c23f3100c3a7b07e77e764d"

@@ -29,6 +29,11 @@ const expected = {
       composer: "{{ recipe.composer }}",
       allowOverride: true,
       port: 80,
+      environment: {
+        DATABASE_URL:
+          "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+        REDIS_URL: "redis://cache:6379",
+      },
       dependsOn: ["database", "cache"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     },
@@ -88,7 +93,44 @@ describe("symfony decomposition", () => {
     const result = Effect.runSync(decomposer.decompose({ ...validInput, options }));
     // Then option values stay in provenance, not interpolated service fields.
     const provenance = { id: "symfony", version: "0.1.0", producer: symfonyProducer, options };
-    expect<unknown>(result).toEqual({ fragment: { ...expected, recipe: provenance }, provenance });
+    expect<unknown>(result).toEqual({
+      fragment: {
+        ...expected,
+        services: {
+          ...expected.services,
+          appserver: {
+            ...expected.services.appserver,
+            environment: {
+              DATABASE_URL:
+                "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+              REDIS_URL: "redis://cache:6379",
+            },
+          },
+        },
+        recipe: provenance,
+      },
+      provenance,
+    });
+  });
+
+  test.each([
+    {
+      database: "postgres:16",
+      url: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+    },
+    {
+      database: "mariadb:11.4",
+      url: "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+    },
+  ])("injects datastore connection environment when the database is $database", ({ database, url }) => {
+    // Given the selected database, when the recipe is decomposed.
+    const result = Effect.runSync(
+      decomposer.decompose({ ...validInput, options: { ...defaults, database } }),
+    );
+    // Then the appserver receives the matching database URL and Redis URL.
+    expect(result.fragment).toMatchObject({
+      services: { appserver: { environment: { DATABASE_URL: url, REDIS_URL: "redis://cache:6379" } } },
+    });
   });
 
   test("rejects composer=false because the published snapshot does not declare it", () => {
