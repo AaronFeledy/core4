@@ -1083,12 +1083,18 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
     });
   });
 
-  test("propagates non-zero exit codes from a failing .bun.sh task as ToolingExecError with the script exit code", async () => {
+  test("returns a failing .bun.sh task's exit code and output as a tooling result", async () => {
     await withAppRoot(async (root) => {
       await writeBunShScript(
         root,
         "fail.bun.sh",
-        ["# ---", "# desc: Fail on purpose", "# ---", "exit 7", ""].join("\n"),
+        [
+          "# ---",
+          "# desc: Fail on purpose",
+          "# ---",
+          "echo first; echo second; echo diagnostic 1>&2; exit 7",
+          "",
+        ].join("\n"),
       );
 
       const plan = makePlan([makeService("appserver", true)]);
@@ -1096,12 +1102,13 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       const landofile: LandofileShape = { name: "scenario" };
       const layer = makeLayer({ landofile, plan, provider });
 
-      const exit = await Effect.runPromiseExit(runTooling({ name: "fail" }).pipe(runtimeFor(layer)));
-      expect(exit._tag).toBe("Failure");
-      if (exit._tag !== "Failure") return;
-      const flat = JSON.stringify(exit.cause);
-      expect(flat).toContain("ToolingExecError");
-      expect(flat).toContain('"exitCode":7');
+      const result = await Effect.runPromise(runTooling({ name: "fail" }).pipe(runtimeFor(layer)));
+      expect(result).toMatchObject({
+        service: ":host",
+        exitCode: 7,
+        stdout: "first\nsecond\n",
+        stderr: "diagnostic\n",
+      });
     });
   });
 

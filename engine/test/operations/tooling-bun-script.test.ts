@@ -12,6 +12,32 @@ import {
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
 import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
+
+test("returns nonzero script exits with both output streams intact", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-exit-"));
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    await writeFile(
+      join(root, ".lando/scripts/probe.bun.sh"),
+      "# ---\n# desc: Exit probe\n# ---\necho first; echo second; echo diagnostic 1>&2; exit 3\n",
+    );
+    // When
+    const result = await Effect.runPromise(
+      runBunShellTooling({ name: "probe" }, root).pipe(Effect.provide(PrivateFileAccessService.layer)),
+    );
+    // Then
+    expect(result).toEqual({
+      tool: "app:probe",
+      service: ":host",
+      exitCode: 3,
+      stdout: "first\nsecond\n",
+      stderr: "diagnostic\n",
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 import { runTooling } from "../../src/operations/tooling.ts";
 
 test.each(["direct", "fallback"] as const)(
