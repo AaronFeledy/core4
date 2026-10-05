@@ -1,11 +1,12 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { mountAppRoot } from "./_volume-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
@@ -27,19 +28,7 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   applyAuthoredProcessFields(ctx, ["command", "entrypoint", "user"]);
 
   if (service.appMount !== false) {
-    ctx.setAppMount({
-      source: AbsolutePath.make(ctx.appRoot),
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-      excludes: [],
-      includes: [],
-    });
-    ctx.addMount({
-      type: "bind",
-      source: ctx.appRoot,
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-    });
+    mountAppRoot(ctx);
   }
 
   for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
