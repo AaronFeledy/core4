@@ -4,6 +4,7 @@ import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schem
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
+  addEnvRecord,
   loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
@@ -184,9 +185,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   });
   if (composerPackagesStep !== undefined) ctx.addBuildStep(composerPackagesStep);
   if (xdebug !== false) {
-    for (const [name, value] of Object.entries(phpXdebugConfigEnv())) {
-      ctx.addEnv(name, value);
-    }
+    addEnvRecord(ctx, phpXdebugConfigEnv());
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
