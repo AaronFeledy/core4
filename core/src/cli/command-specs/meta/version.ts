@@ -1,5 +1,3 @@
-import { renderMetaVersion } from "@lando/engine/version";
-
 import { type VersionResult, VersionResultSchema, version } from "../../commands/version";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
@@ -15,8 +13,8 @@ export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   resultSchema: VersionResultSchema,
   id: "meta:version",
   mcpAllowed: true,
-  summary: "Show the Lando + Bun + plugin versions.",
-  description: "Show the Lando + Bun + plugin versions.",
+  summary: "Print the Lando version.",
+  description: "Print the Lando version. Machine output also reports the Bun version and platform.",
   namespace: "meta",
   topLevelAlias: true,
   aliases: ["--version", "-v"],
@@ -25,6 +23,6 @@ export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   run: () => version,
   render: (result) => {
     if (typeof result !== "object" || result === null || !("core" in result)) return undefined;
-    return renderMetaVersion(result as VersionResult);
+    return (result as VersionResult).core;
   },
 };
