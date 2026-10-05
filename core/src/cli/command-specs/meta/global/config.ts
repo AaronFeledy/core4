@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import {
   type GlobalConfigOptions,
@@ -9,6 +9,13 @@ import {
 } from "../../../commands/meta/global-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { formatFlag, specFlagsOf } from "../../../spec/input-coercion";
+import {
+  formatFlag as configFormatFlag,
+  dryRunFlag,
+  editorFlag,
+  pathFlag,
+  typeFlag,
+} from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
 
 export const globalConfigFormatFromInput = (input: unknown): "json" | "table" =>
@@ -39,18 +46,11 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
-    }),
-    type: Flags.string({
-      description: "Value type for set.",
-      options: ["string", "number", "boolean", "json", "yaml"],
-      default: "string",
-    }),
-    path: Flags.string({ description: "Dot-path key selector." }),
-    editor: Flags.string({ description: "Editor binary for edit." }),
-    "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
+    format: configFormatFlag,
+    type: typeFlag,
+    path: pathFlag,
+    editor: editorFlag,
+    "dry-run": dryRunFlag,
   },
   run: (input) => globalConfig(globalConfigOptionsFromInput(input)),
   render: (result, input) =>

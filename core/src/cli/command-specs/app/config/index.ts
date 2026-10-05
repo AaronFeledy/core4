@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import {
   type AppConfigOptions,
@@ -9,6 +9,7 @@ import {
   renderAppConfigResult,
 } from "../../../commands/app-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
 
 export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
@@ -34,18 +35,11 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
-    }),
-    type: Flags.string({
-      description: "Value type for set.",
-      options: ["string", "number", "boolean", "json", "yaml"],
-      default: "string",
-    }),
-    path: Flags.string({ description: "Dot-path key selector." }),
-    editor: Flags.string({ description: "Editor binary for edit." }),
-    "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
+    format: formatFlag,
+    type: typeFlag,
+    path: pathFlag,
+    editor: editorFlag,
+    "dry-run": dryRunFlag,
   },
   run: (input) => appConfig(appConfigOptionsFromInput(input)),
   documentOutput: {
