@@ -18,27 +18,32 @@ export const CommandWarning = Schema.Struct({
 });
 export type CommandWarning = typeof CommandWarning.Type;
 
-const TaggedErrorJson = Schema.Struct({
-  _tag: Schema.String,
-  message: Schema.String,
-  remediation: Schema.optionalKey(Schema.String),
-  service: Schema.optionalKey(Schema.String),
-  steps: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        id: Schema.String,
-        label: Schema.String,
-        target: Schema.String,
-        destructive: Schema.Boolean,
-      }),
+const TaggedErrorJson = Schema.StructWithRest(
+  Schema.Struct({
+    _tag: Schema.String,
+    message: Schema.String,
+    remediation: Schema.optionalKey(Schema.String),
+    service: Schema.optionalKey(Schema.String),
+    steps: Schema.optionalKey(
+      Schema.Array(
+        Schema.Struct({
+          id: Schema.String,
+          label: Schema.String,
+          target: Schema.String,
+          destructive: Schema.Boolean,
+        }),
+      ),
     ),
-  ),
-  reason: Schema.optionalKey(Schema.String).annotate({
-    description: "Structured failure reason when supplied as a string by the source error.",
+    reason: Schema.optionalKey(Schema.String).annotate({
+      description: "Structured failure reason when supplied as a string by the source error.",
+    }),
+    issues: Schema.optionalKey(Schema.Array(ValidationIssue)).annotate({
+      description: "Structured authored-file problems when the failure carries ValidationIssue values.",
+    }),
   }),
-  issues: Schema.optionalKey(Schema.Array(ValidationIssue)).annotate({
-    description: "Structured authored-file problems when the failure carries ValidationIssue values.",
-  }),
+  [Schema.Record(Schema.String, Schema.Unknown)],
+).annotate({
+  description: "Additional keys are the failing tagged error's remaining JSON-safe own fields.",
 });
 
 /** JSON envelope for `--format json` (and the terminal `result` stream frame). `apiVersion` changes only on breaking envelope edits. */

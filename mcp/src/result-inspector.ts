@@ -1,8 +1,12 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { McpTransportError } from "@lando/sdk/errors";
 
-import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import {
+  type CommandResultOutcome,
+  buildCommandResultEnvelope,
+  identityRedactor,
+} from "@lando/sdk/command-result";
 import { isRuntimeProxy } from "./runtime-proxy";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 
@@ -201,7 +205,7 @@ const ownString = (value: object, key: string): string | undefined => {
   return typeof descriptor.value === "string" && descriptor.value.length > 0 ? descriptor.value : undefined;
 };
 
-const projectFailure = (error: unknown): Record<string, string> => {
+const projectFailure = (error: unknown): object => {
   if (error === null || typeof error !== "object") {
     return { _tag: "UnknownError", message: typeof error === "string" ? error : "Command failed." };
   }
@@ -210,12 +214,23 @@ const projectFailure = (error: unknown): Record<string, string> => {
   const message = ownString(error, "message") ?? "Command failed.";
   const remediation = ownString(error, "remediation");
   const reason = ownString(error, "reason");
-  return {
+  const projected = Object.create(Object.getPrototypeOf(error), {
+    ...Object.fromEntries(
+      Object.keys(error)
+        .filter((key) => key !== "cause" && key !== "stack" && key !== "redactionTokens")
+        .flatMap((key) => {
+          const descriptor = Object.getOwnPropertyDescriptor(error, key);
+          return descriptor !== undefined && "value" in descriptor ? [[key, descriptor]] : [];
+        }),
+    ),
+  });
+  Object.assign(projected, {
     _tag: tag,
     message,
     ...(remediation === undefined ? {} : { remediation }),
     ...(reason === undefined ? {} : { reason }),
-  };
+  });
+  return projected;
 };
 
 export const inspectMcpCommandOutcome = (
@@ -228,8 +243,16 @@ export const inspectMcpCommandOutcome = (
         return { _tag: "success", value };
       }
       const error = projectFailure(outcome.error);
-      const safeError = new BoundedDataInspector("MCP command failure").inspect(error);
-      return { _tag: "failure", error: safeError };
+      const envelope = Effect.runSync(
+        buildCommandResultEnvelope({
+          command: "mcp:inspect",
+          resultSchema: Schema.Unknown,
+          outcome: { _tag: "failure", error },
+          redactor: identityRedactor,
+        }),
+      );
+      new BoundedDataInspector("MCP command failure").inspect(envelope.error);
+      return { _tag: "failure", error };
     },
     catch: (cause) => (cause instanceof McpTransportError ? cause : inspectionFailure("MCP command result")),
   });

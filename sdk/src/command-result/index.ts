@@ -6,6 +6,7 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
 import { emitYamlDocument } from "../yaml/document.ts";
+import { isJsonSafe } from "./json-safe.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
 
 export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";
@@ -65,6 +66,7 @@ const taggedErrorJson = (
   }>;
   readonly reason?: string;
   readonly issues?: ReadonlyArray<ValidationIssue>;
+  readonly [key: string]: unknown;
 } => {
   const record = asRecord(error);
   const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
@@ -73,6 +75,28 @@ const taggedErrorJson = (
   const reason = typeof record?.reason === "string" ? record.reason : undefined;
   const decodedIssues = Schema.decodeUnknownResult(Schema.Array(ValidationIssue))(record?.issues);
   const issues = Result.isSuccess(decodedIssues) ? decodedIssues.success : undefined;
+  const reserved = new Set([
+    "_tag",
+    "name",
+    "message",
+    "stack",
+    "cause",
+    "remediation",
+    "reason",
+    "issues",
+    "service",
+    "steps",
+    "redactionTokens",
+  ]);
+  const extra = Object.fromEntries(
+    Object.keys(record ?? {}).flatMap((key) => {
+      if (reserved.has(key) || record === undefined) return [];
+      const descriptor = Object.getOwnPropertyDescriptor(record, key);
+      return descriptor !== undefined && "value" in descriptor && isJsonSafe(descriptor.value)
+        ? [[key, descriptor.value]]
+        : [];
+    }),
+  );
   const base = {
     _tag: tag,
     message,
@@ -81,9 +105,9 @@ const taggedErrorJson = (
     ...(issues === undefined ? {} : { issues }),
   };
   if (error instanceof SqlConfirmRequiredError) {
-    return { ...base, service: error.service, steps: error.steps };
+    return { ...base, service: error.service, steps: error.steps, ...extra };
   }
-  return base;
+  return { ...base, ...extra };
 };
 
 const encodeResult = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
