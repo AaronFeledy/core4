@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:CommandResultEnvelope",
+    "changeKind": "unsupported-keyword",
+    "path": "$.error.additionalProperties",
+    "justification": "The error object additively admits remaining JSON-safe own fields from the failing tagged error. All existing typed fields and envelope keys are unchanged. The projection excludes cause, stack, private redaction metadata, cyclic and over-depth values, and non-JSON-safe values; canonical redaction is unchanged. Existing envelopes remain valid. The conservative checker cannot classify opening additionalProperties."
+  },
+  {
     "surface": "schema:ConfigTranslateDocumentSetInput",
     "changeKind": "unsupported-construct",
     "path": "$.currentLowerV4Fragments.items.fragment.anyOf",
@@ -51,7 +57,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid."
+    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid. The terminal error object also additively admits remaining JSON-safe own tagged-error fields, excluding cause, stack, private redaction metadata, cyclic, over-depth, and non-JSON-safe values; existing typed fields and canonical redaction remain unchanged."
   },
   {
     "surface": "command:meta:doctor",

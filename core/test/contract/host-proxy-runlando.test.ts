@@ -117,6 +117,7 @@ const commandServices = (eventLayer: Layer.Layer<EventService>, httpsPort = 443)
         status: Effect.succeed({
           state: "running",
           configuredApps: [],
+          ports: { http: 8080, https: 8443 },
           authorities: [{ hostname: "web.myapp.lndo.site", scheme: "https", port: httpsPort }],
         }),
       } as never),
@@ -199,6 +200,18 @@ const withStdoutTty = async <Value>(tty: boolean, run: () => Promise<Value>): Pr
 };
 
 describe("in-container lando open host-proxy round-trip", () => {
+  test("an unconfigured hostname uses the running ingress listen port", async () => {
+    const plan = makePlan(
+      [route({ hostname: "unstarted.lndo.site", scheme: "https", service: "web" })],
+      ["web"],
+    );
+    const result = await roundTrip(plan, ["open", "--print"]).exit;
+    if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
+    expect(result.value.exitCode).toBe(0);
+    const body = result.value.envelope.result as { targets?: ReadonlyArray<{ url: string }> } | undefined;
+    expect(body?.targets?.[0]?.url).toBe("https://unstarted.lndo.site:8443");
+  });
+
   test("--print round-trip envelope + exit code equal host-side app:open", async () => {
     const plan = httpsPlan();
     const options: OpenAppOptions = { print: true, ttyPresent: false };

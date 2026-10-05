@@ -179,6 +179,39 @@ const extractExtraTagFields = (
   }
   const op = asString(record.operation);
   if (op !== undefined) out.push(["operation", op]);
+  const consumed = new Set([
+    "_tag",
+    "name",
+    "message",
+    "stack",
+    "cause",
+    "remediation",
+    "issues",
+    "appId",
+    "appName",
+    "app",
+    "providerId",
+    "provider",
+    "redactionTokens",
+    "commandId",
+    "code",
+    "body",
+    "logsDir",
+    "cacheDir",
+    "timestamp",
+    ...out.map(([key]) => key),
+    ...(tag === "LandofileEventStepFailedError" ? ["index", "outputTail", "service"] : []),
+  ]);
+  const scalar = (value: unknown): value is string | number | boolean =>
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value));
+  for (const [key, value] of Object.entries(record)) {
+    if (consumed.has(key)) continue;
+    if (scalar(value)) out.push([key, escapeDiagnosticText(String(value))]);
+    else if (Array.isArray(value) && Array.from(value).every(scalar))
+      out.push([key, escapeDiagnosticText(value.join(", "))]);
+  }
   return out;
 };
 

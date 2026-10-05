@@ -11,6 +11,14 @@ import {
 } from "@lando/sdk/test";
 
 describe("RouterService contract", () => {
+  test("ProxyStatus accepts omitted listen ports and validates each reported scheme", () => {
+    const status = { state: "running", authorities: [], configuredApps: [] };
+    expect(Schema.is(ProxyStatus)(status)).toBe(true);
+    expect(Schema.is(ProxyStatus)({ ...status, ports: { http: 8080, https: 8443 } })).toBe(true);
+    expect(Schema.is(ProxyStatus)({ ...status, ports: { http: 0, https: 8443 } })).toBe(false);
+    expect(Schema.is(ProxyStatus)({ ...status, ports: { http: 8080 } })).toBe(false);
+  });
+
   test("TestRouterService satisfies the governed contract suite", async () => {
     const exit = await Effect.runPromiseExit(
       runRouterServiceContractSuite({
