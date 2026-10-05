@@ -13,7 +13,7 @@ import {
   RecipeSourceError,
 } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
-import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
+import { type ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
 import {
   type PluginAddResult,
@@ -21,10 +21,10 @@ import {
   validatePluginManifest,
 } from "@lando/engine/operations/plugin-install";
 import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
-import { makeLandoPaths } from "@lando/paths";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
 import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
+import { resolvePluginsRoot } from "./plugin-roots";
 
 import {
   DEFAULT_NPM_REGISTRY_URL,
@@ -340,24 +340,7 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
     );
   }
 
-  let pluginsRoot = options.pluginsRoot;
-  if (pluginsRoot === undefined) {
-    let userDataRoot = options.userDataRoot;
-    if (userDataRoot === undefined) {
-      const configService = yield* ConfigService;
-      userDataRoot = yield* configService.get("userDataRoot");
-      if (userDataRoot === undefined) {
-        return yield* Effect.fail(
-          new NotImplementedError({
-            message: "userDataRoot is not configured.",
-            commandId: "meta:plugin:add",
-            remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
-          }),
-        );
-      }
-    }
-    pluginsRoot = makeLandoPaths({ userDataRoot }).pluginsDir;
-  }
+  const pluginsRoot = options.pluginsRoot ?? (yield* resolvePluginsRoot(options, "meta:plugin:add"));
   yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
   const packageName = parsePackageName(options.spec);
