@@ -1,13 +1,11 @@
 import { readFile } from "node:fs/promises";
-import http from "node:http";
-import https from "node:https";
-import { Socket } from "node:net";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import type { HostPlatform } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
+import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import { DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
 import { acquisitionStateFile } from "./proxy-paths.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
@@ -36,49 +34,14 @@ const LAST_FALLBACK: AdvertisedPortPair = { httpPort: DESIRED_HTTP_PORT, httpsPo
 
 const idle = (port: number): AdvertisedPortSnapshot => ({ port, listening: false, httpOk: false });
 
-const probeTcp = (port: number): Promise<boolean> =>
-  new Promise((resolve) => {
-    const socket = new Socket();
-    const finish = (open: boolean) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(open);
-    };
-    socket.setTimeout(TCP_PROBE_MS);
-    socket.once("connect", () => finish(true));
-    socket.once("timeout", () => finish(false));
-    socket.once("error", () => finish(false));
-    socket.connect(port, LOOPBACK_HOST);
-  });
-
-const probeHttp = (port: number, role: AdvertisedPortRole): Promise<boolean> =>
-  new Promise((resolve) => {
-    const request = (role === "https" ? https : http).request(
-      {
-        host: LOOPBACK_HOST,
-        port,
-        path: "/",
-        method: "GET",
-        timeout: HTTP_PROBE_MS,
-        rejectUnauthorized: false,
-      },
-      (response) => {
-        response.resume();
-        resolve(response.statusCode !== undefined);
-      },
-    );
-    request.once("timeout", () => {
-      request.destroy();
-      resolve(false);
-    });
-    request.once("error", () => resolve(false));
-    request.end();
-  });
-
 const readPort = async (port: number, role: AdvertisedPortRole): Promise<AdvertisedPortSnapshot> => {
-  const listening = await probeTcp(port);
+  const listening = (await probeTcp({ host: LOOPBACK_HOST, port, timeoutMs: TCP_PROBE_MS })) === "open";
   if (!listening) return idle(port);
-  return { port, listening: true, httpOk: await probeHttp(port, role) };
+  return {
+    port,
+    listening: true,
+    httpOk: await probeHttp({ host: LOOPBACK_HOST, port, role, timeoutMs: HTTP_PROBE_MS }),
+  };
 };
 
 const systemReaders: AdvertisedPortReaders = { readPort };
