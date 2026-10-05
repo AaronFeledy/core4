@@ -262,6 +262,72 @@ test.each([{ separator: [] }, { separator: ["--"] }])(
   30_000,
 );
 
+test.each(["lando", "plain"])(
+  "streams script output before exit with the %s renderer",
+  async (renderer) => {
+    // Given
+    const fixture = await makeFixture("script-live");
+    const gate = Promise.withResolvers<void>();
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async () => {
+        await gate.promise;
+        return new Response("released");
+      },
+    });
+    let proc: ReturnType<typeof Bun.spawn> | undefined;
+    try {
+      await writeTask(fixture, "probe", [
+        "echo first",
+        "echo diagnostic 1>&2",
+        `${JSON.stringify(process.execPath)} -e 'await fetch("http://127.0.0.1:${server.port}");'`,
+        "echo second",
+        "exit 3",
+      ]);
+      await writeFreshCache(fixture, "probe");
+      // When
+      const child = Bun.spawn([process.execPath, sourceCli, "probe", `--renderer=${renderer}`], {
+        cwd: fixture.root,
+        env: fixture.env,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      proc = child;
+      let stdout = "";
+      let stderr = "";
+      const firstLines = Promise.withResolvers<void>();
+      const read = async (stream: ReadableStream<Uint8Array>, kind: "stdout" | "stderr") => {
+        const decoder = new TextDecoder();
+        for await (const chunk of stream) {
+          const text = decoder.decode(chunk, { stream: true });
+          if (kind === "stdout") stdout += text;
+          else stderr += text;
+          if (stdout.includes("first\n") && stderr.includes("diagnostic\n")) firstLines.resolve();
+        }
+      };
+      const readers = Promise.all([read(child.stdout, "stdout"), read(child.stderr, "stderr")]);
+      await Effect.runPromise(Effect.promise(() => firstLines.promise).pipe(Effect.timeout("5 seconds")));
+      expect(child.exitCode).toBeNull();
+      gate.resolve();
+      const [exitCode] = await Promise.all([child.exited, readers]);
+      // Then
+      expect(exitCode, stderr).toBe(3);
+      expect(stdout.match(/first\n/g)).toHaveLength(1);
+      expect(stdout.match(/second\n/g)).toHaveLength(1);
+      expect(stderr.match(/diagnostic\n/g)).toHaveLength(1);
+      expect(stdout + stderr).not.toContain("ToolingExecError");
+    } finally {
+      gate.resolve();
+      proc?.kill();
+      if (proc !== undefined) await proc.exited;
+      server.stop(true);
+      await fixture.cleanup();
+    }
+  },
+  30_000,
+);
+
 test("Given a cached custom task, when compiled dispatch receives version, then it routes the task before global version", async () => {
   const compiled = await makeFixture("compiled-version-argv");
   try {
@@ -359,7 +425,7 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
     // When
     const [sourceResult, compiledResult] = await Promise.all([
       runSource(source, ["fail", "--format=json"]),
-      runCompiledDispatcher(compiled, ["app:fail", "--format=json"]),
+      runCompiledDispatcher(compiled, ["app:fail", "-j"]),
     ]);
 
     // Then
@@ -375,8 +441,10 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
         stderr: "diagnostic\n",
       },
     };
-    expect(lastEnvelope(sourceResult.stdout)).toMatchObject(expectedFailure);
-    expect(lastEnvelope(compiledResult.stdout)).toMatchObject(expectedFailure);
+    expect(JSON.parse(sourceResult.stdout)).toMatchObject(expectedFailure);
+    expect(JSON.parse(compiledResult.stdout)).toMatchObject(expectedFailure);
+    expect(sourceResult.stderr).toBe("");
+    expect(compiledResult.stderr).toBe("");
   } finally {
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }

@@ -23,8 +23,10 @@ import {
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
+import { streamBunScript } from "./shell-script-stream.ts";
 
 const decoder = new TextDecoder();
 const ShellRedactionTokens = Context.Reference<ReadonlyArray<string>>("@lando/engine/ShellRedactionTokens", {
@@ -151,31 +153,71 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
   return result;
 };
 
+const execWithEvents = Effect.fn("ShellRunner.exec")(function* (
+  command: string,
+  options: ShellCommandOptions | undefined,
+  execute: Effect.Effect<ProcessResult, ShellExecError>,
+) {
+  yield* publishRedactedShellEvent(options, {
+    _tag: "pre-shell-exec",
+    ...shellEventShape(command, options),
+  });
+  const result = yield* execute.pipe(
+    Effect.catch((error) => Effect.flatMap(redactShellError(options, error), Effect.fail)),
+  );
+  yield* publishRedactedShellEvent(options, {
+    _tag: "post-shell-exec",
+    ...shellEventShape(command, options),
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+  return result;
+});
+
 export const makeShellRunnerService = (
   makeReplIO: () => ShellReplIO,
   privateFileAccess: PrivateFileAccess,
 ): Context.Service.Shape<typeof ShellRunner> => {
   const service: Context.Service.Shape<typeof ShellRunner> = ShellRunner.of({
-    exec: Effect.fn("ShellRunner.exec")(function* (command, options) {
-      yield* publishRedactedShellEvent(options, {
-        _tag: "pre-shell-exec",
-        ...shellEventShape(command, options),
-      });
-      const result = yield* Effect.tryPromise({
-        try: () => execShell(command, options),
-        catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
-      }).pipe(Effect.catch((error) => Effect.flatMap(redactShellError(options, error), Effect.fail)));
-      yield* publishRedactedShellEvent(options, {
-        _tag: "post-shell-exec",
-        ...shellEventShape(command, options),
-        exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      });
-      return result;
-    }),
+    exec: (command, options) =>
+      execWithEvents(
+        command,
+        options,
+        Effect.tryPromise({
+          try: () => execShell(command, options),
+          catch: (cause) => (isShellExecError(cause) ? cause : shellError(command, options, cause)),
+        }),
+      ),
     run: (command, options) => service.exec(command, options),
-    runScript: (path, options) => service.exec(`bun ${quoteShellPath(path)}`, options),
+    runScript: Effect.fn("ShellRunner.runScript")(function* (path, options) {
+      const command = `bun ${quoteShellPath(path)}`;
+      const sink = yield* Effect.serviceOption(StreamFrameSink);
+      if (sink._tag === "None") return yield* service.exec(command, options);
+      const redactor = yield* redactorForOptions(options);
+      return yield* execWithEvents(
+        command,
+        options,
+        streamBunScript(path, options, {
+          sink: sink.value,
+          redact: (text) => redactor.redactString(text),
+        }).pipe(
+          Effect.mapError((cause) => shellError(command, options, cause)),
+          Effect.flatMap((result) =>
+            result.exitCode === 0
+              ? Effect.succeed(result)
+              : Effect.fail(
+                  shellError(
+                    command,
+                    options,
+                    new Error(`Shell command exited with code ${result.exitCode}`),
+                    result,
+                  ),
+                ),
+          ),
+        ),
+      );
+    }),
     interactive: (spec) => runHostShellRepl({ ...spec, io: spec.io ?? makeReplIO() }, privateFileAccess),
   });
   return service;
