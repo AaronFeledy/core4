@@ -6,7 +6,7 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { addEnvRecord, commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
@@ -69,26 +69,17 @@ const applyMssqlFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["2022"] });
   ctx.addEnv("ACCEPT_EULA", environment.ACCEPT_EULA ?? "Y");
   ctx.addEnv("MSSQL_PID", environment.MSSQL_PID ?? "Developer");
-  for (const [key, value] of Object.entries({
+  addEnvRecord(ctx, {
     ...familyEnvFor("mssql", creds),
     ...landoDbEnvFor(creds),
-  })) {
-    ctx.addEnv(key, value);
-  }
+  });
   ctx.addStorage({
     store: `${appName}-mssql-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: [...sqlcmdHealthcheckArgv(rootPassword)],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(commandHealthcheck([...sqlcmdHealthcheckArgv(rootPassword)], 30));
 
   applyAuthoredProcessFields(ctx);
 };
