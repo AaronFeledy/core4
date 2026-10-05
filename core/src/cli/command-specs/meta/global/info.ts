@@ -8,11 +8,11 @@ import {
   renderGlobalInfoResult,
 } from "../../../commands/meta/global-info";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { specFlagsOf, stringArrayFlag } from "../../../spec/input-coercion";
+import { serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
 
 export const globalInfoOptionsFromInput = (input: unknown): GlobalInfoOptions => {
   const flags = specFlagsOf(input);
-  const services = stringArrayFlag(flags, "service").filter((service) => service.length > 0);
+  const services = serviceNamesFlag(flags);
   return services.length === 0 ? {} : { services };
 };
 

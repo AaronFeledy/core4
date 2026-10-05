@@ -8,12 +8,12 @@ import {
   renderGlobalStartResult,
 } from "../../../commands/meta/global-start";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
-import { specFlagsOf, stringArrayFlag } from "../../../spec/input-coercion";
+import { serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
 
 export const globalStartOptionsFromInput = (input: unknown): GlobalStartOptions => {
   const signal = extractSpecAbortSignal(input);
   const flags = specFlagsOf(input);
-  const services = stringArrayFlag(flags, "service").filter((service) => service.length > 0);
+  const services = serviceNamesFlag(flags);
   return {
     ...(services.length === 0 ? {} : { services }),
     ...(signal === undefined ? {} : { signal }),
