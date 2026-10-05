@@ -25,6 +25,7 @@ export const runBunShellScript = Effect.fnUntraced(function* (
   script: DiscoveredBunShellScript,
   appRoot: string,
   options: {
+    readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
   },
@@ -47,6 +48,7 @@ export const runBunShellScript = Effect.fnUntraced(function* (
   const env = options.env;
   const result = yield* runHostScript(script.path, [appRoot], {
     cwd,
+    ...(options.args === undefined ? {} : { argv: options.args }),
     ...(env === undefined ? {} : { env }),
   }).pipe(
     Effect.catchTag("ShellExecError", (shellError) =>
@@ -73,6 +75,7 @@ export const runBunShellScript = Effect.fnUntraced(function* (
 export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(function* (
   options: {
     readonly name: string;
+    readonly args?: ReadonlyArray<string>;
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
     readonly renderProgress?: boolean;

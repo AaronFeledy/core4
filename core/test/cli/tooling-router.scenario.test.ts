@@ -232,6 +232,36 @@ test("Given cached scripts and unparseable Landofiles, when tasks run, then both
   }
 }, 30_000);
 
+test.each([{ separator: [] }, { separator: ["--"] }])(
+  "forwards script positionals with separator $separator",
+  async ({ separator }) => {
+    // Given
+    const fixture = await makeFixture("script-args");
+    try {
+      await writeTask(fixture, "probe", ['echo "<$1>"', 'echo "<$2>"', 'echo "<$3>"']);
+      await writeFreshCache(fixture, "probe");
+      // When
+      const result = await runSource(fixture, [
+        "probe",
+        "--format=json",
+        ...separator,
+        "a",
+        "b c",
+        "$(echo injected)",
+      ]);
+      // Then
+      expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+      expect(lastEnvelope(result.stdout)).toMatchObject({
+        ok: true,
+        result: { stdout: "<a>\n<b c>\n<$(echo injected)>\n" },
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+  30_000,
+);
+
 test("Given a cached custom task, when compiled dispatch receives version, then it routes the task before global version", async () => {
   const compiled = await makeFixture("compiled-version-argv");
   try {
