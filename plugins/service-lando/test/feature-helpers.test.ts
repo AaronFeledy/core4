@@ -4,12 +4,62 @@ import { Effect, Result } from "effect";
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 
 import {
+  addEnvRecord,
+  commandHealthcheck,
   loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "../src/services/_feature-helpers.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
+
+test("environment records preserve insertion order and later overwrites when applied successively", () => {
+  // Given
+  const { ctx, calls } = recordFeatureContext({ serviceType: "example", normalizedConfig: {}, config: {} });
+  const environment = new Map<string, string>();
+  const context = {
+    ...ctx,
+    addEnv: (key: string, value: string) => {
+      ctx.addEnv(key, value);
+      environment.set(key, value);
+    },
+  };
+  addEnvRecord(context, { SECOND: "original", FIRST: "first" });
+  // When
+  addEnvRecord(context, { SECOND: "override", THIRD: "third" });
+  // Then
+  expect(calls).toEqual([
+    ["addEnv", "SECOND", "original"],
+    ["addEnv", "FIRST", "first"],
+    ["addEnv", "SECOND", "override"],
+    ["addEnv", "THIRD", "third"],
+  ]);
+  expect([...environment]).toEqual([
+    ["SECOND", "override"],
+    ["FIRST", "first"],
+    ["THIRD", "third"],
+  ]);
+});
+
+test("command healthchecks retain custom timing when defaults are overridden", () => {
+  // Given
+  const command = ["probe", "--ready"];
+  // When
+  const healthcheck = commandHealthcheck(command, 90, {
+    intervalSeconds: 15,
+    timeoutSeconds: 10,
+    retries: 0,
+  });
+  // Then
+  expect(healthcheck).toEqual({
+    kind: "command",
+    command: ["probe", "--ready"],
+    intervalSeconds: 15,
+    timeoutSeconds: 10,
+    retries: 0,
+    startPeriodSeconds: 90,
+  });
+});
 
 test.each([new Error("original message"), "non-error", undefined])(
   "apply preserves the cause and chooses the message for %p",
