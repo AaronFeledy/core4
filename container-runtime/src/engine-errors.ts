@@ -1,9 +1,10 @@
 import { Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
+import type { ServiceSelector } from "@lando/sdk/services";
 
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
-import { redactDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactString, withApiReason } from "./redact.ts";
 import { ContainerTransportError } from "./transport.ts";
 
 export const missingApi = (
@@ -15,6 +16,31 @@ export const missingApi = (
     providerId: ctx.providerId,
     operation,
     message,
+    remediation: ctx.remediation,
+  });
+
+export const missingService = (ctx: ProviderErrorContext, target: ServiceSelector, operation: string) =>
+  new ServiceNotFoundError({
+    providerId: ctx.providerId,
+    operation,
+    service: target.service,
+    message: `Service ${target.service} is not present in the app plan.`,
+  });
+
+export const missingRequest = (ctx: ProviderErrorContext, operation: string, message: string) =>
+  new ProviderInternalError({ providerId: ctx.providerId, operation, message, remediation: ctx.remediation });
+
+export const apiResponseFailure = (
+  ctx: ProviderErrorContext,
+  operation: string,
+  response: EngineHttpResponse,
+  message: string,
+) =>
+  new ProviderUnavailableError({
+    providerId: ctx.providerId,
+    operation,
+    message: redactString(withApiReason(message, { body: response.body })),
+    details: redactDetails({ status: response.status, body: response.body }),
     remediation: ctx.remediation,
   });
 

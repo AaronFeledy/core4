@@ -1,10 +1,10 @@
 import { DateTime, Effect, Predicate } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
+import { apiResponseFailure, missingRequest } from "../engine-errors.ts";
 import { encodeEngineFilters, parseJsonOrUndefined, parseNdjsonLines } from "../engine-json.ts";
-import { redactDetails, redactString, withApiReason } from "../redact.ts";
 
 export interface ContainerDiedEventsOptions {
   readonly ctx: ProviderErrorContext;
@@ -22,23 +22,6 @@ const buildContainerDiedEventsRequest = (now: Date): EngineHttpRequest => {
     path: `/libpod/events?since=${since}&until=${until}&stream=false&filters=${filters}`,
   };
 };
-
-const missingRequest = (ctx: ProviderErrorContext): ProviderInternalError =>
-  new ProviderInternalError({
-    providerId: ctx.providerId,
-    operation: "containerDiedEvents",
-    message: "The Podman API client does not support requests required for died-event collection.",
-    remediation: ctx.remediation,
-  });
-
-const eventsFailure = (ctx: ProviderErrorContext, status: number, body: string): ProviderUnavailableError =>
-  new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation: "containerDiedEvents",
-    message: redactString(withApiReason(`Podman event collection failed with HTTP ${status}.`, { body })),
-    details: redactDetails({ status, body }),
-    remediation: ctx.remediation,
-  });
 
 export const parseContainerEventPayloads = (body: string): ReadonlyArray<unknown> => {
   const trimmed = body.trim();
@@ -85,14 +68,28 @@ export const getContainerDiedEvents = Effect.fn("RuntimeProvider.containerDiedEv
 ): Effect.fn.Return<ReadonlyArray<unknown>, ProviderUnavailableError | ProviderInternalError> {
   const request = api.request;
   const ctx = options.ctx;
-  if (request === undefined) return yield* Effect.fail(missingRequest(ctx));
+  if (request === undefined)
+    return yield* Effect.fail(
+      missingRequest(
+        ctx,
+        "containerDiedEvents",
+        "The Podman API client does not support requests required for died-event collection.",
+      ),
+    );
   const now =
     options.now === undefined
       ? DateTime.toDate(yield* DateTime.now)
       : DateTime.toDate(DateTime.fromDateUnsafe(options.now()));
   const response = yield* request(buildContainerDiedEventsRequest(now));
   if (response.status < 200 || response.status >= 300) {
-    return yield* Effect.fail(eventsFailure(ctx, response.status, response.body));
+    return yield* Effect.fail(
+      apiResponseFailure(
+        ctx,
+        "containerDiedEvents",
+        response,
+        `Podman event collection failed with HTTP ${response.status}.`,
+      ),
+    );
   }
   return yield* Effect.forEach(parseContainerEventPayloads(response.body), (payload) =>
     enrichOomKilled(request, payload),
