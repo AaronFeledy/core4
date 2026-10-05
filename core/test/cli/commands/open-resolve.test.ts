@@ -61,6 +61,42 @@ const plan = (
 };
 
 describe("buildOpenTarget", () => {
+  test("falls back to running ingress ports only without an exact authority", () => {
+    const ports = { http: 8080, https: 8443 };
+    const selected = route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" });
+    const authorities = [
+      { hostname: selected.hostname, scheme: "http" as const, port: 8888 },
+      { hostname: "other.lndo.site", scheme: "https" as const, port: 4443 },
+    ];
+    expect(buildOpenTarget(selected, authorities, ports).url).toBe("https://web.myapp.lndo.site:8443");
+    expect(buildOpenTarget({ ...selected, scheme: "http" }, [], ports).url).toBe(
+      "http://web.myapp.lndo.site:8080",
+    );
+    expect(
+      buildOpenTarget(
+        selected,
+        [
+          ...authorities,
+          {
+            hostname: selected.hostname,
+            scheme: "https",
+            port: 4433,
+          },
+        ],
+        ports,
+      ).url,
+    ).toBe("https://web.myapp.lndo.site:4433");
+    expect(
+      buildOpenTarget(selected, [{ hostname: selected.hostname, scheme: "https", port: 443 }], ports).url,
+    ).toBe("https://web.myapp.lndo.site");
+    expect(buildOpenTarget(selected, authorities).url).toBe("https://web.myapp.lndo.site");
+    for (const scheme of ["http", "https"] as const) {
+      expect(buildOpenTarget({ ...selected, scheme }, [], { http: 80, https: 443 }).url).toBe(
+        `${scheme}://web.myapp.lndo.site`,
+      );
+    }
+  });
+
   test("collapses scheme both to https and builds the url", () => {
     const target = buildOpenTarget(
       route({ hostname: "web.myapp.lndo.site", scheme: "both", service: "web" }),
@@ -101,6 +137,23 @@ describe("resolveOpenTargets", () => {
     route({ hostname: "web-alt.myapp.lndo.site", scheme: "http", service: "web" }),
   ];
   const p = plan(routes, ["api", "web"]);
+
+  test("threads fallback ports through every route selection", () => {
+    const ports = { http: 8080, https: 8443 };
+    for (const selection of [
+      {},
+      { service: "web" },
+      { route: "web-alt.myapp.lndo.site" },
+      { all: true },
+      { all: true, service: "web" },
+    ]) {
+      const targets = resolveOpenTargets(p, selection, [], ports);
+      expect(targets.length).toBeGreaterThan(0);
+      for (const target of targets) {
+        expect(target.url).toBe(`${target.scheme}://${target.hostname}:${ports[target.scheme]}`);
+      }
+    }
+  });
 
   test("S1 default resolves first route of first declaring service", () => {
     const result = resolveOpenTargets(p, {});
