@@ -108,6 +108,97 @@ export const setParsedFlag = (
   flags[name] = parsed;
 };
 
+export interface ParsedFlagsAndPositionals {
+  readonly flags: Record<string, unknown>;
+  readonly positionals: ReadonlyArray<string>;
+}
+
+/**
+ * Split an already-normalized argv into recognized flags and positionals.
+ *
+ * - `--` ends flag parsing; every later token is a positional.
+ * - `--flag=value` and `--flag value` both bind `value`; a boolean flag never consumes the next token.
+ * - A recognized flag whose inline value is missing at the end of argv is dropped, not errored; the
+ *   caller validates values beforehand with `validateCommandFlagValues`.
+ * - Unrecognized `-x` tokens are kept as positionals only when `strict` is false.
+ *
+ * `storeValue` lets a caller coerce a non-boolean value differently from `setParsedFlag` (plugin-owned
+ * commands parse non-integer `number` flags as floats); boolean flags always go through `setParsedFlag`.
+ */
+export const parseFlagsAndPositionals = (
+  normalizedArgv: ReadonlyArray<string>,
+  flagDefinitions: Readonly<Record<string, OclifFlagDefinition>>,
+  options: {
+    readonly strict: boolean;
+    readonly storeValue?: (
+      flags: Record<string, unknown>,
+      name: string,
+      value: string,
+      definition: OclifFlagDefinition,
+    ) => void;
+  },
+): ParsedFlagsAndPositionals => {
+  const flagTokens = flagNameByToken(flagDefinitions);
+  const storeValue = options.storeValue ?? setParsedFlag;
+  const flags: Record<string, unknown> = {};
+  const positionals: string[] = [];
+
+  for (let index = 0; index < normalizedArgv.length; index += 1) {
+    const arg = normalizedArgv[index];
+    if (arg === undefined) continue;
+    if (arg === "--") {
+      positionals.push(...normalizedArgv.slice(index + 1));
+      break;
+    }
+
+    const equalsIndex = arg.indexOf("=");
+    const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+    const flagName = flagTokens.get(token);
+    if (flagName !== undefined) {
+      const definition = flagDefinitions[flagName] ?? {};
+      if (definition.type === "boolean") {
+        setParsedFlag(flags, flagName, true, definition);
+        continue;
+      }
+      const value = equalsIndex === -1 ? normalizedArgv[index + 1] : arg.slice(equalsIndex + 1);
+      if (value === undefined) continue;
+      storeValue(flags, flagName, value, definition);
+      if (equalsIndex === -1) index += 1;
+      continue;
+    }
+
+    if (!options.strict || !arg.startsWith("-")) positionals.push(arg);
+  }
+
+  return { flags, positionals };
+};
+
+/**
+ * Read one string-valued flag at `argv[index]` for hand-rolled adapter scanners.
+ * Accepts `--name=value`, `--name value`, `-c value`, and `-c=value`; returns how many tokens it used.
+ */
+export const parseStringFlag = (
+  argv: ReadonlyArray<string>,
+  index: number,
+  longName: string,
+  shortName?: string,
+): { readonly value: string; readonly consumed: number } | undefined => {
+  const arg = argv[index];
+  if (arg === undefined) return undefined;
+  const longEq = `--${longName}=`;
+  if (arg.startsWith(longEq)) return { value: arg.slice(longEq.length), consumed: 1 };
+  if (arg === `--${longName}` || (shortName !== undefined && arg === `-${shortName}`)) {
+    const next = argv[index + 1];
+    if (next === undefined) return undefined;
+    return { value: next, consumed: 2 };
+  }
+  if (shortName !== undefined) {
+    const shortEq = `-${shortName}=`;
+    if (arg.startsWith(shortEq)) return { value: arg.slice(shortEq.length), consumed: 1 };
+  }
+  return undefined;
+};
+
 export const hasUniversalFormatFlag = (argv: ReadonlyArray<string>): boolean => {
   for (const arg of argv) {
     if (arg === "--") return false;
