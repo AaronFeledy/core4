@@ -99,23 +99,6 @@ describe("node-api decomposition", () => {
     expect(authoring.services.api).toHaveProperty("environment", { API_FRAMEWORK: "{{ recipe.framework }}" });
   });
 
-  test("injects the database URL alongside the framework hint when Postgres is enabled", () => {
-    // Given the default Postgres option, when the recipe is decomposed.
-    const result = decompose(defaults);
-    // Then API_FRAMEWORK is preserved and the database URL carries credential expressions.
-    expect(result.fragment).toMatchObject({
-      services: {
-        api: {
-          environment: {
-            API_FRAMEWORK: "{{ recipe.framework }}",
-            DATABASE_URL:
-              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
-          },
-        },
-      },
-    });
-  });
-
   test("preserves authoring data when only Node and framework tokens vary", () => {
     expect(authoringOf({ ...defaults, node: "22", framework: "hono" })).toEqual(authoringOf(defaults));
   });

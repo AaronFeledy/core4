@@ -89,7 +89,7 @@ Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prin
 
 ActiveRecord reads `DATABASE_URL` on its own, so `config/database.yml` can stay at the generator default and `lando rake db:create db:migrate` just works. Point your Redis client at `ENV["REDIS_URL"]`. Do not paste the password into `database.yml` or a committed `.env`; the Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild.
 
-`lando info` shows the user and database name and redacts the password. Inside `web`, `lando exec web -- printenv DATABASE_URL` prints the whole thing.
+`lando info` shows the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/rails-demo`. Rails inside `web` still sees the real value.
 
 ## Tear down
 

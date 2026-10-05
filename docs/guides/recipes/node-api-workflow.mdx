@@ -177,7 +177,7 @@ const { rows } = await pool.query("SELECT 1 AS ok");
 
 Nothing in your code names the host or password. The Landofile fills `DATABASE_URL` from the database service's resolved credentials, so an authored `creds:` block and a rebuild both just work. With `--answer=database=none` there is no `database` service and no `DATABASE_URL`.
 
-`lando info` lists the user and database name and redacts the password. `lando exec api -- printenv DATABASE_URL` prints the whole thing. Ping from tooling:
+`lando info` lists the user and database name and redacts the password. `lando exec api -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/node-api-demo`. Your code inside `api` still gets the real value. Ping from tooling, no password needed:
 
 ```sh
 lando psql -c 'SELECT 1'

@@ -120,7 +120,7 @@ CELERY_BROKER_URL = os.environ["REDIS_URL"]
 
 Prefer no extra dependency? Split `os.environ["DATABASE_URL"]` with `urllib.parse.urlparse` and fill `DATABASES["default"]` from the parts. Either way, nothing in `settings.py` names host, user, or password, and the Landofile fills them from the database service's resolved credentials, so an authored `creds:` block and a rebuild both just work.
 
-`lando info` lists the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` prints the whole thing when you want to see it.
+`lando info` lists the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/django-demo`. Django inside `web` still reads the real value.
 
 Also set `ALLOWED_HOSTS` so the proxy hostname is accepted (for a local demo, `ALLOWED_HOSTS = ['*']` is fine).
 

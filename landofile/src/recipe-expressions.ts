@@ -10,20 +10,14 @@ import { Predicate, Result } from "effect";
 import type { ValidationIssuePath } from "@lando/sdk/schema";
 
 /**
- * Expression scopes the planner can resolve before any service type runs.
- *
- * `app` and `proxy` need the app identity and the proxy domain; `recipe` and
- * `env` are resolvable from the merged file and the host. None of them depend
- * on another service, so the planner materializes them in one pass over the
- * whole document before service resolution.
+ * None of these scopes depend on service resolution, so the planner can
+ * materialize them before running service types.
  */
 export const PLAN_IDENTITY_EXPRESSION_SCOPES: ReadonlyArray<string> = ["app", "proxy", "recipe", "env"];
 
 /**
- * Expression scopes the planner resolves only after every service type has
- * run: `services.<name>.creds.*` reads credentials a service type publishes
- * during resolution, so a site that touches it (alone or mixed with the
- * identity scopes) waits for that second pass.
+ * Service types publish `services.<name>.creds.*` during resolution, so any
+ * interpolation reading credentials must wait for the second planner pass.
  */
 export const PLAN_SERVICE_EXPRESSION_SCOPES: ReadonlyArray<string> = [
   ...PLAN_IDENTITY_EXPRESSION_SCOPES,
@@ -171,10 +165,8 @@ export const materializeExpressionScopes = <T extends object>(
     readonly budget?: EvaluationBudget;
     readonly unavailableScopes?: ReadonlyArray<string>;
     /**
-     * Restricts the walk to the string sites this predicate accepts. A later
-     * pass over a document an earlier pass already rewrote hands in the sites
-     * that pass deferred, so a value the earlier pass PRODUCED is never read
-     * as an expression.
+     * Later passes select previously deferred sites to avoid reinterpreting
+     * values produced by an earlier pass as expressions.
      */
     readonly eligible?: (value: string, path: ReadonlyArray<string | number>) => boolean;
   },

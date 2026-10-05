@@ -84,14 +84,28 @@ test("defers services.* at load, reports the deferred sites, and resolves them w
 });
 
 test("evaluates only the sites the eligible predicate accepts, by value and path", () => {
+  // Given
   const source = { authored: "{{ app.name }}", fromFile: "{{ app.name }}", nested: ["{{ app.slug }}"] };
+  const sites: Array<{ value: string; path: ReadonlyArray<string | number> }> = [];
+
+  // When
   const result = materializeExpressionScopes(source, "/app/.lando.yml", {
     ...input,
-    eligible: (_value, path) => path.join(".") === "authored" || path.join(".") === "nested.0",
+    eligible: (value, path) => {
+      sites.push({ value, path });
+      return path.join(".") === "authored" || path.join(".") === "nested.0";
+    },
   });
+
+  // Then
   expect(result.value).toEqual({ authored: "dcms-demo", fromFile: "{{ app.name }}", nested: ["dcms-demo"] });
   expect(result.unresolved).toEqual([]);
   expect(result.deferred).toEqual([]);
+  expect(sites).toEqual([
+    { value: "{{ app.name }}", path: ["authored"] },
+    { value: "{{ app.name }}", path: ["fromFile"] },
+    { value: "{{ app.slug }}", path: ["nested", 0] },
+  ]);
 });
 
 test("reports evaluation failures with their exact value path", () => {

@@ -2,7 +2,7 @@ import { LandofileValidationError, ServiceTypeCollisionError } from "@lando/sdk/
 import type { LandofileShape, ProviderCapabilities, ServiceConfig, ServiceCreds } from "@lando/sdk/schema";
 import { ServiceName, validationIssue } from "@lando/sdk/schema";
 import type { FileSystem, PluginRegistry, ServiceTypeInput } from "@lando/sdk/services";
-import { type Context, Effect, Result } from "effect";
+import { type Context, Effect } from "effect";
 import { isComposeBuild } from "../services/compose-build-artifact.ts";
 import { type UserAppDefaults, withUserAppDefaults } from "./app-defaults.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
@@ -11,7 +11,6 @@ import {
   type ServiceCredsScope,
   materializeServiceScopeSites,
   orderServicesByCredsReferences,
-  serviceCredsScopeEntry,
   serviceScopeContext,
 } from "./landofile-scopes.ts";
 import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
@@ -156,15 +155,16 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   // credentials published so far, before env files and user defaults merge in
   // (those values are never interpolated) and before its type runs, so the
   // type sees concrete values wherever it reads its configuration.
-  const order = orderServicesByCredsReferences({
-    landofile,
-    deferredSites: input.deferredSites,
-    landofilePath: input.landofilePath,
-  });
-  if (Result.isFailure(order)) return yield* Effect.fail(order.failure);
+  const order = yield* Effect.fromResult(
+    orderServicesByCredsReferences({
+      landofile,
+      deferredSites: input.deferredSites,
+      landofilePath: input.landofilePath,
+    }),
+  );
   const serviceCredsScope: Record<string, { readonly creds?: ServiceCreds }> = {};
   const resolvedByName = new Map<string, ResolvedServiceSeed>();
-  for (const name of order.success) {
+  for (const name of order) {
     const authoredService = landofile.services?.[ServiceName.make(name)];
     if (authoredService === undefined) continue;
     const service = yield* materializeServiceScopeSites({
@@ -180,7 +180,8 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
       }),
     });
     const seed = yield* resolveSeed(input, topLevelEnvFiles, name, service);
-    serviceCredsScope[name] = serviceCredsScopeEntry(seed.resolution.normalizedConfig.creds);
+    const creds = seed.resolution.normalizedConfig.creds;
+    serviceCredsScope[name] = creds === undefined ? {} : { creds };
     resolvedByName.set(name, seed);
   }
   // Seeds keep declaration order; only resolution ran in reference order.

@@ -106,7 +106,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   // Every service type has published its credentials now, so the sites the
   // identity pass deferred (tooling, extensions, and the services themselves)
   // resolve across the whole document before tooling is compiled.
-  if (deferredSites.size > 0) {
+  if (deferredSites.length > 0) {
     const serviceScoped = yield* materializeServiceScopeSites({
       value: landofile,
       landofilePath,

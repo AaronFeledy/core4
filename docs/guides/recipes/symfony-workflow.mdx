@@ -91,7 +91,7 @@ lando psql
 
 Doctrine reads `DATABASE_URL`, so the skeleton's `config/packages/doctrine.yaml` needs no edits and `lando console doctrine:database:create` connects first try. Symfony's Dotenv never overrides a real environment variable, so the injected value wins over whatever `.env` ships with. Leave the `DATABASE_URL` line in `.env` alone or delete it; either way `appserver` uses Lando's.
 
-Do not paste the Postgres password into `.env.local`. The Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild. `lando info` shows the user and database name and redacts the password; `lando exec appserver -- printenv DATABASE_URL` prints the whole thing.
+Do not paste the Postgres password into `.env.local`. The Landofile fills it from the database service's resolved credentials, so it follows an authored `creds:` block and survives a rebuild. `lando info` shows the user and database name and redacts the password. `lando exec appserver -- printenv DATABASE_URL` masks the user and password in what it prints, so the Postgres default shows as `postgresql://[redacted]@database:5432/symfony-demo?serverVersion=16&charset=utf8`. Symfony inside `appserver` still gets the real value.
 
 ## Destroy the app
 

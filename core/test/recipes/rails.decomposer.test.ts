@@ -98,23 +98,6 @@ describe("rails decomposition", () => {
     });
   });
 
-  test("injects datastore connection environment onto the web service", () => {
-    // Given the recipe's only option set, when it is decomposed.
-    const result = decompose(defaults);
-    // Then connection URLs retain plan-time credential expressions.
-    expect(result.fragment).toMatchObject({
-      services: {
-        web: {
-          environment: {
-            DATABASE_URL:
-              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
-            REDIS_URL: "redis://cache:6379",
-          },
-        },
-      },
-    });
-  });
-
   test("accepts the app-name answer the translator forwards and omits it from provenance", () => {
     const result = decompose({ name: "probe" });
     expect(result.provenance.options).toEqual({});

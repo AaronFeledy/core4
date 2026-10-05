@@ -93,7 +93,7 @@ services:
 
 Lando resolves `database` first and `web` after it, whatever order the Landofile lists them in, so the values are the ones the database actually uses, including an authored `creds:` block on `database`. That ordering is what lets a service's own `creds:` read another service: a replica can set `password: "{{ services.primary.creds.password }}"`. Mixed sites like `"{{ app.name }}:{{ services.database.creds.user }}"` are fine.
 
-Only services whose type publishes credentials have `creds`: `postgres`, `mariadb`, `mysql`, `mongodb`, and `redis` when it sets a `password:`. Reading `creds` from a service with none, or from a service name that is not in the Landofile, fails the plan with `ConfigExpressionError` and `Expression resolved to a missing value.` Lint names the site, for example `["services", "web", "environment", "DATABASE_URL"]`:
+Only services whose type publishes credentials have `creds`: `postgres`, `mariadb`, `mysql`, `mongodb`, `mssql`, and `redis` when it sets a `password:`. On `mssql`, `creds.rootPassword` is the `sa` password, generated per app and service unless you author one. Reading `creds` from a service with none, or from a service name that is not in the Landofile, fails the plan with `ConfigExpressionError` and `Expression resolved to a missing value.` Lint names the site, for example `["services", "web", "environment", "DATABASE_URL"]`:
 
 ```sh
 lando app:config:lint --format=json

@@ -160,15 +160,26 @@ When you pick `database=postgres`, the app network hostname is `database`:
 | Port | `5432` |
 | Database | app name (here `sveltekit-pg`) |
 | User | `lando` |
-| Password | generated when omitted; read it from `lando info` |
+| Password | generated when omitted; read it with `{{ services.database.creds.password }}` |
 
-Ping from the database service:
+The recipe doesn't set a connection URL on `web`. Add one under `web.environment` and Lando fills the credentials from `database`:
+
+```yaml
+services:
+  web:
+    environment:
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+```
+
+Then `lando rebuild`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+
+Ping from the database service, no password needed:
 
 ```sh
 lando exec database -- psql -U lando -d sveltekit-pg -c 'SELECT version();'
 ```
 
-Swap `sveltekit-pg` for your app name. Point your SvelteKit data layer at host `database`. Do not hardcode the password in committed app code.
+Swap `sveltekit-pg` for your app name.
 
 ## Destroy without surprises
 

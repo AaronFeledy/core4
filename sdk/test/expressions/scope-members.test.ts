@@ -45,3 +45,41 @@ test("reports a computed or bare member as unanalyzable", () => {
     analyzable: true,
   });
 });
+
+test.each([
+  ["{{ (services)['database'].creds.user }}", ["database"], true],
+  ["{{ { user: services.database.creds.user } }}", ["database"], true],
+  ["{{ app[services.database.creds.user] }}", ["database"], true],
+  ["{{ (app)[services.database.creds.user] }}", ["database"], true],
+  ["{{ services[services.selector.name] }}", ["selector"], false],
+  ["{{ services[0] }}", [], false],
+  ["{{ services.database[app.name] }}", ["database"], true],
+  ["{{ services.database }} {{ services }}", ["database"], false],
+  ["${VAR} ${secret:token} {{ services.database }}", ["database"], true],
+  ["${VAR} ${secret:token}", [], true],
+  ["{{ map(services.database, app.helper) }}", ["database"], true],
+] as const)("analyzes member reads in %s", (source, members, analyzable) => {
+  // Given
+  const ast = parse(source);
+
+  // When
+  const result = expressionScopeMembers(ast, "services");
+
+  // Then
+  expect(result).toEqual({ members: new Set(members), analyzable });
+});
+
+test("accepts an expression node without a template", () => {
+  // Given
+  const ast = {
+    kind: "Access",
+    target: { kind: "Path", head: "services", segments: [] },
+    segments: [{ type: "key", key: "database" }],
+  } as const;
+
+  // When
+  const result = expressionScopeMembers(ast, "services");
+
+  // Then
+  expect(result).toEqual({ members: new Set(["database"]), analyzable: true });
+});
