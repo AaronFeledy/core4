@@ -141,7 +141,15 @@ describe("Landofile events", () => {
         "post-prepare",
         "pre-prepare",
       ]);
-      expect(output).not.toContain('pre-serve"');
+      expect(JSON.parse(stdout)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "LandofileUnknownEventError",
+          event: "pre-serve",
+          validEvents: [...validNames, "post-prepare", "pre-prepare"],
+          file: join(dir, ".lando.yml"),
+        },
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
