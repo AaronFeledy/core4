@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { readdir, stat, symlink } from "node:fs/promises";
 import { join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { Effect } from "effect";
-import { digestOf } from "../src/transaction-fs.ts";
 import { fixture, scoped } from "./transaction-fixture.ts";
 
 test("rejects stale readonly sources before producing artifacts", async () => {
@@ -11,7 +11,9 @@ test("rejects stale readonly sources before producing artifacts", async () => {
   await Bun.write(join(appRoot, "source"), "changed");
   const request = {
     appRoot,
-    readConditions: [{ path: "source", expectedBefore: { present: true as const, digest: digestOf("old") } }],
+    readConditions: [
+      { path: "source", expectedBefore: { present: true as const, digest: sha256Hex("old") } },
+    ],
     operations: [{ kind: "write" as const, path: "target", content: "translated" }],
   };
   // When
@@ -34,7 +36,7 @@ test("does not rewrite or back up readonly sources", async () => {
   const receipt = await scoped(
     transactions.run({
       appRoot,
-      readConditions: [{ path: "source", expectedBefore: { present: true, digest: digestOf("original") } }],
+      readConditions: [{ path: "source", expectedBefore: { present: true, digest: sha256Hex("original") } }],
       operations: [{ kind: "write", path: "target", content: "translated" }],
     }),
   );
@@ -73,7 +75,9 @@ test("rejects symlinked readonly sources", async () => {
     Effect.result(
       transactions.run({
         appRoot,
-        readConditions: [{ path: "source", expectedBefore: { present: true, digest: digestOf("original") } }],
+        readConditions: [
+          { path: "source", expectedBefore: { present: true, digest: sha256Hex("original") } },
+        ],
         operations: [{ kind: "write", path: "target", content: "translated" }],
       }),
     ),

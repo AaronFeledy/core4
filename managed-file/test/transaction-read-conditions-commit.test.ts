@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { Effect } from "effect";
-import { digestOf } from "../src/transaction-fs.ts";
 import { fixture, scoped } from "./transaction-fixture.ts";
 
 test.each(["prepared", "committing"] as const)(
@@ -28,7 +28,7 @@ test.each(["prepared", "committing"] as const)(
         transactions.run({
           appRoot,
           readConditions: [
-            { path: "source", expectedBefore: { present: true, digest: digestOf("original") } },
+            { path: "source", expectedBefore: { present: true, digest: sha256Hex("original") } },
           ],
           operations: [
             { kind: "write", path: "target", content: "after" },
@@ -65,7 +65,9 @@ test("rejects a readonly source removed between explicit prepare and commit", as
     Effect.gen(function* () {
       const prepared = yield* transactions.prepare({
         appRoot,
-        readConditions: [{ path: "source", expectedBefore: { present: true, digest: digestOf("original") } }],
+        readConditions: [
+          { path: "source", expectedBefore: { present: true, digest: sha256Hex("original") } },
+        ],
         operations: [{ kind: "write", path: "target", content: "translated" }],
       });
       yield* Effect.promise(() => unlink(source));

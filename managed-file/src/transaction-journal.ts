@@ -1,12 +1,13 @@
 import { basename, dirname } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { syncDirectory } from "@lando/state-store/atomic";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
 import { transactionError, transactionIO } from "./transaction-error.ts";
-import { digestOf, ensureDirectory, statMaybe } from "./transaction-fs.ts";
+import { ensureDirectory, statMaybe } from "./transaction-fs.ts";
 
 const Digest = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u)));
 const Mode = Schema.Number.pipe(
@@ -59,7 +60,7 @@ const blockable = new Set<Journal["state"]>(["prepared", "committing"]);
 export const journalDirectory = (root: string, userDataRoot: string): string =>
   dirname(
     makeLandoPaths({ userDataRoot }).managedFileLedger(
-      `${basename(root).replace(/[^A-Za-z0-9._-]/gu, "-")}-${digestOf(root)}`,
+      `${basename(root).replace(/[^A-Za-z0-9._-]/gu, "-")}-${sha256Hex(root)}`,
     ),
   );
 
