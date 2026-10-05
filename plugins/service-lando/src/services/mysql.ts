@@ -13,13 +13,13 @@ import {
 } from "@lando/sdk/schema";
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { addServerConfigMount } from "./_volume-helpers.ts";
 
 export const MYSQL_VERSIONS = ["8.0", "8.4", "9.7"] as const;
 export const MYSQL_ARTIFACTS = {
@@ -84,12 +84,6 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
   });
 };
 
-const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
-  for (const [key, value] of Object.entries(env)) {
-    ctx.addEnv(key, value);
-  }
-};
-
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
@@ -104,26 +98,16 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 60,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(
+      ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      60,
+    ),
+  );
 
   applyAuthoredProcessFields(ctx);
 
-  const server = service.config?.server;
-  if (server !== undefined && server.length > 0) {
-    ctx.addMount({
-      type: "bind",
-      source: resolveBindSource(server, ctx.appRoot),
-      target: MYSQL_CONFIG_TARGET,
-      readOnly: true,
-    });
-  }
+  addServerConfigMount(ctx, MYSQL_CONFIG_TARGET);
 };
 
 export const mysqlServiceFeature: ServiceFeatureDefinition = {

@@ -10,13 +10,13 @@ import {
   type ServiceCreds,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { addServerConfigMount } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mariadb:11.4";
 const VERSIONS = ["11.4"] as const;
@@ -90,38 +90,26 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const creds = mariadbCreds(ctx, ctx.serviceName, service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  for (const [key, value] of Object.entries({
+  addEnvRecord(ctx, {
     ...familyEnvFor("mariadb", creds),
     ...landoDbEnvFor(creds),
-  })) {
-    ctx.addEnv(key, value);
-  }
+  });
   ctx.addStorage({
     store: `${appName}-mariadb-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["sh", "-c", 'mariadb-admin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 60,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(
+      ["sh", "-c", 'mariadb-admin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      60,
+    ),
+  );
 
   applyAuthoredProcessFields(ctx);
 
-  const server = service.config?.server;
-  if (server !== undefined && server.length > 0) {
-    ctx.addMount({
-      type: "bind",
-      source: resolveBindSource(server, ctx.appRoot),
-      target: MARIADB_CONFIG_TARGET,
-      readOnly: true,
-    });
-  }
+  addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
 };
 
 export const mariadbServiceFeature: ServiceFeatureDefinition = {
