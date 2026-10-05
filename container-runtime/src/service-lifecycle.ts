@@ -13,7 +13,7 @@ import type {
 } from "@lando/sdk/services";
 
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
-import { missingApi } from "./engine-errors.ts";
+import { missingApi, missingService } from "./engine-errors.ts";
 import { withApiReason } from "./redact.ts";
 
 export type ServiceLifecycleAction = "start" | "stop" | "restart";
@@ -28,6 +28,47 @@ export type ExactServiceLifecycleAction = "start" | "stop";
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
   serviceContainerName(plan, service.name);
 
+const lifecycleRequest = (
+  response: ReturnType<NonNullable<EngineHttpApi["request"]>>,
+  ctx: ProviderErrorContext,
+  input: {
+    readonly operation: string;
+    readonly requestAction: string;
+    readonly failureAction: string;
+    readonly details: {
+      readonly service: ServiceSelector["service"];
+      readonly containerId?: string;
+    };
+    readonly accepted: ReadonlyArray<number>;
+    readonly missing: Effect.Effect<boolean, ServiceNotFoundError>;
+  },
+): Effect.Effect<boolean, ProviderError> =>
+  response.pipe(
+    Effect.mapError(
+      (cause) =>
+        new ProviderUnavailableError({
+          providerId: ctx.providerId,
+          operation: input.operation,
+          message: `provider-${ctx.providerId} ${input.requestAction} request failed.`,
+          remediation: ctx.remediation,
+          cause,
+        }),
+    ),
+    Effect.flatMap((response): Effect.Effect<boolean, ProviderError> => {
+      if (response.status === 404) return input.missing;
+      if (input.accepted.includes(response.status)) return Effect.succeed(true);
+      return Effect.fail(
+        new ProviderUnavailableError({
+          providerId: ctx.providerId,
+          operation: input.operation,
+          message: withApiReason(`${input.failureAction} failed with HTTP ${response.status}.`, response),
+          details: { ...input.details, body: response.body },
+          remediation: ctx.remediation,
+        }),
+      );
+    }),
+  );
+
 export const postServiceLifecycle = (
   plan: AppPlan,
   target: ServiceSelector,
@@ -36,14 +77,7 @@ export const postServiceLifecycle = (
 ): Effect.Effect<void, ProviderError> => {
   const service = plan.services[target.service];
   if (service === undefined) {
-    return Effect.fail(
-      new ServiceNotFoundError({
-        providerId: options.ctx.providerId,
-        operation: action,
-        service: target.service,
-        message: `Service ${target.service} is not present in the app plan.`,
-      }),
-    );
+    return Effect.fail(missingService(options.ctx, target, action));
   }
   const request = options.api?.request;
   if (request === undefined) {
@@ -56,43 +90,28 @@ export const postServiceLifecycle = (
     );
   }
 
-  return request({
-    method: "POST",
-    path: `/containers/${encodeURIComponent(containerName(plan, service))}/${action}`,
-  }).pipe(
-    Effect.mapError(
-      (cause): ProviderUnavailableError =>
-        new ProviderUnavailableError({
-          providerId: options.ctx.providerId,
-          operation: action,
-          message: `provider-${options.ctx.providerId} ${action} request failed.`,
-          remediation: options.ctx.remediation,
-          cause,
-        }),
-    ),
-    Effect.flatMap((response): Effect.Effect<void, ProviderError> => {
-      if (response.status === 204 || response.status === 304) return Effect.void;
-      if (response.status === 404) {
-        return Effect.fail(
-          new ServiceNotFoundError({
-            providerId: options.ctx.providerId,
-            operation: action,
-            service: target.service,
-            message: `Service ${target.service} was not found.`,
-          }),
-        );
-      }
-      return Effect.fail(
-        new ProviderUnavailableError({
-          providerId: options.ctx.providerId,
-          operation: action,
-          message: withApiReason(`Container ${action} failed with HTTP ${response.status}.`, response),
-          details: { service: service.name, body: response.body },
-          remediation: options.ctx.remediation,
-        }),
-      );
+  return lifecycleRequest(
+    request({
+      method: "POST",
+      path: `/containers/${encodeURIComponent(containerName(plan, service))}/${action}`,
     }),
-  );
+    options.ctx,
+    {
+      operation: action,
+      requestAction: action,
+      failureAction: `Container ${action}`,
+      details: { service: service.name },
+      accepted: [204, 304],
+      missing: Effect.fail(
+        new ServiceNotFoundError({
+          providerId: options.ctx.providerId,
+          operation: action,
+          service: target.service,
+          message: `Service ${target.service} was not found.`,
+        }),
+      ),
+    },
+  ).pipe(Effect.asVoid);
 };
 
 export const postExactServiceLifecycle = (
@@ -111,43 +130,25 @@ export const postExactServiceLifecycle = (
       ),
     );
   }
-  return request({
-    method: "POST",
-    path: `/containers/${encodeURIComponent(identity.containerId)}/${action}`,
-  }).pipe(
-    Effect.mapError(
-      (cause): ProviderUnavailableError =>
-        new ProviderUnavailableError({
+  return lifecycleRequest(
+    request({ method: "POST", path: `/containers/${encodeURIComponent(identity.containerId)}/${action}` }),
+    options.ctx,
+    {
+      operation: action,
+      requestAction: `exact ${action}`,
+      failureAction: `Exact container ${action}`,
+      details: { service: target.service, containerId: identity.containerId },
+      accepted: [204, 304],
+      missing: Effect.fail(
+        new ServiceNotFoundError({
           providerId: options.ctx.providerId,
           operation: action,
-          message: `provider-${options.ctx.providerId} exact ${action} request failed.`,
-          remediation: options.ctx.remediation,
-          cause,
+          service: target.service,
+          message: `The inspected runtime for ${target.service} was not found.`,
         }),
-    ),
-    Effect.flatMap((response): Effect.Effect<void, ProviderError> => {
-      if (response.status === 204 || response.status === 304) return Effect.void;
-      if (response.status === 404) {
-        return Effect.fail(
-          new ServiceNotFoundError({
-            providerId: options.ctx.providerId,
-            operation: action,
-            service: target.service,
-            message: `The inspected runtime for ${target.service} was not found.`,
-          }),
-        );
-      }
-      return Effect.fail(
-        new ProviderUnavailableError({
-          providerId: options.ctx.providerId,
-          operation: action,
-          message: withApiReason(`Exact container ${action} failed with HTTP ${response.status}.`, response),
-          details: { service: target.service, containerId: identity.containerId, body: response.body },
-          remediation: options.ctx.remediation,
-        }),
-      );
-    }),
-  );
+      ),
+    },
+  ).pipe(Effect.asVoid);
 };
 
 /**
@@ -190,34 +191,14 @@ export const removeObservedContainer = (
     accepted: ReadonlyArray<number>,
     stage: string,
   ): Effect.Effect<boolean, ProviderError> =>
-    request({ method, path }).pipe(
-      Effect.mapError(
-        (cause): ProviderUnavailableError =>
-          new ProviderUnavailableError({
-            providerId: options.ctx.providerId,
-            operation,
-            message: `provider-${options.ctx.providerId} observed container ${stage} request failed.`,
-            remediation: options.ctx.remediation,
-            cause,
-          }),
-      ),
-      Effect.flatMap((response): Effect.Effect<boolean, ProviderError> => {
-        if (response.status === 404) return Effect.succeed(false);
-        if (accepted.includes(response.status)) return Effect.succeed(true);
-        return Effect.fail(
-          new ProviderUnavailableError({
-            providerId: options.ctx.providerId,
-            operation,
-            message: withApiReason(
-              `Observed container ${stage} failed with HTTP ${response.status}.`,
-              response,
-            ),
-            details: { service: observed.service, containerId, body: response.body },
-            remediation: options.ctx.remediation,
-          }),
-        );
-      }),
-    );
+    lifecycleRequest(request({ method, path }), options.ctx, {
+      operation,
+      requestAction: `observed container ${stage}`,
+      failureAction: `Observed container ${stage}`,
+      details: { service: observed.service, containerId },
+      accepted,
+      missing: Effect.succeed(false),
+    });
 
   // A stop that 404s means the container is already gone, so there is nothing left to remove.
   const id = encodeURIComponent(containerId);
