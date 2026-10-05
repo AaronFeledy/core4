@@ -16,7 +16,7 @@ import type {
   ServiceFeatureDefinition,
   ServiceType,
 } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -119,14 +119,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["sh", "-c", `nc -z 127.0.0.1 ${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 10,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
   if (backend.length > 0) {
     ctx.addDependency({

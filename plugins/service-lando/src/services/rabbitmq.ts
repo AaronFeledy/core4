@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -45,14 +45,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: "management",
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["rabbitmq-diagnostics", "-q", "ping"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["rabbitmq-diagnostics", "-q", "ping"], 30));
 
   applyAuthoredProcessFields(ctx);
 };

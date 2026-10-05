@@ -7,7 +7,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -45,14 +45,12 @@ const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`],
-    intervalSeconds: 15,
-    timeoutSeconds: 10,
-    retries: 5,
-    startPeriodSeconds: 90,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`], 90, {
+      intervalSeconds: 15,
+      timeoutSeconds: 10,
+    }),
+  );
 
   applyAuthoredProcessFields(ctx);
 };

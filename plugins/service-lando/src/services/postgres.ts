@@ -4,13 +4,13 @@ import { Effect, Schema } from "effect";
 
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { addServerConfigMount } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "postgres:16";
 const VERSIONS = ["16"] as const;
@@ -52,10 +52,6 @@ const credsFor = (input: {
   });
 };
 
-const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
-  for (const [name, value] of Object.entries(env)) ctx.addEnv(name, value);
-};
-
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
@@ -70,23 +66,9 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["pg_isready", "-U", creds.user, "-d", creds.database],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["pg_isready", "-U", creds.user, "-d", creds.database], 30));
 
-  const server = service.config?.server;
-  if (server !== undefined && server.length > 0) {
-    ctx.addMount({
-      type: "bind",
-      source: resolveBindSource(server, ctx.appRoot),
-      target: POSTGRES_CONFIG_TARGET,
-      readOnly: true,
-    });
+  if (addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
       ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`]);
     }

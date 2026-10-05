@@ -4,6 +4,7 @@ import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import {
+  addEnvRecord,
   loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
@@ -77,7 +78,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     ctx.setArtifact({ kind: "ref", ref: service.image ?? spec.artifactFor(version) });
     const env = { ...spec.baseEnv };
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
-    for (const [key, value] of Object.entries(env)) ctx.addEnv(key, value);
+    addEnvRecord(ctx, env);
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
     applyAuthoredProcessFields(ctx, ["user"]);

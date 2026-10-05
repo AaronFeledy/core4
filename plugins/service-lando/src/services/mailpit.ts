@@ -4,7 +4,7 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
@@ -31,14 +31,7 @@ const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: "ui",
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["/mailpit", "readyz"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 15,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["/mailpit", "readyz"], 15));
 
   applyAuthoredProcessFields(ctx);
 };

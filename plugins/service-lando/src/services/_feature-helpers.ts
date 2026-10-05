@@ -40,14 +40,25 @@ export const serviceTypeResolve = <A>(
       }),
   });
 
-export const loopbackTcpHealthcheck = (port: number, startPeriodSeconds: number): HealthcheckPlan => ({
+export const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
+  for (const [key, value] of Object.entries(env)) ctx.addEnv(key, value);
+};
+
+export const commandHealthcheck = (
+  command: NonNullable<HealthcheckPlan["command"]>,
+  startPeriodSeconds: number,
+  timing: Partial<Pick<HealthcheckPlan, "intervalSeconds" | "timeoutSeconds" | "retries">> = {},
+): HealthcheckPlan => ({
   kind: "command",
-  command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-  intervalSeconds: 10,
-  timeoutSeconds: 5,
-  retries: 5,
+  command,
+  intervalSeconds: timing.intervalSeconds ?? 10,
+  timeoutSeconds: timing.timeoutSeconds ?? 5,
+  retries: timing.retries ?? 5,
   startPeriodSeconds,
 });
+
+export const loopbackTcpHealthcheck = (port: number, startPeriodSeconds: number): HealthcheckPlan =>
+  commandHealthcheck(["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`], startPeriodSeconds);
 
 export const rootIdentity = (extraHomes: ServiceImageIdentity["homes"] = {}): ServiceImageIdentity => ({
   defaultUser: "root",

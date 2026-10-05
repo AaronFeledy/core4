@@ -2,13 +2,18 @@ import { Effect, Schema } from "effect";
 
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  addEnvRecord,
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { addServerConfigMount } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
@@ -52,12 +57,10 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const creds = credsFor(ctx, service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  for (const [key, value] of Object.entries({
+  addEnvRecord(ctx, {
     ...familyEnvFor(FAMILY, creds),
     ...landoDbEnvFor(creds),
-  })) {
-    ctx.addEnv(key, value);
-  }
+  });
   ctx.addStorage({
     store: `${appName}-mongodb-data`,
     target: DATA_TARGET,
@@ -65,14 +68,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   });
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
-  const server = service.config?.server;
-  if (server !== undefined && server.length > 0) {
-    ctx.addMount({
-      type: "bind",
-      source: resolveBindSource(server, ctx.appRoot),
-      target: MONGODB_CONFIG_TARGET,
-      readOnly: true,
-    });
+  if (addServerConfigMount(ctx, MONGODB_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
       ctx.setCommand(["mongod", "--config", MONGODB_CONFIG_TARGET]);
     }
