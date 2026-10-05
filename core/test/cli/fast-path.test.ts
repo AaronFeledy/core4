@@ -34,7 +34,8 @@ interface RunResult {
 const runCommand = async (cmd: ReadonlyArray<string>, env: NodeJS.ProcessEnv = {}): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
-    cwd: repoRoot,
+    // Outside any app: app commandAliases disable the version/help/shellenv fast paths.
+    cwd: tmpdir(),
     env: {
       ...process.env,
       ...env,
