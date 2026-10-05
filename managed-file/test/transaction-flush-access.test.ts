@@ -2,7 +2,8 @@ import { expect, spyOn, test } from "bun:test";
 import { constants } from "node:fs";
 import * as fs from "node:fs/promises";
 import { join } from "node:path";
-import { createStage, digestOf, finishAppliedMode, mutateEntry, snapshot } from "../src/transaction-fs.ts";
+import { sha256Hex } from "@lando/sdk/digest";
+import { createStage, finishAppliedMode, mutateEntry, snapshot } from "../src/transaction-fs.ts";
 import type { Stage } from "../src/transaction-journal.ts";
 import { fixture, ownerOnlyFileAccess } from "./transaction-fixture.ts";
 
@@ -30,7 +31,7 @@ for (const operation of ["publish", "finish-mode"] as const) {
     const entry = {
       path: ".lando.yml",
       before: { ...before.state, backup },
-      after: { present: true as const, digest: digestOf(bytes), mode: before.state.mode },
+      after: { present: true as const, digest: sha256Hex(bytes), mode: before.state.mode },
       stage,
     };
     if (operation === "finish-mode") await fs.rename(stage.path, target);

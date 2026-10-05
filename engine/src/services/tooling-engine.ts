@@ -93,15 +93,17 @@ const execSpec = (input: {
   readonly hostTerminal: ToolingInvocation["hostTerminal"];
   readonly serviceEnv: ServicePlan["environment"];
 }): CommandSpec => {
-  // Podman rejects POST /exec/{id}/resize until the session has started, so
-  // tooling never sends terminalSize. A PTY still needs stdin attached or PHP
-  // will not see a TTY and Composer will print progress on new lines.
+  // Tooling attaches idle stdin for TTY detection, not interactive input.
+  // Default to a non-interactive pager without overriding service or task env.
   const merged = withTerminalEnv({
     tty: input.tty,
     hostEnv: process.env,
     ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
     serviceEnv: input.serviceEnv,
-    ...(input.env === undefined ? {} : { env: input.env }),
+    env: {
+      ...(input.tty && input.serviceEnv.PAGER === undefined ? { PAGER: "cat" } : {}),
+      ...input.env,
+    },
   });
   const env =
     merged === undefined
@@ -114,6 +116,9 @@ const execSpec = (input: {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(env === undefined || Object.keys(env).length === 0 ? {} : { env }),
     ...(input.tty ? { tty: true, stdin: "inherit", stdinStream: idleStdin() } : {}),
+    ...(input.tty && input.hostTerminal?.columns !== undefined && input.hostTerminal.rows !== undefined
+      ? { terminalSize: { columns: input.hostTerminal.columns, rows: input.hostTerminal.rows } }
+      : {}),
   };
 };
 

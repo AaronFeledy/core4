@@ -1,7 +1,7 @@
 import { DateTime, Effect, Option } from "effect";
 import { serviceContainerName } from "../plan.ts";
 
-import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, EndpointPlan, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
@@ -11,7 +11,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi, parseEngineJson } from "../engine-errors.ts";
+import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { withApiReason } from "../redact.ts";
 
 interface ContainerInspect {
@@ -81,23 +81,12 @@ export interface InspectOptions {
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
-const apiRequired = (ctx: ProviderErrorContext, operation: string): ProviderUnavailableError =>
-  missingApi(ctx, operation, `provider-${ctx.providerId} ${operation} requires an engine API client.`);
-
-const missingService = (ctx: ProviderErrorContext, target: ServiceSelector, operation: string) =>
-  new ServiceNotFoundError({
-    providerId: ctx.providerId,
-    operation,
-    service: target.service,
-    message: `Service ${target.service} is not present in the app plan.`,
-  });
-
 const request = (
   deps: { readonly api: EngineHttpApi; readonly ctx: ProviderErrorContext },
   input: EngineHttpRequest,
   operation: string,
 ): Effect.Effect<EngineHttpResponse, ProviderError> =>
-  deps.api.request === undefined ? Effect.fail(apiRequired(deps.ctx, operation)) : deps.api.request(input);
+  deps.api.request === undefined ? Effect.fail(missingApi(deps.ctx, operation)) : deps.api.request(input);
 
 const statusFromInspect = (inspect: ContainerInspect): string => {
   if (inspect.State?.Running === true || inspect.State?.Status === "running") {
@@ -138,7 +127,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     return yield* Effect.fail(missingService(ctx, target, "inspect"));
   }
   if (options.api === undefined) {
-    return yield* Effect.fail(apiRequired(ctx, "inspect"));
+    return yield* Effect.fail(missingApi(ctx, "inspect"));
   }
 
   const deps = { api: options.api, ctx };

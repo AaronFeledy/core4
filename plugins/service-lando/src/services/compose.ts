@@ -1,6 +1,6 @@
 import { Effect, Predicate, Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 
@@ -10,6 +10,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import {
   type ClassifiedComposeVolume,
   classifyComposeVolume,
+  mountAppRoot,
   occupiedTargets,
   parseServiceMount,
 } from "./_volume-helpers.ts";
@@ -38,19 +39,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   const optedOutOfAppMount =
     service.appMount === false || authoredMounts.some((mount) => mount.target === APP_MOUNT_TARGET);
   if (!optedOutOfAppMount) {
-    ctx.setAppMount({
-      source: AbsolutePath.make(ctx.appRoot),
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-      excludes: [],
-      includes: [],
-    });
-    ctx.addMount({
-      type: "bind",
-      source: ctx.appRoot,
-      target: APP_MOUNT_TARGET,
-      readOnly: false,
-    });
+    mountAppRoot(ctx);
   }
 
   for (const mount of authoredMounts) {

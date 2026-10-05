@@ -178,6 +178,9 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     ...(tty
       ? {
           tty: true,
+          ...(options.hostTerminal?.columns !== undefined && options.hostTerminal.rows !== undefined
+            ? { terminalSize: { columns: options.hostTerminal.columns, rows: options.hostTerminal.rows } }
+            : {}),
           ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
         }
       : {}),

@@ -6,16 +6,15 @@ import { renderRebuildAppResult } from "../../commands/rebuild";
 import { requireConfirmation } from "../../require-confirmation";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecFlags } from "../../spec/command-boundary";
-import { specFlagsOf, stringArrayFlag } from "../../spec/input-coercion";
+import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
 
-import { ServiceName, StreamFrame } from "@lando/sdk/schema";
+import { StreamFrame } from "@lando/sdk/schema";
 import { Flags } from "../../spec/metadata";
 
 export const rebuildOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof rebuildApp>[0]> => {
   const signal = extractSpecAbortSignal(input);
   const flags = specFlagsOf(input);
-  const values = stringArrayFlag(flags, "service");
-  const services = values.filter((value) => value.length > 0).map((value) => ServiceName.make(value));
+  const services = serviceNamesFlag(flags);
   return {
     ...(services.length === 0 ? {} : { services }),
     ...(signal === undefined ? {} : { signal }),

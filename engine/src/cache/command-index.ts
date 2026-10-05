@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import type { NormalizedToolingArg, NormalizedToolingFlag } from "@lando/landofile/tooling-normalize";
@@ -77,8 +77,7 @@ export interface PluginCommandIndexPayload {
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
 
-const stableFingerprint = (value: unknown): string =>
-  createHash("sha256").update(canonicalCacheJson(value)).digest("hex");
+const stableFingerprint = (value: unknown): string => sha256Hex(canonicalCacheJson(value));
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,

@@ -19,6 +19,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
+import { missingApi } from "../engine-errors.ts";
 import { parseJsonOrUndefined } from "../engine-json.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
@@ -63,19 +64,13 @@ const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerN
 
 const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
 
-const missingApi = (ctx: ProviderErrorContext) =>
-  new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation: "bringDown",
-    message: `provider-${ctx.providerId} bringDown requires an engine API client.`,
-    remediation: ctx.remediation,
-  });
-
 const request = (
   deps: BringDownDeps,
   input: EngineHttpRequest,
 ): Effect.Effect<EngineHttpResponse, BringDownError> =>
-  deps.api.request === undefined ? Effect.fail(missingApi(deps.options.ctx)) : deps.api.request(input);
+  deps.api.request === undefined
+    ? Effect.fail(missingApi(deps.options.ctx, "bringDown"))
+    : deps.api.request(input);
 
 const podmanFailure = (deps: BringDownDeps, operation: string, message: string, details?: unknown) =>
   new ProviderUnavailableError({
@@ -287,10 +282,10 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
 ): Effect.fn.Return<StopResult, BringDownError> {
   const api = options.api;
   if (api === undefined) {
-    return yield* Effect.fail(missingApi(options.ctx));
+    return yield* Effect.fail(missingApi(options.ctx, "bringDown"));
   }
   if (api.request === undefined) {
-    return yield* Effect.fail(missingApi(options.ctx));
+    return yield* Effect.fail(missingApi(options.ctx, "bringDown"));
   }
   const deps: BringDownDeps = {
     api,

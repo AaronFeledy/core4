@@ -5,7 +5,7 @@ import {
   ProviderInternalError,
   ProviderUnavailableError,
   ServiceExecError,
-  ServiceNotFoundError,
+  type ServiceNotFoundError,
 } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -17,7 +17,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi, parseEngineJson } from "../engine-errors.ts";
+import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 
 const textDecoder = new TextDecoder();
@@ -46,17 +46,6 @@ interface ExecSession {
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
-
-const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
-  missingApi(ctx, "exec", `provider-${ctx.providerId} exec requires an engine API client.`);
-
-const missingService = (ctx: ProviderErrorContext, target: ExecTarget) =>
-  new ServiceNotFoundError({
-    providerId: ctx.providerId,
-    operation: "exec",
-    service: target.service,
-    message: `Service ${target.service} is not present in the app plan.`,
-  });
 
 const execFailure = (
   session: ExecSession,
@@ -110,10 +99,12 @@ const request = (
   session: ExecSession,
   input: EngineHttpRequest,
 ): Effect.Effect<EngineHttpResponse, ExecError> =>
-  session.api.request === undefined ? Effect.fail(apiRequired(session.ctx)) : session.api.request(input);
+  session.api.request === undefined
+    ? Effect.fail(missingApi(session.ctx, "exec"))
+    : session.api.request(input);
 
 const stream = (session: ExecSession, input: EngineHttpRequest): Stream.Stream<Uint8Array, ExecError> =>
-  session.api.stream === undefined ? Stream.fail(apiRequired(session.ctx)) : session.api.stream(input);
+  session.api.stream === undefined ? Stream.fail(missingApi(session.ctx, "exec")) : session.api.stream(input);
 
 const createExec = Effect.fnUntraced(function* (
   session: ExecSession,
@@ -329,10 +320,10 @@ export const execStream = (
     const ctx = options.ctx;
     const service = plan.services[target.service];
     if (service === undefined) {
-      return Stream.fail(missingService(ctx, target));
+      return Stream.fail(missingService(ctx, target, "exec"));
     }
     if (options.api === undefined) {
-      return Stream.fail(apiRequired(ctx));
+      return Stream.fail(missingApi(ctx, "exec"));
     }
 
     const session: ExecSession = {
@@ -359,7 +350,18 @@ export const execStream = (
               ? completionAbort.signal
               : AbortSignal.any([command.signal, completionAbort.signal]),
           ...(command.stdinStream === undefined ? {} : { stdin: command.stdinStream }),
-          body: { Detach: false, Tty: command.tty === true },
+          body: {
+            Detach: false,
+            Tty: command.tty === true,
+            // Size the PTY before the command runs: Podman reads h/w, Docker reads ConsoleSize.
+            ...(command.tty === true && command.terminalSize !== undefined
+              ? {
+                  h: command.terminalSize.rows,
+                  w: command.terminalSize.columns,
+                  ConsoleSize: [command.terminalSize.rows, command.terminalSize.columns],
+                }
+              : {}),
+          },
           onResponseHead: signalResponseStarted,
         }).pipe(
           Stream.mapError((error) => execStartFailure(session, target, error)),
@@ -376,15 +378,17 @@ export const execStream = (
           Effect.gen(function* () {
             const completedExitCode = yield* Ref.make<number | undefined>(undefined);
             const lastOutputAt = yield* Clock.currentTimeMillis.pipe(Effect.flatMap((now) => Ref.make(now)));
-            if (command.terminalSize !== undefined) {
-              // Podman requires the exec to be started before resize; a pre-start
-              // resize must not fail the session.
-              yield* resizeExec(session, execId, command.terminalSize).pipe(Effect.catch(() => Effect.void));
-            }
-            yield* resizeEvents.pipe(
-              Stream.runForEach((size) => resizeExec(session, execId, size)),
-              Effect.forkScoped,
-            );
+            yield* Effect.gen(function* () {
+              // Re-send the size for daemons that ignore it in the start body. Podman
+              // accepts resize only after /start returns its response head.
+              yield* Effect.promise(() => responseStarted);
+              if (command.terminalSize !== undefined) {
+                yield* resizeExec(session, execId, command.terminalSize).pipe(
+                  Effect.catch(() => Effect.void),
+                );
+              }
+              yield* Stream.runForEach(resizeEvents, (size) => resizeExec(session, execId, size));
+            }).pipe(Effect.forkScoped);
             const attached =
               session.api.execAttachNeedsInspectCompletion === true
                 ? start.pipe(

@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import {
   type AppConfigResult,
@@ -8,15 +8,8 @@ import {
   renderAppConfigResult,
 } from "../../../commands/app-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { dryRunFlag, editorFlag, typeFlag } from "../../config-flags";
 import { appConfigOptionsFromInput } from "./";
-
-const typeFlag = Flags.string({
-  description: "Value type for set.",
-  options: ["string", "number", "boolean", "json", "yaml"],
-  default: "string",
-});
-const editorFlag = Flags.string({ description: "Editor binary for edit." });
-const dryRunFlag = Flags.boolean({ description: "Report the change without writing.", default: false });
 
 const makeSpec = (
   subcommand: AppConfigSubcommand,
