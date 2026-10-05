@@ -8,7 +8,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -114,14 +114,12 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/info/system`],
-    intervalSeconds: 15,
-    timeoutSeconds: 10,
-    retries: 5,
-    startPeriodSeconds: 60,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/info/system`], 60, {
+      intervalSeconds: 15,
+      timeoutSeconds: 10,
+    }),
+  );
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
