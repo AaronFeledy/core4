@@ -14,6 +14,7 @@ import type {
   AppPlan,
   AppRef,
   ProxyAuthority,
+  ProxyStatus,
   PublishedEndpoint,
   RoutePlan,
   ServicePlan,
@@ -81,13 +82,15 @@ export const isOpenableScheme = (url: string): boolean => {
 export const buildOpenTarget = (
   route: RoutePlan,
   authorities: ReadonlyArray<ProxyAuthority> = [],
+  ports?: ProxyStatus["ports"],
 ): OpenTarget => {
   const scheme = route.scheme === "http" ? "http" : "https";
   const authority = authorities.find(
     (candidate) => candidate.hostname === route.hostname && candidate.scheme === scheme,
   );
   const defaultPort = scheme === "http" ? 80 : 443;
-  const port = authority === undefined || authority.port === defaultPort ? "" : `:${authority.port}`;
+  const listenPort = authority?.port ?? ports?.[scheme];
+  const port = listenPort === undefined || listenPort === defaultPort ? "" : `:${listenPort}`;
   return {
     service: String(route.service),
     hostname: route.hostname,
@@ -131,17 +134,18 @@ export const resolveOpenTargets = (
   plan: ResolvablePlan,
   selection: OpenTargetSelection,
   authorities: ReadonlyArray<ProxyAuthority> = [],
+  ports?: ProxyStatus["ports"],
 ): ReadonlyArray<OpenTarget> => {
   if (selection.route !== undefined) {
     const match = openableRoutes(plan).find((route) => route.hostname === selection.route);
-    return match === undefined ? [] : [buildOpenTarget(match, authorities)];
+    return match === undefined ? [] : [buildOpenTarget(match, authorities, ports)];
   }
   if (selection.service !== undefined) {
     const serviceRoutes = routesForService(plan, selection.service);
     if (selection.all === true && serviceRoutes.length > 0)
-      return serviceRoutes.map((route) => buildOpenTarget(route, authorities));
+      return serviceRoutes.map((route) => buildOpenTarget(route, authorities, ports));
     const chosen = preferHttps(serviceRoutes);
-    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities)];
+    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities, ports)];
     const endpoints = endpointTargetsForService(plan, selection.service);
     if (selection.all === true) return endpoints;
     const endpoint = preferHttpsTarget(endpoints);
@@ -149,7 +153,7 @@ export const resolveOpenTargets = (
   }
   if (selection.all === true) {
     const routes = openableRoutes(plan);
-    if (routes.length > 0) return routes.map((route) => buildOpenTarget(route, authorities));
+    if (routes.length > 0) return routes.map((route) => buildOpenTarget(route, authorities, ports));
     return Object.values(plan.services).flatMap((service) =>
       endpointTargetsForService(plan, String(service.name)),
     );
@@ -157,7 +161,7 @@ export const resolveOpenTargets = (
   for (const service of Object.values(plan.services)) {
     const routes = routesForService(plan, String(service.name));
     const chosen = preferHttps(routes);
-    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities)];
+    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities, ports)];
   }
   for (const service of Object.values(plan.services)) {
     const endpoint = preferHttpsTarget(endpointTargetsForService(plan, String(service.name)));
@@ -222,8 +226,9 @@ export const openForPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
   options: OpenAppOptions = {},
   authorities: ReadonlyArray<ProxyAuthority> = [],
+  ports?: ProxyStatus["ports"],
 ): Effect.fn.Return<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> {
-  const targets = resolveOpenTargets(plan, options, authorities);
+  const targets = resolveOpenTargets(plan, options, authorities, ports);
   if (targets.length === 0) {
     const knownServices = Object.values(plan.services).map((service) => String(service.name));
     const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
@@ -243,7 +248,7 @@ export const openForPlan = Effect.fnUntraced(function* (
     }
     if (
       (options.service !== undefined || options.route !== undefined) &&
-      resolveOpenTargets(plan, { all: true }, authorities).length > 0
+      resolveOpenTargets(plan, { all: true }, authorities, ports).length > 0
     ) {
       const selected =
         options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
@@ -337,7 +342,7 @@ export const openApp = Effect.fn("OpenApp.open")(function* (
   if (plan.routes.length === 0 || !routerEnabled(plan)) return yield* openForPlan(plan, options);
   const router = yield* RouterService;
   const status = yield* router.status;
-  return yield* openForPlan(plan, options, status.authorities);
+  return yield* openForPlan(plan, options, status.authorities, status.ports);
 });
 
 export const renderOpenAppResult = (

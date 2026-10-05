@@ -231,6 +231,8 @@ describe("encodeCommandResult", () => {
       message:
         'The running Lando version 4.2.0 does not satisfy ">=5" from .lando.base.yml (base layer, order 0).',
       remediation: "Update Lando.",
+      constraints: [{ range: ">=5", source: ".lando.base.yml", layer: "base", order: 0 }],
+      runningVersion: "4.2.0",
     });
     expect(frame).toMatchObject({
       _tag: "result",
@@ -238,7 +240,7 @@ describe("encodeCommandResult", () => {
     });
   });
 
-  test("narrows Compose rejection failures to the uniform tagged-error envelope", () => {
+  test("preserves Compose rejection context in the uniform tagged-error envelope", () => {
     const line = Effect.runSync(
       encodeCommandResult({
         command: "app:start",
@@ -258,11 +260,19 @@ describe("encodeCommandResult", () => {
     );
 
     const encoded = decodeEnvelope(line).error;
-    expect(Object.keys(encoded ?? {}).sort()).toEqual(["_tag", "message", "remediation"]);
+    expect(Object.keys(encoded ?? {}).sort()).toEqual([
+      "_tag",
+      "keyPath",
+      "message",
+      "remediation",
+      "source",
+    ]);
     expect(encoded).toEqual({
       _tag: "ComposeKeyRejectedError",
       message: "Compose key deploy.replicas is rejected.",
       remediation: "Use the matrix remediation.",
+      source: "/workspace/.lando.yml",
+      keyPath: "deploy.replicas",
     });
   });
 
