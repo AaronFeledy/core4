@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
 
+import { valueAfter } from "./_acceptance-harness.ts";
+
 export {
   evaluateClosureReviewInput,
   failedClosureReviewReport,
@@ -36,12 +38,6 @@ class ClosureReviewCliArgumentError extends Error {
     this.name = "ClosureReviewCliArgumentError";
   }
 }
-
-const valueAfter = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  if (index < 0) return undefined;
-  return args[index + 1];
-};
 
 const parseCliOptions = (args: readonly string[]): ClosureReviewCliOptions => {
   const input = valueAfter(args, "--input");
