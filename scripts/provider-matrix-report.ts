@@ -1,6 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
+import { bounded, writeJsonReport } from "./_acceptance-harness.ts";
 import type { ProviderAcceptanceCellPlan, ProviderAcceptanceCheckPlan } from "./provider-matrix-plan.ts";
 
 export type ProviderAcceptanceOutcome = "passed" | "failed" | "skipped";
@@ -73,11 +71,6 @@ export interface ProviderAcceptanceEvaluation {
   readonly exitCode: 0 | 1;
   readonly reason: string;
 }
-
-const EVIDENCE_LIMIT = 12_000;
-
-const bounded = (value: string): string =>
-  value.length <= EVIDENCE_LIMIT ? value : `${value.slice(value.length - EVIDENCE_LIMIT)}\n[truncated]`;
 
 const skippedReport = (
   cell: ProviderAcceptanceCellPlan,
@@ -214,8 +207,7 @@ export const writeProviderAcceptanceReport = async ({
   report,
   path,
 }: WriteProviderAcceptanceReportInput): Promise<void> => {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(report, null, 2)}\n`);
+  await writeJsonReport(path, report);
 };
 
 export const runBunCommand = async (command: readonly string[]): Promise<CommandResult> => {
