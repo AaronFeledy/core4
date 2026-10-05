@@ -1,9 +1,12 @@
 import { Effect } from "effect";
 
 import {
+  type BunShellScriptEmptyError,
+  type BunShellScriptFrontMatterError,
   type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
+  type NotImplementedError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
 
@@ -142,7 +145,15 @@ export const toolingName = (token: string): string | undefined => {
 export const resolveToolingRoute = Effect.fnUntraced(function* (
   token: string | undefined,
   options: ResolveToolingRouteOptions = {},
-): Effect.fn.Return<ToolingRoute, CacheError | CommandAliasConflictError | CommandAliasTargetError> {
+): Effect.fn.Return<
+  ToolingRoute,
+  | CacheError
+  | CommandAliasConflictError
+  | CommandAliasTargetError
+  | BunShellScriptEmptyError
+  | BunShellScriptFrontMatterError
+  | NotImplementedError
+> {
   if (token === undefined) return { _tag: "not-tooling" } as const;
   if (canonicalBuiltIn(token) !== undefined) return { _tag: "not-tooling" } as const;
   // Flags are never tooling tokens; bail before app-root/cache so enabled:false
@@ -236,9 +247,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   const entry = cache.entries.find((candidate) => candidate.id === commandId);
   if (entry === undefined) {
     if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
-    const script = yield* resolveBunShellScript(appRoot, name).pipe(
-      Effect.catch(() => Effect.succeed(undefined)),
-    );
+    const script = yield* resolveBunShellScript(appRoot, name);
     if (script !== undefined)
       return { _tag: "bun-script", commandId, name, appRoot, relativePath: script.relativePath } as const;
     return {

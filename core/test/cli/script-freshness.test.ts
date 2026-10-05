@@ -175,3 +175,20 @@ test("a new script becomes unavailable after the Landofile changes", async () =>
     });
   });
 }, 30_000);
+
+test("a malformed script reports its front matter instead of a cache refresh", async () => {
+  await withApp(async (root, cacheRoot) => {
+    await cache(root, cacheRoot);
+    await writeFile(join(root, ".lando/scripts/broken.bun.sh"), "invalid front-matter\n");
+    const result = await invoke(root, cacheRoot, "broken");
+    expect(result.code, result.stderr + result.stdout).toBe(1);
+    const body = JSON.parse(result.stdout) as {
+      ok: boolean;
+      error: { _tag?: string; message?: string; remediation?: string };
+    };
+    expect(body.ok).toBe(false);
+    expect(body.error._tag).toBe("BunShellScriptFrontMatterError");
+    expect(body.error.message).toContain("front-matter");
+    expect(JSON.stringify(body.error)).not.toContain("app:cache:refresh");
+  });
+}, 30_000);

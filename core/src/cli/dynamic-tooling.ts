@@ -1,9 +1,12 @@
 import { Effect, Layer, Schema } from "effect";
 
 import {
+  type BunShellScriptEmptyError,
+  type BunShellScriptFrontMatterError,
   type CacheError,
   type CommandAliasConflictError,
   type CommandAliasTargetError,
+  type NotImplementedError,
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
@@ -142,7 +145,14 @@ const runDynamicBunShellTooling = (
 const runDynamicToolingFailure = (
   name: string,
   argv: ReadonlyArray<string>,
-  error: ToolingCompileError | CacheError | CommandAliasConflictError | CommandAliasTargetError,
+  error:
+    | ToolingCompileError
+    | CacheError
+    | CommandAliasConflictError
+    | CommandAliasTargetError
+    | BunShellScriptEmptyError
+    | BunShellScriptFrontMatterError
+    | NotImplementedError,
 ): Promise<void> => {
   prepareDynamicToolingInvocation(name, argv);
   return runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, dynamicToolingOptions);
