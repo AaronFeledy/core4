@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeF
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   Cause,
   Context,
@@ -222,6 +222,16 @@ const withTempDir = async <A>(fn: (dir: string) => Promise<A>): Promise<A> => {
     return await fn(dir);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+};
+
+// Containment prefers the cwd's app; run outside any app so only the fixture Landofile counts.
+const withCwdOutsideApp = async <A>(fn: () => Promise<A>): Promise<A> => {
+  const cwd = spyOn(process, "cwd").mockReturnValue(tmpdir());
+  try {
+    return await fn();
+  } finally {
+    cwd.mockRestore();
   }
 };
 
@@ -1094,53 +1104,55 @@ describe("BunDataMover.layer", () => {
   });
 
   test("uses the discovered app root for host endpoint containment", async () => {
-    await withTempDir(async (dir) => {
-      const appRoot = join(dir, "app");
-      const siblingRoot = join(dir, "sibling");
-      const source = join(appRoot, "nested", "source.txt");
-      const allowedTarget = join(appRoot, "nested", "target.txt");
-      const outsideTarget = join(siblingRoot, "target.txt");
-      await mkdir(dirname(source), { recursive: true });
-      await mkdir(siblingRoot, { recursive: true });
-      await writeFile(join(appRoot, ".lando.yml"), "name: data-root\n");
-      await writeFile(source, "app-root-payload");
+    await withCwdOutsideApp(() =>
+      withTempDir(async (dir) => {
+        const appRoot = join(dir, "app");
+        const siblingRoot = join(dir, "sibling");
+        const source = join(appRoot, "nested", "source.txt");
+        const allowedTarget = join(appRoot, "nested", "target.txt");
+        const outsideTarget = join(siblingRoot, "target.txt");
+        await mkdir(dirname(source), { recursive: true });
+        await mkdir(siblingRoot, { recursive: true });
+        await writeFile(join(appRoot, ".lando.yml"), "name: data-root\n");
+        await writeFile(source, "app-root-payload");
 
-      await runDataMover(
-        Effect.gen(function* () {
-          const dataMover = yield* DataMover;
-          yield* dataMover.transfer({
-            from: { _tag: "hostPath", path: absolute(source) },
-            to: { _tag: "hostPath", path: absolute(allowedTarget) },
-            overwrite: true,
-          });
-        }),
-      );
-      expect(await readFile(allowedTarget, "utf8")).toBe("app-root-payload");
-
-      const exit = await Effect.runPromiseExit(
-        Effect.scoped(
+        await runDataMover(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
             yield* dataMover.transfer({
               from: { _tag: "hostPath", path: absolute(source) },
-              to: { _tag: "hostPath", path: absolute(outsideTarget) },
+              to: { _tag: "hostPath", path: absolute(allowedTarget) },
               overwrite: true,
             });
           }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(providerLayer()),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-        ),
-      );
-
-      expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure") {
-        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
-          DataSourceOutsideRootError,
         );
-      }
-    });
+        expect(await readFile(allowedTarget, "utf8")).toBe("app-root-payload");
+
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(source) },
+                to: { _tag: "hostPath", path: absolute(outsideTarget) },
+                overwrite: true,
+              });
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
+        }
+      }),
+    );
   });
 
   test("publishes redacted Data lifecycle events", async () => {
@@ -2530,36 +2542,38 @@ describe("BunDataMover.layer hostPath -> hostPath directory transfers", () => {
   });
 
   test("rejects a host -> host copy whose target escapes both app root and scratch dir", async () => {
-    await withTempDir(async (dir) => {
-      const appRoot = join(dir, "app");
-      const scratchRoot = join(dir, "scratch");
-      const source = join(appRoot, "src");
-      const outsideTarget = join(dir, "outside", "root");
-      await mkdir(source, { recursive: true });
-      await writeFile(join(appRoot, ".lando.yml"), "name: escape-app\n");
-      await writeFile(join(source, "marker.txt"), "x");
+    await withCwdOutsideApp(() =>
+      withTempDir(async (dir) => {
+        const appRoot = join(dir, "app");
+        const scratchRoot = join(dir, "scratch");
+        const source = join(appRoot, "src");
+        const outsideTarget = join(dir, "outside", "root");
+        await mkdir(source, { recursive: true });
+        await writeFile(join(appRoot, ".lando.yml"), "name: escape-app\n");
+        await writeFile(join(source, "marker.txt"), "x");
 
-      const counters = { pullArtifact: 0, run: 0, runStream: 0 };
-      const exit = await runWithScratchDir(
-        scratchRoot,
-        counters,
-        Effect.gen(function* () {
-          const dataMover = yield* DataMover;
-          return yield* dataMover.transfer({
-            from: { _tag: "hostPath", path: absolute(source) },
-            to: { _tag: "hostPath", path: absolute(outsideTarget) },
-            overwrite: true,
-          });
-        }),
-      );
-
-      expect(exit._tag).toBe("Failure");
-      if (exit._tag === "Failure") {
-        expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
-          DataSourceOutsideRootError,
+        const counters = { pullArtifact: 0, run: 0, runStream: 0 };
+        const exit = await runWithScratchDir(
+          scratchRoot,
+          counters,
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            return yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(source) },
+              to: { _tag: "hostPath", path: absolute(outsideTarget) },
+              overwrite: true,
+            });
+          }),
         );
-      }
-    });
+
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+            DataSourceOutsideRootError,
+          );
+        }
+      }),
+    );
   });
 
   test("rejects a scratch-dir target whose parent escapes via a symlink", async () => {
