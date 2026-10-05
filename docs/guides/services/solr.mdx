@@ -116,13 +116,16 @@ If you also set `command:` on the service, yours wins. Lando won't copy that con
 
 ## Pin a version
 
-Set `image:` when `solr:9` isn't the version you want:
+Set `image:` when the default `solr:9` line is not the tag you want. Landofile-supplied images need `home: false` or `home.path`, or start refuses with `HomePathCapabilityError`:
 
 ```yaml
 services:
   search:
     type: solr
     image: solr:9.6
+    home: false
 ```
+
+For Solr 10, see [Add Solr 10](../solr10/).
 
 </Guide>

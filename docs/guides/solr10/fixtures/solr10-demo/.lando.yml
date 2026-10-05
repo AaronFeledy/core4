@@ -1,0 +1,13 @@
+name: solr10-demo
+services:
+  search:
+    type: solr
+    image: solr:10
+    home: false
+tooling:
+  solr:
+    service: search
+    cmd: solr
+  solr-cli:
+    service: search
+    cmd: curl -sf
