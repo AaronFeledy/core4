@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import {
   LandofileExpressionEvalError,
@@ -117,7 +117,7 @@ export class LandofileFileSession {
       });
     }
     const bytes = readFileSync(absolutePath);
-    const checksum = createHash("sha256").update(bytes).digest("hex");
+    const checksum = sha256Hex(bytes);
     let encoding: FileRef["encoding"] = "ascii";
     if (!bytes.every((byte) => byte < 128)) {
       try {

@@ -1,7 +1,7 @@
 /** Update orchestration, launch probing, and platform apply flows. */
-import { createHash } from "node:crypto";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect } from "effect";
 
@@ -288,7 +288,7 @@ const applyPosixSelfUpdate = ({
                 refreshInstallRecord({
                   recordFile: selfUpdate.installRecordFile,
                   record: owned.record,
-                  sha256: createHash("sha256").update(installedBytes).digest("hex"),
+                  sha256: sha256Hex(installedBytes),
                   size: installedBytes.byteLength,
                   releaseVersion: attemptedVersion,
                 }),

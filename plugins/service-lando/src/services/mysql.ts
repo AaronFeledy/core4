@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Schema } from "effect";
 
@@ -57,7 +57,7 @@ const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
 ];
 
 const defaultRootPassword = (appId: string, serviceName: string): string =>
-  `lando-${createHash("sha256").update(`${appId}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
+  `lando-${sha256Hex(`${appId}:${serviceName}:root`).slice(0, 24)}`;
 
 const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceConfig): ServiceCreds => {
   const authored = service.creds;

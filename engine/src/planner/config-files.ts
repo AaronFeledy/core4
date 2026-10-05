@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect, Predicate } from "effect";
 
@@ -130,7 +130,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
           }),
       ),
     );
-    inputs.push({ name, source, hash: createHash("sha256").update(content).digest("hex") });
+    inputs.push({ name, source, hash: sha256Hex(content) });
   }
   return inputs;
 });

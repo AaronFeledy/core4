@@ -71,10 +71,13 @@ lando bundle --version
 lando rake --version
 lando redis-cli ping
 lando psql
+lando psql -c 'SELECT 1'
 lando rails server -b 0.0.0.0
 ```
 
 Bind `0.0.0.0` or the proxy cannot reach it. Then open the URL `lando info` prints.
+
+`lando psql -c` runs one query, prints the result, and exits.
 
 `lando rake db:migrate` runs Rake on `web`. Swap `rails-demo` for your app name anywhere you pass the database name yourself.
 

@@ -8,7 +8,7 @@ import {
   NotImplementedError,
   PluginManifestError,
 } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
+import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
@@ -18,7 +18,7 @@ import {
   isPluginLinkConflictCause,
 } from "@lando/engine/operations/plugin-link";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
-import { makeLandoPaths } from "@lando/paths";
+import { resolvePluginsRoot } from "./plugin-roots";
 
 export class PluginLinkConflictError extends Schema.TaggedError<PluginLinkConflictError>()(
   "PluginLinkConflictError",
@@ -61,23 +61,9 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
   ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | PluginLinkConflictError,
   ConfigService
 > {
-  let userDataRoot = options.userDataRoot;
-  if (userDataRoot === undefined) {
-    const configService = yield* ConfigService;
-    userDataRoot = yield* configService.get("userDataRoot");
-    if (userDataRoot === undefined) {
-      return yield* Effect.fail(
-        new NotImplementedError({
-          message: "userDataRoot is not configured.",
-          commandId: "meta:plugin:link",
-          remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
-        }),
-      );
-    }
-  }
+  const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:link");
   const cwd = options.cwd ?? process.cwd();
   const linkedPath = resolve(cwd, options.path ?? ".");
-  const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
   const { manifest } = yield* Effect.tryPromise({
     try: () => validatePluginManifest(linkedPath),
     catch: (cause) =>

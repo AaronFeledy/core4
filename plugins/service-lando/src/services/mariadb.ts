@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Schema } from "effect";
 
@@ -48,7 +48,7 @@ const MARIADB_LOG_SOURCES: ReadonlyArray<LogSource> = [
 ];
 
 const defaultRootPassword = (appName: string, serviceName: string): string =>
-  `lando-${createHash("sha256").update(`${appName}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
+  `lando-${sha256Hex(`${appName}:${serviceName}:root`).slice(0, 24)}`;
 
 const mariadbCreds = (
   input: { readonly appName?: string | undefined; readonly appRoot: string },

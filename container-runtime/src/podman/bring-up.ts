@@ -26,7 +26,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { parseEngineJson } from "../engine-errors.ts";
+import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -201,14 +201,6 @@ const containerRunning = (body: object): boolean => {
   return Reflect.get(state, "Running") === true || Reflect.get(state, "Status") === "running";
 };
 
-const missingApi = (ctx: ProviderErrorContext) =>
-  new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation: "bringUp",
-    message: `provider-${ctx.providerId} bringUp requires an engine API client.`,
-    remediation: ctx.remediation,
-  });
-
 const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
   const message = withApiReason(input.message, input.details);
   const remediation =
@@ -233,7 +225,9 @@ const request = (
   deps: BringUpDeps,
   input: EngineHttpRequest,
 ): Effect.Effect<EngineHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
-  deps.api.request === undefined ? Effect.fail(missingApi(deps.options.ctx)) : deps.api.request(input);
+  deps.api.request === undefined
+    ? Effect.fail(missingApi(deps.options.ctx, "bringUp"))
+    : deps.api.request(input);
 
 const inspectContainer = Effect.fnUntraced(function* (
   deps: BringUpDeps,
@@ -895,7 +889,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
 ): Effect.fn.Return<ApplyResult, BringUpError> {
   const api = options.api;
   if (api?.request === undefined) {
-    return yield* Effect.fail(missingApi(options.ctx));
+    return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
   }
   const deps: BringUpDeps = { api, options };
 

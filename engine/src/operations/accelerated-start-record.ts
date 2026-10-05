@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 
@@ -46,8 +46,7 @@ export const pendingStartBucketSpec = (key: string) =>
       });
     },
   }) as const;
-export const digest = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+export const digest = (value: unknown): string => sha256Hex(JSON.stringify(value));
 export const journalRecovery = (path: string) =>
   `Run \`lando start\` in the app root to recover a retained attempt or interrupted recovery, or \`lando destroy\` to discard it (add --volumes only to remove volumes). Inspect \`lando doctor\` and journal \`${path}\` if recovery is blocked. Pending first attempts without a recovery marker require inspection before retrying.`;
 

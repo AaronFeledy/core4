@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect } from "effect";
 
@@ -48,9 +48,7 @@ export const resolveServiceConfigSources = Effect.fnUntraced(function* (input: {
           ),
       });
     const fileDigest = (path: string, entry: string): Effect.Effect<string, LandofileValidationError> =>
-      io(entry, () => readFile(path)).pipe(
-        Effect.map((bytes) => createHash("sha256").update(bytes).digest("hex")),
-      );
+      io(entry, () => readFile(path)).pipe(Effect.map((bytes) => sha256Hex(bytes)));
 
     if (authored.length === 0) {
       return yield* Effect.fail(
@@ -119,13 +117,7 @@ export const resolveServiceConfigSources = Effect.fnUntraced(function* (input: {
     const digest = yield* {
       server: () => fileDigest(source, authored),
       dir: () =>
-        walk(source, "", [source]).pipe(
-          Effect.map((records) =>
-            createHash("sha256")
-              .update([...records].sort().join(""))
-              .digest("hex"),
-          ),
-        ),
+        walk(source, "", [source]).pipe(Effect.map((records) => sha256Hex([...records].sort().join("")))),
     }[key]();
     sources.push({ key, authored, source, digest });
   }

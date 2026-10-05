@@ -1,25 +1,24 @@
 #!/usr/bin/env bun
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
-const EVIDENCE_LIMIT = 12_000;
+import {
+  type JourneyStep,
+  type JourneyStepResult,
+  evidenceFor,
+  runJourneySteps,
+  valueAfter,
+  writeAcceptanceReport,
+} from "./_acceptance-harness.ts";
+
 const DEFAULT_NAME = "rails-journey";
 
 export const RAILS_JOURNEY_STEP_IDS = ["init", "start", "info", "rails", "bundle", "destroy"] as const;
 
 export type RailsJourneyStepId = (typeof RAILS_JOURNEY_STEP_IDS)[number];
 
-export type RailsJourneyStep = {
-  readonly id: RailsJourneyStepId;
-  readonly argv: readonly string[];
-};
+export type RailsJourneyStep = JourneyStep<RailsJourneyStepId>;
 
-export type RailsJourneyStepResult = {
-  readonly id: RailsJourneyStepId;
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-};
+export type RailsJourneyStepResult = JourneyStepResult<RailsJourneyStepId>;
 
 export type RailsJourneyClassification =
   | { readonly outcome: "passed"; readonly exitCode: 0 }
@@ -90,11 +89,6 @@ class RailsJourneyArgumentError extends Error {
   }
 }
 
-const valueAfter = (args: readonly string[], flag: string): string | undefined => {
-  const index = args.indexOf(flag);
-  return index < 0 ? undefined : args[index + 1];
-};
-
 const parseCliOptions = (args: readonly string[]): CliOptions => {
   const binary = valueAfter(args, "--binary");
   const report = valueAfter(args, "--report");
@@ -109,61 +103,14 @@ const parseCliOptions = (args: readonly string[]): CliOptions => {
   return name === undefined ? resolved : { ...resolved, name };
 };
 
-const bounded = (value: string): string =>
-  value.length <= EVIDENCE_LIMIT ? value : `${value.slice(value.length - EVIDENCE_LIMIT)}\n[truncated]`;
-
-const evidenceFor = (
-  steps: readonly RailsJourneyStepResult[],
-  id: RailsJourneyStepId,
-): { readonly stdout: string; readonly stderr: string } => {
-  const step = steps.find((result) => result.id === id);
-  return { stdout: bounded(step?.stdout ?? ""), stderr: bounded(step?.stderr ?? "") };
-};
-
-const spawnFailure = (step: RailsJourneyStep, cause: unknown): RailsJourneyStepResult => {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  return { id: step.id, exitCode: 1, stdout: "", stderr: bounded(message) };
-};
-
-const runStep = async (step: RailsJourneyStep, cwd: string): Promise<RailsJourneyStepResult> => {
-  try {
-    const proc = Bun.spawn({
-      cmd: [...step.argv],
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: process.env,
-    });
-    const [exitCode, stdout, stderr] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    return { id: step.id, exitCode, stdout, stderr };
-  } catch (cause) {
-    return spawnFailure(step, cause);
-  }
-};
-
 const main = async (args: readonly string[]): Promise<void> => {
   const options = parseCliOptions(args);
-  await mkdir(options.appDir, { recursive: true });
   const plan =
     options.name === undefined
       ? buildRailsJourneyPlan({ binary: options.binary })
       : buildRailsJourneyPlan({ binary: options.binary, name: options.name });
 
-  const appName = options.name ?? DEFAULT_NAME;
-  const appRoot = resolve(options.appDir, appName);
-  const steps: RailsJourneyStepResult[] = [];
-  for (const step of plan) {
-    const cwd = step.id === "init" ? options.appDir : appRoot;
-    const result = await runStep(step, cwd);
-    steps.push(result);
-    if (result.exitCode !== 0) {
-      break;
-    }
-  }
+  const steps = await runJourneySteps(plan, options.appDir, options.name ?? DEFAULT_NAME);
 
   const classification = classifyRailsJourney(steps);
   const report = {
@@ -177,10 +124,7 @@ const main = async (args: readonly string[]): Promise<void> => {
     },
   } as const;
 
-  await mkdir(dirname(options.report), { recursive: true });
-  await writeFile(options.report, `${JSON.stringify(report, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({ report: options.report, ...classification })}\n`);
-  process.exitCode = classification.exitCode;
+  await writeAcceptanceReport(options.report, report, classification);
 };
 
 if (import.meta.main) await main(process.argv.slice(2));

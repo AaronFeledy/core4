@@ -1,5 +1,6 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { APP_LABEL, PROVIDER_LABEL } from "@lando/container-runtime/labels";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Predicate, Schema } from "effect";
 
@@ -23,9 +24,7 @@ const ReceiptSchema = Schema.Struct({
 type Receipt = typeof ReceiptSchema.Type;
 const nonce = (): string => randomBytes(32).toString("hex");
 const receiptKey = (spec: WindowsSyncHelperSpec): string =>
-  `${createHash("sha256")
-    .update(JSON.stringify([spec.appId, spec.service, spec.mountKey]))
-    .digest("hex")}.json`;
+  `${sha256Hex(JSON.stringify([spec.appId, spec.service, spec.mountKey]))}.json`;
 const openReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) =>
   stateStore.open({
     namespace: "windows-sync-helpers",
@@ -164,22 +163,20 @@ const validSpec = (spec: WindowsSyncHelperSpec): boolean =>
 
 const identity = (spec: WindowsSyncHelperSpec) => {
   const volumeName = fileSyncVolumeName(spec.appName, spec.service, spec.mountKey);
-  const digest = createHash("sha256")
-    .update(
-      JSON.stringify([
-        spec.appId,
-        spec.appName,
-        spec.service,
-        spec.mountKey,
-        volumeName,
-        spec.image,
-        ENTRYPOINT,
-        KEEP_ALIVE,
-        HELPER_USER,
-        TARGET_PATH,
-      ]),
-    )
-    .digest("hex");
+  const digest = sha256Hex(
+    JSON.stringify([
+      spec.appId,
+      spec.appName,
+      spec.service,
+      spec.mountKey,
+      volumeName,
+      spec.image,
+      ENTRYPOINT,
+      KEEP_ALIVE,
+      HELPER_USER,
+      TARGET_PATH,
+    ]),
+  );
   const safeApp = spec.appId.replace(/[^a-zA-Z0-9_.-]/gu, "-").slice(0, 32);
   return {
     volumeName,
