@@ -8,7 +8,12 @@ import type {
   ServiceType,
   ServiceTypeProjectFileInput,
 } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
+import {
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -278,14 +283,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   if (service.command !== undefined) {
-    ctx.setHealthcheck({
-      kind: "command",
-      command: ["node", "-e", NODE_HEALTHCHECK_SCRIPT, String(port)],
-      intervalSeconds: 10,
-      timeoutSeconds: 5,
-      retries: 5,
-      startPeriodSeconds: 10,
-    });
+    ctx.setHealthcheck(commandHealthcheck(["node", "-e", NODE_HEALTHCHECK_SCRIPT, String(port)], 10));
   }
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
