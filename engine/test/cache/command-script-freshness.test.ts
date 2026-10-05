@@ -60,3 +60,26 @@ test("additions and removals leave the index usable for routing", async () => {
     expect(cache?.entries[0]?.id).toBe("app:probe");
   });
 });
+
+test("one malformed script does not fail the command cache write", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-script-freshness-invalid-"));
+  const cacheRoot = join(root, "cache");
+  try {
+    await mkdir(join(root, ".lando/scripts"), { recursive: true });
+    await writeFile(join(root, ".lando.yml"), "name: freshness\n");
+    await writeFile(join(root, ".lando/scripts/probe.bun.sh"), "# ---\n# desc: Probe\n# ---\necho ok\n");
+    await writeFile(join(root, ".lando/scripts/broken.bun.sh"), "not front matter\n");
+    await Effect.runPromise(
+      writeAppCommandCacheStrict({
+        cwd: root,
+        cacheRoot,
+        landofile: { name: "freshness" },
+        entries: [{ id: "app:probe", summary: "Probe", hidden: false, source: "bun-script" }],
+      }),
+    );
+    const cache = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: root, cacheRoot }));
+    expect(cache?.entries[0]?.id).toBe("app:probe");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

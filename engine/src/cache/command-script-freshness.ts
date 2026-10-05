@@ -19,7 +19,7 @@ const fingerprint = (script: DiscoveredBunShellScript): CommandScriptFingerprint
 export const commandScriptFingerprints = async (
   appRoot: string,
 ): Promise<readonly CommandScriptFingerprint[]> =>
-  (await Effect.runPromise(discoverBunShellScripts({ appRoot }))).map(fingerprint);
+  (await Effect.runPromise(discoverBunShellScripts({ appRoot, skipInvalid: true }))).map(fingerprint);
 
 export const commandScriptsFresh = async (
   appRoot: string,
