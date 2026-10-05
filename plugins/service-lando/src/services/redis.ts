@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -38,14 +38,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
       target: DATA_TARGET,
       readOnly: false,
     });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["redis-cli", "ping"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 15,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["redis-cli", "ping"], 15));
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);

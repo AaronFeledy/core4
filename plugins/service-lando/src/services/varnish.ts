@@ -4,7 +4,7 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -62,14 +62,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: ctx.serviceName,
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["varnishadm", "ping"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 5,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["varnishadm", "ping"], 5));
   if (backend.length > 0) {
     ctx.addDependency({
       service: ServiceName.make(backend),
