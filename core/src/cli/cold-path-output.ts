@@ -241,6 +241,7 @@ export const renderColdTopicHelp = (topic: string, options?: ColdHelpStyle): str
 export const renderColdAllHelp = (options?: ColdHelpStyle): string => {
   const style = resolveStyle(options);
   const rows = visibleHelpRows(options?.aliasPolicy).toSorted(byPrimary);
+  const thisAppRows = options?.thisAppRows ?? [];
   return [
     titleLine(style),
     "",
@@ -248,6 +249,7 @@ export const renderColdAllHelp = (options?: ColdHelpStyle): string => {
     "",
     style.bold("ALL"),
     ...formatSection(rows, style),
+    ...(thisAppRows.length === 0 ? [] : ["", style.bold("THIS APP"), ...formatSection(thisAppRows, style)]),
   ].join("\n");
 };
 
