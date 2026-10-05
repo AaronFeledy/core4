@@ -41,7 +41,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
                 return yield* openForPlan(plan, parsed.options);
               const router = yield* RouterService;
               const status = yield* router.status;
-              return yield* openForPlan(plan, parsed.options, status.authorities);
+              return yield* openForPlan(plan, parsed.options, status.authorities, status.ports);
             }),
           );
           if (Exit.isSuccess(outcome)) {

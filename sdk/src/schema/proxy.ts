@@ -125,6 +125,14 @@ export const ProxyStatus = Schema.Struct({
   state: Schema.Literals(["running", "stopped"]).annotateKey({
     description: "Current proxy ingress state.",
   }),
+  ports: Schema.optionalKey(
+    Schema.Struct({
+      http: PortNumber.annotateKey({ description: "Host HTTP listen port." }),
+      https: PortNumber.annotateKey({ description: "Host HTTPS listen port." }),
+    }),
+  ).annotate({
+    description: "Host ports the running ingress listens on; absent when stopped or unavailable.",
+  }),
   authorities: Schema.Array(ProxyAuthority).annotateKey({
     description: "Authorities currently exposed by the proxy.",
   }),

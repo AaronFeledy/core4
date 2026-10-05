@@ -19,8 +19,8 @@ const endpoint = (protocol: "http" | "tcp", port: number, name: string) => ({
   name,
 });
 
-const refresh = async (root: string) => {
-  const child = Bun.spawn([process.execPath, cli, "app:cache:refresh", "--format=json"], {
+const refresh = async (root: string, format = "json") => {
+  const child = Bun.spawn([process.execPath, cli, "app:cache:refresh", `--format=${format}`], {
     cwd: root,
     env: {
       ...process.env,
@@ -40,6 +40,32 @@ const refresh = async (root: string) => {
   ]);
   return { exitCode, stdout, stderr };
 };
+
+for (const format of ["json", "yaml"] as const) {
+  test(`source cache refresh preserves expression error fields in ${format}`, async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-expression-error-")));
+    const filePath = join(root, ".lando.yml");
+    try {
+      await Bun.write(
+        filePath,
+        'name: expression-error-app\nservices:\n  appserver:\n    type: node:22\n    environment:\n      GREETING: "hi-{{ app.nope }}"\n',
+      );
+      const { exitCode, stdout } = await refresh(root, format);
+      expect(exitCode).toBe(1);
+      expect(format === "json" ? JSON.parse(stdout) : Bun.YAML.parse(stdout)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "ConfigExpressionError",
+          path: "services.appserver.environment.GREETING",
+          expression: "hi-{{ app.nope }}",
+          filePath,
+        },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+}
 
 test("source cache refresh preserves authored catalog endpoints, layer merging, and proxy backends", async () => {
   // Given

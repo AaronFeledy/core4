@@ -89,6 +89,30 @@ const httpsPlan = () =>
   makePlan([route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" })], ["web"]);
 
 describe("openForPlan", () => {
+  test("--print uses scheme-specific listen ports without launching", async () => {
+    const rec = record();
+    const plan = makePlan(
+      [
+        route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" }),
+        route({ hostname: "api.myapp.lndo.site", scheme: "http", service: "api" }),
+      ],
+      ["web", "api"],
+    );
+    const result = await Effect.runPromise(
+      openForPlan(plan, { print: true, all: true }, [], {
+        http: 8080,
+        https: 8443,
+      }).pipe(Effect.provide(layers(rec))),
+    );
+    expect(result.targets.map((target) => target.url)).toEqual([
+      "https://web.myapp.lndo.site:8443",
+      "http://api.myapp.lndo.site:8080",
+    ]);
+    expect(result.launch).toBe("printed");
+    expect(rec.commands).toEqual([]);
+    expect(rec.events).toEqual([]);
+  });
+
   test("S5 no routes fails with OpenTargetUnresolvedError listing services", async () => {
     const rec = record();
     const exit = await run(makePlan([], ["web", "db"]), { platform: "linux", env: { DISPLAY: ":0" } }, rec);

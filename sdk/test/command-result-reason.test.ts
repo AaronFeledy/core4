@@ -28,6 +28,7 @@ test("JSON error envelopes preserve a tagged secret-store reason", () => {
     message: error.message,
     remediation: error.remediation,
     reason: "cli-missing",
+    storeId: "1password",
   });
 });
 
