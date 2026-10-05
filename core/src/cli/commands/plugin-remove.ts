@@ -10,15 +10,15 @@ import {
   NotImplementedError,
   PluginManifestError,
 } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
+import type { ConfigService } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
 import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { makeLandoPaths } from "@lando/paths";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 import { parseNpmPackageSpec } from "../../recipes/npm-source";
+import { resolvePluginsRoot } from "./plugin-roots";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 const RESERVED_PLUGIN_ROOT_NAMES = new Set([
@@ -232,21 +232,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
     );
   }
 
-  let userDataRoot = options.userDataRoot;
-  if (userDataRoot === undefined) {
-    const configService = yield* ConfigService;
-    userDataRoot = yield* configService.get("userDataRoot");
-    if (userDataRoot === undefined) {
-      return yield* Effect.fail(
-        new NotImplementedError({
-          message: "userDataRoot is not configured.",
-          commandId: "meta:plugin:remove",
-          remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
-        }),
-      );
-    }
-  }
-  const pluginsRoot = options.pluginsRoot ?? makeLandoPaths({ userDataRoot }).pluginsDir;
+  const pluginsRoot = yield* resolvePluginsRoot(options, "meta:plugin:remove");
   const modulesRoot = resolve(pluginsRoot, "node_modules");
   const moduleDir = resolve(modulesRoot, options.name);
   const moduleRel = relative(modulesRoot, moduleDir);
