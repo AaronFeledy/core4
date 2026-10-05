@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect, Stream } from "effect";
 
@@ -121,7 +121,7 @@ const readTextBounded = (
       }
       return {
         text: new TextDecoder().decode(content),
-        sha256: createHash("sha256").update(content).digest("hex"),
+        sha256: sha256Hex(content),
       };
     }),
     Effect.mapError((cause) =>

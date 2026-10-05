@@ -7,9 +7,9 @@
  * from the install record instead of from the running process, so a foreign
  * `lando` can never be renamed, replaced, or deleted.
  */
-import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Result, Schema } from "effect";
 
@@ -102,7 +102,7 @@ const readRecord = (recordFile: string): Result.Result<InstallRecord, InstallOwn
 
 const hashFile = (path: string): Result.Result<string, "unreadable"> => {
   try {
-    return Result.succeed(createHash("sha256").update(readFileSync(path)).digest("hex"));
+    return Result.succeed(sha256Hex(readFileSync(path)));
   } catch {
     return Result.fail("unreadable");
   }

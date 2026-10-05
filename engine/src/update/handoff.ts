@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Effect, Schema } from "effect";
 
@@ -57,7 +58,7 @@ export const makeUpdateHandoff = (store: StateStoreShape, token?: string) => {
   const save = (result: StoredUpdateResult, deferred?: "pending") => {
     const opaqueToken = randomUUID();
     const completedRows = result.pluginResults ?? [];
-    const planHash = createHash("sha256").update(JSON.stringify(completedRows)).digest("hex");
+    const planHash = sha256Hex(JSON.stringify(completedRows));
     return bucketFor(opaqueToken).pipe(
       Effect.flatMap((bucket) =>
         bucket

@@ -1,8 +1,9 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, lstat, unlink } from "node:fs/promises";
 import { type NetConnectOpts, type Socket, connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import type { AgentSocketUpstream } from "@lando/sdk/schema";
 
@@ -51,7 +52,7 @@ export const connectAgentUpstream = (
 
 export const agentRelayListenPath = (path: string, platform: string = process.platform): string =>
   platform === "darwin" && Buffer.byteLength(path) >= 100
-    ? join(tmpdir(), `lando-agent-${createHash("sha256").update(path).digest("hex").slice(0, 8)}`)
+    ? join(tmpdir(), `lando-agent-${sha256Hex(path).slice(0, 8)}`)
     : path;
 
 const removeStaleSocket = async (path: string): Promise<void> => {
