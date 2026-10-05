@@ -77,6 +77,7 @@ import { renderRestartAppResult } from "../commands/restart";
 import { renderShareListResult, renderShareResult, renderShareStopResult } from "../commands/share";
 import { renderStartAppResult } from "../commands/start-result";
 import { renderStopAppResult } from "../commands/stop";
+import { parseStringFlag } from "../compiled-argv";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
   activeDeprecationWarnings,
@@ -372,28 +373,6 @@ export const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => 
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
     (value) => renderConfigLintResult(value, format),
   );
-};
-
-const parseStringFlag = (
-  argv: ReadonlyArray<string>,
-  index: number,
-  longName: string,
-  shortName?: string,
-): { readonly value: string; readonly consumed: number } | undefined => {
-  const arg = argv[index];
-  if (arg === undefined) return undefined;
-  const longEq = `--${longName}=`;
-  if (arg.startsWith(longEq)) return { value: arg.slice(longEq.length), consumed: 1 };
-  if (arg === `--${longName}` || (shortName !== undefined && arg === `-${shortName}`)) {
-    const next = argv[index + 1];
-    if (next === undefined) return undefined;
-    return { value: next, consumed: 2 };
-  }
-  if (shortName !== undefined) {
-    const shortEq = `-${shortName}=`;
-    if (arg.startsWith(shortEq)) return { value: arg.slice(shortEq.length), consumed: 1 };
-  }
-  return undefined;
 };
 
 export const parseAppConfigTranslateArgv = (

@@ -6,7 +6,7 @@ import {
   flagDefinitionsForCommand,
   flagNameByToken,
   hasUniversalFormatFlag,
-  setParsedFlag,
+  parseFlagsAndPositionals,
 } from "./compiled-argv";
 import {
   type CompiledCommandInput,
@@ -93,37 +93,10 @@ export const compiledCommandInputFromArgv = (
   const implicitSeparatorIndex = hasImplicitCommandSeparator ? normalizedArgv.indexOf("--") : -1;
   const flagValueError = validateCommandFlagValues(commandId, normalizedArgv, flagDefinitions);
   if (flagValueError !== undefined) throw flagValueError;
-  const flagTokens = flagNameByToken(flagDefinitions);
   const argNames = Object.keys(argDefinitions);
-  const flags: Record<string, unknown> = {};
-  const positionals: string[] = [];
-
-  for (let index = 0; index < normalizedArgv.length; index += 1) {
-    const arg = normalizedArgv[index];
-    if (arg === undefined) continue;
-    if (arg === "--") {
-      positionals.push(...normalizedArgv.slice(index + 1));
-      break;
-    }
-
-    const equalsIndex = arg.indexOf("=");
-    const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
-    const flagName = flagTokens.get(token);
-    if (flagName !== undefined) {
-      const definition = flagDefinitions[flagName] ?? {};
-      if (definition.type === "boolean") {
-        setParsedFlag(flags, flagName, true, definition);
-        continue;
-      }
-      const value = equalsIndex === -1 ? normalizedArgv[index + 1] : arg.slice(equalsIndex + 1);
-      if (value === undefined) continue;
-      setParsedFlag(flags, flagName, value, definition);
-      if (equalsIndex === -1) index += 1;
-      continue;
-    }
-
-    if (command.strict === false || !arg.startsWith("-")) positionals.push(arg);
-  }
+  const { flags, positionals } = parseFlagsAndPositionals(normalizedArgv, flagDefinitions, {
+    strict: command.strict !== false,
+  });
 
   const args: Record<string, unknown> = {};
   for (const [index, name] of argNames.entries()) {
