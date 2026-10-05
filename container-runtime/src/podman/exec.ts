@@ -350,7 +350,18 @@ export const execStream = (
               ? completionAbort.signal
               : AbortSignal.any([command.signal, completionAbort.signal]),
           ...(command.stdinStream === undefined ? {} : { stdin: command.stdinStream }),
-          body: { Detach: false, Tty: command.tty === true },
+          body: {
+            Detach: false,
+            Tty: command.tty === true,
+            // Size the PTY before the command runs: Podman reads h/w, Docker reads ConsoleSize.
+            ...(command.tty === true && command.terminalSize !== undefined
+              ? {
+                  h: command.terminalSize.rows,
+                  w: command.terminalSize.columns,
+                  ConsoleSize: [command.terminalSize.rows, command.terminalSize.columns],
+                }
+              : {}),
+          },
           onResponseHead: signalResponseStarted,
         }).pipe(
           Stream.mapError((error) => execStartFailure(session, target, error)),
@@ -367,15 +378,17 @@ export const execStream = (
           Effect.gen(function* () {
             const completedExitCode = yield* Ref.make<number | undefined>(undefined);
             const lastOutputAt = yield* Clock.currentTimeMillis.pipe(Effect.flatMap((now) => Ref.make(now)));
-            if (command.terminalSize !== undefined) {
-              // Podman requires the exec to be started before resize; a pre-start
-              // resize must not fail the session.
-              yield* resizeExec(session, execId, command.terminalSize).pipe(Effect.catch(() => Effect.void));
-            }
-            yield* resizeEvents.pipe(
-              Stream.runForEach((size) => resizeExec(session, execId, size)),
-              Effect.forkScoped,
-            );
+            yield* Effect.gen(function* () {
+              // Re-send the size for daemons that ignore it in the start body. Podman
+              // accepts resize only after /start returns its response head.
+              yield* Effect.promise(() => responseStarted);
+              if (command.terminalSize !== undefined) {
+                yield* resizeExec(session, execId, command.terminalSize).pipe(
+                  Effect.catch(() => Effect.void),
+                );
+              }
+              yield* Stream.runForEach(resizeEvents, (size) => resizeExec(session, execId, size));
+            }).pipe(Effect.forkScoped);
             const attached =
               session.api.execAttachNeedsInspectCompletion === true
                 ? start.pipe(

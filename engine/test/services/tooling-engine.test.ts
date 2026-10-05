@@ -594,8 +594,8 @@ describe("ProviderExecToolingEngine.layer", () => {
     expect(provider.calls[0]?.command.tty).not.toBe(true);
   });
 
-  test("does not request an exec TTY resize, even when a stream sink is present", async () => {
-    // Given: live streaming is enabled (this is what triggered Podman resize-before-start).
+  test("does not request an exec TTY resize when a stream sink is present without PTY intent", async () => {
+    // Given: live streaming is enabled without a PTY.
     const plan = makePlan([baseServicePlan("web", true)]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
     const invocation: ToolingInvocation = { tool: "composer", commands: [["composer", "install"]] };
@@ -694,7 +694,92 @@ describe("ProviderExecToolingEngine.layer", () => {
     );
 
     // Then
-    expect(provider.calls[0]?.command.env).toEqual({ COLUMNS: "90", LINES: "30", TERM: "xterm-test" });
+    expect(provider.calls[0]?.command.env).toEqual({
+      COLUMNS: "90",
+      LINES: "30",
+      TERM: "xterm-test",
+      PAGER: "cat",
+    });
+  });
+
+  test("an attached PTY is sized from the host terminal", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql", "-c", "select 1"]],
+      tty: true,
+      hostTerminal: { term: "xterm-test", columns: 160, rows: 40 },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then
+    expect(provider.calls[0]?.command.terminalSize).toEqual({ columns: 160, rows: 40 });
+  });
+
+  test("a tooling PTY defaults PAGER to cat because its stdin is never forwarded", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql", "-c", "select generate_series(1, 200)"]],
+      tty: true,
+      hostTerminal: { columns: 160, rows: 40 },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then
+    expect(provider.calls[0]?.command.env?.PAGER).toBe("cat");
+  });
+
+  test("non-PTY tooling gets no PAGER default", async () => {
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = { tool: "psql", commands: [["psql", "-c", "select 1"]] };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.env?.PAGER).toBeUndefined();
+  });
+
+  test("tooling task env PAGER overrides the PTY default", async () => {
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql"]],
+      tty: true,
+      hostTerminal: { columns: 160, rows: 40 },
+      env: { PAGER: "less -S" },
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.env?.PAGER).toBe("less -S");
+  });
+
+  test("service environment PAGER suppresses the PTY default", async () => {
+    // Given: the service image already declares its own pager.
+    const plan = makePlan([baseServicePlan("database", true, { PAGER: "more" })]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "psql",
+      commands: [["psql"]],
+      tty: true,
+      hostTerminal: { columns: 160, rows: 40 },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then: the exec env does not mask the service value applied to the container.
+    expect(provider.calls[0]?.command.env).not.toHaveProperty("PAGER");
   });
 
   describe("host agent-context env forwarding", () => {

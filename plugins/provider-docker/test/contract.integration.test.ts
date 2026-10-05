@@ -1232,8 +1232,11 @@ describe("provider-docker RuntimeProvider contract", () => {
       request: DockerHttpRequest,
     ) => {
       if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
-        fake.calls.push(request);
-        return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
+        return Stream.suspend(() => {
+          fake.calls.push(request);
+          request.onResponseHead?.();
+          return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
+        });
       }
       return baseStream?.(request) ?? Stream.empty;
     };
