@@ -247,6 +247,16 @@ scripts can branch on both. The tagged error exposes a machine `_tag` plus
 human remediation, so an agent can react to the failure class without
 scraping prose.
 
+The error also keeps its remaining JSON-safe fields directly under `error`.
+For example, `ConfigExpressionError` carries `error.path` (a dotted string),
+`error.expression`, and `error.filePath`; `ConfigError` can carry `error.path`.
+JSON, YAML, terminal result frames, and MCP envelopes preserve the same fields
+with the same secret redaction. `cause`, `stack`, and private redaction metadata
+are excluded. Fields containing class instances, unsupported values, cycles,
+or nesting beyond 32 levels are omitted whole rather than partly serialized.
+Plain error reports show scalar fields and scalar arrays after their existing
+diagnostic details; use the envelope for nested objects.
+
 ## Read validation issues
 
 A Landofile that fails validation produces a `LandofileValidationError`
