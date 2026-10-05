@@ -1,38 +1,17 @@
-import { COMM_SCAN_BUDGET_MS, type ProcWalk, TCP_LISTEN, pastDeadline, systemProcWalk } from "./proc-walk.ts";
+import {
+  COMM_SCAN_BUDGET_MS,
+  type ProcWalk,
+  parseListenInodeForPort,
+  pastDeadline,
+  systemProcWalk,
+} from "./proc-walk.ts";
 
 export type { ProcWalk } from "./proc-walk.ts";
 
-// /proc/net/tcp{,6} stores each 32-bit word little-endian.
-const IPV4_LOOPBACK = "0100007F";
-const IPV6_LOOPBACK = "00000000000000000000000001000000";
-const IPV6_V4MAPPED_LOOPBACK = "0000000000000000FFFF00000100007F";
-
 export const commLooksLikeRootlessport = (comm: string): boolean => /rootlessport|rootlessp\b/iu.test(comm);
 
-const isLoopbackLocalHex = (hex: string): boolean => {
-  const normalized = hex.toUpperCase();
-  return (
-    normalized === IPV4_LOOPBACK || normalized === IPV6_LOOPBACK || normalized === IPV6_V4MAPPED_LOOPBACK
-  );
-};
-
-export const parseListenInodeForLoopbackPort = (table: string, port: number): string | undefined => {
-  const expectedPort = port.toString(16).toUpperCase().padStart(4, "0");
-  for (const line of table.split(/\r?\n/u)) {
-    const fields = line.trim().split(/\s+/u);
-    const local = fields[1];
-    const state = fields[3];
-    const inode = fields[9];
-    if (local === undefined || state !== TCP_LISTEN || inode === undefined || inode === "0") continue;
-    const colon = local.lastIndexOf(":");
-    if (colon < 0) continue;
-    const address = local.slice(0, colon);
-    const localPort = local.slice(colon + 1).toUpperCase();
-    if (localPort !== expectedPort || !isLoopbackLocalHex(address)) continue;
-    return inode;
-  }
-  return undefined;
-};
+export const parseListenInodeForLoopbackPort = (table: string, port: number): string | undefined =>
+  parseListenInodeForPort(table, port, true);
 
 /**
  * Doctor leftover only needs to know whether a rootlessport-shaped process owns
