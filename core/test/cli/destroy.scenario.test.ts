@@ -375,18 +375,20 @@ const runDestroyCli = (
   harness: ReturnType<typeof makeDestroyLayer>,
   io: RendererIO,
   mode: "plain" | "json",
-) =>
-  runWithRendererHandling(destroySpec.run(compiledCommandInputFromArgv("app:destroy", argv)), {
+) => {
+  const input = compiledCommandInputFromArgv("app:destroy", argv);
+  return runWithRendererHandling(destroySpec.run(input), {
     // Match native dispatch: LandoCommandSpec erases the command's service requirement to unknown.
     runtime: harness.commandLayer as Layer.Layer<unknown>,
     rendererMode: mode,
     resultFormat: mode === "json" ? "json" : "text",
     command: "app:destroy",
     resultSchema: destroySpec.resultSchema,
-    render: (result, context) => destroySpec.render?.(result, undefined, context),
+    render: (result, context) => destroySpec.render?.(result, input, context),
     io,
     formatError: (error) => commandErrorMessage(error, "app:destroy"),
   }).finally(clearActiveCommandInvocation);
+};
 
 const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
 
