@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
 import { FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
@@ -34,6 +34,8 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
+import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type {
   AppSelector,
   AppliedFileSyncInspection,
@@ -43,7 +45,11 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
+import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
+import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -195,6 +201,7 @@ const makeDestroyLayer = (
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
     readonly proxyAvailable?: boolean;
     readonly plannedApp?: AppPlan;
+    readonly appliedPlanEvidence?: boolean;
     readonly appliedFileSync?: AppliedFileSyncInspection;
   } = {},
 ) => {
@@ -204,6 +211,7 @@ const makeDestroyLayer = (
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
   const provider: RuntimeProviderShape = {
@@ -317,6 +325,18 @@ const makeDestroyLayer = (
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
+        ...(options.appliedPlanEvidence === true
+          ? {
+              resolveTeardownEvidence: (root: AbsolutePath) => {
+                evidenceRoots.push(root);
+                return Effect.succeed(
+                  evidenceRoots.length === 1
+                    ? { kind: "applied" as const, plan: plannedApp }
+                    : { kind: "absent" as const },
+                );
+              },
+            }
+          : {}),
       }),
     ),
     ...(options.proxyAvailable === false ? [] : [proxyLayer]),
@@ -340,13 +360,33 @@ const makeDestroyLayer = (
 
   return {
     layer,
+    commandLayer,
     events,
     publishedEvents,
     destroyCalls,
     routeRemovals,
     volumes,
+    evidenceRoots,
   };
 };
+
+const runDestroyCli = (
+  argv: ReadonlyArray<string>,
+  harness: ReturnType<typeof makeDestroyLayer>,
+  io: RendererIO,
+  mode: "plain" | "json",
+) =>
+  runWithRendererHandling(destroySpec.run(compiledCommandInputFromArgv("app:destroy", argv)), {
+    // Match native dispatch: LandoCommandSpec erases the command's service requirement to unknown.
+    runtime: harness.commandLayer as Layer.Layer<unknown>,
+    rendererMode: mode,
+    resultFormat: mode === "json" ? "json" : "text",
+    command: "app:destroy",
+    resultSchema: destroySpec.resultSchema,
+    render: (result, context) => destroySpec.render?.(result, undefined, context),
+    io,
+    formatError: (error) => commandErrorMessage(error, "app:destroy"),
+  }).finally(clearActiveCommandInvocation);
 
 const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
 
@@ -374,6 +414,81 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando destroy", () => {
+  test("relative --root resolves against cwd and destroys the recorded missing app", async () => {
+    await withTempCwd(async (parent) => {
+      const root = AbsolutePath.make(join(parent, "gone"));
+      const appliedPlan = { ...plan, root, identity: { appRoot: root, ownerKey: ownerKey(root) } };
+      const harness = makeDestroyLayer({ plannedApp: appliedPlan, appliedPlanEvidence: true });
+      const io = createBufferedRendererIO();
+      await withCwd(parent, () => runDestroyCli(["--root", "gone", "--yes"], harness, io, "plain"));
+      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.destroyCalls).toHaveLength(1);
+      expect(harness.destroyCalls[0]?.target.plan).toEqual(appliedPlan);
+    });
+  });
+
+  test("renders the proxy-unavailable warning through the production destroy command boundary", async () => {
+    // Given
+    const harness = makeDestroyLayer({ proxyAvailable: false });
+    const io = createBufferedRendererIO();
+
+    // When
+    await runDestroyCli(["-y"], harness, io, "plain");
+
+    // Then
+    expect(io.stdout()).toContain(
+      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+    );
+  });
+
+  test("paints a real destroy task tree through the native destroy spec in plain mode", async () => {
+    // Given: production CLI destroy with a buffered plain renderer.
+    const harness = makeDestroyLayer();
+    const io = createBufferedRendererIO();
+
+    // When
+    await runDestroyCli(["-y"], harness, io, "plain");
+
+    // Then: the producer tree is painted before the final destroy result.
+    expect(io.stdout()).toContain("Destroy test-destroy");
+    expect(io.stdout()).toContain("Destroy services");
+    expect(io.stdout()).toContain(
+      renderDestroyAppResult({
+        app: "test-destroy",
+        servicesDestroyed: ["database", "web"],
+        volumesRemoved: false,
+      }),
+    );
+  });
+
+  test("json destroy emits one envelope and no live task paint", async () => {
+    // Given: production CLI destroy under JSON machine output.
+    const harness = makeDestroyLayer();
+    const io = createBufferedRendererIO();
+
+    // When
+    await runDestroyCli(["--yes"], harness, io, "json");
+
+    // Then: one envelope, no task paint on stderr.
+    const stdoutLines = io.stdoutLines();
+    expect(stdoutLines).toHaveLength(1);
+    expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(stdoutLines[0] ?? "{}"))).toMatchObject(
+      {
+        apiVersion: "v4",
+        command: "app:destroy",
+        ok: true,
+        result: {
+          app: "test-destroy",
+          servicesDestroyed: ["database", "web"],
+          volumesRemoved: false,
+        },
+      },
+    );
+    expect(io.stderr()).not.toContain("task.tree.start");
+    expect(io.stderr()).not.toContain("task.start");
+    expect(io.stderr()).not.toContain("▼");
+  });
+
   test("--root surfaces a tagged refusal for an existing folder without provider mutation", async () => {
     await withTempCwd(async (root) => {
       const harness = makeDestroyLayer();
