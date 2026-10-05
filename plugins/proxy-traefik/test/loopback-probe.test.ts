@@ -7,12 +7,8 @@ test("TCP distinguishes an open listener from a refused connection", async () =>
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("ok") });
   try {
     const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("ok") });
-    let closedPort: number;
-    try {
-      closedPort = Number(closed.url.port);
-    } finally {
-      await closed.stop(true);
-    }
+    const closedPort = Number(closed.url.port);
+    await closed.stop(true);
     // When
     const results = await Promise.all([
       probeTcp({ port: Number(server.url.port), timeoutMs: 200 }),
@@ -34,12 +30,8 @@ test("HTTP accepts an error status response but rejects a refused connection", a
   });
   try {
     const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("ok") });
-    let closedPort: number;
-    try {
-      closedPort = Number(closed.url.port);
-    } finally {
-      await closed.stop(true);
-    }
+    const closedPort = Number(closed.url.port);
+    await closed.stop(true);
     // When
     const results = await Promise.all([
       probeHttp({ port: Number(server.url.port), role: "http", timeoutMs: 500 }),
