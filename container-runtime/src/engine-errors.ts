@@ -9,7 +9,7 @@ import { ContainerTransportError } from "./transport.ts";
 export const missingApi = (
   ctx: ProviderErrorContext,
   operation: string,
-  message: string,
+  message = `provider-${ctx.providerId} ${operation} requires an engine API client.`,
 ): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: ctx.providerId,
