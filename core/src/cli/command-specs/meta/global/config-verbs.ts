@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import {
   type GlobalConfigResult,
@@ -7,15 +7,8 @@ import {
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { dryRunFlag, editorFlag, typeFlag } from "../../config-flags";
 import { globalConfigFormatFromInput, globalConfigOptionsFromInput } from "./config";
-
-const typeFlag = Flags.string({
-  description: "Value type for set.",
-  options: ["string", "number", "boolean", "json", "yaml"],
-  default: "string",
-});
-const editorFlag = Flags.string({ description: "Editor binary for edit." });
-const dryRunFlag = Flags.boolean({ description: "Report the change without writing.", default: false });
 
 export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
