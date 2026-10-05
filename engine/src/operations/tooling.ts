@@ -21,6 +21,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   type ToolingEngine,
+  type ToolingInvocation,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
@@ -53,6 +54,9 @@ export interface RunToolingOptions {
   readonly renderProgress?: boolean;
   readonly tty?: boolean;
   readonly hostTerminal?: HostTerminal;
+  readonly stdinStream?: ToolingInvocation["stdinStream"];
+  readonly terminalResize?: ToolingInvocation["terminalResize"];
+  readonly signal?: AbortSignal;
 }
 
 export type RunToolingResult = ToolingResult & {
@@ -197,16 +201,10 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   };
   const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
   const compiled = yield* compileToolingInvocations({
-    name: options.name,
+    ...options,
     lookupKey: toolingLookupKey,
     task,
     source,
-    ...(options.args === undefined ? {} : { args: options.args }),
-    ...(options.user === undefined ? {} : { user: options.user }),
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-    ...(options.env === undefined ? {} : { env: options.env }),
-    ...(options.tty === undefined ? {} : { tty: options.tty }),
-    ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
     agentEnvAllowlist,
   });
   const invocations = compiled.invocations;

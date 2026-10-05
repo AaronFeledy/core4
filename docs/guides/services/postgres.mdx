@@ -75,7 +75,7 @@ The `postgres` type ships the `psql` client task. After start:
 lando psql
 ```
 
-Need one answer, not a session? Pass `-c`. It prints the result and exits, even when the result is longer than your terminal:
+That's a live session: type queries, page through long results, `\q` to leave. Need one answer, not a session? Pass `-c`:
 
 ```sh
 lando psql -c 'SELECT version();'

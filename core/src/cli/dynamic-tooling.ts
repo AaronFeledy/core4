@@ -23,10 +23,11 @@ import {
   emitJsonListModeIfRequested,
   resetActiveCommandInvocation,
   runCompiledCommand,
+  runWithProcessAbortSignal,
   setActiveCommandId,
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
-import { attachedHostTerminal } from "./exec-host-io";
+import { attachToolingHostIo } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
@@ -65,30 +66,32 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
-  const hostTerminal =
-    isEnvelopeResultFormat(activeResultFormat) || activeRendererMode === "json"
-      ? undefined
-      : attachedHostTerminal();
-  return runCompiledCommand(
-    runTooling({
-      name,
-      args: commandArgv,
-      renderProgress: true,
-      tty: hostTerminal !== undefined,
-      ...(hostTerminal === undefined ? {} : { hostTerminal }),
-    }),
-    makeLandoRuntime(
-      cliRuntimeOptions({
-        bootstrap: "app",
-        plugins: { policy: "discovery" },
-      }),
-    ),
-    renderRunToolingResult,
-    {
-      ...dynamicToolingOptions,
-      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
-    },
+  const { restore, ...hostIo } = attachToolingHostIo(
+    !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
+  const interactive = hostIo.stdinStream !== undefined;
+  return runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      runTooling({
+        name,
+        args: commandArgv,
+        renderProgress: !interactive,
+        ...hostIo,
+        signal,
+      }),
+      makeLandoRuntime(
+        cliRuntimeOptions({
+          bootstrap: "app",
+          plugins: { policy: "discovery" },
+        }),
+      ),
+      renderRunToolingResult,
+      {
+        ...dynamicToolingOptions,
+        ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
+      },
+    ),
+  ).finally(restore);
 };
 
 const runDynamicBunShellTooling = (

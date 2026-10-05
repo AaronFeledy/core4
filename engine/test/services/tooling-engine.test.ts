@@ -720,7 +720,7 @@ describe("ProviderExecToolingEngine.layer", () => {
     expect(provider.calls[0]?.command.terminalSize).toEqual({ columns: 160, rows: 40 });
   });
 
-  test("a tooling PTY defaults PAGER to cat because its stdin is never forwarded", async () => {
+  test("a tooling PTY defaults PAGER to cat when its stdin is not forwarded", async () => {
     // Given
     const plan = makePlan([baseServicePlan("database", true)]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
@@ -736,6 +736,91 @@ describe("ProviderExecToolingEngine.layer", () => {
 
     // Then
     expect(provider.calls[0]?.command.env?.PAGER).toBe("cat");
+    const iterator = provider.calls[0]?.command.stdinStream?.[Symbol.asyncIterator]();
+    expect(iterator).toBeDefined();
+    const pending = iterator?.next();
+    await iterator?.return?.();
+    await expect(pending).resolves.toMatchObject({ done: true });
+  });
+
+  test("uses forwarded keyboard input for every container command without forcing a pager", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("database", true)]);
+    const stdinStream: AsyncIterable<Uint8Array> = {
+      async *[Symbol.asyncIterator]() {
+        yield new TextEncoder().encode("select 42;\r");
+      },
+    };
+    const received: string[] = [];
+    const specs: CommandSpec[] = [];
+    const provider: RuntimeProviderShape = {
+      ...makeFakeProvider([]),
+      execStream: (_target, command) =>
+        Stream.fromEffect(
+          Effect.promise(async () => {
+            specs.push(command);
+            if (command.stdinStream !== undefined) {
+              for await (const chunk of command.stdinStream) received.push(new TextDecoder().decode(chunk));
+            }
+            return { exitCode: 0 };
+          }),
+        ),
+    };
+    // When
+    await Effect.runPromise(
+      runEngine({ tool: "psql", tty: true, stdinStream, commands: [["first"], ["second"]] }, plan, provider),
+    );
+    // Then
+    expect(received).toEqual(["select 42;\r", "select 42;\r"]);
+    expect(specs.map((spec) => spec.env?.PAGER)).toEqual([undefined, undefined]);
+  });
+
+  test("forwards cancellation and resize independently of keyboard attachment", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([]);
+    const signal = new AbortController().signal;
+    const terminalResize = Stream.make({ columns: 120, rows: 35 });
+    // When
+    await Effect.runPromise(
+      runEngine(
+        { tool: "wait", tty: true, commands: [["sleep", "300"]], signal, terminalResize },
+        plan,
+        provider,
+      ),
+    );
+    // Then
+    expect(provider.calls[0]?.command.signal).toBe(signal);
+    expect(provider.calls[0]?.command.terminalResize).toBe(terminalResize);
+  });
+
+  test("returns a nonzero exit and skips later commands when attachment is aborted", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const controller = new AbortController();
+    let calls = 0;
+    const provider: RuntimeProviderShape = {
+      ...makeFakeProvider([]),
+      execStream: () =>
+        Stream.fromEffect(
+          Effect.sync(() => {
+            calls++;
+            controller.abort();
+            return { exitCode: 0 };
+          }),
+        ),
+    };
+    // When
+    const result = await Effect.runPromise(
+      runEngine(
+        { tool: "wait", commands: [["first"], ["second"]], signal: controller.signal },
+        plan,
+        provider,
+      ),
+    );
+    // Then
+    expect(result.exitCode).toBe(130);
+    expect(calls).toBe(1);
   });
 
   test("non-PTY tooling gets no PAGER default", async () => {
