@@ -1,8 +1,8 @@
 import { Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
-import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { ToolingExecError } from "@lando/sdk/errors";
+import type { ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type FileSystem,
@@ -10,15 +10,12 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { selectGlobalServices } from "./global-common";
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
-import {
-  type SummaryDocument,
-  type SummaryTone,
-  formatSummary,
-  worstSummaryTone,
-} from "@lando/renderer/summary";
+import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
+import { INFO_STATUS_TONES, endpointText, summaryToneFromTable } from "../service-summary";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;
@@ -79,59 +76,7 @@ const statusText = (status: string | undefined): GlobalServiceStatus => {
   }
 };
 
-const availableServiceList = (services: AppPlan["services"]): string =>
-  Object.values(services)
-    .map((service) => String(service.name))
-    .sort()
-    .join(", ");
-
-const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
-  const list = availableServiceList(services);
-  const first = list.split(", ")[0];
-  return new ToolingExecError({
-    message:
-      list.length === 0
-        ? `meta:global:status: service ${requested} is not in the global app plan.`
-        : `meta:global:status: service ${requested} is not in the global app plan (available: ${list}).`,
-    tool: "meta:global:status",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando global:status --service ${first}` }),
-  });
-};
-
-const selectedServices = (
-  plan: AppPlan,
-  requested: ReadonlyArray<string> | undefined,
-): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
-  const services = Object.values(plan.services);
-  if (requested === undefined || requested.length === 0) return Effect.succeed(services);
-
-  const ids = new Set(requested);
-  const matched = services.filter((service) => ids.has(String(service.name)));
-  const matchedIds = new Set(matched.map((service) => String(service.name)));
-  const missing = [...ids].find((service) => !matchedIds.has(service));
-
-  if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
-  return Effect.succeed(matched);
-};
-
-const globalStatusTone = (status: GlobalStatusService["status"]): SummaryTone => {
-  switch (status) {
-    case "running":
-    case "healthy":
-      return "ok";
-    case "starting":
-      return "pending";
-    case "stopped":
-      return "skipped";
-    case "unhealthy":
-    case "error":
-      return "error";
-    default:
-      return "info";
-  }
-};
+const globalStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
 export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDocument => {
   if (!result.materialized) {
@@ -151,7 +96,7 @@ export const buildGlobalStatusSummary = (result: GlobalStatusResult): SummaryDoc
       { label: "provider", value: service.provider },
       {
         label: "endpoints",
-        value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
+        value: endpointText(service.endpoints),
       },
     ],
   }));
@@ -181,7 +126,7 @@ export const renderGlobalStatusResult = (
   if (!result.materialized) return "Global app is not installed.\n(no services)";
   if (result.services.length === 0) return `${result.app}\n(no services)`;
   const rows = result.services.map((service) => {
-    const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
+    const endpoints = endpointText(service.endpoints);
     return `${service.service}\t${service.status}\t${endpoints}`;
   });
   return [`app\t${result.app}`, "service\tstate\tendpoints", ...rows].join("\n");
@@ -228,7 +173,12 @@ export const globalStatus = Effect.fn("GlobalStatus.status")(function* (
       Effect.catch(() => Effect.succeed(degraded(service))),
     );
 
-  const selected = yield* selectedServices(loaded.plan, options.services);
+  const selected = yield* selectGlobalServices({
+    commandId: "meta:global:status",
+    services: loaded.plan.services,
+    requested: options.services,
+    expandDependencies: false,
+  });
   const services = yield* Effect.forEach(selected, inspectService);
 
   return { app: loaded.plan.name, materialized: true, services };

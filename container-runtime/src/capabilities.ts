@@ -1,5 +1,6 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
+import { ProviderCapabilityError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import {
   type AgentSocketDelivery,
@@ -11,6 +12,22 @@ import {
 
 export type HostProxyCapabilities = NonNullable<ProviderCapabilitiesShape["hostProxy"]>;
 export type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+export const decodeProviderCapabilitiesFor = (providerId: string) => (input: unknown) =>
+  Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ProviderCapabilityError({
+          providerId,
+          operation: "capabilities",
+          message: `provider-${providerId} returned invalid ProviderCapabilities.`,
+          capability: "ProviderCapabilities",
+          requiredValue: "@lando/sdk/schema ProviderCapabilities",
+          actualValue: input,
+          cause,
+        }),
+    ),
+  );
 
 export const agentSocketCapabilities = (
   delivery: AgentSocketDelivery | undefined,

@@ -2,15 +2,15 @@ import { createHash } from "node:crypto";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { addEnvRecord, commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { addServerConfigMount } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "postgres:16";
 const VERSIONS = ["16"] as const;
@@ -52,10 +52,6 @@ const credsFor = (input: {
   });
 };
 
-const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
-  for (const [name, value] of Object.entries(env)) ctx.addEnv(name, value);
-};
-
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
@@ -70,23 +66,9 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["pg_isready", "-U", creds.user, "-d", creds.database],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["pg_isready", "-U", creds.user, "-d", creds.database], 30));
 
-  const server = service.config?.server;
-  if (server !== undefined && server.length > 0) {
-    ctx.addMount({
-      type: "bind",
-      source: resolveBindSource(server, ctx.appRoot),
-      target: POSTGRES_CONFIG_TARGET,
-      readOnly: true,
-    });
+  if (addServerConfigMount(ctx, POSTGRES_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
       ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`]);
     }
@@ -99,16 +81,11 @@ export const postgresServiceFeature: ServiceFeatureDefinition = {
   id: POSTGRES_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyPostgresFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "postgres service feature failed to apply",
-          feature: POSTGRES_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    POSTGRES_FEATURE_ID,
+    "postgres service feature failed to apply",
+    applyPostgresFeature,
+  ),
 };
 
 export const postgresServiceType: ServiceType = {
@@ -117,7 +94,7 @@ export const postgresServiceType: ServiceType = {
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input);

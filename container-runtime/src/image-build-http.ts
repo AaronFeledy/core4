@@ -2,6 +2,7 @@ import { Effect, Predicate } from "effect";
 
 import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
+import { parseNdjsonLines } from "./engine-json.ts";
 
 export interface ContainerBuildHttpRequest {
   readonly method: "GET" | "POST";
@@ -84,40 +85,28 @@ const mapRequestError = (
       });
 
 const buildStreamError = (body: string): string | undefined => {
-  for (const line of body.split("\n")) {
-    if (line.trim().length === 0) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (!Predicate.isObject(parsed)) continue;
-      if (typeof parsed.error === "string" && parsed.error.trim().length > 0) return parsed.error;
-      if (
-        Predicate.isObject(parsed.errorDetail) &&
-        typeof parsed.errorDetail.message === "string" &&
-        parsed.errorDetail.message.trim().length > 0
-      ) {
-        return parsed.errorDetail.message;
-      }
-    } catch (cause) {
-      if (!(cause instanceof SyntaxError)) throw cause;
+  for (const parsed of parseNdjsonLines(body, { separator: "\n", onInvalidLine: "rethrow-non-syntax" })) {
+    if (!Predicate.isObject(parsed)) continue;
+    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) return parsed.error;
+    if (
+      Predicate.isObject(parsed.errorDetail) &&
+      typeof parsed.errorDetail.message === "string" &&
+      parsed.errorDetail.message.trim().length > 0
+    ) {
+      return parsed.errorDetail.message;
     }
   }
   return undefined;
 };
 
 const parseDigest = (body: string): string | undefined => {
-  for (const line of body.split("\n")) {
-    if (line.trim().length === 0) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (
-        Predicate.isObject(parsed) &&
-        Predicate.isObject(parsed.aux) &&
-        typeof parsed.aux.Digest === "string"
-      ) {
-        return parsed.aux.Digest;
-      }
-    } catch (cause) {
-      if (!(cause instanceof SyntaxError)) throw cause;
+  for (const parsed of parseNdjsonLines(body, { separator: "\n", onInvalidLine: "rethrow-non-syntax" })) {
+    if (
+      Predicate.isObject(parsed) &&
+      Predicate.isObject(parsed.aux) &&
+      typeof parsed.aux.Digest === "string"
+    ) {
+      return parsed.aux.Digest;
     }
   }
   return undefined;

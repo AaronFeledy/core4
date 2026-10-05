@@ -1,11 +1,11 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
-import { arr, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:9aff4c7a37411a7ce62888345ba4720d477fa8694d662909848eaf2a10a98b1d";
+  "sha256:40915902ba0eb60926e169ad7da8e0c2d3c2f4330634ce908c5c197cac7a2e92";
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-symfony",
@@ -44,6 +44,28 @@ export const symfonySnapshot: RecipeSnapshot = {
               ["composer", lit("{{ recipe.composer }}")],
               ["allowOverride", lit(true)],
               ["port", lit(80)],
+              [
+                "environment",
+                obj([
+                  [
+                    "DATABASE_URL",
+                    cond(
+                      call(
+                        "eq",
+                        { kind: "Path", head: "options", segments: [{ type: "prop", name: "database" }] },
+                        lit("mariadb:11.4"),
+                      ),
+                      lit(
+                        "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+                      ),
+                      lit(
+                        "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+                      ),
+                    ),
+                  ],
+                  ["REDIS_URL", lit("redis://cache:6379")],
+                ]),
+              ],
               ["dependsOn", arr(lit("database"), lit("cache"))],
               ["routes", arr(defaultRoute())],
             ]),

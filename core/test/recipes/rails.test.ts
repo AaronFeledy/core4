@@ -37,11 +37,15 @@ describe("rails canonical recipe", () => {
     expect(manifest.prompts?.[0]?.name).toBe("name");
   });
 
-  test("renders ruby, postgres, redis, and rails/bundle tooling", () => {
+  test("renders ruby, postgres, redis, and rails/bundle/rake tooling", () => {
     const { fragment } = decomposeBuiltinRecipe("rails");
     expect(fragment).toMatchObject({
       services: { web: { type: "ruby:3.3" }, database: { type: "postgres" }, cache: { type: "redis" } },
-      tooling: { rails: { service: "web" }, bundle: { service: "web" } },
+      tooling: {
+        rails: { service: "web" },
+        bundle: { service: "web" },
+        rake: { service: "web", description: "Run Rake inside the web service.", cmds: ["rake"] },
+      },
     });
   });
 

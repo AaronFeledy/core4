@@ -1,17 +1,8 @@
-import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
+import { phpSiteSnapshotBuilders } from "../php-site-snapshot.ts";
 import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
-import {
-  arr,
-  call,
-  cond,
-  defaultRoute,
-  encodedStringNode,
-  lit,
-  obj,
-  toolNode,
-} from "../snapshot-expression.ts";
+import { cond, encodedStringNode, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
@@ -38,43 +29,9 @@ export const drupalDefaults = {
  * option scope, so one published command text serves every declared major.
  */
 export const DRUPAL_SCAFFOLD_AUTHORING_COMMAND = drupalScaffoldCommand("{{ recipe.drupal }}");
-const usesNginx = (): ExpressionNode =>
-  call(
-    "eq",
-    { kind: "Path", head: "options", segments: [{ type: "prop", name: "webserver" }] },
-    lit("nginx"),
-  );
-const primaryRoutes = (): ExpressionNode => arr(defaultRoute());
-const databaseService = (): ExpressionNode => obj([["type", lit("{{ recipe.database }}")]]);
-const apacheAppserver = (): ExpressionNode =>
-  obj([
-    ["type", lit("php:{{ recipe.php }}")],
-    ["primary", lit(true)],
-    ["framework", lit("drupal")],
-    ["webroot", lit("{{ recipe.webroot }}")],
-    ["composer", lit("{{ recipe.composer }}")],
-    ["allowOverride", lit(true)],
-    ["port", lit(80)],
-    ["dependsOn", arr(lit("database"))],
-    ["routes", primaryRoutes()],
-  ]);
-const fpmAppserver = (): ExpressionNode =>
-  obj([
-    ["type", lit("php:{{ recipe.php }}")],
-    ["primary", lit(true)],
-    ["framework", lit("drupal")],
-    ["via", lit("fpm")],
-    ["webroot", lit("{{ recipe.webroot }}")],
-    ["composer", lit("{{ recipe.composer }}")],
-    ["dependsOn", arr(lit("database"))],
-  ]);
-const edgeService = (): ExpressionNode =>
-  obj([
-    ["type", lit("nginx")],
-    ["backend", lit("appserver")],
-    ["webroot", lit("{{ recipe.webroot }}")],
-    ["routes", primaryRoutes()],
-  ]);
+const { usesNginx, databaseService, apacheAppserver, fpmAppserver, edgeService } = phpSiteSnapshotBuilders({
+  framework: "drupal",
+});
 export const drupalSnapshot: RecipeSnapshot = {
   identity: drupalProducer,
   optionTypes: {

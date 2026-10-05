@@ -16,23 +16,24 @@
  * - Trust-store install is `PrivilegeService`-aware on platforms that
  *   require elevation.
  */
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
 import { CertificateAuthority } from "@lando/sdk/services";
+import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { CertificateAuthority };
 
-const CA_UNAVAILABLE_ID = "unavailable" as const;
 const CA_UNAVAILABLE_MESSAGE =
   "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).";
 
 export const layerUnavailable = Layer.succeed(
   CertificateAuthority,
   CertificateAuthority.of({
-    id: CA_UNAVAILABLE_ID,
-    setup: (_opts) => Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_UNAVAILABLE_ID })),
-    issueCert: (_spec) =>
-      Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_UNAVAILABLE_ID })),
+    id: UNAVAILABLE_ID,
+    setup: unavailableOperation(() => new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: UNAVAILABLE_ID })),
+    issueCert: unavailableOperation(
+      () => new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: UNAVAILABLE_ID }),
+    ),
   }),
 );

@@ -2,7 +2,7 @@ import { Flags } from "../../spec/metadata";
 
 import { type ShellAppResult, renderShellAppResult, shellApp } from "../../commands/shell";
 import { EmptyResultSchema, type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
-import { extractSpecFlags } from "../../spec/command-boundary";
+import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   resultSchema: EmptyResultSchema,
@@ -29,14 +29,15 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
     }),
   },
   run: (input) => {
-    const flags = extractSpecFlags(input);
+    const flags = specFlagsOf(input);
+    const service = stringFlag(flags, "service");
     const signal = extractSpecAbortSignal(input);
     return shellApp({
-      host: flags.host === true,
-      noHistory: flags["no-history"] === true,
-      noInteractive: flags["no-interactive"] === true,
+      host: booleanFlag(flags, "host"),
+      noHistory: booleanFlag(flags, "no-history"),
+      noInteractive: booleanFlag(flags, "no-interactive"),
       ...(signal === undefined ? {} : { signal }),
-      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+      ...(service === undefined ? {} : { service }),
     });
   },
   successExitCode: (result) => result.exitCode,

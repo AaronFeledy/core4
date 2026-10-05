@@ -5,6 +5,7 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { renderExecAppResult } from "../commands/exec";
 import { renderShellAppResult, shellApp } from "../commands/shell";
+import { parseStringFlag } from "../compiled-argv";
 import {
   commandErrorMessage,
   emitDiagnosticLine,
@@ -19,28 +20,6 @@ interface ParsedExecArgv {
   readonly cwd?: string;
   readonly command: ReadonlyArray<string>;
 }
-
-const parseStringFlag = (
-  argv: ReadonlyArray<string>,
-  index: number,
-  longName: string,
-  shortName?: string,
-): { readonly value: string; readonly consumed: number } | undefined => {
-  const arg = argv[index];
-  if (arg === undefined) return undefined;
-  const longEq = `--${longName}=`;
-  if (arg.startsWith(longEq)) return { value: arg.slice(longEq.length), consumed: 1 };
-  if (arg === `--${longName}` || (shortName !== undefined && arg === `-${shortName}`)) {
-    const next = argv[index + 1];
-    if (next === undefined) return undefined;
-    return { value: next, consumed: 2 };
-  }
-  if (shortName !== undefined) {
-    const shortEq = `-${shortName}=`;
-    if (arg.startsWith(shortEq)) return { value: arg.slice(shortEq.length), consumed: 1 };
-  }
-  return undefined;
-};
 
 const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
   let user: string | undefined;

@@ -41,6 +41,7 @@ export const persistedStatus = Effect.fnUntraced(function* (dependencies: Traefi
   const presentEntries = entries.filter((entry) => entry !== undefined);
   return {
     state: running ? ("running" as const) : ("stopped" as const),
+    ...(running ? { ports } : {}),
     authorities: presentEntries.flatMap((entry) => entry.authorities),
     configuredApps: presentEntries.map((entry) => entry.app),
   };

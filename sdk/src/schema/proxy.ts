@@ -12,6 +12,34 @@ import { AppId, PortNumber } from "./primitives.ts";
 export const DEFAULT_ROUTER_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 18080, 28080, 38080] as const;
 export const DEFAULT_ROUTER_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 18443, 28443, 38443] as const;
 
+export const ROUTER_LAST_RESORT_HTTP_PORT = 38080;
+export const ROUTER_LAST_RESORT_HTTPS_PORT = 38443;
+
+export const RouterPortPair = Schema.Struct({ httpPort: PortNumber, httpsPort: PortNumber });
+export type RouterPortPair = typeof RouterPortPair.Type;
+
+const LAST_FALLBACK: RouterPortPair = {
+  httpPort: ROUTER_LAST_RESORT_HTTP_PORT,
+  httpsPort: ROUTER_LAST_RESORT_HTTPS_PORT,
+};
+const isPortNumber = Schema.is(PortNumber);
+
+export const routerPortPairFromAcquisition = (value: unknown): RouterPortPair => {
+  if (typeof value !== "object" || value === null) return LAST_FALLBACK;
+  const bindHttpPort = "bindHttpPort" in value ? value.bindHttpPort : undefined;
+  const bindHttpsPort = "bindHttpsPort" in value ? value.bindHttpsPort : undefined;
+  if (isPortNumber(bindHttpPort) && isPortNumber(bindHttpsPort)) {
+    return { httpPort: bindHttpPort, httpsPort: bindHttpsPort };
+  }
+  if ("mode" in value && value.mode === "socket-helper") return LAST_FALLBACK;
+  const httpPort = "httpPort" in value ? value.httpPort : undefined;
+  const httpsPort = "httpsPort" in value ? value.httpsPort : undefined;
+  if (isPortNumber(httpPort) && isPortNumber(httpsPort)) {
+    return { httpPort, httpsPort };
+  }
+  return LAST_FALLBACK;
+};
+
 export const ProxyCapabilities = Schema.Struct({
   wildcardHostnames: Schema.Boolean.annotateKey({
     description: "Whether wildcard Host rules are supported.",
@@ -96,6 +124,14 @@ export type ProxyApplyResult = typeof ProxyApplyResult.Type;
 export const ProxyStatus = Schema.Struct({
   state: Schema.Literals(["running", "stopped"]).annotateKey({
     description: "Current proxy ingress state.",
+  }),
+  ports: Schema.optionalKey(
+    Schema.Struct({
+      http: PortNumber.annotateKey({ description: "Host HTTP listen port." }),
+      https: PortNumber.annotateKey({ description: "Host HTTPS listen port." }),
+    }),
+  ).annotate({
+    description: "Host ports the running ingress listens on; absent when stopped or unavailable.",
   }),
   authorities: Schema.Array(ProxyAuthority).annotateKey({
     description: "Authorities currently exposed by the proxy.",

@@ -1,8 +1,13 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import {
+  commandHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+  serviceTypeResolve,
+} from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -119,14 +124,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["sh", "-c", `nc -z 127.0.0.1 ${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 10,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
 
@@ -140,16 +138,7 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   id: STATIC_FEATURE_ID,
   schema: StaticFeatureConfigSchema as Schema.Codec<unknown>,
   priority: STATIC_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyStaticFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "service-lando.static failed to apply",
-          feature: STATIC_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(STATIC_FEATURE_ID, "service-lando.static failed to apply", applyStaticFeature),
 };
 
 const normalizedService = (service: ServiceConfig, serviceType: string): ServiceConfig => ({
@@ -164,36 +153,28 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
-    identity: { defaultUser: "root", homes: { root: "/root" } },
+    identity: rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>
-      Effect.try({
-        try: () => {
-          const resolvedServer = validateServer(input.service.type, server);
-          const serviceType = `static:${resolvedServer}`;
-          const docRoot = Schema.decodeUnknownSync(StaticWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
+      serviceTypeResolve(id, `Failed to resolve ${id}`, () => {
+        const resolvedServer = validateServer(input.service.type, server);
+        const serviceType = `static:${resolvedServer}`;
+        const docRoot = Schema.decodeUnknownSync(StaticWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
 
-          return {
-            base: "lando" as const,
-            normalizedConfig: normalizedService(input.service, serviceType),
-            features: [
-              {
-                id: STATIC_FEATURE_ID,
-                config: { server: resolvedServer, docRoot },
-              },
-              {
-                id: "lando.env",
-                config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: docRoot },
-              },
-            ],
-          };
-        },
-        catch: (cause) =>
-          new ServiceTypeError({
-            message: cause instanceof Error ? cause.message : `Failed to resolve ${id}`,
-            serviceType: id,
-            cause,
-          }),
+        return {
+          base: "lando" as const,
+          normalizedConfig: normalizedService(input.service, serviceType),
+          features: [
+            {
+              id: STATIC_FEATURE_ID,
+              config: { server: resolvedServer, docRoot },
+            },
+            {
+              id: "lando.env",
+              config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: docRoot },
+            },
+          ],
+        };
       }),
   };
 };

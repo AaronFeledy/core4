@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/errors";
 import type { AppPlan, HostTerminal, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  type AppPlanner,
   type CommandSpec,
   type ConfigService,
   type ExecTarget,
@@ -19,11 +19,7 @@ import {
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
-import {
-  type ResolvedAppTarget,
-  loadUserLandofile,
-  loadUserLandofileAt,
-} from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
@@ -126,7 +122,6 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   appTarget?: ResolvedAppTarget,
 ): Effect.fn.Return<ExecAppResult, ExecAppError, ExecAppServices> {
   const landofileService = yield* LandofileService;
-  const planner = yield* AppPlanner;
   const registry = yield* RuntimeProviderRegistry;
 
   let plan: AppPlan;
@@ -135,9 +130,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     plan = appTarget.plan;
     landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
   } else {
-    landofile = yield* loadUserLandofile(landofileService);
-    const capabilities = yield* registry.capabilities;
-    plan = yield* planner.plan(landofile, capabilities);
+    ({ plan, landofile } = yield* planDesiredApp);
   }
 
   const split = splitExecServiceCommand(plan, options.service, options.command);

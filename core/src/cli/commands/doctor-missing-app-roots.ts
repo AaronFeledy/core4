@@ -2,6 +2,7 @@ import { findMissingAppRoots } from "@lando/engine/operations/missing-app-roots"
 import { shellArg } from "@lando/engine/services/shell-quote";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
+import { warnCheck } from "./doctor-check-builders";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text: string) => string) {
@@ -15,23 +16,20 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
   );
   if (Result.isFailure(inventory)) {
     const message = inventory.failure.message;
-    return [
-      {
-        name: "missing-app-root-scan",
-        status: "warn",
-        severity: "warn",
-        recovery: "manual",
-        context: { error: redact(message) },
-        solutions: [
-          {
-            kind: "manual",
-            description: redact(
-              `Lando could not read app state to look for app folders that no longer exist: ${message} Fix that problem, then rerun lando doctor.`,
-            ),
-          },
-        ],
-      } satisfies DoctorSubsystemCheck,
-    ];
+    const check: DoctorSubsystemCheck = warnCheck({
+      name: "missing-app-root-scan",
+      recovery: "manual",
+      context: { error: redact(message) },
+      solutions: [
+        {
+          kind: "manual",
+          description: redact(
+            `Lando could not read app state to look for app folders that no longer exist: ${message} Fix that problem, then rerun lando doctor.`,
+          ),
+        },
+      ],
+    });
+    return [check];
   }
   return inventory.success.map((record): DoctorSubsystemCheck => {
     const command = `lando destroy --root ${shellArg(record.root)} --volumes${record.cacheVolumes.length > 0 ? " --purge-caches" : ""}`;
@@ -39,10 +37,8 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
       ? ""
       : " Its runtime was not running, so containers and volumes may be missing from this list. Start the runtime, then rerun lando doctor before you clean up.";
     const description = `The app folder no longer exists. If you moved the app, move it back to that path and keep using it. Otherwise, this command removes its containers and deletes its data volumes; drop --volumes to keep data.${runtimeGuidance}`;
-    return {
+    return warnCheck({
       name: "missing-app-root",
-      status: "warn",
-      severity: "warn",
       recovery: "manual",
       context: Object.fromEntries(
         Object.entries({
@@ -57,6 +53,6 @@ export const missingAppRootsDoctor = Effect.fnUntraced(function* (redact: (text:
         }).map(([key, value]) => [key, redact(value)]),
       ),
       solutions: [{ kind: "manual", description: redact(description), command: redact(command) }],
-    };
+    });
   });
 });

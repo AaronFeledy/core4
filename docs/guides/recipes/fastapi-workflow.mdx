@@ -57,18 +57,18 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. The rec
     </Step>
   </Scenario>
 
-  <Scenario id="venv-and-env" render={false} reason="Validates the venv serve, retargeted tooling, pinned creds, and env snippets">
-    <Step name="pinned-config">
+  <Scenario id="venv-and-env" render={false} reason="Validates the venv serve, retargeted tooling, and credential-scope env snippets">
+    <Step name="env-config">
       <UseFixture name="venv-and-env" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "exec /app/\\.venv/bin/uvicorn app\\.main:app --host 0\\.0\\.0\\.0 --port 8000 --reload" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"/app/\\.venv/bin/pip\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uvicorn\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"/app/\\.venv/bin/uvicorn\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://[^@\"]*@database:5432/fastapi-demo\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"creds\":\\s*\\{[^}]*\"user\":\\s*\"lando\"[^}]*\"database\":\\s*\"fastapi-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://\\{\\{ services\\.database\\.creds\\.user \\}\\}:\\{\\{ services\\.database\\.creds\\.password \\}\\}@database:5432/\\{\\{ services\\.database\\.creds\\.database \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"REDIS_URL\":\\s*\"redis://cache:6379/0\"" } }} />
     </Step>
     <Step name="plan">
+      <Run command="lando app:cache:refresh" />
       <Run command="lando info" />
     </Step>
   </Scenario>
@@ -178,36 +178,31 @@ lando info
 | Host | `database` | `cache` |
 | Database | app name (here `fastapi-demo`) | n/a |
 | User | `lando` | n/a (no auth) |
-| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
+| Password | generated per app; read it with `{{ services.database.creds.password }}` | n/a |
 | Port | `5432` | `6379` |
 
-Put host `database` in your SQLAlchemy / psycopg DSN, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings. Redis is host `cache` on `6379` with no password.
+Put host `database` in your SQLAlchemy / psycopg DSN, not `127.0.0.1` or `localhost`. Redis is host `cache` on `6379` with no password.
 
 ## Hand FastAPI its settings with env vars
 
-Pin the Postgres password, keep the default user and database, and give `web` ready-made URLs:
+The recipe doesn't set connection URLs on `web`. Add them under `web.environment` and let Lando fill the Postgres credentials from the `database` service:
 
 ```yaml
 services:
-  database:
-    type: postgres
-    creds:
-      user: lando
-      password: local-dev-only
-      database: fastapi-demo
   web:
     environment:
-      DATABASE_URL: postgresql://lando:local-dev-only@database:5432/fastapi-demo
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
       REDIS_URL: redis://cache:6379/0
 ```
 
-Postgres keeps the password its volume started with, and yours started with a generated one. Set the new one inside Postgres, rebuild so every service sees it, then check what `web` got:
+The password never lands in your Landofile, and the URL follows an authored `creds:` block. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials). Rebuild so `web` picks them up, then check what it got:
 
 ```sh
-lando psql -c "ALTER USER lando PASSWORD 'local-dev-only'"
 lando rebuild
 lando exec web -- printenv DATABASE_URL REDIS_URL
 ```
+
+Lando masks the credentials in what it prints, so `DATABASE_URL` shows as `postgresql://[redacted]@database:5432/fastapi-demo`. FastAPI inside `web` gets the real value. `lando info` redacts the password too.
 
 psycopg takes `DATABASE_URL` as is. SQLAlchemy with psycopg 3 wants the `postgresql+psycopg://` scheme.
 
@@ -243,7 +238,18 @@ lando pip install alembic
 lando exec web -- alembic init migrations
 ```
 
-Set `sqlalchemy.url` in `alembic.ini` to `postgresql+psycopg://lando:local-dev-only@database:5432/fastapi-demo`. Snapshot, then migrate:
+Leave `sqlalchemy.url` in `alembic.ini` empty and read the URL from the environment in `migrations/env.py`, after `config` is defined:
+
+```python
+import os
+
+config.set_main_option(
+    "sqlalchemy.url",
+    os.environ["DATABASE_URL"].replace("postgresql://", "postgresql+psycopg://", 1),
+)
+```
+
+Snapshot, then migrate:
 
 ```sh
 lando db:snapshot --label before-migrate

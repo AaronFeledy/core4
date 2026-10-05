@@ -2,10 +2,10 @@ import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -45,14 +45,7 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: "management",
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["rabbitmq-diagnostics", "-q", "ping"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["rabbitmq-diagnostics", "-q", "ping"], 30));
 
   applyAuthoredProcessFields(ctx);
 };
@@ -61,16 +54,11 @@ export const rabbitmqServiceFeature: ServiceFeatureDefinition = {
   id: RABBITMQ_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyRabbitMQFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "rabbitmq service feature failed to apply",
-          feature: RABBITMQ_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    RABBITMQ_FEATURE_ID,
+    "rabbitmq service feature failed to apply",
+    applyRabbitMQFeature,
+  ),
 };
 
 const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
@@ -79,7 +67,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: RabbitMQServiceConfig,
   resolve: (input) => {
     const appName = input.appName ?? (basename(input.appRoot) || "app");

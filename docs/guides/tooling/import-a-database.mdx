@@ -9,7 +9,7 @@ tags: [beta, docs, tooling, database]
 
 Prefer `lando db:import` from the bundled SQL plugin. See [Import and export app databases](/guides/tooling/db-import-export/). You can still pipe a dump through `lando exec` if you want the raw client.
 
-Read the database name, user, and password from `lando info` first.
+Grab the database name and user from `lando info` first. It redacts the password, and the commands below don't need it.
 
 ```sh
 lando info
@@ -29,7 +29,7 @@ Feed the dump on stdin from the host. Recipes do not add a second alias on top o
 
 ## Import into Postgres
 
-Postgres derives the password per app. Copy it from `lando info`. Do not hardcode it.
+Postgres generates its password per app, but `psql` inside the service connects as `lando` without one:
 
 ```sh
 lando exec db -- psql -U lando -d myapp < dump.sql

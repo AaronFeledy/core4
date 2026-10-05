@@ -7,19 +7,15 @@ import {
 import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
-import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
+  decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import {
-  VOLUME_WITNESS_IMAGE,
-  makeProviderDataPlane,
-  volumeCreationLabels,
-} from "@lando/container-runtime/data-plane";
+import { VOLUME_WITNESS_IMAGE, volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -42,18 +38,23 @@ import {
   bringUp,
   isMissingImageCreateResponse,
 } from "@lando/container-runtime/podman/bring-up";
-import {
-  type EmitComposeResult,
-  type EmitComposeOptions as RuntimeEmitComposeOptions,
-  composePath as runtimeComposePath,
-  emitCompose as runtimeEmitCompose,
-  renderCompose as runtimeRenderCompose,
+import type {
+  EmitComposeResult,
+  EmitComposeOptions as RuntimeEmitComposeOptions,
 } from "@lando/container-runtime/podman/compose";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect, publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import { logs } from "@lando/container-runtime/podman/logs";
+import {
+  bindResolvedProviderOps,
+  composeAdaptersFor,
+  forgetAppliedPlanUnlessKept,
+  makeProviderPlanState,
+  notImplementedError,
+  providerHostInputs,
+  rememberAppliedPlan,
+} from "@lando/container-runtime/provider-assembly";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
-import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -76,18 +77,14 @@ import {
   type AppPlan,
   type HostPlatform,
   PluginManifest,
-  ProviderCapabilities,
+  type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
-  AppPlanSanitizer,
-  EventService,
-  type FileSystem,
   type LogChunk,
-  LogFileHelperAssets,
   type LogOptions,
   type LogTarget,
   PathsService,
@@ -262,21 +259,7 @@ export const linuxDockerCapabilities = dockerCapabilitiesForHost("linux", "/var/
 export const macosDockerCapabilities = dockerCapabilitiesForHost("darwin", "/var/run/docker.sock");
 export const windowsDockerCapabilities = dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine");
 
-export const decodeProviderCapabilities = (input: unknown) =>
-  Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ProviderCapabilityError({
-          providerId: PROVIDER_ID,
-          operation: "capabilities",
-          message: "provider-docker returned invalid ProviderCapabilities.",
-          capability: "ProviderCapabilities",
-          requiredValue: "@lando/sdk/schema ProviderCapabilities",
-          actualValue: input,
-          cause,
-        }),
-    ),
-  );
+export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER_ID);
 
 export const introspectProviderCapabilities = (
   api: DockerApiClient,
@@ -326,16 +309,7 @@ export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): strin
   return "/var/run/docker.sock";
 };
 
-export const renderCompose = (plan: AppPlan): string => runtimeRenderCompose(plan, DOCKER_CTX);
-
-export const emitCompose = (
-  plan: AppPlan,
-  options: EmitComposeOptions,
-): Effect.Effect<EmitComposeResult, ProviderInternalError, FileSystem> =>
-  runtimeEmitCompose(plan, { ...options, ctx: DOCKER_CTX });
-
-export const composePath = (plan: AppPlan, options: EmitComposeOptions): string =>
-  runtimeComposePath(plan, { ...options, ctx: DOCKER_CTX });
+export const { renderCompose, emitCompose, composePath } = composeAdaptersFor(DOCKER_CTX);
 
 const dockerEnsureImage = (api: DockerApiClient): NonNullable<BringUpOptions["ensureImage"]> =>
   makeEnsureImage(api, { ctx: DOCKER_CTX, dialect: dockerPullDialect });
@@ -484,8 +458,7 @@ const logsWithoutPlan = (
   });
 };
 
-const makeUnavailable = (operation: string) =>
-  unavailable(operation, `provider-docker does not implement ${operation} yet.`);
+const makeUnavailable = (operation: string) => notImplementedError(PROVIDER_ID, operation);
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (options.platform === undefined) {
@@ -529,8 +502,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       };
     }),
   );
-  const dataPlane = makeProviderDataPlane({
-    providerId: PROVIDER_ID,
+  const planState = makeProviderPlanState({
+    ctx: DOCKER_CTX,
+    providerId: ProviderId.make(PROVIDER_ID),
     endpointNamespace: resolvedDockerHost,
     prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
       ctx: DOCKER_CTX,
@@ -540,10 +514,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     snapshotMode: "copy",
     redactDetails,
     volumeCreationLabels,
-  });
-
-  const appliedPlans = makeAppliedPlanCache({
-    providerId: ProviderId.make(PROVIDER_ID),
     providerName: "Docker",
     ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
     ...(options.sanitizeAppliedPlan === undefined
@@ -553,17 +523,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     persist: persistAppliedPlan,
     remove: removeAppliedPlan,
   });
+  const { appliedPlans } = planState;
   const resolvePlan = (target: {
     readonly app: AppId;
     readonly plan?: AppPlan;
   }): Effect.Effect<AppPlan | undefined, never> =>
     target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
-  const rememberPlan = appliedPlans.rememberPlan;
-  const forgetPlan = appliedPlans.forgetPlan;
 
-  const resolvedOps = makeResolvedProviderOps({
+  const resolvedOps = bindResolvedProviderOps(planState, {
     ctx: DOCKER_CTX,
-    resolvePlan: (app) => resolvePlan({ app }),
     noPlanError: (_app, operation) => makeUnavailable(operation),
     service: {
       lifecycle: (plan, target, action) =>
@@ -584,7 +552,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         execStream(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
       inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX }),
     },
-    dataPlane,
   });
 
   return runtimeCapabilities.pipe(
@@ -650,7 +617,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile)));
+          }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
         }),
         ...resolvedOps,
         destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
@@ -667,9 +634,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                       ? {}
                       : { purgeCaches: destroyOptions.purgeCaches }),
                   }).pipe(
-                    Effect.tap(() =>
-                      destroyOptions.removeState === false ? Effect.void : forgetPlan(target.app),
-                    ),
+                    Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
                     Effect.as(DESTROYED),
                   ),
             ),
@@ -822,18 +787,15 @@ export const plugin = definePlugin({
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const paths = yield* PathsService;
-          const assets = yield* LogFileHelperAssets;
-          const appPlanSanitizer = yield* AppPlanSanitizer;
-          const eventService = yield* Effect.serviceOption(EventService);
-          const logFileHelperPayloads = yield* assets.payloads;
+          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan, eventService } =
+            yield* providerHostInputs;
           return yield* makeRuntimeProvider({
-            platform: paths.platform,
-            ...(eventService._tag === "None" ? {} : { eventService: eventService.value }),
+            platform,
+            ...(eventService === undefined ? {} : { eventService }),
             logFileHelperPayloads,
             appliedPlanState: ctx.stateStore,
             appliedPlanStateDir: paths.pluginStateDir(PLUGIN_NAME),
-            sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+            sanitizeAppliedPlan,
           });
         }),
       },

@@ -10,15 +10,31 @@ import { Predicate, Result } from "effect";
 import type { ValidationIssuePath } from "@lando/sdk/schema";
 
 /**
+ * None of these scopes depend on service resolution, so the planner can
+ * materialize them before running service types.
+ */
+export const PLAN_IDENTITY_EXPRESSION_SCOPES: ReadonlyArray<string> = ["app", "proxy", "recipe", "env"];
+
+/**
+ * Service types publish `services.<name>.creds.*` during resolution, so any
+ * interpolation reading credentials must wait for the second planner pass.
+ */
+export const PLAN_SERVICE_EXPRESSION_SCOPES: ReadonlyArray<string> = [
+  ...PLAN_IDENTITY_EXPRESSION_SCOPES,
+  "services",
+];
+
+/**
  * Expression scopes a loaded Landofile may still carry after the load walk.
  *
- * `app` and `proxy` stay unevaluated until the planner knows the app identity
- * and proxy domain. `recipe` and `env` are resolvable from the file and the
- * host, but only once every layer has merged, so the load walk defers them too
- * and {@link materializeLoadScopeExpressions} resolves them against the merged
+ * `app`, `proxy`, and `services` stay unevaluated until the planner knows the
+ * app identity, the proxy domain, and the resolved service credentials.
+ * `recipe` and `env` are resolvable from the file and the host, but only once
+ * every layer has merged, so the load walk defers them too and
+ * {@link materializeLoadScopeExpressions} resolves them against the merged
  * document.
  */
-export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = ["app", "proxy", "recipe", "env"];
+export const LOAD_DEFERRED_EXPRESSION_SCOPES: ReadonlyArray<string> = PLAN_SERVICE_EXPRESSION_SCOPES;
 
 /**
  * The subset of the deferred scopes the loader itself can resolve. Everything
@@ -148,22 +164,29 @@ export const materializeExpressionScopes = <T extends object>(
     readonly scopes: ReadonlyArray<string>;
     readonly budget?: EvaluationBudget;
     readonly unavailableScopes?: ReadonlyArray<string>;
+    /**
+     * Later passes select previously deferred sites to avoid reinterpreting
+     * values produced by an earlier pass as expressions.
+     */
+    readonly eligible?: (value: string, path: ReadonlyArray<string | number>) => boolean;
   },
 ): {
   readonly value: T;
   readonly unresolved: ReadonlyArray<UnresolvedLoadScopeExpression & { readonly expression: string }>;
+  /** Sites left untouched because an interpolation reads a scope outside `scopes`. */
+  readonly deferred: ReadonlyArray<{ readonly path: ValidationIssuePath; readonly expression: string }>;
 } => {
   const unresolved: Array<UnresolvedLoadScopeExpression & { readonly expression: string }> = [];
+  const deferred: Array<{ readonly path: ValidationIssuePath; readonly expression: string }> = [];
 
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
     if (typeof value === "string") {
-      if (!value.includes("{{")) return value;
+      if (!value.includes("{{") || input.eligible?.(value, path) === false) return value;
       const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
       if (Result.isFailure(parsed)) return value;
-      if (
-        sourceHasUnescapedBracedForm(value) ||
-        !expressionInterpolationsTouchOnlyScopes(parsed.success, input.scopes)
-      ) {
+      if (sourceHasUnescapedBracedForm(value)) return value;
+      if (!expressionInterpolationsTouchOnlyScopes(parsed.success, input.scopes)) {
+        deferred.push({ path, expression: value });
         return value;
       }
       const availableScopes = input.scopes.filter((scope) => !input.unavailableScopes?.includes(scope));
@@ -201,5 +224,6 @@ export const materializeExpressionScopes = <T extends object>(
   return {
     value: visit(merged, []) as T,
     unresolved,
+    deferred,
   };
 };

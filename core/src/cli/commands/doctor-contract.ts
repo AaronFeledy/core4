@@ -7,8 +7,10 @@
 import type { ProviderSelectionSource } from "@lando/engine/providers/precedence";
 import type { DoctorSelfCheck } from "./doctor-self";
 
-export type DoctorStatus = "pass" | "warn" | "fail";
-export type DoctorSeverity = "info" | "warn" | "error";
+export const DOCTOR_STATUSES = ["pass", "warn", "fail"] as const;
+export const DOCTOR_SEVERITIES = ["info", "warn", "error"] as const;
+export type DoctorStatus = (typeof DOCTOR_STATUSES)[number];
+export type DoctorSeverity = (typeof DOCTOR_SEVERITIES)[number];
 export type DoctorSolutionKind = "automatic" | "manual";
 export type DoctorProviderKind = "managed" | "user-installed";
 

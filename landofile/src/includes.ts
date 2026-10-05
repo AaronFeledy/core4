@@ -406,12 +406,18 @@ const fetchUser = async (entry: NormalizedInclude, ctx: ResolveContext): Promise
   };
 };
 
-const fetchGitFromCache = async (
+const fetchLockedFragmentFromCache = async (
   entry: NormalizedInclude,
-  parsed: ReturnType<typeof parseGitInclude>,
   ctx: ResolveContext,
+  layout: {
+    readonly sourceId: string;
+    readonly cacheKind: "git" | "npm";
+    readonly publishedDirName: (resolved: string) => string;
+    readonly fragmentRelPath: string;
+    readonly publishedRootLabel: "cloned repository" | "npm package";
+  },
 ): Promise<FragmentResult> => {
-  const locked = ctx.lockEntries.get(parsed.sourceId);
+  const locked = ctx.lockEntries.get(layout.sourceId);
   if (locked === undefined) {
     throw includeError({
       message: `--no-network: no lockfile entry for ${entry.source} to resolve from cache.`,
@@ -420,14 +426,14 @@ const fetchGitFromCache = async (
       remediation: NO_NETWORK_REMEDIATION,
     });
   }
-  const gitCacheRoot = join(ctx.cacheRoot, "includes", "git");
+  const cacheRoot = join(ctx.cacheRoot, "includes", layout.cacheKind);
   const publishedDir = await assertUnderRoot(
-    gitCacheRoot,
-    join(gitCacheRoot, locked.resolved),
+    cacheRoot,
+    join(cacheRoot, layout.publishedDirName(locked.resolved)),
     entry.source,
     "include cache",
   );
-  const filePath = join(publishedDir, parsed.path);
+  const filePath = join(publishedDir, layout.fragmentRelPath);
   if (!(await fileExists(filePath))) {
     throw includeError({
       message: `--no-network: cached fragment for ${entry.source} is missing at ${filePath}.`,
@@ -436,10 +442,10 @@ const fetchGitFromCache = async (
       remediation: NO_NETWORK_REMEDIATION,
     });
   }
-  const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, "cloned repository");
+  const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, layout.publishedRootLabel);
   return {
-    sourceId: parsed.sourceId,
-    inventoryId: parsed.sourceId,
+    sourceId: layout.sourceId,
+    inventoryId: layout.sourceId,
     authoredSource: entry.source,
     resolved: locked.resolved,
     content: await readText(safePath, entry.source),
@@ -449,6 +455,19 @@ const fetchGitFromCache = async (
     locked: true,
   };
 };
+
+const fetchGitFromCache = (
+  entry: NormalizedInclude,
+  parsed: ReturnType<typeof parseGitInclude>,
+  ctx: ResolveContext,
+): Promise<FragmentResult> =>
+  fetchLockedFragmentFromCache(entry, ctx, {
+    sourceId: parsed.sourceId,
+    cacheKind: "git",
+    publishedDirName: (resolved) => resolved,
+    fragmentRelPath: parsed.path,
+    publishedRootLabel: "cloned repository",
+  });
 
 const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
   const parsed = parseGitInclude(entry);
@@ -495,49 +514,18 @@ const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   };
 };
 
-const fetchNpmFromCache = async (
+const fetchNpmFromCache = (
   entry: NormalizedInclude,
   parsed: ReturnType<typeof parseNpmInclude>,
   ctx: ResolveContext,
-): Promise<FragmentResult> => {
-  const locked = ctx.lockEntries.get(parsed.sourceId);
-  if (locked === undefined) {
-    throw includeError({
-      message: `--no-network: no lockfile entry for ${entry.source} to resolve from cache.`,
-      source: entry.source,
-      kind: "source-unresolved",
-      remediation: NO_NETWORK_REMEDIATION,
-    });
-  }
-  const npmCacheRoot = join(ctx.cacheRoot, "includes", "npm");
-  const publishedDir = await assertUnderRoot(
-    npmCacheRoot,
-    join(npmCacheRoot, `${parsed.packageName.replace(/[^A-Za-z0-9._-]+/gu, "-")}-${locked.resolved}`),
-    entry.source,
-    "include cache",
-  );
-  const filePath = join(publishedDir, "package", parsed.path);
-  if (!(await fileExists(filePath))) {
-    throw includeError({
-      message: `--no-network: cached fragment for ${entry.source} is missing at ${filePath}.`,
-      source: entry.source,
-      kind: "fetch-failed",
-      remediation: NO_NETWORK_REMEDIATION,
-    });
-  }
-  const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, "npm package");
-  return {
+): Promise<FragmentResult> =>
+  fetchLockedFragmentFromCache(entry, ctx, {
     sourceId: parsed.sourceId,
-    inventoryId: parsed.sourceId,
-    authoredSource: entry.source,
-    resolved: locked.resolved,
-    content: await readText(safePath, entry.source),
-    filePath: safePath,
-    root: dirname(safePath),
-    userOwned: false,
-    locked: true,
-  };
-};
+    cacheKind: "npm",
+    publishedDirName: (resolved) => `${parsed.packageName.replace(/[^A-Za-z0-9._-]+/gu, "-")}-${resolved}`,
+    fragmentRelPath: join("package", parsed.path),
+    publishedRootLabel: "npm package",
+  });
 
 const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
   const parsed = parseNpmInclude(entry);

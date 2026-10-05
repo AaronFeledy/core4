@@ -23,6 +23,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import { attachServiceCredsScope } from "../../src/planner/landofile-scopes.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
 const fixture = (task: ToolingTaskShape, failureCode = 0) => {
@@ -166,6 +167,37 @@ test("resolves app and proxy expressions in a freshly authored task", async () =
     "echo tooling-test lndo.site db=mysql://lando@database/tooling-test",
   );
   expect(f.calls[0]?.command.join(" ")).not.toContain("{{");
+});
+
+test("resolves services.<name>.creds.* in a freshly authored task from the plan's service scope", async () => {
+  // Given a fresh declaration reading another service's credentials, and a plan resolved with them
+  const f = fixture({
+    cmd: "psql -U {{ services.database.creds.user }} -d {{ services.database.creds.database }}@{{ app.name }}",
+    service: "worker",
+  });
+  attachServiceCredsScope(f.plan, {
+    worker: {},
+    database: { creds: { user: "lando", password: "pw", database: "appdb" } },
+  });
+  // When invoked
+  const result = await f.run();
+  // Then the container sees the credentials the planner published, never the literal template
+  expect(Result.isSuccess(result)).toBe(true);
+  expect(f.calls[0]?.command.join(" ")).toContain("psql -U lando -d appdb@tooling-test");
+  expect(f.calls[0]?.command.join(" ")).not.toContain("{{");
+});
+
+test("fails with ConfigExpressionError when a fresh task reads a service the plan does not know", async () => {
+  // Given a fresh declaration reading credentials no plan service published
+  const f = fixture({ cmd: "echo {{ services.database.creds.user }}", service: "worker" });
+  // When invoked
+  const result = await f.run();
+  // Then the tagged planner error names the tooling path
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { _tag: "ConfigExpressionError", path: "tooling.custom.cmd" },
+  });
+  expect(f.calls).toHaveLength(0);
 });
 
 test("fails with ConfigExpressionError when a fresh task references an unknown app field", async () => {

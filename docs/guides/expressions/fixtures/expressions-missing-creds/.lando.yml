@@ -1,0 +1,9 @@
+name: Creds Missing
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ services.db.creds.password }}@database:5432/{{ services.db.creds.database }}"
+  database:
+    type: "postgres:16"

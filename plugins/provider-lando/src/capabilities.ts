@@ -2,13 +2,14 @@ import {
   type HostProxyContainerTarget,
   agentSocketCapabilities,
   buildProviderCapabilities,
+  decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import {
   ProviderCapabilityError,
@@ -18,7 +19,7 @@ import {
 import {
   type AgentSocketDelivery,
   type HostPlatform,
-  ProviderCapabilities,
+  type ProviderCapabilities,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 
@@ -44,21 +45,7 @@ const podmanInfoRootless = (info: unknown): boolean | undefined => {
   return typeof security.rootless === "boolean" ? security.rootless : undefined;
 };
 
-export const decodeProviderCapabilities = (input: unknown) =>
-  Schema.decodeUnknownEffect(ProviderCapabilities)(input).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ProviderCapabilityError({
-          providerId: PROVIDER_ID,
-          operation: "capabilities",
-          message: "provider-lando returned invalid ProviderCapabilities.",
-          capability: "ProviderCapabilities",
-          requiredValue: "@lando/sdk/schema ProviderCapabilities",
-          actualValue: input,
-          cause,
-        }),
-    ),
-  );
+export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER_ID);
 
 /**
  * Service-level Compose fields that stay undeclared so the planner's

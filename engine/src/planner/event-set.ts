@@ -1,4 +1,5 @@
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
@@ -13,7 +14,11 @@ import {
 import { resolveUserAppDefaults } from "./app-defaults.ts";
 import { compileEffectiveTooling, validateServiceTypeReservedToolingNames } from "./effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
-import { materializeLandofileScopes } from "./landofile-scopes.ts";
+import {
+  materializeLandofileScopes,
+  materializeServiceScopeSites,
+  serviceScopeContext,
+} from "./landofile-scopes.ts";
 import { resolveServiceSeeds } from "./service-seeds.ts";
 import { contributionId, resolveHostFacts } from "./service-types.ts";
 
@@ -58,7 +63,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
           ),
         );
   const materialized = yield* materializeLandofileScopes({ landofile, appRoot, landofilePath, globalConfig });
-  const { appSlug, defaultDomain } = materialized;
+  const { appSlug, defaultDomain, deferredSites } = materialized;
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
   const envProvider = readProviderEnvVar(process.env);
@@ -81,6 +86,10 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
   );
   const seeds = yield* resolveServiceSeeds({
     landofile,
+    landofilePath,
+    appSlug,
+    defaultDomain,
+    deferredSites,
     pluginRegistry,
     fileSystem,
     appRoot,
@@ -94,6 +103,22 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
     ),
     ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
   });
+  // Every service type has published its credentials now, so the sites the
+  // identity pass deferred (tooling, extensions, and the services themselves)
+  // resolve across the whole document before tooling is compiled.
+  if (deferredSites.length > 0) {
+    const serviceScoped = yield* materializeServiceScopeSites({
+      value: landofile,
+      landofilePath,
+      pathPrefix: [],
+      deferredSites,
+      context: serviceScopeContext({ landofile, appSlug, defaultDomain, services: seeds.serviceCredsScope }),
+    });
+    if (serviceScoped !== landofile) {
+      copyLandofileProvenance(landofile, serviceScoped);
+      landofile = serviceScoped;
+    }
+  }
   const toolingServices = seeds.services.map((entry) => ({
     name: entry.name,
     serviceTypeId: entry.serviceType.id,

@@ -1,53 +1,11 @@
-import { readdir, readlink } from "node:fs/promises";
+import { COMM_SCAN_BUDGET_MS, type ProcWalk, TCP_LISTEN, pastDeadline, systemProcWalk } from "./proc-walk.ts";
 
-const TCP_LISTEN = "0A";
+export type { ProcWalk } from "./proc-walk.ts";
+
 // /proc/net/tcp{,6} stores each 32-bit word little-endian.
 const IPV4_LOOPBACK = "0100007F";
 const IPV6_LOOPBACK = "00000000000000000000000001000000";
 const IPV6_V4MAPPED_LOOPBACK = "0000000000000000FFFF00000100007F";
-
-/** Stay inside probeBudgetMs (min(5000, section/3) ≈ 3.3s) even with two leftover ports. */
-const COMM_SCAN_BUDGET_MS = 800;
-
-export interface ProcWalk {
-  readonly names: (path: string) => Promise<ReadonlyArray<string> | undefined>;
-  readonly text: (path: string) => Promise<string | undefined>;
-  readonly link: (path: string) => Promise<string | undefined>;
-  readonly now?: () => number;
-}
-
-const optionalText = async (path: string): Promise<string | undefined> => {
-  try {
-    return await Bun.file(path).text();
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
-  }
-};
-
-const optionalNames = async (path: string): Promise<ReadonlyArray<string> | undefined> => {
-  try {
-    return await readdir(path);
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
-  }
-};
-
-const optionalLink = async (path: string): Promise<string | undefined> => {
-  try {
-    return await readlink(path);
-  } catch (error) {
-    if (error instanceof Error) return undefined;
-    throw error;
-  }
-};
-
-const systemWalk: ProcWalk = {
-  names: optionalNames,
-  text: optionalText,
-  link: optionalLink,
-};
 
 export const commLooksLikeRootlessport = (comm: string): boolean => /rootlessport|rootlessp\b/iu.test(comm);
 
@@ -76,8 +34,6 @@ export const parseListenInodeForLoopbackPort = (table: string, port: number): st
   return undefined;
 };
 
-const pastDeadline = (walk: ProcWalk, deadline: number): boolean => (walk.now ?? Date.now)() >= deadline;
-
 /**
  * Doctor leftover only needs to know whether a rootlessport-shaped process owns
  * the socket. Reading each process comm first and walking fds only for those
@@ -86,7 +42,7 @@ const pastDeadline = (walk: ProcWalk, deadline: number): boolean => (walk.now ??
  */
 export const commForSocketInode = async (
   inode: string,
-  walk: ProcWalk = systemWalk,
+  walk: ProcWalk = systemProcWalk,
   budgetMs: number = COMM_SCAN_BUDGET_MS,
 ): Promise<string | undefined> => {
   const deadline = (walk.now ?? Date.now)() + budgetMs;
@@ -113,7 +69,7 @@ export const commForSocketInode = async (
 
 export const identifyLoopbackHolderComm = async (
   port: number,
-  walk: ProcWalk = systemWalk,
+  walk: ProcWalk = systemProcWalk,
   budgetMs: number = COMM_SCAN_BUDGET_MS,
 ): Promise<string | undefined> => {
   const tables = await Promise.all([walk.text("/proc/net/tcp"), walk.text("/proc/net/tcp6")]);

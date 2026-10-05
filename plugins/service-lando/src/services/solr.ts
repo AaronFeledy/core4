@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
@@ -8,6 +8,7 @@ import type {
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
+import { commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -113,14 +114,12 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/info/system`],
-    intervalSeconds: 15,
-    timeoutSeconds: 10,
-    retries: 5,
-    startPeriodSeconds: 60,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/info/system`], 60, {
+      intervalSeconds: 15,
+      timeoutSeconds: 10,
+    }),
+  );
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
@@ -129,16 +128,7 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
   id: SOLR_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applySolrFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "solr service feature failed to apply",
-          feature: SOLR_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(SOLR_FEATURE_ID, "solr service feature failed to apply", applySolrFeature),
 };
 
 const IDENTITY: ServiceImageIdentity = {

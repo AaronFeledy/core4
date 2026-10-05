@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -17,14 +17,7 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.setCommand(service.command ?? ["memcached", "-p", String(port)]);
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
@@ -33,16 +26,11 @@ export const memcachedServiceFeature: ServiceFeatureDefinition = {
   id: MEMCACHED_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMemcachedFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "memcached service feature failed to apply",
-          feature: MEMCACHED_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    MEMCACHED_FEATURE_ID,
+    "memcached service feature failed to apply",
+    applyMemcachedFeature,
+  ),
 };
 
 export const memcachedServiceType: ServiceType = {

@@ -67,6 +67,11 @@ describe("django decomposition", () => {
           type: "python:3.12",
           framework: "django",
           port: 8000,
+          environment: {
+            DATABASE_URL:
+              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+            REDIS_URL: "redis://cache:6379",
+          },
           dependsOn: ["database", "cache"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
@@ -98,9 +103,34 @@ describe("django decomposition", () => {
       type: "python:3.12",
       framework: "django",
       command: "celery -A app worker --loglevel=info",
+      environment: {
+        DATABASE_URL:
+          "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+        REDIS_URL: "redis://cache:6379",
+      },
       dependsOn: ["database", "cache"],
     });
   });
+
+  test.each([defaults, withWorker])(
+    "injects datastore connection environment when options are %j",
+    (options) => {
+      // Given the Celery option, when the recipe is decomposed.
+      const result = decompose(options);
+      const environment = {
+        DATABASE_URL:
+          "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+        REDIS_URL: "redis://cache:6379",
+      };
+      // Then web and any enabled worker receive both connection URLs.
+      expect(result.fragment).toMatchObject({
+        services: {
+          web: { environment },
+          ...(options.celery ? { worker: { environment } } : {}),
+        },
+      });
+    },
+  );
 
   test("tolerates the app-name answer the translator forwards alongside declared options", () => {
     const result = decompose({ ...defaults, name: "probe" });

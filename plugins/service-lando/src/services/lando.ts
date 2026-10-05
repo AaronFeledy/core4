@@ -1,8 +1,8 @@
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 
 import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -50,16 +50,7 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
 export const landoServiceFeature: ServiceFeatureDefinition = {
   id: LANDO_FEATURE_ID,
   priority: LANDO_FEATURE_PRIORITY,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyLandoFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : `${LANDO_FEATURE_ID} failed to apply`,
-          feature: LANDO_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(LANDO_FEATURE_ID, `${LANDO_FEATURE_ID} failed to apply`, applyLandoFeature),
 };
 
 /**
@@ -74,23 +65,15 @@ export const landoServiceType: ServiceType = {
   base: "lando",
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.try({
-      try: () => ({
-        base: "lando" as const,
-        normalizedConfig: { ...input.service, type: "lando" },
-        features: [
-          { id: LANDO_FEATURE_ID },
-          {
-            id: "lando.env",
-            config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
-          },
-        ],
-      }),
-      catch: (cause) =>
-        new ServiceTypeError({
-          message: cause instanceof Error ? cause.message : "Failed to resolve lando service type",
-          serviceType: "lando",
-          cause,
-        }),
-    }),
+    serviceTypeResolve("lando", "Failed to resolve lando service type", () => ({
+      base: "lando" as const,
+      normalizedConfig: { ...input.service, type: "lando" },
+      features: [
+        { id: LANDO_FEATURE_ID },
+        {
+          id: "lando.env",
+          config: { appPaths: { appRoot: "/app", projectMount: "/app" } },
+        },
+      ],
+    })),
 };

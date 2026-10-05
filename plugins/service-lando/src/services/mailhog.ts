@@ -1,10 +1,10 @@
 import { DateTime, Effect, Option, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortNumber } from "@lando/sdk/schema";
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { DeprecationService } from "@lando/sdk/services";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
@@ -39,16 +39,11 @@ export const mailhogServiceFeature: ServiceFeatureDefinition = {
   id: MAILHOG_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMailhogFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "mailhog service feature failed to apply",
-          feature: MAILHOG_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    MAILHOG_FEATURE_ID,
+    "mailhog service feature failed to apply",
+    applyMailhogFeature,
+  ),
 };
 
 export const mailhogServiceType: ServiceType = {

@@ -31,11 +31,13 @@ lando pip install -r requirements.txt
 
 `lando django` wraps `python manage.py`, so `lando django runserver` and `lando django createsuperuser` work the way you expect.
 
+`web` (and `worker`, if you added it) starts with `DATABASE_URL` pointing at the `database` service and `REDIS_URL` pointing at `cache`. Parse `DATABASE_URL` with `dj-database-url` or `urllib.parse` in `settings.py`; nothing there needs to name the host or password. `lando info` shows the user and database name and redacts the rest.
+
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
-For the day-to-day path (`django-admin`, Postgres host `database`, `runserver` bind), see [Run the Django recipe](/guides/recipes/django-workflow/).
+For the day-to-day path (`django-admin`, `DATABASE_URL` in settings, `runserver` bind), see [Run the Django recipe](/guides/recipes/django-workflow/).
 
 ## 1. scaffold
 

@@ -8,9 +8,9 @@ import type {
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import { PostRestartEvent, PreRestartEvent } from "@lando/sdk/events";
 import {
-  AppPlanner,
+  type AppPlanner,
   EventService,
-  LandofileService,
+  type LandofileService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
@@ -27,7 +27,7 @@ import { RouterService } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
@@ -70,17 +70,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(function* (
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
 ): Effect.fn.Return<RestartAppResult, RestartAppError, RestartAppServices> {
-  const resolvedTarget =
-    target ??
-    (yield* Effect.gen(function* () {
-      const landofileService = yield* LandofileService;
-      const registry = yield* RuntimeProviderRegistry;
-      const planner = yield* AppPlanner;
-      const landofile = yield* loadUserLandofile(landofileService);
-      const capabilities = yield* registry.capabilities;
-      const plan = yield* planner.plan(landofile, capabilities);
-      return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
-    }));
+  const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
   const registry = yield* RuntimeProviderRegistry;
   const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
   const plan = mysqlResolvedTarget.plan;

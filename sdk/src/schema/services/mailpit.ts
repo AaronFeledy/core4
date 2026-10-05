@@ -1,14 +1,13 @@
-import { Struct } from "effect";
 import { Schema } from "effect";
 
-import { ServiceConfig } from "../landofile.ts";
+import { catalogServiceConfig, catalogServiceType } from "./_catalog.ts";
 
 // ============================================================================
 // Mailpit catalog service authoring contract
 // ============================================================================
 
-export const MailpitServiceConfig = Schema.Struct(
-  Struct.pick(ServiceConfig.fields, [
+export const MailpitServiceConfig = catalogServiceConfig({
+  keys: [
     "image",
     "mailFrom",
     "port",
@@ -31,18 +30,10 @@ export const MailpitServiceConfig = Schema.Struct(
     "networks",
     "security",
     "providers",
-  ]),
-)
-  .pipe(
-    Schema.fieldsAssign({
-      type: Schema.optionalKey(Schema.Literal("mailpit")).annotate({
-        description: "Mailpit catalog service type.",
-      }),
-    }),
-  )
-  .annotate({
-    identifier: "MailpitServiceConfig",
-    title: "Mailpit Service Config",
-    description: "Landofile configuration accepted by the Mailpit catalog service.",
-  });
+  ],
+  type: catalogServiceType(Schema.Literal("mailpit"), "Mailpit catalog service type."),
+  identifier: "MailpitServiceConfig",
+  title: "Mailpit Service Config",
+  description: "Landofile configuration accepted by the Mailpit catalog service.",
+});
 export type MailpitServiceConfig = typeof MailpitServiceConfig.Type;

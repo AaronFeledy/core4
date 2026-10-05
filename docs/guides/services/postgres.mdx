@@ -51,13 +51,21 @@ Other services use the service name as the hostname. Here that's `db`. Defaults:
 | Host | `db` |
 | Database | the app name (`postgres-demo`); override with `database:` under `services.db` |
 | User | `lando` |
-| Password | generated when omitted; read it from `lando info` |
+| Password | generated when omitted; read it with `{{ services.db.creds.password }}` |
 
-The password is generated when you omit it, so read the exact value from `lando info`. Don't hardcode it. From inside the app network the connection URL is:
+Hand the consuming service a URL built from `db`'s resolved credentials:
 
+```yaml
+services:
+  web:
+    type: "node:22"
+    environment:
+      DATABASE_URL: "postgresql://{{ services.db.creds.user }}:{{ services.db.creds.password }}@db:5432/{{ services.db.creds.database }}"
+  db:
+    type: postgres
 ```
-postgresql://lando:<password>@db:5432/postgres-demo
-```
+
+`web` gets the real password, and it follows an authored `creds:` block. Don't hardcode it. `lando info` redacts the password, so it's no place to copy it from. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 ## Open the client
 

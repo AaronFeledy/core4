@@ -1,5 +1,6 @@
 import { RendererSelectionError } from "@lando/sdk/errors";
 
+import { scanArgvFlags } from "./argv-walk";
 import {
   deferredRendererFlagError,
   deferredRendererModeError,
@@ -45,26 +46,8 @@ export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendere
     throw deferredRendererFlagError(deferred);
   }
   let mode: RendererMode | undefined;
-  const remaining: string[] = [];
-  let afterDoubleDash = false;
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-    // Honor the POSIX argument terminator: tokens after `--` are forwarded
-    // verbatim to embedded commands (e.g. `app:exec -- bash -c '... --renderer=foo'`).
-    // Stripping a `--renderer=...` from that tail would silently corrupt user
-    // arguments to the child command.
-    if (afterDoubleDash) {
-      remaining.push(arg);
-      continue;
-    }
-    if (arg === "--") {
-      afterDoubleDash = true;
-      remaining.push(arg);
-      continue;
-    }
+  const remaining = scanArgvFlags(argv, (arg, next) => {
     if (arg === RENDERER_LONG_FLAG) {
-      const next = argv[index + 1];
       if (next === undefined || next.startsWith("-")) {
         throw new RendererSelectionError({
           message: `--renderer requires a value (one of: ${ALLOWED_VALUES_DISPLAY}).`,
@@ -74,8 +57,7 @@ export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendere
         });
       }
       mode = validate(next, "flag");
-      index += 1;
-      continue;
+      return { consumed: 1 };
     }
     if (arg.startsWith(RENDERER_EQ_PREFIX)) {
       const value = arg.slice(RENDERER_EQ_PREFIX.length);
@@ -88,10 +70,10 @@ export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendere
         });
       }
       mode = validate(value, "flag");
-      continue;
+      return { consumed: 0 };
     }
-    remaining.push(arg);
-  }
+    return undefined;
+  });
   return mode === undefined ? { remainingArgv: remaining } : { mode, remainingArgv: remaining };
 };
 

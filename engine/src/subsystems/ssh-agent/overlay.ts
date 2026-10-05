@@ -8,7 +8,7 @@ import {
 } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../ssh/intent.ts";
-import type { AgentRelaySession } from "./session.ts";
+import { type AgentRelaySession, agentSocketMountPlan } from "./session.ts";
 
 const Intent = Schema.Struct({ mode: Schema.Literals(["host", "sidecar"]) });
 const Features = Schema.Struct({ featureIds: Schema.Array(Schema.String) });
@@ -29,31 +29,7 @@ export const agentSocketOverlayFeature = (session: OverlaySession) => ({
     readonly addMount: (mount: MountPlan) => void;
   }): void => {
     service.addEnv("SSH_AUTH_SOCK", `${target}/${SSH_AGENT_SOCKET_NAME}`);
-    const mount = session.mount;
-    switch (mount._tag) {
-      case "bind-directory":
-        service.addMount({
-          type: "bind",
-          source: mount.directory,
-          target,
-          readOnly: true,
-          createHostPath: false,
-          realization: "passthrough",
-        });
-        return;
-      case "volume":
-        service.addMount({
-          type: "volume",
-          source: mount.volume,
-          target,
-          readOnly: true,
-          realization: "passthrough",
-        });
-        return;
-      default:
-        mount satisfies never;
-        return;
-    }
+    service.addMount(agentSocketMountPlan(session.mount, target));
   },
 });
 

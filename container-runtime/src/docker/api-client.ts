@@ -10,6 +10,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { engineApiFailure } from "../engine-errors.ts";
+import { tryParseJson } from "../engine-json.ts";
 import { withApiReason } from "../redact.ts";
 import {
   type SocketHttpConnection,
@@ -32,19 +33,35 @@ const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: 
   });
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
-  Effect.try({
-    try: (): unknown => (response.body.length === 0 ? {} : JSON.parse(response.body)),
-    catch: (cause) =>
-      new ProviderCapabilityError({
-        providerId: ctx.providerId,
-        operation: "capabilities",
-        message: "Docker API returned malformed info JSON.",
-        capability: "docker-info",
-        requiredValue: "valid JSON Docker info response",
-        actualValue: response.body,
-        cause,
-      }),
-  });
+  response.body.length === 0
+    ? Effect.succeed({})
+    : tryParseJson(
+        response.body,
+        (cause) =>
+          new ProviderCapabilityError({
+            providerId: ctx.providerId,
+            operation: "capabilities",
+            message: "Docker API returned malformed info JSON.",
+            capability: "docker-info",
+            requiredValue: "valid JSON Docker info response",
+            actualValue: response.body,
+            cause,
+          }),
+      );
+
+const fetchDockerInfo = Effect.fnUntraced(function* (
+  request: DockerApiClient["request"],
+  ctx: ProviderErrorContext,
+) {
+  const response = yield* request?.({ method: "GET", path: "/info" }) ??
+    Effect.fail(unavailable(ctx)("capabilities", "Docker API request client is missing."));
+  if (response.status < 200 || response.status >= 300) {
+    yield* Effect.fail(
+      unavailable(ctx)("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
+    );
+  }
+  return yield* parseInfoJson(response, ctx);
+});
 
 const collectRequestStdin = async (
   stdin: AsyncIterable<Uint8Array> | undefined,
@@ -247,18 +264,7 @@ export const makeUnixDockerApiClient = (
     }
     return { status, body: marker === -1 ? "" : stdout.slice(0, marker) };
   }),
-  info: Effect.gen(function* () {
-    const response = yield* makeUnixDockerApiClient(socketPath, ctx, options).request?.({
-      method: "GET",
-      path: "/info",
-    }) ?? Effect.fail(unavailable(ctx)("capabilities", "Docker API request client is missing."));
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable(ctx)("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-      );
-    }
-    return yield* parseInfoJson(response, ctx);
-  }),
+  info: Effect.suspend(() => fetchDockerInfo(makeUnixDockerApiClient(socketPath, ctx, options).request, ctx)),
 });
 
 export const makeNamedPipeDockerApiClient = (
@@ -274,18 +280,14 @@ export const makeNamedPipeDockerApiClient = (
         try: () => client.request(input),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
-    info: Effect.gen(function* () {
-      const response = yield* Effect.tryPromise({
-        try: () => client.request({ method: "GET", path: "/info" }),
-        catch: (cause) => dockerApiFailure(ctx)({ method: "GET", path: "/info" }, cause),
-      });
-      if (response.status < 200 || response.status >= 300) {
-        yield* Effect.fail(
-          unavailable(ctx)("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-        );
-      }
-      return yield* parseInfoJson(response, ctx);
-    }),
+    info: fetchDockerInfo(
+      (input) =>
+        Effect.tryPromise({
+          try: () => client.request(input),
+          catch: (cause) => dockerApiFailure(ctx)(input, cause),
+        }),
+      ctx,
+    ),
   };
 };
 
@@ -299,18 +301,7 @@ export const makeHttpDockerApiClient = (baseUrl: string, ctx: ProviderErrorConte
       try: () => makeTcpTransportClient(baseUrl).request(input),
       catch: (cause) => dockerApiFailure(ctx)(input, cause),
     }),
-  info: Effect.gen(function* () {
-    const response = yield* makeHttpDockerApiClient(baseUrl, ctx).request?.({
-      method: "GET",
-      path: "/info",
-    }) ?? Effect.fail(unavailable(ctx)("capabilities", "Docker API request client is missing."));
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable(ctx)("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-      );
-    }
-    return yield* parseInfoJson(response, ctx);
-  }),
+  info: Effect.suspend(() => fetchDockerInfo(makeHttpDockerApiClient(baseUrl, ctx).request, ctx)),
 });
 
 export const makeDockerApiClient = (

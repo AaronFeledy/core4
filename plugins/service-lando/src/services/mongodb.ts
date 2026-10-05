@@ -1,14 +1,19 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import {
+  addEnvRecord,
+  loopbackTcpHealthcheck,
+  rootIdentity,
+  serviceFeatureApply,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { addServerConfigMount } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
@@ -52,12 +57,10 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const creds = credsFor(ctx, service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  for (const [key, value] of Object.entries({
+  addEnvRecord(ctx, {
     ...familyEnvFor(FAMILY, creds),
     ...landoDbEnvFor(creds),
-  })) {
-    ctx.addEnv(key, value);
-  }
+  });
   ctx.addStorage({
     store: `${appName}-mongodb-data`,
     target: DATA_TARGET,
@@ -65,14 +68,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   });
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
-  const server = service.config?.server;
-  if (server !== undefined && server.length > 0) {
-    ctx.addMount({
-      type: "bind",
-      source: resolveBindSource(server, ctx.appRoot),
-      target: MONGODB_CONFIG_TARGET,
-      readOnly: true,
-    });
+  if (addServerConfigMount(ctx, MONGODB_CONFIG_TARGET)) {
     if (service.command === undefined && service.entrypoint === undefined) {
       ctx.setCommand(["mongod", "--config", MONGODB_CONFIG_TARGET]);
     }
@@ -80,30 +76,18 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 };
 
 export const mongodbServiceFeature: ServiceFeatureDefinition = {
   id: MONGODB_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyMongodbFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "mongodb service feature failed to apply",
-          feature: MONGODB_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    MONGODB_FEATURE_ID,
+    "mongodb service feature failed to apply",
+    applyMongodbFeature,
+  ),
 };
 
 export const mongodbServiceType: ServiceType = {
@@ -112,7 +96,7 @@ export const mongodbServiceType: ServiceType = {
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input, input.service);

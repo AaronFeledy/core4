@@ -1,0 +1,10 @@
+name: Creds Demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    environment:
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+      DB_LABEL: "{{ app.name }}:{{ services.database.creds.user }}"
+  database:
+    type: "postgres:16"

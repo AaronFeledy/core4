@@ -6,6 +6,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk
 
 import { appNameFor } from "../app-name.ts";
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
+import { addEnvRecord } from "../services/_feature-helpers.ts";
 
 const GLOBAL_APP_NAME = "global" as const;
 
@@ -41,7 +42,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
     );
   }
 
-  for (const [key, value] of Object.entries(userEnv)) ctx.addEnv(key, value);
+  addEnvRecord(ctx, userEnv);
 
   const appKind = appName === GLOBAL_APP_NAME ? "global" : "user";
   ctx.addEnv("LANDO", "ON");

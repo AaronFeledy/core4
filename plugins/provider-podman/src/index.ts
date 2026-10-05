@@ -13,7 +13,6 @@ import { inspectEngineResourceNames } from "@lando/container-runtime/resource-na
  */
 import { readFile } from "node:fs/promises";
 
-import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
@@ -21,7 +20,7 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { VOLUME_WITNESS_IMAGE } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -55,8 +54,15 @@ import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
 } from "@lando/container-runtime/podman/version-floor";
+import {
+  bindResolvedProviderOps,
+  forgetAppliedPlanUnlessKept,
+  makeProviderPlanState,
+  noPlanErrorFactory,
+  providerHostInputs,
+  rememberAppliedPlan,
+} from "@lando/container-runtime/provider-assembly";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
-import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
 import {
   DESTROYED,
   DESTROY_NO_OP,
@@ -79,7 +85,6 @@ import {
   definePlugin,
 } from "@lando/sdk/plugins";
 import {
-  type AppId,
   type AppPlan,
   type HostPlatform,
   PluginManifest,
@@ -87,13 +92,7 @@ import {
   ProviderId,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
-import {
-  AppPlanSanitizer,
-  LogFileHelperAssets,
-  PathsService,
-  RuntimeProvider,
-  type RuntimeProviderShape,
-} from "@lando/sdk/services";
+import { AppPlanSanitizer, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
@@ -511,13 +510,11 @@ export interface ProviderLayerOptions {
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
-const makeNoPlanError = (appId: AppId, operation: string) =>
-  new ProviderUnavailableError({
-    providerId: PROVIDER_ID,
-    operation,
-    message: `No applied plan found for app "${appId}". provider-podman does implement ${operation}, but the app must be started first.`,
-    remediation: "Run `lando start` (or `lando app:start`) to start the app, then retry.",
-  });
+const makeNoPlanError = noPlanErrorFactory({
+  providerId: PROVIDER_ID,
+  implementer: "provider-podman",
+  remediation: "Run `lando start` (or `lando app:start`) to start the app, then retry.",
+});
 
 const podmanUnavailable = (operation: string, socketPath: string, cause?: unknown) =>
   new ProviderUnavailableError({
@@ -674,8 +671,9 @@ const assembleRuntimeProvider = (
       return cause;
     }),
   );
-  const dataPlane = makeProviderDataPlane({
-    providerId: PROVIDER_ID,
+  const planState = makeProviderPlanState({
+    ctx: PODMAN_CTX,
+    providerId: providerIdBranded,
     endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
     prepareWitnessImage: pullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
       ctx: PODMAN_CTX,
@@ -685,10 +683,6 @@ const assembleRuntimeProvider = (
     snapshotMode: "copy",
     redactDetails,
     volumeCreationLabels: podmanVolumeCreationLabels,
-  });
-
-  const appliedPlans = makeAppliedPlanCache({
-    providerId: providerIdBranded,
     providerName: "provider-podman",
     ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
     ...(options.sanitizeAppliedPlan === undefined
@@ -698,14 +692,12 @@ const assembleRuntimeProvider = (
     persist: persistAppliedPlan,
     remove: removeAppliedPlan,
   });
+  const { appliedPlans } = planState;
   const plans = appliedPlans.plans;
   const resolvePlan = appliedPlans.resolvePlan;
-  const rememberPlan = appliedPlans.rememberPlan;
-  const forgetPlan = appliedPlans.forgetPlan;
 
-  const resolvedOps = makeResolvedProviderOps({
+  const resolvedOps = bindResolvedProviderOps(planState, {
     ctx: PODMAN_CTX,
-    resolvePlan,
     noPlanError: makeNoPlanError,
     service: {
       lifecycle: (plan, target, action) =>
@@ -726,7 +718,6 @@ const assembleRuntimeProvider = (
         execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
       inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
     },
-    dataPlane,
   });
 
   return conflictCheck.pipe(
@@ -801,7 +792,7 @@ const assembleRuntimeProvider = (
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile)));
+          }).pipe(Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)));
         }),
         destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
           const plan = target.plan ?? (yield* resolvePlan(target.app));
@@ -812,9 +803,7 @@ const assembleRuntimeProvider = (
             volumes: destroyOptions.volumes,
             ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
           });
-          if (destroyOptions.removeState !== false) {
-            yield* forgetPlan(target.app);
-          }
+          yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
           return DESTROYED;
         }),
         removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
@@ -955,16 +944,13 @@ export const plugin = definePlugin({
         id: runtimeProviderId,
         appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const paths = yield* PathsService;
-          const assets = yield* LogFileHelperAssets;
-          const appPlanSanitizer = yield* AppPlanSanitizer;
-          const logFileHelperPayloads = yield* assets.payloads;
+          const { paths, platform, logFileHelperPayloads, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({
-            platform: paths.platform,
+            platform,
             stateDir: `${paths.roots.userDataRoot}/providers`,
             appliedPlanState: ctx.stateStore,
             logFileHelperPayloads,
-            sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+            sanitizeAppliedPlan,
           });
         }),
       },

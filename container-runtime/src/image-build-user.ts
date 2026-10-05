@@ -3,6 +3,7 @@ import { Effect, Result, Schema } from "effect";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { CONTAINER_USER_PATTERN, isContainerUser } from "@lando/sdk/schema";
 
+import { tryParseJson } from "./engine-json.ts";
 import type { ContainerBuildHttpApi } from "./image-build-http.ts";
 
 type InspectInheritedImageUserInput = {
@@ -70,11 +71,9 @@ export const inspectInheritedImageUser = (
           ),
     ),
     Effect.flatMap((body) =>
-      Effect.try({
-        try: (): unknown => JSON.parse(body),
-        catch: (cause) =>
-          inspectionError(input, "Inherited image user inspection returned malformed JSON.", cause),
-      }),
+      tryParseJson(body, (cause) =>
+        inspectionError(input, "Inherited image user inspection returned malformed JSON.", cause),
+      ),
     ),
     Effect.flatMap((value) => {
       const decoded = Schema.decodeUnknownResult(ImageInspect)(value);

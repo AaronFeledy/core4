@@ -1,10 +1,9 @@
 import { Effect, Exit } from "effect";
 
 import type { StartAppOptions } from "@lando/sdk/app";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -19,8 +18,6 @@ import {
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export { StartedServiceResultSchema, StartAppResultSchema } from "./start-internal.ts";
 export type { StartManagedScope } from "./start-file-sync.ts";
-
-const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(function* (
   options: StartAppOptions | undefined,
@@ -83,19 +80,8 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
   } = {},
 ) {
   return yield* target === undefined
-    ? Effect.gen(function* () {
-        const landofileService = yield* LandofileService;
-        const registry = yield* RuntimeProviderRegistry;
-        const planner = yield* AppPlanner;
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        const plan = yield* planner.plan(landofile, capabilities);
-        return yield* startAppForTarget(
-          options,
-          { plan, root: plan.root, app: appRef(plan), landofile },
-          managed,
-          execution,
-        );
-      })
+    ? resolveDesiredAppTarget.pipe(
+        Effect.flatMap((resolved) => startAppForTarget(options, resolved, managed, execution)),
+      )
     : startAppForTarget(options, target, managed, execution);
 });

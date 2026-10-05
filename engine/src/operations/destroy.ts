@@ -17,13 +17,13 @@ import {
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
 import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import { AbsolutePath, type AppPlan, type AppRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  type AppPlanner,
   EventService,
   FileSyncEngine,
   FileSystem,
-  LandofileService,
+  type LandofileService,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
@@ -34,7 +34,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import { deleteCwdAppMapEntriesForRoot } from "../cache/cwd-app-map.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
-import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import {
   verifyActiveVolumeCoordination,
@@ -80,18 +80,6 @@ type DestroyAppServices =
 type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.nowUnsafe();
-
-const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
-
-const resolveDesiredTarget = Effect.gen(function* () {
-  const landofileService = yield* LandofileService;
-  const registry = yield* RuntimeProviderRegistry;
-  const planner = yield* AppPlanner;
-  const landofile = yield* loadUserLandofile(landofileService);
-  const capabilities = yield* registry.capabilities;
-  const plan = yield* planner.plan(landofile, capabilities);
-  return { plan, root: plan.root, app: appRef(plan), landofile } satisfies ResolvedAppTarget;
-});
 
 const unchangedResult = (app: string): DestroyAppResult => ({
   app,
@@ -372,7 +360,7 @@ const destroyDesiredOrUnchanged = (
   options: DestroyAppOptions,
   resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
-  resolveDesiredTarget.pipe(
+  resolveDesiredAppTarget.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
     Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
     Effect.flatMap((desired) =>

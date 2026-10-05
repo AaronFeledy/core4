@@ -7,12 +7,38 @@ import {
   AppId,
   type AppRef,
   GPG_AGENT_SOCKET_NAME,
+  type MountPlan,
+  type PortablePath,
   SSH_AGENT_SOCKET_NAME,
   ServiceName,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../../providers/managed.ts";
+
+export const agentSocketMountPlan = (mount: AgentSocketBridgeResult, target: PortablePath): MountPlan => {
+  switch (mount._tag) {
+    case "bind-directory":
+      return {
+        type: "bind",
+        source: mount.directory,
+        target,
+        readOnly: true,
+        createHostPath: false,
+        realization: "passthrough",
+      };
+    case "volume":
+      return {
+        type: "volume",
+        source: mount.volume,
+        target,
+        readOnly: true,
+        realization: "passthrough",
+      };
+    default:
+      return mount satisfies never;
+  }
+};
 
 export const runtimeSshAgentReady = Effect.gen(function* () {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);

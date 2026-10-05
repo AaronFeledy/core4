@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CapabilityError,
+  ConfigExpressionError,
   GlobalAppError,
   GlobalAutoStartError,
   LandofileEventStepFailedError,
@@ -30,6 +31,109 @@ const ctx = (overrides: Partial<{ commandId: string; appId: string; providerId: 
 });
 
 describe("buildBugReport: envelope extraction", () => {
+  test("escapes generic terminal controls when an arbitrary tagged error renders", () => {
+    const error = {
+      _tag: "ArbitraryError",
+      message: "failure",
+      detail: "value\u001b[31m",
+      values: ["a\u001b[31m", "b"],
+    };
+
+    const plain = renderPlainBugReport(buildBugReport({ error, context: ctx() }));
+
+    expect(plain).toContain("detail: value\\u001b[31m");
+    expect(plain).toContain("values: a\\u001b[31m, b");
+    expect(plain).not.toContain("\u001b");
+  });
+
+  test("preserves report-owned keys when a raw Node error carries colliding fields", () => {
+    const error = Object.assign(new Error("failure"), {
+      code: "ENOENT",
+      syscall: "open",
+      path: "/x",
+      body: "spoofed body",
+      logsDir: "/spoofed/logs",
+      cacheDir: "/spoofed/cache",
+      timestamp: "spoofed timestamp",
+    });
+
+    const envelope = buildBugReport({ error, context: ctx() });
+    const plain = renderPlainBugReport(envelope);
+    const json: unknown = JSON.parse(renderJsonBugReport(envelope));
+
+    expect(json).toMatchObject({
+      code: "Error",
+      body: "failure",
+      logsDir: `${CACHE_ROOT}/logs`,
+      cacheDir: CACHE_ROOT,
+      syscall: "open",
+      path: "/x",
+    });
+    expect(envelope.extra).toEqual([
+      ["syscall", "open"],
+      ["path", "/x"],
+    ]);
+    expect(plain.split("\n").filter((line) => line.startsWith("code:"))).toEqual(["code: Error"]);
+    expect(plain).toContain("syscall: open");
+    expect(plain).toContain("path: /x");
+  });
+  test("preserves expression fields when plain and JSON bug reports render", () => {
+    const error = new ConfigExpressionError({
+      message: "Missing expression value",
+      path: "services.appserver.environment.GREETING",
+      expression: "hi-{{ app.nope }}",
+      filePath: "/app/.lando.yml",
+      remediation: "Fix expression",
+    });
+    const envelope = buildBugReport({ error, context: ctx() });
+    const plain = renderPlainBugReport(envelope);
+    const json: unknown = JSON.parse(renderJsonBugReport(envelope));
+    for (const [key, value] of [
+      ["expression", "hi-{{ app.nope }}"],
+      ["path", "services.appserver.environment.GREETING"],
+      ["filePath", "/app/.lando.yml"],
+    ])
+      expect(plain).toContain(`${key}: ${value}`);
+    expect(json).toMatchObject({
+      expression: "hi-{{ app.nope }}",
+      path: "services.appserver.environment.GREETING",
+      filePath: "/app/.lando.yml",
+    });
+  });
+
+  test("appends generic scalar fields after special cases when a tagged cause has extras", () => {
+    const error = {
+      _tag: "Wrapper",
+      message: "wrapper",
+      path: "outer",
+      cause: {
+        _tag: "LandofileEventStepFailedError",
+        message: "failed",
+        index: 0,
+        event: "pre-start",
+        path: "inner",
+        expression: "API_TOKEN=secret",
+        count: 2,
+        ready: false,
+        values: ["a", 2, true],
+        object: { hidden: true },
+        mixed: ["a", {}],
+        infinity: Number.POSITIVE_INFINITY,
+        redactionTokens: ["secret"],
+      },
+    };
+    const envelope = buildBugReport({ error, context: ctx() });
+    expect(envelope.extra).toEqual([
+      ["cause", "LandofileEventStepFailedError"],
+      ["event", "pre-start"],
+      ["step", "1"],
+      ["path", "inner"],
+      ["expression", "API_TOKEN=[redacted]"],
+      ["count", "2"],
+      ["ready", "false"],
+      ["values", "a, 2, true"],
+    ]);
+  });
   test("uses tagged-error _tag as the machine-readable code", () => {
     const env = buildBugReport({
       error: new NotImplementedError({

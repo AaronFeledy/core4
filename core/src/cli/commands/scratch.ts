@@ -18,16 +18,12 @@ import type {
 import { ScratchAppService } from "@lando/sdk/services";
 
 import { emitOptionalStdout } from "@lando/renderer/output";
-import {
-  type SummaryDocument,
-  type SummaryTone,
-  formatSummary,
-  worstSummaryTone,
-} from "@lando/renderer/summary";
+import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";
 import { formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
+import { SCRATCH_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;
@@ -318,18 +314,7 @@ export const scratchList = (): Effect.Effect<
 export const scratchSourceLabel = (source: ScratchSource): string =>
   source.kind === "fork" ? "fork" : `recipe:${source.ref}`;
 
-const scratchStatusTone = (status: ScratchSummary["status"]): SummaryTone => {
-  switch (status) {
-    case "attached":
-      return "ok";
-    case "detached":
-      return "skipped";
-    case "orphan":
-      return "error";
-    default:
-      return "info";
-  }
-};
+const scratchStatusTone = summaryToneFromTable(SCRATCH_STATUS_TONES, "info");
 
 export const buildScratchListSummary = (result: ReadonlyArray<ScratchSummary>): SummaryDocument => {
   const rows = result.map((entry) => ({

@@ -13,28 +13,26 @@
  * - This module keeps the explicit degraded-mode layer for contexts where no
  *   runtime provider is available.
  */
-import { Effect, Layer } from "effect";
+import { Layer } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { UrlScanner } from "@lando/sdk/services";
+import { UNAVAILABLE_ID, unavailableOperation } from "../unavailable.ts";
 
 export { UrlScanner };
 
-const SCANNER_UNAVAILABLE_ID = "unavailable" as const;
 const SCANNER_UNAVAILABLE_MESSAGE =
   "UrlScanner requires a running provider. Run `lando setup` to install the provider.";
 
 export const layerUnavailable = Layer.succeed(
   UrlScanner,
   UrlScanner.of({
-    id: SCANNER_UNAVAILABLE_ID,
-    scan: (_appId) =>
-      Effect.fail(
-        new ScannerError({ message: SCANNER_UNAVAILABLE_MESSAGE, scannerId: SCANNER_UNAVAILABLE_ID }),
-      ),
-    detectCollisions: (_appIds) =>
-      Effect.fail(
-        new ScannerError({ message: SCANNER_UNAVAILABLE_MESSAGE, scannerId: SCANNER_UNAVAILABLE_ID }),
-      ),
+    id: UNAVAILABLE_ID,
+    scan: unavailableOperation(
+      () => new ScannerError({ message: SCANNER_UNAVAILABLE_MESSAGE, scannerId: UNAVAILABLE_ID }),
+    ),
+    detectCollisions: unavailableOperation(
+      () => new ScannerError({ message: SCANNER_UNAVAILABLE_MESSAGE, scannerId: UNAVAILABLE_ID }),
+    ),
   }),
 );

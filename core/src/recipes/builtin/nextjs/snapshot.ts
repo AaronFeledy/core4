@@ -1,6 +1,6 @@
-import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
-import { arr, call, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts";
+import { nodeWebSnapshotBuilders } from "../node-web-snapshot.ts";
+import { cond, lit, obj, toolNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const NEXTJS_RECIPE_VERSION = "0.1.0";
@@ -14,17 +14,10 @@ export const nextjsProducer: RecipeProducer = {
   contentDigest: NEXTJS_CONTENT_DIGEST,
 };
 export const nextjsDefaults = { node: "lts", database: "postgres", auth: "none" } as const;
-const databaseEnabled = (): ExpressionNode =>
-  call("ne", { kind: "Path", head: "options", segments: [{ type: "prop", name: "database" }] }, lit("none"));
-const webService = (hasDatabase: boolean): ExpressionNode =>
-  obj([
-    ["type", lit("node:{{ recipe.node }}")],
-    ["port", lit(3000)],
-    ["environment", obj([["NEXTAUTH_PROVIDER", lit("{{ recipe.auth }}")]])],
-    ["routes", arr(defaultRoute())],
-    ...(hasDatabase ? [["dependsOn", arr(lit("database"))] as const] : []),
-  ]);
-const web = (): ExpressionNode => cond(databaseEnabled(), webService(true), webService(false));
+const { databaseEnabled, web } = nodeWebSnapshotBuilders({
+  port: 3000,
+  env: [["NEXTAUTH_PROVIDER", "{{ recipe.auth }}"]],
+});
 export const nextjsSnapshot: RecipeSnapshot = {
   identity: nextjsProducer,
   optionTypes: {

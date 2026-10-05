@@ -1,14 +1,16 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
-import { Effect } from "effect";
+import { RecipeSourceError } from "@lando/sdk/errors";
 
-import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
-
-import * as LandoConfigService from "@lando/engine/services/config";
 import type { ResolvedRecipe } from "./source";
+import {
+  normalizeRecipeSubpath,
+  recipeFileExists,
+  recipeUserDataRoot,
+  resolveRecipeManifest,
+} from "./source-support";
 
 export interface GitRecipeCloneInput {
   readonly url: string;
@@ -85,54 +87,14 @@ const sourceError = (input: {
   readonly remediation: string;
 }): RecipeSourceError => new RecipeSourceError(input);
 
-const normalizeSubpath = (subpath: string | undefined): string | undefined => {
-  if (subpath === undefined || subpath.trim() === "" || subpath === ".") return undefined;
-  const slashPath = subpath.replace(/\\/gu, "/");
-  if (isAbsolute(subpath) || slashPath.startsWith("/")) {
-    throw sourceError({
-      message: `Git recipe --path must be relative and stay inside the cloned repository: ${subpath}`,
-      source: subpath,
-      kind: "subpath-invalid",
-      remediation: "Pass a relative path inside the repository, such as --path=packages/foo.",
-    });
-  }
-  const normalized = relative(".", resolve(".", slashPath));
-  if (normalized === "" || normalized === ".." || normalized.startsWith("../") || isAbsolute(normalized)) {
-    throw sourceError({
-      message: `Git recipe --path escapes the cloned repository: ${subpath}`,
-      source: subpath,
-      kind: "subpath-invalid",
-      remediation: "Pass a relative path inside the repository, such as --path=packages/foo.",
-    });
-  }
-  return normalized;
-};
-
-const userDataRoot = async (override: string | undefined): Promise<string> => {
-  if (override !== undefined) return override;
-  const resolved = await Effect.runPromise(
-    Effect.flatMap(ConfigService, (config) => config.get("userDataRoot")).pipe(
-      Effect.provide(LandoConfigService.layer),
-    ),
-  );
-  if (resolved === undefined) throw new Error("ConfigService returned no userDataRoot.");
-  return resolved;
-};
-
-const fileExists = async (path: string): Promise<boolean> =>
-  stat(path).then(
-    () => true,
-    () => false,
-  );
-
 interface PublishFileSystem {
   readonly rename: typeof rename;
   readonly cp: typeof cp;
   readonly rm: typeof rm;
-  readonly fileExists: typeof fileExists;
+  readonly fileExists: typeof recipeFileExists;
 }
 
-const publishFileSystem = { rename, cp, rm, fileExists } satisfies PublishFileSystem;
+const publishFileSystem = { rename, cp, rm, fileExists: recipeFileExists } satisfies PublishFileSystem;
 
 const hasErrorCode = (cause: unknown, code: string): boolean =>
   typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
@@ -169,8 +131,14 @@ export const publish = async (
 export const resolveGitRecipeSource = async (
   options: ResolveGitRecipeSourceOptions,
 ): Promise<ResolvedGitRecipe> => {
-  const safeSubpath = normalizeSubpath(options.path);
-  const root = await userDataRoot(options.userDataRoot).catch((cause) => {
+  const safeSubpath = normalizeRecipeSubpath(
+    options.path,
+    { label: "Git", container: "cloned repository", noun: "repository" },
+    (input) => {
+      throw sourceError(input);
+    },
+  );
+  const root = await recipeUserDataRoot(options.userDataRoot).catch((cause) => {
     throw sourceError({
       message: `Could not resolve the Lando user data root for git recipe caching: ${causeMessage(cause)}`,
       source: "git",
@@ -189,8 +157,9 @@ export const resolveGitRecipeSource = async (
   });
 
   const pointer = join(cacheRoot, ".url", createHash("sha256").update(options.url).digest("hex"));
-  const cachedSha = (await fileExists(pointer)) ? (await Bun.file(pointer).text()).trim() : "";
-  let commitSha = cachedSha !== "" && (await fileExists(join(cacheRoot, cachedSha))) ? cachedSha : undefined;
+  const cachedSha = (await recipeFileExists(pointer)) ? (await Bun.file(pointer).text()).trim() : "";
+  let commitSha =
+    cachedSha !== "" && (await recipeFileExists(join(cacheRoot, cachedSha))) ? cachedSha : undefined;
   if (commitSha === undefined) {
     const stagingDir = await mkdtemp(join(cacheRoot, ".staging-"));
     try {
@@ -214,7 +183,7 @@ export const resolveGitRecipeSource = async (
     }
 
     const publishedDir = join(cacheRoot, commitSha);
-    if (await fileExists(publishedDir)) {
+    if (await recipeFileExists(publishedDir)) {
       await rm(stagingDir, { recursive: true, force: true });
     } else {
       await publish(stagingDir, publishedDir).catch(async (cause) => {
@@ -233,28 +202,21 @@ export const resolveGitRecipeSource = async (
 
   const publishedDir = join(cacheRoot, commitSha);
 
-  const recipeRoot = safeSubpath === undefined ? publishedDir : join(publishedDir, safeSubpath);
-  const manifestPath = join(recipeRoot, "recipe.yml");
-  if (!(await fileExists(manifestPath))) {
-    if (safeSubpath !== undefined) {
-      throw sourceError({
-        message: `recipe.yml not found at git recipe subpath ${safeSubpath}.`,
-        source: options.url,
-        kind: "subpath-missing",
-        remediation: "Choose a --path that contains recipe.yml at its top level.",
-      });
-    }
-    throw new RecipeManifestNotFoundError({
-      message: `recipe.yml not found at ${manifestPath}.`,
-      source: manifestPath,
-    });
-  }
+  const { recipeRoot, manifestPath, manifestYaml } = await resolveRecipeManifest({
+    publishedDir,
+    safeSubpath,
+    sourceKind: "git",
+    source: options.url,
+    fail: (input) => {
+      throw sourceError(input);
+    },
+  });
 
   // Git recipes cache under the user data root (not the cache root), keyed by commit SHA.
   return {
     id: options.url,
     source: manifestPath,
-    manifestYaml: await Bun.file(manifestPath).text(),
+    manifestYaml,
     root: recipeRoot,
     commitSha,
   };

@@ -1,4 +1,10 @@
 import { Schema } from "effect";
+import {
+  KEBAB_CASE_ID_PATTERN,
+  SEMVER_PATTERN,
+  SHA256_PREFIXED_DIGEST_PATTERN,
+  patternString,
+} from "./string-forms.ts";
 
 const metadata = (identifier: string, description: string) => ({
   identifier,
@@ -6,31 +12,18 @@ const metadata = (identifier: string, description: string) => ({
   description,
 });
 
-const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const CONTENT_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
-const SEMVER_PATTERN =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-
 /** Recipe id — kebab-case identifier; matches directory basename. */
-export const RecipeId = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(KEBAB_CASE_PATTERN, {
-      toJsonSchema: () => ({ pattern: KEBAB_CASE_PATTERN.source }),
-      message: "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
-    }),
-  ),
-);
+export const RecipeId = patternString(KEBAB_CASE_ID_PATTERN, {
+  toJsonSchema: () => ({ pattern: KEBAB_CASE_ID_PATTERN.source }),
+  message: "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
+});
 export type RecipeId = typeof RecipeId.Type;
 
 /** Recipe semver string. */
-export const RecipeVersion = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(SEMVER_PATTERN, {
-      toJsonSchema: () => ({ pattern: SEMVER_PATTERN.source }),
-      message: "Recipe version must be a semver string (e.g. 1.0.0).",
-    }),
-  ),
-);
+export const RecipeVersion = patternString(SEMVER_PATTERN, {
+  toJsonSchema: () => ({ pattern: SEMVER_PATTERN.source }),
+  message: "Recipe version must be a semver string (e.g. 1.0.0).",
+});
 export type RecipeVersion = typeof RecipeVersion.Type;
 
 /**
@@ -53,13 +46,9 @@ export type RecipePackageName = typeof RecipePackageName.Type;
  * itself and all migration history, so a producer can record its own digest
  * without creating a circular definition.
  */
-export const RecipeContentDigest = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(CONTENT_DIGEST_PATTERN, {
-      toJsonSchema: () => ({ pattern: CONTENT_DIGEST_PATTERN.source }),
-    }),
-  ),
-).annotate(
+export const RecipeContentDigest = patternString(SHA256_PREFIXED_DIGEST_PATTERN, {
+  toJsonSchema: () => ({ pattern: SHA256_PREFIXED_DIGEST_PATTERN.source }),
+}).annotate(
   metadata("RecipeContentDigest", "SHA-256 over canonical recipe inputs, excluding the digest and history."),
 );
 export type RecipeContentDigest = typeof RecipeContentDigest.Type;

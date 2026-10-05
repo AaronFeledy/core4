@@ -16,7 +16,7 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
 import { builtInCommandEntries } from "./built-in-command-registry";
 import { helpArgToken, helpFlagToken } from "./cli-help";
-import { type OclifFlagDefinition, flagNameByToken, setParsedFlag } from "./compiled-argv";
+import { type OclifFlagDefinition, parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import {
   activeResultFormat,
   emitJsonListModeIfRequested,
@@ -83,40 +83,18 @@ export const pluginOwnedCommandInputFromArgv = (
 } => {
   const flagDefinitions = pluginFlagDefinitions(spec);
   const normalizedArgv = normalizeCliFlagTokens(argv, flagDefinitions);
-  const flagTokens = flagNameByToken(flagDefinitions);
-  const flags: Record<string, unknown> = {};
-  const positionals: string[] = [];
-
-  for (let index = 0; index < normalizedArgv.length; index += 1) {
-    const arg = normalizedArgv[index];
-    if (arg === undefined) continue;
-    if (arg === "--") {
-      positionals.push(...normalizedArgv.slice(index + 1));
-      break;
-    }
-    const equalsIndex = arg.indexOf("=");
-    const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
-    const flagName = flagTokens.get(token);
-    if (flagName !== undefined) {
-      const definition = flagDefinitions[flagName] ?? {};
-      if (definition.type === "boolean") {
-        setParsedFlag(flags, flagName, true, definition);
-        continue;
-      }
-      const value = equalsIndex === -1 ? normalizedArgv[index + 1] : arg.slice(equalsIndex + 1);
-      if (value === undefined) continue;
+  const { flags, positionals } = parseFlagsAndPositionals(normalizedArgv, flagDefinitions, {
+    strict: spec.strict !== false,
+    storeValue: (target, flagName, value, definition) => {
       const specFlag = spec.flags?.[flagName];
       if (specFlag?.type === "number" && specFlag.valueType !== "integer") {
         const parsed = Number(value);
-        if (Number.isFinite(parsed)) flags[flagName] = parsed;
-      } else {
-        setParsedFlag(flags, flagName, value, definition);
+        if (Number.isFinite(parsed)) target[flagName] = parsed;
+        return;
       }
-      if (equalsIndex === -1) index += 1;
-      continue;
-    }
-    if (spec.strict === false || !arg.startsWith("-")) positionals.push(arg);
-  }
+      setParsedFlag(target, flagName, value, definition);
+    },
+  });
 
   const argNames = Object.keys(spec.args ?? {});
   const args: Record<string, unknown> = {};

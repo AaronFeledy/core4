@@ -1,9 +1,10 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, PortablePath, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -61,14 +62,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
     protocol: "http",
     name: ctx.serviceName,
   });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["varnishadm", "ping"],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 5,
-  });
+  ctx.setHealthcheck(commandHealthcheck(["varnishadm", "ping"], 5));
   if (backend.length > 0) {
     ctx.addDependency({
       service: ServiceName.make(backend),
@@ -107,16 +101,11 @@ export const varnishServiceFeature: ServiceFeatureDefinition = {
   id: VARNISH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyVarnishFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "varnish service feature failed to apply",
-          feature: VARNISH_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    VARNISH_FEATURE_ID,
+    "varnish service feature failed to apply",
+    applyVarnishFeature,
+  ),
 };
 
 const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
@@ -125,7 +114,7 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: VarnishServiceConfig,
   resolve: (input) => {
     const backend = input.service.backend?.trim() ?? "";

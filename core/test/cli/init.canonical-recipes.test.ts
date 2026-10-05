@@ -205,7 +205,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "database", type: "postgres" },
       { name: "cache", type: "redis" },
     ],
-    expectedTooling: ["rails", "bundle"],
+    expectedTooling: ["rails", "bundle", "rake"],
   },
   {
     recipe: "jekyll",

@@ -1,10 +1,39 @@
 import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { McpTransportError } from "@lando/sdk/errors";
+import { McpTransportError, SqlConfirmRequiredError } from "@lando/sdk/errors";
 
 import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "@lando/mcp/result-inspector";
 import { buildCommandResultEnvelope, identityRedactor } from "@lando/sdk/command-result";
+
+test("retains SQL confirmation projection when a failure passes MCP inspection", () => {
+  const steps = [{ id: "reset", label: "Reset", target: "database", destructive: true }];
+  const error = new SqlConfirmRequiredError({
+    message: "Confirm reset",
+    service: "database",
+    steps,
+    remediation: "Use --yes",
+  });
+  const envelope = Effect.runSync(
+    inspectMcpCommandOutcome({ _tag: "failure", error }).pipe(
+      Effect.flatMap((outcome) =>
+        buildCommandResultEnvelope({
+          command: "app:db:reset",
+          resultSchema: Schema.Unknown,
+          outcome,
+          redactor: identityRedactor,
+        }),
+      ),
+    ),
+  );
+  expect(envelope.error).toEqual({
+    _tag: "SqlConfirmRequiredError",
+    message: "Confirm reset",
+    remediation: "Use --yes",
+    service: "database",
+    steps,
+  });
+});
 
 test("omits a hidden accessor before result-schema encoding", async () => {
   // Given
@@ -37,6 +66,74 @@ test("omits a hidden accessor before result-schema encoding", async () => {
     error: { _tag: "CommandResultEncodeError" },
   });
   expect(getterCalls).toBe(0);
+});
+
+test("omits a proxy-valued failure field without invoking traps before envelope encoding", () => {
+  let trapCalls = 0;
+  const proxy = new Proxy(
+    {},
+    {
+      get: () => {
+        trapCalls += 1;
+        return "hidden";
+      },
+      getPrototypeOf: () => {
+        trapCalls += 1;
+        return Object.prototype;
+      },
+      ownKeys: () => {
+        trapCalls += 1;
+        return ["hidden"];
+      },
+      getOwnPropertyDescriptor: () => {
+        trapCalls += 1;
+        return { value: "hidden", enumerable: true, configurable: true };
+      },
+    },
+  );
+  const error = { _tag: "ProxyFieldError", message: "failure", path: "/x", value: proxy };
+
+  const envelope = Effect.runSync(
+    inspectMcpCommandOutcome({ _tag: "failure", error }).pipe(
+      Effect.flatMap((outcome) =>
+        buildCommandResultEnvelope({
+          command: "app:info",
+          resultSchema: Schema.Unknown,
+          outcome,
+          redactor: identityRedactor,
+        }),
+      ),
+    ),
+  );
+
+  expect(envelope.error).toEqual({ _tag: "ProxyFieldError", message: "failure", path: "/x" });
+  expect(trapCalls).toBe(0);
+});
+
+test("rejects a proxy error itself without enumerating passthrough fields", () => {
+  let trapCalls = 0;
+  const error = new Proxy(
+    {},
+    {
+      ownKeys: () => {
+        trapCalls += 1;
+        return [];
+      },
+      getOwnPropertyDescriptor: () => {
+        trapCalls += 1;
+        return undefined;
+      },
+      getPrototypeOf: () => {
+        trapCalls += 1;
+        return Object.prototype;
+      },
+    },
+  );
+
+  const exit = Effect.runSync(Effect.result(inspectMcpCommandOutcome({ _tag: "failure", error })));
+
+  expect(exit).toMatchObject({ _tag: "Failure", failure: { _tag: "McpTransportError" } });
+  expect(trapCalls).toBe(0);
 });
 
 test("projects only plain descriptor-safe progress data", () => {

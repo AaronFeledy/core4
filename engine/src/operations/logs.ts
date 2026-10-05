@@ -7,23 +7,17 @@ import {
   type LandofileLoadExpressionError,
   ToolingExecError,
 } from "@lando/sdk/errors";
+import { type AppPlan, LogSourceId, RESERVED_LOG_SOURCE_ID, type ServicePlan } from "@lando/sdk/schema";
 import {
-  type AppPlan,
-  LogSourceId,
-  type ProviderCapabilities,
-  RESERVED_LOG_SOURCE_ID,
-  type ServicePlan,
-} from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  LandofileService,
+  type AppPlanner,
+  type LandofileService,
   type LogChunk,
   type LogOptions,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -214,17 +208,7 @@ const resolvePlanServices = Effect.fnUntraced(function* (
   LogsAppError,
   LogsAppServices
 > {
-  const landofileService = yield* LandofileService;
-  const registry = yield* RuntimeProviderRegistry;
-  const planner = yield* AppPlanner;
-
-  const plan =
-    target?.plan ??
-    (yield* Effect.gen(function* () {
-      const landofile = yield* loadUserLandofile(landofileService);
-      const capabilities: ProviderCapabilities = yield* registry.capabilities;
-      return yield* planner.plan(landofile, capabilities);
-    }));
+  const plan = target?.plan ?? (yield* planDesiredApp).plan;
 
   const { services, provider } = yield* servicesForPlan(plan, options);
   return { plan, services, provider };

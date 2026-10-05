@@ -6,6 +6,7 @@ import { ImagePullProgressEvent } from "@lando/sdk/events";
 import type { PullDialect } from "./dialect.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
+import { parseJsonOrUndefined } from "./engine-json.ts";
 import { redactDetails, redactString, withApiReason } from "./redact.ts";
 
 const REGISTRY_AUTH_REMEDIATION =
@@ -105,12 +106,7 @@ const progressDetailNumber = (detail: unknown, key: "current" | "total"): number
 export const parseImagePullFrame = (line: string, dialect: PullDialect): ImagePullFrame => {
   const trimmed = line.trim();
   if (trimmed.length === 0) return { kind: "ignore" };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return { kind: "ignore" };
-  }
+  const parsed = parseJsonOrUndefined(trimmed);
   if (typeof parsed !== "object" || parsed === null) return { kind: "ignore" };
   const errorText = dialect.frameError(parsed);
   if (errorText !== undefined)

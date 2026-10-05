@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import { LocalStackServiceConfig } from "@lando/sdk/schema/services/localstack";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -49,14 +49,9 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck({
-    kind: "command",
-    command: ["sh", "-c", `curl -sf http://localhost:${port}/_localstack/health`],
-    intervalSeconds: 10,
-    timeoutSeconds: 5,
-    retries: 5,
-    startPeriodSeconds: 30,
-  });
+  ctx.setHealthcheck(
+    commandHealthcheck(["sh", "-c", `curl -sf http://localhost:${port}/_localstack/health`], 30),
+  );
 
   applyAuthoredProcessFields(ctx);
 };
@@ -66,23 +61,18 @@ export const localstackServiceFeature: ServiceFeatureDefinition = {
   schema: Schema.Unknown,
   // After lando.env so GATEWAY_LISTEN stays aligned with the planned endpoint port.
   priority: 750,
-  apply: (ctx) =>
-    Effect.try({
-      try: () => applyLocalStackFeature(ctx),
-      catch: (cause) =>
-        new ServiceFeatureError({
-          message: cause instanceof Error ? cause.message : "localstack service feature failed to apply",
-          feature: LOCALSTACK_FEATURE_ID,
-          cause,
-        }),
-    }),
+  apply: serviceFeatureApply(
+    LOCALSTACK_FEATURE_ID,
+    "localstack service feature failed to apply",
+    applyLocalStackFeature,
+  ),
 };
 
 export const localstackServiceType: ServiceType = {
   id: "localstack",
   name: "localstack",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  identity: rootIdentity(),
   schema: LocalStackServiceConfig,
   resolve: (input) =>
     Effect.succeed({

@@ -1,4 +1,5 @@
 import { makeOptionBearingDecomposer } from "../option-bearing-decomposer.ts";
+import { composerAndPhpTooling } from "../php-stack.ts";
 import { joomlaProducer, joomlaSnapshot } from "./snapshot.ts";
 
 export const joomlaDecomposer = makeOptionBearingDecomposer({
@@ -28,20 +29,7 @@ export const joomlaDecomposer = makeOptionBearingDecomposer({
           description: "Run the Joomla CLI inside the appserver service.",
           cmds: ["php cli/joomla.php"],
         },
-        ...(composerEnabled
-          ? {
-              composer: {
-                service: "appserver",
-                description: "Run Composer inside the appserver service.",
-                cmds: ["composer"],
-              },
-            }
-          : {}),
-        php: {
-          service: "appserver",
-          description: "Run the PHP CLI inside the appserver service.",
-          cmds: ["php"],
-        },
+        ...composerAndPhpTooling(composerEnabled, { service: "appserver" }),
       },
     };
   },

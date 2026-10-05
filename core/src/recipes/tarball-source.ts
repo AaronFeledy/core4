@@ -13,15 +13,15 @@
  *     (i.e. not `--yes`/`--no-interactive`) the user is prompted once and a
  *     decline aborts with `checksum-unverified`.
  */
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 import { Effect, Layer } from "effect";
 
-import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
-import { ConfigService, Downloader } from "@lando/sdk/services";
+import { RecipeSourceError } from "@lando/sdk/errors";
+import { Downloader } from "@lando/sdk/services";
 
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
@@ -30,6 +30,12 @@ import { layer as httpClientLayer } from "@lando/http-client/live";
 import { sha256Hex } from "@lando/sdk/digest";
 import { publish } from "./git-source";
 import type { ResolvedRecipe } from "./source";
+import {
+  normalizeRecipeSubpath,
+  recipeFileExists,
+  recipeUserDataRoot,
+  resolveRecipeManifest,
+} from "./source-support";
 
 export interface TarballRecipeFetcher {
   readonly fetch: (url: string) => Promise<Uint8Array>;
@@ -74,45 +80,6 @@ const sourceError = (input: {
 }): RecipeSourceError => new RecipeSourceError(input);
 
 const SHA256_RE = /^[0-9a-f]{64}$/u;
-const normalizeSubpath = (subpath: string | undefined): string | undefined => {
-  if (subpath === undefined || subpath.trim() === "" || subpath === ".") return undefined;
-  const slashPath = subpath.replace(/\\/gu, "/");
-  if (isAbsolute(subpath) || slashPath.startsWith("/")) {
-    throw sourceError({
-      message: `Tarball recipe --path must be relative and stay inside the extracted archive: ${subpath}`,
-      source: subpath,
-      kind: "subpath-invalid",
-      remediation: "Pass a relative path inside the archive, such as --path=packages/foo.",
-    });
-  }
-  const normalized = relative(".", resolve(".", slashPath));
-  if (normalized === "" || normalized === ".." || normalized.startsWith("../") || isAbsolute(normalized)) {
-    throw sourceError({
-      message: `Tarball recipe --path escapes the extracted archive: ${subpath}`,
-      source: subpath,
-      kind: "subpath-invalid",
-      remediation: "Pass a relative path inside the archive, such as --path=packages/foo.",
-    });
-  }
-  return normalized;
-};
-
-const userDataRoot = async (override: string | undefined): Promise<string> => {
-  if (override !== undefined) return override;
-  const resolved = await Effect.runPromise(
-    Effect.flatMap(ConfigService, (config) => config.get("userDataRoot")).pipe(
-      Effect.provide(LandoConfigService.layer),
-    ),
-  );
-  if (resolved === undefined) throw new Error("ConfigService returned no userDataRoot.");
-  return resolved;
-};
-
-const fileExists = async (path: string): Promise<boolean> =>
-  stat(path).then(
-    () => true,
-    () => false,
-  );
 
 export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
   fetch: (url) =>
@@ -270,10 +237,16 @@ export const defaultTarballRecipeExtractor: TarballRecipeExtractor = makeTarball
 export const resolveTarballRecipeSource = async (
   options: ResolveTarballRecipeSourceOptions,
 ): Promise<ResolvedTarballRecipe> => {
-  const safeSubpath = normalizeSubpath(options.path);
+  const safeSubpath = normalizeRecipeSubpath(
+    options.path,
+    { label: "Tarball", container: "extracted archive", noun: "archive" },
+    (input) => {
+      throw sourceError(input);
+    },
+  );
   const expectedChecksum = options.checksum?.trim().toLowerCase();
 
-  const root = await userDataRoot(options.userDataRoot).catch((cause) => {
+  const root = await recipeUserDataRoot(options.userDataRoot).catch((cause) => {
     throw sourceError({
       message: `Could not resolve the Lando user data root for tarball recipe caching: ${causeMessage(cause)}`,
       source: "tarball",
@@ -340,7 +313,7 @@ export const resolveTarballRecipeSource = async (
   }
 
   const publishedDir = join(cacheRoot, sha256);
-  if (!(await fileExists(publishedDir))) {
+  if (!(await recipeFileExists(publishedDir))) {
     const stagingDir = await mkdtemp(join(cacheRoot, ".staging-"));
     try {
       await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingDir);
@@ -365,27 +338,20 @@ export const resolveTarballRecipeSource = async (
     });
   }
 
-  const recipeRoot = safeSubpath === undefined ? publishedDir : join(publishedDir, safeSubpath);
-  const manifestPath = join(recipeRoot, "recipe.yml");
-  if (!(await fileExists(manifestPath))) {
-    if (safeSubpath !== undefined) {
-      throw sourceError({
-        message: `recipe.yml not found at tarball recipe subpath ${safeSubpath}.`,
-        source: options.url,
-        kind: "subpath-missing",
-        remediation: "Choose a --path that contains recipe.yml at its top level.",
-      });
-    }
-    throw new RecipeManifestNotFoundError({
-      message: `recipe.yml not found at ${manifestPath}.`,
-      source: manifestPath,
-    });
-  }
+  const { recipeRoot, manifestPath, manifestYaml } = await resolveRecipeManifest({
+    publishedDir,
+    safeSubpath,
+    sourceKind: "tarball",
+    source: options.url,
+    fail: (input) => {
+      throw sourceError(input);
+    },
+  });
 
   return {
     id: options.url,
     source: manifestPath,
-    manifestYaml: await Bun.file(manifestPath).text(),
+    manifestYaml,
     root: recipeRoot,
     sha256,
   };

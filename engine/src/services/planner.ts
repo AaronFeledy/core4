@@ -22,6 +22,7 @@ import {
 import { attachEffectiveEvents, effectiveEventsForPlan } from "../planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
+import { attachServiceCredsScope, serviceCredsScopeForPlan } from "../planner/landofile-scopes.ts";
 import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
@@ -66,9 +67,11 @@ export const layer = Layer.effect(
         const identified = { ...plan, root: identity.appRoot, identity };
         const tooling = effectiveToolingForPlan(plan);
         const events = effectiveEventsForPlan(plan);
+        const credsScope = serviceCredsScopeForPlan(plan);
         const adopted = yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
         if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
         if (events !== undefined) attachEffectiveEvents(adopted, events);
+        if (credsScope !== undefined) attachServiceCredsScope(adopted, credsScope);
         return adopted;
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);

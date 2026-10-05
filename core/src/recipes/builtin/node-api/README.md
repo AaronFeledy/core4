@@ -9,6 +9,11 @@ optional Postgres database.
   hint set to the picked framework.
 - `database` — `postgres` (omitted when prompt `database` is `none`).
 
+The `api` service receives `DATABASE_URL` when PostgreSQL is selected, alongside
+its `API_FRAMEWORK` hint. Database credentials resolve from the database service
+at plan time. With `database: none`, no `DATABASE_URL` is injected. This recipe
+does not include Redis or inject `REDIS_URL`.
+
 ## Generated tooling
 
 - `lando npm …` — npm inside the api service.
