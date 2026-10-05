@@ -7,6 +7,7 @@ import {
   type ServiceConfig,
   parseShortVolume,
 } from "@lando/sdk/schema";
+import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
@@ -56,6 +57,21 @@ export const resolveBindSource = (source: string, appRoot: string): string => {
     return win32.resolve(appRoot, expanded);
   }
   return resolvePath(appRoot, expanded);
+};
+
+export const addServerConfigMount = (
+  ctx: ServiceFeatureContext,
+  target: Parameters<ServiceFeatureContext["addMount"]>[0]["target"],
+): boolean => {
+  const server = ctx.normalizedConfig.config?.server;
+  if (server === undefined || server.length === 0) return false;
+  ctx.addMount({
+    type: "bind",
+    source: resolveBindSource(server, ctx.appRoot),
+    target,
+    readOnly: true,
+  });
+  return true;
 };
 
 export const parseServiceMount = (
