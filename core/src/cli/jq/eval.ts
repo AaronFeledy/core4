@@ -1,4 +1,4 @@
-import { JqExpressionError } from "@lando/sdk/errors";
+import { JqExpressionError, causeMessage } from "@lando/sdk/errors";
 
 import { redactString } from "../redact.ts";
 import type { JqEngine } from "./types.ts";
@@ -149,7 +149,7 @@ const assertOutputSize = (text: string, expr: string): void => {
 };
 
 const jqEvalError = (expr: string, cause: unknown): JqExpressionError => {
-  const raw = cause instanceof Error ? cause.message : String(cause);
+  const raw = causeMessage(cause);
   const detail = redactString(raw);
   return new JqExpressionError({
     message: "jq expression failed.",

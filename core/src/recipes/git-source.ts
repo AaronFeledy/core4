@@ -2,7 +2,7 @@ import { cp, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { RecipeSourceError, isErrnoCode } from "@lando/sdk/errors";
+import { RecipeSourceError, causeMessage, isErrnoCode } from "@lando/sdk/errors";
 
 import type { ResolvedRecipe } from "./source";
 import {
@@ -74,7 +74,6 @@ export const defaultGitRecipeCloner: GitRecipeCloner = {
   },
 };
 
-const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 const authFailure = (cause: unknown): boolean =>
   /auth|credential|permission denied|publickey|could not read username|terminal prompts disabled/i.test(
     causeMessage(cause),

@@ -13,6 +13,7 @@ import {
   type NotImplementedError,
   RecipeSourceError,
   type ToolingIncludeCycleError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -153,8 +154,6 @@ const LOCK_REMEDIATION =
   "Run lando app:includes:update to refresh .lando.lock.yml after reviewing the include change.";
 const NO_NETWORK_REMEDIATION =
   "Run lando app:includes:update with network access to populate the include cache before retrying with --no-network.";
-
-const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 const missingRuntimeInput = (input: string): LandofileIncludeError =>
   includeError({

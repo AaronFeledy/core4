@@ -1,7 +1,7 @@
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
@@ -78,7 +78,7 @@ export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (
     Effect.mapError(
       (error) =>
         new LandofileValidationError({
-          message: `Failed to enumerate plugin contributions: ${error instanceof Error ? error.message : String(error)}.`,
+          message: `Failed to enumerate plugin contributions: ${causeMessage(error)}.`,
           file: landofilePath,
           issues: [],
         }),

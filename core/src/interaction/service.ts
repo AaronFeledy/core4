@@ -27,6 +27,7 @@ import {
   RecipeMissingAnswerError,
   RecipePromptValidationError,
   RecipeRunNotAllowedError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import type {
   PromptBatchOptions,
@@ -136,8 +137,6 @@ const restoreTty = (stdin: NodeJS.ReadableStream, rawModeBefore: boolean | undef
 const isCancellation = (cause: unknown): boolean =>
   cause instanceof PromptCancelledError || (cause instanceof Error && cause.name === "PromptCancelledError");
 
-const describeCause = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
-
 const mapInteractionError = (cause: unknown, serviceId: string): InteractionError => {
   if (cause instanceof RecipeMissingAnswerError) {
     return new InteractionRequiredError({
@@ -181,7 +180,7 @@ const mapInteractionError = (cause: unknown, serviceId: string): InteractionErro
     });
   }
   return new InteractionUnavailableError({
-    message: `Interaction failed: ${describeCause(cause)}`,
+    message: `Interaction failed: ${causeMessage(cause)}`,
     serviceId,
     remediation: "Provide answers non-interactively via --answer/--answers/--yes.",
   });
@@ -348,10 +347,10 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
             try: () => readAnswersFileJson(answersFilePath),
             catch: (cause) =>
               new PromptValidationError({
-                message: `Could not load answers file: ${describeCause(cause)}`,
+                message: `Could not load answers file: ${causeMessage(cause)}`,
                 promptName: "(answers file)",
                 promptType: "text",
-                issue: describeCause(cause),
+                issue: causeMessage(cause),
                 remediation: "Pass a readable JSON object of string answers via --answers <file>.",
               }),
           });

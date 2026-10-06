@@ -5,7 +5,11 @@ import { setImmediate as waitImmediate } from "node:timers/promises";
 
 import { Effect } from "effect";
 
-import { HostProxySocketStaleError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import {
+  HostProxySocketStaleError,
+  HostProxyTransportUnavailableError,
+  causeMessage,
+} from "@lando/sdk/errors";
 
 import type { HostProxyRunLandoSessionOptions, HostProxySessionPaths } from "./transport-session.ts";
 
@@ -61,7 +65,7 @@ const tcpListenResult = (
 
 const unixSocketUnavailable = (socketPath: string, cause: unknown): HostProxyTransportUnavailableError =>
   new HostProxyTransportUnavailableError({
-    message: cause instanceof Error ? cause.message : String(cause),
+    message: causeMessage(cause),
     socketPath,
     remediation: "Ensure the app run directory is writable.",
   });

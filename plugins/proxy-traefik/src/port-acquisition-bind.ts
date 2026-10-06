@@ -2,8 +2,8 @@ import { createServer } from "node:net";
 
 import { Duration, Effect } from "effect";
 
-import { runProbe } from "@lando/sdk/probe";
 import { errnoCode } from "@lando/sdk/errors";
+import { runProbe } from "@lando/sdk/probe";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { probeHttp, probeTcp } from "./loopback-probe.ts";
