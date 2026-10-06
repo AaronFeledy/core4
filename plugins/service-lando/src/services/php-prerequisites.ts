@@ -37,6 +37,7 @@ export const PHP_COMMON_EXTENSIONS = [
   "gd",
   "intl",
   "mbstring",
+  "mysqli",
   "opcache",
   "pdo_mysql",
   "pdo_pgsql",
@@ -44,7 +45,7 @@ export const PHP_COMMON_EXTENSIONS = [
   "zip",
 ] as const;
 
-const PHP_EXTENSIONS_TO_BUILD = ["gd", "intl", "pdo_mysql", "pdo_pgsql", "zip"] as const;
+const PHP_EXTENSIONS_TO_BUILD = ["gd", "intl", "mysqli", "pdo_mysql", "pdo_pgsql", "zip"] as const;
 const PHP_APT_MANIFEST_PATH = "/usr/local/share/lando/php-apt-manifest.txt";
 
 const aptPackageArguments = Object.entries(PHP_APT_PACKAGE_PINS).map(

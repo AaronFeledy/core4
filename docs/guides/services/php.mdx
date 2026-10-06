@@ -135,7 +135,7 @@ you set.
 
 ## Set the webroot yourself
 
-There's no `framework:` key on the `php` service. It has no built-in preset that switches the served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you set `webroot:`. To serve a framework public directory, point `webroot:` at that path, or put nginx in front with `via: fpm`. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
+`framework: wordpress` installs pinned, checksum-verified WP-CLI on stock PHP images and sets `WP_CLI_ALLOW_ROOT=1` for tooling. No framework name switches the served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you set `webroot:`. To serve a framework public directory, point `webroot:` at that path, or put nginx in front with `via: fpm`. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.
 
 ## Run Composer
 

@@ -57,7 +57,7 @@ lando php installation/joomla.php install \
   --admin-username=admin \
   --admin-password="$JOOMLA_ADMIN_PASSWORD" \
   --admin-email=admin@example.com \
-  --db-type=mysql \
+  --db-type=mysqli \
   --db-host=database \
   --db-user=lando \
   --db-pass=lando \
@@ -68,7 +68,7 @@ lando php installation/joomla.php install \
 unset JOOMLA_ADMIN_PASSWORD
 ```
 
-Match `--db-name` to the app name (here `joomla-demo`). `--db-type=mysql` uses PDO, which the PHP image already has. If you want Joomla's MySQLi driver instead, add a root `build.artifact` step with `docker-php-ext-install mysqli` on `appserver`, then run `lando rebuild`.
+Match `--db-name` to the app name (here `joomla-demo`). `--db-type=mysqli` uses Joomla's default MySQLi driver. Stock PHP services already ship mysqli, so no extra build step is needed.
 
 The download and the installer ran as root. Give the web user only the directories Joomla writes to, so your editor keeps the code:
 

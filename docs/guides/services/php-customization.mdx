@@ -14,7 +14,7 @@ Start from `type: php:8.3` (or another supported minor). That image ships a fixe
 The default `-apache` build compiles and enables exactly these extensions. No more, no less:
 
 ```text
-gd, intl, mbstring, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
+gd, intl, mbstring, mysqli, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 ```
 
 | Extension | Purpose |
@@ -22,11 +22,14 @@ gd, intl, mbstring, opcache, pdo_mysql, pdo_pgsql, pdo_sqlite, zip
 | `gd` | Image processing (GD) |
 | `intl` | ICU internationalization functions |
 | `mbstring` | Multibyte string handling |
+| `mysqli` | MySQL/MariaDB driver for WordPress and Joomla |
 | `opcache` | Zend OPcache |
 | `pdo_mysql` | PDO driver for MySQL/MariaDB |
 | `pdo_pgsql` | PDO driver for PostgreSQL |
 | `pdo_sqlite` | PDO driver for SQLite |
 | `zip` | ZIP archive support |
+
+Stock PHP services with `framework: wordpress` also install pinned, checksum-verified WP-CLI at `/usr/local/bin/wp` and set `WP_CLI_ALLOW_ROOT=1` for Lando tooling. Custom images supply their own WP-CLI and extensions.
 
 ## Turn on Xdebug
 

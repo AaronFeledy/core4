@@ -5,6 +5,7 @@ import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema
 import type { ServiceType } from "@lando/sdk/services";
 
 import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
+import { PHP_WP_CLI } from "../src/services/php-wp-cli.ts";
 import {
   PHP_APT_PACKAGE_PINS,
   PHP_COMMON_EXTENSIONS,
@@ -74,6 +75,45 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("stock PHP prerequisite plan", () => {
+  test("builds mysqli when using a stock PHP image", async () => {
+    // Given / When: compose the stock service without extra extensions.
+    const plan = await composePhpPlan();
+    const prerequisites = buildStepsFor(plan).find((step) => step.id === "service-lando.php:prerequisites");
+
+    // Then: mysqli is installed and participates in the extension inventory.
+    expect(prerequisites?.command).toMatch(/docker-php-ext-install[^&]*\bmysqli\b/);
+    expect(prerequisites?.buildKeyInputs?.extensions).toContain("mysqli");
+  });
+
+  test("installs verified WP-CLI and permits root when framework is wordpress", async () => {
+    // Given / When: use stock PHP with the WordPress framework.
+    const plan = await composePhpPlan({ framework: "wordpress" });
+    const wpCli = buildStepsFor(plan).find((step) => step.id === "service-lando.php:wp-cli");
+
+    // Then: the executable is verified before installation and keyed by release.
+    expect(wpCli?.user).toBe("root");
+    expect(wpCli?.buildKeyInputs).toEqual({ wpCli: PHP_WP_CLI });
+    expect(wpCli?.command).toContain(PHP_WP_CLI.url);
+    expect(wpCli?.command).toContain(`hash_equals("${PHP_WP_CLI.sha256}"`);
+    expect(wpCli?.command).toContain("install -m 0755 /tmp/wp-cli.phar /usr/local/bin/wp");
+    expect(plan.environment.WP_CLI_ALLOW_ROOT).toBe("1");
+  });
+
+  for (const overrides of [
+    {},
+    { framework: "joomla" },
+    { framework: "wordpress", image: "custom/php:8.2" },
+  ]) {
+    test(`omits WP-CLI provisioning when config is ${JSON.stringify(overrides)}`, async () => {
+      // Given / When: PHP without stock WordPress provisioning.
+      const plan = await composePhpPlan(overrides);
+
+      // Then: neither the binary install nor root opt-in is supplied.
+      expect(buildStepsFor(plan).some((step) => step.id === "service-lando.php:wp-cli")).toBe(false);
+      expect(plan.environment.WP_CLI_ALLOW_ROOT).toBeUndefined();
+    });
+  }
+
   test("carries exact executable and build-key identities", async () => {
     const plan = await composePhpPlan();
     const steps = buildStepsFor(plan);

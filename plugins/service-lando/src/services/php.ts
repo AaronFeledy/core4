@@ -38,6 +38,7 @@ import {
   phpLogSources,
   resolvePhpVia,
 } from "./php-via.ts";
+import { PHP_WP_CLI_STEP } from "./php-wp-cli.ts";
 import {
   assertPhpXdebugSupported,
   phpXdebugBuildStep,
@@ -177,6 +178,10 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const composerRelease = resolvePhpComposer(service.composer);
   if (!customImage) {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
+    if (service.framework === "wordpress") {
+      ctx.addBuildStep(PHP_WP_CLI_STEP);
+      addEnvRecord(ctx, { WP_CLI_ALLOW_ROOT: "1" });
+    }
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
   const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
