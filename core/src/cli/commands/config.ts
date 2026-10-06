@@ -1,5 +1,6 @@
 import type { ConfigResult } from "@lando/engine/operations/config";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/telemetry/policy";
+import { renderConfigWriteResult } from "./config-write-render";
 
 const formatTable = (value: unknown): string => {
   if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
@@ -23,36 +24,16 @@ const formatTable = (value: unknown): string => {
   return lines.join("\n");
 };
 
-const renderWriteResult = (result: ConfigResult): string => {
-  const file = result.configPath ?? "";
-  switch (result.subcommand) {
-    case "set":
-      return result.dryRun === true
-        ? `${file}: would set ${result.key} (dry run).`
-        : `${file}: set ${result.key}.`;
-    case "unset":
-      if (result.changed !== true) return `${file}: ${result.key} was not present (no change).`;
-      return result.dryRun === true
-        ? `${file}: would unset ${result.key} (dry run).`
-        : `${file}: unset ${result.key}.`;
-    case "edit":
-      return `${file}: saved edited config.`;
-    case "validate":
-      return `${file}: valid.`;
-    default:
-      return file;
-  }
-};
-
 export const renderConfigResult = (result: ConfigResult): string => {
-  if (
-    result.subcommand === "set" ||
-    result.subcommand === "unset" ||
-    result.subcommand === "edit" ||
-    result.subcommand === "validate"
-  ) {
-    return renderWriteResult(result);
-  }
+  const writeResult = renderConfigWriteResult({
+    file: result.configPath ?? "",
+    subcommand: result.subcommand,
+    key: result.key,
+    changed: result.changed,
+    dryRun: result.dryRun,
+    editSavedLabel: "config",
+  });
+  if (writeResult !== undefined) return writeResult;
   const target =
     result.telemetry !== undefined
       ? {
