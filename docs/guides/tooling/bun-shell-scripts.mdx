@@ -39,7 +39,7 @@ Every script opens with a front-matter block. It sits on the first lines of the 
 | `desc`, `description`, or `summary` | Help text for the command |
 | `service` | Where the script runs. Only `:host`, which is also the default |
 
-That is the whole list. Any other key, such as `aliases`, `flags`, or `args`, refuses with `NotImplementedError` and names the field. A file with no block refuses with `BunShellScriptFrontMatterError`, and an empty file refuses with `BunShellScriptEmptyError`.
+That is the whole list. Landofile tooling keys such as `aliases`, `flags`, or `args` refuse with `NotImplementedError` and name the field. Any other unknown key, or a file with no block, refuses with `BunShellScriptFrontMatterError`. An empty file refuses with `BunShellScriptEmptyError`.
 
 ## Refresh when the shape changes
 
@@ -123,9 +123,9 @@ lando app:env:init
 
 The first run prints `created .env`. Run it again and it prints `.env already exists, leaving it alone`. Names with a colon always take the `app:` prefix. Top-level scripts answer to both `lando build` and `lando app:build`.
 
-Lando lowercases each path segment and turns anything outside `a-z`, `0-9`, `_`, and `-` into `-`.
+Lando lowercases each path segment, turns anything outside `a-z`, `0-9`, `_`, and `-` into `-`, collapses repeated `-` into one, and trims `-` from both ends.
 
-Pick names that are not built-in commands. `lando help --all` lists those: a script called `info.bun.sh` never runs, because `lando info` and `lando app:info` both belong to Lando.
+Built-in commands always win over scripts, so pick names `lando help --all` doesn't list.
 
 ## Use Bun Shell and your host tools
 
@@ -180,18 +180,6 @@ lando curl version.txt
 
 That curl runs inside `web` against nginx on port `80`. If a Landofile task and a script share a name, the Landofile task wins. Drop a `curl.bun.sh` next to that Landofile and `lando curl` still runs in `web`.
 
-## Get JSON for CI
-
-Add `--format=json` and Lando wraps the run in its result envelope. The script's stdout and exit code are fields:
-
-```sh
-lando stamp abc1234 --format=json
-```
-
-```json
-{"apiVersion":"v4","command":"app:stamp","ok":true,"result":{"tool":"app:stamp","service":":host","exitCode":0,"stdout":"stamped dist/version.txt with abc1234\n","stderr":"","rendered":true},"warnings":[],"deprecations":[]}
-```
-
 ## Build, stamp, and seed an env file
 
 <Guide>
@@ -207,12 +195,12 @@ lando stamp abc1234 --format=json
     <Step name="stamp">
       <Run command="lando stamp abc1234" />
       <Verify file="scripts-demo/dist/version.txt" expect={{ regex: "abc1234" }} />
-      <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"exitCode\":0" } }} />
+      <Verify command="lando stamp abc1234" expect={{ stdout: { regex: "stamped dist/version.txt with abc1234" } }} />
     </Step>
     <Step name="env-init">
       <Run command="lando app:env:init" />
       <Verify file="scripts-demo/.env" expect={{ regex: "APP_ENV=local" }} />
-      <Verify command="lando app:env:init --format=json" expect={{ stdout: { regex: "already exists, leaving it alone" } }} />
+      <Verify command="lando app:env:init" expect={{ stdout: { regex: "already exists, leaving it alone" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
