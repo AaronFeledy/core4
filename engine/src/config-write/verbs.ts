@@ -1,5 +1,8 @@
 import { Effect, Result } from "effect";
 
+import { LandofileWriteValidationError } from "@lando/sdk/errors";
+import { validationIssue } from "@lando/sdk/schema";
+
 import {
   type ValueType,
   applySetMutation,
@@ -8,6 +11,26 @@ import {
   emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "./write-core";
+
+export const noEditorError = (file: string): LandofileWriteValidationError =>
+  new LandofileWriteValidationError({
+    message: "No editor is configured.",
+    file,
+    issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
+    remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
+  });
+
+export const editorFailedError = (
+  file: string,
+  reason: string,
+  remediation: string,
+): LandofileWriteValidationError =>
+  new LandofileWriteValidationError({
+    message: `The editor session failed: ${reason}`,
+    file,
+    issues: [validationIssue([], reason)],
+    remediation,
+  });
 
 export interface ConfigVerbIo<
   D extends Result.Result<unknown, unknown>,

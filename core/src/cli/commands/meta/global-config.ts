@@ -8,7 +8,7 @@ import { LandofileShape, type LandofileShape as LandofileShapeType } from "@land
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
-import { runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
+import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import {
   type ValueType,
   decodeIssues,
@@ -194,23 +194,15 @@ export const globalConfigEdit = Effect.fn("GlobalConfig.edit")(function* (
     runner({ name: "lando-global-config", content: seeded, cwd: dirname(filePath) }),
   );
   if (edited.kind === "no-editor") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: filePath,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(filePath));
   }
   if (edited.kind === "failed") {
     return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `The editor session failed: ${edited.reason}`,
-        file: filePath,
-        issues: [validationIssue([], edited.reason)],
-        remediation: "Re-run `lando meta global config edit` after resolving the editor error.",
-      }),
+      editorFailedError(
+        filePath,
+        edited.reason,
+        "Re-run `lando meta global config edit` after resolving the editor error.",
+      ),
     );
   }
   const parsed = yield* parseLandofile({ file: filePath, content: edited.content, cwd: filePath }).pipe(

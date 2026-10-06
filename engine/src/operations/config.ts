@@ -19,7 +19,7 @@ import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath } from "../config-write/dot-path";
-import { runSetVerb, runUnsetVerb } from "../config-write/verbs";
+import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs";
 import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
 import { findAgentEnvPatternNames } from "../config/agent-env";
 import { resolveUserConfRoot } from "../config/roots";
@@ -319,35 +319,19 @@ const metaConfigEdit = Effect.fnUntraced(function* (
   const content = yield* readConfigText(path);
   const runner = options.editorRunner;
   if (runner === undefined) {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: path,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(path));
   }
   const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: dirname(path) }));
   if (edited.kind === "no-editor") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: path,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(path));
   }
   if (edited.kind === "failed") {
     return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `The editor session failed: ${edited.reason}`,
-        file: path,
-        issues: [validationIssue([], edited.reason)],
-        remediation:
-          "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
-      }),
+      editorFailedError(
+        path,
+        edited.reason,
+        "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
+      ),
     );
   }
   const parsed = yield* Effect.try({

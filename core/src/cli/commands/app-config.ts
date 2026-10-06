@@ -32,7 +32,7 @@ import { LandofileService, type StateStore } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
-import { runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
+import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import {
   ConfigWriteResultFields,
   type ValueType,
@@ -342,24 +342,15 @@ export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (
     );
   const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: appRoot }));
   if (edited.kind === "no-editor") {
-    return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: "No editor is configured.",
-        file: inputPath,
-        issues: [validationIssue([], "Neither $VISUAL nor $EDITOR is set.")],
-        remediation: "Set `$VISUAL` or `$EDITOR`, or pass `--editor <bin>`.",
-      }),
-    );
+    return yield* Effect.fail(noEditorError(inputPath));
   }
   if (edited.kind === "failed") {
     return yield* Effect.fail(
-      new LandofileWriteValidationError({
-        message: `The editor session failed: ${edited.reason}`,
-        file: inputPath,
-        issues: [validationIssue([], edited.reason)],
-        remediation:
-          "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
-      }),
+      editorFailedError(
+        inputPath,
+        edited.reason,
+        "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
+      ),
     );
   }
   // Validate against the RENDERED tree (a `template:` directive is a synthetic
