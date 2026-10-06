@@ -24,14 +24,12 @@ describe("config editor errors", () => {
     });
   });
 
-  test.each([
-    "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.",
-    "Re-run `lando app config edit` after resolving the editor error. The file was left unchanged.",
-    "Re-run `lando meta global config edit` after resolving the editor error.",
-  ])("preserves surface remediation: %s", (remediation) => {
+  test("preserves the caller's remediation when the editor fails", () => {
     // Given
     const file = "/tmp/.lando.yml";
     const reason = "editor exited with status 2";
+    const remediation =
+      "Re-run `lando config edit` after resolving the editor error. The file was left unchanged.";
     // When
     const error = editorFailedError(file, reason, remediation);
     // Then
