@@ -51,6 +51,7 @@ import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
 import { loadUserLandofile } from "../app-resolution";
+import { renderConfigWriteResult } from "./config-write-render";
 
 export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
@@ -412,26 +413,15 @@ const getRender = (result: AppConfigResult): string => {
   return String(result.value);
 };
 
-const writeRender = (result: AppConfigResult): string => {
-  const file = result.filePath ?? "";
-  switch (result.subcommand) {
-    case "set":
-      return result.dryRun === true
-        ? `${file}: would set ${result.key} (dry run).`
-        : `${file}: set ${result.key}.`;
-    case "unset":
-      if (result.changed !== true) return `${file}: ${result.key} was not present (no change).`;
-      return result.dryRun === true
-        ? `${file}: would unset ${result.key} (dry run).`
-        : `${file}: unset ${result.key}.`;
-    case "edit":
-      return `${file}: saved edited Landofile.`;
-    case "validate":
-      return `${file}: valid.`;
-    default:
-      return tableRender(result);
-  }
-};
+const writeRender = (result: AppConfigResult): string =>
+  renderConfigWriteResult({
+    file: result.filePath ?? "",
+    subcommand: result.subcommand,
+    key: result.key,
+    changed: result.changed,
+    dryRun: result.dryRun,
+    editSavedLabel: "Landofile",
+  }) ?? tableRender(result);
 
 export const renderAppConfigResult = (
   result: AppConfigResult,

@@ -18,6 +18,7 @@ import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
 import { parseLandofile } from "@lando/landofile/parser";
 import { validationIssue } from "@lando/sdk/schema";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
+import { renderConfigWriteResult } from "../config-write-render";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
 
@@ -229,32 +230,23 @@ export const renderGlobalConfigResult = (
   _format: "json" | "table" = "table",
 ): string => {
   void _format;
-  switch (result.subcommand) {
-    case "set":
-      return result.dryRun === true
-        ? `${result.filePath ?? ""}: would set ${result.key} (dry run).`
-        : `${result.filePath ?? ""}: set ${result.key}.`;
-    case "unset":
-      if (result.changed !== true)
-        return `${result.filePath ?? ""}: ${result.key} was not present (no change).`;
-      return result.dryRun === true
-        ? `${result.filePath ?? ""}: would unset ${result.key} (dry run).`
-        : `${result.filePath ?? ""}: unset ${result.key}.`;
-    case "edit":
-      return `${result.filePath ?? ""}: saved edited global-app Landofile.`;
-    case "validate":
-      return `${result.filePath ?? ""}: valid.`;
-    default: {
-      const services = Object.keys(result.landofile?.services ?? {});
-      return [
-        `app\t${result.app ?? ""}`,
-        `source\t${result.materialized === true ? "generated" : "not installed"}`,
-        `dist\t${result.distLandofile ?? ""}`,
-        `overlay\t${result.userLandofile ?? ""}`,
-        `services\t${services.length === 0 ? "(none)" : services.join(", ")}`,
-      ].join("\n");
-    }
-  }
+  const writeResult = renderConfigWriteResult({
+    file: result.filePath ?? "",
+    subcommand: result.subcommand,
+    key: result.key,
+    changed: result.changed,
+    dryRun: result.dryRun,
+    editSavedLabel: "global-app Landofile",
+  });
+  if (writeResult !== undefined) return writeResult;
+  const services = Object.keys(result.landofile?.services ?? {});
+  return [
+    `app\t${result.app ?? ""}`,
+    `source\t${result.materialized === true ? "generated" : "not installed"}`,
+    `dist\t${result.distLandofile ?? ""}`,
+    `overlay\t${result.userLandofile ?? ""}`,
+    `services\t${services.length === 0 ? "(none)" : services.join(", ")}`,
+  ].join("\n");
 };
 
 const globalConfigView = Effect.fnUntraced(function* (): Effect.fn.Return<
