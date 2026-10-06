@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { Timestamp } from "./_shared.ts";
+import { PostCallFields, Timestamp } from "./_shared.ts";
 
 // `urlOrigin` is a redacted scheme+host origin only; userinfo, query strings,
 // credentials, and other URL details must never be published in HTTP call events.
@@ -22,9 +22,7 @@ export const PostHttpCallEvent = Schema.TaggedStruct("post-http-call", {
   status: Schema.optional(Schema.Number),
   callerId: Schema.optional(Schema.String),
   onBehalfOf: Schema.optional(Schema.String),
-  outcome: Schema.Literals(["success", "failure"]),
-  durationMs: Schema.optional(Schema.Number),
-  failureDetail: Schema.optional(Schema.String),
+  ...PostCallFields,
   timestamp: Timestamp,
 });
 export type PostHttpCallEvent = typeof PostHttpCallEvent.Type;

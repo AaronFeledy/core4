@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { Timestamp } from "./_shared.ts";
+import { PostCallFields, Timestamp } from "./_shared.ts";
 
 // MCP tool-dispatch lifecycle events. Payloads are redacted summaries only:
 // tool id, canonical command id, an optional redacted app-ref summary,
@@ -21,9 +21,7 @@ export const PostMcpCallEvent = Schema.TaggedStruct("post-mcp-call", {
   toolId: Schema.String,
   commandId: Schema.String,
   appRef: Schema.optional(Schema.String),
-  outcome: Schema.Literals(["success", "failure"]),
-  durationMs: Schema.optional(Schema.Number),
-  failureDetail: Schema.optional(Schema.String),
+  ...PostCallFields,
   timestamp: Timestamp,
 });
 export type PostMcpCallEvent = typeof PostMcpCallEvent.Type;

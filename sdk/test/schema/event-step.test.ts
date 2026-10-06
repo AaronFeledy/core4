@@ -31,6 +31,56 @@ const acceptedSteps = [
 ] as const;
 
 describe("EventStep", () => {
+  const commandKeys = [
+    "cmd",
+    "task",
+    "command",
+    "defer",
+    "for",
+    "flags",
+    "args",
+    "raw",
+    "ignoreError",
+    "if",
+    "silent",
+  ] as const;
+  const taskKeys = ["cmd", "task", "command", "defer", "for", "vars", "ignoreError", "if", "silent"] as const;
+  const cmdKeys = [
+    "cmd",
+    "task",
+    "command",
+    "defer",
+    "for",
+    "service",
+    "dir",
+    "env",
+    "user",
+    "ignoreError",
+    "if",
+    "silent",
+  ] as const;
+  const fieldOrders = [
+    ["EventCommandStep", schemas.EventCommandStep, commandKeys],
+    ["EventTaskStep", schemas.EventTaskStep, taskKeys],
+    ["EventCmdStep", schemas.EventCmdStep, cmdKeys],
+    ["EventDeferredCmdShorthand", schemas.EventDeferStep.members[0], cmdKeys],
+    ["EventDeferredCmdStep", schemas.EventDeferStep.members[1], cmdKeys],
+    ["EventDeferredTaskStep", schemas.EventDeferStep.members[2], taskKeys],
+    ["EventDeferredCommandStep", schemas.EventDeferStep.members[3], commandKeys],
+    ["EventForCmdStep", schemas.EventForStep.members[0], cmdKeys],
+    ["EventForTaskStep", schemas.EventForStep.members[1], taskKeys],
+    ["EventForCommandStep", schemas.EventForStep.members[2], commandKeys],
+    ["EventForDeferredCmdStep", schemas.EventForStep.members[3], cmdKeys],
+  ] as const;
+
+  test.each(fieldOrders)("preserves %s field order when inspecting the schema", (_name, schema, expected) => {
+    // Given: the public event schema or a member of its public union.
+    // When
+    const keys = Object.keys(schema.fields);
+    // Then
+    expect(keys).toEqual([...expected]);
+  });
+
   test("decodes every structured authoring form under default and strict options", () => {
     // Given / When / Then
     for (const options of decodeOptions) {
