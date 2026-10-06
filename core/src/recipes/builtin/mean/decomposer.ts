@@ -13,7 +13,7 @@ export const meanDecomposer = makeOptionBearingDecomposer({
           type: "node:{{ recipe.node }}",
           primary: true,
           port: 3000,
-          command: ["sh", "-c", "npm install --no-audit --no-fund && exec node server.js"],
+          command: "npm install --no-audit --no-fund && exec node server.js",
           environment: {
             NODE_ENV: "development",
             PORT: 3000,

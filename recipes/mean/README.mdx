@@ -42,7 +42,7 @@ lando node --version
       <Run command="lando init --recipe mean --name={{appName}} --yes" />
     </Step>
     <Step name="start">
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\\[\\s*\"sh\",\\s*\"-c\",\\s*\"npm install --no-audit --no-fund && exec node server\\.js\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\"npm install --no-audit --no-fund && exec node server\\.js\"" } }} />
       <Run command="lando start" />
       <Verify event="post-start" />
     </Step>

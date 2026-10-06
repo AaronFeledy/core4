@@ -42,7 +42,7 @@ Routes land on `{{ app.name }}.{{ proxy.defaultDomain }}` with both HTTP and HTT
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\\[\\s*\"sh\",\\s*\"-c\",\\s*\"npm install --no-audit --no-fund && exec node server\\.js\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"command\":\\s*\"npm install --no-audit --no-fund && exec node server\\.js\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mongodb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
