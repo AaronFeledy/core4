@@ -5,8 +5,8 @@ import { arr, cond, defaultRoute, lit, obj, toolNode } from "../snapshot-express
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./scaffold.ts";
 
-export const MEAN_RECIPE_VERSION = "0.1.0";
-export const MEAN_CONTENT_DIGEST = "sha256:c848948037d130c7abefe3d50bce55206d98261ab63cedcabb65383d526f022f";
+export const MEAN_RECIPE_VERSION = "0.1.1";
+export const MEAN_CONTENT_DIGEST = "sha256:f51e615c22ae4ef6bdc798dcb471bda8b66320fc844c01c25b857b4ba7debfdd";
 export const meanProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-mean",
@@ -35,6 +35,10 @@ const services = (redis: boolean): ExpressionNode =>
         ["type", lit("node:{{ recipe.node }}")],
         ["primary", lit(true)],
         ["port", lit(3000)],
+        [
+          "command",
+          arr(lit("sh"), lit("-c"), lit("npm install --no-audit --no-fund && exec node server.js")),
+        ],
         ["environment", cond(redisEnabled(), environment(true), environment(false))],
         ["dependsOn", cond(redisEnabled(), arr(lit("database"), lit("cache")), arr(lit("database")))],
         ["routes", arr(defaultRoute())],

@@ -49,7 +49,7 @@ describe("mean decomposition", () => {
 
   test("returns the exact authoring fragment when default options are supplied", () => {
     const result = decompose(defaults);
-    const provenance = { id: "mean", version: "0.1.0", producer: meanProducer, options: defaults };
+    const provenance = { id: "mean", version: "0.1.1", producer: meanProducer, options: defaults };
     expect(result.provenance).toEqual(provenance);
     expect(result.fragment).toEqual({
       runtime: 4,
@@ -59,6 +59,7 @@ describe("mean decomposition", () => {
           type: "node:{{ recipe.node }}",
           primary: true,
           port: 3000,
+          command: ["sh", "-c", "npm install --no-audit --no-fund && exec node server.js"],
           environment: {
             NODE_ENV: "development",
             PORT: 3000,
@@ -126,14 +127,20 @@ describe("mean decomposition", () => {
     expect(meanSnapshot.identity.contentDigest).toBe(MEAN_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(MEAN_CONTENT_DIGEST).toBe(
-      "sha256:c848948037d130c7abefe3d50bce55206d98261ab63cedcabb65383d526f022f",
+      "sha256:f51e615c22ae4ef6bdc798dcb471bda8b66320fc844c01c25b857b4ba7debfdd",
     );
   });
 
   test.each([defaults, { node: "22", redis: false }, { node: "lts", redis: true }])(
     "renders the same authoring data from the snapshot when options are %j",
     (options) => {
-      expect(Result.getOrThrow(renderRecipeSnapshot(meanSnapshot, options))).toEqual(authoringOf(options));
+      const rendered = Result.getOrThrow(renderRecipeSnapshot(meanSnapshot, options));
+      expect(rendered).toEqual(authoringOf(options));
+      expect(rendered).toMatchObject({
+        services: {
+          api: { command: ["sh", "-c", "npm install --no-audit --no-fund && exec node server.js"] },
+        },
+      });
     },
   );
 
