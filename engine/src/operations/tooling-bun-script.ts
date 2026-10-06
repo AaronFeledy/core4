@@ -9,7 +9,8 @@ import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/l
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
-import { emitToolingOutputProgress } from "./tooling-progress.ts";
+import { StreamFrameSink } from "./stream-frame-sink.ts";
+import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
 
 const HOST_SERVICE = ":host";
 
@@ -101,19 +102,31 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
 
   const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
   const progressEvents = events?._tag === "Some" ? events.value : undefined;
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const liveTree =
+    sink._tag === "Some" && progressEvents !== undefined
+      ? beginLiveToolingTree(progressEvents, script.id)
+      : undefined;
+  if (liveTree !== undefined) yield* liveTree.start;
   const startedAt = yield* Clock.currentTimeMillis;
-  const result = yield* runBunShellScript(script, appRoot, options);
-  yield* emitToolingOutputProgress({
-    events: progressEvents,
-    tool: result.tool,
-    service: result.service,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    durationMs: (yield* Clock.currentTimeMillis) - startedAt,
-  });
+  const exit = yield* Effect.result(runBunShellScript(script, appRoot, options));
+  const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
+  if (liveTree !== undefined)
+    yield* liveTree.finish(exit._tag === "Success" ? exit.success.exitCode : 1, durationMs);
+  if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
+  const result = exit.success;
+  if (sink._tag === "None")
+    yield* emitToolingOutputProgress({
+      events: progressEvents,
+      tool: result.tool,
+      service: result.service,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      durationMs,
+    });
   return {
     ...result,
-    ...(progressEvents === undefined ? {} : { rendered: true }),
+    ...(progressEvents === undefined && sink._tag === "None" ? {} : { rendered: true }),
   } satisfies ToolingResult;
 });

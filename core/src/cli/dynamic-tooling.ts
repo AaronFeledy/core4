@@ -124,7 +124,10 @@ const runDynamicBunShellTooling = (
       }),
     ),
     renderRunToolingResult,
-    dynamicToolingOptions,
+    {
+      ...dynamicToolingOptions,
+      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
+    },
   );
 };
 
