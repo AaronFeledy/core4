@@ -30,6 +30,7 @@ import {
 
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
+import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
@@ -157,27 +158,6 @@ const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   return out;
 };
 
-const availableServiceList = (services: AppPlan["services"]): string =>
-  Object.values(services)
-    .map((service) => String(service.name))
-    .sort()
-    .join(", ");
-
-const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
-  const list = availableServiceList(services);
-  const first = list.split(", ")[0];
-  return new ToolingExecError({
-    message:
-      list.length === 0
-        ? `shell: service ${requested} is not in the app plan.`
-        : `shell: service ${requested} is not in the app plan (available: ${list}).`,
-    tool: "app:shell",
-    ...(first === undefined || first.length === 0
-      ? {}
-      : { remediation: `Example: lando shell --service ${first}` }),
-  });
-};
-
 const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
   return new ToolingExecError({
@@ -201,7 +181,15 @@ const resolveService = (
   }
   const match = Object.values(plan.services).find((service) => String(service.name) === serviceName);
   return match === undefined
-    ? Effect.fail(unknownServiceError(serviceName, plan.services))
+    ? Effect.fail(
+        unknownPlanServiceError({
+          prefix: "shell",
+          tool: "app:shell",
+          requested: serviceName,
+          services: plan.services,
+          remediation: (first) => `Example: lando shell --service ${first}`,
+        }),
+      )
     : Effect.succeed(match);
 };
 
