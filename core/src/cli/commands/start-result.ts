@@ -4,12 +4,7 @@ import type { StartAppResult } from "@lando/sdk/app";
 import { type SummaryDocument, formatQuietSummary, worstSummaryTone } from "@lando/renderer/summary";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import {
-  START_STATUS_TONES,
-  joinServiceRows,
-  serviceStateRow,
-  summaryToneFromTable,
-} from "./service-summary";
+import { START_STATUS_TONES, lifecycleLine, serviceRowsText, summaryToneFromTable } from "./service-summary";
 
 const READY_STATES = new Set(["running", "ready"]);
 
@@ -90,11 +85,9 @@ export const buildStartSummary = (
 };
 
 const renderPlainStartAppResult = (result: StartAppResult): string => {
-  const services = joinServiceRows(
-    result.servicesStarted.map((service) => serviceStateRow(service.name, service.state, service.endpoints)),
-  );
+  const services = serviceRowsText(result.servicesStarted);
   const prefix = isStartAppReady(result) ? "ready" : "starting";
-  return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
+  return lifecycleLine(prefix, result.app, services);
 };
 
 export const renderStartAppResult = (result: StartAppResult, ctx?: RenderContext): string => {

@@ -91,6 +91,7 @@
     "./operations/tooling": "./src/operations/tooling.ts",
     "./operations/tooling-bun-script": "./src/operations/tooling-bun-script.ts",
     "./operations/uninstall": "./src/operations/uninstall.ts",
+    "./operations/unknown-service": "./src/operations/unknown-service.ts",
     "./operations/update": "./src/operations/update.ts",
     "./package.json": "./package.json",
     "./planner/effective-events": "./src/planner/effective-events.ts",

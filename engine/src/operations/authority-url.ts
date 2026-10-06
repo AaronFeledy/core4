@@ -1,4 +1,11 @@
-import type { BindAddress, EndpointPlan, PortNumber, PublishedEndpoint } from "@lando/sdk/schema";
+import type {
+  BindAddress,
+  EndpointPlan,
+  PortNumber,
+  PublishedEndpoint,
+  ServiceName,
+} from "@lando/sdk/schema";
+import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 
 export type MaterializedPublishedEndpoint = PublishedEndpoint & {
   readonly materialization?: {
@@ -30,3 +37,12 @@ export const publishedEndpointUrls = (endpoints: ReadonlyArray<EndpointPlan>): R
     const url = publishedEndpointUrl(endpoint);
     return url === undefined ? [] : [url];
   });
+
+export const startedServiceRow = (
+  service: { readonly name: ServiceName; readonly endpoints: ReadonlyArray<EndpointPlan> },
+  runtime: ServiceRuntimeInfo,
+) => ({
+  name: String(service.name),
+  state: runtime.state ?? runtime.status,
+  endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+});

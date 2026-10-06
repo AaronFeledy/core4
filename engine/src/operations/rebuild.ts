@@ -17,7 +17,7 @@ import type {
 import {
   type AppPlanner,
   BuildOrchestrator,
-  EventService,
+  type EventService,
   type LandofileService,
   RouterService,
   RuntimeProviderRegistry,
@@ -39,8 +39,8 @@ import { resolveServiceEnvironmentSecrets } from "../services/secret-environment
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { publishedEndpointUrl } from "./authority-url.ts";
-import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { startedServiceRow } from "./authority-url.ts";
+import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -142,18 +142,13 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   const routedUrls = yield* routeUrlsForPlan(proxy, builtPlan);
   return yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
     provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-      Effect.map((runtime) => ({
-        name: String(service.name),
-        state: runtime.state ?? runtime.status,
-        endpoints: [
-          ...(routedUrls.get(ServiceName.make(String(service.name))) ?? []),
-          ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
-            if (endpoint._tag === "internal") return [];
-            const rendered = publishedEndpointUrl(endpoint);
-            return rendered === undefined ? [] : [rendered];
-          }),
-        ],
-      })),
+      Effect.map((runtime) => {
+        const row = startedServiceRow(service, runtime);
+        return {
+          ...row,
+          endpoints: [...(routedUrls.get(ServiceName.make(String(service.name))) ?? []), ...row.endpoints],
+        };
+      }),
     ),
   );
 });
@@ -185,7 +180,6 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         yield* ensureStartTransactionConsistent(resolvedTarget);
         yield* runAppInitEvents(plan);
         const proxy = yield* RouterService;
-        const events = yield* EventService;
         const ref: AppRef = resolvedTarget.app;
         const timestamp = () => DateTime.nowUnsafe();
         const preRebuild = PreRebuildEvent.make({
@@ -193,8 +187,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
           app: ref,
           timestamp: timestamp(),
         });
-        yield* events.publish(preRebuild);
-        yield* runAppEvent(plan, "pre-rebuild", preRebuild);
+        yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
         const start = scoped
           ? {
               app: plan.name,
@@ -225,8 +218,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
           app: ref,
           timestamp: timestamp(),
         });
-        yield* events.publish(postRebuild);
-        yield* runAppEvent(plan, "post-rebuild", postRebuild);
+        yield* publishAndRunAppEvent(plan, "post-rebuild", postRebuild);
         return {
           app: start.app,
           servicesRebuilt: start.servicesStarted.map((service) => service.name),
