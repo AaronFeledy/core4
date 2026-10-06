@@ -5,11 +5,69 @@ import {
   START_STATUS_TONES,
   endpointText,
   joinServiceRows,
+  lifecycleLine,
+  serviceRowsText,
   serviceStateRow,
   summaryToneFromTable,
+  teardownLine,
+  unchangedLine,
+  volumesTrailer,
 } from "../../src/cli/commands/service-summary";
 
 describe("service summary", () => {
+  test("renders empty lifecycle rows without a separator", () => {
+    // Given
+    const services: ReadonlyArray<{
+      readonly name: string;
+      readonly state: string;
+      readonly endpoints: ReadonlyArray<string>;
+    }> = [];
+    // When
+    const rows = serviceRowsText(services);
+    // Then
+    expect(rows).toBe("");
+    expect(lifecycleLine("ready", "app", rows)).toBe("ready: app");
+  });
+
+  test("renders lifecycle rows in supplied order", () => {
+    // Given
+    const services = [{ name: "a", state: "running", endpoints: [] }];
+    // When
+    const line = lifecycleLine("rebuilt", "app", serviceRowsText(services));
+    // Then
+    expect(line).toBe("rebuilt: app - a (running) no endpoints");
+  });
+
+  test("renders an empty teardown with no services", () => {
+    // Given / When
+    const line = teardownLine("stopped", "app", []);
+    // Then
+    expect(line).toBe("stopped: app - no services");
+  });
+
+  test("renders teardown names in supplied order with a volume trailer", () => {
+    // Given / When
+    const line = teardownLine("destroyed", "app", ["a", "b"], "volumes removed");
+    // Then
+    expect(line).toBe("destroyed: app - a, b (volumes removed)");
+  });
+
+  test("renders unchanged teardown independently of volume intent", () => {
+    // Given / When
+    const line = unchangedLine("app");
+    // Then
+    expect(line).toBe("unchanged: app - no services");
+  });
+
+  test.each([
+    [true, "volumes removed"],
+    [false, "volumes preserved"],
+  ] as const)("renders volume removal %s", (removed, expected) => {
+    // Given / When
+    const trailer = volumesTrailer(removed);
+    // Then
+    expect(trailer).toBe(expected);
+  });
   test.each([
     ["running", "ok", "ok", "info"],
     ["ready", "ok", "info", "info"],

@@ -36,7 +36,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { joinServiceRows } from "../service-summary";
+import { joinServiceRows, lifecycleLine } from "../service-summary";
 import {
   globalAppRef,
   renderGlobalServiceRow,
@@ -115,7 +115,7 @@ const isGlobalStartReady = (result: GlobalStartResult): boolean =>
 export const renderGlobalStartResult = (result: GlobalStartResult): string => {
   const services = joinServiceRows(result.servicesStarted.map(renderGlobalServiceRow));
   const prefix = isGlobalStartReady(result) ? "ready" : "starting";
-  return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
+  return lifecycleLine(prefix, result.app, services);
 };
 
 export const globalStart = Effect.fn("GlobalStart.start")(function* (

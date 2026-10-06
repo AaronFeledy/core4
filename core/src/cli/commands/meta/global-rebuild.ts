@@ -25,7 +25,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { joinServiceRows } from "../service-summary";
+import { joinServiceRows, lifecycleLine } from "../service-summary";
 import { globalAppRef, renderGlobalServiceRow, withGlobalLifecycleEvents } from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
@@ -157,7 +157,6 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
 
 export const renderGlobalRebuildResult = (result: GlobalRebuildResult): string => {
   if (!result.materialized) return "global app is not installed";
-  if (result.servicesRebuilt.length === 0) return `rebuilt: ${result.app} - no services`;
   const services = joinServiceRows(result.servicesRebuilt.map(renderGlobalServiceRow));
-  return `rebuilt: ${result.app} - ${services}`;
+  return lifecycleLine("rebuilt", result.app, services.length === 0 ? "no services" : services);
 };

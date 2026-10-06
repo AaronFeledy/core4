@@ -16,6 +16,7 @@ import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
 
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
+import { teardownLine } from "../service-summary";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -43,8 +44,7 @@ export type GlobalStopServices =
 
 export const renderGlobalStopResult = (result: GlobalStopResult): string => {
   if (!result.materialized) return "Global app is not installed; nothing to stop.";
-  const services = result.servicesStopped.length === 0 ? "no services" : result.servicesStopped.join(", ");
-  return `stopped: ${result.app} - ${services}`;
+  return teardownLine("stopped", result.app, result.servicesStopped);
 };
 
 export const globalStop = Effect.fn("GlobalStop.stop")(function* (): Effect.fn.Return<
