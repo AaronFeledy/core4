@@ -22,7 +22,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import { renderDoctorChecksAsNdjson, sectionCheckEventPayload } from "./doctor-ndjson";
 import { renderSectionCheck } from "./doctor-section-render";
 
 export interface GlobalAppDoctorCheck {
@@ -213,22 +213,6 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "contributingPlugins",
 ];
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
-  orderKnownKeys(context, CONTEXT_KEY_ORDER);
-
-const checkEventPayload = (check: GlobalAppDoctorCheck): Record<string, unknown> => ({
-  _tag: "doctor.check",
-  name: check.name,
-  status: check.status,
-  severity: check.severity,
-  context: orderContextKeys(check.context),
-  solutions: check.solutions.map((solution) => ({
-    kind: solution.kind,
-    description: solution.description,
-    ...(solution.command === undefined ? {} : { command: solution.command }),
-  })),
-});
-
 export interface GlobalAppDoctorNdjsonOptions {
   readonly now?: Date;
 }
@@ -240,5 +224,5 @@ export const renderGlobalAppDoctorResultAsNdjson = (
   renderDoctorChecksAsNdjson({
     checks: result.checks,
     now: options.now,
-    checkEventPayload,
+    checkEventPayload: (check) => sectionCheckEventPayload(check, CONTEXT_KEY_ORDER),
   });

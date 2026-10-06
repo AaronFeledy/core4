@@ -44,7 +44,7 @@ import {
 } from "./doctor-certs-status";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostProxyCheck } from "./doctor-host-proxy-check";
-import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
 import { renderSectionCheck } from "./doctor-section-render";
@@ -185,22 +185,15 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "fixError",
 ];
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
-  orderKnownKeys(context, CONTEXT_KEY_ORDER);
-
 const checkEventPayload = (check: DoctorSubsystemCheck): Record<string, unknown> => ({
   _tag: "doctor.check",
   name: check.name,
   status: check.status,
   severity: check.severity,
   recovery: check.recovery,
-  context: orderContextKeys(check.context),
+  context: orderKnownKeys(check.context, CONTEXT_KEY_ORDER),
   ...(check.details === undefined ? {} : { details: check.details }),
-  solutions: check.solutions.map((solution) => ({
-    kind: solution.kind,
-    description: solution.description,
-    ...(solution.command === undefined ? {} : { command: solution.command }),
-  })),
+  solutions: doctorSolutionPayloads(check.solutions),
 });
 
 export interface SubsystemDoctorNdjsonOptions {
