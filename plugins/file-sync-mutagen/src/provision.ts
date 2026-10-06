@@ -47,15 +47,6 @@ export const mutagenAgentInstallPath = (binDir: string, guest: string): string =
 
 export const mutagenInstalledVersionPath = (binDir: string): string => toolVersionMarkerPath(binDir, TOOL_ID);
 
-const readInstalledMutagenVersion = (binDir: string): Promise<string | undefined> =>
-  readInstalledToolVersion([
-    mutagenInstalledVersionPath(binDir),
-    legacyToolVersionMarkerPath(binDir, TOOL_ID),
-  ]);
-
-const fileMatchesRecordedFingerprint = async (path: string): Promise<boolean> =>
-  (await recordedFingerprintMatch(path)) !== undefined;
-
 const expectedInstallPaths = (binDir: string, hostKey: string): ReadonlyArray<string> => {
   const keys = [
     `${hostKey}/cli`,
@@ -72,7 +63,10 @@ export const readInstalledMutagenStatus = async (
   platform: string = process.platform,
   arch: string = process.arch,
 ): Promise<InstalledMutagenStatus> => {
-  const installedVersion = await readInstalledMutagenVersion(binDir);
+  const installedVersion = await readInstalledToolVersion([
+    mutagenInstalledVersionPath(binDir),
+    legacyToolVersionMarkerPath(binDir, TOOL_ID),
+  ]);
   if (installedVersion !== MUTAGEN_TOOL_VERSION) {
     return { ...(installedVersion === undefined ? {} : { installedVersion }), isCurrent: false };
   }
@@ -81,8 +75,8 @@ export const readInstalledMutagenStatus = async (
   const paths = expectedInstallPaths(binDir, hostKey);
   if (paths.length === 0) return { installedVersion, isCurrent: false };
 
-  const valid = await Promise.all(paths.map(fileMatchesRecordedFingerprint));
-  return { installedVersion, isCurrent: valid.every(Boolean) };
+  const fingerprints = await Promise.all(paths.map(recordedFingerprintMatch));
+  return { installedVersion, isCurrent: fingerprints.every((fingerprint) => fingerprint !== undefined) };
 };
 
 export const provisionMutagen = Effect.fn("Mutagen.provision")(function* (

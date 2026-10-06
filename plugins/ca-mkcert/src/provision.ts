@@ -53,12 +53,6 @@ export const mkcertInstallPath = (binDir: string, platform: string = process.pla
 
 export const mkcertInstalledVersionPath = (binDir: string): string => toolVersionMarkerPath(binDir, TOOL_ID);
 
-const readInstalledVersion = (binDir: string): Promise<string | undefined> =>
-  readInstalledToolVersion([mkcertInstalledVersionPath(binDir)]);
-
-const matchesRecordedFingerprint = async (path: string): Promise<boolean> =>
-  (await recordedFingerprintMatch(path)) !== undefined;
-
 /**
  * Report whether the pinned mkcert version is already installed with an intact
  * fingerprint. Used to keep `setup` idempotent and to decide whether
@@ -69,7 +63,7 @@ export const readInstalledMkcertStatus = async (
   platform: string = process.platform,
   arch: string = process.arch,
 ): Promise<InstalledMkcertStatus> => {
-  const installedVersion = await readInstalledVersion(binDir);
+  const installedVersion = await readInstalledToolVersion([mkcertInstalledVersionPath(binDir)]);
   if (installedVersion !== MKCERT_TOOL_VERSION) {
     return { ...(installedVersion === undefined ? {} : { installedVersion }), isCurrent: false };
   }
@@ -78,7 +72,7 @@ export const readInstalledMkcertStatus = async (
   }
   return {
     installedVersion,
-    isCurrent: await matchesRecordedFingerprint(mkcertInstallPath(binDir, platform)),
+    isCurrent: (await recordedFingerprintMatch(mkcertInstallPath(binDir, platform))) !== undefined,
   };
 };
 
