@@ -2,6 +2,12 @@ import { readFile, rm } from "node:fs/promises";
 
 import { Effect } from "effect";
 
+import {
+  type ExecConmonReaper,
+  managedConmonPathForPodman,
+  reapLingeringExecConmons,
+} from "./exec-conmon.ts";
+
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
 export interface ManagedRuntimeServicePaths {
@@ -43,6 +49,7 @@ export interface FsSeam {
 export interface RuntimeServiceSeams {
   readonly process?: ProcessSeam;
   readonly fs?: FsSeam;
+  readonly execConmon?: ExecConmonReaper;
 }
 
 type TerminationResult = { readonly terminated: boolean; readonly pid?: number };
@@ -187,6 +194,11 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
       yield* bestEffortUnlink(fsSeam, spec.socketPath);
       yield* bestEffortUnlink(fsSeam, spec.pidPath);
     }
+
+    yield* reapLingeringExecConmons({
+      conmonPath: managedConmonPathForPodman(spec.command),
+      ...(seams.execConmon === undefined ? {} : { reaper: seams.execConmon }),
+    });
 
     return result;
   },
