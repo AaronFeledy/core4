@@ -58,6 +58,7 @@ describe("lingering exec conmon", () => {
     expect(managedConmonPath("/tmp/udr/runtime/bin/")).toBe("/tmp/udr/runtime/bin/conmon");
     expect(managedConmonPathForPodman("/tmp/udr/runtime/bin/podman")).toBe("/tmp/udr/runtime/bin/conmon");
     expect(isLingeringExecConmon(execArgv("lando-global-traefik-diagnostics"), conmonPath)).toBe(true);
+    expect(isLingeringExecConmon([conmonPath, "--exec-attach"], conmonPath)).toBe(false);
     expect(isLingeringExecConmon(monitorArgv("lando-global-traefik-diagnostics"), conmonPath)).toBe(false);
     expect(isLingeringExecConmon(["/usr/bin/conmon", "--exec-attach", "-n", "other"], conmonPath)).toBe(
       false,
@@ -100,12 +101,20 @@ describe("lingering exec conmon", () => {
     expect(killed).toEqual([10, 11]);
   });
 
-  test("on runtime stop, SIGKILLs every managed exec monitor and ignores a kill failure", async () => {
+  test("on runtime stop, SIGKILLs orphaned exec monitors and ignores a kill failure", async () => {
     const killed: number[] = [];
     const processes: ReadonlyArray<ExecConmonProcess> = [
       { pid: 21, argv: execArgv("lando-us-appserver") },
       { pid: 22, argv: execArgv("lando-global-ssh-agent") },
       { pid: 23, argv: monitorArgv("lando-global-ssh-agent") },
+      {
+        pid: 24,
+        argv: execArgv(
+          "lando-global-ssh-agent",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+      },
+      { pid: 25, argv: [conmonPath, "--exec-process-spec"] },
     ];
 
     const killedCount = await run(

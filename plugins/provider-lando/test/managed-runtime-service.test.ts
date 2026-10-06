@@ -107,15 +107,19 @@ describe("verifyOwnedRuntimePid", () => {
 });
 
 describe("terminateOwnedRuntimeService", () => {
-  test("SIGKILLs only managed exec conmons when the pid file is missing", async () => {
+  test("SIGKILLs only orphaned managed exec conmons when the pid file is missing", async () => {
     const killedPids: number[] = [];
     const processSeam = makeProcessSeam({
       readPid: () => Effect.fail(new Error("ENOENT")),
     });
     const execConmon: ExecConmonReaper = {
       listArgv: Effect.succeed([
-        { pid: 10, argv: ["/tmp/udr/runtime/bin/conmon", "--exec-attach"] },
-        { pid: 11, argv: ["/tmp/udr/runtime/bin/conmon", "-n", "lando-global-traefik"] },
+        { pid: 10, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "orphaned-id", "--exec-attach"] },
+        {
+          pid: 11,
+          argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "-n", "lando-global-traefik"],
+        },
+        { pid: 12, argv: ["/tmp/udr/runtime/bin/conmon", "-c", "live-id", "--exec-attach"] },
       ]),
       kill: (pid) =>
         Effect.sync(() => {

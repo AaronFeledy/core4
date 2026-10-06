@@ -7,6 +7,7 @@ import { Effect } from "effect";
  * `conmon --exec-attach` double-forks to init and is not in the container
  * cgroup, so removing the container does not signal it. The monitor keeps the
  * deleted container's name until that delay elapses.
+ * Runtime stop reaps only exec monitors whose container monitor is gone.
  */
 export interface ExecConmonProcess {
   readonly pid: number;
@@ -52,10 +53,14 @@ export const isLingeringExecConmon = (
   argv: ReadonlyArray<string>,
   conmonPath: string,
   selector?: ExecConmonSelector,
+  liveContainerIds: ReadonlySet<string> = new Set(),
 ): boolean => {
   const command = argv[0];
   if (command !== conmonPath || !isExecAttachArgv(argv)) return false;
-  if (selector?.names === undefined && selector?.containerIds === undefined) return true;
+  if (selector?.names === undefined && selector?.containerIds === undefined) {
+    const containerId = flagValue(argv, "-c");
+    return containerId !== undefined && !liveContainerIds.has(containerId);
+  }
   const name = flagValue(argv, "-n");
   if (selector.names !== undefined && name !== undefined && selector.names.has(name)) return true;
   const containerId = flagValue(argv, "-c");
@@ -113,10 +118,16 @@ export const reapLingeringExecConmons = Effect.fnUntraced(function* (options: {
   const processes = yield* reaper.listArgv.pipe(
     Effect.catch(() => Effect.succeed<ReadonlyArray<ExecConmonProcess>>([])),
   );
+  const liveContainerIds = new Set<string>();
+  for (const candidate of processes) {
+    if (candidate.argv[0] !== options.conmonPath || isExecAttachArgv(candidate.argv)) continue;
+    const containerId = flagValue(candidate.argv, "-c");
+    if (containerId !== undefined) liveContainerIds.add(containerId);
+  }
   let killed = 0;
-  for (const process of processes) {
-    if (!isLingeringExecConmon(process.argv, options.conmonPath, options)) continue;
-    const didKill = yield* reaper.kill(process.pid).pipe(
+  for (const candidate of processes) {
+    if (!isLingeringExecConmon(candidate.argv, options.conmonPath, options, liveContainerIds)) continue;
+    const didKill = yield* reaper.kill(candidate.pid).pipe(
       Effect.as(true),
       Effect.catch(() => Effect.succeed(false)),
     );
