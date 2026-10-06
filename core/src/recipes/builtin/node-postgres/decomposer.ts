@@ -11,7 +11,7 @@ export const nodePostgresDecomposer = makeZeroOptionDecomposer({
         ports: ["3000:3000"],
         environment: { NODE_ENV: "development" },
         volumes: ["./:/app"],
-        command: "node /app/server.js",
+        command: ["node", "/app/server.js"],
         dependsOn: ["database"],
         routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
       },
