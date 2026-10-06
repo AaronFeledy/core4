@@ -20,10 +20,10 @@ import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as LandoLogger from "@lando/engine/logging/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
-import { renderSolution } from "./doctor";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { failCheck, passCheckNamed, warnCheck } from "./doctor-check-builders";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
+import { renderSectionCheck } from "./doctor-section-render";
 
 export interface GlobalAppDoctorCheck {
   readonly name: "global-app";
@@ -201,19 +201,8 @@ export const DefaultGlobalAppDoctorLayer: Layer.Layer<
   BunFileSystem.layer,
 );
 
-const renderCheck = (check: GlobalAppDoctorCheck): ReadonlyArray<string> => {
-  const lines: string[] = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];
-  for (const [field, value] of Object.entries(check.context)) {
-    lines.push(`${field}: ${value}`);
-  }
-  for (const solution of check.solutions) {
-    lines.push(renderSolution(solution));
-  }
-  return lines;
-};
-
 export const renderGlobalAppDoctorResult = (result: GlobalAppDoctorResult): string =>
-  result.checks.flatMap((check) => renderCheck(check)).join("\n");
+  result.checks.flatMap((check) => renderSectionCheck(check)).join("\n");
 
 const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "installed",

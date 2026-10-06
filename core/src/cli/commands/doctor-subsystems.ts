@@ -36,7 +36,6 @@ import * as RouterServiceLayer from "@lando/engine/subsystems/proxy/api";
 import * as ProviderUrlScanner from "@lando/engine/subsystems/scanner/live";
 import * as SshServiceLayer from "@lando/engine/subsystems/ssh/api";
 import * as LandoHttpClient from "@lando/http-client/live";
-import { renderSolution } from "./doctor";
 import {
   type CertsDoctorStatus,
   UNRESOLVED_CERTS_STATUS,
@@ -48,6 +47,7 @@ import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
+import { renderSectionCheck } from "./doctor-section-render";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
 import {
   CERTS_SPEC,
@@ -145,20 +145,8 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   };
 });
 
-const renderCheck = (check: DoctorSubsystemCheck): ReadonlyArray<string> => {
-  const lines = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];
-  for (const [field, value] of Object.entries(check.context)) {
-    if (field === "subsystem") continue;
-    lines.push(`${field}: ${value}`);
-  }
-  for (const solution of check.solutions) {
-    lines.push(renderSolution(solution));
-  }
-  return lines;
-};
-
 export const renderSubsystemDoctorResult = (result: SubsystemDoctorResult): string =>
-  result.checks.flatMap((check) => renderCheck(check)).join("\n");
+  result.checks.flatMap((check) => renderSectionCheck(check, { skipContextKeys: ["subsystem"] })).join("\n");
 
 const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "subsystem",
