@@ -3,19 +3,14 @@ import { access, stat } from "node:fs/promises";
 
 import { Effect } from "effect";
 
-import { SqlDumpNotFoundError } from "@lando/sdk/errors";
+import { SqlDumpNotFoundError, errnoCode } from "@lando/sdk/errors";
 
 import { type DumpCompression, collectDumpPrefix, detectDumpCompression } from "./compression.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
 
-const nodeErrorCode = (cause: unknown): string | undefined =>
-  typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
-    ? cause.code
-    : undefined;
-
 const dumpMissKind = (cause: unknown): DumpMiss => {
-  const code = nodeErrorCode(cause);
+  const code = errnoCode(cause);
   if (code === "EACCES" || code === "EPERM") return "unreadable";
   return "missing";
 };

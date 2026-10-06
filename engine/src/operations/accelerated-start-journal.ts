@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Cause, Effect, Exit } from "effect";
 
-import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
+import { FileSyncStartError, FileSyncStopError, causeMessage } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 
@@ -218,7 +218,7 @@ export const beginAcceleratedStart = Effect.fnUntraced(function* (plan: AppPlan,
     const cause = Cause.squash(original);
     const retained = new FileSyncStartError({
       engineId: first.engineId,
-      message: `The provider cannot roll back prepared accelerated sync targets after startup failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      message: `The provider cannot roll back prepared accelerated sync targets after startup failed: ${causeMessage(cause)}`,
       remediation: journalRecovery(bucket.path),
       cause,
     });

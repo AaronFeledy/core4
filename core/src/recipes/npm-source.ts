@@ -14,7 +14,7 @@
 import { createHash } from "node:crypto";
 
 import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
-import { RecipeSourceError } from "@lando/sdk/errors";
+import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import type { ResolvedRecipe } from "./source";
@@ -75,8 +75,6 @@ export interface ResolvedNpmRecipe extends ResolvedRecipe {
 }
 
 export const DEFAULT_NPM_REGISTRY_URL = "https://registry.npmjs.org";
-
-const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 const sourceError = (input: {
   readonly message: string;

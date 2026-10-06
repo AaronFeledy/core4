@@ -3,7 +3,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import { CapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { CapabilityError, LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -130,12 +130,12 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
     catch: (cause) =>
       new LandofileValidationError({
-        message: `Global network trust configuration is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Global network trust configuration is invalid: ${causeMessage(cause)}`,
         file: landofilePath,
         issues: [
           validationIssue(
             ["network"],
-            `Global network trust configuration is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
+            `Global network trust configuration is invalid: ${causeMessage(cause)}`,
           ),
         ],
       }),

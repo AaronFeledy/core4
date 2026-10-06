@@ -8,7 +8,7 @@
  */
 import { Schema } from "effect";
 
-import { RecipeSourceError } from "@lando/sdk/errors";
+import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import { RecipeRegistryResponse } from "@lando/sdk/schema";
 import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@lando/sdk/schema";
 
@@ -38,8 +38,6 @@ export interface ResolveRegistryRecipeSourceOptions {
   readonly tarballRecipeFetcher?: TarballRecipeFetcher;
   readonly tarballRecipeExtractor?: TarballRecipeExtractor;
 }
-
-const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
 const sourceError = (input: {
   readonly message: string;

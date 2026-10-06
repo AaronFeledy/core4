@@ -5,6 +5,7 @@ import {
   RecipeManifestNotFoundError,
   type RecipeManifestParseError,
   RecipeSourceError,
+  causeMessage,
 } from "@lando/sdk/errors";
 
 import { type GitRecipeCloner, resolveGitRecipeSource } from "../git-source";
@@ -148,7 +149,7 @@ const mapRemoteError = (cause: unknown, ref: string, chain: ReadonlyArray<string
   if (cause instanceof RecipeSourceError) return cause;
   if (cause instanceof RecipeExtendsError) return cause;
   return new RecipeSourceError({
-    message: cause instanceof Error ? cause.message : String(cause),
+    message: causeMessage(cause),
     source: ref,
     kind: "clone-failed",
     remediation: "Check that the remote recipe source is reachable and retry.",

@@ -13,7 +13,7 @@ import { dirname } from "node:path";
 
 import { Clock, Duration, Effect } from "effect";
 
-import { RecipeManifestParseError } from "@lando/sdk/errors";
+import { RecipeManifestParseError, causeMessage } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
 
 import { isSandboxParseFailure, resolveTsModuleResult, sandboxScan } from "@lando/landofile/ts-loader";
@@ -70,11 +70,7 @@ const evaluateImport = Effect.fnUntraced(function* (
     catch: (cause) =>
       cause instanceof RecipeManifestParseError
         ? cause
-        : parseError(
-            filePath,
-            `Failed to load recipe.ts at ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
-            cause,
-          ),
+        : parseError(filePath, `Failed to load recipe.ts at ${filePath}: ${causeMessage(cause)}`, cause),
   });
 });
 
@@ -93,9 +89,7 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
       isSandboxParseFailure(cause)
         ? parseError(
             options.filePath,
-            `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${
-              cause.cause instanceof Error ? cause.cause.message : String(cause.cause)
-            }`,
+            `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${causeMessage(cause.cause)}`,
             cause,
           )
         : parseError(

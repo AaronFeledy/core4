@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { satisfies, subset, valid, validRange } from "semver";
 
+import { causeMessage } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
@@ -153,7 +154,7 @@ const packageEngine = (
     parsed = JSON.parse(input.text);
   } catch (cause) {
     throw new NodeInferenceError(
-      `Node inference could not parse ${input.path} as valid JSON: ${cause instanceof Error ? cause.message : String(cause)}.`,
+      `Node inference could not parse ${input.path} as valid JSON: ${causeMessage(cause)}.`,
       "Fix package.json or remove bare type: node.",
     );
   }

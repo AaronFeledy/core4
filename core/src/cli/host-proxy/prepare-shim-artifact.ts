@@ -7,7 +7,7 @@ import {
   type HostProxyShimTarget,
   defaultHostProxyShimArtifactPath,
 } from "@lando/engine/subsystems/host-proxy/transport-shim";
-import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
+import { HostProxyTransportUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { type EmbeddedShimFile, extractEmbeddedHostProxyShim } from "./embedded-shim.ts";
 
 export interface HostProxyShimSpawnResult {
@@ -45,7 +45,7 @@ const isNodeError = (cause: unknown): cause is NodeJS.ErrnoException =>
 
 const unavailable = (socketPath: string, cause: unknown): HostProxyTransportUnavailableError =>
   new HostProxyTransportUnavailableError({
-    message: cause instanceof Error ? cause.message : String(cause),
+    message: causeMessage(cause),
     socketPath,
     remediation: Bun.isStandaloneExecutable
       ? "Reinstall the Lando executable, then retry the app command. Its embedded host-proxy shim could not be prepared."

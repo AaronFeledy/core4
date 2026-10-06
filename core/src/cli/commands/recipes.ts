@@ -19,6 +19,7 @@ import {
   type RecipeManifestParseError,
   RecipeManifestValidationError,
   type RecipeSourceError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
@@ -183,9 +184,7 @@ const readManifestText = (manifestPath: string): Effect.Effect<string, RecipeMan
     },
     catch: (cause) =>
       new RecipeManifestNotFoundError({
-        message: `Could not read recipe manifest at ${manifestPath}: ${
-          cause instanceof Error ? cause.message : String(cause)
-        }.`,
+        message: `Could not read recipe manifest at ${manifestPath}: ${causeMessage(cause)}.`,
         source: manifestPath,
       }),
   });
@@ -199,7 +198,7 @@ const ensureSingleRecipeManifestForm = (
     try: () => Bun.file(recipeTsPath).exists(),
     catch: (cause) =>
       new RecipeManifestNotFoundError({
-        message: `Could not stat recipe.ts at ${recipeTsPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+        message: `Could not stat recipe.ts at ${recipeTsPath}: ${causeMessage(cause)}.`,
         source: recipeTsPath,
       }),
   }).pipe(

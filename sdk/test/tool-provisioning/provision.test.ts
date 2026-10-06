@@ -6,11 +6,77 @@ import { Cause, Effect, Exit } from "effect";
 
 import { ToolExtractError, ToolInstallPathError, ToolManifestError } from "@lando/sdk/errors";
 import type { ToolManifest } from "@lando/sdk/schema";
-import { provisionTool, resolveHostKey } from "@lando/sdk/tool-provisioning";
+import {
+  fingerprintPath,
+  legacyToolVersionMarkerPath,
+  provisionTool,
+  readInstalledToolVersion,
+  recordedFingerprintMatch,
+  resolveHostKey,
+  toolVersionMarkerPath,
+} from "@lando/sdk/tool-provisioning";
 
 import { makeFakeDownloader, makeTarGz, makeZip, sha256Hex } from "./_fixtures.ts";
 
 const text = (s: string): Uint8Array => new TextEncoder().encode(s);
+
+describe("installed tool status helpers", () => {
+  test("derives marker and fingerprint paths", () => {
+    // Given / When paths for a named tool are derived.
+    const paths = [
+      toolVersionMarkerPath("/bin", "tool"),
+      legacyToolVersionMarkerPath("/bin", "tool"),
+      fingerprintPath("/bin/tool"),
+    ];
+    // Then the existing on-disk names are preserved.
+    expect(paths).toEqual(["/bin/.tool.version", "/bin/.tool-installed-version", "/bin/tool.sha256"]);
+  });
+
+  test.each([
+    [" v2\n", "v1", "v2"],
+    [" \n", " v1\n", "v1"],
+    [undefined, "v1", "v1"],
+    [undefined, undefined, undefined],
+    [" \n", "\t", undefined],
+  ])("reads the first non-empty marker when values are %p and %p", async (first, second, expected) => {
+    // Given ordered markers with distinct versions or missing/empty contents.
+    const root = await mkdtemp(join(tmpdir(), "lando-tool-markers-"));
+    try {
+      const paths = [join(root, "current"), join(root, "legacy")];
+      if (first !== undefined) await writeFile(join(root, "current"), first);
+      if (second !== undefined) await writeFile(join(root, "legacy"), second);
+      // When reading the caller's explicit marker list.
+      const version = await readInstalledToolVersion(paths);
+      // Then only the first non-empty trimmed version wins.
+      expect(version).toBe(expected);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each(["match", "mismatch", "empty", "missing", "directory", "missing-record"] as const)(
+    "checks the recorded fingerprint when the installation is %s",
+    async (state) => {
+      // Given an installation and an independently recorded digest.
+      const root = await mkdtemp(join(tmpdir(), "lando-tool-fingerprint-"));
+      const path = join(root, "tool");
+      const expected = sha256Hex(text("binary"));
+      try {
+        if (state === "directory") await mkdir(path);
+        else if (state !== "missing") await writeFile(path, state === "empty" ? "" : "binary");
+        if (state !== "missing-record") {
+          await writeFile(`${path}.sha256`, state === "mismatch" ? "wrong" : ` ${expected}\n`);
+        }
+        // When checking the installed bytes against the record.
+        const result = await recordedFingerprintMatch(path);
+        // Then only an intact, non-empty regular file returns its digest.
+        expect(result).toBe(state === "match" ? expected : undefined);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+});
 
 const HOST_BIN = text("#!/bin/sh\necho host-cli\n");
 const AGENT_AMD64 = text("agent-amd64-binary");

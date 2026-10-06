@@ -4,7 +4,7 @@ import { gunzipSync, zstdDecompressSync } from "node:zlib";
 
 import { Effect, Schema } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import manifestData from "../nft-versions.json" with { type: "json" };
@@ -62,9 +62,6 @@ const provisionError = (message: string, cause?: unknown): ProviderUnavailableEr
     remediation: nftRemediation,
     ...(cause === undefined ? {} : { cause }),
   });
-
-const hasErrorCode = (cause: unknown, code: string): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
 
 export const resolveNftHostKey = (platform: string, arch: string): string | undefined => {
   if (platform !== "linux" && platform !== "wsl") return undefined;
@@ -363,7 +360,7 @@ export const decompressDebDataTar = async (
         gunzipSync(Buffer.from(bytes), { maxOutputLength: resolved.maxDecompressedBytes }),
       );
     } catch (cause) {
-      if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE")) {
+      if (isErrnoCode(cause, "ERR_BUFFER_TOO_LARGE")) {
         throw new NftDecompressionCapError(
           `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
         );
@@ -377,7 +374,7 @@ export const decompressDebDataTar = async (
         zstdDecompressSync(Buffer.from(bytes), { maxOutputLength: resolved.maxDecompressedBytes }),
       );
     } catch (cause) {
-      if (hasErrorCode(cause, "ERR_BUFFER_TOO_LARGE")) {
+      if (isErrnoCode(cause, "ERR_BUFFER_TOO_LARGE")) {
         throw new NftDecompressionCapError(
           `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
         );

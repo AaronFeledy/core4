@@ -10,6 +10,7 @@ import {
   RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
+  causeMessage,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import {
@@ -167,7 +168,7 @@ const loadRemoteLandofile = Effect.fnUntraced(function* (
     try: () => Bun.file(file).text(),
     catch: (cause) =>
       new LandofileParseError({
-        message: `Could not read ${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Could not read ${file}: ${causeMessage(cause)}`,
         filePath: file,
         line: undefined,
         column: undefined,
@@ -195,7 +196,7 @@ const writeLandofile = (file: string, landofile: typeof LandofileShape.Type) =>
     try: () => Bun.write(file, emitLandofileYaml(landofile)),
     catch: (cause) =>
       new LandofileParseError({
-        message: `Could not write ${file}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Could not write ${file}: ${causeMessage(cause)}`,
         filePath: file,
         line: undefined,
         column: undefined,

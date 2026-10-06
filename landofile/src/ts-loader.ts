@@ -10,7 +10,12 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { Clock, Duration, Effect, Predicate } from "effect";
 
 import { normalizeHostPlatform } from "@lando/paths";
-import { LandofileParseError, LandofileSandboxError, LandofileTimeoutError } from "@lando/sdk/errors";
+import {
+  LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
+  causeMessage,
+} from "@lando/sdk/errors";
 
 export const DEFAULT_TS_TIMEOUT_MS = 5000;
 export const TS_TIMEOUT_ENV = "LANDO_LANDOFILE_TS_TIMEOUT_MS";
@@ -131,9 +136,7 @@ export const sandboxScan = (
     } catch (cause) {
       return Effect.fail(
         new LandofileSandboxError({
-          message: `Failed to parse programmatic Landofile at ${filePath}: ${
-            cause instanceof Error ? cause.message : String(cause)
-          }`,
+          message: `Failed to parse programmatic Landofile at ${filePath}: ${causeMessage(cause)}`,
           filePath,
           violation: SANDBOX_PARSE_VIOLATION,
           remediation: SANDBOX_REMEDIATION,
@@ -245,9 +248,7 @@ const evaluateImport = Effect.fnUntraced(function* (filePath: string) {
       cause instanceof LandofileParseError
         ? cause
         : new LandofileParseError({
-            message: `Failed to load programmatic Landofile at ${filePath}: ${
-              cause instanceof Error ? cause.message : String(cause)
-            }`,
+            message: `Failed to load programmatic Landofile at ${filePath}: ${causeMessage(cause)}`,
             filePath,
             line: undefined,
             column: undefined,
