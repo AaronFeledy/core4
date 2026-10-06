@@ -30,6 +30,10 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import {
+  teardownDesiredOrUnchanged,
+  withTeardownResolution,
+} from "../../src/operations/applied-state-target.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -37,6 +41,92 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
+
+for (const kind of ["applied", "orphans", "absent"] as const) {
+  test(`dispatches only the ${kind} handler when teardown evidence is ${kind}`, async () => {
+    await withTempRoot(async (root) => {
+      // Given
+      const calls: string[] = [];
+      const harness = makeLayer(
+        kind === "applied"
+          ? { appliedPlan: planAt(root) }
+          : kind === "orphans"
+            ? { orphans: [orphanGroup({ root, services: ["web"] })] }
+            : {},
+      );
+      const handler = (name: string) =>
+        Effect.sync(() => {
+          calls.push(name);
+          return name;
+        });
+      // When
+      const result = await Effect.runPromise(
+        withResolvedCwd(
+          root,
+          withTeardownResolution({
+            applied: () => handler("applied"),
+            orphans: () => handler("orphans"),
+            absent: () => handler("absent"),
+          }),
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      // Then
+      expect(result).toBe(kind);
+      expect(calls).toEqual([kind]);
+    });
+  });
+}
+
+for (const landofilePresent of [true, false]) {
+  test(`handles desired resolution failure when landofilePresent is ${landofilePresent}`, async () => {
+    await withTempRoot(async (root) => {
+      // Given
+      const harness = makeLayer({});
+      const calls: string[] = [];
+      const effect = teardownDesiredOrUnchanged(
+        { kind: "absent", root: AbsolutePath.make(root), landofilePresent },
+        () =>
+          Effect.sync(() => {
+            calls.push("desired");
+            return "desired";
+          }),
+        (app) => `unchanged:${app}`,
+      );
+      // When
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, effect).pipe(Effect.provide(harness.layer), Effect.result),
+      );
+      // Then
+      expect(result).toMatchObject(
+        landofilePresent
+          ? { _tag: "Success", success: `unchanged:${basename(root)}` }
+          : { _tag: "Failure", failure: invalidDesiredConfig },
+      );
+      expect(calls).toEqual([]);
+    });
+  });
+}
+
+test("calls onDesired when desired resolution succeeds", async () => {
+  await withTempRoot(async (root) => {
+    // Given
+    const plan = planAt(root);
+    const harness = makeLayer({ desiredPlan: plan });
+    // When
+    const result = await Effect.runPromise(
+      withResolvedCwd(
+        root,
+        teardownDesiredOrUnchanged(
+          { kind: "absent", root: AbsolutePath.make(root), landofilePresent: true },
+          (desired) => Effect.succeed(desired.plan),
+          () => planAt("/tmp/wrong"),
+        ),
+      ).pipe(Effect.provide(harness.layer)),
+    );
+    // Then
+    expect(result).toEqual(plan);
+  });
+});
 
 const ownerKey = (root: string): string => createHash("sha256").update(`owner\0${root}`).digest("hex");
 
