@@ -17,7 +17,7 @@ import type {
 import {
   type AppPlanner,
   BuildOrchestrator,
-  EventService,
+  type EventService,
   type LandofileService,
   RouterService,
   RuntimeProviderRegistry,
@@ -40,7 +40,7 @@ import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { startedServiceRow } from "./authority-url.ts";
-import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
@@ -180,7 +180,6 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         yield* ensureStartTransactionConsistent(resolvedTarget);
         yield* runAppInitEvents(plan);
         const proxy = yield* RouterService;
-        const events = yield* EventService;
         const ref: AppRef = resolvedTarget.app;
         const timestamp = () => DateTime.nowUnsafe();
         const preRebuild = PreRebuildEvent.make({
@@ -188,8 +187,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
           app: ref,
           timestamp: timestamp(),
         });
-        yield* events.publish(preRebuild);
-        yield* runAppEvent(plan, "pre-rebuild", preRebuild);
+        yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
         const start = scoped
           ? {
               app: plan.name,
@@ -220,8 +218,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
           app: ref,
           timestamp: timestamp(),
         });
-        yield* events.publish(postRebuild);
-        yield* runAppEvent(plan, "post-rebuild", postRebuild);
+        yield* publishAndRunAppEvent(plan, "post-rebuild", postRebuild);
         return {
           app: start.app,
           servicesRebuilt: start.servicesStarted.map((service) => service.name),

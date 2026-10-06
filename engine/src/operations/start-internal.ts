@@ -57,7 +57,7 @@ import { isRecoverableStart } from "./accelerated-start-record.ts";
 import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 import { startedServiceRow } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
-import { runAppEvent, runPostAppEvent } from "./events.ts";
+import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
 import {
   guardOrdinaryFileSyncFallback,
   resolveFileSyncMountPlan,
@@ -286,8 +286,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
     triggeredBy: "app:start",
     timestamp: now(),
   });
-  yield* events.publish(preStart);
-  yield* runAppEvent(plan, "pre-start", preStart);
+  yield* publishAndRunAppEvent(plan, "pre-start", preStart);
 
   const neededGlobalServices = requiredGlobalServicesForPlan(plan);
   if (plan.routes.length > 0 && neededGlobalServices.includes(proxy.id) && proxy.prepare !== undefined) {
@@ -436,8 +435,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                   plan,
                   timestamp: now(),
                 });
-                yield* events.publish(postStart);
-                yield* runPostAppEvent(plan, "post-start", postStart);
+                yield* publishAndRunPostAppEvent(plan, "post-start", postStart);
                 const scanner = yield* Effect.serviceOption(UrlScanner);
                 if (Option.isSome(scanner)) {
                   yield* runPostStartScan({

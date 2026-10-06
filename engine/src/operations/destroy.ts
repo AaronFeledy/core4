@@ -56,7 +56,7 @@ import {
   withTeardownResolution,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 
@@ -206,8 +206,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     app: ref,
     timestamp: now(),
   });
-  yield* events.publish(preDestroy);
-  yield* runAppEvent(plan, "pre-destroy", preDestroy);
+  yield* publishAndRunAppEvent(plan, "pre-destroy", preDestroy);
 
   yield* withDestroyProgress({
     events,
@@ -280,8 +279,7 @@ const destroyAppForTargetUncoordinated = Effect.fnUntraced(function* (
     app: ref,
     timestamp: now(),
   });
-  yield* events.publish(postDestroy);
-  yield* runAppEvent(plan, "post-destroy", postDestroy);
+  yield* publishAndRunAppEvent(plan, "post-destroy", postDestroy);
   yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
 
   return {

@@ -9,7 +9,7 @@ import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lan
 import { PostRestartEvent, PreRestartEvent } from "@lando/sdk/events";
 import {
   type AppPlanner,
-  EventService,
+  type EventService,
   type LandofileService,
   RuntimeProviderRegistry,
   StateStore,
@@ -34,7 +34,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
@@ -90,7 +90,6 @@ export const restartApp = Effect.fn("AppOperation.restart")(function* (
         yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
         yield* runAppInitEvents(plan);
         const proxy = yield* RouterService;
-        const events = yield* EventService;
         const preRestart = PreRestartEvent.make({
           _tag: "pre-restart",
           scope: "app",
@@ -99,8 +98,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(function* (
           triggeredBy: "app:restart",
           timestamp: DateTime.nowUnsafe(),
         });
-        yield* events.publish(preRestart);
-        yield* runAppEvent(plan, "pre-restart", preRestart);
+        yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
         yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
         yield* managed?.onStopped ?? Effect.void;
         const result = yield* compensateFailureUnless(
@@ -123,8 +121,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(function* (
           plan,
           timestamp: DateTime.nowUnsafe(),
         });
-        yield* events.publish(postRestart);
-        yield* runAppEvent(plan, "post-restart", postRestart);
+        yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
         return result;
       }, Effect.provide(context)),
     }),
