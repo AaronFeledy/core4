@@ -9,16 +9,21 @@
  * `HttpClient`); placement, containment, and the version marker come from the
  * shared tool-provisioning helper.
  */
-import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Effect, Schema, type Scope } from "effect";
 
 import { ToolManifest } from "@lando/sdk/schema";
 import type { Downloader } from "@lando/sdk/services";
-import { type ToolError, provisionTool, resolveHostKey } from "@lando/sdk/tool-provisioning";
+import {
+  type ToolError,
+  provisionTool,
+  readInstalledToolVersion,
+  recordedFingerprintMatch,
+  resolveHostKey,
+  toolVersionMarkerPath,
+} from "@lando/sdk/tool-provisioning";
 
-import { sha256Hex } from "@lando/sdk/digest";
 import manifestData from "../mkcert-versions.json" with { type: "json" };
 
 const TOOL_ID = "mkcert" as const;
@@ -46,29 +51,13 @@ export const mkcertInstallName = (platform: string = process.platform): "mkcert"
 export const mkcertInstallPath = (binDir: string, platform: string = process.platform): string =>
   join(binDir, mkcertInstallName(platform));
 
-export const mkcertInstalledVersionPath = (binDir: string): string => join(binDir, `.${TOOL_ID}.version`);
+export const mkcertInstalledVersionPath = (binDir: string): string => toolVersionMarkerPath(binDir, TOOL_ID);
 
-const fingerprintPath = (installPath: string): string => `${installPath}.sha256`;
+const readInstalledVersion = (binDir: string): Promise<string | undefined> =>
+  readInstalledToolVersion([mkcertInstalledVersionPath(binDir)]);
 
-const readInstalledVersion = async (binDir: string): Promise<string | undefined> => {
-  try {
-    const content = (await readFile(mkcertInstalledVersionPath(binDir), "utf-8")).trim();
-    return content.length === 0 ? undefined : content;
-  } catch {
-    return undefined;
-  }
-};
-
-const matchesRecordedFingerprint = async (path: string): Promise<boolean> => {
-  try {
-    const info = await stat(path);
-    if (!info.isFile() || info.size === 0) return false;
-    const [binary, recorded] = await Promise.all([readFile(path), readFile(fingerprintPath(path), "utf-8")]);
-    return sha256Hex(binary) === recorded.trim();
-  } catch {
-    return false;
-  }
-};
+const matchesRecordedFingerprint = async (path: string): Promise<boolean> =>
+  (await recordedFingerprintMatch(path)) !== undefined;
 
 /**
  * Report whether the pinned mkcert version is already installed with an intact
