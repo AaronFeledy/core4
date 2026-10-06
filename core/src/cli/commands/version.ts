@@ -1,5 +1,5 @@
 /**
- * `lando version` — print the Lando + plugin versions.
+ * `lando version` — print the Lando version; machine output adds Bun and platform.
  *
  * Bootstrap level: `minimal`.
  *

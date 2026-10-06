@@ -8,9 +8,3 @@ export const CORE_VERSION: string =
   typeof __LANDO_CORE_VERSION__ === "string" && __LANDO_CORE_VERSION__.length > 0
     ? __LANDO_CORE_VERSION__
     : enginePackage.version;
-
-export const renderMetaVersion = (version: {
-  readonly core: string;
-  readonly bun: string;
-  readonly platform: string;
-}): string => `@lando/core ${version.core} (bun ${version.bun} on ${version.platform})`;

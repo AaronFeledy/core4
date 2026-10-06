@@ -6,7 +6,6 @@ import type { ConfigService } from "@lando/sdk/services";
 
 import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
-import { renderMetaVersion } from "@lando/engine/version";
 import { makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
@@ -70,7 +69,7 @@ export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
 export const runMetaVersion = async (): Promise<void> => {
   setActiveCommandId("meta:version");
   resetActiveCommandInvocation("meta:version", []);
-  await runCompiledCommand(versionOperation, Layer.empty, renderMetaVersion);
+  await runCompiledCommand(versionOperation, Layer.empty, (result) => result.core);
 };
 
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
