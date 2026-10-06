@@ -22,6 +22,11 @@ const metadata = {
 
 const APP_ROOT = "/srv/apps/myapp";
 const featureOverrides = new Map([[NODE_FEATURE_ID, nodeServiceFeature]]);
+const idleCommand = [
+  "node",
+  "-e",
+  'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
+] as const;
 
 const decodeService = (raw: unknown): ServiceConfig => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -82,7 +87,7 @@ describe("node:lts ServiceType", () => {
     expect(String(plan.mounts[0]?.target)).toBe("/app");
     expect(plan.mounts[0]?.readOnly).toBe(false);
     expect(plan.mounts[0]?.realization).toBe("passthrough");
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
@@ -190,7 +195,7 @@ describe("node:lts ServiceType", () => {
   test("plan is a valid providerExec target: long-running command + app workdir", async () => {
     const plan = await composeNodePlan(nodeLtsServiceType, { type: "node:lts" });
 
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(idleCommand);
     expect(plan.name).toBe(ServiceName.make("web"));
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(plan.appMount?.target)).toBe("/app");
@@ -211,7 +216,7 @@ describe("node:22 ServiceType", () => {
     expect(plan.mounts[0]?.source).toBe(APP_ROOT);
     expect(String(plan.mounts[0]?.target)).toBe("/app");
     expect(plan.mounts[0]?.realization).toBe("passthrough");
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(idleCommand);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.environment).toMatchObject({
@@ -263,7 +268,7 @@ describe("node:22 ServiceType", () => {
   test("plan is a valid providerExec target: long-running command + app workdir", async () => {
     const plan = await composeNodePlan(node22ServiceType, { type: "node:22" });
 
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(idleCommand);
     expect(plan.name).toBe(ServiceName.make("web"));
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(plan.appMount?.target)).toBe("/app");

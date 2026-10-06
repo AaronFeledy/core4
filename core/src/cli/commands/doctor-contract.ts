@@ -25,6 +25,14 @@ export interface DoctorSolution {
   readonly command?: string;
 }
 
+export interface DoctorSectionCheck {
+  readonly name: string;
+  readonly status: string;
+  readonly severity: string;
+  readonly context: Readonly<Record<string, string>>;
+  readonly solutions: ReadonlyArray<DoctorSolution>;
+}
+
 export interface DoctorRuntime {
   readonly running: boolean;
   readonly message?: string;

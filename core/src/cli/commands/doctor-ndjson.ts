@@ -3,6 +3,7 @@ import { DateTime, Effect, Schema } from "effect";
 import type { Redactor } from "@lando/sdk/secrets";
 
 import { encodeStreamEventFrame, encodeStreamResultFrame, identityRedactor } from "@lando/sdk/command-result";
+import type { DoctorSectionCheck, DoctorSolution } from "./doctor-contract";
 
 export type DoctorNdjsonStatus = "pass" | "warn" | "fail";
 
@@ -41,6 +42,25 @@ export const orderKnownKeys = <Value>(
   }
   return ordered;
 };
+
+export const doctorSolutionPayloads = (solutions: ReadonlyArray<DoctorSolution>) =>
+  solutions.map((solution) => ({
+    kind: solution.kind,
+    description: solution.description,
+    ...(solution.command === undefined ? {} : { command: solution.command }),
+  }));
+
+export const sectionCheckEventPayload = (
+  check: DoctorSectionCheck,
+  contextKeyOrder: ReadonlyArray<string>,
+): Record<string, unknown> => ({
+  _tag: "doctor.check",
+  name: check.name,
+  status: check.status,
+  severity: check.severity,
+  context: orderKnownKeys(check.context, contextKeyOrder),
+  solutions: doctorSolutionPayloads(check.solutions),
+});
 
 export const renderDoctorChecksAsNdjson = <Check extends DoctorNdjsonCheck>({
   command = "meta:doctor",
