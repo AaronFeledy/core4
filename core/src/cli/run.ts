@@ -29,6 +29,7 @@ import {
   printHelpCatalogJson,
   printRootHelp,
   printToolingHelp,
+  thisAppHelpRowsFromCache,
   toolingHelpEntryForToken,
 } from "./compiled-help";
 import { compiledCommandInputFromArgv } from "./compiled-input";
@@ -153,7 +154,10 @@ const resolveToolingRouteExit = async (token: string | undefined) => {
 const printAllHelp = async (): Promise<void> => {
   const cache = await readAppCommandCacheOrNull();
   emitResultLine(
-    renderColdAllHelp(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+    renderColdAllHelp({
+      thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
+      ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+    }),
   );
 };
 
