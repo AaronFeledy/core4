@@ -136,7 +136,7 @@ const probeOutputSummary = (input: {
   const stderr = input.stderr?.trim();
   if (stderr !== undefined && stderr.length > 0) parts.push(`stderr: ${stderr}`);
   if (input.cause !== undefined) {
-    const cause = input.cause instanceof Error ? input.cause.message : String(input.cause);
+    const cause = causeMessage(input.cause);
     if (cause.length > 0) parts.push(`cause: ${cause}`);
   }
   return scrubTelemetryValue(parts.join("\n")).slice(0, 500);

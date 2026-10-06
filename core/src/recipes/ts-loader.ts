@@ -89,9 +89,7 @@ export const loadRecipeTs = Effect.fnUntraced(function* (
       isSandboxParseFailure(cause)
         ? parseError(
             options.filePath,
-            `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${
-              cause.cause instanceof Error ? cause.cause.message : String(cause.cause)
-            }`,
+            `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${causeMessage(cause.cause)}`,
             cause,
           )
         : parseError(
