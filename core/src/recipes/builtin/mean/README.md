@@ -17,3 +17,5 @@ always included.
 - `server.js` Express hello-world
 
 The `api` startup command runs `npm install`, then serves the Express scaffold on port `3000`. Run `lando start`, then `lando info` and open its URL to see `Hello from Lando`. Use `lando npm` and `lando node` for tooling inside `api`.
+
+The scaffold closes its HTTP server on SIGTERM or SIGINT and exits within five seconds if connections linger.

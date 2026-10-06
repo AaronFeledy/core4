@@ -96,8 +96,8 @@ The explicit-version example below keeps the version in the Landofile with
 
 ## Run the app
 
-The default keep-alive command holds the container open so you can install
-dependencies and start your server via tooling:
+The default Node keep-alive process holds the container open and exits cleanly on
+SIGTERM or SIGINT. Install dependencies and start your server via tooling:
 
 ```sh
 # Declare an npm tooling alias to install dependencies inside the service
@@ -123,6 +123,8 @@ services:
 ```
 
 An explicit `environment.PORT` still wins for the process environment. The endpoint and generated healthcheck continue to use `port:`, so keep those values aligned unless your command intentionally translates between them.
+
+Lando stops a service with SIGTERM. A string `command:` runs under `sh -lc`, and that shell does not pass the signal on. Write the command as a list, such as `["node", "server.mjs"]`, and handle SIGTERM in your app so it stops before the runtime's timeout.
 
   <Scenario id="authored-port" render>
     <Step name="scaffold">

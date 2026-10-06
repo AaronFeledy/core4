@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./scaffold.ts";
 
 export const MEAN_RECIPE_VERSION = "0.1.0";
-export const MEAN_CONTENT_DIGEST = "sha256:618a26814b7a7629acbfa8e957952fa354b205ef25fb1a64db44351cfe1e5078";
+export const MEAN_CONTENT_DIGEST = "sha256:d7e6de6d2b9c54794877b71e73e6b520ada7c6f8b9bbf196621934378eeb3fc0";
 export const meanProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-mean",

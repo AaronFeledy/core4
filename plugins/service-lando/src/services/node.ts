@@ -31,7 +31,12 @@ export const NODE_FEATURE_PRIORITY = 600;
 export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
-const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
+// The kernel drops default-disposition signals to PID 1, so the idle process handles them itself.
+const DEFAULT_COMMAND = [
+  "node",
+  "-e",
+  'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
+] as const;
 const DEFAULT_PORT = 3000;
 const NODE_HEALTHCHECK_SCRIPT =
   'const net=require("node:net");const socket=net.connect(Number(process.argv[1]),"127.0.0.1");socket.once("connect",()=>socket.end());socket.once("error",()=>process.exit(1));';
