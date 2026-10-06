@@ -350,8 +350,9 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
   const compiled = await makeFixture("compiled-failure");
   try {
     // Given
-    await writeTask(source, "fail", ["exit 7"]);
-    await writeTask(compiled, "fail", ["exit 7"]);
+    const body = ["echo first", "echo second", "echo diagnostic 1>&2", "exit 7"];
+    await writeTask(source, "fail", body);
+    await writeTask(compiled, "fail", body);
     await writeFreshCache(source, "fail");
     await writeFreshCache(compiled, "fail");
 
@@ -366,10 +367,12 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
     expect(compiledResult.exitCode, compiledResult.stderr).toBe(7);
     const expectedFailure = {
       command: "app:fail",
-      ok: false,
-      error: {
-        _tag: "ToolingExecError",
-        remediation: expect.stringContaining("tooling task"),
+      ok: true,
+      result: {
+        service: ":host",
+        exitCode: 7,
+        stdout: "first\nsecond\n",
+        stderr: "diagnostic\n",
       },
     };
     expect(lastEnvelope(sourceResult.stdout)).toMatchObject(expectedFailure);

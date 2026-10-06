@@ -52,15 +52,20 @@ export const runBunShellScript = Effect.fnUntraced(function* (
     ...(env === undefined ? {} : { env }),
   }).pipe(
     Effect.catchTag("ShellExecError", (shellError) =>
-      Effect.fail(
-        new ToolingExecError({
-          message: `Script-backed tooling task ${script.id} failed: ${shellError.message}`,
-          tool: script.id,
-          ...(shellError.exitCode === undefined ? {} : { exitCode: shellError.exitCode }),
-          remediation: `Inspect the tooling task ${script.id} output, fix the script, and rerun the command.`,
-          cause: shellError,
-        }),
-      ),
+      shellError.exitCode !== undefined
+        ? Effect.succeed({
+            exitCode: shellError.exitCode,
+            stdout: shellError.stdout ?? "",
+            stderr: shellError.stderr ?? "",
+          })
+        : Effect.fail(
+            new ToolingExecError({
+              message: `Script-backed tooling task ${script.id} failed: ${shellError.message}`,
+              tool: script.id,
+              remediation: `Inspect the tooling task ${script.id} output, fix the script, and rerun the command.`,
+              cause: shellError,
+            }),
+          ),
     ),
   );
   return {
