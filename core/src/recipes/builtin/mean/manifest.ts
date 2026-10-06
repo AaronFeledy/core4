@@ -7,7 +7,7 @@ export const meanRecipeSource = `${MEAN_RECIPE_ID}/recipe.yml`;
 export const meanRecipeYaml = `id: ${MEAN_RECIPE_ID}
 title: MEAN
 description: MEAN-style Node API with MongoDB and optional Redis.
-version: 0.1.1
+version: 0.1.0
 authors:
   - Lando Core Team
 tags:
