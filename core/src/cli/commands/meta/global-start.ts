@@ -1,6 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { startedServiceRow } from "@lando/engine/operations/authority-url";
 import { applyGlobalRoutesForSelectedServices } from "@lando/engine/operations/global-routes";
 
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
@@ -191,14 +191,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(function* (
       const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
       const servicesStarted = yield* Effect.forEach(services, (service) =>
         provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
-          Effect.map((runtime) => ({
-            name: String(service.name),
-            state: runtime.state ?? runtime.status,
-            endpoints: [
-              ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-              ...(routeUrls.get(service.name) ?? []),
-            ],
-          })),
+          Effect.map((runtime) => {
+            const row = startedServiceRow(service, runtime);
+            return { ...row, endpoints: [...row.endpoints, ...(routeUrls.get(service.name) ?? [])] };
+          }),
         ),
       );
 

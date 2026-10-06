@@ -39,7 +39,7 @@ import { resolveServiceEnvironmentSecrets } from "../services/secret-environment
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { publishedEndpointUrl } from "./authority-url.ts";
+import { startedServiceRow } from "./authority-url.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
@@ -142,18 +142,13 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   const routedUrls = yield* routeUrlsForPlan(proxy, builtPlan);
   return yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
     provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-      Effect.map((runtime) => ({
-        name: String(service.name),
-        state: runtime.state ?? runtime.status,
-        endpoints: [
-          ...(routedUrls.get(ServiceName.make(String(service.name))) ?? []),
-          ...(runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
-            if (endpoint._tag === "internal") return [];
-            const rendered = publishedEndpointUrl(endpoint);
-            return rendered === undefined ? [] : [rendered];
-          }),
-        ],
-      })),
+      Effect.map((runtime) => {
+        const row = startedServiceRow(service, runtime);
+        return {
+          ...row,
+          endpoints: [...(routedUrls.get(ServiceName.make(String(service.name))) ?? []), ...row.endpoints],
+        };
+      }),
     ),
   );
 });

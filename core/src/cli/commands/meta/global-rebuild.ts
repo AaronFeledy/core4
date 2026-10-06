@@ -1,6 +1,6 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { startedServiceRow } from "@lando/engine/operations/authority-url";
 import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
   GlobalDistConflictError,
@@ -139,13 +139,9 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
       );
 
       const servicesRebuilt = yield* Effect.forEach(Object.values(builtPlan.services), (service) =>
-        provider.inspect({ app: builtPlan.id, service: service.name, plan: builtPlan }).pipe(
-          Effect.map((runtime) => ({
-            name: String(service.name),
-            state: runtime.state ?? runtime.status,
-            endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
-          })),
-        ),
+        provider
+          .inspect({ app: builtPlan.id, service: service.name, plan: builtPlan })
+          .pipe(Effect.map((runtime) => startedServiceRow(service, runtime))),
       );
 
       // Re-observe the router before the post event: a rebuild that leaves the

@@ -55,7 +55,7 @@ import { resolveServiceEnvironmentSecrets } from "../services/secret-environment
 import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { isRecoverableStart } from "./accelerated-start-record.ts";
 import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
-import { publishedEndpointUrl } from "./authority-url.ts";
+import { startedServiceRow } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runPostAppEvent } from "./events.ts";
 import {
@@ -373,13 +373,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                       Effect.map((runtime) => {
                         const sourceEndpoints = runtime.endpoints ?? service.endpoints;
                         return {
-                          name: String(service.name),
-                          state: runtime.state ?? runtime.status,
-                          endpoints: sourceEndpoints.flatMap((endpoint) => {
-                            if (endpoint._tag === "internal") return [];
-                            const rendered = publishedEndpointUrl(endpoint);
-                            return rendered === undefined ? [] : [rendered];
-                          }),
+                          ...startedServiceRow(service, runtime),
                           published: publishedTargetsFromEndpoints(String(service.name), sourceEndpoints),
                         };
                       }),
