@@ -1,4 +1,5 @@
 # Contributor tasks for this monorepo, run through Lando itself.
 # Host-only: no services. Tasks live in .lando/scripts/*.bun.sh.
-# After adding or editing a script, run `lando app:cache:refresh`.
+# New scripts and script-body edits are picked up without `lando app:cache:refresh`.
+# A Landofile change still needs a refresh.
 name: lando-core
