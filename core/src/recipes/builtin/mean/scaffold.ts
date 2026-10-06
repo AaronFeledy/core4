@@ -23,7 +23,17 @@ app.get("/", function (_req, res) {
   res.type("text/plain").send("Hello from Lando\\n");
 });
 
-app.listen(port, function () {
+const server = app.listen(port, function () {
   console.log("Listening on port " + port);
 });
+
+let closing = false;
+const shutdown = function () {
+  if (closing) return;
+  closing = true;
+  server.close(function () { process.exit(0); });
+  setTimeout(function () { process.exit(0); }, 5000).unref();
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 `;

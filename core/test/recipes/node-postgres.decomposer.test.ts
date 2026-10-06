@@ -72,7 +72,7 @@ describe("node-postgres decomposition", () => {
           ports: ["3000:3000"],
           environment: { NODE_ENV: "development" },
           volumes: ["./:/app"],
-          command: "node /app/server.js",
+          command: ["node", "/app/server.js"],
           dependsOn: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
@@ -127,7 +127,7 @@ describe("node-postgres decomposition", () => {
       "sha256:cd208e8ba15a4a27975d8769942fabf2251fe14adfe5495fc559f94b6605d916",
     );
     expect(recipeAssetDigest(NODE_POSTGRES_SERVER_JS)).toBe(
-      "sha256:fe58d559317d270ef66b9a5bfbe80f09513f82c41721d5081251e6379aaba3fb",
+      "sha256:e7b7541520c6ef09061663706248abab525d815f7e50fa81fd3ddd132d3b6605",
     );
   });
 
@@ -136,7 +136,7 @@ describe("node-postgres decomposition", () => {
       NODE_POSTGRES_CONTENT_DIGEST,
     );
     expect(NODE_POSTGRES_CONTENT_DIGEST).toBe(
-      "sha256:cbaec387ad0911dd659f35ad6970123cd4c4668f10b3b7ad1d5ae768c76975a0",
+      "sha256:61f39ad12c9a28a6ce451bc80947d89fbf7a2fde52d0f756d0645dc45ca0be9b",
     );
     expect(manifest.snapshot).toEqual(nodePostgresSnapshot);
     expect(nodePostgresSnapshot.identity.contentDigest).toBe(NODE_POSTGRES_CONTENT_DIGEST);

@@ -16,4 +16,14 @@ const port = Number(process.env.PORT || 3000);
 server.listen(port, function () {
   console.log("Listening on port " + port);
 });
+
+let closing = false;
+const shutdown = function () {
+  if (closing) return;
+  closing = true;
+  server.close(function () { process.exit(0); });
+  setTimeout(function () { process.exit(0); }, 5000).unref();
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 `;
