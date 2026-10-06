@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 
 import { Schema } from "effect";
+import { isErrnoCode } from "@lando/sdk/errors";
 
 import type { ExportEntry } from "./plugin-build-package";
 
@@ -14,15 +15,9 @@ export class PluginBuildMixedTreeError extends Schema.TaggedError<PluginBuildMix
   },
 ) {}
 
-const isMissingPathError = (cause: unknown): boolean =>
-  typeof cause === "object" &&
-  cause !== null &&
-  "code" in cause &&
-  (cause as { readonly code?: unknown }).code === "ENOENT";
-
 const findNestedDist = async (dir: string): Promise<string | undefined> => {
   const entries = await readdir(dir, { withFileTypes: true }).catch((cause: unknown) => {
-    if (isMissingPathError(cause)) return [];
+    if (isErrnoCode(cause, "ENOENT")) return [];
     throw cause;
   });
   for (const entry of entries) {

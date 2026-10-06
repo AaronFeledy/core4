@@ -12,7 +12,7 @@ import {
 } from "@lando/container-runtime/podman/version-floor";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   type HostPlatform,
@@ -237,9 +237,6 @@ type RecordedMachineOwnership = {
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
 
-const hasErrorCode = (cause: unknown, code: string): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
-
 const readExistingMachineOwnership = Effect.fnUntraced(function* (
   stateDir: string,
   eventService?: ProgressEmitter,
@@ -256,7 +253,7 @@ const readExistingMachineOwnership = Effect.fnUntraced(function* (
       }),
   }).pipe(
     Effect.catchIf(
-      (cause) => hasErrorCode(cause.cause, "ENOENT"),
+      (cause) => isErrnoCode(cause.cause, "ENOENT"),
       () => Effect.succeed(undefined),
     ),
   );

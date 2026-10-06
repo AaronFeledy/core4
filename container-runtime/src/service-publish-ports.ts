@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 
 import { Effect } from "effect";
 
-import { isErrnoCode } from "@lando/sdk/errors";
+import { errnoCode, isErrnoCode } from "@lando/sdk/errors";
 import {
   DEFAULT_ROUTER_HTTPS_PORTS,
   DEFAULT_ROUTER_HTTP_PORTS,
@@ -62,13 +62,6 @@ export type ServicePublishProbe = (
   port: number,
   protocol: "tcp" | "udp",
 ) => Effect.Effect<ServicePublishBindOutcome>;
-
-const errnoCode = (error: unknown): string | undefined => {
-  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") {
-    return error.code;
-  }
-  return undefined;
-};
 
 const classifyBindError = (error: unknown): ServicePublishBindOutcome => {
   if (isErrnoCode(error, "EADDRINUSE")) return { kind: "EADDRINUSE", code: "EADDRINUSE" };

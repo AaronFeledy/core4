@@ -3,19 +3,13 @@ import { createServer } from "node:net";
 import { Duration, Effect } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
+import { errnoCode } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { probeHttp, probeTcp } from "./loopback-probe.ts";
 import type { BindOutcome, ForwardOutcome } from "./port-acquisition.ts";
 
 const secretsRedactor = createRedactor("secrets");
-
-const errnoCode = (error: unknown): string | undefined => {
-  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") {
-    return error.code;
-  }
-  return undefined;
-};
 
 const classifyBindError = (error: unknown): BindOutcome => {
   const code = errnoCode(error);
