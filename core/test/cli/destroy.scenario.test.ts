@@ -34,7 +34,7 @@ import {
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
-import { createBufferedRendererIO } from "@lando/renderer/io";
+import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type {
   AppSelector,
@@ -45,13 +45,10 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
-import { runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
-import {
-  setActiveCommandId,
-  setActiveRendererMode,
-  setActiveResultFormat,
-} from "../../src/cli/compiled-runtime.ts";
+import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
+import { clearActiveCommandInvocation, commandErrorMessage } from "../../src/cli/compiled-session.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -373,6 +370,26 @@ const makeDestroyLayer = (
   };
 };
 
+const runDestroyCli = (
+  argv: ReadonlyArray<string>,
+  harness: ReturnType<typeof makeDestroyLayer>,
+  io: RendererIO,
+  mode: "plain" | "json",
+) => {
+  const input = compiledCommandInputFromArgv("app:destroy", argv);
+  return runWithRendererHandling(destroySpec.run(input), {
+    // Match native dispatch: LandoCommandSpec erases the command's service requirement to unknown.
+    runtime: harness.commandLayer as Layer.Layer<unknown>,
+    rendererMode: mode,
+    resultFormat: mode === "json" ? "json" : "text",
+    command: "app:destroy",
+    resultSchema: destroySpec.resultSchema,
+    render: (result, context) => destroySpec.render?.(result, input, context),
+    io,
+    formatError: (error) => commandErrorMessage(error, "app:destroy"),
+  }).finally(clearActiveCommandInvocation);
+};
+
 const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
 
 const expectDestroyLifecycleWithTasks = (events: ReadonlyArray<string>): void => {
@@ -405,33 +422,10 @@ describe("lando destroy", () => {
       const appliedPlan = { ...plan, root, identity: { appRoot: root, ownerKey: ownerKey(root) } };
       const harness = makeDestroyLayer({ plannedApp: appliedPlan, appliedPlanEvidence: true });
       const io = createBufferedRendererIO();
-      setActiveRendererMode("plain");
-      try {
-        await withCwd(parent, () =>
-          runDestroy(["--root", "gone", "--yes"], { runtime: harness.commandLayer, io }),
-        );
-      } finally {
-        setActiveRendererMode("lando");
-      }
+      await withCwd(parent, () => runDestroyCli(["--root", "gone", "--yes"], harness, io, "plain"));
       expect(harness.evidenceRoots).toEqual([root, root]);
       expect(harness.destroyCalls).toHaveLength(1);
       expect(harness.destroyCalls[0]?.target.plan).toEqual(appliedPlan);
-    });
-  });
-
-  test("--root surfaces a tagged refusal for an existing folder without provider mutation", async () => {
-    await withTempCwd(async (root) => {
-      const harness = makeDestroyLayer();
-      const result = await Effect.runPromise(
-        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer), Effect.result),
-      );
-      if (result._tag !== "Failure") throw new TypeError("expected existing-root refusal");
-      expect(result.failure).toMatchObject({
-        _tag: "AppResolveError",
-        reason: "mismatch",
-        detail: "root-exists",
-      });
-      expect(harness.destroyCalls).toEqual([]);
     });
   });
 
@@ -439,14 +433,9 @@ describe("lando destroy", () => {
     // Given
     const harness = makeDestroyLayer({ proxyAvailable: false });
     const io = createBufferedRendererIO();
-    setActiveRendererMode("plain");
 
     // When
-    try {
-      await runDestroy(["-y"], { runtime: harness.commandLayer, io });
-    } finally {
-      setActiveRendererMode("lando");
-    }
+    await runDestroyCli(["-y"], harness, io, "plain");
 
     // Then
     expect(io.stdout()).toContain(
@@ -454,18 +443,13 @@ describe("lando destroy", () => {
     );
   });
 
-  test("paints a real destroy task tree through runDestroy in plain mode", async () => {
+  test("paints a real destroy task tree through the native destroy spec in plain mode", async () => {
     // Given: production CLI destroy with a buffered plain renderer.
     const harness = makeDestroyLayer();
     const io = createBufferedRendererIO();
-    setActiveRendererMode("plain");
 
     // When
-    try {
-      await runDestroy(["-y"], { runtime: harness.commandLayer, io });
-    } finally {
-      setActiveRendererMode("lando");
-    }
+    await runDestroyCli(["-y"], harness, io, "plain");
 
     // Then: the producer tree is painted before the final destroy result.
     expect(io.stdout()).toContain("Destroy test-destroy");
@@ -483,18 +467,9 @@ describe("lando destroy", () => {
     // Given: production CLI destroy under JSON machine output.
     const harness = makeDestroyLayer();
     const io = createBufferedRendererIO();
-    setActiveRendererMode("json");
-    setActiveResultFormat("json");
-    setActiveCommandId("app:destroy");
 
     // When
-    try {
-      await runDestroy(["--yes"], { runtime: harness.commandLayer, io });
-    } finally {
-      setActiveRendererMode("lando");
-      setActiveResultFormat("text");
-      setActiveCommandId("cli:unknown");
-    }
+    await runDestroyCli(["--yes"], harness, io, "json");
 
     // Then: one envelope, no task paint on stderr.
     const stdoutLines = io.stdoutLines();
@@ -514,6 +489,22 @@ describe("lando destroy", () => {
     expect(io.stderr()).not.toContain("task.tree.start");
     expect(io.stderr()).not.toContain("task.start");
     expect(io.stderr()).not.toContain("▼");
+  });
+
+  test("--root surfaces a tagged refusal for an existing folder without provider mutation", async () => {
+    await withTempCwd(async (root) => {
+      const harness = makeDestroyLayer();
+      const result = await Effect.runPromise(
+        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer), Effect.result),
+      );
+      if (result._tag !== "Failure") throw new TypeError("expected existing-root refusal");
+      expect(result.failure).toMatchObject({
+        _tag: "AppResolveError",
+        reason: "mismatch",
+        detail: "root-exists",
+      });
+      expect(harness.destroyCalls).toEqual([]);
+    });
   });
 
   test("destroys the provider when no proxy service can be resolved", async () => {

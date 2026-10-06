@@ -5,27 +5,29 @@ import { join } from "node:path";
 
 import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
 import { appliedPlansDirectory } from "../../src/cli/commands/list.ts";
-import { appsListPathFromArgv } from "../../src/cli/dispatch-apps.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
 describe("apps:list --path extraction seam", () => {
-  test("appsListPathFromArgv reads the space form", () => {
-    expect(appsListPathFromArgv(["--path", "demo"])).toBe("demo");
+  test("appsListPathFromInput reads the space form", () => {
+    expect(appsListPathFromInput(compiledCommandInputFromArgv("apps:list", ["--path", "demo"]))).toBe("demo");
   });
 
-  test("appsListPathFromArgv reads the equals form", () => {
-    expect(appsListPathFromArgv(["--path=demo"])).toBe("demo");
+  test("appsListPathFromInput reads the equals form", () => {
+    expect(appsListPathFromInput(compiledCommandInputFromArgv("apps:list", ["--path=demo"]))).toBe("demo");
   });
 
-  test("appsListPathFromArgv is undefined when the flag is absent", () => {
-    expect(appsListPathFromArgv([])).toBeUndefined();
+  test("appsListPathFromInput is undefined when the flag is absent", () => {
+    expect(appsListPathFromInput(compiledCommandInputFromArgv("apps:list", []))).toBeUndefined();
   });
 
-  test("appsListPathFromArgv rejects a valueless --path via the shared validator", () => {
-    expect(() => appsListPathFromArgv(["--path"])).toThrow(MalformedCliFlagValueError);
+  test("appsListPathFromInput rejects a valueless --path via the shared validator", () => {
+    expect(() => appsListPathFromInput(compiledCommandInputFromArgv("apps:list", ["--path"]))).toThrow(
+      MalformedCliFlagValueError,
+    );
   });
 
   test("appsListPathFromInput is the shared native extractor", () => {
