@@ -16,14 +16,8 @@ import {
 
 describe("service summary", () => {
   test("renders empty lifecycle rows without a separator", () => {
-    // Given
-    const services: ReadonlyArray<{
-      readonly name: string;
-      readonly state: string;
-      readonly endpoints: ReadonlyArray<string>;
-    }> = [];
-    // When
-    const rows = serviceRowsText(services);
+    // Given / When
+    const rows = serviceRowsText([]);
     // Then
     expect(rows).toBe("");
     expect(lifecycleLine("ready", "app", rows)).toBe("ready: app");
@@ -31,11 +25,14 @@ describe("service summary", () => {
 
   test("renders lifecycle rows in supplied order", () => {
     // Given
-    const services = [{ name: "a", state: "running", endpoints: [] }];
+    const services = [
+      { name: "web", state: "running", endpoints: ["https://app.test"] },
+      { name: "db", state: "stopped", endpoints: [] },
+    ];
     // When
     const line = lifecycleLine("rebuilt", "app", serviceRowsText(services));
     // Then
-    expect(line).toBe("rebuilt: app - a (running) no endpoints");
+    expect(line).toBe("rebuilt: app - web (running) https://app.test; db (stopped) no endpoints");
   });
 
   test("renders an empty teardown with no services", () => {
