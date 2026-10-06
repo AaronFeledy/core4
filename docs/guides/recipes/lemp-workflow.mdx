@@ -82,7 +82,7 @@ $row = $pdo->query('SELECT 1 AS ok')->fetch(PDO::FETCH_ASSOC);
 echo 'pdo-ok=' . ($row['ok'] ?? 'missing') . "\n";
 ```
 
-The stock PHP image already has `pdo_mysql`.
+The stock PHP image already has `pdo_mysql` and `mysqli`.
 
 ## Import and export the database
 

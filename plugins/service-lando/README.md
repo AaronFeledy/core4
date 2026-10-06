@@ -24,7 +24,7 @@ lists the shipped runtime matrix and pinned artifacts directly from ServiceType 
 
 | Type       | Supported `framework:` values        | Notes                                                                                                                       |
 | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `php`      | n/a                                  | Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`); recipes own framework-specific choices.     |
+| `php`      | `wordpress`                          | Stock images include mysqli; `wordpress` installs checksum-verified WP-CLI and sets `WP_CLI_ALLOW_ROOT=1`. Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`). Other framework names add no PHP preset. |
 | `node`     | `none`                               | Bare `node` uses an inferred version from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. The ServiceType ignores `framework:`. |
 | `python`   | `django`, `fastapi`, `flask`, `none` | Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints.                         |
 | `ruby`     | `rails`, `none`                      | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
@@ -58,8 +58,8 @@ existing entry (e.g. adding PHP 8.5) can follow upstream releases without one.
 `@lando/service-lando` ships a subset of that target catalog through Beta:
 
 - PHP ships 8.1-8.6. Official Hub currently publishes 8.6 as RC bookworm tags.
-  PHP uses explicit `webroot:` and `allowOverride:` parameters rather than
-  framework-name presets.
+  PHP uses explicit `webroot:` and `allowOverride:` parameters. Its WordPress
+  preset installs WP-CLI on stock images without changing the webroot.
 - Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA —
   `go:<version>` accepts only `framework: none` today.
 - New canonical service types (Drupal/Laravel/Symfony framework presets

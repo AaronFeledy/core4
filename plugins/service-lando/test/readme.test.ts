@@ -50,7 +50,7 @@ describe("@lando/service-lando README — framework presets table", () => {
     }> = [
       {
         language: "php",
-        frameworks: [],
+        frameworks: ["wordpress"],
       },
       {
         language: "node",
@@ -89,12 +89,12 @@ describe("@lando/service-lando README — framework presets table", () => {
     expect(nodeRow).not.toContain("accepted for schema compatibility");
   });
 
-  test("documents explicit PHP webroot and AllowOverride parameters instead of presets", async () => {
+  test("documents PHP webroot and AllowOverride alongside the WordPress preset", async () => {
     const phpRow = findLanguageRow(findFrameworkTable(await readReadme()), "php");
 
     expect(phpRow).toContain("webroot:");
     expect(phpRow).toContain("allowOverride:");
-    expect(phpRow).toContain("n/a");
+    expect(phpRow).toContain("`wordpress`");
   });
 
   test("Go row lists only `none` and omits deferred frameworks", async () => {
