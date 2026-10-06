@@ -19,14 +19,8 @@ import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { type ValidationIssue, validationIssue } from "@lando/sdk/schema";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { getAtPath } from "../config-write/dot-path";
-import {
-  type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
-  decodeIssues,
-  emitConfigYaml,
-  writeValidationErrorFromIssues,
-} from "../config-write/write-core";
+import { runSetVerb, runUnsetVerb } from "../config-write/verbs";
+import { type ValueType, decodeIssues, writeValidationErrorFromIssues } from "../config-write/write-core";
 import { findAgentEnvPatternNames } from "../config/agent-env";
 import { resolveUserConfRoot } from "../config/roots";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../runtime/cli-options";
@@ -243,27 +237,23 @@ const metaConfigSet = Effect.fnUntraced(function* (
     );
   }
   const path = resolveConfigWritePath(options);
-  const tree = yield* readConfigTree(path);
-  const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: path });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const decoded = decodeGlobalConfig(next);
-  const issues = decodeIssues(decoded);
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
-  const dryRun = options.dryRun === true;
-  if (!dryRun) {
-    const emitted = emitConfigYaml({ file: path, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeConfigAtomic(path, emitted.success);
-  }
+  const outcome = yield* runSetVerb({
+    file: path,
+    key,
+    raw,
+    type: options.type ?? "string",
+    dryRun: options.dryRun === true,
+    readTree: readConfigTree(path),
+    decode: decodeGlobalConfig,
+    afterDecode: agentEnvPatternError,
+    writeText: writeConfigAtomic,
+  });
   return {
     subcommand: "set",
     key,
-    value: mutation.success.value,
+    value: outcome.value,
     changed: true,
-    dryRun,
+    dryRun: outcome.dryRun,
     configPath: path,
     format: options.format ?? "table",
   };
@@ -284,26 +274,20 @@ const metaConfigUnset = Effect.fnUntraced(function* (
     );
   }
   const path = resolveConfigWritePath(options);
-  const tree = yield* readConfigTree(path);
-  const mutation = applyUnsetMutation({ tree, key, file: path });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const decoded = decodeGlobalConfig(next);
-  const issues = decodeIssues(decoded);
-  if (issues.length > 0) return yield* Effect.fail(configValidationError(path, issues, key));
-  const patternError = agentEnvPatternError(decoded);
-  if (patternError !== undefined) return yield* Effect.fail(patternError);
-  const dryRun = options.dryRun === true;
-  if (!dryRun && mutation.success.changed) {
-    const emitted = emitConfigYaml({ file: path, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeConfigAtomic(path, emitted.success);
-  }
+  const outcome = yield* runUnsetVerb({
+    file: path,
+    key,
+    dryRun: options.dryRun === true,
+    readTree: readConfigTree(path),
+    decode: decodeGlobalConfig,
+    afterDecode: agentEnvPatternError,
+    writeText: writeConfigAtomic,
+  });
   return {
     subcommand: "unset",
     key,
-    changed: mutation.success.changed,
-    dryRun,
+    changed: outcome.changed,
+    dryRun: outcome.dryRun,
     configPath: path,
     format: options.format ?? "table",
   };

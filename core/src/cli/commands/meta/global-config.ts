@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { GlobalAppError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
@@ -8,12 +8,10 @@ import { LandofileShape, type LandofileShape as LandofileShapeType } from "@land
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
 import {
   type ValueType,
-  applySetMutation,
-  applyUnsetMutation,
   decodeIssues,
-  emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "@lando/engine/config-write/write-core";
 import { decodeGlobalLandofile } from "@lando/engine/operations/global-plan";
@@ -130,21 +128,17 @@ export const globalConfigSet = Effect.fn("GlobalConfig.set")(function* (
       }),
     );
   }
-  const tree = yield* readGlobalTree(filePath);
-  const mutation = applySetMutation({ tree, key, raw, type: options.type ?? "string", file: filePath });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const issues = decodeIssues(decodeLandofile(next));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
-  }
-  const dryRun = options.dryRun === true;
-  if (!dryRun) {
-    const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeGlobalText(filePath, emitted.success);
-  }
-  return { subcommand: "set", key, value: mutation.success.value, changed: true, dryRun, filePath };
+  const outcome = yield* runSetVerb({
+    file: filePath,
+    key,
+    raw,
+    type: options.type ?? "string",
+    dryRun: options.dryRun === true,
+    readTree: readGlobalTree(filePath),
+    decode: decodeLandofile,
+    writeText: writeGlobalText,
+  });
+  return { subcommand: "set", key, value: outcome.value, changed: true, dryRun: outcome.dryRun, filePath };
 });
 
 export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
@@ -162,21 +156,15 @@ export const globalConfigUnset = Effect.fn("GlobalConfig.unset")(function* (
       }),
     );
   }
-  const tree = yield* readGlobalTree(filePath);
-  const mutation = applyUnsetMutation({ tree, key, file: filePath });
-  if (Result.isFailure(mutation)) return yield* Effect.fail(mutation.failure);
-  const next = mutation.success.next;
-  const issues = decodeIssues(decodeLandofile(next));
-  if (issues.length > 0) {
-    return yield* Effect.fail(writeValidationErrorFromIssues({ file: filePath, issues, path: key }));
-  }
-  const dryRun = options.dryRun === true;
-  if (!dryRun && mutation.success.changed) {
-    const emitted = emitConfigYaml({ file: filePath, value: next, path: key });
-    if (Result.isFailure(emitted)) return yield* Effect.fail(emitted.failure);
-    yield* writeGlobalText(filePath, emitted.success);
-  }
-  return { subcommand: "unset", key, changed: mutation.success.changed, dryRun, filePath };
+  const outcome = yield* runUnsetVerb({
+    file: filePath,
+    key,
+    dryRun: options.dryRun === true,
+    readTree: readGlobalTree(filePath),
+    decode: decodeLandofile,
+    writeText: writeGlobalText,
+  });
+  return { subcommand: "unset", key, changed: outcome.changed, dryRun: outcome.dryRun, filePath };
 });
 
 export const globalConfigValidate = Effect.fn("GlobalConfig.validate")(function* (
