@@ -99,9 +99,10 @@ const runDynamicBunShellTooling = (
   argv: ReadonlyArray<string>,
   appRoot: string,
 ): Promise<void> => {
-  prepareDynamicToolingInvocation(name, argv);
+  const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
+  prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
-  const effect = runBunShellTooling({ name, renderProgress: true }, appRoot).pipe(
+  const effect = runBunShellTooling({ name, args: commandArgv, renderProgress: true }, appRoot).pipe(
     Effect.flatMap((result) =>
       result === undefined
         ? Effect.fail(
