@@ -31,6 +31,137 @@ const acceptedSteps = [
 ] as const;
 
 describe("EventStep", () => {
+  const fieldOrders = [
+    [
+      "EventCommandStep",
+      schemas.EventCommandStep,
+      ["cmd", "task", "command", "defer", "for", "flags", "args", "raw", "ignoreError", "if", "silent"],
+    ],
+    [
+      "EventTaskStep",
+      schemas.EventTaskStep,
+      ["cmd", "task", "command", "defer", "for", "vars", "ignoreError", "if", "silent"],
+    ],
+    [
+      "EventCmdStep",
+      schemas.EventCmdStep,
+      [
+        "cmd",
+        "task",
+        "command",
+        "defer",
+        "for",
+        "service",
+        "dir",
+        "env",
+        "user",
+        "ignoreError",
+        "if",
+        "silent",
+      ],
+    ],
+    [
+      "EventDeferredCmdShorthand",
+      schemas.EventDeferStep.members[0],
+      [
+        "cmd",
+        "task",
+        "command",
+        "defer",
+        "for",
+        "service",
+        "dir",
+        "env",
+        "user",
+        "ignoreError",
+        "if",
+        "silent",
+      ],
+    ],
+    [
+      "EventDeferredCmdStep",
+      schemas.EventDeferStep.members[1],
+      [
+        "cmd",
+        "task",
+        "command",
+        "defer",
+        "for",
+        "service",
+        "dir",
+        "env",
+        "user",
+        "ignoreError",
+        "if",
+        "silent",
+      ],
+    ],
+    [
+      "EventDeferredTaskStep",
+      schemas.EventDeferStep.members[2],
+      ["cmd", "task", "command", "defer", "for", "vars", "ignoreError", "if", "silent"],
+    ],
+    [
+      "EventDeferredCommandStep",
+      schemas.EventDeferStep.members[3],
+      ["cmd", "task", "command", "defer", "for", "flags", "args", "raw", "ignoreError", "if", "silent"],
+    ],
+    [
+      "EventForCmdStep",
+      schemas.EventForStep.members[0],
+      [
+        "cmd",
+        "task",
+        "command",
+        "defer",
+        "for",
+        "service",
+        "dir",
+        "env",
+        "user",
+        "ignoreError",
+        "if",
+        "silent",
+      ],
+    ],
+    [
+      "EventForTaskStep",
+      schemas.EventForStep.members[1],
+      ["cmd", "task", "command", "defer", "for", "vars", "ignoreError", "if", "silent"],
+    ],
+    [
+      "EventForCommandStep",
+      schemas.EventForStep.members[2],
+      ["cmd", "task", "command", "defer", "for", "flags", "args", "raw", "ignoreError", "if", "silent"],
+    ],
+    [
+      "EventForDeferredCmdStep",
+      schemas.EventForStep.members[3],
+      [
+        "cmd",
+        "task",
+        "command",
+        "defer",
+        "for",
+        "service",
+        "dir",
+        "env",
+        "user",
+        "ignoreError",
+        "if",
+        "silent",
+      ],
+    ],
+  ] as const;
+
+  test.each(fieldOrders)("preserves %s field order when inspecting the schema", (_name, schema, expected) => {
+    // Given: the public event schema or a member of its public union.
+    // When
+    const keys = Object.keys(schema.fields);
+    // Then
+    expect(keys).toEqual([...expected]);
+  });
+
   test("decodes every structured authoring form under default and strict options", () => {
     // Given / When / Then
     for (const options of decodeOptions) {
