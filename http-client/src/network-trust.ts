@@ -19,9 +19,9 @@
  * from `core/src/services/index.ts`: it is the in-process injection mechanism,
  * not a public contract.
  */
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import tls from "node:tls";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Context, Effect, Schema } from "effect";
 
@@ -85,7 +85,7 @@ export const loadCaPems = (
         Effect.map((pem) => ({
           path,
           pem,
-          digest: createHash("sha256").update(pem, "utf-8").digest("hex"),
+          digest: sha256Hex(pem),
         })),
       ),
     ),

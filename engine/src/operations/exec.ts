@@ -20,7 +20,10 @@ import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  collectAppPlanRedactionTokens,
+  registerAppPlanRedactionTokens,
+} from "../services/app-plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
 import { StreamFrameSink } from "./stream-frame-sink.ts";
@@ -178,12 +181,16 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     ...(tty
       ? {
           tty: true,
+          ...(options.hostTerminal?.columns !== undefined && options.hostTerminal.rows !== undefined
+            ? { terminalSize: { columns: options.hostTerminal.columns, rows: options.hostTerminal.rows } }
+            : {}),
           ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
         }
       : {}),
     ...(attachStdin ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
   };
 
+  yield* registerAppPlanRedactionTokens(plan);
   const sink = yield* Effect.serviceOption(StreamFrameSink);
   const result = yield* collectExecStream(provider.execStream(target, spec), sink);
 

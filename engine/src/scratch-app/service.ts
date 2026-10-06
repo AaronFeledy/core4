@@ -1,6 +1,7 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { Cause, Context, DateTime, Effect, Layer, Option, Schema, type Scope } from "effect";
 
@@ -528,10 +529,7 @@ const makeScratchAppService = (
 
   const synthesizeId = (base: string) =>
     Effect.sync(() => {
-      const suffix = createHash("sha256")
-        .update(`${base}:${process.pid}:${randomBytes(8).toString("hex")}`)
-        .digest("hex")
-        .slice(0, 6);
+      const suffix = sha256Hex(`${base}:${process.pid}:${randomBytes(8).toString("hex")}`).slice(0, 6);
       return `scratch-${sanitizeBase(base)}-${suffix}`;
     });
 

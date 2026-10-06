@@ -16,10 +16,11 @@ interface RunResult {
   readonly stderr: string;
 }
 
-const runCommand = async (cmd: ReadonlyArray<string>): Promise<RunResult> => {
+// Built CLIs run outside any app: app commandAliases route `version` past the bare-version fast path.
+const runCommand = async (cmd: ReadonlyArray<string>, cwd = tmpdir()): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
-    cwd: coreRoot,
+    cwd,
     env: { ...process.env },
     stdout: "pipe",
     stderr: "pipe",
@@ -87,17 +88,20 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       const root = await mkdtemp(join(tmpdir(), "lando-version-compiled-"));
       const outfile = join(root, "lando");
       try {
-        const build = await runCommand([
-          process.execPath,
-          "run",
-          "../scripts/build-compiled-binary.ts",
-          "--target",
-          "linux-x64",
-          "--outfile",
-          outfile,
-          "--version",
-          "8.8.8-stamped",
-        ]);
+        const build = await runCommand(
+          [
+            process.execPath,
+            "run",
+            "../scripts/build-compiled-binary.ts",
+            "--target",
+            "linux-x64",
+            "--outfile",
+            outfile,
+            "--version",
+            "8.8.8-stamped",
+          ],
+          coreRoot,
+        );
         expect(build.exitCode).toBe(0);
 
         const versionOut = await runCommand([outfile, "version"]);

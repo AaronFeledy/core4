@@ -1,5 +1,5 @@
-import { createHash as createNodeHash } from "node:crypto";
 import { join, resolve } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect } from "effect";
 
@@ -118,7 +118,7 @@ const loadProjectCas = (
 ): Effect.Effect<ReadonlyArray<LoadedCaPem>, LandofileValidationError> =>
   Effect.forEach(paths, (entry) => {
     if (typeof entry !== "string") {
-      const digest = createNodeHash("sha256").update(entry.value, "utf-8").digest("hex");
+      const digest = sha256Hex(entry.value);
       if (digest !== entry.checksum) {
         return Effect.fail(
           validationError(input, `import checksum for ${entry.path} did not match its PEM content.`),
@@ -132,7 +132,7 @@ const loadProjectCas = (
     }
     const authoredPath = entry;
     if (isInlinePemInput(authoredPath)) {
-      const digest = createNodeHash("sha256").update(authoredPath, "utf-8").digest("hex");
+      const digest = sha256Hex(authoredPath);
       return validatePem(input, {
         path: join(cacheDirectory, `inline-${digest}.pem`),
         pem: authoredPath,
@@ -219,9 +219,7 @@ export const resolveSecurityFeature = Effect.fnUntraced(function* (
         ),
       );
   }
-  const bundleDigest = createNodeHash("sha256")
-    .update(cas.map((ca) => ca.digest).join(""), "utf-8")
-    .digest("hex");
+  const bundleDigest = sha256Hex(cas.map((ca) => ca.digest).join(""));
   const bundlePath = join(cacheDirectory, `ca-bundle-${bundleDigest}.pem`);
   const bundle = cas.map((ca) => (ca.pem.endsWith("\n") ? ca.pem : `${ca.pem}\n`)).join("");
   yield* input.fileSystem

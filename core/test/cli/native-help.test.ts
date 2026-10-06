@@ -26,7 +26,8 @@ type RunOptions = {
 const runCli = async (argv: ReadonlyArray<string>, options: RunOptions = {}) => {
   const subprocess = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...argv],
-    cwd: options.cwd ?? repoRoot,
+    // Default outside any app: a Landofile above the repo would route unknown commands to tooling.
+    cwd: options.cwd ?? tmpdir(),
     ...(options.env === undefined ? {} : { env: options.env }),
     stdout: "pipe",
     stderr: "pipe",

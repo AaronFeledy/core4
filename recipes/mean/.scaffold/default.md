@@ -17,7 +17,14 @@ lando init --recipe mean --name=my-mean-app --yes \
   --answer=redis=true
 ```
 
-`lando start` prints the app URL. `lando info` repeats it.
+`lando start` installs the Express dependencies in `api` before serving the scaffold on port `3000`. Open the URL `lando info` prints. `GET /` answers `Hello from Lando`.
+
+Use `lando npm` and `lando node` to run tooling inside `api`:
+
+```sh
+lando npm --version
+lando node --version
+```
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 

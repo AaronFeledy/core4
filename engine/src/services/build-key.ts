@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
 import { Effect, Predicate } from "effect";
@@ -51,10 +51,7 @@ const normalizeSecretReferences = (value: unknown): unknown => {
   );
 };
 
-const stableHash = (value: unknown): string =>
-  createHash("sha256")
-    .update(canonicalJson(normalizeSecretReferences(value)))
-    .digest("hex");
+const stableHash = (value: unknown): string => sha256Hex(canonicalJson(normalizeSecretReferences(value)));
 
 const secretAwareString = (value: string): unknown => {
   const secret = exactSecretReferenceId(value);

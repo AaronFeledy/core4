@@ -24,11 +24,11 @@ export type PhpComposerMajor = keyof typeof PHP_COMPOSER_MAJORS;
 export const PHP_COMPOSER: PhpComposerRelease = PHP_COMPOSER_RELEASES["2.10.2"];
 
 export const PHP_APT_PACKAGE_PINS = {
-  unzip: "6.0-28",
+  unzip: "6.0-28+deb12u1",
   "libfreetype6-dev": "2.12.1+dfsg-5+deb12u4",
   "libicu-dev": "72.1-3+deb12u1",
   "libjpeg62-turbo-dev": "1:2.1.5-2",
-  "libpng-dev": "1.6.39-2+deb12u5",
+  "libpng-dev": "1.6.39-2+deb12u6",
   "libpq-dev": "15.19-0+deb12u1",
   "libzip-dev": "1.7.3-1+b1",
 } as const;
@@ -37,6 +37,7 @@ export const PHP_COMMON_EXTENSIONS = [
   "gd",
   "intl",
   "mbstring",
+  "mysqli",
   "opcache",
   "pdo_mysql",
   "pdo_pgsql",
@@ -44,7 +45,7 @@ export const PHP_COMMON_EXTENSIONS = [
   "zip",
 ] as const;
 
-const PHP_EXTENSIONS_TO_BUILD = ["gd", "intl", "pdo_mysql", "pdo_pgsql", "zip"] as const;
+const PHP_EXTENSIONS_TO_BUILD = ["gd", "intl", "mysqli", "pdo_mysql", "pdo_pgsql", "zip"] as const;
 const PHP_APT_MANIFEST_PATH = "/usr/local/share/lando/php-apt-manifest.txt";
 
 const aptPackageArguments = Object.entries(PHP_APT_PACKAGE_PINS).map(

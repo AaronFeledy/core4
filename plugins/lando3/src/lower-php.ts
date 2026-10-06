@@ -24,9 +24,9 @@ export const lowerPhpOptions = (
       ctx,
       relative: ["type"],
       message:
-        "Lando 3 injected COMPOSER_ALLOW_SUPERUSER=1, COMPOSER_MEMORY_LIMIT=-1 and drush/wp-cli launchers; Lando 4 adds no hidden environment or launchers.",
+        "Lando 3 injected Composer environment and drush/wp-cli launchers; stock Lando 4 PHP with framework: wordpress installs WP-CLI and allows root tooling.",
       remediation:
-        "Add those variables under the service environment if scripts depend on them, and install drush/wp-cli as Composer dependencies.",
+        "Add Composer environment variables if scripts depend on them; install Drush as a Composer dependency. Use framework: wordpress for stock WP-CLI.",
     }),
   ];
   let companions: Readonly<Record<string, V4Wire>> | undefined;

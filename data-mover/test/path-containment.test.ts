@@ -12,14 +12,18 @@ import { makeDataMoverService } from "../src/service.ts";
 let base: string;
 let appRoot: string;
 let scratchRoot: string;
+let cwdSpy: { mockRestore(): void };
 beforeEach(async () => {
   base = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "lando-data-containment-")));
   appRoot = join(base, "app");
   scratchRoot = join(base, "scratch");
   await fs.mkdir(appRoot);
   await fs.writeFile(join(appRoot, ".lando.yml"), "name: containment-app\n");
+  // Containment prefers the cwd's app; run outside any app so only the fixture Landofile counts.
+  cwdSpy = spyOn(process, "cwd").mockReturnValue(base);
 });
 afterEach(async () => {
+  cwdSpy.mockRestore();
   await fs.rm(base, { recursive: true, force: true });
 });
 

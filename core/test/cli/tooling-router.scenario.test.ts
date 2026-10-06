@@ -232,6 +232,102 @@ test("Given cached scripts and unparseable Landofiles, when tasks run, then both
   }
 }, 30_000);
 
+test.each([{ separator: [] }, { separator: ["--"] }])(
+  "forwards script positionals with separator $separator",
+  async ({ separator }) => {
+    // Given
+    const fixture = await makeFixture("script-args");
+    try {
+      await writeTask(fixture, "probe", ['echo "<$1>"', 'echo "<$2>"', 'echo "<$3>"']);
+      await writeFreshCache(fixture, "probe");
+      // When
+      const result = await runSource(fixture, [
+        "probe",
+        "--format=json",
+        ...separator,
+        "a",
+        "b c",
+        "$(echo injected)",
+      ]);
+      // Then
+      expect(result.exitCode, result.stderr + result.stdout).toBe(0);
+      expect(lastEnvelope(result.stdout)).toMatchObject({
+        ok: true,
+        result: { stdout: "<a>\n<b c>\n<$(echo injected)>\n" },
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+  30_000,
+);
+
+test.each(["lando", "plain"])(
+  "streams script output before exit with the %s renderer",
+  async (renderer) => {
+    // Given
+    const fixture = await makeFixture("script-live");
+    const gate = Promise.withResolvers<void>();
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async () => {
+        await gate.promise;
+        return new Response("released");
+      },
+    });
+    let proc: ReturnType<typeof Bun.spawn> | undefined;
+    try {
+      await writeTask(fixture, "probe", [
+        "echo first",
+        "echo diagnostic 1>&2",
+        `${JSON.stringify(process.execPath)} -e 'await fetch("http://127.0.0.1:${server.port}");'`,
+        "echo second",
+        "exit 3",
+      ]);
+      await writeFreshCache(fixture, "probe");
+      // When
+      const child = Bun.spawn([process.execPath, sourceCli, "probe", `--renderer=${renderer}`], {
+        cwd: fixture.root,
+        env: fixture.env,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      proc = child;
+      let stdout = "";
+      let stderr = "";
+      const firstLines = Promise.withResolvers<void>();
+      const read = async (stream: ReadableStream<Uint8Array>, kind: "stdout" | "stderr") => {
+        const decoder = new TextDecoder();
+        for await (const chunk of stream) {
+          const text = decoder.decode(chunk, { stream: true });
+          if (kind === "stdout") stdout += text;
+          else stderr += text;
+          if (stdout.includes("first\n") && stderr.includes("diagnostic\n")) firstLines.resolve();
+        }
+      };
+      const readers = Promise.all([read(child.stdout, "stdout"), read(child.stderr, "stderr")]);
+      await Effect.runPromise(Effect.promise(() => firstLines.promise).pipe(Effect.timeout("5 seconds")));
+      expect(child.exitCode).toBeNull();
+      gate.resolve();
+      const [exitCode] = await Promise.all([child.exited, readers]);
+      // Then
+      expect(exitCode, stderr).toBe(3);
+      expect(stdout.match(/first\n/g)).toHaveLength(1);
+      expect(stdout.match(/second\n/g)).toHaveLength(1);
+      expect(stderr.match(/diagnostic\n/g)).toHaveLength(1);
+      expect(stdout + stderr).not.toContain("ToolingExecError");
+    } finally {
+      gate.resolve();
+      proc?.kill();
+      if (proc !== undefined) await proc.exited;
+      server.stop(true);
+      await fixture.cleanup();
+    }
+  },
+  30_000,
+);
+
 test("Given a cached custom task, when compiled dispatch receives version, then it routes the task before global version", async () => {
   const compiled = await makeFixture("compiled-version-argv");
   try {
@@ -320,15 +416,16 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
   const compiled = await makeFixture("compiled-failure");
   try {
     // Given
-    await writeTask(source, "fail", ["exit 7"]);
-    await writeTask(compiled, "fail", ["exit 7"]);
+    const body = ["echo first", "echo second", "echo diagnostic 1>&2", "exit 7"];
+    await writeTask(source, "fail", body);
+    await writeTask(compiled, "fail", body);
     await writeFreshCache(source, "fail");
     await writeFreshCache(compiled, "fail");
 
     // When
     const [sourceResult, compiledResult] = await Promise.all([
       runSource(source, ["fail", "--format=json"]),
-      runCompiledDispatcher(compiled, ["app:fail", "--format=json"]),
+      runCompiledDispatcher(compiled, ["app:fail", "-j"]),
     ]);
 
     // Then
@@ -336,14 +433,18 @@ test("Given separate failing tasks, when routed, then both dispatchers propagate
     expect(compiledResult.exitCode, compiledResult.stderr).toBe(7);
     const expectedFailure = {
       command: "app:fail",
-      ok: false,
-      error: {
-        _tag: "ToolingExecError",
-        remediation: expect.stringContaining("tooling task"),
+      ok: true,
+      result: {
+        service: ":host",
+        exitCode: 7,
+        stdout: "first\nsecond\n",
+        stderr: "diagnostic\n",
       },
     };
-    expect(lastEnvelope(sourceResult.stdout)).toMatchObject(expectedFailure);
-    expect(lastEnvelope(compiledResult.stdout)).toMatchObject(expectedFailure);
+    expect(JSON.parse(sourceResult.stdout)).toMatchObject(expectedFailure);
+    expect(JSON.parse(compiledResult.stdout)).toMatchObject(expectedFailure);
+    expect(sourceResult.stderr).toBe("");
+    expect(compiledResult.stderr).toBe("");
   } finally {
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }

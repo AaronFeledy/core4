@@ -1,27 +1,18 @@
 import { systemdServiceFromCgroup } from "./occupied-port-warning.ts";
-import { COMM_SCAN_BUDGET_MS, type ProcWalk, TCP_LISTEN, pastDeadline, systemProcWalk } from "./proc-walk.ts";
+import {
+  COMM_SCAN_BUDGET_MS,
+  type ProcWalk,
+  parseListenInodeForPort,
+  pastDeadline,
+  systemProcWalk,
+} from "./proc-walk.ts";
+
+export { parseListenInodeForPort } from "./proc-walk.ts";
 
 export type PortHolder = {
   readonly comm: string;
   readonly pid: number;
   readonly cmdline?: string;
-};
-
-export const parseListenInodeForPort = (table: string, port: number): string | undefined => {
-  const expectedPort = port.toString(16).toUpperCase().padStart(4, "0");
-  for (const line of table.split(/\r?\n/u)) {
-    const fields = line.trim().split(/\s+/u);
-    const local = fields[1];
-    const state = fields[3];
-    const inode = fields[9];
-    if (local === undefined || state !== TCP_LISTEN || inode === undefined || inode === "0") continue;
-    const colon = local.lastIndexOf(":");
-    if (colon < 0) continue;
-    const localPort = local.slice(colon + 1).toUpperCase();
-    if (localPort !== expectedPort) continue;
-    return inode;
-  }
-  return undefined;
 };
 
 const cmdlineFrom = (raw: string | undefined): string | undefined => {

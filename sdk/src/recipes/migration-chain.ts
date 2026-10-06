@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Result } from "effect";
 import { compare } from "semver";
-import { canonicalJson } from "../digest/index.ts";
+import { canonicalJson, sha256Hex } from "../digest/index.ts";
 import { RecipeMigrationChainError } from "../errors/recipe.ts";
 import {
   type RecipeProducer,
@@ -30,21 +29,18 @@ export const deriveHunkId = (input: {
   readonly kind: RecipeHunkKind;
   readonly path: string;
 }): string =>
-  `hunk-${createHash("sha256")
-    .update(
-      canonicalJson([
-        recipeFamilyKey(input.producer),
-        input.from.manifestVersion,
-        input.from.contentDigest,
-        input.to.manifestVersion,
-        input.to.contentDigest,
-        input.layer,
-        input.kind,
-        input.path,
-      ]),
-    )
-    .digest("hex")
-    .slice(0, 24)}`;
+  `hunk-${sha256Hex(
+    canonicalJson([
+      recipeFamilyKey(input.producer),
+      input.from.manifestVersion,
+      input.from.contentDigest,
+      input.to.manifestVersion,
+      input.to.contentDigest,
+      input.layer,
+      input.kind,
+      input.path,
+    ]),
+  ).slice(0, 24)}`;
 
 /**
  * Validate declarative history in deterministic reason precedence and return a

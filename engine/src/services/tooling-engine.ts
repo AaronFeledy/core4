@@ -15,6 +15,7 @@ import { withTerminalEnv } from "../config/terminal-env.ts";
 import { collectExecStream } from "../operations/exec-stream.ts";
 import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
+import { registerAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
@@ -91,17 +92,24 @@ const execSpec = (input: {
   readonly env: Readonly<Record<string, string>> | undefined;
   readonly tty: boolean;
   readonly hostTerminal: ToolingInvocation["hostTerminal"];
+  readonly stdinStream: ToolingInvocation["stdinStream"];
+  readonly terminalResize: ToolingInvocation["terminalResize"];
+  readonly signal: ToolingInvocation["signal"];
   readonly serviceEnv: ServicePlan["environment"];
 }): CommandSpec => {
-  // Podman rejects POST /exec/{id}/resize until the session has started, so
-  // tooling never sends terminalSize. A PTY still needs stdin attached or PHP
-  // will not see a TTY and Composer will print progress on new lines.
+  // A PTY without a forwarded keyboard cannot dismiss a pager. Default only
+  // that case to cat, without overriding service or task env.
   const merged = withTerminalEnv({
     tty: input.tty,
     hostEnv: process.env,
     ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
     serviceEnv: input.serviceEnv,
-    ...(input.env === undefined ? {} : { env: input.env }),
+    env: {
+      ...(input.tty && input.stdinStream === undefined && input.serviceEnv.PAGER === undefined
+        ? { PAGER: "cat" }
+        : {}),
+      ...input.env,
+    },
   });
   const env =
     merged === undefined
@@ -113,7 +121,12 @@ const execSpec = (input: {
     command: input.command,
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
     ...(env === undefined || Object.keys(env).length === 0 ? {} : { env }),
-    ...(input.tty ? { tty: true, stdin: "inherit", stdinStream: idleStdin() } : {}),
+    ...(input.tty ? { tty: true, stdin: "inherit", stdinStream: input.stdinStream ?? idleStdin() } : {}),
+    ...(input.terminalResize === undefined ? {} : { terminalResize: input.terminalResize }),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+    ...(input.tty && input.hostTerminal?.columns !== undefined && input.hostTerminal.rows !== undefined
+      ? { terminalSize: { columns: input.hostTerminal.columns, rows: input.hostTerminal.rows } }
+      : {}),
   };
 };
 
@@ -126,6 +139,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     return yield* Effect.fail(noCommandsError(invocation.tool));
   }
   const service = yield* resolveService(invocation, plan);
+  yield* registerAppPlanRedactionTokens(plan);
   const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
   const env = withAgentContextEnv(invocation.env, process.env, {
     lowerThanEnv: service.environment,
@@ -152,6 +166,9 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
           env,
           tty,
           hostTerminal: invocation.hostTerminal,
+          stdinStream: invocation.stdinStream,
+          terminalResize: invocation.terminalResize,
+          signal: invocation.signal,
           serviceEnv: service.environment,
         }),
       ),
@@ -159,7 +176,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     );
     stdout += result.stdout;
     stderr += result.stderr;
-    exitCode = result.exitCode;
+    exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
     if (exitCode !== 0) break;
   }
   const out: ToolingEngineResult = {

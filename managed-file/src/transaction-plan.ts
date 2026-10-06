@@ -1,7 +1,8 @@
 import { relative, resolve, sep } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { Schema } from "effect";
 import { transactionError } from "./transaction-error.ts";
-import { digestOf, sameState, snapshot, statMaybe, targetPath } from "./transaction-fs.ts";
+import { sameState, snapshot, statMaybe, targetPath } from "./transaction-fs.ts";
 import type { Entry } from "./transaction-journal.ts";
 
 const ExpectedBefore = Schema.Union([
@@ -115,7 +116,7 @@ export const planTransaction = async (
             : new Uint8Array(operation.content);
         after = {
           present: true,
-          digest: digestOf(afterBytes),
+          digest: sha256Hex(afterBytes),
           mode: operation.secret || !before.state.present ? 0o600 : before.state.mode,
         };
         break;

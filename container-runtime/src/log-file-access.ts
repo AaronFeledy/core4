@@ -1,12 +1,12 @@
 import { Effect, Option, Stream } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { ProviderInternalError } from "@lando/sdk/errors";
 import type { LogFileAccess, LogFileHandle, LogFileRead, LogFileStat } from "@lando/sdk/log-follow";
 import type { ProviderError } from "@lando/sdk/services";
 
-import type { DataPlaneApiClient, DataPlaneHttpRequest, DataPlaneHttpResponse } from "./data-plane.ts";
-import { tryParseJson } from "./engine-json.ts";
+import type { DataPlaneApiClient, DataPlaneHttpRequest } from "./data-plane.ts";
 import { archiveLogFileHelper } from "./log-file-archive.ts";
+import { ensure2xx, internal, parseExecId, unavailable } from "./log-file-errors.ts";
 import { cleanupLogFileHelper, makeLogFileHelperPaths } from "./log-file-helper-cleanup.ts";
 import { HelperSession } from "./log-file-session.ts";
 
@@ -27,47 +27,11 @@ interface HelperLease {
   readonly close: Effect.Effect<void>;
 }
 
-const internal = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
-  new ProviderInternalError({
-    providerId,
-    operation: "logFileAccess",
-    message,
-    ...(details === undefined ? {} : { details }),
-    ...(cause === undefined ? {} : { cause }),
-  });
-
-const unavailable = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "logFileAccess",
-    message,
-    ...(details === undefined ? {} : { details }),
-    ...(cause === undefined ? {} : { cause }),
-  });
-
 const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> => ({
   async *[Symbol.asyncIterator]() {
     yield chunk;
   },
 });
-
-const parseExecId = (body: string, providerId: string) =>
-  tryParseJson(body, (cause) =>
-    internal(providerId, "Docker exec create returned malformed JSON.", body, cause),
-  ).pipe(
-    Effect.flatMap((decoded) =>
-      typeof decoded === "object" && decoded !== null && "Id" in decoded && typeof decoded.Id === "string"
-        ? Effect.succeed(decoded.Id)
-        : Effect.fail(internal(providerId, "Docker exec create omitted Id.", decoded)),
-    ),
-  );
-
-const ensure2xx = (response: DataPlaneHttpResponse, providerId: string, details: unknown) =>
-  response.status >= 200 && response.status < 300
-    ? Effect.void
-    : Effect.fail(
-        unavailable(providerId, `Docker-compatible API returned HTTP ${response.status}.`, details),
-      );
 
 const parseUnsignedDecimalBigInt = (
   value: string,

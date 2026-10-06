@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { Socket } from "node:net";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
@@ -7,6 +6,7 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
+import { probeTcp } from "./loopback-probe.ts";
 import { DESIRED_HTTPS_PORT, DESIRED_HTTP_PORT } from "./port-acquisition.ts";
 import {
   type OccupancyHolderIdentity,
@@ -35,8 +35,6 @@ const LOOPBACK_HOST = "127.0.0.1" as const;
 const TCP_PROBE_MS = 200;
 const PREFERRED_PORTS = [DESIRED_HTTP_PORT, DESIRED_HTTPS_PORT] as const;
 
-type TcpProbe = "refused" | "listening";
-
 type AcquisitionClaim = {
   readonly mode?: string;
   readonly httpPort?: number;
@@ -48,26 +46,8 @@ const idleSnapshot = (port: number): PreferredHostPortSnapshot => ({
   listening: false,
 });
 
-const probeTcp = (port: number): Promise<TcpProbe> =>
-  new Promise((resolve) => {
-    const socket = new Socket();
-    const finish = (result: TcpProbe) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(result);
-    };
-    socket.setTimeout(TCP_PROBE_MS);
-    socket.once("connect", () => finish("listening"));
-    socket.once("timeout", () => finish("listening"));
-    socket.once("error", (error: Error) => {
-      const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
-      finish(code === "ECONNREFUSED" ? "refused" : "listening");
-    });
-    socket.connect(port, LOOPBACK_HOST);
-  });
-
 const readPort = async (port: number, platform: HostPlatform): Promise<PreferredHostPortSnapshot> => {
-  const tcp = await probeTcp(port);
+  const tcp = await probeTcp({ host: LOOPBACK_HOST, port, timeoutMs: TCP_PROBE_MS });
   if (tcp === "refused") return idleSnapshot(port);
   if (platform !== "linux" && platform !== "wsl") return { port, listening: true };
 

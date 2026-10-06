@@ -4,8 +4,10 @@ Minimal Node.js + Postgres scaffold used by the Lando v4 Alpha walking skeleton.
 
 ## Generated Landofile shape
 
-- `web` — `node:lts`, binds the app root and runs `node /app/server.js`.
-- `database` — `postgres`.
+- `web`: `node:lts`, binds the app root and uses `command: ["node", "/app/server.js"]`.
+- `database`: `postgres`.
+
+The scaffold closes its HTTP server on SIGTERM or SIGINT and exits within five seconds if connections linger.
 
 ## Alpha limitations
 

@@ -63,6 +63,9 @@ interface InvocationOptions {
   readonly agentEnvAllowlist?: ReadonlyArray<string>;
   readonly tty?: boolean;
   readonly hostTerminal?: HostTerminal;
+  readonly stdinStream?: ToolingInvocation["stdinStream"];
+  readonly terminalResize?: ToolingInvocation["terminalResize"];
+  readonly signal?: AbortSignal;
 }
 
 const stepInvocation = (
@@ -84,6 +87,9 @@ const stepInvocation = (
     ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
     ...(options.tty === undefined ? {} : { tty: options.tty }),
     ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
+    ...(options.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
+    ...(options.terminalResize === undefined ? {} : { terminalResize: options.terminalResize }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
     commands: [step.argv === undefined ? shellCommand(step.cmd, args) : [...step.argv, ...args]],
     hostSteps: [
       step.argv === undefined

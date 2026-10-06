@@ -88,14 +88,17 @@ const main = async (): Promise<void> => {
   const appAliasContext = appSensitiveAlias && (await hasAppContext(process.cwd()));
   const coldPathAllowed = !hasDiagnosticOverride(argv, process.env);
 
-  if (
-    coldPathAllowed &&
-    argv.length === 1 &&
-    (argv[0] === "--version" ||
-      argv[0] === "-V" ||
-      argv[0] === "-v" ||
-      (argv[0] === "version" && !appAliasContext))
-  ) {
+  // Every text form of the version command prints the bare embedded version.
+  const versionRequest =
+    (argv.length === 1 &&
+      (argv[0] === "--version" ||
+        argv[0] === "-V" ||
+        argv[0] === "-v" ||
+        argv[0] === "meta:version" ||
+        (argv[0] === "version" && !appAliasContext))) ||
+    (argv.length === 2 && argv[0] === "meta" && argv[1] === "version");
+
+  if (coldPathAllowed && versionRequest) {
     const { CORE_VERSION } = await import("@lando/engine/version");
     await writeLine("stdout", CORE_VERSION);
     return;
@@ -113,20 +116,12 @@ const main = async (): Promise<void> => {
 
   if (
     coldPathAllowed &&
-    ((argv.length === 1 &&
-      (argv[0] === "meta:version" || ((argv[0] === "--help" || argv[0] === "-h") && !appAliasContext))) ||
-      (argv.length === 2 && argv[0] === "meta" && argv[1] === "version"))
+    argv.length === 1 &&
+    (argv[0] === "--help" || argv[0] === "-h") &&
+    !appAliasContext
   ) {
-    if (argv[0] === "--help" || argv[0] === "-h") {
-      const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
-      await writeLine("stdout", renderColdRootHelp());
-      return;
-    }
-    const { CORE_VERSION, renderMetaVersion } = await import("@lando/engine/version");
-    await writeLine(
-      "stdout",
-      renderMetaVersion({ core: CORE_VERSION, bun: Bun.version, platform: process.platform }),
-    );
+    const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
+    await writeLine("stdout", renderColdRootHelp());
     return;
   }
 

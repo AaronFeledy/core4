@@ -1,17 +1,18 @@
-import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
+import { sha256Hex } from "@lando/sdk/digest";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import type { NormalizedToolingArg, NormalizedToolingFlag } from "@lando/landofile/tooling-normalize";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
+import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 import {
   type VersionConstraintEntry,
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 4n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 5n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -56,6 +57,7 @@ export interface AppCommandIndexPayload {
   readonly sourceContentHash?: string;
   readonly sourceLocalIncludePaths?: ReadonlyArray<string>;
   readonly sourceReferencedFiles?: ReadonlyArray<LandofileReferencedFile>;
+  readonly sourceScripts?: readonly CommandScriptFingerprint[];
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
   readonly versionConstraints?: ReadonlyArray<VersionConstraintEntry>;
@@ -77,8 +79,7 @@ export interface PluginCommandIndexPayload {
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
 
-const stableFingerprint = (value: unknown): string =>
-  createHash("sha256").update(canonicalCacheJson(value)).digest("hex");
+const stableFingerprint = (value: unknown): string => sha256Hex(canonicalCacheJson(value));
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,

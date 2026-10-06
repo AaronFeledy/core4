@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { Schema } from "effect";
 
 import { ImagePullFailureDiagnosticSchema } from "../core/src/cli/failure-diagnostic.ts";
+import { EVIDENCE_LIMIT } from "./_acceptance-harness.ts";
 import {
   WORKFLOW_PERFORMANCE_LANE_IDS,
   WORKFLOW_PERFORMANCE_STEP_IDS,
@@ -11,7 +12,6 @@ import {
   workflowPerformanceSampleKey,
 } from "./workflow-performance-identifiers.ts";
 
-const EVIDENCE_LIMIT = 12_000;
 const MAX_LANES = 16;
 const MAX_SAMPLES = 10;
 const MAX_STEPS = 16;
@@ -113,8 +113,7 @@ export type WorkflowPerformanceLaneReport = typeof LaneSchema.Type;
 export type WorkflowPerformanceSample = typeof SampleSchema.Type;
 export type WorkflowPerformanceStatistics = typeof StatisticsSchema.Type;
 
-export const boundedPerformanceEvidence = (value: string): string =>
-  value.length <= EVIDENCE_LIMIT ? value : `${value.slice(value.length - EVIDENCE_LIMIT)}\n[truncated]`;
+export { bounded as boundedPerformanceEvidence } from "./_acceptance-harness.ts";
 
 const percentile = (sorted: readonly number[], fraction: number): number => {
   const index = Math.max(0, Math.ceil(sorted.length * fraction) - 1);

@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ToolingInvocation` adds optional `stdinStream`, `terminalResize`, and `signal` using the provider exec contract's types. Keyboard input must be re-iterable for sequential container steps. Omission preserves idle PTY input and noninteractive embedding/event behavior; no service signature or JSON Schema changes.
+
 - `ProxyStatus` adds optional `ports: { http: PortNumber; https: PortNumber }` for the running ingress's host listen ports. Routers that cannot report them and stopped routers omit the field. Existing status values and `RouterService.status` signatures remain valid; exact hostname-and-scheme authorities still take precedence when opening a route.
 
 - Router last-resort port constants, a port-pair schema, and an acquisition-pair

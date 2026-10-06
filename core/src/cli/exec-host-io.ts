@@ -2,6 +2,7 @@ import { Effect, Queue, Stream } from "effect";
 
 import type { ExecAppOptions } from "@lando/sdk/app";
 import type { HostTerminal } from "@lando/sdk/schema";
+import type { ToolingInvocation } from "@lando/sdk/services";
 
 import { cancellableTerminalStdin } from "./commands/terminal-stdin";
 
@@ -73,6 +74,20 @@ const stdoutResizeStream = (
     return Effect.addFinalizer(() => Effect.sync(() => output.off?.("resize", onResize)));
   });
 
+const acquireInheritedStdinRawMode = (stdin: RawModeStdin): (() => void) => {
+  const setRawMode = stdin.setRawMode?.bind(stdin);
+  if (setRawMode === undefined || stdin.isTTY !== true) return () => {};
+  const wasRaw = stdin.isRaw === true;
+  const wasFlowing = stdin.readableFlowing === true;
+  setRawMode(true);
+  stdin.resume();
+  return () => {
+    setRawMode(wasRaw);
+    if (wasFlowing) stdin.resume();
+    else stdin.pause();
+  };
+};
+
 export const withInheritedStdinRawMode = <A, E, R>(
   enabled: boolean,
   effect: Effect.Effect<A, E, R>,
@@ -80,19 +95,7 @@ export const withInheritedStdinRawMode = <A, E, R>(
 ): Effect.Effect<A, E, R> => {
   if (!enabled) return effect;
   return Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const setRawMode = stdin.setRawMode?.bind(stdin);
-      if (setRawMode === undefined || stdin.isTTY !== true) return () => {};
-      const wasRaw = stdin.isRaw === true;
-      const wasFlowing = stdin.readableFlowing === true;
-      setRawMode(true);
-      stdin.resume();
-      return () => {
-        setRawMode(wasRaw);
-        if (wasFlowing) stdin.resume();
-        else stdin.pause();
-      };
-    }),
+    Effect.sync(() => acquireInheritedStdinRawMode(stdin)),
     () => effect,
     (restore) => Effect.sync(restore),
   );
@@ -127,5 +130,79 @@ export const attachExecHostIo = (
               : { [Symbol.asyncIterator]: () => stdin.iterator({ destroyOnReturn: false }) },
         }
       : {}),
+  };
+};
+
+export const attachToolingHostIo = (
+  enabled: boolean,
+  stdin: InheritedStdin = process.stdin,
+  output: TerminalOutput = process.stdout,
+): Pick<ToolingInvocation, "tty" | "hostTerminal" | "stdinStream" | "terminalResize"> & {
+  readonly restore: () => void;
+} => {
+  const readers = new Set<() => void>();
+  const restore = (): void => {
+    for (const release of readers) release();
+  };
+  const hostTerminal = enabled ? attachedHostTerminal(output) : undefined;
+  if (hostTerminal === undefined) return { tty: false, restore };
+  if (stdin.isTTY !== true) return { tty: true, hostTerminal, restore };
+  const attached = attachExecHostIo({ command: [], tty: true, interactive: true }, stdin, output);
+  const input = attached.stdinStream;
+  return {
+    tty: true,
+    hostTerminal,
+    restore,
+    ...(attached.terminalResize === undefined ? {} : { terminalResize: attached.terminalResize }),
+    ...(input === undefined
+      ? {}
+      : {
+          stdinStream: {
+            [Symbol.asyncIterator]: () => {
+              const restoreRawMode = acquireInheritedStdinRawMode(stdin);
+              const release = (): void => {
+                if (readers.delete(release)) restoreRawMode();
+              };
+              readers.add(release);
+              let iterator: AsyncIterator<Uint8Array>;
+              try {
+                iterator = input[Symbol.asyncIterator]();
+              } catch (error) {
+                release();
+                throw error;
+              }
+              return {
+                next: async () => {
+                  try {
+                    const result = await iterator.next();
+                    if (result.done) release();
+                    return result;
+                  } catch (error) {
+                    release();
+                    throw error;
+                  }
+                },
+                return: async () => {
+                  try {
+                    return iterator.return?.() ?? { done: true, value: undefined };
+                  } finally {
+                    release();
+                  }
+                },
+                throw: async (error: unknown) => {
+                  try {
+                    if (iterator.throw !== undefined) return iterator.throw(error);
+                    const closing = iterator.return?.();
+                    release();
+                    await closing;
+                    throw error;
+                  } finally {
+                    release();
+                  }
+                },
+              };
+            },
+          },
+        }),
   };
 };

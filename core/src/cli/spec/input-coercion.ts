@@ -1,3 +1,5 @@
+import { ServiceName } from "@lando/sdk/schema";
+
 export const specFlagsOf = (input: unknown): Record<string, unknown> => {
   if (
     typeof input !== "object" ||
@@ -43,6 +45,11 @@ export const stringArrayFlag = (
       ? [value]
       : [];
 };
+
+export const serviceNamesFlag = (flags: Readonly<Record<string, unknown>>): ReadonlyArray<ServiceName> =>
+  stringArrayFlag(flags, "service")
+    .filter((value) => value.length > 0)
+    .map((value) => ServiceName.make(value));
 
 export const formatFlag = <T extends string>(
   flags: Readonly<Record<string, unknown>>,

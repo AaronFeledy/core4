@@ -13,7 +13,7 @@ cd wp-demo
 lando start
 ```
 
-The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4 and skips Redis. Apache and MariaDB are up after start, but the stock PHP image can't run WordPress yet: it has no `mysqli` extension and no `wp` binary. Add both, then install WordPress.
+The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4 and skips Redis. Start builds `appserver` with mysqli and checksum-verified WP-CLI, then brings up Apache and MariaDB. Confirm the tools below, then install WordPress.
 
 If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
 
@@ -21,47 +21,16 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.4`, `framework: wordpress`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
+| `appserver` | `php:8.4`, `framework: wordpress`, WP-CLI and mysqli, Apache on port `80`, depends on `database` (and `cache` with Redis) |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | `cache` (optional) | `type: redis` with `--answer=redis=true` |
 | Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
 
-## Put WP-CLI and mysqli on appserver
+## Confirm the tools
 
-Stock PHP images ship Composer and `pdo_mysql`. WordPress also needs the `mysqli` extension and a `wp` binary on `appserver`. Add both as root `build.artifact` steps, plus one environment variable:
-
-```yaml
-services:
-  appserver:
-    environment:
-      WP_CLI_ALLOW_ROOT: "1"
-    build:
-      artifact:
-        - run: docker-php-ext-install mysqli
-          user: root
-        - run: >-
-            set -eu;
-            wp_cli="$(mktemp)";
-            trap 'rm -f "$wp_cli"' EXIT;
-            curl -fsSL -o "$wp_cli" https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar;
-            echo "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c  $wp_cli" | sha256sum -c -;
-            install -m 0755 "$wp_cli" /usr/local/bin/wp
-          user: root
-```
-
-Keep the `>-` folded block. Build commands can't contain line breaks, and a `|` block keeps them. The second step pins WP-CLI 2.12.0 and checks its published SHA-256 digest before `install` can write the binary. A mismatch fails the rebuild without installing the downloaded file.
-
-Tooling runs as root, and WP-CLI refuses root by default. `WP_CLI_ALLOW_ROOT` tells it you meant it, so plain `lando wp` works after the rebuild.
-
-Rebuild so the steps land in the image:
-
-```sh
-lando rebuild
-```
-
-Then confirm the tools:
+`framework: wordpress` installs pinned WP-CLI on stock PHP services and sets `WP_CLI_ALLOW_ROOT=1`, so `lando wp` works with Lando's root tooling user. Custom images supply their own tools and extensions.
 
 ```sh
 lando wp --info
@@ -119,7 +88,7 @@ Open the HTTPS URL. A fresh install serves the site title you passed to `core in
 
 Put host `database` in `wp-config.php` (or in `config create --dbhost`). Do not use `127.0.0.1` or `localhost`. Root password is generated. `lando info` redacts it, and the `database` container holds it as `MARIADB_ROOT_PASSWORD` when you need it.
 
-Add Redis at init with `--answer=redis=true`. That adds a `cache` service on `redis`. Wire an object cache plugin to host `cache` on port `6379` when you want it. Add `pecl install redis` and `docker-php-ext-enable redis` as another root artifact step if your object cache plugin needs the extension.
+Add Redis at init with `--answer=redis=true`. That adds a `cache` service on `redis`. Wire an object cache plugin to host `cache` on port `6379` when you want it. Add `pecl install redis` and `docker-php-ext-enable redis` as root artifact steps if your object cache plugin needs the extension.
 
 ## Import a database
 
@@ -142,7 +111,7 @@ Run init in the directory that holds `wp-config.php`. The `.` writes `.lando.yml
 lando init . --recipe wordpress --name=my-site --yes
 ```
 
-Merge the `appserver` block from [Put WP-CLI and mysqli on appserver](#put-wp-cli-and-mysqli-on-appserver) into `.lando.yml`, and add the HTTPS snippet from [Download and install WordPress](#download-and-install-wordpress) to `wp-config.php`. Then start and point WordPress at MariaDB:
+Add the HTTPS snippet from [Download and install WordPress](#download-and-install-wordpress) to `wp-config.php`. Then start, [confirm the tools](#confirm-the-tools), and point WordPress at MariaDB:
 
 ```sh
 lando start

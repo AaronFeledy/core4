@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -14,7 +15,8 @@ const nonHiddenBuiltInCount = Object.values(COMMAND_REGISTRY_MANIFEST.commands).
 const runCli = async (argv: ReadonlyArray<string>) => {
   const subprocess = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...argv],
-    cwd: repoRoot,
+    // Outside any app so app commandAliases and tooling can't change help dispatch.
+    cwd: tmpdir(),
     stdout: "pipe",
     stderr: "pipe",
   });
