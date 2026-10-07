@@ -414,10 +414,16 @@ describe("create-body service publish ports", () => {
         probeBind: () => Effect.succeed({ kind: "success" }),
       }).pipe(Effect.result),
     );
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { _tag: "ServiceRestartWouldRecreateError", reason: "host-port", service: "web" },
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") throw new TypeError("expected host-port restart to fail");
+    expect(result.failure).toMatchObject({
+      _tag: "ServiceRestartWouldRecreateError",
+      reason: "host-port",
+      service: "web",
     });
+    expect(result.failure.message).toContain("was stopped and is still down");
+    expect(result.failure.message).toContain("lando rebuild -s web");
+    expect(result.failure.message).not.toContain("would recreate");
     expect(createCalls(fake.calls)).toEqual([]);
     expect(
       fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/containers/")),

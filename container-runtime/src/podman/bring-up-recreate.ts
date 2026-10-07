@@ -112,7 +112,11 @@ export const bringUpRecreateReasons = (
   return reasons;
 };
 
-const recreateMessage = (service: string, reason: ServiceRestartWouldRecreateError["reason"]): string => {
+const recreateMessage = (
+  service: string,
+  reason: ServiceRestartWouldRecreateError["reason"],
+  operation: string,
+): string => {
   switch (reason) {
     case "publish-port":
       return `Restarting ${service} would recreate it because its published ports no longer match the running container.`;
@@ -121,7 +125,9 @@ const recreateMessage = (service: string, reason: ServiceRestartWouldRecreateErr
     case "network":
       return `Restarting ${service} would recreate it because a planned network is missing.`;
     case "host-port":
-      return `Restarting ${service} would recreate it because its assigned host port is already in use.`;
+      return operation === "bringUp.start"
+        ? `${service} was stopped and is still down because its assigned host port is already in use. Run \`lando rebuild -s ${service}\`.`
+        : `Restarting ${service} would recreate it because its assigned host port is already in use.`;
   }
 };
 
@@ -139,6 +145,6 @@ export const makeServiceRestartWouldRecreateError = (input: {
     operation: input.operation ?? "restart",
     service: input.service,
     reason: input.reason,
-    message: recreateMessage(input.service, input.reason),
+    message: recreateMessage(input.service, input.reason, input.operation ?? "restart"),
     remediation: serviceRestartRebuildHint(input.service),
   });
