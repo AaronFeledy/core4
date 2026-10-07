@@ -203,12 +203,15 @@ describe("selected service restart", () => {
       });
       const error = await Effect.runPromise(Effect.flip(selected.operation));
       expect(error).toBeInstanceOf(ServiceRestartWouldRecreateError);
+      if (!(error instanceof ServiceRestartWouldRecreateError)) {
+        throw new TypeError("expected ServiceRestartWouldRecreateError");
+      }
       expect(error).toMatchObject({
         _tag: "ServiceRestartWouldRecreateError",
         service: "web",
         reason: testCase.reason,
       });
-      expect(String(error.remediation)).toContain("lando rebuild -s web");
+      expect(error.remediation).toContain("lando rebuild -s web");
       expect(selected.stopCalls).toEqual([]);
       expect(selected.applyCalls).toEqual([]);
     }

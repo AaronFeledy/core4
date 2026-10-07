@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import * as events from "@lando/sdk/events";
+import { ServiceName } from "@lando/sdk/schema";
 
 const start = Schema.decodeUnknownSync(events.PreStartEvent)({
   _tag: "pre-start",
@@ -44,7 +45,7 @@ test("pre-restart mirrors the pre-start payload and round-trips through LandoEve
 
 test("pre-restart carries selected services when present", () => {
   const { _tag, ...payload } = start;
-  const event = events.PreRestartEvent.make({ ...payload, services: ["redis"] });
+  const event = events.PreRestartEvent.make({ ...payload, services: [ServiceName.make("redis")] });
   const wire = Schema.encodeSync(events.PreRestartEvent)(event);
   expect(Schema.decodeUnknownSync(events.LandoEvent)(wire)).toEqual(event);
   expect(wire).toMatchObject({ services: ["redis"] });
